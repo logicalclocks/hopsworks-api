@@ -5,7 +5,6 @@ description: Use when writing Streamlit or custom Python apps for Hopsworks or m
   app from HopsFS or Git, configure app monitoring, or access the feature store
   from an app. Input an app.py or git repo + environment + memory; output a
   running app and its URL.
-allowed-tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 
 # Hopsworks Apps — Python SDK Best Practices
@@ -18,7 +17,7 @@ A Streamlit app is a **UI / consumer of the FTI pipelines**, not a pipeline itse
 
 ## Contract
 
-- **Input:** a Streamlit or custom `app.py` or a Git-backed app + environment + memory (plus optional monitoring config).
+- **Input:** a Streamlit or custom `app.py` or a Git-backed app + environment (app-requirements.txt on top of cloned python-app-pipeline env) + memory (plus optional monitoring config).
 - **Output:** a running app and its URL.
 - **Pre-condition:** app code is available either in HopsFS or in a Git repository.
 

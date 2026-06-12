@@ -43,7 +43,7 @@ class MonitoringWindowConfigEngine:
             entity_type=entity_type,
         )
 
-    def validate_monitoring_window_config(
+    def _validate_monitoring_window_config(
         self,
         time_offset: str | None = None,
         window_length: str | None = None,
@@ -86,7 +86,7 @@ class MonitoringWindowConfigEngine:
 
         return mwc.WindowConfigType.ALL_TIME
 
-    def build_monitoring_window_config(
+    def _build_monitoring_window_config(
         self,
         id: int | None = None,
         window_config_type: mwc.WindowConfigType | str | None = None,
@@ -110,7 +110,7 @@ class MonitoringWindowConfigEngine:
         Returns:
             The monitoring window configuration.
         """
-        detected_window_config_type = self.validate_monitoring_window_config(
+        detected_window_config_type = self._validate_monitoring_window_config(
             time_offset=time_offset,
             window_length=window_length,
             training_dataset_version=training_dataset_version,
@@ -143,7 +143,7 @@ class MonitoringWindowConfigEngine:
             row_percentage=row_percentage,
         )
 
-    def time_range_str_to_time_delta(
+    def _time_range_str_to_time_delta(
         self, time_range: str, field_name: str | None = "time_offset"
     ) -> timedelta:
         # sanitize input
@@ -180,7 +180,7 @@ class MonitoringWindowConfigEngine:
 
         return timedelta(weeks=weeks, days=days, hours=hours)
 
-    def get_window_start_end_times(
+    def _get_window_start_end_times(
         self,
         monitoring_window_config: mwc.MonitoringWindowConfig,
     ) -> tuple[int | None, int]:
@@ -191,11 +191,11 @@ class MonitoringWindowConfigEngine:
         ]:
             return (
                 None,
-                self.round_and_convert_event_time(event_time=end_time),
+                self._round_and_convert_event_time(event_time=end_time),
             )
 
         if monitoring_window_config.time_offset is not None:
-            time_offset = self.time_range_str_to_time_delta(
+            time_offset = self._time_range_str_to_time_delta(
                 monitoring_window_config.time_offset
             )
             start_time = datetime.now() - time_offset
@@ -203,11 +203,11 @@ class MonitoringWindowConfigEngine:
             # case where time_offset is None and window_length is None
             return (
                 None,
-                self.round_and_convert_event_time(event_time=end_time),
+                self._round_and_convert_event_time(event_time=end_time),
             )
 
         if monitoring_window_config.window_length is not None:
-            window_length = self.time_range_str_to_time_delta(
+            window_length = self._time_range_str_to_time_delta(
                 monitoring_window_config.window_length
             )
             end_time = (
@@ -217,11 +217,11 @@ class MonitoringWindowConfigEngine:
             )
 
         return (
-            self.round_and_convert_event_time(event_time=start_time),
-            self.round_and_convert_event_time(event_time=end_time),
+            self._round_and_convert_event_time(event_time=start_time),
+            self._round_and_convert_event_time(event_time=end_time),
         )
 
-    def run_single_window_monitoring(
+    def _run_single_window_monitoring(
         self,
         entity: feature_group.FeatureGroup | feature_view.FeatureView,
         monitoring_window_config: mwc.MonitoringWindowConfig,
@@ -241,7 +241,7 @@ class MonitoringWindowConfigEngine:
         (
             start_time,
             end_time,
-        ) = self.get_window_start_end_times(
+        ) = self._get_window_start_end_times(
             monitoring_window_config=monitoring_window_config,
         )
         if (
@@ -274,7 +274,7 @@ class MonitoringWindowConfigEngine:
                         registered_stats = split
         else:
             # Check if statistics already exists
-            registered_stats = self._statistics_engine.get_by_time_window(
+            registered_stats = self._statistics_engine._get_by_time_window(
                 metadata_instance=entity,
                 start_commit_time=start_time,
                 end_commit_time=end_time,
@@ -284,7 +284,7 @@ class MonitoringWindowConfigEngine:
 
         if registered_stats is None:  # if statistics don't exist
             # Fetch the actual data for which to compute statistics based on row_percentage and time window
-            entity_feature_df = self.fetch_entity_data_in_monitoring_window(
+            entity_feature_df = self._fetch_entity_data_in_monitoring_window(
                 entity=entity,
                 feature_name=feature_name,
                 start_time=start_time,
@@ -294,7 +294,7 @@ class MonitoringWindowConfigEngine:
 
             # Compute statistics on the feature dataframe
             registered_stats = (
-                self._statistics_engine.compute_and_save_monitoring_statistics(
+                self._statistics_engine._compute_and_save_monitoring_statistics(
                     entity,
                     feature_dataframe=entity_feature_df,
                     window_start_commit_time=start_time,
@@ -310,7 +310,7 @@ class MonitoringWindowConfigEngine:
 
         return registered_stats.feature_descriptive_statistics
 
-    def fetch_entity_data_in_monitoring_window(
+    def _fetch_entity_data_in_monitoring_window(
         self,
         entity: feature_group.FeatureGroup | feature_view.FeatureView,
         start_time: int | None,
@@ -332,14 +332,14 @@ class MonitoringWindowConfigEngine:
         """
         try:
             if isinstance(entity, feature_group.FeatureGroup):
-                entity_df = self.fetch_feature_group_data(
+                entity_df = self._fetch_feature_group_data(
                     entity=entity,
                     feature_name=feature_name,
                     start_time=start_time,
                     end_time=end_time,
                 )
             else:
-                entity_df = self.fetch_feature_view_data(
+                entity_df = self._fetch_feature_view_data(
                     entity=entity,
                     feature_name=feature_name,
                     start_time=start_time,
@@ -364,7 +364,7 @@ class MonitoringWindowConfigEngine:
 
         return entity_df
 
-    def fetch_feature_view_data(
+    def _fetch_feature_view_data(
         self,
         entity: feature_view.FeatureView,
         feature_name: str | None = None,
@@ -392,7 +392,7 @@ class MonitoringWindowConfigEngine:
 
         return entity_df
 
-    def fetch_feature_group_data(
+    def _fetch_feature_group_data(
         self,
         entity: feature_group.FeatureGroup,
         feature_name: str | None = None,
@@ -411,7 +411,7 @@ class MonitoringWindowConfigEngine:
 
         return pre_df.as_of(exclude_until=start_time, wallclock_time=end_time).read()
 
-    def round_and_convert_event_time(self, event_time: datetime) -> int | None:
+    def _round_and_convert_event_time(self, event_time: datetime) -> int | None:
         """Round event time to the latest hour and convert to timestamp.
 
         Parameters:
@@ -420,4 +420,4 @@ class MonitoringWindowConfigEngine:
         Returns:
             datetime: Rounded and converted event time.
         """
-        return util.convert_event_time_to_timestamp(event_time)
+        return util._convert_event_time_to_timestamp(event_time)

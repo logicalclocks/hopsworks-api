@@ -20,7 +20,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from hopsworks_apigen import public
-from hopsworks_common.spark_connect_utils import is_spark_connect_env
+from hopsworks_common.spark_connect_utils import _is_spark_connect_env
 
 
 if TYPE_CHECKING:
@@ -51,7 +51,7 @@ def build_spark(
     ``extra_configs`` flow through.
 
     Spark Connect detection delegates to
-    ``hopsworks_common.spark_connect_utils.is_spark_connect_env`` (which
+    ``hopsworks_common.spark_connect_utils._is_spark_connect_env`` (which
     checks ``SPARK_CONNECT_MODE_ENABLED`` and falls back to
     ``pyspark.sql.utils.is_remote()``); the latter also covers the
     ``SPARK_REMOTE`` env var that the terminal-spark image sets. The
@@ -87,7 +87,7 @@ def build_spark(
         ) from exc
 
     builder = SparkSession.builder.appName(app_name)
-    if is_spark_connect_env():
+    if _is_spark_connect_env():
         builder = builder.config("spark.sql.extensions", _DELTA_EXTENSIONS)
         builder = builder.config("spark.sql.catalog.spark_catalog", _DELTA_CATALOG)
     for key, value in (extra_configs or {}).items():

@@ -26,7 +26,7 @@ class TransformationFunctionApi:
     def __init__(self, feature_store_id: int) -> None:
         self._feature_store_id = feature_store_id
 
-    def register_transformation_fn(
+    def _register_transformation_fn(
         self,
         transformation_function_instance: transformation_function.TransformationFunction,
     ) -> transformation_function.TransformationFunction:
@@ -39,7 +39,7 @@ class TransformationFunctionApi:
         Returns:
             The registered transformation function metadata object.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -57,10 +57,10 @@ class TransformationFunctionApi:
             )
         )
 
-    @decorators.catch_not_found(
+    @decorators._catch_not_found(
         "hsfs.transformation_function.TransformationFunction", fallback_return=None
     )
-    def get_transformation_fn(
+    def _get_transformation_fn(
         self, name: str | None, version: int | None
     ) -> (
         transformation_function.TransformationFunction
@@ -77,7 +77,7 @@ class TransformationFunctionApi:
         Returns:
             The transformation function metadata object, or a list of them, or None if not found.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -96,7 +96,7 @@ class TransformationFunctionApi:
             _client._send_request("GET", path_params, query_params)
         )
 
-    def delete(
+    def _delete(
         self,
         transformation_function_instance: transformation_function.TransformationFunction,
     ) -> None:
@@ -105,7 +105,7 @@ class TransformationFunctionApi:
         Parameters:
             transformation_function_instance: Metadata object of the transformation function to delete.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,

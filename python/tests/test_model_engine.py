@@ -50,7 +50,7 @@ class TestModelCacheBaseDirs:
         mocker.patch("os.getcwd", return_value=work)
 
         # Act
-        bases = model_engine.model_cache_base_dirs()
+        bases = model_engine._model_cache_base_dirs()
 
         # Assert
         assert bases == [
@@ -72,7 +72,7 @@ class TestModelCacheBaseDirs:
         mocker.patch("os.getcwd", return_value=work)
 
         # Act
-        bases = model_engine.model_cache_base_dirs()
+        bases = model_engine._model_cache_base_dirs()
 
         # Assert - the duplicate path appears only once; home base remains
         assert len(bases) == 2
@@ -84,7 +84,7 @@ class TestModelEngineDownload:
         # Arrange
         base = str(tmp_path / "tmp")
         mocker.patch(
-            "hsml.engine.model_engine.model_cache_base_dirs", return_value=[base]
+            "hsml.engine.model_engine._model_cache_base_dirs", return_value=[base]
         )
         eng = model_engine.ModelEngine()
         m = _make_model(mocker)
@@ -99,7 +99,7 @@ class TestModelEngineDownload:
         )
 
         # Act
-        result = eng.download(m)
+        result = eng._download(m)
 
         # Assert
         assert result == cache_path
@@ -110,7 +110,7 @@ class TestModelEngineDownload:
         base1 = str(tmp_path / "tmp")
         base2 = str(tmp_path / "home")
         mocker.patch(
-            "hsml.engine.model_engine.model_cache_base_dirs",
+            "hsml.engine.model_engine._model_cache_base_dirs",
             return_value=[base1, base2],
         )
         eng = model_engine.ModelEngine()
@@ -129,7 +129,7 @@ class TestModelEngineDownload:
         )
 
         # Act
-        result = eng.download(m)
+        result = eng._download(m)
 
         # Assert - second location used, first cleaned up, marker written
         assert result == _leaf(base2)
@@ -141,7 +141,7 @@ class TestModelEngineDownload:
         base1 = str(tmp_path / "tmp")
         base2 = str(tmp_path / "home")
         mocker.patch(
-            "hsml.engine.model_engine.model_cache_base_dirs",
+            "hsml.engine.model_engine._model_cache_base_dirs",
             return_value=[base1, base2],
         )
         eng = model_engine.ModelEngine()
@@ -160,7 +160,7 @@ class TestModelEngineDownload:
         )
 
         # Act
-        result = eng.download(m)
+        result = eng._download(m)
 
         # Assert
         assert result == _leaf(base2)
@@ -170,7 +170,7 @@ class TestModelEngineDownload:
         base1 = str(tmp_path / "tmp")
         base2 = str(tmp_path / "home")
         mocker.patch(
-            "hsml.engine.model_engine.model_cache_base_dirs",
+            "hsml.engine.model_engine._model_cache_base_dirs",
             return_value=[base1, base2],
         )
         eng = model_engine.ModelEngine()
@@ -183,13 +183,13 @@ class TestModelEngineDownload:
 
         # Act / Assert
         with pytest.raises(OSError) as exc:
-            eng.download(m)
+            eng._download(m)
         assert exc.value.errno == errno.ENOSPC
 
     def test_explicit_local_path_does_not_fall_back(self, mocker, tmp_path):
         # Arrange
         local_path = str(tmp_path / "explicit")
-        base_dirs_spy = mocker.patch("hsml.engine.model_engine.model_cache_base_dirs")
+        base_dirs_spy = mocker.patch("hsml.engine.model_engine._model_cache_base_dirs")
         eng = model_engine.ModelEngine()
         m = _make_model(mocker)
         mocker.patch.object(
@@ -200,7 +200,7 @@ class TestModelEngineDownload:
 
         # Act / Assert - the user's chosen path is honoured, no cache fallback
         with pytest.raises(PermissionError):
-            eng.download(m, local_path=local_path)
+            eng._download(m, local_path=local_path)
         base_dirs_spy.assert_not_called()
 
     def test_explicit_local_path_success(self, mocker, tmp_path):
@@ -213,7 +213,7 @@ class TestModelEngineDownload:
         )
 
         # Act
-        result = eng.download(m, local_path=local_path)
+        result = eng._download(m, local_path=local_path)
 
         # Assert - dir created, files downloaded, no completion marker for explicit paths
         assert result == local_path
@@ -232,7 +232,7 @@ class TestModelEngineDownload:
         mocker.patch.object(model_engine.ModelEngine, "_download_model_files")
 
         # Act
-        eng.download(m, local_path=local_path)
+        eng._download(m, local_path=local_path)
 
         # Assert - the user's pre-existing file is not wiped
         assert os.path.exists(os.path.join(local_path, "keep.txt"))
@@ -241,7 +241,7 @@ class TestModelEngineDownload:
         # Arrange - a cache dir with stale files but no completion marker
         base = str(tmp_path / "tmp")
         mocker.patch(
-            "hsml.engine.model_engine.model_cache_base_dirs", return_value=[base]
+            "hsml.engine.model_engine._model_cache_base_dirs", return_value=[base]
         )
         eng = model_engine.ModelEngine()
         m = _make_model(mocker)
@@ -261,7 +261,7 @@ class TestModelEngineDownload:
         )
 
         # Act
-        result = eng.download(m)
+        result = eng._download(m)
 
         # Assert - stale file removed, fresh download present and marked complete
         assert result == cache_path
@@ -273,7 +273,7 @@ class TestModelEngineDownload:
         # Arrange - a complete-looking cache dir that belongs to another user
         base = str(tmp_path / "tmp")
         mocker.patch(
-            "hsml.engine.model_engine.model_cache_base_dirs", return_value=[base]
+            "hsml.engine.model_engine._model_cache_base_dirs", return_value=[base]
         )
         eng = model_engine.ModelEngine()
         m = _make_model(mocker)
@@ -294,7 +294,7 @@ class TestModelEngineDownload:
 
         # Act / Assert - not reused as valid, and not overwritten (we don't own it)
         with pytest.raises(PermissionError):
-            eng.download(m)
+            eng._download(m)
         download_spy.assert_not_called()
         assert os.path.exists(os.path.join(cache_path, "model.pkl"))
 
@@ -302,14 +302,14 @@ class TestModelEngineDownload:
         # Arrange
         base = str(tmp_path / "tmp")
         mocker.patch(
-            "hsml.engine.model_engine.model_cache_base_dirs", return_value=[base]
+            "hsml.engine.model_engine._model_cache_base_dirs", return_value=[base]
         )
         eng = model_engine.ModelEngine()
         m = _make_model(mocker)
         mocker.patch.object(model_engine.ModelEngine, "_download_model_files")
 
         # Act
-        result = eng.download(m)
+        result = eng._download(m)
 
         # Assert - owner-only permissions (POSIX only)
         if hasattr(os, "getuid"):
@@ -319,7 +319,7 @@ class TestModelEngineDownload:
         # Arrange - a complete cache for an older id of the same name+version
         base = str(tmp_path / "tmp")
         mocker.patch(
-            "hsml.engine.model_engine.model_cache_base_dirs", return_value=[base]
+            "hsml.engine.model_engine._model_cache_base_dirs", return_value=[base]
         )
         eng = model_engine.ModelEngine()
         old_cache = _leaf(base, model_id=10)
@@ -343,7 +343,7 @@ class TestModelEngineDownload:
         recreated = _make_model(mocker, model_id=11)
 
         # Act
-        result = eng.download(recreated)
+        result = eng._download(recreated)
 
         # Assert - fresh dir for the new id, re-downloaded, stale id pruned
         assert result == _leaf(base, model_id=11)
@@ -365,7 +365,7 @@ class TestModelClearCache:
     def test_clear_all(self, mocker, tmp_path):
         base = str(tmp_path / "cache")
         mocker.patch(
-            "hsml.engine.model_engine.model_cache_base_dirs", return_value=[base]
+            "hsml.engine.model_engine._model_cache_base_dirs", return_value=[base]
         )
         _seed_cache(base, {"p1": {"m1": [1, 2], "m2": [1]}, "p2": {"m3": [1]}})
 
@@ -377,7 +377,7 @@ class TestModelClearCache:
     def test_clear_project_scope(self, mocker, tmp_path):
         base = str(tmp_path / "cache")
         mocker.patch(
-            "hsml.engine.model_engine.model_cache_base_dirs", return_value=[base]
+            "hsml.engine.model_engine._model_cache_base_dirs", return_value=[base]
         )
         _seed_cache(base, {"p1": {"m1": [1, 2], "m2": [1]}, "p2": {"m3": [1]}})
 
@@ -390,7 +390,7 @@ class TestModelClearCache:
     def test_clear_model_scope(self, mocker, tmp_path):
         base = str(tmp_path / "cache")
         mocker.patch(
-            "hsml.engine.model_engine.model_cache_base_dirs", return_value=[base]
+            "hsml.engine.model_engine._model_cache_base_dirs", return_value=[base]
         )
         _seed_cache(base, {"p1": {"m1": [1, 2], "m2": [1]}})
 
@@ -403,7 +403,7 @@ class TestModelClearCache:
     def test_clear_version_scope(self, mocker, tmp_path):
         base = str(tmp_path / "cache")
         mocker.patch(
-            "hsml.engine.model_engine.model_cache_base_dirs", return_value=[base]
+            "hsml.engine.model_engine._model_cache_base_dirs", return_value=[base]
         )
         _seed_cache(base, {"p1": {"m1": [1, 2]}})
 
@@ -418,7 +418,7 @@ class TestModelClearCache:
     def test_clear_nonexistent_returns_zero(self, mocker, tmp_path):
         base = str(tmp_path / "cache")
         mocker.patch(
-            "hsml.engine.model_engine.model_cache_base_dirs", return_value=[base]
+            "hsml.engine.model_engine._model_cache_base_dirs", return_value=[base]
         )
         _seed_cache(base, {"p1": {"m1": [1]}})
 
@@ -428,7 +428,7 @@ class TestModelClearCache:
         base1 = str(tmp_path / "tmp")
         base2 = str(tmp_path / "home")
         mocker.patch(
-            "hsml.engine.model_engine.model_cache_base_dirs",
+            "hsml.engine.model_engine._model_cache_base_dirs",
             return_value=[base1, base2],
         )
         _seed_cache(base1, {"p1": {"m1": [1]}})
@@ -449,7 +449,7 @@ class TestModelClearCache:
     def test_invalid_combination_does_not_delete(self, mocker, tmp_path):
         base = str(tmp_path / "cache")
         base_dirs_spy = mocker.patch(
-            "hsml.engine.model_engine.model_cache_base_dirs", return_value=[base]
+            "hsml.engine.model_engine._model_cache_base_dirs", return_value=[base]
         )
         _seed_cache(base, {"p1": {"m1": [1]}})
 

@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 import humps
 from hopsworks_apigen import public
-from hopsworks_common.decorators import uses_great_expectations
+from hopsworks_common.decorators import _uses_great_expectations
 from hsfs import util
 from hsfs.core.constants import GE_MAJOR, HAS_GREAT_EXPECTATIONS
 
@@ -130,7 +130,7 @@ class GeExpectation:
         )
 
     @public
-    @uses_great_expectations
+    @_uses_great_expectations
     def to_ge_type(self) -> great_expectations.core.ExpectationConfiguration:
         """Convert to Great Expectations ExpectationConfiguration type.
 

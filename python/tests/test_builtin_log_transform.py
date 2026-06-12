@@ -42,10 +42,10 @@ def test_log_transform_python_engine():
     )
 
     engine = python_engine.Engine()
-    hopsworks_engine.set_instance(engine=engine, engine_type="python")
+    hopsworks_engine._set_instance(engine=engine, engine_type="python")
 
     # Act
-    result = TransformationFunctionEngine.apply_transformation_functions(
+    result = TransformationFunctionEngine._apply_transformation_functions(
         transformation_functions=[tf], data=df
     )
 

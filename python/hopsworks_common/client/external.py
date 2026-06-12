@@ -103,9 +103,9 @@ class Client(base.Client):
             self._project_name = None
             return
 
-        self.provide_project(project)
+        self._provide_project(project)
 
-    def provide_project(self, project):
+    def _provide_project(self, project):
         self._project_name = project
         _logger.debug("Project name: %s", self._project_name)
 
@@ -117,7 +117,7 @@ class Client(base.Client):
         _logger.debug("Username: %s", self._username)
 
         if self._engine == "python":
-            self.download_certs()
+            self._download_certs()
 
         elif self._engine == "spark":
             # When using the Spark engine with metastore connection, the certificates
@@ -147,10 +147,10 @@ class Client(base.Client):
             # must be set before the first getOrCreate() call.
             # The session created here is reused by the engine, so this is
             # the only place where these configs take effect.
-            from hopsworks_common.spark_connect_utils import is_spark_connect_env
+            from hopsworks_common.spark_connect_utils import _is_spark_connect_env
 
             builder = SparkSession.builder
-            if is_spark_connect_env():
+            if _is_spark_connect_env():
                 builder = builder.config(
                     "spark.sql.extensions",
                     "io.delta.sql.DeltaSparkSessionExtension",
@@ -159,7 +159,7 @@ class Client(base.Client):
                     "org.apache.spark.sql.delta.catalog.DeltaCatalog",
                 )
             _spark_session = builder.getOrCreate()
-            self.download_certs()
+            self._download_certs()
 
             # Set credentials location in the Spark configuration
             # Set other options in the Spark configuration
@@ -175,9 +175,9 @@ class Client(base.Client):
                 "hops.ipc.server.ssl.enabled": "true",
             }
 
-            from hopsworks_common.spark_connect_utils import is_spark_connect_session
+            from hopsworks_common.spark_connect_utils import _is_spark_connect_session
 
-            if is_spark_connect_session(_spark_session):
+            if _is_spark_connect_session(_spark_session):
                 for conf_key, conf_value in configuration_dict.items():
                     _spark_session.conf.set(f"spark.hadoop.{conf_key}", conf_value)
             else:
@@ -188,7 +188,7 @@ class Client(base.Client):
             _logger.debug(
                 "Running in Spark environment with no metastore and hopsfs, initializing Spark session"
             )
-            self.download_certs()
+            self._download_certs()
             _spark_session = (
                 SparkSession.builder.config(
                     "spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension"
@@ -200,16 +200,16 @@ class Client(base.Client):
                 .getOrCreate()
             )
 
-        hopsworks_common.client.get_connection()._provide_project()
+        hopsworks_common.client._get_connection()._provide_project()
 
-    def download_certs(self):
+    def _download_certs(self):
         res = self._materialize_certs()
         self._write_pem_file(res["caChain"], self._get_ca_chain_path())
         self._write_pem_file(res["clientCert"], self._get_client_cert_path())
         self._write_pem_file(res["clientKey"], self._get_client_key_path())
         return res
 
-    def get_certs_folder(self):
+    def _get_certs_folder(self):
         # Custom cert_folder: use directly
         # Default /tmp: use hierarchical structure for multi-user support
         if self._cert_folder_base == CLIENT.CERT_FOLDER_DEFAULT:
@@ -221,7 +221,7 @@ class Client(base.Client):
     def _materialize_certs(self):
         # Custom cert_folder: use directly
         # Default /tmp: create hierarchical structure {cert_folder_base}/{host}/{project}/{username}
-        self._cert_folder = self.get_certs_folder()
+        self._cert_folder = self._get_certs_folder()
         self._trust_store_path = os.path.join(self._cert_folder, "trustStore.jks")
         self._key_store_path = os.path.join(self._cert_folder, "keyStore.jks")
 
@@ -414,7 +414,7 @@ class Client(base.Client):
         with contextlib.suppress(OSError):
             os.remove(file_path)
 
-    def replace_public_host(self, url: ParseResult) -> ParseResult:
+    def _replace_public_host(self, url: ParseResult) -> ParseResult:
         """No need to replace as we are already in external client.
 
         Parameters:

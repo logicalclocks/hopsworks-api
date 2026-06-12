@@ -110,7 +110,7 @@ class FeatureMonitoringConfigEngine:
             "count",
         ]
 
-    def validate_statistics_comparison_config(
+    def _validate_statistics_comparison_config(
         self,
         metric: str,
         threshold: float,
@@ -173,7 +173,7 @@ class FeatureMonitoringConfigEngine:
             "strict": strict,
         }
 
-    def validate_config_name(self, name: str):
+    def _validate_config_name(self, name: str):
         if not isinstance(name, str):
             raise TypeError("Invalid config name. Config name must be a string.")
         if len(name) > 64:
@@ -185,7 +185,7 @@ class FeatureMonitoringConfigEngine:
                 "Invalid config name. Config name must be alphanumeric or underscore."
             )
 
-    def validate_description(self, description: str | None):
+    def _validate_description(self, description: str | None):
         if description is not None and not isinstance(description, str):
             raise TypeError("Invalid description. Description must be a string.")
         if description is not None and len(description) > 256:
@@ -193,7 +193,7 @@ class FeatureMonitoringConfigEngine:
                 "Invalid description. Description must be less than 256 characters."
             )
 
-    def validate_feature_name(
+    def _validate_feature_name(
         self, feature_name: str | None, valid_feature_names: list[str]
     ):
         if feature_name is not None and not isinstance(feature_name, str):
@@ -203,7 +203,7 @@ class FeatureMonitoringConfigEngine:
                 f"Invalid feature name. Feature name must be one of {valid_feature_names}."
             )
 
-    def save(self, config: fmc.FeatureMonitoringConfig) -> fmc.FeatureMonitoringConfig:
+    def _save(self, config: fmc.FeatureMonitoringConfig) -> fmc.FeatureMonitoringConfig:
         """Saves a feature monitoring config.
 
         Parameters:
@@ -221,9 +221,9 @@ class FeatureMonitoringConfigEngine:
                 "Cannot save a config that is already registered."
                 " Please use update() instead."
             )
-        return self._feature_monitoring_config_api.create(config)
+        return self._feature_monitoring_config_api._create(config)
 
-    def update(
+    def _update(
         self, config: fmc.FeatureMonitoringConfig
     ) -> fmc.FeatureMonitoringConfig:
         """Updates a feature monitoring config.
@@ -243,18 +243,18 @@ class FeatureMonitoringConfigEngine:
                 "Cannot update a config that is not registered."
                 " Please use save() instead."
             )
-        return self._feature_monitoring_config_api.update(config)
+        return self._feature_monitoring_config_api._update(config)
 
-    def delete(self, config_id: int) -> None:
+    def _delete(self, config_id: int) -> None:
         """Deletes a feature monitoring config.
 
         Parameters:
             config_id: int, required
                 The id of the feature monitoring config to delete.
         """
-        self._feature_monitoring_config_api.delete(config_id=config_id)
+        self._feature_monitoring_config_api._delete(config_id=config_id)
 
-    def get_feature_monitoring_configs(
+    def _get_feature_monitoring_configs(
         self,
         name: str | None = None,
         feature_name: str | None = None,
@@ -293,21 +293,21 @@ class FeatureMonitoringConfigEngine:
         if name is not None:
             if not isinstance(name, str):
                 raise TypeError("name must be a string or None.")
-            return self._feature_monitoring_config_api.get_by_name(name=name)
+            return self._feature_monitoring_config_api._get_by_name(name=name)
         if feature_name is not None:
             if not isinstance(feature_name, str):
                 raise TypeError("feature_name must be a string or None.")
-            return self._feature_monitoring_config_api.get_by_feature_name(
+            return self._feature_monitoring_config_api._get_by_feature_name(
                 feature_name=feature_name
             )
         if config_id is not None:
             if not isinstance(config_id, int):
                 raise TypeError("config_id must be an integer or None.")
-            return self._feature_monitoring_config_api.get_by_id(config_id=config_id)
+            return self._feature_monitoring_config_api._get_by_id(config_id=config_id)
 
-        return self._feature_monitoring_config_api.get_by_entity()
+        return self._feature_monitoring_config_api._get_by_entity()
 
-    def trigger_monitoring_job(
+    def _trigger_monitoring_job(
         self,
         job_name: str,
     ) -> Job:
@@ -323,7 +323,7 @@ class FeatureMonitoringConfigEngine:
 
         return self._job_api.get_job(name=job_name)
 
-    def get_monitoring_job(
+    def _get_monitoring_job(
         self,
         job_name: str,
     ) -> Job:
@@ -337,7 +337,7 @@ class FeatureMonitoringConfigEngine:
         """
         return self._job_api.get_job(name=job_name)
 
-    def run_feature_monitoring(
+    def _run_feature_monitoring(
         self,
         entity: feature_group.FeatureGroup | feature_view.FeatureView,
         config_name: str,
@@ -351,13 +351,13 @@ class FeatureMonitoringConfigEngine:
         Returns:
             A list of result object describing the outcome of the monitoring.
         """
-        config = self._feature_monitoring_config_api.get_by_name(config_name)
+        config = self._feature_monitoring_config_api._get_by_name(config_name)
 
         assert config is not None, "Feature monitoring config not found."
 
         # TODO: [FSTORE-1206] Parallelize both single_window_monitoring calls and wait
         detection_statistics = (
-            self._monitoring_window_config_engine.run_single_window_monitoring(
+            self._monitoring_window_config_engine._run_single_window_monitoring(
                 entity=entity,
                 monitoring_window_config=config.detection_window_config,
                 feature_name=config.feature_name,
@@ -373,14 +373,14 @@ class FeatureMonitoringConfigEngine:
                 specific_value = config.reference_window_config.specific_value
             else:
                 reference_statistics = (
-                    self._monitoring_window_config_engine.run_single_window_monitoring(
+                    self._monitoring_window_config_engine._run_single_window_monitoring(
                         entity=entity,
                         monitoring_window_config=config.reference_window_config,
                         feature_name=config.feature_name,
                     )
                 )
 
-        return self._result_engine.run_and_save_statistics_comparison(
+        return self._result_engine._run_and_save_statistics_comparison(
             fm_config=config,
             detection_statistics=detection_statistics,
             reference_statistics=reference_statistics,
@@ -416,10 +416,10 @@ class FeatureMonitoringConfigEngine:
         Returns:
             A Feature Monitoring Configuration to compute the statistics of a snapshot of all data present in the entity.
         """
-        self.validate_config_name(name)
-        self.validate_description(description)
+        self._validate_config_name(name)
+        self._validate_description(description)
         if feature_name is not None and valid_feature_names is not None:
-            self.validate_feature_name(feature_name, valid_feature_names)
+            self._validate_feature_name(feature_name, valid_feature_names)
 
         return fmc.FeatureMonitoringConfig(
             feature_store_id=self._feature_store_id,
@@ -467,9 +467,9 @@ class FeatureMonitoringConfigEngine:
         Returns:
             A Feature Monitoring Configuration to compute the statistics of a snapshot of all data present in the entity.
         """
-        self.validate_feature_name(feature_name, valid_feature_names)
-        self.validate_config_name(name)
-        self.validate_description(description)
+        self._validate_feature_name(feature_name, valid_feature_names)
+        self._validate_config_name(name)
+        self._validate_description(description)
 
         return fmc.FeatureMonitoringConfig(
             feature_store_id=self._feature_store_id,

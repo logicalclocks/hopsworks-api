@@ -30,10 +30,10 @@ class TestFeatureGroupBaseEngine:
         )
 
         # Act
-        fg_base_engine.delete(feature_group=None)
+        fg_base_engine._delete(feature_group=None)
 
         # Assert
-        assert mock_fg_api.return_value.delete.call_count == 1
+        assert mock_fg_api.return_value._delete.call_count == 1
 
     def test_add_tag(self, mocker):
         # Arrange
@@ -46,10 +46,10 @@ class TestFeatureGroupBaseEngine:
         )
 
         # Act
-        fg_base_engine.add_tag(feature_group=None, name=None, value=None)
+        fg_base_engine._add_tag(feature_group=None, name=None, value=None)
 
         # Assert
-        assert mock_tags_api.return_value.add.call_count == 1
+        assert mock_tags_api.return_value._add.call_count == 1
 
     def test_delete_tag(self, mocker):
         # Arrange
@@ -62,10 +62,10 @@ class TestFeatureGroupBaseEngine:
         )
 
         # Act
-        fg_base_engine.delete_tag(feature_group=None, name=None)
+        fg_base_engine._delete_tag(feature_group=None, name=None)
 
         # Assert
-        assert mock_tags_api.return_value.delete.call_count == 1
+        assert mock_tags_api.return_value._delete.call_count == 1
 
     def test_get_tag(self, mocker):
         # Arrange
@@ -78,10 +78,10 @@ class TestFeatureGroupBaseEngine:
         )
 
         # Act
-        fg_base_engine.get_tag(feature_group=None, name=None)
+        fg_base_engine._get_tag(feature_group=None, name=None)
 
         # Assert
-        assert mock_tags_api.return_value.get.call_count == 1
+        assert mock_tags_api.return_value._get.call_count == 1
 
     def test_get_tags(self, mocker):
         # Arrange
@@ -94,10 +94,10 @@ class TestFeatureGroupBaseEngine:
         )
 
         # Act
-        fg_base_engine.get_tags(feature_group=None)
+        fg_base_engine._get_tags(feature_group=None)
 
         # Assert
-        assert mock_tags_api.return_value.get.call_count == 1
+        assert mock_tags_api.return_value._get.call_count == 1
 
     def test_update_statistics_config(self, mocker):
         # Arrange
@@ -110,16 +110,16 @@ class TestFeatureGroupBaseEngine:
         )
 
         # Act
-        fg_base_engine.update_statistics_config(feature_group=None)
+        fg_base_engine._update_statistics_config(feature_group=None)
 
         # Assert
-        assert mock_fg_api.return_value.update_metadata.call_count == 1
+        assert mock_fg_api.return_value._update_metadata.call_count == 1
 
     def test_new_feature_list(self, mocker):
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hsfs.engine.get_type")
+        mocker.patch("hsfs.engine._get_type")
         mocker.patch(
             "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
         )
@@ -142,7 +142,7 @@ class TestFeatureGroupBaseEngine:
         )
 
         # Act
-        result = fg_base_engine.new_feature_list(
+        result = fg_base_engine._new_feature_list(
             feature_group=fg, updated_features=[f1, f2]
         )
 

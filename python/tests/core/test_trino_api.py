@@ -53,7 +53,7 @@ class TestTrinoApi:
         """Create a TrinoApi instance with mocked dependencies."""
         # Mock VariableApi
         mock_variable_api = Mock()
-        mock_variable_api.get_service_discovery_domain.return_value = "example.local"
+        mock_variable_api._get_service_discovery_domain.return_value = "example.local"
         mocker.patch(
             "hopsworks_common.core.trino_api.VariableApi",
             return_value=mock_variable_api,
@@ -69,7 +69,7 @@ class TestTrinoApi:
 
         # Mock ProjectApi
         mock_project_api = Mock()
-        mock_project_api.get_user_info.return_value = {"username": "test_user"}
+        mock_project_api._get_user_info.return_value = {"username": "test_user"}
         mocker.patch(
             "hopsworks_common.core.trino_api.project_api.ProjectApi",
             return_value=mock_project_api,
@@ -103,7 +103,7 @@ class TestTrinoApi:
         mocker.patch("hopsworks_common.core.trino_api.secret_api.SecretsApi")
         mocker.patch("hopsworks_common.core.trino_api.project_api.ProjectApi")
         mocker.patch(
-            "hopsworks_common.core.trino_api.client.get_instance",
+            "hopsworks_common.core.trino_api.client._get_instance",
             return_value=Mock(_project_name=mock_project.name),
         )
 
@@ -121,7 +121,7 @@ class TestTrinoApi:
         )
         mock_client = Mock()
         mocker.patch(
-            "hopsworks_common.core.trino_api.client.get_instance",
+            "hopsworks_common.core.trino_api.client._get_instance",
             return_value=mock_client,
         )
         mock_client._get_ca_chain_path.return_value = os.path.join(
@@ -186,7 +186,7 @@ class TestTrinoApi:
         mocker.patch(
             "hopsworks_common.core.trino_api.client._is_external", return_value=True
         )
-        trino_api._variable_api.get_loadbalancer_external_domain.return_value = (
+        trino_api._variable_api._get_loadbalancer_external_domain.return_value = (
             "trino.example.com"
         )
 
@@ -195,7 +195,7 @@ class TestTrinoApi:
 
         # Assert
         assert host == "trino.example.com"
-        trino_api._variable_api.get_loadbalancer_external_domain.assert_called_once_with(
+        trino_api._variable_api._get_loadbalancer_external_domain.assert_called_once_with(
             "trino"
         )
 
@@ -267,7 +267,7 @@ class TestTrinoApi:
         )
         mock_client = Mock()
         mocker.patch(
-            "hopsworks_common.core.trino_api.client.get_instance",
+            "hopsworks_common.core.trino_api.client._get_instance",
             return_value=mock_client,
         )
         mock_client._get_ca_chain_path.return_value = os.path.join(
@@ -303,7 +303,7 @@ class TestTrinoApi:
         mocker.patch(
             "hopsworks_common.core.trino_api.client._is_external", return_value=True
         )
-        trino_api._variable_api.get_loadbalancer_external_domain.return_value = (
+        trino_api._variable_api._get_loadbalancer_external_domain.return_value = (
             "trino.example.com"
         )
         mock_connection = Mock()
@@ -335,7 +335,7 @@ class TestTrinoApi:
         mocker.patch(
             "hopsworks_common.core.trino_api.client._is_external", return_value=True
         )
-        trino_api._variable_api.get_loadbalancer_external_domain.return_value = (
+        trino_api._variable_api._get_loadbalancer_external_domain.return_value = (
             "trino.example.com"
         )
         mock_connection = Mock()
@@ -375,7 +375,7 @@ class TestTrinoApi:
         )
         mock_client = Mock()
         mocker.patch(
-            "hopsworks_common.core.trino_api.client.get_instance",
+            "hopsworks_common.core.trino_api.client._get_instance",
             return_value=mock_client,
         )
         mock_client._get_ca_chain_path.return_value = os.path.join(
@@ -416,7 +416,7 @@ class TestTrinoApi:
         mocker.patch(
             "hopsworks_common.core.trino_api.client._is_external", return_value=True
         )
-        trino_api._variable_api.get_loadbalancer_external_domain.return_value = (
+        trino_api._variable_api._get_loadbalancer_external_domain.return_value = (
             "trino.example.com"
         )
         mock_engine = Mock()
@@ -446,7 +446,7 @@ class TestTrinoApi:
         mocker.patch(
             "hopsworks_common.core.trino_api.client._is_external", return_value=True
         )
-        trino_api._variable_api.get_loadbalancer_external_domain.return_value = (
+        trino_api._variable_api._get_loadbalancer_external_domain.return_value = (
             "trino.example.com"
         )
         mock_engine = Mock()

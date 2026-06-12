@@ -31,7 +31,7 @@ from hopsworks_common.client.exceptions import TrinoException
 from hopsworks_common.core import project_api, secret_api
 from hopsworks_common.core.constants import HAS_TRINO
 from hopsworks_common.core.variable_api import VariableApi
-from hopsworks_common.decorators import uses_trino
+from hopsworks_common.decorators import _uses_trino
 
 
 if HAS_TRINO:
@@ -114,12 +114,12 @@ class TrinoApi:
         """
         self._variable_api: VariableApi = VariableApi()
         self._service_discovery_domain = (
-            self._variable_api.get_service_discovery_domain()
+            self._variable_api._get_service_discovery_domain()
         )
         self._secret_api: secret_api.SecretsApi = secret_api.SecretsApi()
         self._project_api: project_api.ProjectApi = project_api.ProjectApi()
         if project is None:
-            _client = client.get_instance()
+            _client = client._get_instance()
             self.project_name = _client._project_name
         else:
             self.project_name = project.name
@@ -135,12 +135,12 @@ class TrinoApi:
             The original verify value if verification is handled by the caller or disabled.
         """
         if not client._is_external() and verify is True:
-            _client = client.get_instance()
+            _client = client._get_instance()
             return _client._get_ca_chain_path()
         return verify
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_host(self) -> str:
         """Retrieve the Trino host based on client location.
 
@@ -156,7 +156,7 @@ class TrinoApi:
         """
         _logger.debug("Retrieving Trino host.")
         if client._is_external():
-            external_domain = self._variable_api.get_loadbalancer_external_domain(
+            external_domain = self._variable_api._get_loadbalancer_external_domain(
                 "trino"
             )
             host = external_domain
@@ -171,7 +171,7 @@ class TrinoApi:
         return host
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_port(self) -> int:
         """Get the Trino port number.
 
@@ -202,7 +202,7 @@ class TrinoApi:
         return secret.value
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_basic_auth(self) -> tuple[str, str]:
         """Get a tuple containing the username and password for the current project user.
 
@@ -214,7 +214,7 @@ class TrinoApi:
                 If credentials cannot be retrieved from secrets storage or
                 if the client cannot determine the username for the current project user.
         """
-        username = self._project_api.get_user_info().get("username", None)
+        username = self._project_api._get_user_info().get("username", None)
         if username is None:
             raise TrinoException(
                 "Client could not determine username for the current project user."
@@ -223,9 +223,9 @@ class TrinoApi:
         password = self._get_password(user)
         return user, password
 
-    @uses_trino
+    @_uses_trino
     @public
-    @usage.method_logger
+    @usage._method_logger
     def connect(
         self,
         source: str = DEFAULT_SOURCE,
@@ -288,9 +288,9 @@ class TrinoApi:
             **kwargs,
         )
 
-    @uses_trino
+    @_uses_trino
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_engine(
         self,
         source: str = DEFAULT_SQLALCHEMY_SOURCE,

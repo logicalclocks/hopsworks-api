@@ -30,7 +30,7 @@ class TestKafkaEngine:
         producer = mocker.Mock()
 
         # Act
-        kafka_engine.kafka_produce(
+        kafka_engine._kafka_produce(
             producer=producer,
             topic_name="test_topic",
             headers={},
@@ -46,13 +46,13 @@ class TestKafkaEngine:
 
     def test_kafka_produce_buffer_error(self, mocker):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mock_print = mocker.patch("builtins.print")
 
         producer = mocker.Mock()
         producer.produce.side_effect = [BufferError("test_error"), None]
         # Act
-        kafka_engine.kafka_produce(
+        kafka_engine._kafka_produce(
             producer=producer,
             topic_name="test_topic",
             headers={},
@@ -74,7 +74,7 @@ class TestKafkaEngine:
             bytes_io.write(bytes(value, "utf-8"))
 
         # Act
-        result = kafka_engine.encode_complex_features(
+        result = kafka_engine._encode_complex_features(
             feature_writers={"one": test_utf, "two": test_utf},
             row={"one": "1", "two": "2"},
         )
@@ -92,7 +92,7 @@ class TestKafkaEngine:
         importlib.reload(kafka_engine)
 
         # Act
-        result = kafka_engine.get_encoder_func(
+        result = kafka_engine._get_encoder_func(
             writer_schema='{"type" : "record",'
             '"namespace" : "Tutorialspoint",'
             '"name" : "Employee",'
@@ -125,7 +125,7 @@ class TestKafkaEngine:
         importlib.reload(kafka_engine)
 
         # Act
-        result = kafka_engine.get_encoder_func(
+        result = kafka_engine._get_encoder_func(
             writer_schema='{"type" : "record",'
             '"namespace" : "Tutorialspoint",'
             '"name" : "Employee",'
@@ -140,17 +140,17 @@ class TestKafkaEngine:
 
     def test_get_kafka_config(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mock_storage_connector_api = mocker.patch(
             "hsfs.core.storage_connector_api.StorageConnectorApi"
         )
 
         json = backend_fixtures["storage_connector"]["get_kafka"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
-        mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
+        mock_storage_connector_api.return_value._get_kafka_connector.return_value = sc
 
         mocker.patch("hopsworks_common.client._is_external", return_value=False)
-        mock_client = mocker.patch("hopsworks_common.client.get_instance")
+        mock_client = mocker.patch("hopsworks_common.client._get_instance")
         mock_client.return_value._write_pem.return_value = (
             "test_ssl_ca_location",
             "test_ssl_certificate_location",
@@ -158,7 +158,7 @@ class TestKafkaEngine:
         )
 
         # Act
-        result = kafka_engine.get_kafka_config(
+        result = kafka_engine._get_kafka_config(
             1,
             write_options={
                 "kafka_producer_config": {"test_name_1": "test_value_1"},
@@ -167,7 +167,7 @@ class TestKafkaEngine:
 
         # Assert
         assert (
-            mock_storage_connector_api.return_value.get_kafka_connector.call_args[0][1]
+            mock_storage_connector_api.return_value._get_kafka_connector.call_args[0][1]
             is False
         )
         assert result == {
@@ -182,17 +182,17 @@ class TestKafkaEngine:
 
     def test_get_kafka_config_external_client(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mock_storage_connector_api = mocker.patch(
             "hsfs.core.storage_connector_api.StorageConnectorApi"
         )
 
         json = backend_fixtures["storage_connector"]["get_kafka"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
-        mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
+        mock_storage_connector_api.return_value._get_kafka_connector.return_value = sc
 
         mocker.patch("hopsworks_common.client._is_external", return_value=True)
-        mock_client = mocker.patch("hopsworks_common.client.get_instance")
+        mock_client = mocker.patch("hopsworks_common.client._get_instance")
         mock_client.return_value._write_pem.return_value = (
             "test_ssl_ca_location",
             "test_ssl_certificate_location",
@@ -200,7 +200,7 @@ class TestKafkaEngine:
         )
 
         # Act
-        result = kafka_engine.get_kafka_config(
+        result = kafka_engine._get_kafka_config(
             1,
             write_options={
                 "kafka_producer_config": {"test_name_1": "test_value_1"},
@@ -209,7 +209,7 @@ class TestKafkaEngine:
 
         # Assert
         assert (
-            mock_storage_connector_api.return_value.get_kafka_connector.call_args[0][1]
+            mock_storage_connector_api.return_value._get_kafka_connector.call_args[0][1]
             is True
         )
         assert result == {
@@ -224,17 +224,17 @@ class TestKafkaEngine:
 
     def test_get_kafka_config_internal_kafka(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mock_storage_connector_api = mocker.patch(
             "hsfs.core.storage_connector_api.StorageConnectorApi"
         )
 
         json = backend_fixtures["storage_connector"]["get_kafka"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
-        mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
+        mock_storage_connector_api.return_value._get_kafka_connector.return_value = sc
 
         mocker.patch("hopsworks_common.client._is_external", return_value=False)
-        mock_client = mocker.patch("hopsworks_common.client.get_instance")
+        mock_client = mocker.patch("hopsworks_common.client._get_instance")
         mock_client.return_value._write_pem.return_value = (
             "test_ssl_ca_location",
             "test_ssl_certificate_location",
@@ -242,7 +242,7 @@ class TestKafkaEngine:
         )
 
         # Act
-        result = kafka_engine.get_kafka_config(
+        result = kafka_engine._get_kafka_config(
             1,
             write_options={
                 "kafka_producer_config": {"test_name_1": "test_value_1"},
@@ -252,7 +252,7 @@ class TestKafkaEngine:
 
         # Assert
         assert (
-            mock_storage_connector_api.return_value.get_kafka_connector.call_args[0][1]
+            mock_storage_connector_api.return_value._get_kafka_connector.call_args[0][1]
             is False
         )
         assert result == {
@@ -269,18 +269,18 @@ class TestKafkaEngine:
         self, mocker, backend_fixtures
     ):
         # Arrange
-        mocker.patch("hsfs.engine.get_instance")
+        mocker.patch("hsfs.engine._get_instance")
         mock_storage_connector_api = mocker.patch(
             "hsfs.core.storage_connector_api.StorageConnectorApi"
         )
 
         json = backend_fixtures["storage_connector"]["get_kafka"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
-        mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
+        mock_storage_connector_api.return_value._get_kafka_connector.return_value = sc
 
         mocker.patch("hopsworks_common.client._is_external", return_value=True)
 
-        mock_client = mocker.patch("hopsworks_common.client.get_instance")
+        mock_client = mocker.patch("hopsworks_common.client._get_instance")
         mock_client.return_value._write_pem.return_value = (
             "test_ssl_ca_location",
             "test_ssl_certificate_location",
@@ -288,7 +288,7 @@ class TestKafkaEngine:
         )
 
         # Act
-        result = kafka_engine.get_kafka_config(
+        result = kafka_engine._get_kafka_config(
             1,
             write_options={
                 "kafka_producer_config": {"test_name_1": "test_value_1"},
@@ -298,7 +298,7 @@ class TestKafkaEngine:
 
         # Assert
         assert (
-            mock_storage_connector_api.return_value.get_kafka_connector.call_args[0][1]
+            mock_storage_connector_api.return_value._get_kafka_connector.call_args[0][1]
             is False
         )
         assert result == {
@@ -328,12 +328,12 @@ class TestKafkaEngine:
         consumer.list_topics = mocker.MagicMock(return_value=topic_mock)
         consumer.get_watermark_offsets = mocker.MagicMock(return_value=(0, 11))
         mocker.patch(
-            "hsfs.core.kafka_engine.init_kafka_consumer",
+            "hsfs.core.kafka_engine._init_kafka_consumer",
             return_value=consumer,
         )
 
         # Act
-        result = kafka_engine.kafka_get_offsets(
+        result = kafka_engine._kafka_get_offsets(
             topic_name=topic_name,
             feature_store_id=feature_store_id,
             offline_write_options={},
@@ -360,12 +360,12 @@ class TestKafkaEngine:
         consumer.list_topics = mocker.MagicMock(return_value=topic_mock)
         consumer.get_watermark_offsets = mocker.MagicMock(return_value=(0, 11))
         mocker.patch(
-            "hsfs.core.kafka_engine.init_kafka_consumer",
+            "hsfs.core.kafka_engine._init_kafka_consumer",
             return_value=consumer,
         )
 
         # Act
-        result = kafka_engine.kafka_get_offsets(
+        result = kafka_engine._kafka_get_offsets(
             feature_store_id=feature_store_id,
             topic_name=topic_name,
             offline_write_options={},
@@ -387,11 +387,11 @@ class TestKafkaEngine:
         consumer.list_topics = mocker.MagicMock(return_value=topic_mock)
         consumer.get_watermark_offsets = mocker.MagicMock(return_value=(0, 11))
         mocker.patch(
-            "hsfs.core.kafka_engine.init_kafka_consumer",
+            "hsfs.core.kafka_engine._init_kafka_consumer",
             return_value=consumer,
         )
         # Act
-        result = kafka_engine.kafka_get_offsets(
+        result = kafka_engine._kafka_get_offsets(
             topic_name=topic_name,
             feature_store_id=99,
             offline_write_options={},
@@ -403,9 +403,9 @@ class TestKafkaEngine:
 
     def test_spark_get_kafka_config(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
-        mock_engine_get_instance.return_value.add_file.return_value = (
+        mocker.patch("hopsworks_common.client._get_instance")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
+        mock_engine_get_instance.return_value._add_file.return_value = (
             "result_from_add_file"
         )
         mock_storage_connector_api = mocker.patch(
@@ -413,12 +413,12 @@ class TestKafkaEngine:
         )
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
-        mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
-        mock_engine_get_instance.return_value.get_spark_version.return_value = "3.1.0"
+        mock_storage_connector_api.return_value._get_kafka_connector.return_value = sc
+        mock_engine_get_instance.return_value._get_spark_version.return_value = "3.1.0"
 
         mocker.patch("hopsworks_common.client._is_external", return_value=False)
         # Act
-        results = kafka_engine.get_kafka_config(
+        results = kafka_engine._get_kafka_config(
             1, write_options={"user_opt": "ABC"}, engine="spark"
         )
 
@@ -436,19 +436,19 @@ class TestKafkaEngine:
             "user_opt": "ABC",
         }
         assert (
-            mock_storage_connector_api.return_value.get_kafka_connector.call_count == 1
+            mock_storage_connector_api.return_value._get_kafka_connector.call_count == 1
         )
         assert (
-            mock_storage_connector_api.return_value.get_kafka_connector.call_args[0][1]
+            mock_storage_connector_api.return_value._get_kafka_connector.call_args[0][1]
             is False
         )
 
     def test_spark_get_kafka_config_external_client(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hopsworks_common.client._is_external", return_value=True)
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
-        mock_engine_get_instance.return_value.add_file.return_value = (
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
+        mock_engine_get_instance.return_value._add_file.return_value = (
             "result_from_add_file"
         )
         mock_storage_connector_api = mocker.patch(
@@ -456,11 +456,11 @@ class TestKafkaEngine:
         )
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
-        mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
-        mock_engine_get_instance.return_value.get_spark_version.return_value = "3.1.0"
+        mock_storage_connector_api.return_value._get_kafka_connector.return_value = sc
+        mock_engine_get_instance.return_value._get_spark_version.return_value = "3.1.0"
 
         # Act
-        results = kafka_engine.get_kafka_config(
+        results = kafka_engine._get_kafka_config(
             1, write_options={"user_opt": "ABC"}, engine="spark"
         )
 
@@ -478,19 +478,19 @@ class TestKafkaEngine:
             "user_opt": "ABC",
         }
         assert (
-            mock_storage_connector_api.return_value.get_kafka_connector.call_count == 1
+            mock_storage_connector_api.return_value._get_kafka_connector.call_count == 1
         )
         assert (
-            mock_storage_connector_api.return_value.get_kafka_connector.call_args[0][1]
+            mock_storage_connector_api.return_value._get_kafka_connector.call_args[0][1]
             is True
         )
 
     def test_spark_get_kafka_config_internal_kafka(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hopsworks_common.client._is_external", return_value=True)
-        mock_engine_get_instance = mocker.patch("hsfs.engine.get_instance")
-        mock_engine_get_instance.return_value.add_file.return_value = (
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
+        mock_engine_get_instance.return_value._add_file.return_value = (
             "result_from_add_file"
         )
         mock_storage_connector_api = mocker.patch(
@@ -498,11 +498,11 @@ class TestKafkaEngine:
         )
         json = backend_fixtures["storage_connector"]["get_kafka_external"]["response"]
         sc = storage_connector.StorageConnector.from_response_json(json)
-        mock_storage_connector_api.return_value.get_kafka_connector.return_value = sc
-        mock_engine_get_instance.return_value.get_spark_version.return_value = "3.1.0"
+        mock_storage_connector_api.return_value._get_kafka_connector.return_value = sc
+        mock_engine_get_instance.return_value._get_spark_version.return_value = "3.1.0"
 
         # Act
-        results = kafka_engine.get_kafka_config(
+        results = kafka_engine._get_kafka_config(
             1, write_options={"user_opt": "ABC", "internal_kafka": True}, engine="spark"
         )
 
@@ -521,16 +521,16 @@ class TestKafkaEngine:
             "internal_kafka": True,
         }
         assert (
-            mock_storage_connector_api.return_value.get_kafka_connector.call_count == 1
+            mock_storage_connector_api.return_value._get_kafka_connector.call_count == 1
         )
         assert (
-            mock_storage_connector_api.return_value.get_kafka_connector.call_args[0][1]
+            mock_storage_connector_api.return_value._get_kafka_connector.call_args[0][1]
             is False
         )
 
     def test_get_headers(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         fg = feature_group.FeatureGroup(
             id=111,
@@ -544,7 +544,7 @@ class TestKafkaEngine:
         fg._subject = {"id": 823}
 
         # Act
-        results = kafka_engine.get_headers(fg, num_entries=10)
+        results = kafka_engine._get_headers(fg, num_entries=10)
 
         # Assert
         assert results == {
@@ -555,13 +555,15 @@ class TestKafkaEngine:
 
     def test_get_headers_online_ingestion(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mock_online_ingestion_api = mocker.patch(
             "hsfs.core.online_ingestion_api.OnlineIngestionApi"
         )
         json = backend_fixtures["online_ingestion"]["get"]["response"]
         oi = online_ingestion.OnlineIngestion.from_response_json(json)
-        mock_online_ingestion_api.return_value.create_online_ingestion.return_value = oi
+        mock_online_ingestion_api.return_value._create_online_ingestion.return_value = (
+            oi
+        )
 
         fg = feature_group.FeatureGroup(
             id=111,
@@ -576,7 +578,7 @@ class TestKafkaEngine:
         fg._subject = {"id": 823}
 
         # Act
-        results = kafka_engine.get_headers(fg, num_entries=10)
+        results = kafka_engine._get_headers(fg, num_entries=10)
 
         # Assert
         assert results == {
@@ -588,13 +590,15 @@ class TestKafkaEngine:
 
     def test_get_headers_upsert_if_newer_true(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mock_online_ingestion_api = mocker.patch(
             "hsfs.core.online_ingestion_api.OnlineIngestionApi"
         )
         json = backend_fixtures["online_ingestion"]["get"]["response"]
         oi = online_ingestion.OnlineIngestion.from_response_json(json)
-        mock_online_ingestion_api.return_value.create_online_ingestion.return_value = oi
+        mock_online_ingestion_api.return_value._create_online_ingestion.return_value = (
+            oi
+        )
 
         fg = feature_group.FeatureGroup(
             id=111,
@@ -609,7 +613,7 @@ class TestKafkaEngine:
         fg._subject = {"id": 823}
 
         # Act
-        results = kafka_engine.get_headers(
+        results = kafka_engine._get_headers(
             fg,
             num_entries=10,
             options={"online_ingestion_options": {"upsert_if_newer": True}},
@@ -626,13 +630,15 @@ class TestKafkaEngine:
 
     def test_get_headers_upsert_if_newer_false(self, mocker, backend_fixtures):
         # Arrange
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mock_online_ingestion_api = mocker.patch(
             "hsfs.core.online_ingestion_api.OnlineIngestionApi"
         )
         json = backend_fixtures["online_ingestion"]["get"]["response"]
         oi = online_ingestion.OnlineIngestion.from_response_json(json)
-        mock_online_ingestion_api.return_value.create_online_ingestion.return_value = oi
+        mock_online_ingestion_api.return_value._create_online_ingestion.return_value = (
+            oi
+        )
 
         fg = feature_group.FeatureGroup(
             id=111,
@@ -647,7 +653,7 @@ class TestKafkaEngine:
         fg._subject = {"id": 823}
 
         # Act
-        results = kafka_engine.get_headers(
+        results = kafka_engine._get_headers(
             fg,
             num_entries=10,
             options={"online_ingestion_options": {"upsert_if_newer": False}},

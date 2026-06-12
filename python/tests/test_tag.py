@@ -91,9 +91,9 @@ class TestTag:
     def test_normalize_with_none_name_raises_error(self):
         # Act & Assert
         with pytest.raises(ValueError, match="Tag name cannot be None"):
-            tag.Tag.normalize([{"name": None, "value": "test_value"}])
+            tag.Tag._normalize([{"name": None, "value": "test_value"}])
 
     def test_normalize_with_none_value_raises_error(self):
         # Act & Assert
         with pytest.raises(ValueError, match="Tag value cannot be None"):
-            tag.Tag.normalize([{"name": "test_name", "value": None}])
+            tag.Tag._normalize([{"name": "test_name", "value": None}])

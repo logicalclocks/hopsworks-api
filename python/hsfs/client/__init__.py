@@ -15,16 +15,16 @@
 #
 
 from hopsworks_common.client import (
+    _get_instance,
+    _init,
     _is_external,
+    _stop,
     auth,
     base,
     exceptions,
     external,
-    get_instance,
     hopsworks,
-    init,
     online_store_rest_client,
-    stop,
 )
 
 
@@ -33,10 +33,10 @@ __all__ = [
     "base",
     "exceptions",
     "external",
-    "get_instance",
+    "_get_instance",
     "hopsworks",
-    "init",
+    "_init",
     "online_store_rest_client",
-    "stop",
+    "_stop",
     "_is_external",
 ]

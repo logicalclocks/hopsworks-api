@@ -16,11 +16,11 @@
 
 import socket
 
+from hopsworks_common.client.exceptions import ModelRegistryException
 from hsml import client
-from hsml.client.exceptions import ModelRegistryException
 from hsml.constants import INFERENCE_ENDPOINTS
 from hsml.core import dataset_api, serving_api
-from hsml.inference_endpoint import get_endpoint_by_type
+from hsml.inference_endpoint import _get_endpoint_by_type
 from hsml.model_serving import ModelServing
 
 
@@ -29,13 +29,13 @@ class ModelServingApi:
         self._dataset_api = dataset_api.DatasetApi()
         self._serving_api = serving_api.ServingApi()
 
-    def get(self) -> ModelServing:
+    def _get(self) -> ModelServing:
         """Get model serving for specific project.
 
         Returns:
             the model serving metadata
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
 
         # Validate that there is a Models dataset in the connected project
         if not self._dataset_api.path_exists("Models"):
@@ -45,44 +45,44 @@ class ModelServingApi:
 
         return ModelServing(_client._project_name, _client._project_id)
 
-    def load_default_configuration(self):
+    def _load_default_configuration(self):
         """Load default configuration and set istio client for model serving."""
         # kserve installed
-        is_kserve_installed = self._serving_api.is_kserve_installed()
-        client.set_kserve_installed(is_kserve_installed)
+        is_kserve_installed = self._serving_api._is_kserve_installed()
+        client._set_kserve_installed(is_kserve_installed)
 
         # istio client
         self._istio_init_if_available()
 
         # num instances limits
-        num_instances_range = self._serving_api.get_num_instances_limits()
-        client.set_serving_num_instances_limits(num_instances_range)
+        num_instances_range = self._serving_api._get_num_instances_limits()
+        client._set_serving_num_instances_limits(num_instances_range)
 
         # Knative domain
-        knative_domain = self._serving_api.get_knative_domain()
-        client.set_knative_domain(knative_domain)
+        knative_domain = self._serving_api._get_knative_domain()
+        client._set_knative_domain(knative_domain)
 
     def _istio_init_if_available(self):
         """Initialize istio client if available."""
-        if client.is_kserve_installed():
+        if client._is_kserve_installed():
             # check existing istio client
             try:
-                if client.istio.get_instance() is not None:
+                if client.istio._get_instance() is not None:
                     return  # istio client already set
             except Exception:
                 pass
 
             # setup istio client
-            inference_endpoints = self._serving_api.get_inference_endpoints()
+            inference_endpoints = self._serving_api._get_inference_endpoints()
             if not client._is_external():
                 # if internal, get node port
-                endpoint = get_endpoint_by_type(
+                endpoint = _get_endpoint_by_type(
                     inference_endpoints, INFERENCE_ENDPOINTS.ENDPOINT_TYPE_KUBE_CLUSTER
                 )
                 if endpoint is not None:
                     client.istio.init(
-                        endpoint.get_any_host(),
-                        endpoint.get_port(INFERENCE_ENDPOINTS.PORT_NAME_HTTP).number,
+                        endpoint._get_any_host(),
+                        endpoint._get_port(INFERENCE_ENDPOINTS.PORT_NAME_HTTP).number,
                     )
                 else:
                     raise ValueError(
@@ -91,19 +91,19 @@ class ModelServingApi:
                         + "' not found"
                     )
             else:  # if external
-                endpoint = get_endpoint_by_type(
+                endpoint = _get_endpoint_by_type(
                     inference_endpoints, INFERENCE_ENDPOINTS.ENDPOINT_TYPE_LOAD_BALANCER
                 )
 
                 if endpoint is not None:
                     # if load balancer (external ip) available
-                    https_port = endpoint.get_port(INFERENCE_ENDPOINTS.PORT_NAME_HTTPS)
-                    port = https_port or endpoint.get_port(
+                    https_port = endpoint._get_port(INFERENCE_ENDPOINTS.PORT_NAME_HTTPS)
+                    port = https_port or endpoint._get_port(
                         INFERENCE_ENDPOINTS.PORT_NAME_HTTP
                     )
-                    _client = client.get_instance()
+                    _client = client._get_instance()
                     client.istio.init(
-                        endpoint.get_any_host(),
+                        endpoint._get_any_host(),
                         port.number,
                         _client._project_name,
                         _client._auth._token,  # reuse hopsworks client token

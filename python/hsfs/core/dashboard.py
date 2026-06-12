@@ -19,6 +19,7 @@ import json
 from typing import TYPE_CHECKING, Any
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import util
 
 
@@ -26,6 +27,7 @@ if TYPE_CHECKING:
     from hsfs.core.chart import Chart
 
 
+@public
 class Dashboard:
     """Metadata object used to provide Dashboard information."""
 
@@ -61,6 +63,7 @@ class Dashboard:
     def json(self):
         return json.dumps(self, cls=util.Encoder)
 
+    @public
     @property
     def id(self) -> int | None:
         return self._id
@@ -69,6 +72,7 @@ class Dashboard:
     def id(self, id: int) -> None:
         self._id = id
 
+    @public
     @property
     def name(self) -> str | None:
         return self._name
@@ -77,6 +81,7 @@ class Dashboard:
     def name(self, name: str) -> None:
         self._name = name
 
+    @public
     @property
     def charts(self) -> list[Chart] | None:
         return self._charts
@@ -85,6 +90,7 @@ class Dashboard:
     def charts(self, charts: list[Chart]) -> None:
         self._charts = charts
 
+    @public
     def delete(self) -> None:
         """Delete the dashboard from the feature store.
 
@@ -93,8 +99,9 @@ class Dashboard:
         """
         from hsfs.core.dashboard_api import DashboardApi
 
-        DashboardApi().delete_dashboard(self.id)
+        DashboardApi()._delete_dashboard(self.id)
 
+    @public
     def update(self) -> None:
         """Update the dashboard in the feature store.
 
@@ -105,4 +112,4 @@ class Dashboard:
         """
         from hsfs.core.dashboard_api import DashboardApi
 
-        DashboardApi().update_dashboard(self)
+        DashboardApi()._update_dashboard(self)

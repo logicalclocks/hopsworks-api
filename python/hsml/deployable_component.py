@@ -45,7 +45,7 @@ class DeployableComponent(ABC):
         self._script_file = script_file
         self._resources = resources
         self._inference_batcher = (
-            util.get_obj_from_json(inference_batcher, InferenceBatcher)
+            util._get_obj_from_json(inference_batcher, InferenceBatcher)
             or InferenceBatcher()
         )
         self._scaling_configuration = scaling_configuration

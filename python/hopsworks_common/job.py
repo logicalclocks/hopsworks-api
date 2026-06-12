@@ -159,7 +159,7 @@ class Job:
         return self._config
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def run(
         self,
         args: str | None = None,
@@ -259,7 +259,7 @@ class Job:
         )
         if self._job_type == "PYTHON_APP":
             print("Python App started, waiting for it to become ready...")
-            execution = self._execution_engine.wait_for_running(self, execution)
+            execution = self._execution_engine._wait_for_running(self, execution)
             if execution.app_url:
                 print(f"App is running at:\n{execution.app_url}")
             else:
@@ -271,7 +271,7 @@ class Job:
                 f"Job started successfully, you can follow the progress at \n{execution.get_url()}"
             )
             if await_termination:
-                return self._execution_engine.wait_until_finished(self, execution)
+                return self._execution_engine._wait_until_finished(self, execution)
         return execution
 
     @public
@@ -345,7 +345,7 @@ class Job:
         return self._execution_api._get_all(self)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def save(self) -> Job:
         """Save the job.
 
@@ -362,7 +362,7 @@ class Job:
         return self._job_api._update_job(self.name, self.config)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def delete(self):
         """Delete the job.
 
@@ -407,7 +407,7 @@ class Job:
                 execution = executions[0]
             else:
                 return
-            self._execution_engine.wait_until_finished(
+            self._execution_engine._wait_until_finished(
                 job=self, execution=execution, timeout=timeout
             )
 
@@ -498,14 +498,14 @@ class Job:
         return self._job_schedule
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def unschedule(self):
         """Unschedule the exceution of a Job."""
         self._job_api._delete_schedule_job(self._name)
         self._job_schedule = None
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def resume_schedule(self):
         """Resumes the schedule of a Job execution."""
         if self._job_schedule is None:
@@ -521,7 +521,7 @@ class Job:
         return self._update_schedule(job_schedule)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def pause_schedule(self):
         """Pauses the schedule of a Job execution."""
         if self._job_schedule is None:
@@ -537,7 +537,7 @@ class Job:
         return self._update_schedule(job_schedule)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_alerts(self) -> list[alert.JobAlert]:
         """Get all alerts for the job.
 
@@ -550,7 +550,7 @@ class Job:
         return self._alerts_api.get_job_alerts(self._name)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_alert(self, alert_id: int) -> alert.JobAlert:
         """Get an alert for the job by ID.
 
@@ -566,7 +566,7 @@ class Job:
         return self._alerts_api.get_job_alert(self._name, alert_id)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_alert(
         self,
         receiver: str,
@@ -616,6 +616,6 @@ class Job:
     @public
     def get_url(self):
         """Get url to the job in Hopsworks."""
-        _client = client.get_instance()
+        _client = client._get_instance()
         path = "/p/" + str(_client._project_id) + "/jobs/named/" + self.name
-        return util.get_hostname_replaced_url(path)
+        return util._get_hostname_replaced_url(path)

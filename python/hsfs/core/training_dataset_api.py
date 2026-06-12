@@ -25,10 +25,10 @@ class TrainingDatasetApi:
     def __init__(self, feature_store_id: int) -> None:
         self._feature_store_id = feature_store_id
 
-    def post(
+    def _post(
         self, training_dataset_instance: training_dataset.TrainingDataset
     ) -> training_dataset.TrainingDataset:
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -46,11 +46,11 @@ class TrainingDatasetApi:
             ),
         )
 
-    @decorators.catch_not_found(
+    @decorators._catch_not_found(
         "hsfs.training_dataset.TrainingDataset", fallback_return=[]
     )
     def _get_all_training_datasets(self, name: str):
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -63,11 +63,11 @@ class TrainingDatasetApi:
             _client._send_request("GET", path_params),
         )
 
-    @decorators.catch_not_found(
+    @decorators._catch_not_found(
         "hsfs.training_dataset.TrainingDataset", fallback_return=None
     )
     def _get_training_dataset_by_version(self, name: str, version: int):
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -81,7 +81,7 @@ class TrainingDatasetApi:
             _client._send_request("GET", path_params, query_params),
         )
 
-    def get(
+    def _get(
         self, name: str, version: int | None
     ) -> training_dataset.TrainingDataset | list[training_dataset.TrainingDataset]:
         if version:
@@ -92,13 +92,13 @@ class TrainingDatasetApi:
             return self._get_all_training_datasets(name)
         return None
 
-    def get_query(
+    def _get_query(
         self,
         training_dataset_instance: training_dataset.TrainingDataset,
         with_label: bool,
         is_hive_query: bool,
     ) -> fs_query.FsQuery:
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -114,7 +114,7 @@ class TrainingDatasetApi:
             _client._send_request("GET", path_params, query_params)
         )
 
-    def compute(
+    def _compute(
         self,
         training_dataset_instance: training_dataset.TrainingDataset,
         td_app_conf: training_dataset_job_conf.TrainingDatasetJobConf,
@@ -128,7 +128,7 @@ class TrainingDatasetApi:
         Returns:
             The job metadata object for the compute job.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -145,7 +145,7 @@ class TrainingDatasetApi:
             )
         )
 
-    def update_metadata(
+    def _update_metadata(
         self,
         training_dataset_instance: training_dataset.TrainingDataset,
         training_dataset_copy: training_dataset.TrainingDataset,
@@ -170,7 +170,7 @@ class TrainingDatasetApi:
         Returns:
             FeatureGroup. The updated feature group metadata object.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -191,7 +191,7 @@ class TrainingDatasetApi:
             ),
         )
 
-    def get_serving_prepared_statement(
+    def _get_serving_prepared_statement(
         self, training_dataset_instance: training_dataset.TrainingDataset, batch: bool
     ) -> serving_prepared_statement.ServingPreparedStatement:
         """Get serving prepared statement metadata object for a training dataset.
@@ -203,7 +203,7 @@ class TrainingDatasetApi:
         Returns:
             The serving prepared statement metadata object.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -219,7 +219,7 @@ class TrainingDatasetApi:
             _client._send_request("GET", path_params, query_params, headers=headers)
         )
 
-    def delete(
+    def _delete(
         self, training_dataset_instance: training_dataset.TrainingDataset
     ) -> None:
         """Delete the training dataset and materialized files in HopsFS.
@@ -227,7 +227,7 @@ class TrainingDatasetApi:
         Parameters:
             training_dataset_instance: The training dataset metadata object to delete.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,

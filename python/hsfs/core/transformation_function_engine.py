@@ -69,7 +69,7 @@ class TransformationFunctionEngine:
             feature_store_id
         )
 
-    def save(
+    def _save(
         self, transformation_fn_instance: transformation_function.TransformationFunction
     ):
         """Save a transformation function into the feature store.
@@ -77,11 +77,11 @@ class TransformationFunctionEngine:
         Parameters:
             transformation_fn_instance: The transformation function to be saved into the feature store.
         """
-        self._transformation_function_api.register_transformation_fn(
+        self._transformation_function_api._register_transformation_fn(
             transformation_fn_instance
         )
 
-    def get_transformation_fn(
+    def _get_transformation_fn(
         self, name: str, version: int | None = None
     ) -> (
         transformation_function.TransformationFunction
@@ -100,9 +100,9 @@ class TransformationFunctionEngine:
             A transformation function if name and version is provided.
             A list of transformation functions if only name is provided.
         """
-        return self._transformation_function_api.get_transformation_fn(name, version)
+        return self._transformation_function_api._get_transformation_fn(name, version)
 
-    def get_transformation_fns(
+    def _get_transformation_fns(
         self,
     ) -> list[transformation_function.TransformationFunction]:
         """Get all the transformation functions in the feature store.
@@ -111,7 +111,7 @@ class TransformationFunctionEngine:
             A list of transformation functions.
         """
         transformation_fn_instances = (
-            self._transformation_function_api.get_transformation_fn(
+            self._transformation_function_api._get_transformation_fn(
                 name=None, version=None
             )
         )
@@ -139,7 +139,7 @@ class TransformationFunctionEngine:
             exceptions.TransformationFunctionException: If the arguments required to execute the transformation functions are not present in the passed data or request parameters.
         """
         for tf in transformation_functions:
-            if engine.get_instance().check_supported_dataframe(data):
+            if engine._get_instance()._check_supported_dataframe(data):
                 missing_features = set(tf.hopsworks_udf.transformation_features) - set(
                     data.columns
                 )
@@ -169,7 +169,7 @@ class TransformationFunctionEngine:
                 )
 
     @staticmethod
-    def apply_transformation_functions(
+    def _apply_transformation_functions(
         transformation_functions: list[transformation_function.TransformationFunction],
         data: spark_sql.DataFrame | pl.DataFrame | pd.DataFrame | dict[str, Any],
         online: bool = False,
@@ -201,9 +201,9 @@ class TransformationFunctionEngine:
             request_parameters=request_parameters,
         )
 
-        if isinstance(data, dict) or engine.get_type() != "spark":
+        if isinstance(data, dict) or engine._get_type() != "spark":
             # If the data is a dictionary or if the engine is not spark, we execute the transformation functions using.
-            return TransformationFunctionEngine._apply_transformation_functions(
+            return TransformationFunctionEngine._apply_transformation_functions_impl(
                 transformation_functions=transformation_functions,
                 data=data,
                 online=online,
@@ -212,7 +212,7 @@ class TransformationFunctionEngine:
                 expected_features=expected_features,
             )
         # In the case of spark, we execute the transformation functions using the spark engine since the transformations are pushed down to Spark and are not executed in Python.
-        return engine.get_instance()._apply_transformation_function(
+        return engine._get_instance()._apply_transformation_function(
             transformation_functions=transformation_functions,
             dataset=data,
             transformation_context=transformation_context,
@@ -220,7 +220,7 @@ class TransformationFunctionEngine:
         )
 
     @staticmethod
-    def _apply_transformation_functions(
+    def _apply_transformation_functions_impl(
         transformation_functions: list[transformation_function.TransformationFunction],
         data: spark_sql.DataFrame | pl.DataFrame | pd.DataFrame | dict[str, Any],
         online: bool = False,
@@ -248,7 +248,7 @@ class TransformationFunctionEngine:
         if isinstance(data, dict):
             transformed_data = data.copy()
         else:
-            transformed_data = engine.get_instance().shallow_copy_dataframe(data)
+            transformed_data = engine._get_instance()._shallow_copy_dataframe(data)
 
         if request_parameters:
             for key in request_parameters:
@@ -265,7 +265,7 @@ class TransformationFunctionEngine:
                     else udf.dropped_features
                 )  # Drop features that are not expected, this is required to avoid dropping features having same name that are available from other feature groups.
 
-            transformed_data = TransformationFunctionEngine.execute_udf(
+            transformed_data = TransformationFunctionEngine._execute_udf(
                 udf=udf, data=transformed_data, online=online
             )
 
@@ -274,14 +274,14 @@ class TransformationFunctionEngine:
                 k: v for k, v in transformed_data.items() if k not in dropped_features
             }
         else:
-            transformed_data = engine.get_instance().drop_columns(
+            transformed_data = engine._get_instance()._drop_columns(
                 transformed_data, dropped_features
             )
 
         return transformed_data
 
     @staticmethod
-    def execute_udf(
+    def _execute_udf(
         udf: HopsworksUdf,
         data: spark_sql.DataFrame | pl.DataFrame | pd.DataFrame | dict[str, Any],
         online: bool = False,
@@ -298,13 +298,13 @@ class TransformationFunctionEngine:
         Returns:
             The updated dataframe or list of dictionaries with the transformations applied.
         """
-        execution_engine = engine.get_instance()
-        if execution_engine.check_supported_dataframe(data):
-            return execution_engine.apply_udf_on_dataframe(
+        execution_engine = engine._get_instance()
+        if execution_engine._check_supported_dataframe(data):
+            return execution_engine._apply_udf_on_dataframe(
                 udf=udf, dataframe=data, online=online
             )
         if isinstance(data, dict):
-            return TransformationFunctionEngine.apply_udf_on_dict(
+            return TransformationFunctionEngine._apply_udf_on_dict(
                 udf=udf, data=data, online=online
             )
         raise exceptions.FeatureStoreException(
@@ -312,7 +312,7 @@ class TransformationFunctionEngine:
         )
 
     @staticmethod
-    def apply_udf_on_dict(
+    def _apply_udf_on_dict(
         udf: HopsworksUdf,
         data: dict[str, Any],
         online: bool | None = True,
@@ -331,7 +331,7 @@ class TransformationFunctionEngine:
         """
         features = []
 
-        if not online and engine.get_type() == "spark":
+        if not online and engine._get_type() == "spark":
             raise exceptions.FeatureStoreException(
                 "Cannot apply transformation functions on a dictionary in offline mode when the engine is spark. Please use the python engine or use the online mode."
             )
@@ -345,17 +345,17 @@ class TransformationFunctionEngine:
             feature_value = data.get(prefixed_feature, data.get(unprefixed_feature))
 
             if (
-                udf.execution_mode.get_current_execution_mode(online=online)
+                udf.execution_mode._get_current_execution_mode(online=online)
                 == UDFExecutionMode.PANDAS
             ):
                 features.append(pd.Series(feature_value))
             else:
                 features.append(feature_value)
 
-        transformed_result = udf.get_udf(online=online)(*features)
+        transformed_result = udf._get_udf(online=online)(*features)
 
         if (
-            udf.execution_mode.get_current_execution_mode(online=online)
+            udf.execution_mode._get_current_execution_mode(online=online)
             == UDFExecutionMode.PANDAS
         ):
             # Pandas UDF return can return a pandas series or a pandas dataframe, so we need to cast it back to a dictionary.
@@ -374,7 +374,7 @@ class TransformationFunctionEngine:
 
         return data
 
-    def delete(
+    def _delete(
         self,
         transformation_function_instance: transformation_function.TransformationFunction,
     ) -> None:
@@ -383,10 +383,10 @@ class TransformationFunctionEngine:
         Parameters:
             transformation_function_instance: The transformation function to be removed from the feature store.
         """
-        self._transformation_function_api.delete(transformation_function_instance)
+        self._transformation_function_api._delete(transformation_function_instance)
 
     @staticmethod
-    def compute_transformation_fn_statistics(
+    def _compute_transformation_fn_statistics(
         training_dataset_obj: training_dataset.TrainingDataset,
         statistics_features: list[str],
         label_encoder_features: list[str],
@@ -407,7 +407,7 @@ class TransformationFunctionEngine:
         Returns:
             The statistics object that contains the statistics for each features.
         """
-        return training_dataset_obj._statistics_engine.compute_transformation_fn_statistics(
+        return training_dataset_obj._statistics_engine._compute_transformation_fn_statistics(
             td_metadata_instance=training_dataset_obj,
             columns=statistics_features,
             label_encoder_features=label_encoder_features,  # label encoded features only
@@ -416,7 +416,7 @@ class TransformationFunctionEngine:
         )
 
     @staticmethod
-    def get_ready_to_use_transformation_fns(
+    def _get_ready_to_use_transformation_fns(
         feature_view: feature_view.FeatureView,
         training_dataset_version: int | None = None,
     ) -> list[transformation_function.TransformationFunction]:
@@ -446,7 +446,7 @@ class TransformationFunctionEngine:
                     "or `feature_view.init_batch_scoring(version)` to pass the training dataset version."
                     "Training data can be created by `feature_view.create_training_data` or `feature_view.training_data`."
                 )
-            td_tffn_stats = feature_view._statistics_engine.get(
+            td_tffn_stats = feature_view._statistics_engine._get(
                 feature_view,
                 before_transformation=True,
                 training_dataset_version=training_dataset_version,
@@ -466,7 +466,7 @@ class TransformationFunctionEngine:
         return feature_view.transformation_functions
 
     @staticmethod
-    def compute_and_set_feature_statistics(
+    def _compute_and_set_feature_statistics(
         training_dataset: training_dataset.TrainingDataset,
         feature_view_obj: feature_view.FeatureView,
         dataset: dict[
@@ -501,7 +501,7 @@ class TransformationFunctionEngine:
             if training_dataset.splits:
                 # compute statistics before transformations are applied
                 stats = (
-                    TransformationFunctionEngine.compute_transformation_fn_statistics(
+                    TransformationFunctionEngine._compute_transformation_fn_statistics(
                         training_dataset,
                         list(statistics_features),
                         list(label_encoder_features),
@@ -511,7 +511,7 @@ class TransformationFunctionEngine:
                 )
             else:
                 stats = (
-                    TransformationFunctionEngine.compute_transformation_fn_statistics(
+                    TransformationFunctionEngine._compute_transformation_fn_statistics(
                         training_dataset,
                         list(statistics_features),
                         list(label_encoder_features),
@@ -525,7 +525,7 @@ class TransformationFunctionEngine:
                 tf.transformation_statistics = stats.feature_descriptive_statistics
 
     @staticmethod
-    def get_and_set_feature_statistics(
+    def _get_and_set_feature_statistics(
         training_dataset: training_dataset.TrainingDataset,
         feature_view_obj: feature_view.FeatureView,
         training_dataset_version: int = None,
@@ -548,7 +548,7 @@ class TransformationFunctionEngine:
         )
 
         if is_stat_required:
-            td_tffn_stats = training_dataset._statistics_engine.get(
+            td_tffn_stats = training_dataset._statistics_engine._get(
                 feature_view_obj,
                 before_transformation=True,
                 training_dataset_version=training_dataset_version,

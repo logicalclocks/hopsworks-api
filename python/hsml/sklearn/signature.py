@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from hopsworks_apigen import public
 from hopsworks_common import usage
 from hsml.sklearn.model import Model
 
@@ -24,13 +25,15 @@ from hsml.sklearn.model import Model
 if TYPE_CHECKING:
     import numpy
     import pandas
+    from hsfs.feature_view import FeatureView
     from hsml.model_schema import ModelSchema
 
 
 _mr = None
 
 
-@usage.method_logger
+@public
+@usage._method_logger
 def create_model(
     name: str,
     version: int | None = None,
@@ -42,7 +45,7 @@ def create_model(
     | list
     | None = None,
     model_schema: ModelSchema | None = None,
-    feature_view=None,
+    feature_view: FeatureView | None = None,
     training_dataset_version: int | None = None,
 ) -> Model:
     """Create an SkLearn model metadata object.
