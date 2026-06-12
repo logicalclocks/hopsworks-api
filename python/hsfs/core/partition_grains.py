@@ -13,14 +13,18 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
-"""Materialization of `partitioned_by` grain columns for Spark writers.
+"""Materialization of `partitioned_by` grain columns for the write paths.
 
 The grain columns (year/month/week/day/hour) are ordinary partition columns
 on the feature group; the writer derives their values from `event_time` on
-every write. The Delta and Hudi Spark write paths share this derivation so
-both formats produce identical grain values for the same event_time input
-(the delta-rs path has an Arrow twin in `DeltaEngine`, and the Hudi
-DeltaStreamer path a JVM twin in `PartitionedByTransformer`).
+every write. Delta, Hudi, and Iceberg share this derivation so every format
+produces identical grain values for the same event_time input. There are two
+twins:
+
+- `materialize_grains_spark` — for Spark DataFrames (Delta, Hudi, Iceberg).
+- `materialize_grains_arrow` — for PyArrow tables (delta-rs, PyIceberg).
+
+The Hudi DeltaStreamer path has a third, JVM twin in `PartitionedByTransformer`.
 """
 
 from __future__ import annotations
@@ -67,3 +71,64 @@ def materialize_grains_spark(feature_group, dataset):
             continue
         dataset = dataset.withColumn(grain, grain_fns[grain](ts).cast("int"))
     return dataset
+
+
+def materialize_grains_arrow(feature_group, table):
+    """Add the feature group's `partitioned_by` grain columns to a PyArrow table.
+
+    Arrow twin of [`materialize_grains_spark`][] for the non-Spark write paths
+    (delta-rs, PyIceberg). Columns already present are left untouched, and the
+    table is returned unchanged when the feature group has no `partitioned_by`,
+    the input is not a PyArrow table, or the event_time column is absent.
+    """
+    import pyarrow as pa
+    import pyarrow.compute as pc
+
+    if not isinstance(table, pa.Table):
+        return table
+    grains = getattr(feature_group, "partitioned_by", None)
+    if not grains:
+        return table
+    event_time = feature_group.event_time
+    if event_time is None or event_time not in table.column_names:
+        return table
+    ts = _event_time_arrow_to_timestamp(table.column(event_time))
+    grain_fns = {
+        "year": pc.year,
+        "month": pc.month,
+        "week": pc.iso_week,
+        "day": pc.day,
+        "hour": pc.hour,
+    }
+    for grain in grains:
+        if grain in table.column_names:
+            continue
+        values = pc.cast(grain_fns[grain](ts), pa.int32())
+        table = table.append_column(grain, values)
+    return table
+
+
+def _event_time_arrow_to_timestamp(column):
+    """Return a timestamp/date Arrow array from an event_time column.
+
+    Integer event_time follows the seconds-vs-milliseconds rule (a value up to
+    ten digits is treated as unix seconds, longer as milliseconds), the same
+    convention the rest of the client uses.
+    """
+    import pyarrow as pa
+    import pyarrow.compute as pc
+
+    col_type = column.type
+    if pa.types.is_timestamp(col_type) or pa.types.is_date(col_type):
+        return column
+    if pa.types.is_integer(col_type):
+        # Per-row seconds-vs-milliseconds decision (mirrors the Spark path):
+        # a value up to ten digits is unix seconds, longer is milliseconds.
+        seconds = pc.if_else(
+            pc.less_equal(pc.abs(column), 9999999999),
+            column,
+            pc.divide(column, 1000),
+        )
+        return pc.cast(seconds, pa.timestamp("s"))
+    # strings / other — let Arrow attempt a timestamp cast
+    return pc.cast(column, pa.timestamp("us"))

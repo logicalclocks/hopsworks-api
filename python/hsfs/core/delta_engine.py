@@ -656,63 +656,10 @@ class DeltaEngine:
 
         delta-rs partitions only by real, materialized columns, so the grain
         columns (year/month/week/day/hour) derived from event_time must be
-        present in the dataframe before the write.
-        Columns already present are left untouched, so the empty-table create
-        path (which builds the grain columns from the schema) is a no-op here.
+        present in the dataframe before the write. Shared with the PyIceberg
+        path via `partition_grains.materialize_grains_arrow`.
         """
-        import pyarrow as pa
-        import pyarrow.compute as pc
-
-        if not isinstance(table, pa.Table):
-            return table
-        grains = getattr(self._feature_group, "partitioned_by", None)
-        if not grains:
-            return table
-        event_time = self._feature_group.event_time
-        if event_time is None or event_time not in table.column_names:
-            return table
-        ts = self._event_time_arrow_to_timestamp(table.column(event_time))
-        grain_fns = {
-            "year": pc.year,
-            "month": pc.month,
-            "week": pc.iso_week,
-            "day": pc.day,
-            "hour": pc.hour,
-        }
-        for grain in grains:
-            if grain in table.column_names:
-                continue
-            values = pc.cast(grain_fns[grain](ts), pa.int32())
-            table = table.append_column(grain, values)
-        return table
-
-    @staticmethod
-    def _event_time_arrow_to_timestamp(column):
-        """Return a timestamp/date Arrow array from an event_time column.
-
-        Integer event_time follows the seconds-vs-milliseconds rule (a value up
-        to ten digits is treated as unix seconds, longer as milliseconds), the
-        same convention the rest of the client uses.
-        """
-        import pyarrow as pa
-        import pyarrow.compute as pc
-
-        col_type = column.type
-        if pa.types.is_timestamp(col_type) or pa.types.is_date(col_type):
-            return column
-        if pa.types.is_integer(col_type):
-            # Per-row seconds-vs-milliseconds decision (mirrors the Spark path):
-            # a value up to ten digits is unix seconds, longer is milliseconds.
-            # Decide per element rather than once for the whole column so a
-            # column mixing the two units is not all coerced to one.
-            seconds = pc.if_else(
-                pc.less_equal(pc.abs(column), 9999999999),
-                column,
-                pc.divide(column, 1000),
-            )
-            return pc.cast(seconds, pa.timestamp("s"))
-        # strings / other — let Arrow attempt a timestamp cast
-        return pc.cast(column, pa.timestamp("us"))
+        return partition_grains.materialize_grains_arrow(self._feature_group, table)
 
     @staticmethod
     def _prepare_df_for_delta(df, timestamp_precision="us"):

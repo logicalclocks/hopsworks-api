@@ -27,7 +27,7 @@ from hopsworks_common.core.constants import HAS_POLARS
 from hopsworks_common.core.type_systems import _convert_offline_type_to_pyarrow_type
 from hopsworks_common.decorators import _uses_pyiceberg
 from hsfs import feature_group, feature_group_commit, util
-from hsfs.core import feature_group_api, variable_api
+from hsfs.core import feature_group_api, partition_grains, variable_api
 
 
 if TYPE_CHECKING:
@@ -364,6 +364,13 @@ class IcebergEngine:
     ) -> feature_group_commit.FeatureGroupCommit:
         if write_options is None:
             write_options = {}
+
+        # partitioned_by: derive the grain columns (year/month/...) from
+        # event_time into the dataframe before the write, so they exist as the
+        # real, identity-partitioned columns the table is partitioned on. A
+        # no-op for non-partitioned_by FGs and for the empty-table create path
+        # (the schema already carries the grains).
+        dataset = partition_grains.materialize_grains_spark(self._feature_group, dataset)
 
         catalog_name, catalog_properties, identifier = self._get_catalog_write_config(
             write_options
@@ -1041,6 +1048,12 @@ class IcebergEngine:
             dataset: Dataset to write to the Iceberg table.
         """
         arrow_table = self._prepare_arrow_table(dataset)
+        # partitioned_by: materialize the grain columns from event_time (Arrow
+        # twin of the Spark path). No-op without partitioned_by or when the
+        # grains are already present (empty-table create path).
+        arrow_table = partition_grains.materialize_grains_arrow(
+            self._feature_group, arrow_table
+        )
 
         catalog_name, catalog_properties, identifier = self._get_catalog_write_config(
             write_options
