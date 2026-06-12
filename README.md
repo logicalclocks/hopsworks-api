@@ -352,7 +352,7 @@
 | python/hsfs/ge\_expectation.py                                                   |      101 |       13 |     87% |40, 68, 120, 123, 126, 144, 158-161, 171, 186, 201 |
 | python/hsfs/ge\_validation\_result.py                                            |      146 |       18 |     88% |52, 111, 157, 167, 182, 193, 199, 214, 233, 273, 286, 292, 295-301 |
 | python/hsfs/hopsworks\_udf.py                                                    |      388 |       10 |     97% |142, 382-384, 598, 713, 719, 859, 1088, 1360 |
-| python/hsfs/online\_config.py                                                    |       52 |        1 |     98% |        86 |
+| python/hsfs/online\_config.py                                                    |       91 |        1 |     99% |       137 |
 | python/hsfs/serving\_key.py                                                      |       60 |       10 |     83% |57, 94-98, 108, 113, 123, 128 |
 | python/hsfs/split\_statistics.py                                                 |       28 |        2 |     93% |    57, 65 |
 | python/hsfs/statistics.py                                                        |      115 |       27 |     77% |85, 87, 89, 102, 136-149, 152, 155, 158, 170, 174-182, 196, 202, 208, 214, 226 |
@@ -452,7 +452,7 @@
 | python/hsml/utils/schema/tensor.py                                               |        8 |        0 |    100% |           |
 | python/hsml/utils/schema/tensor\_schema.py                                       |       34 |        0 |    100% |           |
 | python/hsml/version.py                                                           |        2 |        2 |      0% |     17-22 |
-| **TOTAL**                                                                        | **35619** | **12008** | **66%** |           |
+| **TOTAL**                                                                        | **35658** | **12008** | **66%** |           |
 
 
 ## Setup coverage badge
