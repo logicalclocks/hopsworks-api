@@ -18,6 +18,7 @@ import warnings
 from typing import TYPE_CHECKING, Any
 
 from hopsworks_common.client import exceptions
+from hopsworks_common.core.constants import HAS_PYICEBERG
 from hopsworks_common.core.sink_job_configuration import (
     FeatureColumnMapping,
     SinkJobConfiguration,
@@ -28,6 +29,7 @@ from hsfs.core import (
     delta_engine,
     feature_group_base_engine,
     hudi_engine,
+    iceberg_engine,
     job_api,
     transformation_function_engine,
 )
@@ -167,7 +169,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 feature_dataframe,
                 (
                     hudi_engine.HudiEngine.HUDI_BULK_INSERT
-                    if feature_group.time_travel_format in ["HUDI", "DELTA"]
+                    if feature_group.time_travel_format in ["HUDI", "DELTA", "ICEBERG"]
                     else None
                 ),
                 feature_group.online_enabled,
@@ -329,7 +331,8 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
     def _commit_details(self, feature_group, wallclock_time, limit):
         if (
             feature_group._time_travel_format is None
-            or feature_group._time_travel_format.upper() not in ["HUDI", "DELTA"]
+            or feature_group._time_travel_format.upper()
+            not in ["HUDI", "DELTA", "ICEBERG"]
         ):
             raise exceptions.FeatureStoreException(
                 "commit_details can only be used on time travel enabled feature groups"
@@ -375,6 +378,15 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 spark_context,
             )
             return delta_engine_instance._delete_record(delete_df)
+        if feature_group.time_travel_format == "ICEBERG":
+            iceberg_engine_instance = iceberg_engine.IcebergEngine(
+                feature_group.feature_store_id,
+                feature_group.feature_store_name,
+                feature_group,
+                spark_session,
+                spark_context,
+            )
+            return iceberg_engine_instance._delete_record(delete_df)
         if spark_context is None:
             raise exceptions.FeatureStoreException(
                 "Hudi feature group deletes are not supported with Spark Connect. "
@@ -739,13 +751,15 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         )
 
     def _save_empty_table(self, feature_group, write_options=None):
-        # If time travel format is DELTA, an empty table is needed to be created
+        # If time travel format is DELTA or ICEBERG, an empty table is needed to be created
         # such that the feature schema is written to the table and
         # the subsequent writes in python can refer to that schema.
-        if (
-            feature_group.time_travel_format is not None
-            and feature_group.time_travel_format.upper() == "DELTA"
-        ):
+        time_travel_format = (
+            feature_group.time_travel_format.upper()
+            if feature_group.time_travel_format is not None
+            else None
+        )
+        if time_travel_format == "DELTA":
             spark_session, spark_context = (
                 FeatureGroupEngine._get_spark_session_and_context()
             )
@@ -758,6 +772,31 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 spark_context,
             )
             delta_engine_instance._save_empty_table(write_options=write_options)
+        elif time_travel_format == "ICEBERG":
+            spark_session, spark_context = (
+                FeatureGroupEngine._get_spark_session_and_context()
+            )
+            if spark_session is None and not HAS_PYICEBERG:
+                # Without Spark and without pyiceberg the table cannot be
+                # created client-side; the materialization job running on the
+                # cluster creates it on first write instead.
+                return
+
+            iceberg_engine_instance = iceberg_engine.IcebergEngine(
+                feature_group.feature_store_id,
+                feature_group.feature_store_name,
+                feature_group,
+                spark_session,
+                spark_context,
+            )
+            if (
+                spark_session is None
+                and not iceberg_engine_instance._pyiceberg_write_supported()
+            ):
+                # PyIceberg cannot reach this storage from this client; the
+                # materialization job creates the table on first write instead.
+                return
+            iceberg_engine_instance._save_empty_table(write_options=write_options)
 
     def _create_sink_job_if_needed(
         self,

@@ -25,10 +25,12 @@ from hopsworks_common.core.constants import (
     HAS_CONFLUENT_KAFKA,
     HAS_GREAT_EXPECTATIONS,
     HAS_POLARS,
+    HAS_PYICEBERG,
     HAS_TRINO,
     confluent_kafka_not_installed_message,
     great_expectations_not_installed_message,
     polars_not_installed_message,
+    pyiceberg_not_installed_message,
     trino_not_installed_message,
 )
 
@@ -183,6 +185,16 @@ def _uses_trino(f):
     def g(*args, **kwds):
         if not HAS_TRINO:
             raise ModuleNotFoundError(trino_not_installed_message)
+        return f(*args, **kwds)
+
+    return g
+
+
+def _uses_pyiceberg(f):
+    @functools.wraps(f)
+    def g(*args, **kwds):
+        if not HAS_PYICEBERG:
+            raise ModuleNotFoundError(pyiceberg_not_installed_message)
         return f(*args, **kwds)
 
     return g
