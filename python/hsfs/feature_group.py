@@ -33,7 +33,7 @@ import avro.schema
 import hsfs.expectation_suite
 import humps
 from hopsworks_apigen import deprecation, public
-from hopsworks_common import job
+from hopsworks_common import client, job
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
 from hopsworks_common.core import alerts_api
 from hopsworks_common.core.constants import (
@@ -41,6 +41,7 @@ from hopsworks_common.core.constants import (
     HAS_DELTALAKE_SPARK,
     HAS_NUMPY,
     HAS_POLARS,
+    HAS_PYICEBERG,
 )
 from hopsworks_common.core.sink_job_configuration import SinkJobConfiguration
 from hsfs import (
@@ -3183,6 +3184,7 @@ class FeatureGroup(FeatureGroupBase):
             self._stream = FeatureGroup._resolve_stream_python(
                 stream=stream,
                 time_travel_format=self._time_travel_format,
+                hopsfs_external=self._is_hopsfs_external(),
             )
 
     def _is_hopsfs_storage(self) -> bool:
@@ -3268,14 +3270,30 @@ class FeatureGroup(FeatureGroupBase):
         else:
             self._sink_enabled = requested_sink and supported_sink_connector
 
+    def _is_hopsfs_external(self) -> bool:
+        """Whether the offline storage is HopsFS accessed from an external client."""
+        try:
+            is_external = client._get_instance()._is_external()
+        except Exception:  # noqa: BLE001 - no client configured yet means not external
+            return False
+        return is_external and self._is_hopsfs_storage()
+
     @staticmethod
     def _resolve_stream_python(
         stream: bool,
         time_travel_format: str,
+        hopsfs_external: bool = False,
     ) -> bool | None:
         # If stream is explicitly set to True, use it.
-        # Otherwise, only DELTA format disables stream by default.
-        return stream or time_travel_format != "DELTA"
+        # Otherwise, formats with direct offline writes from the Python engine
+        # (DELTA via delta-rs, ICEBERG via pyiceberg) disable stream by
+        # default; everything else writes through the materialization job.
+        direct_write_formats = ["DELTA", "ICEBERG"]
+        if hopsfs_external:
+            # PyIceberg reaches HopsFS through libhdfs, which external Python
+            # clients do not have; route through the materialization job.
+            direct_write_formats.remove("ICEBERG")
+        return stream or time_travel_format not in direct_write_formats
 
     @staticmethod
     def _resolve_time_travel_format(
@@ -3289,6 +3307,10 @@ class FeatureGroup(FeatureGroupBase):
             raise FeatureStoreException(
                 "Cannot use time_travel_format='DELTA': delta library is not installed."
             )
+        if fmt == "ICEBERG" and not FeatureGroup._has_pyiceberg():
+            raise FeatureStoreException(
+                "Cannot use time_travel_format='ICEBERG': pyiceberg library is not installed."
+            )
         return fmt
 
     @staticmethod
@@ -3296,6 +3318,14 @@ class FeatureGroup(FeatureGroupBase):
         if engine._get_type() == "python":
             return HAS_DELTALAKE_PYTHON
         return HAS_DELTALAKE_SPARK
+
+    @staticmethod
+    def _has_pyiceberg():
+        # The Spark engine talks to Iceberg through the JVM and does not need
+        # the pyiceberg package.
+        if engine._get_type() == "python":
+            return HAS_PYICEBERG
+        return True
 
     @staticmethod
     def _sort_transformation_functions(
@@ -4347,7 +4377,7 @@ class FeatureGroup(FeatureGroupBase):
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
-            hopsworks.client.exceptions.FeatureStoreException: If the feature group does not have `HUDI` time travel format.
+            hopsworks.client.exceptions.FeatureStoreException: If the feature group does not have a time travel enabled format (`HUDI`, `DELTA`, or `ICEBERG`).
         """
         return self._feature_group_engine._commit_details(self, wallclock_time, limit)
 
@@ -4359,7 +4389,7 @@ class FeatureGroup(FeatureGroupBase):
     ) -> None:
         """Drops records present in the provided DataFrame and commits it as update to this Feature group.
 
-        This method can only be used on feature groups stored as HUDI or DELTA.
+        This method can only be used on feature groups stored as HUDI, DELTA, or ICEBERG.
 
         Parameters:
             delete_df: dataFrame containing records to be deleted.
@@ -4373,6 +4403,15 @@ class FeatureGroup(FeatureGroupBase):
         ):
             raise NotImplementedError(
                 "commit_delete_record is only supported for HUDI feature groups when using the Spark engine."
+            )
+        if (
+            self.time_travel_format == "ICEBERG"
+            and not engine._get_type().startswith("spark")
+            and not HAS_PYICEBERG
+        ):
+            raise NotImplementedError(
+                "commit_delete_record on ICEBERG feature groups without Spark requires pyiceberg. "
+                "Install 'pyiceberg' to enable it."
             )
         self._feature_group_engine._commit_delete(self, delete_df, write_options or {})
 

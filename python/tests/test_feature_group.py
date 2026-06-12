@@ -1016,6 +1016,7 @@ class TestFeatureGroup:
         assert stream_mock.call_args.kwargs == {
             "stream": False,
             "time_travel_format": expected_fmt,
+            "hopsfs_external": False,
         }
 
     def test_init_time_travel_and_stream_uses_resolver_spark(self, mocker, monkeypatch):

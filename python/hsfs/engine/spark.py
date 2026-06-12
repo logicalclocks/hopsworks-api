@@ -115,6 +115,7 @@ from hsfs.core import (
     dataset_api,
     delta_engine,
     hudi_engine,
+    iceberg_engine,
     kafka_engine,
     transformation_function_engine,
 )
@@ -354,6 +355,26 @@ class Engine:
             delta_fg_alias=delta_fg_alias,
             read_options=read_options,
             is_cdc_query=is_cdc_query,
+        )
+
+    def _register_iceberg_temporary_table(
+        self,
+        iceberg_fg_alias: hudi_feature_group_alias.HudiFeatureGroupAlias,
+        feature_store_id: int,
+        feature_store_name: str,
+        read_options: dict[str, Any] | None,
+    ):
+        iceberg_engine_instance = iceberg_engine.IcebergEngine(
+            feature_store_id,
+            feature_store_name,
+            iceberg_fg_alias.feature_group,
+            self._spark_session,
+            None if self._is_connect else self._spark_context,
+        )
+
+        iceberg_engine_instance._register_temporary_table(
+            iceberg_fg_alias,
+            read_options=read_options,
         )
 
     def _return_dataframe_type(self, dataframe, dataframe_type):
@@ -715,6 +736,17 @@ class Engine:
                 None if self._is_connect else self._spark_context,
             )
             delta_engine_instance._save_delta_fg(
+                dataframe, write_options, validation_id, operation=operation
+            )
+        elif feature_group.time_travel_format == "ICEBERG":
+            iceberg_engine_instance = iceberg_engine.IcebergEngine(
+                feature_group.feature_store_id,
+                feature_group.feature_store_name,
+                feature_group,
+                self._spark_session,
+                None if self._is_connect else self._spark_context,
+            )
+            iceberg_engine_instance._save_iceberg_fg(
                 dataframe, write_options, validation_id, operation=operation
             )
         else:
@@ -1338,7 +1370,14 @@ class Engine:
             raise FeatureStoreException("data_format is not specified")
 
         if isinstance(location, str):
-            if data_format.lower() in ["delta", "parquet", "hudi", "orc", "bigquery"]:
+            if data_format.lower() in [
+                "delta",
+                "parquet",
+                "hudi",
+                "iceberg",
+                "orc",
+                "bigquery",
+            ]:
                 # All the above data format readers can handle partitioning
                 # by their own, they don't need /**
                 # for bigquery, argument location can be a SQL query
@@ -1842,6 +1881,8 @@ class Engine:
     def _update_table_schema(self, feature_group):
         if feature_group.time_travel_format == "DELTA":
             self._add_cols_to_delta_table(feature_group)
+        elif feature_group.time_travel_format == "ICEBERG":
+            self._add_cols_to_iceberg_table(feature_group)
         else:
             self._save_empty_dataframe(feature_group)
 
@@ -1886,6 +1927,55 @@ class Engine:
         ).option("spark.databricks.delta.schema.autoMerge.enabled", "true").save(
             location
         )
+
+    def _add_cols_to_iceberg_table(self, feature_group):
+        if self._is_connect:
+            raise FeatureStoreException(
+                "Updating the schema of an Iceberg feature group is not supported "
+                "in Spark Connect mode because it requires JVM bridge access."
+            )
+        location = feature_group.prepare_spark_location()
+
+        # Evolve the schema through the Iceberg API as a metadata-only commit.
+        # Writing an empty dataframe with a merge-schema option does not work
+        # here: Spark's analyzer rejects the extra columns before the Iceberg
+        # writer gets to merge them.
+        # Only the missing columns are added; existing columns are never
+        # altered, so type-mapping differences between writers (for example
+        # timestamp vs timestamptz) cannot conflict.
+        table = self._jvm.org.apache.iceberg.hadoop.HadoopTables(
+            self._spark_context._jsc.hadoopConfiguration()
+        ).load(location)
+        existing_columns = {field.name() for field in table.schema().columns()}
+        new_features = [
+            _feature
+            for _feature in feature_group.columns
+            if _feature.name not in existing_columns
+        ]
+        if not new_features:
+            return
+
+        update_schema = table.updateSchema()
+        for _feature in new_features:
+            # Spark's TimestampType converts to Iceberg timestamptz, while
+            # Hopsworks stores Hive-style timestamps without a zone, so map
+            # the type through Spark's timestamp_ntz instead.
+            # The lookahead keeps struct field names (which precede ':')
+            # untouched.
+            feature_type = re.sub(
+                r"(?<![\w])timestamp(?![\w:])", "timestamp_ntz", _feature.type
+            )
+            spark_schema = self._jvm.org.apache.spark.sql.types.StructType.fromDDL(
+                f"{_feature.name} {feature_type}"
+            )
+            iceberg_type = (
+                self._jvm.org.apache.iceberg.spark.SparkSchemaUtil.convert(spark_schema)
+                .columns()
+                .get(0)
+                .type()
+            )
+            update_schema.addColumn(_feature.name, iceberg_type)
+        update_schema.commit()
 
     def _shallow_copy_dataframe(self, dataframe: DataFrame) -> DataFrame:
         return dataframe.copy(deep=False)

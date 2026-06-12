@@ -38,6 +38,7 @@ class FsQuery:
         items: list[dict[str, Any]] | None = None,
         type: str | None = None,
         delta_cached_feature_groups: list[dict[str, Any]] | None = None,
+        iceberg_cached_feature_groups: list[dict[str, Any]] | None = None,
         **kwargs,
     ) -> None:
         self._query = query
@@ -73,6 +74,14 @@ class FsQuery:
             ]
         else:
             self._delta_cached_feature_groups = []
+
+        if iceberg_cached_feature_groups is not None:
+            self._iceberg_cached_feature_groups = [
+                hudi_feature_group_alias.HudiFeatureGroupAlias.from_response_json(fg)
+                for fg in iceberg_cached_feature_groups
+            ]
+        else:
+            self._iceberg_cached_feature_groups = []
 
     @classmethod
     def from_response_json(cls, json_dict: dict[str, Any]) -> FsQuery:
@@ -155,4 +164,18 @@ class FsQuery:
                 feature_store_name=feature_store_name,
                 read_options=read_options,
                 is_cdc_query=is_cdc_query,
+            )
+
+    def _register_iceberg_tables(
+        self,
+        feature_store_id: int,
+        feature_store_name: str,
+        read_options: dict[str, Any] | None,
+    ) -> None:
+        for iceberg_fg in self._iceberg_cached_feature_groups:
+            engine._get_instance()._register_iceberg_temporary_table(
+                iceberg_fg,
+                feature_store_id,
+                feature_store_name,
+                read_options,
             )
