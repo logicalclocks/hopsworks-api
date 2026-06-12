@@ -73,6 +73,7 @@ from hsfs.core import (
     delta_engine,
     feature_group_api,
     feature_view_api,
+    iceberg_engine,
     ingestion_job_conf,
     job,
     job_api,
@@ -634,6 +635,23 @@ class Engine:
                 "environment with Spark Engine."
             )
 
+    def _register_iceberg_temporary_table(
+        self,
+        iceberg_fg_alias: hsfs.constructor.hudi_feature_group_alias.HudiFeatureGroupAlias,
+        feature_store_id: int,
+        feature_store_name: str,
+        read_options: dict[str, Any] | None,
+    ) -> None:
+        if iceberg_fg_alias and (
+            iceberg_fg_alias.left_feature_group_end_timestamp is not None
+            or iceberg_fg_alias.left_feature_group_start_timestamp is not None
+        ):
+            raise FeatureStoreException(
+                "Time travel queries are not supported in the python client."
+                " Read feature group without timestamp to retrieve latest snapshot or switch to "
+                "environment with Spark Engine."
+            )
+
     def _profile_by_spark(
         self,
         metadata_instance: FeatureGroup
@@ -1115,6 +1133,26 @@ class Engine:
                 spark_session=None,
             )
             delta_engine_instance._save_delta_fg(
+                dataframe,
+                write_options=offline_write_options,
+                validation_id=validation_id,
+                operation=operation,
+            )
+            inserted = True
+        if (
+            storage in [None, "offline"]
+            and not isinstance(feature_group, fg_mod.ExternalFeatureGroup)
+            and feature_group.time_travel_format == "ICEBERG"
+        ):
+            # Direct offline writes through PyIceberg, mirroring the delta-rs path.
+            iceberg_engine_instance = iceberg_engine.IcebergEngine(
+                feature_store_id=feature_group.feature_store_id,
+                feature_store_name=feature_group.feature_store_name,
+                feature_group=feature_group,
+                spark_session=None,
+                spark_context=None,
+            )
+            iceberg_engine_instance._save_iceberg_fg(
                 dataframe,
                 write_options=offline_write_options,
                 validation_id=validation_id,

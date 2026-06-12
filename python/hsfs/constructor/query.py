@@ -136,7 +136,7 @@ class Query:
                 # on the cdc metadata columns.
                 is_cdc_query = bool(self.left_feature_group_start_time)
 
-                # Register on hudi/delta feature groups as temporary tables
+                # Register on hudi/delta/iceberg feature groups as temporary tables
                 fs_query._register_delta_tables(
                     feature_store_id=self._feature_store_id,
                     feature_store_name=self._feature_store_name,
@@ -145,6 +145,12 @@ class Query:
                 )
 
                 fs_query._register_hudi_tables(
+                    self._feature_store_id,
+                    self._feature_store_name,
+                    read_options,
+                )
+
+                fs_query._register_iceberg_tables(
                     self._feature_store_id,
                     self._feature_store_name,
                     read_options,
