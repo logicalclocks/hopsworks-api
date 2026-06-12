@@ -22,6 +22,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.Assert;
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
+import java.util.List;
+
 class TestOnlineConfig {
 
   private final ObjectMapper objectMapper = new ObjectMapper();
@@ -62,6 +65,65 @@ class TestOnlineConfig {
     OnlineConfig result = objectMapper.readValue(serverResponse, OnlineConfig.class);
 
     // Assert
+    Assert.assertEquals(PrimaryKeyIndexType.HASH, result.getPrimaryKeyIndexType());
+  }
+
+  @Test
+  void testSecondaryIndexesSerializedAndDeserialized() throws Exception {
+    // Arrange
+    OnlineConfig config = new OnlineConfig();
+    config.setSecondaryIndexes(Arrays.asList(
+        Arrays.asList("user_id"),
+        Arrays.asList("country", "city")));
+
+    // Act – round-trip through Jackson
+    String json = objectMapper.writeValueAsString(config);
+    OnlineConfig result = objectMapper.readValue(json, OnlineConfig.class);
+
+    // Assert
+    List<List<String>> expected = Arrays.asList(
+        Arrays.asList("user_id"),
+        Arrays.asList("country", "city"));
+    Assert.assertEquals(expected, result.getSecondaryIndexes());
+  }
+
+  @Test
+  void testSecondaryIndexesLowerCased() throws Exception {
+    // The SDK lower-cases feature names (Feature, StreamFeatureGroup); secondary index
+    // columns must be lower-cased the same way so they match the online table columns.
+    OnlineConfig config = new OnlineConfig();
+    config.setSecondaryIndexes(Arrays.asList(
+        Arrays.asList("Country"),
+        Arrays.asList("User_Country", "City")));
+
+    List<List<String>> expected = Arrays.asList(
+        Arrays.asList("country"),
+        Arrays.asList("user_country", "city"));
+    Assert.assertEquals(expected, config.getSecondaryIndexes());
+
+    // and it survives a Jackson round-trip
+    OnlineConfig result = objectMapper.readValue(
+        objectMapper.writeValueAsString(config), OnlineConfig.class);
+    Assert.assertEquals(expected, result.getSecondaryIndexes());
+  }
+
+  @Test
+  void testSecondaryIndexesNullStaysNull() throws Exception {
+    OnlineConfig config = new OnlineConfig();
+    config.setSecondaryIndexes(null);
+    Assert.assertNull(config.getSecondaryIndexes());
+  }
+
+  @Test
+  void testUnknownJsonPropertyIgnored() throws Exception {
+    // @JsonIgnoreProperties(ignoreUnknown = true) must not throw on extra fields,
+    // which is required for forward compatibility when a newer backend adds fields.
+    String json = "{\"primaryKeyIndexType\":\"HASH\",\"unknownFutureField\":\"value\"}";
+
+    // Act – must not throw
+    OnlineConfig result = objectMapper.readValue(json, OnlineConfig.class);
+
+    // Assert the known field was still parsed correctly
     Assert.assertEquals(PrimaryKeyIndexType.HASH, result.getPrimaryKeyIndexType());
   }
 }
