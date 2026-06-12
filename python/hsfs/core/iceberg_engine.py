@@ -251,7 +251,7 @@ class IcebergEngine:
         write_options: dict[str, Any] | None,
         validation_id: int | None = None,
         operation: str = "upsert",
-    ) -> feature_group_commit.FeatureGroupCommit:
+    ) -> feature_group_commit.FeatureGroupCommit | None:
         operation = operation.lower() if operation else "upsert"
         if self._spark_session is not None:
             _logger.debug(
@@ -530,7 +530,7 @@ class IcebergEngine:
         location = self._feature_group.prepare_spark_location()
         if not self._is_iceberg_table_at(location):
             raise FeatureStoreException(
-                f"Feature group {self._feature_group.name} is not ICEBERG enabled "
+                f"Feature group {self._feature_group.name} is not ICEBERG enabled."
             )
 
         existing = self._spark_session.read.format(self.ICEBERG_SPARK_FORMAT).load(
@@ -1147,7 +1147,7 @@ class IcebergEngine:
         version, table = self._load_pyiceberg_table(catalog, location)
         if table is None:
             raise FeatureStoreException(
-                f"Feature group {self._feature_group.name} is not ICEBERG enabled "
+                f"Feature group {self._feature_group.name} is not ICEBERG enabled."
             )
 
         merge_keys = self._get_merge_keys()

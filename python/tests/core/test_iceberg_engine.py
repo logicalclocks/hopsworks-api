@@ -291,7 +291,7 @@ class TestIcebergEngine:
             iceberg_engine._delete_record(mocker.Mock())
 
         # Assert
-        assert "is not ICEBERG enabled" in str(e_info.value)
+        assert "is not ICEBERG enabled." in str(e_info.value)
 
     def test_get_last_commit_metadata_append(self, mocker):
         # Arrange
@@ -1150,7 +1150,7 @@ class TestPyIcebergEngine:
             iceberg_engine._delete_pyiceberg_record(mocker.Mock())
 
         # Assert
-        assert "is not ICEBERG enabled" in str(e_info.value)
+        assert "is not ICEBERG enabled." in str(e_info.value)
 
     def test_delete_record_dispatches_to_pyiceberg_without_spark(self, mocker):
         # Arrange
@@ -1171,7 +1171,10 @@ class TestPyIcebergEngine:
         import pyarrow as pa
 
         fg = _make_fg(primary_key=["id"])
-        fg.location = str(tmp_path / "fg_1")
+        # a file:// URI keeps PyIceberg's filesystem resolution working on
+        # Windows too, where a plain path starts with a drive letter that
+        # would be parsed as a URI scheme
+        fg.location = (tmp_path / "fg_1").as_uri()
         fg._is_hopsfs_storage.return_value = False
         fg.storage_connector = None
         iceberg_engine = _make_engine(mocker, fg=fg, spark_session=_NO_SPARK)
