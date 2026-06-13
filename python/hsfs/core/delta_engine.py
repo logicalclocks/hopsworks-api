@@ -287,6 +287,24 @@ class DeltaEngine:
             raise FeatureStoreException(
                 f"Feature group {self._feature_group.name} is not DELTA enabled "
             )
+
+        # partitioned_by: the derived grain columns are partition_key, so the
+        # merge predicate (see _generate_merge_query) references them. A delete
+        # payload only carries primary key + event_time, so materialize the
+        # grains on it from event_time, exactly like the write path.
+        if self._spark_session is not None:
+            delete_df = partition_grains.materialize_grains_spark(
+                self._feature_group, delete_df
+            )
+        elif self._feature_group.partitioned_by:
+            if HAS_POLARS:
+                import polars as pl
+
+                if isinstance(delete_df, pl.DataFrame):
+                    delete_df = delete_df.to_arrow()
+            delete_df = self._prepare_df_for_delta(delete_df)
+            delete_df = self._materialize_partitioned_by_grains(delete_df)
+
         source_alias = (
             f"{self._feature_group.name}_{self._feature_group.version}_source"
         )

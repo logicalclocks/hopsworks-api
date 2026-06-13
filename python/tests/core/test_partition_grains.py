@@ -70,6 +70,23 @@ def test_arrow_integer_seconds_event_time():
     assert out.column("year").to_pylist() == [2025]
 
 
+def test_arrow_date_event_time_with_hour_grain():
+    # A date32 event_time has no sub-day resolution; pc.hour has no date32
+    # kernel, so the materializer must cast date->timestamp first (hour -> 0),
+    # matching the Spark path, rather than raising ArrowNotImplementedError.
+    import datetime
+
+    fg = _fg(["year", "month", "day", "hour"], event_time="event_date")
+    table = pa.table(
+        {"event_date": pa.array([datetime.date(2026, 4, 15)], type=pa.date32())}
+    )
+    out = partition_grains.materialize_grains_arrow(fg, table)
+    assert out.column("year").to_pylist() == [2026]
+    assert out.column("month").to_pylist() == [4]
+    assert out.column("day").to_pylist() == [15]
+    assert out.column("hour").to_pylist() == [0]
+
+
 def test_arrow_noop_without_partitioned_by():
     fg = _fg(None)
     table = pa.table({"event_ts": pa.array([datetime(2026, 1, 1)])})

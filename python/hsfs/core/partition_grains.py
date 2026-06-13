@@ -109,7 +109,7 @@ def materialize_grains_arrow(feature_group, table):
 
 
 def _event_time_arrow_to_timestamp(column):
-    """Return a timestamp/date Arrow array from an event_time column.
+    """Return a timestamp Arrow array from an event_time column.
 
     Integer event_time follows the seconds-vs-milliseconds rule (a value up to
     ten digits is treated as unix seconds, longer as milliseconds), the same
@@ -119,8 +119,13 @@ def _event_time_arrow_to_timestamp(column):
     import pyarrow.compute as pc
 
     col_type = column.type
-    if pa.types.is_timestamp(col_type) or pa.types.is_date(col_type):
+    if pa.types.is_timestamp(col_type):
         return column
+    if pa.types.is_date(col_type):
+        # Cast date -> timestamp (midnight) so sub-day grain functions like
+        # pc.hour have a kernel — pc.hour has no date32 kernel and would raise.
+        # Matches the Spark path, where F.hour on a DateType yields 0.
+        return pc.cast(column, pa.timestamp("s"))
     if pa.types.is_integer(col_type):
         # Per-row seconds-vs-milliseconds decision (mirrors the Spark path):
         # a value up to ten digits is unix seconds, longer is milliseconds.

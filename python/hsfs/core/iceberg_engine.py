@@ -544,6 +544,12 @@ class IcebergEngine:
             location
         )
         merge_keys = self._get_merge_keys()
+        # partitioned_by: the grain columns are part of merge_keys (they are
+        # partition_key), but a delete payload only carries primary key +
+        # event_time, so derive the grains from event_time first.
+        delete_df = partition_grains.materialize_grains_spark(
+            self._feature_group, delete_df
+        )
         _logger.debug(
             f"Deleting records from Iceberg table at {location} on keys {merge_keys}"
         )
@@ -1164,7 +1170,13 @@ class IcebergEngine:
             )
 
         merge_keys = self._get_merge_keys()
-        deletes = self._prepare_arrow_table(delete_df).select(merge_keys)
+        # partitioned_by: grain columns are part of merge_keys but a delete
+        # payload only carries primary key + event_time, so derive the grains
+        # from event_time first (Arrow twin of the Spark path).
+        deletes_table = partition_grains.materialize_grains_arrow(
+            self._feature_group, self._prepare_arrow_table(delete_df)
+        )
+        deletes = deletes_table.select(merge_keys)
         existing = table.scan().to_arrow()
         remaining = existing.join(deletes, keys=merge_keys, join_type="left anti")
 
