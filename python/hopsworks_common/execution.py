@@ -207,11 +207,13 @@ class Execution:
             and self._monitoring.get("appUrl")
         ):
             _client = client.get_instance()
-            return (
-                _client._base_url.rstrip("/")
-                + "/hopsworks-api/"
-                + self._monitoring["appUrl"]
-            )
+            base_url = _client._base_url.rstrip("/")
+            app_url = str(self._monitoring["appUrl"]).lstrip("/")
+            if app_url.startswith(("http://", "https://")):
+                return app_url
+            if app_url.startswith("hopsworks-api/"):
+                return base_url + "/" + app_url
+            return base_url + "/hopsworks-api/" + app_url
         return None
 
     @public

@@ -48,6 +48,8 @@ Full CLI surface is in **Manage Apps from the CLI** below.
   - Streamlit defaults to `/_stcore/health`
   - custom apps default to `/`
   - `readinessProbePath` overrides the default probe path when needed
+- The CLI mirrors the same contract via `hops app create --app-base-path` and
+  `--readiness-probe-path`.
 
 ---
 

@@ -4,7 +4,9 @@ Wraps the SDK's ``project.get_app_api()``: list, info, create, start, redeploy,
 stop, delete, plus a convenience ``url`` that prints the public serving URL.
 App scripts can either live in HopsFS or in a Git repository. File-backed
 Streamlit apps use ``--path``; git-backed Streamlit apps use ``--git-url`` and
-``--entrypoint-script``; custom apps use ``--entrypoint-command``.
+``--entrypoint-script``; custom apps use ``--entrypoint-command``. Use
+``--app-base-path`` to mount the app at ``/`` or a subpath like ``/myapp``,
+and ``--readiness-probe-path`` to override the readiness probe when needed.
 """
 
 from __future__ import annotations
@@ -82,6 +84,8 @@ def app_info(ctx: click.Context, name: str) -> None:
         ["Latest commit", getattr(a, "latest_commit", None) or "-"],
         ["Entrypoint script", getattr(a, "entrypoint_script", None) or "-"],
         ["Entrypoint", getattr(a, "entrypoint_command", None) or "-"],
+        ["App base path", getattr(a, "app_base_path", None) or "-"],
+        ["Readiness", getattr(a, "readiness_probe_path", None) or "Default"],
         ["Description", getattr(a, "description", None) or "-"],
         ["URL", getattr(a, "app_url", None) or "-"],
     ]
@@ -265,6 +269,16 @@ def _report_running(name: str, a: Any) -> None:
     help="Relative .py entrypoint script for Streamlit Git repository apps.",
 )
 @click.option(
+    "--app-base-path",
+    default=None,
+    help="Public mount path for the app, for example / or /myapp.",
+)
+@click.option(
+    "--readiness-probe-path",
+    default=None,
+    help="Optional readiness probe path override.",
+)
+@click.option(
     "--description",
     default=None,
     help="Optional app description.",
@@ -296,6 +310,8 @@ def app_create(
     git_provider: str | None,
     git_branch: str | None,
     entrypoint_script: str | None,
+    app_base_path: str | None,
+    readiness_probe_path: str | None,
     description: str | None,
     environment: str,
     memory: int,
@@ -315,6 +331,8 @@ def app_create(
         git_provider: Git provider for git-backed apps.
         git_branch: Optional Git branch.
         entrypoint_script: Relative entrypoint script for Streamlit git apps.
+        app_base_path: Public mount path for the app.
+        readiness_probe_path: Optional readiness probe path override.
         description: Optional app description.
         environment: Python environment name.
         memory: Memory in MB.
@@ -377,6 +395,10 @@ def app_create(
         create_kwargs["git_branch"] = git_branch
     if entrypoint_script is not None:
         create_kwargs["entrypoint_script"] = entrypoint_script
+    if app_base_path is not None:
+        create_kwargs["app_base_path"] = app_base_path
+    if readiness_probe_path is not None:
+        create_kwargs["readiness_probe_path"] = readiness_probe_path
     create_kwargs = _accepted_kwargs(apps.create_app, create_kwargs)
     try:
         a = apps.create_app(**create_kwargs)
@@ -577,6 +599,8 @@ def _app_to_dict(a: Any) -> dict[str, Any]:
         "git_branch": getattr(a, "git_branch", None),
         "latest_commit": getattr(a, "latest_commit", None),
         "entrypoint_script": getattr(a, "entrypoint_script", None),
+        "app_base_path": getattr(a, "app_base_path", None),
+        "readiness_probe_path": getattr(a, "readiness_probe_path", None),
         "entrypoint_command": getattr(a, "entrypoint_command", None),
         "description": getattr(a, "description", None),
         "app_url": getattr(a, "app_url", None),
