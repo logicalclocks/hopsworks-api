@@ -1315,7 +1315,7 @@ class TestFeatureViewEngine:
         # Assert
         assert (
             str(e_info.value)
-            == "Incorrect `get` method is used. Use `feature_view._get_training_data` instead."
+            == "Incorrect `get` method is used. Use `feature_view.get_training_data` instead."
         )
         assert mock_fv_engine_get_training_dataset_metadata.call_count == 0
         assert mock_fv_engine_create_training_data_metadata.call_count == 1

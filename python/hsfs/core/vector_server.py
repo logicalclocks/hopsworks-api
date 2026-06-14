@@ -1410,18 +1410,18 @@ class VectorServer:
 
         if self._init_rest_client is False and self._init_sql_client is False:
             raise ValueError(
-                "No client is initialised. Call `_init_serving` with initsql_client or init_rest_client set to True before using it."
+                "No client is initialised. Call `init_serving` with initsql_client or init_rest_client set to True before using it."
             )
         if force_sql_client and (self._init_sql_client is False):
             raise ValueError(
-                "SQL Client is not initialised. Call `_init_serving` with init_sql_client set to True before using it."
+                "SQL Client is not initialised. Call `init_serving` with init_sql_client set to True before using it."
             )
         if force_sql_client:
             return self.DEFAULT_SQL_CLIENT
 
         if force_rest_client and (self._init_rest_client is False):
             raise ValueError(
-                "RonDB Rest Client is not initialised. Call `_init_serving` with init_rest_client set to True before using it."
+                "RonDB Rest Client is not initialised. Call `init_serving` with init_rest_client set to True before using it."
             )
         if force_rest_client:
             return self.DEFAULT_REST_CLIENT

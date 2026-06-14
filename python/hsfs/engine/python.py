@@ -751,7 +751,7 @@ class Engine:
                 stats[col] = df[col].describe().to_dict()
             except Exception as e:
                 warnings.warn(
-                    f"Failed to _compute stats for column {col}: {e}, adding empty stats",
+                    f"Failed to compute stats for column {col}: {e}, adding empty stats",
                     util.FeatureGroupWarning,
                     stacklevel=1,
                 )
@@ -1193,9 +1193,9 @@ class Engine:
         # App configuration
         app_options = self._get_app_options(offline_write_options)
 
-        # Setup job for _ingestion
-        # Configure Hopsworks _ingestion job
-        print("Configuring _ingestion job...")
+        # Setup job for ingestion
+        # Configure Hopsworks ingestion job
+        print("Configuring ingestion job...")
         ingestion_job = self._feature_group_api._ingestion(feature_group, app_options)
 
         # Upload dataframe into Hopsworks
@@ -1984,7 +1984,7 @@ class Engine:
         if not initial_check_point and not feature_group._multi_part_insert:
             if self._start_offline_materialization(offline_write_options):
                 warnings.warn(
-                    "This is the first _ingestion after an upgrade or backup/restore, running materialization job even though `start_offline_materialization` was set to `False`.",
+                    "This is the first ingestion after an upgrade or backup/restore, running materialization job even though `start_offline_materialization` was set to `False`.",
                     util.FeatureGroupWarning,
                     stacklevel=1,
                 )

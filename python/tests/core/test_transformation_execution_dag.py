@@ -175,7 +175,7 @@ class TestTransformationExecutionDAG:
 
         @udf(int)
         def col2(col2):
-            return col1 + 2
+            return col2 + 2
 
         @udf(int)
         def add(col1, col2):

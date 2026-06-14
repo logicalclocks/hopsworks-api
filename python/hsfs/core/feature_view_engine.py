@@ -515,7 +515,7 @@ class FeatureViewEngine:
             splits = []
         if len(splits) != len(td_updated.splits):
             if len(td_updated.splits) == 0:
-                method_name = "_get_training_data"
+                method_name = "get_training_data"
             elif len(td_updated.splits) == 2:
                 method_name = "get_train_test_split"
             elif len(td_updated.splits) == 3:
@@ -2067,4 +2067,4 @@ class FeatureViewEngine:
 
     def _delete_feature_logs(self, fv, feature_logging, transformed):
         self._feature_view_api._delete_feature_logs(fv.name, fv.version, transformed)
-        feature_logging.update(self._get_feature_logging(fv))
+        feature_logging._update(self._get_feature_logging(fv))
