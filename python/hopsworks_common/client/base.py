@@ -237,12 +237,24 @@ class Client:
         offset = 4
         (version,) = struct.unpack_from(">I", data, offset)
         offset += 4
+        if version not in (1, 2):
+            raise ValueError(f"Unsupported JKS version {version} (expected 1 or 2)")
         (entry_count,) = struct.unpack_from(">I", data, offset)
         offset += 4
 
         pw_bytes = (
             password.encode("utf-16-be") if isinstance(password, str) else password
         )
+
+        # Verify the keystore-level integrity digest before parsing entries.
+        # The trailing 20 bytes are SHA-1(password + "Mighty Aphrodite" +
+        # everything before the digest). This validates the password even for
+        # truststore-only stores, which hold no private keys to integrity-check.
+        if (
+            hashlib.sha1(pw_bytes + b"Mighty Aphrodite" + data[:-20]).digest()
+            != (data[-20:])
+        ):
+            raise ValueError("JKS keystore integrity check failed (wrong password?)")
 
         private_keys = []
         trusted_certs = []
@@ -251,7 +263,8 @@ class Client:
             (tag,) = struct.unpack_from(">I", data, offset)
             offset += 4
 
-            # Read alias (UTF-16 length-prefixed string)
+            # Read alias: Java DataInputStream.writeUTF (modified UTF-8) with a
+            # 2-byte length prefix. We only need to skip past it.
             (alias_len,) = struct.unpack_from(">H", data, offset)
             offset += 2
             offset += alias_len  # skip alias bytes
@@ -293,6 +306,15 @@ class Client:
                 cert_der = data[offset : offset + cert_len]
                 offset += cert_len
                 trusted_certs.append(cert_der)
+
+            else:
+                # Any other tag (e.g. a JCEKS/PKCS12 secret-key entry) has an
+                # entry body we can't size, so we can't advance the offset
+                # safely. Fail loudly rather than misparse the remainder.
+                raise ValueError(
+                    f"Unsupported JKS entry tag {tag}: only private-key (1) and "
+                    "trusted-certificate (2) entries are supported"
+                )
 
         return private_keys, trusted_certs
 

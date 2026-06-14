@@ -488,3 +488,31 @@ class TestVectorDbClient:
     def test_read_without_pk_or_keys(self):
         with pytest.raises(FeatureStoreException):
             self.target._read(self.fg.id, self.fg.columns)
+
+    def test_find_neighbors_builds_knn_query_without_filter(self):
+        self.target._find_neighbors([1.0, 2.0, 3.0], feature=self.f2, k=5)
+
+        body = self.mock_os_wrapper._search.call_args.kwargs["body"]
+        assert body["size"] == 5
+        knn = body["query"]["knn"]["f2"]
+        assert knn["vector"] == [1.0, 2.0, 3.0]
+        assert knn["k"] == 5
+        # The filter lives inside the knn clause (OpenSearch 2.x KNN syntax),
+        # not as a sibling bool/post_filter.
+        assert knn["filter"] == {"bool": {"must": [{"exists": {"field": "f2"}}]}}
+
+    def test_find_neighbors_builds_knn_query_with_filter(self):
+        self.target._find_neighbors(
+            [1.0, 2.0, 3.0], feature=self.f2, k=5, filter=self.f3 > 10
+        )
+
+        body = self.mock_os_wrapper._search.call_args.kwargs["body"]
+        knn = body["query"]["knn"]["f2"]
+        assert knn["filter"] == {
+            "bool": {
+                "must": [
+                    {"exists": {"field": "f2"}},
+                    {"range": {"f3": {"gt": 10}}},
+                ]
+            }
+        }
