@@ -19,6 +19,7 @@ import pytest
 from hsfs import engine as hopsworks_engine
 from hsfs import transformation_function
 from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
+from hsfs.core.transformation_execution_dag import TransformationExecutionDAG
 from hsfs.core.transformation_function_engine import TransformationFunctionEngine
 from hsfs.engine import python as python_engine
 from hsfs.transformation_function import TransformationType
@@ -53,7 +54,7 @@ def test_quantile_transformer():
 
     # Act
     result = TransformationFunctionEngine._apply_transformation_functions(
-        transformation_functions=[tf], data=df
+        execution_graph=TransformationExecutionDAG([tf]), data=df
     )
 
     # Assert
@@ -94,7 +95,7 @@ def test_rank_normalizer():
 
     # Act
     result = TransformationFunctionEngine._apply_transformation_functions(
-        transformation_functions=[tf], data=df
+        execution_graph=TransformationExecutionDAG([tf]), data=df
     )
 
     # Assert
@@ -135,7 +136,7 @@ def test_quantile_transformer_handles_nan():
 
     # Act
     result = TransformationFunctionEngine._apply_transformation_functions(
-        transformation_functions=[tf], data=df
+        execution_graph=TransformationExecutionDAG([tf]), data=df
     )
 
     # Assert

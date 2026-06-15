@@ -882,9 +882,10 @@ class FeatureStore:
                 Optionally, define the name of the topic used for sending notifications when entries are inserted or updated on the online feature store.
                 If left undefined no notifications are sent.
             transformation_functions:
-                On-Demand Transformation functions attached to the feature group.
-                It can be a list of list of user defined functions defined using the hopsworks `@udf` decorator.
-                Defaults to `None`, no transformations.
+                On-demand transformation functions attached to the feature group.
+                Each function should be defined using the hopsworks [`@udf`][hsfs.hopsworks_udf.udf] decorator.
+                Transformation functions can be chained by passing the output of one function as input to another.
+                Chained transformations are automatically organized into a DAG where independent transformations may run in parallel.
             online_config:
                 Optionally, configure the underlying RonDB online table.
                 Accepts an [`OnlineConfig`][hsfs.online_config.OnlineConfig] instance or a dictionary with snake_case keys (e.g. `{"primary_key_index_type": "HASH"}`).
@@ -1120,9 +1121,10 @@ class FeatureStore:
                 Optionally, define the name of the topic used for sending notifications when entries are inserted or updated on the online feature store.
                 If left undefined no notifications are sent.
             transformation_functions:
-                On-Demand Transformation functions attached to the feature group.
-                It can be a list of list of user defined functions defined using the hopsworks `@udf` decorator.
-                Defaults to `None`, no transformations.
+                On-demand transformation functions attached to the feature group.
+                Each function should be defined using the hopsworks [`@udf`][hsfs.hopsworks_udf.udf] decorator.
+                Transformation functions can be chained by passing the output of one function as input to another.
+                Chained transformations are automatically organized into a DAG where independent transformations may run in parallel.
             online_config:
                 Optionally, configure the underlying RonDB online table.
                 Accepts an [`OnlineConfig`][hsfs.online_config.OnlineConfig] instance or a dictionary with snake_case keys (e.g. `{"primary_key_index_type": "HASH"}`).
@@ -2106,9 +2108,11 @@ class FeatureStore:
                 For more details see documentation for feature view's get training data methods.
                 Defaults to `[]`, no training helper columns.
             transformation_functions:
-                Model Dependent Transformation functions attached to the feature view.
-                It can be a list of list of user defined functions defined using the hopsworks `@udf` decorator.
-                Defaults to `None`, no transformations.
+                Model-dependent transformation functions attached to the feature view.
+                Each function should be defined using the hopsworks [`@udf`][hsfs.hopsworks_udf.udf] decorator.
+                Transformation functions can be chained by using the output of one function as the input to another.
+                Chained transformations are automatically organized into a DAG where independent transformations run in parallel.
+                Use [`FeatureView.visualize_transformations`][hsfs.feature_view.FeatureView.visualize_transformations] to inspect the execution order.
             logging_enabled: If true, enable feature logging for the feature view.
             extra_log_columns:
                 Extra columns to be logged in addition to the features used in the feature view.
@@ -2201,9 +2205,11 @@ class FeatureStore:
                 For more details see documentation for feature view's get training data methods.
                 Defaults to `[]`, no training helper columns.
             transformation_functions:
-                Model Dependent Transformation functions attached to the feature view.
-                It can be a list of list of user defined functions defined using the hopsworks `@udf` decorator.
-                Defaults to `None`, no transformations.
+                Model-dependent transformation functions attached to the feature view.
+                Each function should be defined using the hopsworks [`@udf`][hsfs.hopsworks_udf.udf] decorator.
+                Transformation functions can be chained by using the output of one function as the input to another.
+                Chained transformations are automatically organized into a DAG where independent transformations run in parallel.
+                Use [`FeatureView.visualize_transformations`][hsfs.feature_view.FeatureView.visualize_transformations] to inspect the execution order.
             logging_enabled: If true, enable feature logging for the feature view.
             extra_log_columns:
                 Extra columns to be logged in addition to the features used in the feature view.

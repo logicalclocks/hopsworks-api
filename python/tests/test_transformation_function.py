@@ -286,7 +286,7 @@ class TestTransformationFunction:
         def test_func(col1):
             return col1 + 1
 
-        test_func._feature_name_prefix = "prefix_"
+        test_func.feature_name_prefix = "prefix_"
 
         mdt = TransformationFunction(
             featurestore_id=10,
@@ -300,7 +300,7 @@ class TestTransformationFunction:
         def test_func(col1):
             return col1 + 1
 
-        test_func._feature_name_prefix = "prefix_"
+        test_func.feature_name_prefix = "prefix_"
 
         odt = TransformationFunction(
             featurestore_id=10,
@@ -341,7 +341,7 @@ class TestTransformationFunction:
         def test_func(col1, col2, col3):
             return col1 + 1
 
-        test_func._feature_name_prefix = "prefix_"
+        test_func.feature_name_prefix = "prefix_"
 
         mdt = TransformationFunction(
             featurestore_id=10,
@@ -362,7 +362,7 @@ class TestTransformationFunction:
         def test_func(col1, col2, col3):
             return col1 + 1
 
-        test_func._feature_name_prefix = "prefix_"
+        test_func.feature_name_prefix = "prefix_"
 
         odt = TransformationFunction(
             featurestore_id=10,
@@ -422,7 +422,7 @@ class TestTransformationFunction:
                 {"col1": [col1 + 1], "col2": [col1 + 1], "col3": [col1 + 1]}
             )
 
-        test_func._feature_name_prefix = "prefix_"
+        test_func.feature_name_prefix = "prefix_"
 
         mdt = TransformationFunction(
             featurestore_id=10,
@@ -449,7 +449,7 @@ class TestTransformationFunction:
                 {"col1": [col1 + 1], "col2": [col1 + 1], "col3": [col1 + 1]}
             )
 
-        test_func._feature_name_prefix = "prefix_"
+        test_func.feature_name_prefix = "prefix_"
 
         odt = TransformationFunction(
             featurestore_id=10,
@@ -524,7 +524,7 @@ class TestTransformationFunction:
                 {"col1": [col1 + 1], "col2": [col2 + 1], "col3": [col3 + 1]}
             )
 
-        test_func._feature_name_prefix = "prefix_"
+        test_func.feature_name_prefix = "prefix_"
 
         mdt = TransformationFunction(
             featurestore_id=10,
@@ -551,7 +551,7 @@ class TestTransformationFunction:
                 {"col1": [col1 + 1], "col2": [col2 + 1], "col3": [col3 + 1]}
             )
 
-        test_func._feature_name_prefix = "prefix_"
+        test_func.feature_name_prefix = "prefix_"
 
         odt = TransformationFunction(
             featurestore_id=10,
@@ -1134,3 +1134,29 @@ class TestTransformationFunction:
         assert tf.executor(
             statistics={"feature": {"mean": 100}}, context={"test_value": 10}
         ).execute(data).values.tolist() == [111, 112, 113]
+
+    def test_get_udf_does_not_leak_context_across_calls(self, mocker):
+        # The cached wrapper scope must reflect the current
+        # transformation_context, including when it is cleared back to {}.
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        @udf(int, mode="pandas")
+        def add_context(feature, context):
+            return feature + context["offset"]
+
+        tf = TransformationFunction(
+            featurestore_id=10,
+            hopsworks_udf=add_context,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+
+        tf.hopsworks_udf.transformation_context = {"offset": 100}
+        first = tf.hopsworks_udf._get_udf(online=False)
+        assert first(pd.Series([1, 2, 3])).tolist() == [101, 102, 103]
+
+        # Clearing the context must invalidate the cached scope.  Before the
+        # fix the wrapper kept reading {"offset": 100} from the previous call.
+        tf.hopsworks_udf.transformation_context = None
+        second = tf.hopsworks_udf._get_udf(online=False)
+        with pytest.raises(KeyError):
+            second(pd.Series([1, 2, 3]))

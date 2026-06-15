@@ -40,6 +40,7 @@ from hsfs.core import (
     statistics_engine,
     tags_api,
     training_dataset_engine,
+    transformation_execution_dag,
     transformation_function_engine,
 )
 from hsfs.core.feature_logging import FeatureLogging
@@ -57,7 +58,6 @@ if TYPE_CHECKING:
     from hsfs.core import explicit_provenance
     from hsfs.core.feature_logging import LoggingMetaData
     from hsfs.feature_logger import FeatureLogger
-    from hsfs.transformation_function import TransformationFunction
 
 _logger = logging.getLogger(__name__)
 
@@ -498,6 +498,7 @@ class FeatureViewEngine:
         training_helper_columns=False,
         dataframe_type="default",
         transformation_context: dict[str, Any] = None,
+        n_processes: int | None = None,
     ):
         # check if provided td version has already existed.
         if training_dataset_version:
@@ -556,7 +557,7 @@ class FeatureViewEngine:
             )
         else:
             self._check_feature_group_accessibility(feature_view_obj)
-            # In-memory training-data fetches go through get_batch_query, which
+            # In-memory training-data fetches go through _get_batch_query, which
             # attaches Lookback to the Query so the backend's lookback resolver
             # picks it up. The lookback rides on the persisted training dataset
             # and comes back with `td_updated` regardless of whether we just
@@ -582,6 +583,7 @@ class FeatureViewEngine:
                 dataframe_type,
                 training_dataset_version,
                 transformation_context=transformation_context,
+                n_processes=n_processes,
             )
             self._compute_training_dataset_statistics(
                 feature_view_obj, td_updated, split_df
@@ -852,7 +854,7 @@ class FeatureViewEngine:
 
         # The materialization Spark job runs the PIT query off the batch query
         # this method builds, so any lookback set on the TD must ride along.
-        # `create_training_dataset` puts the user-supplied Lookback on
+        # `_create_training_dataset` puts the user-supplied Lookback on
         # `training_dataset_obj._lookback` before calling this helper.
         batch_query = self._get_batch_query(
             feature_view_obj,
@@ -944,7 +946,7 @@ class FeatureViewEngine:
         )
         # schema needs to be set for writing training data or feature serving
         for td in tds:
-            td.schema = feature_view_obj.get_training_dataset_schema(td.version)
+            td.schema = feature_view_obj._get_training_dataset_schema(td.version)
         return tds
 
     def _get_training_datasets(self, feature_view_obj):
@@ -982,31 +984,37 @@ class FeatureViewEngine:
 
     def _apply_transformations(
         self,
-        transformation_functions: list[TransformationFunction],
+        execution_graph: transformation_execution_dag.TransformationExecutionDAG,
         data: pd.DataFrame | pl.DataFrame | list[dict[str, Any]],
         online: bool | None = None,
         transformation_context: dict[str, Any] | list[dict[str, Any]] = None,
         request_parameters: dict[str, Any] | list[dict[str, Any]] = None,
+        n_processes: int | None = None,
     ) -> list[dict[str, Any]] | pd.DataFrame | pl.DataFrame:
-        """Apply transformations functions to the passed dataframe or list of dictionaries.
+        """Apply transformation functions to the passed dataframe or list of dictionaries.
 
         Parameters:
-            transformation_functions: List of transformation functions to apply.
+            execution_graph: The transformation DAG containing transformation functions with dependency tracking.
             data: The dataframe or list of dictionaries to apply the transformations to.
-            online: Apply the transformations for online or offline usecase. This parameter is applicable when a transformation function is defined using the `default` execution mode.
+            online: Apply the transformations for online or offline usecase.
+                This parameter is applicable when a transformation function is defined using the `default` execution mode.
             transformation_context: Transformation context to be used when applying the transformations.
             request_parameters: Request parameters to be used when applying the transformations.
+            n_processes: Number of worker processes for executing transformation functions.
+                Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
+                In the Spark engine the transformations are pushed down to Spark and this parameter is ignored.
 
         Returns:
             The updated dataframe or list of dictionaries with the transformations applied.
         """
         try:
             df = transformation_function_engine.TransformationFunctionEngine._apply_transformation_functions(
-                transformation_functions=transformation_functions,
+                execution_graph=execution_graph,
                 data=data,
                 online=online,
                 transformation_context=transformation_context,
                 request_parameters=request_parameters,
+                n_processes=n_processes,
             )
         except exceptions.TransformationFunctionException as e:
             raise FeatureStoreException(
@@ -1021,7 +1029,7 @@ class FeatureViewEngine:
         start_time,
         end_time,
         training_dataset_version,
-        transformation_functions,
+        execution_graph: transformation_execution_dag.TransformationExecutionDAG | None,
         read_options=None,
         spine=None,
         primary_keys=False,
@@ -1033,6 +1041,7 @@ class FeatureViewEngine:
         logging_data: bool = False,
         extra_filter=None,
         lookback=None,
+        n_processes: int | None = None,
     ):
         self._check_feature_group_accessibility(feature_view_obj)
 
@@ -1060,13 +1069,15 @@ class FeatureViewEngine:
             extra_filter=extra_filter,
             lookback=lookback,
         ).read(read_options=read_options, dataframe_type=dataframe_type)
-        if (transformation_functions and transformed) or logging_data:
+        has_graph = execution_graph is not None and execution_graph.nodes
+        if (has_graph and transformed) or logging_data:
             try:
                 transformed_dataframe = transformation_function_engine.TransformationFunctionEngine._apply_transformation_functions(
-                    transformation_functions=transformation_functions,
+                    execution_graph=execution_graph,
                     data=feature_dataframe,
                     online=False,
                     transformation_context=transformation_context,
+                    n_processes=n_processes,
                 )
             except exceptions.TransformationFunctionException as e:
                 raise FeatureStoreException(
@@ -1077,9 +1088,7 @@ class FeatureViewEngine:
             transformed_dataframe = None
 
         batch_dataframe = (
-            transformed_dataframe
-            if (transformation_functions and transformed)
-            else feature_dataframe
+            transformed_dataframe if (has_graph and transformed) else feature_dataframe
         )
 
         if logging_data:

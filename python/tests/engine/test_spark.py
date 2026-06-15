@@ -34,7 +34,6 @@ from hsfs import (
     feature_view,
     storage_connector,
     training_dataset,
-    training_dataset_feature,
     transformation_function,
     util,
 )
@@ -43,11 +42,14 @@ from hsfs.constructor import hudi_feature_group_alias, query
 from hsfs.core import data_source as ds
 from hsfs.core import online_ingestion, training_dataset_engine
 from hsfs.core.constants import GE_MAJOR, HAS_GREAT_EXPECTATIONS
+from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
+from hsfs.core.transformation_execution_dag import TransformationExecutionDAG
 from hsfs.engine import spark
 from hsfs.hopsworks_udf import udf
 from hsfs.serving_key import ServingKey
 from hsfs.training_dataset_feature import TrainingDatasetFeature
 from hsfs.transformation_function import TransformationType
+from hsfs.transformation_statistics import TransformationStatistics
 from pyspark.sql import DataFrame, Window
 from pyspark.sql.functions import (
     lit,
@@ -2546,6 +2548,150 @@ class TestSpark:
         assert mock_spark_engine_write_training_dataset_single.call_count == 0
         assert mock_spark_engine_write_training_dataset_splits.call_count == 0
 
+    def test_get_training_data_accepts_feature_view_engine_call_shape(self, mocker):
+        # FeatureViewEngine._get_training_data forwards the same arguments to
+        # whichever engine is active, so the Spark engine must accept every
+        # keyword the Python engine does (n_processes is accepted and ignored).
+        # A missing parameter here only crashes inside a cluster Spark job, so
+        # the call shape is pinned by this test.
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        mock_write_training_dataset = mocker.patch(
+            "hsfs.engine.spark.Engine._write_training_dataset"
+        )
+        mock_feature_view = mocker.patch("hsfs.feature_view.FeatureView")
+
+        spark_engine = spark.Engine()
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={},
+            location="",
+        )
+
+        # Act: positional and keyword arguments exactly as
+        # feature_view_engine.py passes them.
+        result = spark_engine._get_training_data(
+            td,
+            mock_feature_view,
+            mocker.Mock(spec=query.Query),
+            {},
+            "default",
+            1,
+            transformation_context={"k": "v"},
+            n_processes=4,
+        )
+
+        # Assert
+        assert result is mock_write_training_dataset.return_value
+        kwargs = mock_write_training_dataset.call_args.kwargs
+        assert kwargs["transformation_context"] == {"k": "v"}
+        assert kwargs["training_dataset_version"] == 1
+
+    def test_write_training_dataset_writes_fit_and_transform_result(self, mocker):
+        # The writer receives the dataset returned by
+        # TransformationFunctionEngine._fit_and_transform; no transformation is
+        # applied at write time.
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine.spark.Engine._write_options")
+        mocker.patch("hsfs.engine.spark.Engine._convert_to_default_dataframe")
+        mock_spark_engine_write_training_dataset_single = mocker.patch(
+            "hsfs.engine.spark.Engine._write_training_dataset_single"
+        )
+        transformed_dataset = mocker.Mock()
+        mocker.patch(
+            "hsfs.core.transformation_function_engine.TransformationFunctionEngine._fit_and_transform",
+            return_value=transformed_dataset,
+        )
+        mock_feature_view = mocker.patch("hsfs.feature_view.FeatureView")
+
+        spark_engine = spark.Engine()
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={},
+            location="",
+        )
+
+        # Act
+        spark_engine._write_training_dataset(
+            training_dataset=td,
+            query_obj=mocker.Mock(spec=query.Query),
+            user_write_options={},
+            save_mode=None,
+            read_options={},
+            feature_view_obj=mock_feature_view,
+            to_df=True,
+        )
+
+        # Assert
+        args = mock_spark_engine_write_training_dataset_single.call_args[0]
+        assert args[0] is transformed_dataset
+
+    def test_write_training_dataset_splits_writes_fit_and_transform_result(
+        self, mocker
+    ):
+        # The cached raw splits are handed to _fit_and_transform as one
+        # dictionary (with the training dataset version, so backend statistics
+        # can be used); the writer receives the transformed frames.
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine.spark.Engine._write_options")
+        mock_spark_engine_write_training_dataset_splits = mocker.patch(
+            "hsfs.engine.spark.Engine._write_training_dataset_splits"
+        )
+        train_split_df = mocker.Mock()
+        test_split_df = mocker.Mock()
+        mocker.patch(
+            "hsfs.engine.spark.Engine._split_df",
+            return_value={"train": train_split_df, "test": test_split_df},
+        )
+        transformed_splits = {"train": mocker.Mock(), "test": mocker.Mock()}
+        mock_fit_and_transform = mocker.patch(
+            "hsfs.core.transformation_function_engine.TransformationFunctionEngine._fit_and_transform",
+            return_value=transformed_splits,
+        )
+        mock_feature_view = mocker.patch("hsfs.feature_view.FeatureView")
+
+        spark_engine = spark.Engine()
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={"train": 0.8, "test": 0.2},
+            train_split="train",
+            location="",
+        )
+
+        # Act
+        spark_engine._write_training_dataset(
+            training_dataset=td,
+            query_obj=mocker.Mock(spec=query.Query),
+            user_write_options={},
+            save_mode=None,
+            read_options={},
+            feature_view_obj=mock_feature_view,
+            to_df=True,
+            training_dataset_version=7,
+        )
+
+        # Assert
+        raw_splits = mock_fit_and_transform.call_args[0][2]
+        assert raw_splits["train"] is train_split_df.cache.return_value
+        assert raw_splits["test"] is test_split_df.cache.return_value
+        assert mock_fit_and_transform.call_args.kwargs["training_dataset_version"] == 7
+        split_frames = mock_spark_engine_write_training_dataset_splits.call_args[0][1]
+        assert split_frames is transformed_splits
+
     def test_write_training_dataset_to_df(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hsfs.engine._get_type", return_value="python")
@@ -3503,31 +3649,12 @@ class TestSpark:
 
         spark_engine = spark.Engine()
 
-        @udf(int)
-        def plus_one(col1):
-            return col1 + 1
-
-        tf = transformation_function.TransformationFunction(
-            featurestore_id=99,
-            hopsworks_udf=plus_one,
-            transformation_type=TransformationType.MODEL_DEPENDENT,
-        )
-
-        f = training_dataset_feature.TrainingDatasetFeature(
-            name="col_0", type=IntegerType(), index=0
-        )
-        f1 = training_dataset_feature.TrainingDatasetFeature(
-            name="col_1", type=StringType(), index=1
-        )
-        features = [f, f1]
-
         td = training_dataset.TrainingDataset(
             name="test",
             version=1,
             data_format="CSV",
             featurestore_id=99,
             splits={},
-            features=features,
         )
 
         # Act
@@ -3537,7 +3664,6 @@ class TestSpark:
             write_options=None,
             save_mode=None,
             to_df=False,
-            transformation_functions=[tf("col_0")],
         )
 
         # Assert
@@ -3553,36 +3679,12 @@ class TestSpark:
 
         spark_engine = spark.Engine()
 
-        @udf(int)
-        def plus_one(col1):
-            return col1 + 1
-
-        tf = transformation_function.TransformationFunction(
-            featurestore_id=99,
-            hopsworks_udf=plus_one,
-            transformation_type=TransformationType.MODEL_DEPENDENT,
-        )
-
-        transformation_fn_dict = {}
-
-        transformation_fn_dict["col_0"] = tf
-
-        f = training_dataset_feature.TrainingDatasetFeature(
-            name="col_0", type=IntegerType(), index=0
-        )
-        f1 = training_dataset_feature.TrainingDatasetFeature(
-            name="col_1", type=StringType(), index=1
-        )
-        features = [f, f1]
-
         td = training_dataset.TrainingDataset(
             name="test",
             version=1,
             data_format="CSV",
             featurestore_id=99,
             splits={},
-            transformation_functions=transformation_fn_dict,
-            features=features,
         )
 
         # Act
@@ -3592,7 +3694,6 @@ class TestSpark:
             write_options=None,
             save_mode=None,
             to_df=True,
-            transformation_functions=[tf("col_0")],
         )
 
         # Assert
@@ -3602,29 +3703,16 @@ class TestSpark:
     def test_write_training_dataset_single(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
-        mock_transformation_function_engine_apply_transformation_functions = mocker.patch(
-            "hsfs.core.transformation_function_engine.TransformationFunctionEngine._apply_transformation_functions"
-        )
         mock_spark_engine_setup_storage_connector = mocker.patch(
             "hsfs.engine.spark.Engine._setup_storage_connector"
         )
 
-        @udf(int)
-        def add_one(feature):
-            return feature + 1
-
-        tf = transformation_function.TransformationFunction(
-            featurestore_id=99,
-            hopsworks_udf=add_one,
-            transformation_type=TransformationType.MODEL_DEPENDENT,
-        )
-
         spark_engine = spark.Engine()
+        feature_dataframe = mocker.Mock()
 
         # Act
         spark_engine._write_training_dataset_single(
-            transformation_functions=[tf],
-            feature_dataframe=pd.DataFrame({"feature": [1]}),
+            feature_dataframe=feature_dataframe,
             storage_connector=None,
             data_format="csv",
             write_options={},
@@ -3634,44 +3722,23 @@ class TestSpark:
         )
 
         # Assert
-        assert (
-            mock_transformation_function_engine_apply_transformation_functions.call_count
-            == 1
-        )
         assert mock_spark_engine_setup_storage_connector.call_count == 1
-        assert (
-            mock_transformation_function_engine_apply_transformation_functions.return_value.write.format.call_args[
-                0
-            ][0]
-            == "csv"
-        )
+        assert feature_dataframe.write.format.call_args[0][0] == "csv"
+        assert feature_dataframe.unpersist.call_count == 1
 
     def test_write_training_dataset_single_tsv(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
-        mock_transformation_function_engine_apply_transformation_functions = mocker.patch(
-            "hsfs.core.transformation_function_engine.TransformationFunctionEngine._apply_transformation_functions"
-        )
         mock_spark_engine_setup_storage_connector = mocker.patch(
             "hsfs.engine.spark.Engine._setup_storage_connector"
         )
 
-        @udf(int)
-        def add_one(feature):
-            return feature + 1
-
-        tf = transformation_function.TransformationFunction(
-            featurestore_id=99,
-            hopsworks_udf=add_one,
-            transformation_type=TransformationType.MODEL_DEPENDENT,
-        )
-
         spark_engine = spark.Engine()
+        feature_dataframe = mocker.Mock()
 
         # Act
         spark_engine._write_training_dataset_single(
-            transformation_functions=[tf],
-            feature_dataframe=pd.DataFrame({"feature": [1]}),
+            feature_dataframe=feature_dataframe,
             storage_connector=None,
             data_format="tsv",
             write_options={},
@@ -3681,44 +3748,22 @@ class TestSpark:
         )
 
         # Assert
-        assert (
-            mock_transformation_function_engine_apply_transformation_functions.call_count
-            == 1
-        )
         assert mock_spark_engine_setup_storage_connector.call_count == 1
-        assert (
-            mock_transformation_function_engine_apply_transformation_functions.return_value.write.format.call_args[
-                0
-            ][0]
-            == "csv"
-        )
+        assert feature_dataframe.write.format.call_args[0][0] == "csv"
 
     def test_write_training_dataset_single_to_df(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
-        mock_transformation_function_engine_apply_transformation_functions = mocker.patch(
-            "hsfs.core.transformation_function_engine.TransformationFunctionEngine._apply_transformation_functions"
-        )
         mock_spark_engine_setup_storage_connector = mocker.patch(
             "hsfs.engine.spark.Engine._setup_storage_connector"
         )
 
-        @udf(int)
-        def add_one(feature):
-            return feature + 1
-
-        tf = transformation_function.TransformationFunction(
-            featurestore_id=99,
-            hopsworks_udf=add_one,
-            transformation_type=TransformationType.MODEL_DEPENDENT,
-        )
-
         spark_engine = spark.Engine()
+        feature_dataframe = mocker.Mock()
 
         # Act
-        spark_engine._write_training_dataset_single(
-            transformation_functions=[tf],
-            feature_dataframe=pd.DataFrame({"feature": [1]}),
+        result = spark_engine._write_training_dataset_single(
+            feature_dataframe=feature_dataframe,
             storage_connector=None,
             data_format=None,
             write_options={},
@@ -3728,10 +3773,7 @@ class TestSpark:
         )
 
         # Assert
-        assert (
-            mock_transformation_function_engine_apply_transformation_functions.call_count
-            == 1
-        )
+        assert result is feature_dataframe
         assert mock_spark_engine_setup_storage_connector.call_count == 0
 
     def test_read_none_data_format(self, mocker):
@@ -5621,12 +5663,110 @@ class TestSpark:
 
         # Act
         result = spark_engine._apply_transformation_function(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=TransformationExecutionDAG(fv.transformation_functions),
             dataset=spark_df,
         )
         # Assert
         assert result.schema == expected_spark_df.schema
         assert result.collect() == expected_spark_df.collect()
+
+    def test_apply_transformation_function_overwrite_feature(self, mocker):
+        # An unaliased single-output UDF named after its input feature
+        # produces an output column with that same name (an in-place overwrite,
+        # function_name == output_column_names[0]). The transformed column must
+        # survive and move to the end of the frame (matching the python engine
+        # and the documented contract), not be removed by the final name-based
+        # drop.
+        mocker.patch("hopsworks_common.client._get_instance")
+        hopsworks_common.connection._hsfs_engine_type = "spark"
+        spark_engine = spark.Engine()
+
+        @udf(int, mode="default")
+        def col_0(col_0):
+            return col_0 + 1
+
+        f = feature.Feature(name="col_0", type=IntegerType(), index=0)
+        f1 = feature.Feature(name="col_1", type=StringType(), index=1)
+        f2 = feature.Feature(name="col_2", type=BooleanType(), index=2)
+        features = [f, f1, f2]
+        fg1 = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=features,
+            id=11,
+            stream=False,
+        )
+        fv = feature_view.FeatureView(
+            name="test",
+            featurestore_id=99,
+            query=fg1.select_all(),
+            transformation_functions=[col_0],
+        )
+
+        d = {"col_0": [1, 2], "col_1": ["test_1", "test_2"], "col_2": [True, False]}
+        df = pd.DataFrame(data=d)
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+
+        # The overwritten feature is dropped from its original position and the
+        # transformed column is appended at the end.
+        expected_df = pd.DataFrame(
+            data={
+                "col_1": ["test_1", "test_2"],
+                "col_2": [True, False],
+                "col_0": [2, 3],
+            }
+        )
+        expected_spark_df = spark_engine._spark_session.createDataFrame(expected_df)
+
+        result = spark_engine._apply_transformation_function(
+            execution_graph=TransformationExecutionDAG(fv.transformation_functions),
+            dataset=spark_df,
+        )
+
+        assert result.schema == expected_spark_df.schema
+        assert result.collect() == expected_spark_df.collect()
+
+    def test_get_udf_spark_snapshots_statistics_per_call(self):
+        # Spark batch UDFs serialize lazily, so _get_udf() must return a wrapper
+        # carrying its own immutable statistics snapshot. If a cached Spark
+        # wrapper's scope were mutated in place on every call, a later _get_udf()
+        # with different statistics (e.g. a full-dataset mean fit for a later
+        # training-dataset version) would silently change the statistics an
+        # already-returned train-split UDF computes with, causing train/test
+        # split data leakage for an overwrite TF.
+        spark.Engine()  # ensure an active SparkSession for pandas_udf
+
+        @udf(float, mode="pandas")
+        def col_0(col_0, statistics=TransformationStatistics("col_0")):  # noqa: B008
+            return col_0 + statistics.col_0.mean
+
+        tf = transformation_function.TransformationFunction(
+            99,
+            hopsworks_udf=col_0("col_0"),
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+        hudf = tf.hopsworks_udf
+
+        # Fit train-split statistics and obtain the Spark UDF.
+        hudf.transformation_statistics = [
+            FeatureDescriptiveStatistics(feature_name="col_0", mean=49.0)
+        ]
+        udf_train = hudf._get_udf(engine_type="spark", online=False)
+
+        # A later training-dataset step fits a full-dataset mean on the same TF.
+        hudf.transformation_statistics = [
+            FeatureDescriptiveStatistics(feature_name="col_0", mean=50.5)
+        ]
+        udf_full = hudf._get_udf(engine_type="spark", online=False)
+
+        # The earlier UDF must still carry the train-split mean (49.0); the two
+        # are independent snapshots, not one shared/mutated wrapper.
+        assert udf_train is not udf_full
+        assert udf_train.func.__globals__["statistics"].col_0.mean == 49.0
+        assert udf_full.func.__globals__["statistics"].col_0.mean == 50.5
 
     def test_apply_transformation_function_single_output_udf_python_mode(self, mocker):
         # Arrange
@@ -5682,7 +5822,7 @@ class TestSpark:
 
         # Act
         result = spark_engine._apply_transformation_function(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=TransformationExecutionDAG(fv.transformation_functions),
             dataset=spark_df,
         )
         # Assert
@@ -5743,7 +5883,7 @@ class TestSpark:
 
         # Act
         result = spark_engine._apply_transformation_function(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=TransformationExecutionDAG(fv.transformation_functions),
             dataset=spark_df,
         )
         # Assert
@@ -5807,7 +5947,7 @@ class TestSpark:
 
         # Act
         result = spark_engine._apply_transformation_function(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=TransformationExecutionDAG(fv.transformation_functions),
             dataset=spark_df,
             transformation_context={"test": 20},
         )
@@ -5872,7 +6012,7 @@ class TestSpark:
 
         # Act
         result = spark_engine._apply_transformation_function(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=TransformationExecutionDAG(fv.transformation_functions),
             dataset=spark_df,
         )
         # Assert
@@ -5936,7 +6076,7 @@ class TestSpark:
 
         # Act
         result = spark_engine._apply_transformation_function(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=TransformationExecutionDAG(fv.transformation_functions),
             dataset=spark_df,
         )
         # Assert
@@ -6000,7 +6140,7 @@ class TestSpark:
 
         # Act
         result = spark_engine._apply_transformation_function(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=TransformationExecutionDAG(fv.transformation_functions),
             dataset=spark_df,
         )
         # Assert
@@ -6065,7 +6205,7 @@ class TestSpark:
 
         # Act
         result = spark_engine._apply_transformation_function(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=TransformationExecutionDAG(fv.transformation_functions),
             dataset=spark_df,
         )
         # Assert
@@ -6130,7 +6270,7 @@ class TestSpark:
 
         # Act
         result = spark_engine._apply_transformation_function(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=TransformationExecutionDAG(fv.transformation_functions),
             dataset=spark_df,
         )
         # Assert
@@ -6195,7 +6335,7 @@ class TestSpark:
 
         # Act
         result = spark_engine._apply_transformation_function(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=TransformationExecutionDAG(fv.transformation_functions),
             dataset=spark_df,
         )
         # Assert
@@ -6259,7 +6399,7 @@ class TestSpark:
 
         # Act
         result = spark_engine._apply_transformation_function(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=TransformationExecutionDAG(fv.transformation_functions),
             dataset=spark_df,
         )
         # Assert
@@ -6323,7 +6463,7 @@ class TestSpark:
 
         # Act
         result = spark_engine._apply_transformation_function(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=TransformationExecutionDAG(fv.transformation_functions),
             dataset=spark_df,
         )
         # Assert
@@ -6387,7 +6527,7 @@ class TestSpark:
 
         # Act
         result = spark_engine._apply_transformation_function(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=TransformationExecutionDAG(fv.transformation_functions),
             dataset=spark_df,
         )
         # Assert
@@ -6450,7 +6590,7 @@ class TestSpark:
 
         # Act
         result = spark_engine._apply_transformation_function(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=TransformationExecutionDAG(fv.transformation_functions),
             dataset=spark_df,
         )
         # Assert
@@ -6513,7 +6653,7 @@ class TestSpark:
 
         # Act
         result = spark_engine._apply_transformation_function(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=TransformationExecutionDAG(fv.transformation_functions),
             dataset=spark_df,
         )
         # Assert
@@ -6576,7 +6716,7 @@ class TestSpark:
 
         # Act
         result = spark_engine._apply_transformation_function(
-            transformation_functions=fv.transformation_functions,
+            execution_graph=TransformationExecutionDAG(fv.transformation_functions),
             dataset=spark_df,
         )
         # Assert

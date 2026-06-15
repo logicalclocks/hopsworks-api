@@ -869,6 +869,7 @@ class TestFeatureGroup:
             validation_options={"save_report": True},
             transformation_context=None,
             transform=True,
+            n_processes=None,
         )
         mock_commit_details.assert_called_once()
         mock_stats_engine.assert_called_once()
@@ -919,6 +920,7 @@ class TestFeatureGroup:
             validation_options={"save_report": False},
             transformation_context=None,
             transform=True,
+            n_processes=None,
         )
         mock_commit_details.assert_called_once()
         mock_stats_engine.assert_called_once()
@@ -1337,10 +1339,11 @@ class TestExternalFeatureGroup:
             == "Updated expectation suite attached to Feature Group, edit it at"
         )
 
-    def test_from_response_json_transformation_functions(self, backend_fixtures):
+    def test_from_response_json_transformation_functions(
+        self, backend_fixtures, mocker
+    ):
         # Arrange
         json = backend_fixtures["feature_group"]["get_transformations"]["response"]
-
         # Act
         fg = feature_group.FeatureGroup.from_response_json(json)
 
@@ -1540,11 +1543,12 @@ class TestFeatureGroupExecuteOdts:
         result_df = fg.execute_odts(data=df_test_data, online=False)
 
         mock_apply.assert_called_with(
-            transformation_functions=fg.transformation_functions,
+            execution_graph=fg._transformation_function_execution_dag,
             data=df_test_data,
             online=False,
             transformation_context=None,
             request_parameters=None,
+            n_processes=None,
         )
         pd.testing.assert_frame_equal(result_df, df_test_data)
 
@@ -1553,13 +1557,138 @@ class TestFeatureGroupExecuteOdts:
         result_dict = fg.execute_odts(data=dict_test_data, online=True)
 
         mock_apply.assert_called_with(
-            transformation_functions=fg.transformation_functions,
+            execution_graph=fg._transformation_function_execution_dag,
             data=dict_test_data,
             online=True,
             transformation_context=None,
             request_parameters=None,
+            n_processes=None,
         )
         assert result_dict == dict_test_data
+
+    def test_chained_odt_kept_intermediate_does_not_warn_ambiguous(self, mocker):
+        # Kept chained-ODT outputs land in the feature group schema as
+        # on-demand features. They are not raw features, so consuming one in a
+        # downstream transformation must NOT trip the raw-name-ambiguity
+        # warning. The ambiguity check only considers raw feature names.
+        import warnings
+
+        from hsfs.feature import Feature
+        from hsfs.hopsworks_udf import udf
+        from hsfs.transformation_function import (
+            TransformationFunction,
+            TransformationType,
+        )
+
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        @udf(float)
+        def monthly_to_quarterly(mrr_usd):
+            return mrr_usd * 3
+
+        @udf(float)
+        def quarterly_to_annual(qrr_usd):
+            return qrr_usd * 4
+
+        def odt(hopsworks_udf):
+            return TransformationFunction(
+                featurestore_id=99,
+                hopsworks_udf=hopsworks_udf,
+                transformation_type=TransformationType.ON_DEMAND,
+            )
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            fg = feature_group.FeatureGroup(
+                name="subscription_metrics",
+                version=1,
+                featurestore_id=99,
+                primary_key=["account_id"],
+                foreign_key=[],
+                partition_key=[],
+                transformation_functions=[
+                    odt(monthly_to_quarterly("mrr_usd").alias("qrr_usd")),
+                    odt(quarterly_to_annual("qrr_usd").alias("arr_usd")),
+                ],
+                features=[
+                    Feature("account_id"),
+                    Feature("mrr_usd"),
+                    Feature("qrr_usd", on_demand=True),
+                    Feature("arr_usd", on_demand=True),
+                ],
+            )
+
+        ambiguity_warnings = [
+            str(w.message)
+            for w in caught
+            if "both a feature of this entity" in str(w.message)
+        ]
+        assert not ambiguity_warnings, (
+            f"kept chained on-demand outputs must not warn: {ambiguity_warnings}"
+        )
+        # The chain is still wired: quarterly_to_annual depends on the
+        # monthly_to_quarterly output.
+        dag = fg._transformation_function_execution_dag
+        output_order = [tf.hopsworks_udf.output_column_names for tf in dag.nodes]
+        assert output_order.index(["qrr_usd"]) < output_order.index(["arr_usd"])
+
+    def test_chained_odt_raw_feature_name_collision_still_warns(self, mocker):
+        # The complement of the case above: when a *raw* (non-on-demand)
+        # feature genuinely shares a name with another transformation's output,
+        # the ambiguity warning must still fire. Narrowing the schema set to
+        # raw features does not silence a real collision.
+        import warnings
+
+        from hsfs.feature import Feature
+        from hsfs.hopsworks_udf import udf
+        from hsfs.transformation_function import (
+            TransformationFunction,
+            TransformationType,
+        )
+
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        @udf(int)
+        def normalize(amount):
+            return amount + 1
+
+        @udf(int)
+        def scale(currency):
+            return currency + 1
+
+        def odt(hopsworks_udf):
+            return TransformationFunction(
+                featurestore_id=99,
+                hopsworks_udf=hopsworks_udf,
+                transformation_type=TransformationType.ON_DEMAND,
+            )
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            feature_group.FeatureGroup(
+                name="collision_fg",
+                version=1,
+                featurestore_id=99,
+                primary_key=["pk"],
+                foreign_key=[],
+                partition_key=[],
+                transformation_functions=[
+                    odt(normalize("amount").alias("currency")),
+                    odt(scale("currency")),
+                ],
+                # `currency` is a genuine raw feature here (on_demand=False),
+                # so consuming it after another TF overwrote the name is the
+                # real migration hazard the warning exists for.
+                features=[
+                    Feature("pk"),
+                    Feature("amount"),
+                    Feature("currency"),
+                ],
+            )
+
+        assert any("both a feature of this entity" in str(w.message) for w in caught), (
+            "a raw feature colliding with a transformation output must still warn"
+        )
 
     def test_execute_odts_with_transformation_context_and_request_parameters(
         self, mocker
@@ -1610,11 +1739,12 @@ class TestFeatureGroupExecuteOdts:
         )
 
         mock_apply.assert_called_with(
-            transformation_functions=fg.transformation_functions,
+            execution_graph=fg._transformation_function_execution_dag,
             data=df_test_data,
             online=False,
             transformation_context=context,
             request_parameters=None,
+            n_processes=None,
         )
         pd.testing.assert_frame_equal(result_df, df_test_data)
 
@@ -1625,11 +1755,12 @@ class TestFeatureGroupExecuteOdts:
         )
 
         mock_apply.assert_called_with(
-            transformation_functions=fg.transformation_functions,
+            execution_graph=fg._transformation_function_execution_dag,
             data=dict_test_data,
             online=True,
             transformation_context=None,
             request_parameters=request_params,
+            n_processes=None,
         )
         assert result_dict == dict_test_data
 
@@ -1721,11 +1852,12 @@ class TestFeatureGroupExecuteOdts:
 
         # Assert - online
         mock_apply.assert_called_with(
-            transformation_functions=fg.transformation_functions,
+            execution_graph=fg._transformation_function_execution_dag,
             data=online_test_data,
             online=True,
             transformation_context=None,
             request_parameters=None,
+            n_processes=None,
         )
 
         # Act - offline
@@ -1733,11 +1865,12 @@ class TestFeatureGroupExecuteOdts:
 
         # Assert - offline
         mock_apply.assert_called_with(
-            transformation_functions=fg.transformation_functions,
+            execution_graph=fg._transformation_function_execution_dag,
             data=offline_test_data,
             online=False,
             transformation_context=None,
             request_parameters=None,
+            n_processes=None,
         )
 
 
@@ -1986,3 +2119,79 @@ class TestFeatureGroupPartitionedBy:
     def test_partitioned_by_event_time_collision(self):
         with pytest.raises(FeatureStoreException, match="collides with a"):
             _fg_with_partitioned_by(partitioned_by=["year"], event_time="year")
+
+
+class TestFeatureGroupVisualize:
+    def test_visualize_transformations(self, mocker):
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_instance")
+        mocker.patch("hsfs.core.feature_group_engine.FeatureGroupEngine")
+
+        from hsfs import transformation_function
+        from hsfs.hopsworks_udf import udf
+
+        @udf(int)
+        def add_one(col1):
+            return col1 + 1
+
+        tf1 = transformation_function.TransformationFunction(
+            99,
+            hopsworks_udf=add_one,
+            transformation_type=TransformationType.ON_DEMAND,
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="test_fg",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=[],
+            id=10,
+            stream=False,
+            transformation_functions=[tf1],
+        )
+
+        # visualize() returns None, so verify via _to_mermaid on the DAG
+        src = fg._transformation_function_execution_dag._to_mermaid()
+        assert "add_one" in src
+        assert "Input Features" in src
+        assert "Output Features" in src
+        # Also verify visualize_transformations doesn't raise
+        fg.visualize_transformations(mode="text")
+
+    def test_visualize_transformations_no_tfs(self, mocker):
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_instance")
+        mocker.patch("hsfs.core.feature_group_engine.FeatureGroupEngine")
+
+        fg = feature_group.FeatureGroup(
+            name="test_fg",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=[],
+            id=10,
+            stream=False,
+        )
+
+        with pytest.raises(FeatureStoreException, match="No transformation functions"):
+            fg.visualize_transformations()
+
+    def test_visualize_transformations_external_feature_group(
+        self, mocker, backend_fixtures
+    ):
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_instance")
+
+        json = backend_fixtures["external_feature_group"]["get"]["response"]
+        external_fg = feature_group.ExternalFeatureGroup.from_response_json(json)
+
+        # ExternalFeatureGroup never builds an execution DAG; the base-class
+        # default must produce the clean error, not an AttributeError.
+        with pytest.raises(FeatureStoreException, match="No transformation functions"):
+            external_fg.visualize_transformations()
