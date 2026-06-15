@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from hopsworks_apigen import also_available_as
+from hopsworks_apigen import also_available_as, deprecated
 from hopsworks_common.client import external, hopsworks, istio
 from hopsworks_common.constants import HOSTS
 
@@ -67,8 +67,13 @@ def _get_instance() -> hopsworks.Client | external.Client:
     return _client
 
 
+@deprecated("hopsworks.client._get_instance", public_name="hopsworks.client.get_instance")
 def get_instance() -> hopsworks.Client | external.Client:
-    """Backward-compatible alias for ``_get_instance``."""
+    """Backward-compatible alias for ``_get_instance``.
+
+    Returns:
+        The active Hopsworks or external client singleton.
+    """
     return _get_instance()
 
 
