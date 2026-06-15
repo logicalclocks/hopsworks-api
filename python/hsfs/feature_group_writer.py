@@ -60,6 +60,7 @@ class FeatureGroupWriter:
         validation_options: dict[str, Any] | None = None,
         transformation_context: dict[str, Any] = None,
         transform: bool = True,
+        n_processes: int | None = None,
     ) -> tuple[Job | None, ValidationReport | None]:
         """Insert one batch of a multi-part insert into the feature group.
 
@@ -75,6 +76,10 @@ class FeatureGroupWriter:
             validation_options: Additional data-validation options as key-value pairs.
             transformation_context: Context variables passed to the feature group's transformation functions.
             transform: Whether to apply the feature group's on-demand transformations before writing.
+            n_processes:
+                Number of worker processes for executing chained transformation functions on the input DataFrame.
+                Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
+                In the Spark engine the transformations are pushed down to Spark and this parameter is ignored.
 
         Returns:
             A tuple of the materialization job (if any) and the validation report (if data validation ran).
@@ -92,6 +97,7 @@ class FeatureGroupWriter:
             validation_options={"fetch_expectation_suite": False, **validation_options},
             transformation_context=transformation_context,
             transform=transform,
+            n_processes=n_processes,
         )
 
     def __exit__(self, exc_type, exc_value, exc_tb):
