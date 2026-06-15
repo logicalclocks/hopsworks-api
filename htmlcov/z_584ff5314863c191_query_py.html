@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage for python/hsfs/constructor/query.py: 79%</title>
+    <title>Coverage for python/hsfs/constructor/query.py: 80%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_c827f16f.png">
     <link rel="stylesheet" href="style_cb_4667309f.css" type="text/css">
     <script src="coverage_html_cb_dd2e7eb5.js" defer></script>
@@ -12,7 +12,7 @@
     <div class="content">
         <h1>
             <span class="text">Coverage for </span><b>python<span class="sep">/</span>hsfs<span class="sep">/</span>constructor<span class="sep">/</span>query.py</b>:
-            <span class="pc_cov">79%</span>
+            <span class="pc_cov">80%</span>
         </h1>
         <aside id="help_panel_wrapper">
             <input id="help_panel_state" type="checkbox">
@@ -55,8 +55,8 @@
         </aside>
         <h2>
             <span class="text">351 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">278<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">73<span class="text"> missing</span></button>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">281<span class="text"> run</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">70<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">6<span class="text"> excluded</span></button>
         </h2>
         <p class="text">
@@ -65,7 +65,7 @@
             <a id="nextFileLink" class="nav" href="z_584ff5314863c191_serving_prepared_statement_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.14.1">coverage.py v7.14.1</a>,
-            created at 2026-06-14 19:25 +0000
+            created at 2026-06-15 07:53 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -804,21 +804,21 @@
     <p class="mis show_mis"><span class="n"><a id="t722" href="#t722">722</a></span><span class="t">        <span class="key">return</span> <span class="nam">json</span><span class="op">.</span><span class="nam">dumps</span><span class="op">(</span><span class="nam">self</span><span class="op">,</span> <span class="nam">cls</span><span class="op">=</span><span class="nam">util</span><span class="op">.</span><span class="nam">Encoder</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t723" href="#t723">723</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t724" href="#t724">724</a></span><span class="t">    <span class="key">def</span> <span class="nam">to_dict</span><span class="op">(</span><span class="nam">self</span><span class="op">)</span> <span class="op">-></span> <span class="nam">dict</span><span class="op">[</span><span class="nam">str</span><span class="op">,</span> <span class="nam">Any</span><span class="op">]</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t725" href="#t725">725</a></span><span class="t">        <span class="nam">payload</span><span class="op">:</span> <span class="nam">dict</span><span class="op">[</span><span class="nam">str</span><span class="op">,</span> <span class="nam">Any</span><span class="op">]</span> <span class="op">=</span> <span class="op">{</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t726" href="#t726">726</a></span><span class="t">            <span class="str">"featureStoreName"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_feature_store_name</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t727" href="#t727">727</a></span><span class="t">            <span class="str">"featureStoreId"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_feature_store_id</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t728" href="#t728">728</a></span><span class="t">            <span class="str">"leftFeatureGroup"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_left_feature_group</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t729" href="#t729">729</a></span><span class="t">            <span class="str">"leftFeatures"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_left_features</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t730" href="#t730">730</a></span><span class="t">            <span class="str">"leftFeatureGroupStartTime"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_left_feature_group_start_time</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t731" href="#t731">731</a></span><span class="t">            <span class="str">"leftFeatureGroupEndTime"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_left_feature_group_end_time</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t732" href="#t732">732</a></span><span class="t">            <span class="str">"joins"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_joins</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t733" href="#t733">733</a></span><span class="t">            <span class="str">"filter"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_filter</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t734" href="#t734">734</a></span><span class="t">            <span class="str">"limit"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_limit</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t735" href="#t735">735</a></span><span class="t">            <span class="str">"hiveEngine"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_python_engine</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t736" href="#t736">736</a></span><span class="t">        <span class="op">}</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t737" href="#t737">737</a></span><span class="t">        <span class="key">if</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_lookback</span> <span class="key">is</span> <span class="key">not</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t725" href="#t725">725</a></span><span class="t">        <span class="nam">payload</span><span class="op">:</span> <span class="nam">dict</span><span class="op">[</span><span class="nam">str</span><span class="op">,</span> <span class="nam">Any</span><span class="op">]</span> <span class="op">=</span> <span class="op">{</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t726" href="#t726">726</a></span><span class="t">            <span class="str">"featureStoreName"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_feature_store_name</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t727" href="#t727">727</a></span><span class="t">            <span class="str">"featureStoreId"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_feature_store_id</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t728" href="#t728">728</a></span><span class="t">            <span class="str">"leftFeatureGroup"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_left_feature_group</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t729" href="#t729">729</a></span><span class="t">            <span class="str">"leftFeatures"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_left_features</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t730" href="#t730">730</a></span><span class="t">            <span class="str">"leftFeatureGroupStartTime"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_left_feature_group_start_time</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t731" href="#t731">731</a></span><span class="t">            <span class="str">"leftFeatureGroupEndTime"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_left_feature_group_end_time</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t732" href="#t732">732</a></span><span class="t">            <span class="str">"joins"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_joins</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t733" href="#t733">733</a></span><span class="t">            <span class="str">"filter"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_filter</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t734" href="#t734">734</a></span><span class="t">            <span class="str">"limit"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_limit</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t735" href="#t735">735</a></span><span class="t">            <span class="str">"hiveEngine"</span><span class="op">:</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_python_engine</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t736" href="#t736">736</a></span><span class="t">        <span class="op">}</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t737" href="#t737">737</a></span><span class="t">        <span class="key">if</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_lookback</span> <span class="key">is</span> <span class="key">not</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t738" href="#t738">738</a></span><span class="t">            <span class="nam">payload</span><span class="op">[</span><span class="str">"lookback"</span><span class="op">]</span> <span class="op">=</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_lookback</span><span class="op">.</span><span class="nam">to_dict</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t739" href="#t739">739</a></span><span class="t">        <span class="key">return</span> <span class="nam">payload</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t739" href="#t739">739</a></span><span class="t">        <span class="key">return</span> <span class="nam">payload</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t740" href="#t740">740</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t741" href="#t741">741</a></span><span class="t">    <span class="op">@</span><span class="nam">classmethod</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t742" href="#t742">742</a></span><span class="t">    <span class="key">def</span> <span class="nam">from_response_json</span><span class="op">(</span><span class="nam">cls</span><span class="op">,</span> <span class="nam">json_dict</span><span class="op">:</span> <span class="nam">dict</span><span class="op">[</span><span class="nam">str</span><span class="op">,</span> <span class="nam">Any</span><span class="op">]</span><span class="op">)</span> <span class="op">-></span> <span class="nam">Query</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
@@ -1249,7 +1249,7 @@
             <a class="nav" href="z_584ff5314863c191_serving_prepared_statement_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.14.1">coverage.py v7.14.1</a>,
-            created at 2026-06-14 19:25 +0000
+            created at 2026-06-15 07:53 +0000
         </p>
     </div>
 </footer>
