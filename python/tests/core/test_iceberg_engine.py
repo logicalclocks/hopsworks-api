@@ -100,8 +100,8 @@ class TestIcebergEngine:
         # Act
         options = iceberg_engine._setup_iceberg_read_opts(fg_alias, "location")
 
-        # Assert
-        assert options == {}
+        # Assert: vectorization is disabled to avoid the executor JVM crash
+        assert options == {"vectorization-enabled": "false"}
 
     def test_setup_iceberg_read_opts_time_travel_query(self, mocker):
         # Arrange
@@ -112,7 +112,10 @@ class TestIcebergEngine:
         options = iceberg_engine._setup_iceberg_read_opts(fg_alias, "location")
 
         # Assert
-        assert options == {"as-of-timestamp": "1234567890000"}
+        assert options == {
+            "vectorization-enabled": "false",
+            "as-of-timestamp": "1234567890000",
+        }
 
     def test_setup_iceberg_read_opts_incremental_query(self, mocker):
         # Arrange
@@ -126,7 +129,11 @@ class TestIcebergEngine:
         options = iceberg_engine._setup_iceberg_read_opts(fg_alias, "location")
 
         # Assert
-        assert options == {"start-snapshot-id": "11", "end-snapshot-id": "22"}
+        assert options == {
+            "vectorization-enabled": "false",
+            "start-snapshot-id": "11",
+            "end-snapshot-id": "22",
+        }
 
     def test_setup_iceberg_read_opts_incremental_query_no_start_snapshot(self, mocker):
         # Arrange
@@ -156,7 +163,26 @@ class TestIcebergEngine:
         )
 
         # Assert
-        assert options == {"split-size": "128", "other": "value"}
+        assert options == {
+            "vectorization-enabled": "false",
+            "split-size": "128",
+            "other": "value",
+        }
+
+    def test_setup_iceberg_read_opts_user_can_override_vectorization(self, mocker):
+        # Arrange
+        iceberg_engine = _make_engine(mocker)
+        fg_alias = _make_alias()
+
+        # Act
+        options = iceberg_engine._setup_iceberg_read_opts(
+            fg_alias,
+            "location",
+            read_options={"vectorization-enabled": "true"},
+        )
+
+        # Assert: a user-provided read option still takes precedence
+        assert options == {"vectorization-enabled": "true"}
 
     def test_resolve_snapshot_id_at(self, mocker):
         # Arrange

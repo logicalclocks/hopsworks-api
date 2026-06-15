@@ -213,11 +213,14 @@ class IcebergEngine:
     ICEBERG_QUERY_TIME_TRAVEL_AS_OF_TIMESTAMP = "as-of-timestamp"
     ICEBERG_START_SNAPSHOT_ID = "start-snapshot-id"
     ICEBERG_END_SNAPSHOT_ID = "end-snapshot-id"
+    # The vectorized Arrow reader (Iceberg's shaded Arrow) segfaults the executor
+    # JVM under Deequ profiling, so reads force the row-based reader instead.
+    ICEBERG_VECTORIZATION_ENABLED = "vectorization-enabled"
     ICEBERG_DOT_PREFIX = "iceberg."
     ICEBERG_CATALOG_OPTION = "iceberg.catalog"
     ICEBERG_CATALOG_PROP_PREFIX = "iceberg.catalog."
     ICEBERG_CATALOG_TABLE_IDENTIFIER_OPTION = "iceberg.catalog.table-identifier"
-    SNAPSHOTS_METADATA_SUFFIX = "#snapshots"
+
     PYICEBERG_NAMESPACE = "hopsworks"
     APPEND = "append"
     # Snapshot operations that change data; metadata-only operations
@@ -584,23 +587,24 @@ class IcebergEngine:
         location: str,
         read_options: dict[str, Any] | None = None,
     ) -> dict[str, str]:
-        iceberg_options = {}
+        # The vectorized Arrow reader crashes the executor JVM (SIGSEGV in Iceberg's
+        # shaded Arrow) when the resulting DataFrame is profiled by Deequ, so force
+        # the row-based reader. A user-provided read option can still override this.
+        iceberg_options = {self.ICEBERG_VECTORIZATION_ENABLED: "false"}
         if iceberg_fg_alias.left_feature_group_end_timestamp is None and (
             iceberg_fg_alias.left_feature_group_start_timestamp is None
             or iceberg_fg_alias.left_feature_group_start_timestamp == 0
         ):
             # snapshot query latest state
-            iceberg_options = {}
+            pass
         elif (
             iceberg_fg_alias.left_feature_group_end_timestamp is not None
             and iceberg_fg_alias.left_feature_group_start_timestamp is None
         ):
             # snapshot query with end time; Iceberg expects epoch milliseconds
-            iceberg_options = {
-                self.ICEBERG_QUERY_TIME_TRAVEL_AS_OF_TIMESTAMP: str(
-                    iceberg_fg_alias.left_feature_group_end_timestamp
-                ),
-            }
+            iceberg_options[self.ICEBERG_QUERY_TIME_TRAVEL_AS_OF_TIMESTAMP] = str(
+                iceberg_fg_alias.left_feature_group_end_timestamp
+            )
         elif iceberg_fg_alias.left_feature_group_start_timestamp is not None:
             # incremental query; Iceberg only supports snapshot-id bounds,
             # so the wallclock bounds are resolved against the snapshot log
@@ -612,9 +616,7 @@ class IcebergEngine:
                     "Cannot run the incremental query: no Iceberg snapshot exists at or before "
                     f"the start time {iceberg_fg_alias.left_feature_group_start_timestamp}."
                 )
-            iceberg_options = {
-                self.ICEBERG_START_SNAPSHOT_ID: str(start_snapshot_id),
-            }
+            iceberg_options[self.ICEBERG_START_SNAPSHOT_ID] = str(start_snapshot_id)
             if iceberg_fg_alias.left_feature_group_end_timestamp is not None:
                 end_snapshot_id = self._resolve_snapshot_id_at(
                     location, iceberg_fg_alias.left_feature_group_end_timestamp
@@ -641,13 +643,31 @@ class IcebergEngine:
     def _read_snapshots(self, location: str) -> list[dict[str, Any]]:
         """Return the table's snapshot log, oldest first.
 
-        Reads the `snapshots` metadata table through the path-based metadata
-        table syntax, so it works without a configured catalog.
+        Reads directly from the Iceberg table object via the JVM HadoopTables
+        API so it works without Iceberg SQL extensions or a configured catalog.
+        The `#snapshots` path-based metadata table syntax requires SQL extensions
+        which may not be available in all Hopsworks Spark environments.
         """
-        snapshots_df = self._spark_session.read.format(self.ICEBERG_SPARK_FORMAT).load(
-            location + self.SNAPSHOTS_METADATA_SUFFIX
-        )
-        snapshots = [row.asDict(recursive=True) for row in snapshots_df.collect()]
+        if self._spark_context is None:
+            raise FeatureStoreException(
+                "Reading Iceberg snapshots is not supported in Spark Connect mode "
+                "because it requires JVM bridge access."
+            )
+        jvm = self._spark_context._jvm
+        table = jvm.org.apache.iceberg.hadoop.HadoopTables(
+            self._spark_context._jsc.hadoopConfiguration()
+        ).load(location)
+        snapshots = []
+        for snapshot in table.snapshots():
+            summary = dict(snapshot.summary())
+            snapshots.append(
+                {
+                    "committed_at": int(snapshot.timestampMillis()),
+                    "snapshot_id": int(snapshot.snapshotId()),
+                    "operation": snapshot.operation(),
+                    "summary": summary,
+                }
+            )
         snapshots.sort(key=lambda s: s["committed_at"])
         return snapshots
 
