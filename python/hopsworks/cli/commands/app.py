@@ -7,6 +7,9 @@ Streamlit apps use ``--path``; git-backed Streamlit apps use ``--git-url`` and
 ``--entrypoint-script``; custom apps use ``--entrypoint-command``. Use
 ``--app-base-path`` to mount the app at ``/`` or a subpath like ``/myapp``,
 and ``--readiness-probe-path`` to override the readiness probe when needed.
+Legacy apps that still depend on ``APP_BASE_URL_PATH`` should be migrated to
+``Root routing`` in the app settings UI once the app code no longer needs the
+legacy prefix behavior.
 """
 
 from __future__ import annotations

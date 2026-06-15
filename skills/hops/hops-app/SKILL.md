@@ -1,8 +1,9 @@
 ---
 name: hops-app
-description: Use when writing Streamlit or custom Python apps for Hopsworks or managing app
-  deployments. Auto-invoke when user wants to create a dashboard, deploy a Python app
-  to Hopsworks, configure app routing/readiness, or access the feature store from an app.
+description: Use when writing Streamlit or custom Python apps for Hopsworks, migrating
+  legacy apps off `APP_BASE_URL_PATH`, or managing app deployments. Auto-invoke when user
+  wants to create a dashboard, deploy a Python app to Hopsworks, configure app
+  routing/readiness, or access the feature store from an app.
   Input an app source + env + memory; output a running app and its URL.
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash
 ---
@@ -15,7 +16,7 @@ Hopsworks supports deploying **Streamlit** and **custom Python** applications as
 
 A Streamlit app is a **UI / consumer of the FTI pipelines**, not a pipeline itself. It reads features and predictions written by the feature, training, and inference pipelines (via the feature store, model registry, and online deployments) and presents them. It can also act as a thin online-inference front by downloading a model from the registry and predicting locally (an **embedded model**), avoiding a network call to a model deployment.
 
-Custom apps are general-purpose web services such as FastAPI, Flask, Gradio, or plain WSGI/ASGI apps. They should bind to `0.0.0.0` and the injected `APP_PORT`, and should not hardcode `APP_BASE_URL_PATH` in new code.
+Custom apps are general-purpose web services such as FastAPI, Flask, Gradio, or plain WSGI/ASGI apps. They should bind to `0.0.0.0` and the injected `APP_PORT`, and should not hardcode `APP_BASE_URL_PATH` in new code. Legacy apps can stay on Compatibility prefix while they are migrated, but new apps should not depend on it.
 
 ## Contract
 
@@ -35,7 +36,7 @@ Full CLI surface is in **Manage Apps from the CLI** below.
 
 - Does the app need **custom libraries** not in `python-app-pipeline`? If so, clone the env and install `app-requirements.txt` (see **Your App uses Custom libraries**).
 - What **memory / cores** should the app get? Defaults are `memory=2048` MB, `cores=1.0`.
-- Does the app need a specific routing mode or readiness path? New apps should use root routing; keep legacy prefix mode only while migrating an older app that still depends on `APP_BASE_URL_PATH`. Streamlit defaults to `/_stcore/health`, custom apps default to `/`, and `readinessProbePath` can override the probe path when needed.
+- Does the app need a specific routing mode or readiness path? New apps should use root routing; keep legacy prefix mode only while migrating an older app that still depends on `APP_BASE_URL_PATH`. If the app is already deployed and still uses `APP_BASE_URL_PATH`, treat it as a migration task and confirm whether the code can switch to root routing. Streamlit defaults to `/_stcore/health`, custom apps default to `/`, and `readinessProbePath` can override the probe path when needed.
 - **Before deleting** — `app.delete()` / `hops app delete --yes` tears down the app irreversibly; confirm the exact name with the user, and never tear down an app you created as a side effect (temp or test ones included) unless they asked.
 
 ## Routing and Readiness
@@ -50,6 +51,27 @@ Full CLI surface is in **Manage Apps from the CLI** below.
   - `readinessProbePath` overrides the default probe path when needed
 - The CLI mirrors the same contract via `hops app create --app-base-path` and
   `--readiness-probe-path`.
+
+## Migrating Legacy Apps
+
+Legacy apps are apps that were created before the `App base path` migration or
+still depend on `APP_BASE_URL_PATH`. Keep `Compatibility prefix` only as a
+bridge while you update the app code; once the app no longer depends on that
+variable, switch it to `Root routing`.
+
+Migration checklist:
+
+1. Update the app code so route decorators use `/` or the app's own subpath
+   directly instead of `APP_BASE_URL_PATH`.
+2. In the app settings dialog, open **App routing and readiness** and change
+   `Proxy routing mode` to `Root routing`.
+3. Set `App base path` to the public mount point you want, for example `/` or
+   `/myapp`.
+4. Keep `Readiness` separate from browser routing. Custom apps usually probe
+   `/` or `/health`; Streamlit apps default to `/_stcore/health` or
+   `/<base>/_stcore/health`.
+5. Remove any code that builds absolute links from `APP_BASE_URL_PATH` after
+   the app is switched to root routing.
 
 ---
 
