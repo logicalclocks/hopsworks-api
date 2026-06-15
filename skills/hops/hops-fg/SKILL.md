@@ -119,6 +119,64 @@ fg = fs.get_or_create_feature_group(
 | `embedding_index=EmbeddingIndex(...)` | FG contains vector embeddings (see Embeddings section) |
 | `offline_backfill_every_hr=N` | Schedule automatic materialization every N hours |
 | `ttl=timedelta(days=30)` | Auto-expire old rows from online store |
+| `time_travel_format="ICEBERG"` | Offline table format: `"DELTA"` (default), `"ICEBERG"`, `"HUDI"`, or `None` |
+| `partitioned_by=["year","month","day"]` | Derive partition columns from `event_time` (offline only; see below) |
+
+---
+
+## Table format & event-time partitioning
+
+### Table format (`time_travel_format`)
+
+An offline feature group is stored in a lakehouse table format, selected at creation with `time_travel_format`:
+
+- `"DELTA"` (default) — Delta Lake. Direct offline write from the Python client.
+- `"ICEBERG"` — Apache Iceberg. Direct offline write from the Python client. Requires the `pyiceberg` library (`pip install pyiceberg`, or install Hopsworks with the `python` extra); a missing library fails fast with a clear error.
+- `"HUDI"` — Apache Hudi. Used by online-enabled (`stream=True`) feature groups, and also valid for offline direct write.
+- `None` — no time travel.
+
+```python
+fg = fs.get_or_create_feature_group(
+    name="events",
+    version=1,
+    primary_key=["id"],
+    event_time="event_ts",
+    time_travel_format="ICEBERG",
+    online_enabled=False,
+)
+```
+
+The Catalog UI shows the format as a badge (Delta / Hudi / Iceberg) on each feature group.
+
+### Partition by event-time grain (`partitioned_by`)
+
+`partitioned_by` derives partition columns from `event_time`, so reads that filter by time prune to the matching partitions. Pass a list of grains, coarsest to finest:
+
+```python
+fg = fs.get_or_create_feature_group(
+    name="clickstream",
+    version=1,
+    primary_key=["user_id"],
+    event_time="event_ts",                 # required
+    partitioned_by=["year", "month", "day", "hour"],
+    time_travel_format="ICEBERG",          # DELTA, ICEBERG, or HUDI
+    online_enabled=False,
+)
+```
+
+Valid grains: `hour`, `day`, `week`, `month`, `year`. The writer materializes one real partition column per grain (`year`, `month`, ...) from `event_time` on every insert across all three formats (Delta, Iceberg, Hudi); you do not add these columns to your DataFrame yourself.
+
+Rules:
+- Requires `event_time`. Set either `partitioned_by` or `partition_key`, not both: `partitioned_by` is the event-time-derived form, `partition_key` is the explicit-column form.
+- Offline only. Not allowed on online-enabled / stream feature groups, or with `time_travel_format=None`.
+- The `hour` grain requires a `timestamp` `event_time`; a `date` event_time has no sub-day resolution and is rejected.
+- Grains must be unique and must not collide with the `event_time` column name.
+
+Reads filter transparently: a time-range read is rewritten to the grain partition predicates, so you query by `event_time` and the engine prunes partitions.
+
+```python
+df = fg.read(start_time="2026-01-01", end_time="2026-02-01", dataframe_type="polars")
+```
 
 ---
 
@@ -578,6 +636,8 @@ derived_fg.materialization_job.run(await_termination=True)
 | Task | Code |
 |---|---|
 | Create FG | `fs.get_or_create_feature_group(name=..., version=1, ...)` |
+| Offline table format | `time_travel_format="DELTA"` (default), `"ICEBERG"`, `"HUDI"`, or `None` |
+| Partition by event-time grain | `partitioned_by=["year","month","day"]` (offline; needs `event_time`) |
 | Insert data | `fg.insert(df, wait=False)` |
 | Insert safely (low resources) | `fg.insert(df, wait=True)` |
 | Multi-part insert | `with fg.multi_part_insert() as w: w.insert(batch)` |
