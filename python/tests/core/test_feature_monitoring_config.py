@@ -1049,11 +1049,11 @@ class TestFeatureViewCreateModelMonitoring:
         fv.logging_enabled = True
 
         mocker.patch(
-            "hopsworks_common.client.get_instance",
+            "hopsworks_common.client._get_instance",
             return_value=MagicMock(_project_id=119),
         )
         mock_model_api = MagicMock()
-        mock_model_api.get.return_value = None
+        mock_model_api._get.return_value = None
         mocker.patch("hsml.core.model_api.ModelApi", return_value=mock_model_api)
 
         with pytest.raises(FeatureStoreException, match="was not found"):
@@ -1072,13 +1072,13 @@ class TestFeatureViewCreateModelMonitoring:
         fv.logging_enabled = True
 
         mocker.patch(
-            "hopsworks_common.client.get_instance",
+            "hopsworks_common.client._get_instance",
             return_value=MagicMock(_project_id=119),
         )
         model_meta = MagicMock()
         model_meta.training_dataset_version = None
         mock_model_api = MagicMock()
-        mock_model_api.get.return_value = model_meta
+        mock_model_api._get.return_value = model_meta
         mocker.patch("hsml.core.model_api.ModelApi", return_value=mock_model_api)
 
         with pytest.raises(
@@ -1097,13 +1097,13 @@ class TestFeatureViewCreateModelMonitoring:
         fv.logging_enabled = True
 
         mocker.patch(
-            "hopsworks_common.client.get_instance",
+            "hopsworks_common.client._get_instance",
             return_value=MagicMock(_project_id=119),
         )
         model_meta = MagicMock()
         model_meta.training_dataset_version = 9
         mock_model_api = MagicMock()
-        mock_model_api.get.return_value = model_meta
+        mock_model_api._get.return_value = model_meta
         mocker.patch("hsml.core.model_api.ModelApi", return_value=mock_model_api)
 
         # Stub feature_logging chain and the inner create_feature_monitoring builder.
@@ -1131,7 +1131,7 @@ class TestFeatureViewCreateModelMonitoring:
         )
 
         # Assert ModelApi.get was called with name+version+project-id.
-        mock_model_api.get.assert_called_once_with(
+        mock_model_api._get.assert_called_once_with(
             name="iris", version=3, model_registry_id=119
         )
         # Assert delegation to the logging FG.

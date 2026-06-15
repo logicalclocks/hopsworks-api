@@ -253,7 +253,7 @@ class FeatureMonitoringConfigApi:
         Returns:
             List of feature monitoring configurations for the model version.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,

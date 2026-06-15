@@ -17,11 +17,12 @@
 import os
 import zipfile
 
-import build  # noqa: F401  # eagerly load so test patches resolve build.ProjectBuilder
 import build.env  # noqa: F401  # eagerly load so test patches resolve build.env.DefaultIsolatedEnv
 import pytest
 from hopsworks_common.client.exceptions import RestAPIError
 from hsml import deployment_tracing_config, model_serving
+
+import build  # noqa: F401  # eagerly load so test patches resolve build.ProjectBuilder
 
 
 @pytest.fixture

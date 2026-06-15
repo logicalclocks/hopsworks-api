@@ -477,7 +477,7 @@ def get_feature_monitoring_url(
         The public URL, or an empty string if the config is not associated
         with either parent.
     """
-    project_id = client.get_instance()._project_id
+    project_id = client._get_instance()._project_id
     if feature_group_id is not None:
         sub_path = (
             "/p/"

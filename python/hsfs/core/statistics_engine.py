@@ -501,7 +501,7 @@ class StatisticsEngine:
             row_percentage=row_percentage,
         )
 
-    @decorators.catch_not_found(
+    @decorators._catch_not_found(
         "hsfs.statistics.Statistics",
         "hsfs.feature_group_commit.FeatureGroupCommit",
         fallback_return=None,

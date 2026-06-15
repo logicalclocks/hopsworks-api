@@ -106,6 +106,43 @@ _MONITORING_STATUS_ARG = Literal[
 _MONITORING_STATUS = get_args(_MONITORING_STATUS_ARG)
 
 
+# Mapping from old lowercase status names accepted on the create/input path
+# (used before ~=3.8.1) to their replacements in the new naming scheme.
+_DEPRECATED_STATUS_INPUT_MAP = {
+    "feature_monitor_shift_undetected": "monitoring_shift_undetected",
+    "feature_monitor_shift_detected": "monitoring_shift_detected",
+}
+
+
+def _normalize_status_input(status: str, stacklevel: int = 3) -> str:
+    """Normalize a deprecated status input value to its replacement.
+
+    Called on the alert create path whenever a user passes a status string.
+    If *status* is one of the old names that were renamed in version ~=3.8.1,
+    the function emits a `DeprecationWarning` and returns the new name.
+    Otherwise it returns *status* unchanged.
+
+    Args:
+        status: The status string supplied by the caller.
+        stacklevel: Passed directly to `warnings.warn` to attribute the warning
+            to the user's call to the public `create_*_alert` method rather than
+            to this helper.
+
+    Returns:
+        The normalized status string.
+    """
+    new = _DEPRECATED_STATUS_INPUT_MAP.get(status)
+    if new is not None:
+        warnings.warn(
+            f"Alert status {status!r} is deprecated and will be removed in a future release. "
+            f"Use {new!r} instead.",
+            DeprecationWarning,
+            stacklevel=stacklevel,
+        )
+        return new
+    return status
+
+
 @public("hopsworks.core.alerts_api.AlertsApi")
 class AlertsApi:
     """Alerts API handle.

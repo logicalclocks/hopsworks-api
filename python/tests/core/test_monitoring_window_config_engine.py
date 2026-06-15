@@ -305,7 +305,7 @@ class TestMonitoringWindowConfigEngine:
         end_time = 1_700_086_400_000
 
         # Act
-        _ = config_engine.fetch_feature_group_data(
+        _ = config_engine._fetch_feature_group_data(
             entity=unit_test_fg,
             feature_names=[DEFAULT_FEATURE_NAME],
             start_time=start_time,
@@ -484,7 +484,7 @@ class TestGetWindowStartEndTimesAnchor:
         )
         offset_ms = timedelta(hours=1).total_seconds() * 1000
 
-        start_time, end_time = engine.get_window_start_end_times(
+        start_time, end_time = engine._get_window_start_end_times(
             config, anchor_end_ms=anchor_ms
         )
 
@@ -511,7 +511,7 @@ class TestGetWindowStartEndTimesAnchor:
             window_config_type=mwc.WindowConfigType.ALL_TIME,
         )
 
-        start_time, end_time = engine.get_window_start_end_times(
+        start_time, end_time = engine._get_window_start_end_times(
             config, anchor_end_ms=anchor_ms
         )
 
@@ -528,7 +528,7 @@ class TestGetWindowStartEndTimesAnchor:
         offset_ms = timedelta(hours=1).total_seconds() * 1000
 
         before_ms = util._convert_event_time_to_timestamp(datetime.now())
-        start_time, end_time = engine.get_window_start_end_times(config)
+        start_time, end_time = engine._get_window_start_end_times(config)
         after_ms = util._convert_event_time_to_timestamp(datetime.now())
 
         assert before_ms <= end_time <= after_ms
@@ -557,8 +557,8 @@ class TestGetWindowStartEndTimesAnchor:
 
         get_times_spy = mocker.patch.object(
             engine,
-            "get_window_start_end_times",
-            wraps=engine.get_window_start_end_times,
+            "_get_window_start_end_times",
+            wraps=engine._get_window_start_end_times,
         )
         mocker.patch.object(engine, "_init_statistics_engine")
         stats_engine_mock = MagicMock()
@@ -574,7 +574,7 @@ class TestGetWindowStartEndTimesAnchor:
         )
         mocker.patch.object(
             engine,
-            "fetch_entity_data_in_monitoring_window",
+            "_fetch_entity_data_in_monitoring_window",
             return_value=MagicMock(),
         )
 

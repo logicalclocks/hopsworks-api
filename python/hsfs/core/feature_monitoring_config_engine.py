@@ -446,7 +446,7 @@ class FeatureMonitoringConfigEngine:
             feature group has no commits yet.
         """
         try:
-            commits = FeatureGroupApi().get_commit_details(
+            commits = FeatureGroupApi()._get_commit_details(
                 feature_group_instance=entity,
                 wallclock_timestamp=None,
                 limit=1,

@@ -4183,8 +4183,8 @@ class FeatureView:
                 "Install hsml before creating a model monitoring configuration."
             ) from err
 
-        _client = client.get_instance()
-        model_meta = hsml_model_api.ModelApi().get(
+        _client = client._get_instance()
+        model_meta = hsml_model_api.ModelApi()._get(
             name=model_name,
             version=model_version,
             model_registry_id=_client._project_id,

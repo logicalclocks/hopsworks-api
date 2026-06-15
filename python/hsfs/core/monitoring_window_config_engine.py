@@ -225,7 +225,7 @@ class MonitoringWindowConfigEngine:
 
             if monitoring_window_config.time_offset is not None:
                 offset_ms = int(
-                    self.time_range_str_to_time_delta(
+                    self._time_range_str_to_time_delta(
                         monitoring_window_config.time_offset
                     ).total_seconds()
                     * 1000
@@ -235,7 +235,7 @@ class MonitoringWindowConfigEngine:
 
                 if monitoring_window_config.window_length is not None:
                     window_ms = int(
-                        self.time_range_str_to_time_delta(
+                        self._time_range_str_to_time_delta(
                             monitoring_window_config.window_length
                         ).total_seconds()
                         * 1000

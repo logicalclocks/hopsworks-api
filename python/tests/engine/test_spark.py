@@ -11206,9 +11206,9 @@ class TestSparkConnectMode:
 
         engine = self._make_connect_engine()
         with mock_patch(
-            "hsfs.engine.python.Engine.profile", return_value="{}"
+            "hsfs.engine.python.Engine._profile", return_value="{}"
         ) as mock_profile:
-            engine.profile(
+            engine._profile(
                 MagicMock(),
                 relevant_columns=["amount"],
                 correlations=False,

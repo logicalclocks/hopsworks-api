@@ -202,7 +202,9 @@ class TestFeatureMonitoringConfigEngine:
 
         assert (
             util._convert_event_time_to_timestamp(time_before)
-            <= util._convert_event_time_to_timestamp(config.job_schedule.start_date_time)
+            <= util._convert_event_time_to_timestamp(
+                config.job_schedule.start_date_time
+            )
             <= util._convert_event_time_to_timestamp(time_after)
         )
 
@@ -264,7 +266,7 @@ class TestFeatureMonitoringConfigEngine:
             strict=True,
             specific_value=1.0,
         )
-        config_engine.validate_statistics_comparison_config(sc_config)
+        config_engine._validate_statistics_comparison_config(sc_config)
 
         sc_config = StatisticsComparisonConfig(
             metric="MEAN",
@@ -273,7 +275,7 @@ class TestFeatureMonitoringConfigEngine:
             strict=True,
             specific_value=None,
         )
-        config_engine.validate_statistics_comparison_config(sc_config)
+        config_engine._validate_statistics_comparison_config(sc_config)
 
     def test_validate_statistics_comparison_config_invalid(self, mocker):
         # Arrange
@@ -292,7 +294,7 @@ class TestFeatureMonitoringConfigEngine:
             distribution_metric=None,
         )
         with pytest.raises(TypeError, match=r"relative must be a boolean value"):
-            config_engine.validate_statistics_comparison_config(mock_sc_config)
+            config_engine._validate_statistics_comparison_config(mock_sc_config)
 
         mock_sc_config = MagicMock(
             metric="MEAN",
@@ -303,7 +305,7 @@ class TestFeatureMonitoringConfigEngine:
             distribution_metric=None,
         )
         with pytest.raises(TypeError, match=r"strict must be a boolean value"):
-            config_engine.validate_statistics_comparison_config(mock_sc_config)
+            config_engine._validate_statistics_comparison_config(mock_sc_config)
 
         mock_sc_config = MagicMock(
             metric="MEAN",
@@ -314,7 +316,7 @@ class TestFeatureMonitoringConfigEngine:
             distribution_metric=None,
         )
         with pytest.raises(TypeError, match=r"threshold must be a numeric value"):
-            config_engine.validate_statistics_comparison_config(mock_sc_config)
+            config_engine._validate_statistics_comparison_config(mock_sc_config)
 
         mock_sc_config = MagicMock(
             metric=True,
@@ -325,7 +327,7 @@ class TestFeatureMonitoringConfigEngine:
             distribution_metric=None,
         )
         with pytest.raises(TypeError, match=r"metric must be a string value"):
-            config_engine.validate_statistics_comparison_config(mock_sc_config)
+            config_engine._validate_statistics_comparison_config(mock_sc_config)
 
         mock_sc_config = MagicMock(
             metric="MEAN",
@@ -336,7 +338,7 @@ class TestFeatureMonitoringConfigEngine:
             distribution_metric=None,
         )
         with pytest.raises(TypeError, match=r"specific value must be a numeric value"):
-            config_engine.validate_statistics_comparison_config(mock_sc_config)
+            config_engine._validate_statistics_comparison_config(mock_sc_config)
 
     def test_validate_config_name(self):
         # Arrange
@@ -346,8 +348,8 @@ class TestFeatureMonitoringConfigEngine:
         )
 
         # Act
-        config_engine.validate_config_name("valid_name")
-        config_engine.validate_config_name("v" * 64)
+        config_engine._validate_config_name("valid_name")
+        config_engine._validate_config_name("v" * 64)
 
     def test_validate_config_name_invalid(self):
         # Arrange
@@ -360,17 +362,17 @@ class TestFeatureMonitoringConfigEngine:
         with pytest.raises(
             TypeError, match=r"Invalid config name. Config name must be a string"
         ):
-            config_engine.validate_config_name(1)
+            config_engine._validate_config_name(1)
         with pytest.raises(
             ValueError,
             match=r"Invalid config name. Config name must be less than 64 characters",
         ):
-            config_engine.validate_config_name("1" * 65)
+            config_engine._validate_config_name("1" * 65)
         with pytest.raises(
             ValueError,
             match=r"Invalid config name. Config name must be alphanumeric or underscore",
         ):
-            config_engine.validate_config_name("invalid%$")
+            config_engine._validate_config_name("invalid%$")
 
     def test_validate_description(self):
         # Arrange
@@ -380,8 +382,8 @@ class TestFeatureMonitoringConfigEngine:
         )
 
         # Act
-        config_engine.validate_description("valid description")
-        config_engine.validate_description("v" * 256)
+        config_engine._validate_description("valid description")
+        config_engine._validate_description("v" * 256)
 
     def test_validate_description_invalid(self):
         # Arrange
@@ -394,12 +396,12 @@ class TestFeatureMonitoringConfigEngine:
         with pytest.raises(
             TypeError, match=r"Invalid description. Description must be a string"
         ):
-            config_engine.validate_description(1)
+            config_engine._validate_description(1)
         with pytest.raises(
             ValueError,
             match=r"Invalid description. Description must be less than 256 characters",
         ):
-            config_engine.validate_description("1" * 257)
+            config_engine._validate_description("1" * 257)
 
     def test_validate_feature_name(self):
         # Arrange
@@ -409,13 +411,13 @@ class TestFeatureMonitoringConfigEngine:
         )
 
         # Act
-        config_engine.validate_feature_name(
+        config_engine._validate_feature_name(
             feature_name="my_feature", valid_feature_names=["my_feature"]
         )
-        config_engine.validate_feature_name(
+        config_engine._validate_feature_name(
             feature_name="my_feature", valid_feature_names=None
         )
-        config_engine.validate_feature_name(
+        config_engine._validate_feature_name(
             feature_name=None, valid_feature_names=["my_feature"]
         )
 
@@ -430,13 +432,13 @@ class TestFeatureMonitoringConfigEngine:
         with pytest.raises(
             TypeError, match=r"Invalid feature name. Feature name must be a string"
         ):
-            config_engine.validate_feature_name(
+            config_engine._validate_feature_name(
                 feature_name=1, valid_feature_names=["my_feature"]
             )
         with pytest.raises(
             ValueError, match=r"Invalid feature name. Feature name must be one of"
         ):
-            config_engine.validate_feature_name(
+            config_engine._validate_feature_name(
                 feature_name="invalid", valid_feature_names=["my_feature"]
             )
 
@@ -487,7 +489,7 @@ class TestFeatureMonitoringConfigEngine:
         )
         mocker.patch.object(
             config_engine._feature_monitoring_config_api,
-            "get_by_name",
+            "_get_by_name",
             return_value=mock_config,
         )
 
@@ -510,7 +512,7 @@ class TestFeatureMonitoringConfigEngine:
         entity = MagicMock()
 
         # Act
-        result = config_engine.run_feature_monitoring(
+        result = config_engine._run_feature_monitoring(
             entity=entity,
             config_name="test_config",
         )
@@ -535,7 +537,7 @@ class TestFeatureMonitoringConfigEngine:
         )
         mocker.patch.object(
             config_engine._feature_monitoring_config_api,
-            "get_by_name",
+            "_get_by_name",
             return_value=mock_config,
         )
 
@@ -572,7 +574,7 @@ class TestFeatureMonitoringConfigEngine:
         entity = MagicMock()
 
         # Act — must not propagate the RestAPIError
-        result = config_engine.run_feature_monitoring(
+        result = config_engine._run_feature_monitoring(
             entity=entity,
             config_name="test_config",
         )
@@ -628,7 +630,7 @@ class TestFeatureMonitoringConfigEngine:
         mock_config = self._build_mock_fm_config_with_distribution_child(feature_names)
         mocker.patch.object(
             config_engine._feature_monitoring_config_api,
-            "get_by_name",
+            "_get_by_name",
             return_value=mock_config,
         )
 
@@ -649,7 +651,7 @@ class TestFeatureMonitoringConfigEngine:
         )
 
         entity = MagicMock()
-        config_engine.run_feature_monitoring(entity=entity, config_name="pdf_config")
+        config_engine._run_feature_monitoring(entity=entity, config_name="pdf_config")
 
         # Both calls (detection + reference) must pass profile_flags with histograms=True, kll=True
         for call in run_single_mock.call_args_list:
@@ -677,7 +679,7 @@ class TestFeatureMonitoringConfigEngine:
         )
         mocker.patch.object(
             config_engine._feature_monitoring_config_api,
-            "get_by_name",
+            "_get_by_name",
             return_value=mock_config,
         )
 
@@ -698,7 +700,9 @@ class TestFeatureMonitoringConfigEngine:
         )
 
         entity = MagicMock()
-        config_engine.run_feature_monitoring(entity=entity, config_name="scalar_config")
+        config_engine._run_feature_monitoring(
+            entity=entity, config_name="scalar_config"
+        )
 
         for call in run_single_mock.call_args_list:
             passed_flags = call.kwargs.get("profile_flags")
@@ -721,4 +725,4 @@ class TestFeatureMonitoringConfigEngine:
         with pytest.raises(
             ValueError, match="specific_value is not allowed for distribution"
         ):
-            config_engine.validate_statistics_comparison_config(mock_sc)
+            config_engine._validate_statistics_comparison_config(mock_sc)

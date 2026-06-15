@@ -886,8 +886,8 @@ class TestStatisticsEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hopsworks_common.client.get_instance")
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
         mock_statistics_api = mocker.patch("hsfs.core.statistics_api.StatisticsApi")
         mock_logger = mocker.patch("hsfs.core.statistics_engine.logger")
 
@@ -906,7 +906,7 @@ class TestStatisticsEngine:
         feature_dataframe.head.return_value = []  # empty dataframe
 
         # Act
-        result = s_engine.compute_and_save_monitoring_statistics(
+        result = s_engine._compute_and_save_monitoring_statistics(
             metadata_instance=fg,
             feature_dataframe=feature_dataframe,
             window_start_commit_time=1000,

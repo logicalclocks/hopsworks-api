@@ -171,8 +171,8 @@ class TestSubHourCronWarningOnModelMonitoring:
                     "hsfs.feature_view.FeatureView.feature_logging",
                     new_callable=lambda: property(lambda self: MagicMock()),
                 ),
-                patch("hsml.core.model_api.ModelApi.get") as mock_model_get,
-                patch("hsfs.feature_view.client.get_instance") as mock_client,
+                patch("hsml.core.model_api.ModelApi._get") as mock_model_get,
+                patch("hsfs.feature_view.client._get_instance") as mock_client,
             ):
                 mock_client.return_value._project_id = 1
                 mock_model = MagicMock()
@@ -203,8 +203,8 @@ class TestSubHourCronWarningOnModelMonitoring:
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             with (
-                patch("hsml.core.model_api.ModelApi.get") as mock_model_get,
-                patch("hsfs.feature_view.client.get_instance") as mock_client,
+                patch("hsml.core.model_api.ModelApi._get") as mock_model_get,
+                patch("hsfs.feature_view.client._get_instance") as mock_client,
             ):
                 mock_client.return_value._project_id = 1
                 mock_model = MagicMock()
@@ -254,8 +254,8 @@ class TestSubHourCronWarningOnModelMonitoring:
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             with (
-                patch("hsml.core.model_api.ModelApi.get") as mock_model_get,
-                patch("hsfs.feature_view.client.get_instance") as mock_client,
+                patch("hsml.core.model_api.ModelApi._get") as mock_model_get,
+                patch("hsfs.feature_view.client._get_instance") as mock_client,
             ):
                 mock_client.return_value._project_id = 1
                 mock_model = MagicMock()
@@ -297,7 +297,7 @@ class TestGetLatestFgCommitTime:
         commit.commit_time = _HOURLY_COMMIT_TIME
 
         mocker.patch(
-            "hsfs.core.feature_monitoring_config_engine.FeatureGroupApi.get_commit_details",
+            "hsfs.core.feature_monitoring_config_engine.FeatureGroupApi._get_commit_details",
             return_value=[commit],
         )
 
@@ -313,7 +313,7 @@ class TestGetLatestFgCommitTime:
         fg = _make_fg()
 
         mocker.patch(
-            "hsfs.core.feature_monitoring_config_engine.FeatureGroupApi.get_commit_details",
+            "hsfs.core.feature_monitoring_config_engine.FeatureGroupApi._get_commit_details",
             return_value=[],
         )
 
@@ -329,7 +329,7 @@ class TestGetLatestFgCommitTime:
         fg = _make_fg()
 
         mocker.patch(
-            "hsfs.core.feature_monitoring_config_engine.FeatureGroupApi.get_commit_details",
+            "hsfs.core.feature_monitoring_config_engine.FeatureGroupApi._get_commit_details",
             side_effect=Exception("network error"),
         )
 
@@ -362,7 +362,7 @@ class TestRunFeatureMonitoringIdeaD:
 
         mocker.patch.object(
             engine._feature_monitoring_config_api,
-            "get_by_name",
+            "_get_by_name",
             return_value=config,
         )
         mocker.patch.object(
@@ -386,7 +386,7 @@ class TestRunFeatureMonitoringIdeaD:
             return_value=MagicMock(spec=FeatureMonitoringResult),
         )
 
-        engine.run_feature_monitoring(entity=fg, config_name="cfg")
+        engine._run_feature_monitoring(entity=fg, config_name="cfg")
 
         # _run_single_window_monitoring must have been called with the commit time as override
         run_single.assert_called_once()
@@ -409,7 +409,7 @@ class TestRunFeatureMonitoringIdeaD:
 
         mocker.patch.object(
             engine._feature_monitoring_config_api,
-            "get_by_name",
+            "_get_by_name",
             return_value=config,
         )
         mocker.patch.object(
@@ -431,7 +431,7 @@ class TestRunFeatureMonitoringIdeaD:
             return_value=MagicMock(spec=FeatureMonitoringResult),
         )
 
-        engine.run_feature_monitoring(entity=fg, config_name="cfg")
+        engine._run_feature_monitoring(entity=fg, config_name="cfg")
 
         # No offline data -> no read and no reuse lookup.
         run_single.assert_not_called()
@@ -461,7 +461,7 @@ class TestRunFeatureMonitoringIdeaD:
 
         mocker.patch.object(
             engine._feature_monitoring_config_api,
-            "get_by_name",
+            "_get_by_name",
             return_value=config,
         )
         mocker.patch.object(
@@ -481,11 +481,11 @@ class TestRunFeatureMonitoringIdeaD:
         )
         save_mock = mocker.patch.object(
             engine._result_engine,
-            "save",
+            "_save",
             return_value=MagicMock(spec=FeatureMonitoringResult),
         )
 
-        engine.run_feature_monitoring(entity=fg, config_name="cfg")
+        engine._run_feature_monitoring(entity=fg, config_name="cfg")
 
         run_single.assert_not_called()
         save_mock.assert_called_once()
@@ -522,7 +522,7 @@ class TestRunFeatureMonitoringIdeaD:
 
         mocker.patch.object(
             engine._feature_monitoring_config_api,
-            "get_by_name",
+            "_get_by_name",
             return_value=config,
         )
         mocker.patch.object(
@@ -546,7 +546,7 @@ class TestRunFeatureMonitoringIdeaD:
             return_value=MagicMock(spec=FeatureMonitoringResult),
         )
 
-        engine.run_feature_monitoring(entity=fg, config_name="cfg")
+        engine._run_feature_monitoring(entity=fg, config_name="cfg")
 
         run_single.assert_called_once()
         call_kwargs = run_single.call_args.kwargs
@@ -561,7 +561,7 @@ class TestRunFeatureMonitoringIdeaD:
 
         mocker.patch.object(
             engine._feature_monitoring_config_api,
-            "get_by_name",
+            "_get_by_name",
             return_value=config,
         )
         get_latest_commit = mocker.patch.object(
@@ -579,7 +579,7 @@ class TestRunFeatureMonitoringIdeaD:
             return_value=MagicMock(spec=FeatureMonitoringResult),
         )
 
-        engine.run_feature_monitoring(entity=fg, config_name="cfg")
+        engine._run_feature_monitoring(entity=fg, config_name="cfg")
 
         # Commit lookup must NOT happen for the non-model path
         get_latest_commit.assert_not_called()
@@ -604,7 +604,7 @@ class TestRunFeatureMonitoringIdeaD:
 
         mocker.patch.object(
             engine._feature_monitoring_config_api,
-            "get_by_name",
+            "_get_by_name",
             return_value=config,
         )
         mocker.patch.object(
@@ -628,7 +628,7 @@ class TestRunFeatureMonitoringIdeaD:
             return_value=MagicMock(spec=FeatureMonitoringResult),
         )
 
-        engine.run_feature_monitoring(entity=fg, config_name="cfg")
+        engine._run_feature_monitoring(entity=fg, config_name="cfg")
 
         run_single.assert_called_once()
 
@@ -640,7 +640,7 @@ class TestRunFeatureMonitoringIdeaD:
 
         mocker.patch.object(
             engine._feature_monitoring_config_api,
-            "get_by_name",
+            "_get_by_name",
             return_value=config,
         )
         mocker.patch.object(
@@ -664,7 +664,7 @@ class TestRunFeatureMonitoringIdeaD:
             return_value=MagicMock(spec=FeatureMonitoringResult),
         )
 
-        engine.run_feature_monitoring(entity=fg, config_name="cfg")
+        engine._run_feature_monitoring(entity=fg, config_name="cfg")
 
         save_comparison.assert_called_once()
         kwargs = save_comparison.call_args.kwargs
@@ -683,7 +683,7 @@ class TestRunFeatureMonitoringIdeaD:
 
         mocker.patch.object(
             engine._feature_monitoring_config_api,
-            "get_by_name",
+            "_get_by_name",
             return_value=config,
         )
         get_latest_commit = mocker.patch.object(
@@ -702,7 +702,7 @@ class TestRunFeatureMonitoringIdeaD:
         )
 
         ingestion_commit_time = 1_700_000_050_000
-        engine.run_feature_monitoring(
+        engine._run_feature_monitoring(
             entity=fg,
             config_name="cfg",
             end_commit_time=ingestion_commit_time,

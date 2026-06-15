@@ -348,7 +348,7 @@ class TestFeatureDescriptiveStatistics:
             },
         }
 
-        result = FeatureDescriptiveStatistics.from_deequ_json(json_dict)
+        result = FeatureDescriptiveStatistics._from_deequ_json(json_dict)
 
         assert result._extended_statistics is not None
         kll = result._extended_statistics["kll"]
@@ -376,7 +376,7 @@ class TestFeatureDescriptiveStatistics:
             },
         }
 
-        result = FeatureDescriptiveStatistics.from_deequ_json(json_dict)
+        result = FeatureDescriptiveStatistics._from_deequ_json(json_dict)
 
         assert result._extended_statistics is not None
         kll = result._extended_statistics["kll"]
