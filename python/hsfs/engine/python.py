@@ -722,8 +722,8 @@ class Engine:
             if col in relevant_columns:
                 stats[col] = {}
         _logger.debug(f"Column stats computed via describe for: {stats.keys()}")
-        # df.describe() does not compute stats for all col types (e.g., string)
-        # we need to compute stats for the rest of the cols iteratively
+        # df.describe() does not _compute stats for all col types (e.g., string)
+        # we need to _compute stats for the rest of the cols iteratively
         missing_cols = list(set(relevant_columns) - set(stats.keys()))
         _logger.debug(f"Columns missing stats from describe: {missing_cols}")
         for col in missing_cols:
@@ -1183,6 +1183,7 @@ class Engine:
         dataframe_type: str,
         training_dataset_version: int = None,
         transformation_context: dict[str, Any] = None,
+        n_processes: int | None = None,
     ) -> pd.DataFrame | pl.DataFrame:
         """Function that creates or retrieves already created the training dataset.
 
@@ -1196,6 +1197,8 @@ class Engine:
             transformation_context:
                 A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+            n_processes: Number of worker processes for executing chained transformation functions.
+                Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
 
         Returns:
             The training data as a DataFrame.
@@ -1204,7 +1207,7 @@ class Engine:
             ValueError: If the training dataset statistics could not be retrieved.
         """
         # dataframe_type of list and numpy are prevented here because statistics needs to be computed from the returned dataframe.
-        # The daframe is converted into required types in the function split_labels
+        # The daframe is converted into required types in the function _split_labels
         if dataframe_type.lower() not in ["default", "polars", "pandas"]:
             dataframe_type = "default"
 
@@ -1217,22 +1220,17 @@ class Engine:
                 dataframe_type,
                 training_dataset_version,
                 transformation_context=transformation_context,
+                n_processes=n_processes,
             )
         df = query_obj.read(read_options=read_options, dataframe_type=dataframe_type)
-        # if training_dataset_version is None:
-        transformation_function_engine.TransformationFunctionEngine._compute_and_set_feature_statistics(
-            training_dataset_obj, feature_view_obj, df
-        )
-        # else:
-        #    transformation_function_engine.TransformationFunctionEngine._get_and_set_feature_statistics(
-        #        training_dataset_obj, feature_view_obj, training_dataset_version
-        #    )
-        return transformation_function_engine.TransformationFunctionEngine._apply_transformation_functions(
-            transformation_functions=feature_view_obj.transformation_functions,
-            data=df,
-            online=False,
+        # Statistics are always refit (training_dataset_version not passed): an
+        # in-memory training dataset retrieved by version is not consistent.
+        return transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
+            training_dataset_obj,
+            feature_view_obj,
+            df,
             transformation_context=transformation_context,
-            request_parameters=None,
+            n_processes=n_processes,
         )
 
     def _split_labels(
@@ -1243,12 +1241,7 @@ class Engine:
     ) -> tuple[pd.DataFrame | pl.DataFrame, pd.DataFrame | pl.DataFrame | None]:
         if labels:
             labels_df = df[labels]
-            if HAS_POLARS and isinstance(
-                df, (pl.DataFrame, pl.dataframe.frame.DataFrame)
-            ):
-                df_new = df.drop(labels)
-            else:
-                df_new = df.drop(columns=labels)
+            df_new = self._drop_columns(df, labels)
             return (
                 self._return_dataframe_type(df_new, dataframe_type),
                 self._return_dataframe_type(labels_df, dataframe_type),
@@ -1258,6 +1251,24 @@ class Engine:
     def _drop_columns(
         self, df: pd.DataFrame | pl.DataFrame, drop_cols: list[str]
     ) -> pd.DataFrame | pl.DataFrame:
+        """Drop columns from a Pandas or Polars dataframe.
+
+        Accepts a single column name or a list of column names.
+        Columns that do not exist in the dataframe are silently ignored:
+        the chained-TF scheduler may have already dropped intermediate
+        columns by the time a later TF's `drop=` list is processed, and
+        raising on those would force every caller to filter twice. Callers
+        that need strict drop semantics should validate names themselves.
+
+        Parameters:
+            df: The source dataframe.
+            drop_cols: Column name(s) to remove.
+
+        Returns:
+            A new dataframe with the specified columns removed.
+        """
+        drop_cols = [drop_cols] if isinstance(drop_cols, str) else drop_cols
+        drop_cols = [col for col in drop_cols if col in df.columns]
         if HAS_POLARS and (
             isinstance(df, (pl.DataFrame, pl.dataframe.frame.DataFrame))
         ):
@@ -1273,6 +1284,7 @@ class Engine:
         dataframe_type: str,
         training_dataset_version: int = None,
         transformation_context: dict[str, Any] = None,
+        n_processes: int | None = None,
     ) -> dict[str, pd.DataFrame | pl.DataFrame]:
         """Split a df into slices defined by `splits`. `splits` is a `dict(str, int)` which keys are name of split and values are split ratios.
 
@@ -1286,6 +1298,8 @@ class Engine:
             transformation_context:
                 A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+            n_processes: Number of worker processes for executing chained transformation functions.
+                Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
 
         Raises:
             ValueError: If the training dataset statistics could not be retrieved.
@@ -1346,30 +1360,15 @@ class Engine:
                 training_dataset_obj,
             )
 
-        # TODO : Currently statistics always computed since in memory training dataset retrieved is not consistent
-        # if training_dataset_version is None:
-        transformation_function_engine.TransformationFunctionEngine._compute_and_set_feature_statistics(
-            training_dataset_obj, feature_view_obj, result_dfs
+        # Statistics are always refit (training_dataset_version not passed): an
+        # in-memory training dataset retrieved by version is not consistent.
+        return transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
+            training_dataset_obj,
+            feature_view_obj,
+            result_dfs,
+            transformation_context=transformation_context,
+            n_processes=n_processes,
         )
-        # else:
-        #    transformation_function_engine.TransformationFunctionEngine._get_and_set_feature_statistics(
-        #        training_dataset_obj, feature_view_obj, training_dataset_version
-        #    )
-        # and the apply them
-        for split_name in result_dfs:
-            result_dfs[split_name] = (
-                transformation_function_engine.TransformationFunctionEngine._apply_transformation_functions(
-                    transformation_functions=feature_view_obj.transformation_functions,
-                    data=result_dfs.get(split_name),
-                    online=False,
-                    transformation_context=transformation_context,
-                    request_parameters=None,
-                )
-                if feature_view_obj.transformation_functions
-                else result_dfs.get(split_name)
-            )
-
-        return result_dfs
 
     def _random_split(
         self,
@@ -1575,7 +1574,7 @@ class Engine:
     def _get_app_options(
         self, user_write_options: dict[str, Any] | None = None
     ) -> ingestion_job_conf.IngestionJobConf:
-        """Generate the options that should be passed to the application doing the ingestion.
+        """Generate the options that should be passed to the application doing the _ingestion.
 
         Options should be data format, data options to read the input dataframe and
         insert options to be passed to the insert method.
@@ -1626,31 +1625,61 @@ class Engine:
             f"Dataframe type {type(dataframe)} not supported in the Python engine."
         )
 
+    def _concat_dataframes(
+        self, dataframes: list[pd.DataFrame | pl.DataFrame]
+    ) -> pd.DataFrame | pl.DataFrame:
+        """Horizontally concatenate a list of dataframes.
+
+        Parameters:
+            dataframes: List of dataframes to concatenate.
+
+        Returns:
+            The concatenated dataframe.
+        """
+        if HAS_POLARS and isinstance(dataframes[0], pl.DataFrame):
+            return pl.concat(dataframes, how="horizontal")
+        return pd.concat(dataframes, axis=1)
+
     def _apply_udf_on_dataframe(
         self,
         udf: HopsworksUdf,
         dataframe: pd.DataFrame | pl.DataFrame,
         online: bool = False,
+        engine_type: str | None = None,
     ) -> pd.DataFrame | pl.DataFrame:
         """Apply a UDF to a dataframe.
+
+        Internal helper. The result contains only the transformed output
+        columns, not the merged input plus outputs. The chained-TF scheduler
+        in `TransformationFunctionEngine` merges the result back into the
+        source DataFrame after every TF in the chain completes. External
+        callers should not depend on the result carrying the full DataFrame.
 
         Parameters:
             udf: The UDF to apply.
             dataframe: The dataframe to apply the UDF to.
             online: Whether the UDF is being applied in online serving context.
+            engine_type: Override the engine type instead of auto-detecting it.
 
         Returns:
-            The dataframe with the UDF applied.
+            A new DataFrame containing only the transformed output columns,
+            indexed by the input DataFrame's index.
         """
         if (
             udf.execution_mode._get_current_execution_mode(online=online)
             == UDFExecutionMode.PANDAS
         ):
             return self._apply_pandas_udf(
-                hopsworks_udf=udf, dataframe=dataframe, online=online
+                hopsworks_udf=udf,
+                dataframe=dataframe,
+                online=online,
+                engine_type=engine_type,
             )
         return self._apply_python_udf(
-            hopsworks_udf=udf, dataframe=dataframe, online=online
+            hopsworks_udf=udf,
+            dataframe=dataframe,
+            online=online,
+            engine_type=engine_type,
         )
 
     def _apply_python_udf(
@@ -1658,6 +1687,7 @@ class Engine:
         hopsworks_udf: HopsworksUdf,
         dataframe: pd.DataFrame | pl.DataFrame,
         online: bool = False,
+        engine_type: str | None = None,
     ) -> pd.DataFrame | pl.DataFrame:
         """Apply a python udf to a dataframe.
 
@@ -1671,27 +1701,31 @@ class Engine:
         Raises:
             hopsworks.client.exceptions.FeatureStoreException: If any of the features mentioned in the transformation function is not present in the Feature View.
         """
-        udf = hopsworks_udf._get_udf(online=online)
+        udf = hopsworks_udf._get_udf(online=online, engine_type=engine_type)
+
+        transformed_data = (
+            pd.DataFrame() if isinstance(dataframe, pd.DataFrame) else pl.DataFrame()
+        )
+
         if isinstance(dataframe, pd.DataFrame):
+            # Use zip-based iteration instead of dataframe.apply(axis=1) to
+            # avoid per-row pandas overhead. .tolist() converts to native Python
+            # types, avoiding numpy scalar overhead inside the UDF.
+            features = hopsworks_udf.transformation_features
+            col_lists = [dataframe[f].tolist() for f in features]
+            results = [udf(*vals) for vals in zip(*col_lists, strict=False)]
+
             if len(hopsworks_udf.return_types) > 1:
-                dataframe[hopsworks_udf.output_column_names] = dataframe.apply(
-                    lambda x: udf(*x[hopsworks_udf.transformation_features]),
-                    axis=1,
-                    result_type="expand",
+                transformed_data = pd.DataFrame(
+                    results,
+                    columns=hopsworks_udf.output_column_names,
+                    index=dataframe.index,
                 )
             else:
-                dataframe[hopsworks_udf.output_column_names[0]] = dataframe.apply(
-                    lambda x: udf(*x[hopsworks_udf.transformation_features]),
-                    axis=1,
-                    result_type="expand",
+                transformed_data = pd.DataFrame(
+                    {hopsworks_udf.output_column_names[0]: results},
+                    index=dataframe.index,
                 )
-                if hopsworks_udf.output_column_names[0] in dataframe.columns:
-                    # Overwriting features so reordering dataframe to move overwritten column to the end of the dataframe
-                    cols = dataframe.columns.tolist()
-                    cols.append(
-                        cols.pop(cols.index(hopsworks_udf.output_column_names[0]))
-                    )
-                    dataframe = dataframe[cols]
         elif HAS_POLARS and (
             isinstance(dataframe, (pl.DataFrame, pl.dataframe.frame.DataFrame))
         ):
@@ -1707,7 +1741,7 @@ class Engine:
                 f"lambda x: udf({transformation_features})", locals()
             )
             transformed_features = dataframe.map_rows(feature_mapping_wrapper)
-            dataframe = dataframe.with_columns(
+            transformed_data = transformed_data.with_columns(
                 transformed_features.rename(
                     dict(
                         zip(
@@ -1718,13 +1752,14 @@ class Engine:
                     )
                 )
             )
-        return dataframe
+        return transformed_data
 
     def _apply_pandas_udf(
         self,
         hopsworks_udf: HopsworksUdf,
         dataframe: pd.DataFrame | pl.DataFrame,
         online: bool = False,
+        engine_type: str | None = None,
     ) -> pd.DataFrame | pl.DataFrame:
         """Apply a pandas udf to a dataframe.
 
@@ -1750,20 +1785,31 @@ class Engine:
             else:
                 dataframe = dataframe.to_pandas(use_pyarrow_extension_array=False)
 
-        features = [dataframe[f] for f in hopsworks_udf.transformation_features]
-        # Index is set to the input dataframe index so that pandas would merge the new columns without reordering them.
-        output = hopsworks_udf._get_udf(online=online)(*features)
-        output_names = hopsworks_udf.output_column_names
+        transformed_data = pd.DataFrame()
+
         if len(hopsworks_udf.return_types) > 1:
-            dataframe[output_names] = output.set_index(dataframe.index)
+            transformed_data[hopsworks_udf.output_column_names] = (
+                hopsworks_udf._get_udf(online=online, engine_type=engine_type)(
+                    *(
+                        [
+                            dataframe[feature]
+                            for feature in hopsworks_udf.transformation_features
+                        ]
+                    )
+                ).set_index(dataframe.index)
+            )
         else:
-            dataframe[output_names[0]] = output.set_axis(dataframe.index)
-            if output_names[0] in dataframe.columns:
-                # Overwriting features also reordering dataframe to move overwritten column to the end of the dataframe
-                cols = dataframe.columns.tolist()
-                cols.append(cols.pop(cols.index(output_names[0])))
-                dataframe = dataframe[cols]
-        return dataframe
+            transformed_data[hopsworks_udf.output_column_names[0]] = (
+                hopsworks_udf._get_udf(online=online, engine_type=engine_type)(
+                    *(
+                        [
+                            dataframe[feature]
+                            for feature in hopsworks_udf.transformation_features
+                        ]
+                    )
+                ).set_axis(dataframe.index)
+            )
+        return transformed_data
 
     @staticmethod
     def _get_unique_values(
@@ -1827,7 +1873,7 @@ class Engine:
             strict=False,
         ):
             if isinstance(dataframe, pd.DataFrame):
-                # itertuples returns Python NamedTuple; convert to dict to serialize via Avro
+                # itertuples returns Python NamedTuple; _convert to dict to serialize via Avro
                 row = row._asdict()
 
             # Set per-row storage header based on the online flag when present.
@@ -1863,7 +1909,7 @@ class Engine:
             del producer
             progress_bar.close()
 
-        # wait for online ingestion
+        # wait for online _ingestion
         if feature_group.online_enabled and offline_write_options.get(
             "wait_for_online_ingestion", False
         ):
@@ -2535,7 +2581,7 @@ class Engine:
             A list of dictionaries with all the logging components
         """
         _, label_columns, _ = predictions
-        # If any of the logging components is a dataframe, we use the get_feature_logging_df function to get a dataframe and then convert it to a list of dictionaries.
+        # If any of the logging components is a dataframe, we use the _get_feature_logging_df function to get a dataframe and then _convert it to a list of dictionaries.
         if any(
             (HAS_PANDAS and isinstance(data, pd.DataFrame))
             or (HAS_POLARS and isinstance(data, pl.DataFrame))
