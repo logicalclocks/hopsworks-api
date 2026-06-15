@@ -494,12 +494,14 @@ class TestVectorDbClient:
 
         body = self.mock_os_wrapper._search.call_args.kwargs["body"]
         assert body["size"] == 5
-        knn = body["query"]["knn"]["f2"]
+        # The knn clause and filters are combined in a bool query. OpenSearch
+        # 2.19 rejects a `filter` nested inside the knn clause.
+        must = body["query"]["bool"]["must"]
+        knn = must[0]["knn"]["f2"]
         assert knn["vector"] == [1.0, 2.0, 3.0]
         assert knn["k"] == 5
-        # The filter lives inside the knn clause (OpenSearch 2.x KNN syntax),
-        # not as a sibling bool/post_filter.
-        assert knn["filter"] == {"bool": {"must": [{"exists": {"field": "f2"}}]}}
+        assert "filter" not in knn
+        assert must[1] == {"exists": {"field": "f2"}}
 
     def test_find_neighbors_builds_knn_query_with_filter(self):
         self.target._find_neighbors(
@@ -507,12 +509,10 @@ class TestVectorDbClient:
         )
 
         body = self.mock_os_wrapper._search.call_args.kwargs["body"]
-        knn = body["query"]["knn"]["f2"]
-        assert knn["filter"] == {
-            "bool": {
-                "must": [
-                    {"exists": {"field": "f2"}},
-                    {"range": {"f3": {"gt": 10}}},
-                ]
-            }
-        }
+        must = body["query"]["bool"]["must"]
+        knn = must[0]["knn"]["f2"]
+        assert "filter" not in knn
+        assert must[1:] == [
+            {"exists": {"field": "f2"}},
+            {"range": {"f3": {"gt": 10}}},
+        ]
