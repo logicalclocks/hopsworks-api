@@ -2375,6 +2375,100 @@ class TestPython:
         # Assert
         assert mock_python_engine_prepare_transform_split_df.call_count == 1
 
+    def test_get_training_data_returns_fit_and_transform_result(self, mocker):
+        # Training data creation delegates fitting and transforming to
+        # TransformationFunctionEngine._fit_and_transform in one call.
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type")
+        transformed_df = pd.DataFrame({"f": [1.0]})
+        mock_fit_and_transform = mocker.patch(
+            "hsfs.core.transformation_function_engine.TransformationFunctionEngine._fit_and_transform",
+            return_value=transformed_df,
+        )
+        mock_feature_view = mocker.patch("hsfs.feature_view.FeatureView")
+
+        python_engine = python.Engine()
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={},
+            id=10,
+        )
+
+        # Act
+        result = python_engine._get_training_data(
+            training_dataset_obj=td,
+            feature_view_obj=mock_feature_view,
+            query_obj=mocker.Mock(),
+            read_options=None,
+            dataframe_type="default",
+            transformation_context={"k": "v"},
+            n_processes=3,
+        )
+
+        # Assert
+        assert result is transformed_df
+        kwargs = mock_fit_and_transform.call_args.kwargs
+        assert kwargs["transformation_context"] == {"k": "v"}
+        assert kwargs["n_processes"] == 3
+
+    def test_prepare_transform_split_df_returns_fit_and_transform_result(self, mocker):
+        # The split frames are handed to _fit_and_transform as one dictionary;
+        # its result is the training data.
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type")
+        mocker.patch("hsfs.constructor.query.Query.read")
+        mock_python_engine_random_split = mocker.patch(
+            "hsfs.engine.python.Engine._random_split"
+        )
+        transformed_splits = {"train": pd.DataFrame(), "test": pd.DataFrame()}
+        mock_fit_and_transform = mocker.patch(
+            "hsfs.core.transformation_function_engine.TransformationFunctionEngine._fit_and_transform",
+            return_value=transformed_splits,
+        )
+        mock_feature_view = mocker.patch("hsfs.feature_view.FeatureView")
+
+        python_engine = python.Engine()
+
+        d = {"col1": [1, 2], "col2": [3, 4]}
+        df = pd.DataFrame(data=d)
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={"train": 0.8, "test": 0.2},
+            train_split="train",
+            id=10,
+        )
+
+        q = query.Query(left_feature_group=None, left_features=None)
+
+        raw_splits = {
+            "train": df.loc[df["col1"] == 1],
+            "test": df.loc[df["col1"] == 2],
+        }
+        mock_python_engine_random_split.return_value = raw_splits
+
+        # Act
+        result = python_engine._prepare_transform_split_df(
+            query_obj=q,
+            training_dataset_obj=td,
+            feature_view_obj=mock_feature_view,
+            read_option=None,
+            dataframe_type="default",
+        )
+
+        # Assert
+        assert result is transformed_splits
+        assert mock_fit_and_transform.call_args[0][2] is raw_splits
+
     def test_split_labels(self):
         # Arrange
         python_engine = python.Engine()
@@ -2580,8 +2674,11 @@ class TestPython:
         mock_python_engine_random_split = mocker.patch(
             "hsfs.engine.python.Engine._random_split"
         )
-        mocker.patch(
+        mock_tf_engine = mocker.patch(
             "hsfs.core.transformation_function_engine.TransformationFunctionEngine"
+        )
+        mock_tf_engine._fit_and_transform.side_effect = (
+            lambda training_dataset, feature_view_obj, dataset, **kwargs: dataset
         )
         mock_feature_view = mocker.patch("hsfs.feature_view.FeatureView")
         mock_feature_view.transformation_functions = []
@@ -2630,8 +2727,11 @@ class TestPython:
         mock_python_engine_time_series_split = mocker.patch(
             "hsfs.engine.python.Engine._time_series_split"
         )
-        mocker.patch(
+        mock_tf_engine = mocker.patch(
             "hsfs.core.transformation_function_engine.TransformationFunctionEngine"
+        )
+        mock_tf_engine._fit_and_transform.side_effect = (
+            lambda training_dataset, feature_view_obj, dataset, **kwargs: dataset
         )
         mock_feature_view = mocker.patch("hsfs.feature_view.FeatureView")
         mock_feature_view.transformation_functions = []
@@ -2699,8 +2799,11 @@ class TestPython:
         mock_python_engine_time_series_split = mocker.patch(
             "hsfs.engine.python.Engine._time_series_split"
         )
-        mocker.patch(
+        mock_tf_engine = mocker.patch(
             "hsfs.core.transformation_function_engine.TransformationFunctionEngine"
+        )
+        mock_tf_engine._fit_and_transform.side_effect = (
+            lambda training_dataset, feature_view_obj, dataset, **kwargs: dataset
         )
         mock_feature_view = mocker.patch("hsfs.feature_view.FeatureView")
         mock_feature_view.transformation_functions = []
@@ -2770,8 +2873,11 @@ class TestPython:
         mock_python_engine_time_series_split = mocker.patch(
             "hsfs.engine.python.Engine._time_series_split"
         )
-        mocker.patch(
+        mock_tf_engine = mocker.patch(
             "hsfs.core.transformation_function_engine.TransformationFunctionEngine"
+        )
+        mock_tf_engine._fit_and_transform.side_effect = (
+            lambda training_dataset, feature_view_obj, dataset, **kwargs: dataset
         )
         mock_feature_view = mocker.patch("hsfs.feature_view.FeatureView")
         mock_feature_view.transformation_functions = []

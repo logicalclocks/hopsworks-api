@@ -76,6 +76,7 @@ from hsfs.core import (
     online_ingestion_api,
     spine_group_engine,
     statistics_engine,
+    transformation_execution_dag,
     validation_report_engine,
     validation_result_engine,
 )
@@ -152,6 +153,39 @@ class FeatureGroupBase:
     """
 
     NOT_FOUND_ERROR_CODE = 270009
+
+    # Subclasses that support transformation functions (FeatureGroup) shadow
+    # this in __init__; the class-level default keeps graph-reading methods
+    # (e.g. visualize_transformations) working on ExternalFeatureGroup and
+    # SpineGroup instead of raising AttributeError.
+    _transformation_function_execution_dag: (
+        transformation_execution_dag.TransformationExecutionDAG | None
+    ) = None
+
+    @public
+    def visualize_transformations(self, mode: str = "auto", orient: str = "LR") -> None:
+        """Visualize the transformation function execution DAG attached to this feature group.
+
+        Renders the transformation pipeline as a directed graph of input features,
+        transformation functions, dependency edges with their linking column names,
+        and output features.
+        The default mode (`"auto"`) renders a Mermaid `flowchart` inline in Jupyter
+        and falls back to a text representation otherwise.
+
+        Parameters:
+            mode: Display mode. One of `"auto"` (default), `"text"`, `"mermaid"`.
+            orient: Layout direction for the rendered flowchart. One of:
+                `"LR"` (left-to-right, default), `"TB"` (top-to-bottom),
+                `"BT"` (bottom-to-top), `"RL"` (right-to-left).
+
+        Raises:
+            `FeatureStoreException`: If no transformation functions are attached to the feature group.
+        """
+        if self._transformation_function_execution_dag is None:
+            raise FeatureStoreException(
+                "No transformation functions attached to this feature group."
+            )
+        self._transformation_function_execution_dag._visualize(mode=mode, orient=orient)
 
     def __init__(
         self,
@@ -3091,10 +3125,24 @@ class FeatureGroup(FeatureGroupBase):
                         )
                     self._transformation_functions.append(transformation_function)
 
+        self._transformation_function_execution_dag: (
+            transformation_execution_dag.TransformationExecutionDAG | None
+        ) = None
         if self._transformation_functions:
             self._transformation_functions = (
                 FeatureGroup._sort_transformation_functions(
                     self._transformation_functions
+                )
+            )
+            # Building the DAG rejects a cyclic on-demand configuration here.
+            self._transformation_function_execution_dag = (
+                transformation_execution_dag.TransformationExecutionDAG(
+                    self.transformation_functions,
+                    schema_feature_names={
+                        feat.name for feat in self._features if not feat.on_demand
+                    }
+                    if self._features
+                    else None,
                 )
             )
 
@@ -3618,6 +3666,7 @@ class FeatureGroup(FeatureGroupBase):
         write_options: dict[str, Any] | None = None,
         validation_options: dict[str, Any] | None = None,
         wait: bool = False,
+        n_processes: int | None = None,
     ) -> tuple[
         Job | None,
         great_expectations.core.ExpectationSuiteValidationResult | None,
@@ -3679,6 +3728,11 @@ class FeatureGroup(FeatureGroupBase):
             wait:
                 Wait for job and online ingestion to finish before returning.
                 Shortcut for write_options `{"wait_for_job": False, "wait_for_online_ingestion": False}`.
+
+            n_processes:
+                Number of worker processes for executing chained transformation functions on the input DataFrame.
+                Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
+                In the Spark engine the transformations are pushed down to Spark and this parameter is ignored.
 
         Returns:
             When using the `python` engine, it returns the Hopsworks Job that was launched to ingest the feature group data.
@@ -3765,7 +3819,11 @@ class FeatureGroup(FeatureGroupBase):
 
         # fg_job is used only if the python engine is used
         fg_job, ge_report = self._feature_group_engine._save(
-            self, feature_dataframe, write_options, validation_options or {}
+            self,
+            feature_dataframe,
+            write_options,
+            validation_options or {},
+            n_processes=n_processes,
         )
 
         # Compute stats in client if there is no backfill job:
@@ -3817,6 +3875,7 @@ class FeatureGroup(FeatureGroupBase):
         wait: bool = False,
         transformation_context: dict[str, Any] = None,
         transform: bool = True,
+        n_processes: int | None = None,
     ) -> tuple[Job | None, ValidationReport | None]:
         """Persist the metadata and materialize the feature group to the feature store or insert data from a dataframe into the existing feature group.
 
@@ -3935,6 +3994,11 @@ class FeatureGroup(FeatureGroupBase):
                 When set to `False`, the dataframe is inserted without applying any on-demand transformations
                 In this case, all required on-demand features must already exist in the provided dataframe.
 
+            n_processes:
+                Number of worker processes for executing chained transformation functions on the input DataFrame.
+                Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
+                In the Spark engine the transformations are pushed down to Spark and this parameter is ignored.
+
         Returns:
             Job: The job information if python engine is used.
             ValidationReport: The validation report if validation is enabled.
@@ -3986,6 +4050,7 @@ class FeatureGroup(FeatureGroupBase):
             validation_options={"save_report": True, **validation_options},
             transformation_context=transformation_context,
             transform=transform,
+            n_processes=n_processes,
         )
 
         # Compute stats in client if there is no backfill job:
@@ -4034,6 +4099,7 @@ class FeatureGroup(FeatureGroupBase):
         validation_options: dict[str, Any] | None = None,
         transformation_context: dict[str, Any] = None,
         transform: bool = True,
+        n_processes: int | None = None,
     ) -> (
         tuple[Job | None, ValidationReport | None]
         | feature_group_writer.FeatureGroupWriter
@@ -4126,6 +4192,11 @@ class FeatureGroup(FeatureGroupBase):
                 When set to `False`, the dataframe is inserted without applying any on-demand transformations.
                 In this case, all required on-demand features must already exist in the provided dataframe.
 
+            n_processes:
+                Number of worker processes for executing chained transformation functions on the input DataFrame.
+                Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
+                In the Spark engine the transformations are pushed down to Spark and this parameter is ignored.
+
         Returns:
             A tuple of (Job, ValidationReport) when inserting directly, or a FeatureGroupWriter when used as a context manager.
         """
@@ -4143,6 +4214,7 @@ class FeatureGroup(FeatureGroupBase):
             validation_options or {},
             transformation_context,
             transform=transform,
+            n_processes=n_processes,
         )
 
     @public
@@ -4737,6 +4809,7 @@ class FeatureGroup(FeatureGroupBase):
         online: bool | None = None,
         transformation_context: dict[str, Any] | list[dict[str, Any]] = None,
         request_parameters: dict[str, Any] | list[dict[str, Any]] = None,
+        n_processes: int | None = None,
     ) -> list[dict[str, Any]] | pd.DataFrame:
         """Apply on-demand transformations attached to the feature group on the provided data.
 
@@ -4768,12 +4841,19 @@ class FeatureGroup(FeatureGroupBase):
             ```
 
         Parameters:
-            data: Input data to apply transformations to. This can a dataframe or a dictionary.
-            online: Whether to apply transformations in online mode (single values) or offline mode (batch/vectorized). Defaults to offline mode
+            data: Input data to apply transformations to.
+                This can be a dataframe or a dictionary.
+            online: Whether to apply transformations in online mode (single values) or offline mode (batch/vectorized).
+                Defaults to offline mode.
             transformation_context: A dictionary mapping variable names to objects that provide contextual information to the transformation function at runtime.
-                The `context` variables must be defined as parameters in the transformation function for these to be accessible during execution. For batch processing with different contexts per row, provide a list of dictionaries.
-            request_parameters: Request parameters passed to the transformation functions. For batch processing with different parameters per row, provide a list of dictionaries.
-                These parameters take **highest priority** when resolving feature values - if a key exists in both `request_parameters` and the input data, the value from `request_parameters` is used.
+                The `context` variables must be defined as parameters in the transformation function for these to be accessible during execution.
+                For batch processing with different contexts per row, provide a list of dictionaries.
+            request_parameters: Request parameters passed to the transformation functions.
+                For batch processing with different parameters per row, provide a list of dictionaries.
+                These parameters take **highest priority** when resolving feature values: if a key exists in both `request_parameters` and the input data, the value from `request_parameters` is used.
+            n_processes: Number of worker processes for executing transformation functions.
+                Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
+                In the Spark engine the transformations are pushed down to Spark and this parameter is ignored.
 
         Returns:
             The transformed data in the same format as the input:
@@ -4782,11 +4862,12 @@ class FeatureGroup(FeatureGroupBase):
         """
         if self.transformation_functions:
             data = self._feature_group_engine._apply_on_demand_transformations(
-                transformation_functions=self.transformation_functions,
+                execution_graph=self._transformation_function_execution_dag,
                 data=data,
                 online=online,
                 transformation_context=transformation_context,
                 request_parameters=request_parameters,
+                n_processes=n_processes,
             )
         else:
             _logger.info(
@@ -4936,6 +5017,20 @@ class FeatureGroup(FeatureGroupBase):
         transformation_functions: list[TransformationFunction],
     ) -> None:
         self._transformation_functions = transformation_functions
+        # Rebuild the execution DAG so downstream consumers see a consistent
+        # topological order; a cyclic configuration is rejected here.
+        self._transformation_function_execution_dag = (
+            transformation_execution_dag.TransformationExecutionDAG(
+                transformation_functions,
+                schema_feature_names={
+                    feat.name for feat in self._features if not feat.on_demand
+                }
+                if self._features
+                else None,
+            )
+            if transformation_functions
+            else None
+        )
 
     @public
     @property
