@@ -28,12 +28,12 @@ from typing import TYPE_CHECKING, Any
 
 from hopsworks_apigen import public
 from hsfs.core.feature_logging_client import (
-    get_instance as get_feature_logging_client,
+    _get_instance as get_feature_logging_client,
 )
 from hsfs.core.feature_logging_client import (
-    init_client,
+    _init_client,
 )
-from hsfs.core.kafka_engine import encode_row, get_writer_function
+from hsfs.core.kafka_engine import _encode_row, _get_writer_function
 from hsfs.feature_logger import FeatureLogger
 
 
@@ -76,7 +76,7 @@ class AsyncWorkerThread(threading.Thread):
             threading.Event()
         )  # Stop event to stop input of new tasks after a close has been called.
 
-    def submit_task(self, task: tuple[dict, dict]):
+    def _submit_task(self, task: tuple[dict, dict]):
         """Function to submit a task to the queue from a different thread so that it can be processed by workers.
 
         Parameters:
@@ -108,7 +108,7 @@ class AsyncWorkerThread(threading.Thread):
         self._event_loop.run_forever()
 
         # Closing the feature logging client inside the thread.
-        self._event_loop.run_until_complete(get_feature_logging_client().close())
+        self._event_loop.run_until_complete(get_feature_logging_client()._close())
 
         # Close the event loop
         self._event_loop.close()
@@ -128,15 +128,15 @@ class AsyncWorkerThread(threading.Thread):
             await worker_function(task)
             self._tasks_queue.task_done()
 
-    def close(self):
+    def _close(self):
         """Function to stop any more tasks from being submitted and start the graceful stop of the thread."""
         # Stop any more tasks from being submitted using the stop event.
         self._stop_event.set()
 
         # Stop the event loop
-        asyncio.run_coroutine_threadsafe(self.finalize_event_loop(), self._event_loop)
+        asyncio.run_coroutine_threadsafe(self._finalize_event_loop(), self._event_loop)
 
-    async def finalize_event_loop(self):
+    async def _finalize_event_loop(self):
         """Function that gracefully stops the event loop by stopping the workers and waiting for all tasks to be processed."""
         # Stop workers
         for _ in range(len(self._workers)):
@@ -197,7 +197,7 @@ class AsyncFeatureLogger(FeatureLogger):
             untransformed_features, transformed_features
         ):
             try:
-                self._async_worker_thread.submit_task(
+                self._async_worker_thread._submit_task(
                     (untransformed_feature, transformed_feature)
                 )
             except asyncio.QueueFull:
@@ -231,7 +231,7 @@ class AsyncFeatureLogger(FeatureLogger):
                         )
                     )
 
-            responses = await get_feature_logging_client().post(
+            responses = await get_feature_logging_client()._post(
                 json.dumps(events, cls=EventEncoder),
                 headers=self._create_cloud_headers(),
             )
@@ -269,7 +269,7 @@ class AsyncFeatureLogger(FeatureLogger):
     def init(self, feature_view: FeatureView) -> None:
         self._feature_view = feature_view
         self._init_kafka_resource(feature_view)
-        init_client(self._feature_logger_config)
+        _init_client(self._feature_logger_config)
 
         # Start worker thread after initializing the client.
         self._async_worker_thread._initialize_workers(
@@ -280,14 +280,14 @@ class AsyncFeatureLogger(FeatureLogger):
     def _init_kafka_resource(self, feature_view):
         for transformed in [True, False]:
             fg = feature_view.feature_logging.get_feature_group(transformed)
-            feature_writers, writer = get_writer_function(fg)
+            feature_writers, writer = _get_writer_function(fg)
             self._feature_encoders[transformed] = (feature_writers, writer)
 
     def _avro_encode_features(self, complex_feature_encoder, feature_encoder, features):
-        return encode_row(complex_feature_encoder, feature_encoder, features)
+        return _encode_row(complex_feature_encoder, feature_encoder, features)
 
     @public
     def close(self):
         """Close the async feature logger."""
         # Close the async worker thread
-        self._async_worker_thread.close()
+        self._async_worker_thread._close()

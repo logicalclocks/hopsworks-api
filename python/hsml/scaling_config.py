@@ -38,7 +38,7 @@ class ScaleMetric(Enum):
     RPS = "RPS"
 
     @classmethod
-    def has_value(cls, value):
+    def _has_value(cls, value):
         return any(member.value == value for member in cls)
 
     def __str__(self):
@@ -49,7 +49,6 @@ class ScaleMetric(Enum):
 class ComponentScalingConfig(ABC):
     """Scaling configuration for a predictor or transformer."""
 
-    @public
     def __init__(
         self,
         min_instances: int,
@@ -77,7 +76,7 @@ class ComponentScalingConfig(ABC):
         scale_metric = scale_metric
         if scale_metric:
             if isinstance(scale_metric, str):
-                if not ScaleMetric.has_value(scale_metric.upper()):
+                if not ScaleMetric._has_value(scale_metric.upper()):
                     raise ValueError(
                         f"Invalid scale_metric: {scale_metric}. Must be one of {[e.value for e in ScaleMetric]}"
                     )
@@ -102,7 +101,7 @@ class ComponentScalingConfig(ABC):
     @public
     def describe(self):
         """Print a JSON description of the scaling configuration."""
-        util.pretty_print(self)
+        util._pretty_print(self)
 
     @classmethod
     def from_response_json(cls, json_dict):
@@ -128,13 +127,13 @@ class ComponentScalingConfig(ABC):
             min_instances = (
                 0  # enable scale-to-zero by default if required
                 if serving_tool == PREDICTOR.SERVING_TOOL_KSERVE
-                and client.is_scale_to_zero_required()
+                and client._is_scale_to_zero_required()
                 else SCALING_CONFIG.MIN_NUM_INSTANCES
             )
         if (
             serving_tool == PREDICTOR.SERVING_TOOL_KSERVE
             and min_instances != 0
-            and client.is_scale_to_zero_required()
+            and client._is_scale_to_zero_required()
         ):
             # ensure scale-to-zero for kserve deployments when required
             raise ValueError(
@@ -174,26 +173,26 @@ class ComponentScalingConfig(ABC):
         elif "scaling_configuration" in json_decamelized:
             json_decamelized = json_decamelized["scaling_configuration"]
 
-        kwargs["min_instances"] = util.extract_field_from_json(
+        kwargs["min_instances"] = util._extract_field_from_json(
             json_decamelized, "min_instances"
         )
-        kwargs["max_instances"] = util.extract_field_from_json(
+        kwargs["max_instances"] = util._extract_field_from_json(
             json_decamelized, "max_instances"
         )
-        scale_metric = util.extract_field_from_json(json_decamelized, "scale_metric")
+        scale_metric = util._extract_field_from_json(json_decamelized, "scale_metric")
         if scale_metric:
             kwargs["scale_metric"] = ScaleMetric(scale_metric)
-        kwargs["target"] = util.extract_field_from_json(json_decamelized, "target")
-        kwargs["panic_window_percentage"] = util.extract_field_from_json(
+        kwargs["target"] = util._extract_field_from_json(json_decamelized, "target")
+        kwargs["panic_window_percentage"] = util._extract_field_from_json(
             json_decamelized, "panic_window_percentage"
         )
-        kwargs["panic_threshold_percentage"] = util.extract_field_from_json(
+        kwargs["panic_threshold_percentage"] = util._extract_field_from_json(
             json_decamelized, "panic_threshold_percentage"
         )
-        kwargs["stable_window_seconds"] = util.extract_field_from_json(
+        kwargs["stable_window_seconds"] = util._extract_field_from_json(
             json_decamelized, "stable_window_seconds"
         )
-        kwargs["scale_to_zero_retention_seconds"] = util.extract_field_from_json(
+        kwargs["scale_to_zero_retention_seconds"] = util._extract_field_from_json(
             json_decamelized, "scale_to_zero_retention_seconds"
         )
         if kwargs["min_instances"] is None:
@@ -253,7 +252,7 @@ class ComponentScalingConfig(ABC):
     @scale_metric.setter
     def scale_metric(self, scale_metric: ScaleMetric | str):
         if isinstance(scale_metric, str):
-            if not ScaleMetric.has_value(scale_metric.upper()):
+            if not ScaleMetric._has_value(scale_metric.upper()):
                 raise ValueError(
                     f"Invalid scale_metric: {scale_metric}. Must be one of {[e.value for e in ScaleMetric]}"
                 )
@@ -345,7 +344,6 @@ class PredictorScalingConfig(ComponentScalingConfig):
 
     SCALING_CONFIG_KEY = "predictor_scaling_config"
 
-    @public
     def __init__(self, **kwargs):
         """Initialize a PredictorScalingConfig instance.
 
@@ -387,7 +385,6 @@ class TransformerScalingConfig(ComponentScalingConfig):
 
     SCALING_CONFIG_KEY = "transformer_scaling_config"
 
-    @public
     def __init__(self, **kwargs):
         """Initialize a TransformerScalingConfig instance.
 

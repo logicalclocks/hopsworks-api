@@ -68,7 +68,7 @@ class FeatureMonitoringResultEngine:
         )
         self._job_api = JobApi()
 
-    def build_feature_monitoring_result(
+    def _build_feature_monitoring_result(
         self,
         config_id: int,
         feature_name: str,
@@ -101,10 +101,10 @@ class FeatureMonitoringResultEngine:
             Saved Feature monitoring result.
         """
         monitoring_time = round(
-            util.convert_event_time_to_timestamp(datetime.now()), -3
+            util._convert_event_time_to_timestamp(datetime.now()), -3
         )
         if execution_id is None and job_name is not None:
-            execution_id = self.get_monitoring_job_execution_id(job_name)
+            execution_id = self._get_monitoring_job_execution_id(job_name)
         else:
             execution_id = 0
         detection_statistics_id = (
@@ -133,15 +133,15 @@ class FeatureMonitoringResultEngine:
             shift_detected=shift_detected,
             monitoring_time=monitoring_time,
             raised_exception=raised_exception,
-            empty_detection_window=self.is_monitoring_window_empty(
+            empty_detection_window=self._is_monitoring_window_empty(
                 detection_statistics
             ),
-            empty_reference_window=self.is_monitoring_window_empty(
+            empty_reference_window=self._is_monitoring_window_empty(
                 reference_statistics
             ),
         )
 
-    def save_feature_monitoring_result(
+    def _save_feature_monitoring_result(
         self,
         result: FeatureMonitoringResult,
     ) -> FeatureMonitoringResult:
@@ -153,11 +153,11 @@ class FeatureMonitoringResultEngine:
         Returns:
             Saved Feature monitoring result.
         """
-        return self._feature_monitoring_result_api.create(
+        return self._feature_monitoring_result_api._create(
             result,
         )
 
-    def fetch_all_feature_monitoring_results_by_config_id(
+    def _fetch_all_feature_monitoring_results_by_config_id(
         self,
         config_id: int,
         start_time: str | int | datetime | date | None = None,
@@ -181,12 +181,12 @@ class FeatureMonitoringResultEngine:
             with_statistics=with_statistics,
         )
 
-        return self._feature_monitoring_result_api.get_by_config_id(
+        return self._feature_monitoring_result_api._get_by_config_id(
             config_id=config_id,
             query_params=query_params,
         )
 
-    def get_feature_monitoring_results(
+    def _get_feature_monitoring_results(
         self,
         config_id: int | None = None,
         config_name: str | None = None,
@@ -221,7 +221,7 @@ class FeatureMonitoringResultEngine:
                 "Only one of config_id or config_name can be provided to fetch feature monitoring results."
             )
         if config_name is not None and isinstance(config_name, str):
-            config = self._feature_monitoring_config_api.get_by_name(config_name)
+            config = self._feature_monitoring_config_api._get_by_name(config_name)
             if not isinstance(config, fmc.FeatureMonitoringConfig):
                 return []
             config_id = config._id
@@ -232,7 +232,7 @@ class FeatureMonitoringResultEngine:
         elif config_id is not None and not isinstance(config_id, int):
             raise TypeError(f"config_id must be of type int. Got {type(config_id)}.")
 
-        return self.fetch_all_feature_monitoring_results_by_config_id(
+        return self._fetch_all_feature_monitoring_results_by_config_id(
             config_id=config_id,
             start_time=start_time,
             end_time=end_time,
@@ -259,10 +259,10 @@ class FeatureMonitoringResultEngine:
 
         filter_by = []
         if start_time:
-            timestamp_start_time = util.convert_event_time_to_timestamp(start_time)
+            timestamp_start_time = util._convert_event_time_to_timestamp(start_time)
             filter_by.append(f"monitoring_time_gte:{timestamp_start_time}")
         if end_time:
-            timestamp_end_time = util.convert_event_time_to_timestamp(end_time)
+            timestamp_end_time = util._convert_event_time_to_timestamp(end_time)
             filter_by.append(f"monitoring_time_lte:{timestamp_end_time}")
         if len(filter_by) > 0:
             query_params["filter_by"] = filter_by
@@ -272,7 +272,7 @@ class FeatureMonitoringResultEngine:
 
         return query_params
 
-    def run_and_save_statistics_comparison(
+    def _run_and_save_statistics_comparison(
         self,
         fm_config: fmc.FeatureMonitoringConfig,
         detection_statistics: list[FeatureDescriptiveStatistics],
@@ -305,8 +305,8 @@ class FeatureMonitoringResultEngine:
 
         # otherwise, no comparison needed
         return [
-            self.save_feature_monitoring_result(
-                result=self.build_feature_monitoring_result(
+            self._save_feature_monitoring_result(
+                result=self._build_feature_monitoring_result(
                     config_id=fm_config.id,
                     feature_name=det_fds.feature_name,
                     detection_statistics=det_fds,
@@ -326,14 +326,14 @@ class FeatureMonitoringResultEngine:
             "if reference_statistics or specific_value is provided."
         )
         det_fds = detection_statistics[0]
-        difference, shift_detected = self.compute_difference_and_shift(
+        difference, shift_detected = self._compute_difference_and_shift(
             fm_config=fm_config,
             detection_statistics=det_fds,
             specific_value=specific_value,
         )
         return [
-            self.save_feature_monitoring_result(
-                result=self.build_feature_monitoring_result(
+            self._save_feature_monitoring_result(
+                result=self._build_feature_monitoring_result(
                     config_id=fm_config.id,
                     feature_name=det_fds.feature_name,
                     detection_statistics=det_fds,
@@ -380,14 +380,14 @@ class FeatureMonitoringResultEngine:
 
         fm_results = []
         for det_fds, ref_fds in zip(sorted_det_stats, sorted_ref_stats, strict=False):
-            difference, shift_detected = self.compute_difference_and_shift(
+            difference, shift_detected = self._compute_difference_and_shift(
                 fm_config=fm_config,
                 detection_statistics=det_fds,
                 reference_statistics=ref_fds,
             )
             fm_results.append(
-                self.save_feature_monitoring_result(
-                    result=self.build_feature_monitoring_result(
+                self._save_feature_monitoring_result(
+                    result=self._build_feature_monitoring_result(
                         config_id=fm_config.id,
                         feature_name=det_fds.feature_name,
                         detection_statistics=det_fds,
@@ -399,7 +399,7 @@ class FeatureMonitoringResultEngine:
             )
         return fm_results
 
-    def compute_difference_and_shift(
+    def _compute_difference_and_shift(
         self,
         fm_config: fmc.FeatureMonitoringConfig,
         detection_statistics: FeatureDescriptiveStatistics,
@@ -417,7 +417,7 @@ class FeatureMonitoringResultEngine:
         Returns:
             The difference between the reference and detection statistics, and whether shift was detected or not
         """
-        difference = self.compute_difference_between_stats(
+        difference = self._compute_difference_between_stats(
             detection_statistics=detection_statistics,
             reference_statistics=reference_statistics,
             metric=fm_config.statistics_comparison_config["metric"].lower(),
@@ -437,7 +437,7 @@ class FeatureMonitoringResultEngine:
             )
         return difference, shift_detected
 
-    def compute_difference_between_stats(
+    def _compute_difference_between_stats(
         self,
         detection_statistics: FeatureDescriptiveStatistics,
         metric: str,
@@ -470,11 +470,11 @@ class FeatureMonitoringResultEngine:
             if specific_value is not None
             else reference_statistics.get_value(metric)
         )
-        return self.compute_difference_between_specific_values(
+        return self._compute_difference_between_specific_values(
             detection_value, reference_value, relative
         )
 
-    def compute_difference_between_specific_values(
+    def _compute_difference_between_specific_values(
         self,
         detection_value: float,
         reference_value: float,
@@ -497,7 +497,7 @@ class FeatureMonitoringResultEngine:
             return diff / reference_value
         return diff
 
-    def get_monitoring_job_execution_id(
+    def _get_monitoring_job_execution_id(
         self,
         job_name: str,
     ) -> int:
@@ -520,7 +520,7 @@ class FeatureMonitoringResultEngine:
             else 0
         )
 
-    def is_monitoring_window_empty(
+    def _is_monitoring_window_empty(
         self,
         monitoring_window_statistics: FeatureDescriptiveStatistics | None = None,
     ) -> bool:
@@ -537,7 +537,7 @@ class FeatureMonitoringResultEngine:
             or monitoring_window_statistics.count == 0
         )
 
-    def save_feature_monitoring_result_with_exception(
+    def _save_feature_monitoring_result_with_exception(
         self,
         config_id: int,
         job_name: str,
@@ -553,8 +553,8 @@ class FeatureMonitoringResultEngine:
         Returns:
             Saved Feature monitoring result.
         """
-        return self.save_feature_monitoring_result(
-            result=self.build_feature_monitoring_result(
+        return self._save_feature_monitoring_result(
+            result=self._build_feature_monitoring_result(
                 config_id=config_id,
                 job_name=job_name,
                 raised_exception=True,

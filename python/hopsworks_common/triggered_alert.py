@@ -87,46 +87,55 @@ class TriggeredAlert:
             return []
         return cls(**json_decamelized)
 
+    @public
     @property
     def labels(self):
         """Return the labels of the alert."""
         return self._labels
 
+    @public
     @property
     def annotations(self):
         """Return the annotations of the alert."""
         return self._annotations
 
+    @public
     @property
     def receivers(self):
         """Return the receivers of the alert."""
         return self._receivers
 
+    @public
     @property
     def fingerprint(self):
         """Return the fingerprint of the alert."""
         return self._fingerprint
 
+    @public
     @property
     def starts_at(self):
         """Return the start time of the alert."""
         return self._starts_at
 
+    @public
     @property
     def ends_at(self):
         """Return the end time of the alert."""
         return self._ends_at
 
+    @public
     @property
     def updated_at(self):
         """Return the update time of the alert."""
         return self._updated_at
 
+    @public
     @property
     def generatorurl(self):
         """Return the generator URL of the alert."""
         return self._generatorurl
 
+    @public
     @property
     def status(self):
         """Return the status of the alert."""

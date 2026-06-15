@@ -249,7 +249,7 @@ class OnlineIngestion:
                 },
                 "size": size,
             },
-            index=f"onlinefs_{client.get_instance()._project_id}-*",
+            index=f"onlinefs_{client._get_instance()._project_id}-*",
         )
 
         for hit in response["hits"]["hits"]:

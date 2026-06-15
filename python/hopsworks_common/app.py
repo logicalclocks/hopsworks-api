@@ -277,7 +277,7 @@ class App:
         return self._memory_requested
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def run(self, await_serving: bool = True) -> App:
         """Start the app.
 
@@ -311,7 +311,7 @@ class App:
         return self._refresh()
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def redeploy(self, await_serving: bool = True) -> App:
         """Redeploy the app by rolling its Kubernetes deployment.
 
@@ -352,7 +352,7 @@ class App:
     def _build_public_url(self, token: str | None) -> str | None:
         if not token:
             return None
-        _client = client.get_instance()
+        _client = client._get_instance()
         project = urllib.parse.quote(_client._project_name, safe="")
         name = urllib.parse.quote(self._name, safe="")
         return (
@@ -366,7 +366,7 @@ class App:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def make_public(self) -> str | None:
         """Make this Streamlit app reachable without a Hopsworks login.
 
@@ -386,7 +386,7 @@ class App:
         return self.public_url
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def make_private(self) -> None:
         """Revoke public access.
 
@@ -398,7 +398,7 @@ class App:
         self._public_token = None
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def stop(self) -> App:
         """Stop the app.
 
@@ -422,7 +422,7 @@ class App:
         return self._refresh()
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def delete(self):
         """Delete the app entirely.
 
@@ -432,7 +432,7 @@ class App:
         self._app_api._delete(self._name)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_logs(self) -> dict[str, str]:
         """Get stdout and stderr logs for the latest app execution.
 
@@ -463,8 +463,8 @@ class App:
         Returns:
             The URL to the app page in the Hopsworks UI.
         """
-        _client = client.get_instance()
-        return util.get_hostname_replaced_url(
+        _client = client._get_instance()
+        return util._get_hostname_replaced_url(
             "/p/" + str(_client._project_id) + "/apps"
         )
 

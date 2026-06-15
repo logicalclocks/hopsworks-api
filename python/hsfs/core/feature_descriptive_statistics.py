@@ -75,7 +75,7 @@ class FeatureDescriptiveStatistics:
     ):
         self._id = id
         self._feature_type = feature_type
-        self._feature_name = util.autofix_feature_name(feature_name)
+        self._feature_name = util._autofix_feature_name(feature_name)
         self._count = count
         self._completeness = completeness
         self._num_non_null_values = num_non_null_values
@@ -97,6 +97,7 @@ class FeatureDescriptiveStatistics:
             else json.loads(extended_statistics)
         )
 
+    @public
     def get_value(self, name):
         stat_name = name.lower()
         if stat_name not in self._SINGLE_VALUE_STATISTICS:
@@ -112,7 +113,7 @@ class FeatureDescriptiveStatistics:
         return cls(**json_decamelized)
 
     @classmethod
-    def from_deequ_json(cls, json_dict: dict) -> FeatureDescriptiveStatistics:
+    def _from_deequ_json(cls, json_dict: dict) -> FeatureDescriptiveStatistics:
         stats_dict = {"feature_name": json_dict["column"]}
 
         if "dataType" in json_dict:

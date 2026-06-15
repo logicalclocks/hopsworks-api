@@ -25,7 +25,7 @@ from hopsworks_common.client.exceptions import (
     FeatureStoreException,
     VectorDatabaseException,
 )
-from hopsworks_common.util import convert_event_time_to_timestamp
+from hopsworks_common.util import _convert_event_time_to_timestamp
 from hsfs.constructor.filter import Filter, Logic
 from hsfs.constructor.join import Join
 from hsfs.core.opensearch import OpenSearchClientSingleton
@@ -58,9 +58,9 @@ class VectorDbClient:
         self._fg_id_to_vdb_pks = {}
         self._serving_keys = serving_keys
         self._serving_key_by_serving_index: dict[int, hsfs.serving_key.ServingKey] = {}
-        self.init()
+        self._init()
 
-    def init(self):
+    def _init(self):
         for fg in self._query.featuregroups:
             if fg.embedding_index:
                 for feat in fg.embedding_index.get_embeddings():
@@ -110,7 +110,7 @@ class VectorDbClient:
                     ] = (join.prefix or "") + feat.name  # join.prefix can be None
                 self._fg_vdb_col_td_col_map[join_fg.id] = vdb_col_td_col_map
 
-    def find_neighbors(
+    def _find_neighbors(
         self,
         embedding,
         feature: Feature = None,
@@ -158,7 +158,7 @@ class VectorDbClient:
         opensearch_client = OpenSearchClientSingleton(
             feature_store_id=embedding_feature.feature_group.feature_store_id
         )
-        results = opensearch_client.search(
+        results = opensearch_client._search(
             body=query, index=index_name, options=options
         )
 
@@ -174,7 +174,7 @@ class VectorDbClient:
                 try:
                     # It is expected that this request ALWAYS fails because requested k is too large.
                     # The purpose here is to get the max k allowed from the vector database, and cache it.
-                    opensearch_client.search(
+                    opensearch_client._search(
                         body=query, index=index_name, options=options
                     )
                 except VectorDatabaseException as e:
@@ -192,7 +192,7 @@ class VectorDbClient:
             query["query"]["bool"]["must"][0]["knn"][col_name]["k"] = min(
                 VectorDbClient._index_result_limit_k.get(index_name, k), 3 * k
             )
-            results = opensearch_client.search(
+            results = opensearch_client._search(
                 body=query, index=index_name, options=options
             )
 
@@ -363,7 +363,7 @@ class VectorDbClient:
             # Convert timestamp strings to epoch milliseconds for OpenSearch
             if isinstance(value, str):
                 # Convert timestamp string to epoch milliseconds
-                return convert_event_time_to_timestamp(value)
+                return _convert_event_time_to_timestamp(value)
             # If already int (epoch milliseconds), return as-is
             return value
 
@@ -381,7 +381,7 @@ class VectorDbClient:
             new_map[new_key] = value
         return new_map
 
-    def read(
+    def _read(
         self,
         fg_id,
         schema,
@@ -436,7 +436,7 @@ class VectorDbClient:
                 if VectorDbClient._index_result_limit_n.get(index_name) is None:
                     try:
                         query["size"] = 2**31 - 1
-                        opensearch_client.search(body=query, index=index_name)
+                        opensearch_client._search(body=query, index=index_name)
                     except VectorDatabaseException as e:
                         if (
                             e.reason
@@ -454,7 +454,7 @@ class VectorDbClient:
                             raise e
                 query["size"] = VectorDbClient._index_result_limit_n.get(index_name)
         query["_source"] = list(self._fg_vdb_col_fg_col_map.get(fg_id).keys())
-        results = opensearch_client.search(body=query, index=index_name)
+        results = opensearch_client._search(body=query, index=index_name)
         # https://opensearch.org/docs/latest/search-plugins/knn/approximate-knn/#spaces
         return [
             self._convert_to_pandas_type(
@@ -467,14 +467,14 @@ class VectorDbClient:
         ]
 
     @staticmethod
-    def read_feature_group(
+    def _read_feature_group(
         feature_group: hsfs.feature_group.FeatureGroup,
         n: int = None,
         filter: Filter | Logic = None,
     ) -> list:
         if feature_group.embedding_index:
             vector_db_client = VectorDbClient(feature_group.select_all())
-            results = vector_db_client.read(
+            results = vector_db_client._read(
                 feature_group.id,
                 feature_group.columns,
                 pk=feature_group.embedding_index.col_prefix
@@ -488,15 +488,15 @@ class VectorDbClient:
             ]
         raise FeatureStoreException("Feature group does not have embedding.")
 
-    def count(self, fg, options=None):
+    def _count(self, fg, options=None):
         query = {
             "query": {
                 "bool": {
-                    "must": {"exists": {"field": self._fg_id_to_vdb_pks[fg.id][0]}}
+                    "must": [{"exists": {"field": self._fg_id_to_vdb_pks[fg.id][0]}}]
                 }
             },
         }
-        return OpenSearchClientSingleton(feature_store_id=fg.feature_store_id).count(
+        return OpenSearchClientSingleton(feature_store_id=fg.feature_store_id)._count(
             self._get_vector_db_index_name(fg.id), query, options=options
         )
 
@@ -506,7 +506,7 @@ class VectorDbClient:
             raise ValueError("No embedding fg available.")
         return embedding.index_name
 
-    def filter_entry_by_join_index(
+    def _filter_entry_by_join_index(
         self, entry: dict[str, Any], join_index: int
     ) -> tuple[bool, dict[str, Any]]:
         fg_entry = {}

@@ -28,7 +28,7 @@ class TestValidationResultEngine:
         feature_group_id = 10
         expectation_id = 31
 
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         mock_validation_result_api = mocker.patch(
             "hsfs.core.validation_result_api.ValidationResultApi"
         )
@@ -38,11 +38,11 @@ class TestValidationResultEngine:
         )
 
         # Act
-        vr_engine.get_validation_history(expectation_id=expectation_id)
+        vr_engine._get_validation_history(expectation_id=expectation_id)
 
         # Assert
         assert (
-            mock_validation_result_api.return_value.get_validation_history.call_count
+            mock_validation_result_api.return_value._get_validation_history.call_count
             == 1
         )
 
@@ -118,7 +118,7 @@ class TestValidationResultEngine:
         assert len(filter_validation_gte) == 1
         assert int(
             filter_validation_gte[0][20:]
-        ) == util.convert_event_time_to_timestamp(
+        ) == util._convert_event_time_to_timestamp(
             correct_inputs[0]["start_validation_time"]
         )
         filter_validation_lte = list(
@@ -129,7 +129,7 @@ class TestValidationResultEngine:
         assert len(filter_validation_lte) == 1
         assert int(
             filter_validation_lte[0][20:]
-        ) == util.convert_event_time_to_timestamp(
+        ) == util._convert_event_time_to_timestamp(
             correct_inputs[0]["end_validation_time"]
         )
 
@@ -144,7 +144,7 @@ class TestValidationResultEngine:
         assert len(filter_validation_gte) == 1
         assert int(
             filter_validation_gte[0][20:]
-        ) == util.convert_event_time_to_timestamp(
+        ) == util._convert_event_time_to_timestamp(
             correct_inputs[1]["start_validation_time"]
         )
         filter_validation_lte = list(
@@ -166,7 +166,7 @@ class TestValidationResultEngine:
         assert len(filter_validation_gte) == 1
         assert int(
             filter_validation_gte[0][20:]
-        ) == util.convert_event_time_to_timestamp(
+        ) == util._convert_event_time_to_timestamp(
             correct_inputs[2]["start_validation_time"]
         )
         filter_validation_lte = list(
@@ -177,7 +177,7 @@ class TestValidationResultEngine:
         assert len(filter_validation_lte) == 1
         assert int(
             filter_validation_lte[0][20:]
-        ) == util.convert_event_time_to_timestamp(
+        ) == util._convert_event_time_to_timestamp(
             correct_inputs[2]["end_validation_time"]
         )
 

@@ -20,8 +20,8 @@ from hsfs.core.chart import Chart
 
 
 class ChartApi:
-    def create_chart(self, chart: Chart) -> None:
-        _client = client.get_instance()
+    def _create_chart(self, chart: Chart) -> None:
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -35,8 +35,8 @@ class ChartApi:
             data=chart.json(),
         )
 
-    def get_charts(self) -> list[Chart]:
-        _client = client.get_instance()
+    def _get_charts(self) -> list[Chart]:
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -51,8 +51,8 @@ class ChartApi:
             )
         )
 
-    def get_chart(self, chart_id: int) -> Chart:
-        _client = client.get_instance()
+    def _get_chart(self, chart_id: int) -> Chart:
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -68,8 +68,8 @@ class ChartApi:
             )
         )
 
-    def update_chart(self, chart: Chart) -> None:
-        _client = client.get_instance()
+    def _update_chart(self, chart: Chart) -> None:
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -84,8 +84,8 @@ class ChartApi:
             data=chart.json(),
         )
 
-    def delete_chart(self, chart_id: int) -> None:
-        _client = client.get_instance()
+    def _delete_chart(self, chart_id: int) -> None:
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,

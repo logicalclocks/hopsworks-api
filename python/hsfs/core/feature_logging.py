@@ -85,7 +85,7 @@ class FeatureLogging:
             extra_logging_columns,
         )
 
-    def update(self, others):
+    def _update(self, others):
         self._transformed_features = others.transformed_features
         self._untransformed_features = others.untransformed_features
         return self
@@ -105,7 +105,21 @@ class FeatureLogging:
     def extra_logging_columns(self) -> list[Feature] | None:
         return self._extra_logging_columns
 
-    def get_feature_group(self, transformed: bool | None = None):
+    @public
+    def get_feature_group(
+        self, transformed: bool | None = None
+    ) -> feature_group.FeatureGroup:
+        """Get the feature group backing this feature logging.
+
+        Transformed and untransformed features are logged in the same feature
+        group, so the same feature group is returned regardless of `transformed`.
+
+        Parameters:
+            transformed: Deprecated and ignored; kept for backwards compatibility.
+
+        Returns:
+            The feature group used to store logged features.
+        """
         if transformed is not None:
             warnings.warn(
                 "Providing ´transformed´ while fetching logging feature group is deprecated"

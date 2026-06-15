@@ -67,7 +67,7 @@ class KafkaTopic:
     @public
     def describe(self):
         """Print a JSON description of the Kafka topic."""
-        util.pretty_print(self)
+        util._pretty_print(self)
 
     @classmethod
     def _validate_topic_config(cls, name, num_replicas, num_partitions):
@@ -106,10 +106,10 @@ class KafkaTopic:
     def extract_fields_from_json(cls, json_decamelized):
         kwargs = {}
         kwargs["name"] = json_decamelized.pop("name")  # required
-        kwargs["num_replicas"] = util.extract_field_from_json(
+        kwargs["num_replicas"] = util._extract_field_from_json(
             json_decamelized, ["num_of_replicas", "num_replicas"]
         )
-        kwargs["num_partitions"] = util.extract_field_from_json(
+        kwargs["num_partitions"] = util._extract_field_from_json(
             json_decamelized, ["num_of_partitions", "num_partitions"]
         )
         return kwargs
@@ -170,7 +170,7 @@ class KafkaTopic:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def delete(self):
         """Delete the topic.
 

@@ -1,20 +1,26 @@
 ---
 name: hops-app
-description: Use when writing Streamlit or custom Python apps for Hopsworks, migrating
-  legacy apps off `APP_BASE_URL_PATH`, or managing app deployments. Auto-invoke when user
-  wants to create a dashboard, deploy a Python app to Hopsworks, configure app
-  routing/readiness, or access the feature store from an app.
-  Input an app source + env + memory; output a running app and its URL.
-allowed-tools: Read, Grep, Glob, Edit, Write, Bash
+description: Use when writing Streamlit or custom Python apps for Hopsworks,
+  deploying from HopsFS or Git, migrating legacy apps off `APP_BASE_URL_PATH`,
+  or managing app routing/readiness, monitoring, and public sharing.
+  Auto-invoke when user wants to create a dashboard, deploy a Python app to
+  Hopsworks, configure app routing/readiness, or access the feature store from
+  an app. Input an app source + env + memory; output a running app and its URL.
 ---
 
-# Hopsworks Python Apps — Python SDK Best Practices
+# Hopsworks Apps — Python SDK Best Practices
 
 ## Overview
 
-Hopsworks supports deploying **Streamlit** and **custom Python** applications as managed apps. Apps are Python scripts backed by a Hopsworks job. New apps should be written as if they run at `/`; Hopsworks owns the public mount prefix (`/hopsworks-api/pythonapp/{projectName}/{appName}/`) and forwards requests to the app container.
+Hopsworks supports deploying **Streamlit** and **custom Python** applications as
+managed apps. Apps are backed by a Hopsworks job and can be sourced from HopsFS
+or a Git repository. Streamlit apps run the Streamlit server; custom apps run a
+web server that listens on `$APP_PORT` (for example Flask, FastAPI, or
+Gradio). New apps should be written as if they run at `/`; Hopsworks owns the
+public mount prefix (`/hopsworks-api/pythonapp/{projectName}/{appName}/`) and
+forwards requests to the app container.
 
-A Streamlit app is a **UI / consumer of the FTI pipelines**, not a pipeline itself. It reads features and predictions written by the feature, training, and inference pipelines (via the feature store, model registry, and online deployments) and presents them. It can also act as a thin online-inference front by downloading a model from the registry and predicting locally (an **embedded model**), avoiding a network call to a model deployment.
+A Streamlit app is a **UI / consumer of the FTI pipelines**, not a pipeline itself. A custom app is a general-purpose service or API frontend. Streamlit apps read features and predictions written by the feature, training, and inference pipelines (via the feature store, model registry, and online deployments) and present them. They can also act as a thin online-inference front by downloading a model from the registry and predicting locally (an **embedded model**), avoiding a network call to a model deployment.
 
 Custom apps are general-purpose web services such as FastAPI, Flask, Gradio, or plain WSGI/ASGI apps. They should bind to `0.0.0.0` and the injected `APP_PORT`, and should not hardcode `APP_BASE_URL_PATH` in new code. Legacy apps can stay on Compatibility prefix while they are migrated, but new apps should not depend on it.
 
@@ -35,8 +41,11 @@ Full CLI surface is in **Manage Apps from the CLI** below.
 ## Ask the user (only when state is ambiguous)
 
 - Does the app need **custom libraries** not in `python-app-pipeline`? If so, clone the env and install `app-requirements.txt` (see **Your App uses Custom libraries**).
+- Does the app come from **HopsFS or Git**? If Git, ask for `git_url`, `git_provider`, and (if needed) `git_branch` plus the entrypoint.
 - What **memory / cores** should the app get? Defaults are `memory=2048` MB, `cores=1.0`.
 - Does the app need a specific routing mode or readiness path? New apps should use root routing; keep legacy prefix mode only while migrating an older app that still depends on `APP_BASE_URL_PATH`. If the app is already deployed and still uses `APP_BASE_URL_PATH`, treat it as a migration task and confirm whether the code can switch to root routing. Streamlit defaults to `/_stcore/health`, custom apps default to `/`, and `readinessProbePath` can override the probe path when needed.
+- Does the app need **monitoring** narrowed to specific routes? Monitoring is enabled by default and routes are optional; `hops app info` shows the monitoring state and route list when present.
+- Does the app need **public access**? Streamlit sharing is feature-flagged; only ask for it when the platform has it enabled.
 - **Before deleting** — `app.delete()` / `hops app delete --yes` tears down the app irreversibly; confirm the exact name with the user, and never tear down an app you created as a side effect (temp or test ones included) unless they asked.
 
 ## Routing and Readiness
@@ -77,7 +86,7 @@ Migration checklist:
 
 ## Creating and Running an App
 
-When you create charts, prefer to use seaborn over plotly (which isn't installed by default).
+When you create charts in Streamlit apps, prefer to use seaborn over plotly (which isn't installed by default).
 
 ### 1. Write the App
 
@@ -111,29 +120,70 @@ st.subheader("Amount Distribution")
 st.bar_chart(df["amount"].value_counts().head(20))
 ```
 
-Custom apps should be written as ordinary root-based web services:
+### Custom Apps
+
+For custom Python apps, bind to `0.0.0.0` and the injected `APP_PORT`. Keep `APP_BASE_URL_PATH` only while migrating a legacy app that still needs the proxy prefix.
 
 ```python
-# Users/<username>/fastapiapp.py
+# Users/<username>/app.py
+import os
 from fastapi import FastAPI
-
 
 app = FastAPI()
 
 
 @app.get("/")
-def home():
+def index():
     return {"status": "ok"}
 
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ["APP_PORT"]))
 ```
 
-Bind custom apps to `0.0.0.0` and `APP_PORT` in the entrypoint command. Keep
-legacy prefix-based routes only if you are migrating an older app that still
-depends on `APP_BASE_URL_PATH`.
+### Git-backed Apps
+
+When the app source lives in Git, leave `app_path` unset and provide the
+repository fields instead. Git-backed apps are cloned again on each start, so a
+restart or redeploy picks up new commits.
+
+- Streamlit apps: use `app_kind="STREAMLIT"` and set `entrypoint_script`
+  relative to the repository root.
+- Custom apps: use `app_kind="CUSTOM"`, an `entrypoint_command`, and
+  `app_port`.
+- Supported Git providers: `GitHub`, `GitLab`, and `BitBucket`.
+
+```python
+streamlit_app = apps.create_app(
+    name="streamlitfromgithub",
+    app_kind="STREAMLIT",
+    git_url="https://github.com/gibchikafa/appshopsworkstests.git",
+    git_provider="GitHub",
+    git_branch="main",
+    entrypoint_script="streamlitapp.py",
+    environment="python-app-pipeline",
+)
+```
+
+```python
+fastapi_app = apps.create_app(
+    name="fastapifromgithub",
+    app_kind="CUSTOM",
+    git_url="https://github.com/gibchikafa/appshopsworkstests.git",
+    git_provider="GitHub",
+    git_branch="main",
+    entrypoint_command='bash -lc "exec python -m uvicorn fastapiapp:app --host 0.0.0.0 --port \"$APP_PORT\""',
+    app_port=8080,
+    environment="python-app-pipeline",
+)
+```
 
 ## Your App uses Custom libraries
 
@@ -203,12 +253,35 @@ print(fastapi_app.app_url)
 > **HopsFS absolute** path (`/Projects/<project>/Users/<username>/app.py`). Each
 > surface rejects the other's form, so don't copy one into the other.
 
+## Monitoring
+
+Monitoring is enabled by default. Leave routes empty to use the default ignored-path behavior, or add routes to narrow the signal.
+
+Monitoring config shape:
+
+```python
+monitoringConfig = {
+    "enabled": True,
+    "routes": [
+        {"path": "/api", "matchType": "prefix"},
+        {"path": "/predict", "matchType": "exact"},
+    ],
+}
+```
+
+- `enabled`: turns app monitoring on or off.
+- `routes`: optional list of monitored paths. If omitted or empty, Hopsworks uses the default ignored-path behavior.
+- `path`: absolute request path to include.
+- `matchType`: `prefix` or `exact`.
+- Streamlit ignores internal/static paths like `/_stcore/health`, `/_stcore/host-config`, `/_stcore/stream`, and `/static` by default.
+- Custom apps should leave framework noise like `/static`, `/docs`, `/openapi.json`, `/redoc`, and `/favicon.ico` out of the monitored routes unless you want them counted.
+
 ---
 
 ## App Lifecycle
 
 ```python
-app.run(await_serving=True)   # blocks until Streamlit is ready
+app.run(await_serving=True)   # blocks until the app is ready
 app.run(await_serving=False)   # returns immediately
 
 print(app.get_url())
@@ -224,7 +297,7 @@ app.delete()
 | State | Description |
 |---|---|
 | `INITIALIZING` | App is starting up |
-| `RUNNING` | App container is running (check `serving` for Streamlit readiness) |
+| `RUNNING` | App container is running (check `serving` for readiness) |
 | `KILLED` | App was stopped by user |
 | `STOPPED` | App was stopped |
 | `FAILED` | App crashed or failed to start |
@@ -535,6 +608,7 @@ app.run()
 | Create app | `apps.create_app(name=..., app_path=...)` |
 | Start app | `app.run(await_serving=True)` |
 | Stop app | `app.stop()` |
+| Redeploy app | `app.redeploy()` |
 | Delete app | `app.delete()` |
 | Get app URL | `app.app_url` |
 | List all apps | `apps.get_apps()` |

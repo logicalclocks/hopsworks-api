@@ -233,7 +233,7 @@ class TestFeatureDescriptiveStatistics:
         ]["response"]
 
         # Act
-        result = FeatureDescriptiveStatistics.from_deequ_json(result_json)
+        result = FeatureDescriptiveStatistics._from_deequ_json(result_json)
 
         # Assert
         assert isinstance(result, FeatureDescriptiveStatistics)
@@ -262,7 +262,7 @@ class TestFeatureDescriptiveStatistics:
         ]["response"]
 
         # Act
-        result = FeatureDescriptiveStatistics.from_deequ_json(result_json)
+        result = FeatureDescriptiveStatistics._from_deequ_json(result_json)
 
         # Assert
         assert isinstance(result, FeatureDescriptiveStatistics)
@@ -291,7 +291,7 @@ class TestFeatureDescriptiveStatistics:
         ]["response"]
 
         # Act
-        result = FeatureDescriptiveStatistics.from_deequ_json(result_json)
+        result = FeatureDescriptiveStatistics._from_deequ_json(result_json)
 
         # Assert
         assert isinstance(result, FeatureDescriptiveStatistics)
@@ -314,7 +314,7 @@ class TestFeatureDescriptiveStatistics:
         ]["response"]
 
         # Act
-        result = FeatureDescriptiveStatistics.from_deequ_json(result_json)
+        result = FeatureDescriptiveStatistics._from_deequ_json(result_json)
 
         # Assert
         assert isinstance(result, FeatureDescriptiveStatistics)

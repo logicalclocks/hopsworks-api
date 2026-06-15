@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 import humps
 from hsfs import util
 from hsfs.core.constants import GE_MAJOR, HAS_GREAT_EXPECTATIONS
-from hsfs.decorators import uses_great_expectations
+from hsfs.decorators import _uses_great_expectations
 from hsfs.ge_validation_result import (
     ValidationResult,
     _normalize_expectation_config_to_legacy_shape,
@@ -126,7 +126,7 @@ class ValidationReport:
         }
 
     @public
-    @uses_great_expectations
+    @_uses_great_expectations
     def to_ge_type(self) -> great_expectations.core.ExpectationSuiteValidationResult:
         """Convert to Great Expectations ExpectationSuiteValidationResult type.
 

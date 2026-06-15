@@ -122,7 +122,7 @@ class TestMonitoringWindowConfig:
 
     def test_window_config_type_list_str(self):
         # Arrange
-        window_config_type_list = mwc.WindowConfigType.list_str()
+        window_config_type_list = mwc.WindowConfigType._list_str()
 
         # Assert
         assert set(window_config_type_list) == {

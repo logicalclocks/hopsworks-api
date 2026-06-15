@@ -183,10 +183,10 @@ class FeatureStore:
                 stacklevel=1,
             )
             version = self.DEFAULT_VERSION
-        feature_group_object = self._feature_group_api.get(self.id, name, version)
+        feature_group_object = self._feature_group_api._get(self.id, name, version)
         if feature_group_object:
             feature_group_object.feature_store = self
-            util.check_missing_mandatory_tags(
+            util._check_missing_mandatory_tags(
                 feature_group_object.missing_mandatory_tags
             )
             return feature_group_object
@@ -216,10 +216,10 @@ class FeatureStore:
         try:
             from hsfs.core.feature_store_api import FeatureStoreApi
 
-            for store in FeatureStoreApi().get_all():
+            for store in FeatureStoreApi()._get_all():
                 if getattr(store, "id", None) == self.id:
                     continue
-                if self._feature_group_api.get(store.id, name, version):
+                if self._feature_group_api._get(store.id, name, version):
                     return store.name
         except Exception:  # noqa: BLE001 - hint is best-effort, never fatal
             return None
@@ -267,15 +267,15 @@ class FeatureStore:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         if name:
-            feature_group_object = self._feature_group_api.get(self.id, name, None)
+            feature_group_object = self._feature_group_api._get(self.id, name, None)
         else:
-            feature_group_object = self._feature_group_api.get_all(self.id)
+            feature_group_object = self._feature_group_api._get_all(self.id)
         for fg_object in feature_group_object:
             fg_object.feature_store = self
         return feature_group_object
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_on_demand_feature_group(
         self, name: str, version: int = None
     ) -> feature_group.ExternalFeatureGroup:
@@ -300,7 +300,7 @@ class FeatureStore:
         return self.get_external_feature_group(name, version)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_external_feature_group(
         self, name: str, version: int = None
     ) -> feature_group.ExternalFeatureGroup:
@@ -333,20 +333,20 @@ class FeatureStore:
                 stacklevel=1,
             )
             version = self.DEFAULT_VERSION
-        feature_group_object = self._feature_group_api.get(
+        feature_group_object = self._feature_group_api._get(
             self.id,
             name,
             version,
         )
         if feature_group_object:
             feature_group_object.feature_store = self
-            util.check_missing_mandatory_tags(
+            util._check_missing_mandatory_tags(
                 feature_group_object.missing_mandatory_tags
             )
         return feature_group_object
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_on_demand_feature_groups(
         self, name: str
     ) -> list[feature_group.ExternalFeatureGroup]:
@@ -370,7 +370,7 @@ class FeatureStore:
         return self.get_external_feature_groups(name)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_external_feature_groups(
         self, name: str | None = None
     ) -> list[feature_group.ExternalFeatureGroup]:
@@ -438,9 +438,9 @@ class FeatureStore:
                 stacklevel=1,
             )
             version = self.DEFAULT_VERSION
-        training_dataset_object = self._training_dataset_api.get(name, version)
+        training_dataset_object = self._training_dataset_api._get(name, version)
         if training_dataset_object:
-            util.check_missing_mandatory_tags(
+            util._check_missing_mandatory_tags(
                 training_dataset_object.missing_mandatory_tags
             )
         return training_dataset_object
@@ -465,11 +465,11 @@ class FeatureStore:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return self._training_dataset_api.get(name, None)
+        return self._training_dataset_api._get(name, None)
 
     @deprecated("hsfs.feature_store.FeatureStore.get_data_source")
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_storage_connector(self, name: str) -> storage_connector.StorageConnector:
         """Get a previously created storage connector from the feature store.
 
@@ -495,7 +495,7 @@ class FeatureStore:
         return self.get_data_source(name).storage_connector
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_data_source(self, name: str) -> ds.DataSource:
         """Get a data source from the feature store.
 
@@ -521,11 +521,50 @@ class FeatureStore:
             `DataSource`. Data source object.
         """
         return ds.DataSource(
-            storage_connector=self._storage_connector_api.get(self._id, name)
+            storage_connector=self._storage_connector_api._get(self._id, name)
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
+    def create_data_source(
+        self,
+        connector: storage_connector.StorageConnector,
+    ) -> ds.DataSource:
+        """Create a new data source in the feature store from a storage connector.
+
+        The connector is persisted to the backend and the resulting
+        `DataSource` wrapping it is returned.
+
+        Example:
+            ```python
+            import hopsworks
+            from hsfs.storage_connector import S3Connector
+
+            project = hopsworks.login()
+            fs = project.get_feature_store()
+
+            sc = S3Connector(
+                id=None,
+                name="my_s3_connector",
+                featurestore_id=fs.id,
+                bucket="my-bucket",
+                region="eu-north-1",
+            )
+            data_source = fs.create_data_source(sc)
+            ```
+
+        Parameters:
+            connector: Storage connector to persist and wrap as a data source.
+
+        Returns:
+            `DataSource`. Data source wrapping the created storage connector.
+        """
+        connector._featurestore_id = self._id
+        saved = self._storage_connector_api._create(connector)
+        return ds.DataSource(storage_connector=saved)
+
+    @public
+    @usage._method_logger
     def share(self, target_project: str | int) -> None:
         """Share this entire feature store with another project.
 
@@ -553,10 +592,10 @@ class FeatureStore:
         """
         from hsfs.core import share_api
 
-        share_api.ShareApi(self._id).share_feature_store(target_project)
+        share_api.ShareApi(self._id)._share_feature_store(target_project)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def shared_with(self) -> list[dict]:
         """List the projects this feature store has been shared with.
 
@@ -581,10 +620,10 @@ class FeatureStore:
         """
         from hsfs.core import share_api
 
-        return share_api.ShareApi(self._id).list_feature_store_shares()
+        return share_api.ShareApi(self._id)._list_feature_store_shares()
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def unshare(self, target_project: str | int) -> None:
         """Revoke a previously-granted feature-store-level share.
 
@@ -601,7 +640,7 @@ class FeatureStore:
         """
         from hsfs.core import share_api
 
-        share_api.ShareApi(self._id).unshare_feature_store(target_project)
+        share_api.ShareApi(self._id)._unshare_feature_store(target_project)
 
     @public
     def sql(
@@ -642,12 +681,12 @@ class FeatureStore:
         Returns:
             DataFrame depending on the chosen type.
         """
-        return self._feature_group_engine.sql(
+        return self._feature_group_engine._sql(
             query, self._name, dataframe_type, online, read_options or {}
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_online_storage_connector(self) -> storage_connector.StorageConnector:
         """Get the storage connector for the Online Feature Store of the respective project's feature store.
 
@@ -669,7 +708,8 @@ class FeatureStore:
         """
         return self.get_online_data_source().storage_connector
 
-    @usage.method_logger
+    @public
+    @usage._method_logger
     def get_online_data_source(self) -> ds.DataSource:
         """Get the data source for the Online Feature Store of the respective project's feature store.
 
@@ -687,7 +727,9 @@ class FeatureStore:
             `DataSource`. JDBC data source to the Online Feature Store.
         """
         return ds.DataSource(
-            storage_connector=self._storage_connector_api.get_online_connector(self._id)
+            storage_connector=self._storage_connector_api._get_online_connector(
+                self._id
+            )
         )
 
     def _normalize_tags(
@@ -702,10 +744,10 @@ class FeatureStore:
         # Returns
             `list[tag.Tag]`: List of Tag objects.
         """
-        return tag.Tag.normalize(tags)
+        return tag.Tag._normalize(tags)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_feature_group(
         self,
         name: str,
@@ -787,7 +829,7 @@ class FeatureStore:
             version: Version of the feature group to create, defaults to `None` and will create the feature group with incremented version from the last version in the feature store.
             description: A string describing the contents of the feature group to improve discoverability for Data Scientists.
             online_enabled: Define whether the feature group should be made available also in the online feature store for low latency access.
-            time_travel_format: Format used for time travel, either `"DELTA"`, `"HUDI"`, or `None` to disable time travel, defaults to `"DELTA"`.
+            time_travel_format: Format used for time travel, either `"DELTA"`, `"HUDI"`, `"ICEBERG"`, or `None` to disable time travel, defaults to `"DELTA"`.
             partition_key: A list of feature names to be used as partition key when writing the feature data to the offline storage, defaults to empty list `[]`.
             primary_key:
                 A list of feature names to be used as primary key for the feature group.
@@ -838,9 +880,10 @@ class FeatureStore:
                 Optionally, define the name of the topic used for sending notifications when entries are inserted or updated on the online feature store.
                 If left undefined no notifications are sent.
             transformation_functions:
-                On-Demand Transformation functions attached to the feature group.
-                It can be a list of list of user defined functions defined using the hopsworks `@udf` decorator.
-                Defaults to `None`, no transformations.
+                On-demand transformation functions attached to the feature group.
+                Each function should be defined using the hopsworks [`@udf`][hsfs.hopsworks_udf.udf] decorator.
+                Transformation functions can be chained by passing the output of one function as input to another.
+                Chained transformations are automatically organized into a DAG where independent transformations may run in parallel.
             online_config:
                 Optionally, configure the underlying RonDB online table.
                 Accepts an [`OnlineConfig`][hsfs.online_config.OnlineConfig] instance or a dictionary with snake_case keys (e.g. `{"primary_key_index_type": "HASH"}`).
@@ -946,7 +989,7 @@ class FeatureStore:
         return feature_group_object
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_or_create_feature_group(
         self,
         name: str,
@@ -1021,7 +1064,7 @@ class FeatureStore:
             version: Version of the feature group to retrieve or create.
             description: A string describing the contents of the feature group to improve discoverability for Data Scientists.
             online_enabled: Define whether the feature group should be made available also in the online feature store for low latency access.
-            time_travel_format: Format used for time travel, either `"DELTA"`, `"HUDI"`, or `None` to disable time travel, defaults to `"DELTA"`.
+            time_travel_format: Format used for time travel, either `"DELTA"`, `"HUDI"`, `"ICEBERG"`, or `None` to disable time travel, defaults to `"DELTA"`.
             partition_key: A list of feature names to be used as partition key when writing the feature data to the offline storage, defaults to empty list `[]`.
             primary_key:
                 A list of feature names to be used as primary key for the feature group.
@@ -1072,9 +1115,10 @@ class FeatureStore:
                 Optionally, define the name of the topic used for sending notifications when entries are inserted or updated on the online feature store.
                 If left undefined no notifications are sent.
             transformation_functions:
-                On-Demand Transformation functions attached to the feature group.
-                It can be a list of list of user defined functions defined using the hopsworks `@udf` decorator.
-                Defaults to `None`, no transformations.
+                On-demand transformation functions attached to the feature group.
+                Each function should be defined using the hopsworks [`@udf`][hsfs.hopsworks_udf.udf] decorator.
+                Transformation functions can be chained by passing the output of one function as input to another.
+                Chained transformations are automatically organized into a DAG where independent transformations may run in parallel.
             online_config:
                 Optionally, configure the underlying RonDB online table.
                 Accepts an [`OnlineConfig`][hsfs.online_config.OnlineConfig] instance or a dictionary with snake_case keys (e.g. `{"primary_key_index_type": "HASH"}`).
@@ -1125,7 +1169,7 @@ class FeatureStore:
         Returns:
             The feature group metadata object.
         """
-        feature_group_object = self._feature_group_api.get(self.id, name, version)
+        feature_group_object = self._feature_group_api._get(self.id, name, version)
         if not feature_group_object:
             if not data_source:
                 data_source = ds.DataSource(
@@ -1173,7 +1217,7 @@ class FeatureStore:
         return feature_group_object
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_on_demand_feature_group(
         self,
         name: str,
@@ -1328,7 +1372,7 @@ class FeatureStore:
         return feature_group_object
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_external_feature_group(
         self,
         name: str,
@@ -1548,7 +1592,7 @@ class FeatureStore:
         return feature_group_object
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_or_create_spine_group(
         self,
         name: str,
@@ -1657,7 +1701,7 @@ class FeatureStore:
         Returns:
             The spine group metadata object.
         """
-        spine = self._feature_group_api.get(self.id, name, version)
+        spine = self._feature_group_api._get(self.id, name, version)
         if spine:
             spine.dataframe = dataframe
             spine.feature_store = self
@@ -1793,7 +1837,7 @@ class FeatureStore:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_transformation_function(
         self,
         transformation_function: HopsworksUdf,
@@ -1836,7 +1880,7 @@ class FeatureStore:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_transformation_function(
         self,
         name: str,
@@ -1937,10 +1981,12 @@ class FeatureStore:
         Returns:
             The TransformationFunction metadata object.
         """
-        return self._transformation_function_engine.get_transformation_fn(name, version)
+        return self._transformation_function_engine._get_transformation_fn(
+            name, version
+        )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_transformation_functions(self) -> list[TransformationFunction]:
         """Get  all transformation functions metadata objects.
 
@@ -1956,10 +2002,10 @@ class FeatureStore:
         Returns:
             List of transformation function instances.
         """
-        return self._transformation_function_engine.get_transformation_fns()
+        return self._transformation_function_engine._get_transformation_fns()
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_feature_view(
         self,
         name: str,
@@ -2054,9 +2100,11 @@ class FeatureStore:
                 For more details see documentation for feature view's get training data methods.
                 Defaults to `[]`, no training helper columns.
             transformation_functions:
-                Model Dependent Transformation functions attached to the feature view.
-                It can be a list of list of user defined functions defined using the hopsworks `@udf` decorator.
-                Defaults to `None`, no transformations.
+                Model-dependent transformation functions attached to the feature view.
+                Each function should be defined using the hopsworks [`@udf`][hsfs.hopsworks_udf.udf] decorator.
+                Transformation functions can be chained by using the output of one function as the input to another.
+                Chained transformations are automatically organized into a DAG where independent transformations run in parallel.
+                Use [`FeatureView.visualize_transformations`][hsfs.feature_view.FeatureView.visualize_transformations] to inspect the execution order.
             logging_enabled: If true, enable feature logging for the feature view.
             extra_log_columns:
                 Extra columns to be logged in addition to the features used in the feature view.
@@ -2090,10 +2138,10 @@ class FeatureStore:
             extra_log_columns=extra_log_columns,
             tags=normalized_tags,
         )
-        return self._feature_view_engine.save(feat_view)
+        return self._feature_view_engine._save(feat_view)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_or_create_feature_view(
         self,
         name: str,
@@ -2149,9 +2197,11 @@ class FeatureStore:
                 For more details see documentation for feature view's get training data methods.
                 Defaults to `[]`, no training helper columns.
             transformation_functions:
-                Model Dependent Transformation functions attached to the feature view.
-                It can be a list of list of user defined functions defined using the hopsworks `@udf` decorator.
-                Defaults to `None`, no transformations.
+                Model-dependent transformation functions attached to the feature view.
+                Each function should be defined using the hopsworks [`@udf`][hsfs.hopsworks_udf.udf] decorator.
+                Transformation functions can be chained by using the output of one function as the input to another.
+                Chained transformations are automatically organized into a DAG where independent transformations run in parallel.
+                Use [`FeatureView.visualize_transformations`][hsfs.feature_view.FeatureView.visualize_transformations] to inspect the execution order.
             logging_enabled: If true, enable feature logging for the feature view.
             extra_log_columns:
                 Extra columns to be logged in addition to the features used in the feature view.
@@ -2162,7 +2212,7 @@ class FeatureStore:
         Returns:
             The feature view metadata object.
         """
-        fv_object = self._feature_view_engine.get(name, version)
+        fv_object = self._feature_view_engine._get(name, version)
         if not fv_object:
             fv_object = self.create_feature_view(
                 name=name,
@@ -2179,7 +2229,7 @@ class FeatureStore:
         return fv_object
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_feature_view(
         self, name: str, version: int = None
     ) -> feature_view.FeatureView:
@@ -2216,15 +2266,15 @@ class FeatureStore:
                 stacklevel=1,
             )
             version = self.DEFAULT_VERSION
-        feature_view_object = self._feature_view_engine.get(name, version)
+        feature_view_object = self._feature_view_engine._get(name, version)
         if feature_view_object:
-            util.check_missing_mandatory_tags(
+            util._check_missing_mandatory_tags(
                 feature_view_object.missing_mandatory_tags
             )
         return feature_view_object
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_feature_views(self, name: str) -> list[feature_view.FeatureView]:
         """Get a list of all versions of a feature view entity from the feature store.
 
@@ -2250,7 +2300,7 @@ class FeatureStore:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return self._feature_view_engine.get(name)
+        return self._feature_view_engine._get(name)
 
     def _disable_hopsworks_feature_query_service_client(self):
         """Disable Hopsworks feature query service for the current session. This behaviour is not persisted on reset."""
@@ -2262,16 +2312,17 @@ class FeatureStore:
         """Reset Hopsworks feature query service for the current session."""
         from hsfs.core import arrow_flight_client
 
-        arrow_flight_client.close()
-        arrow_flight_client.get_instance()
+        arrow_flight_client._close()
+        arrow_flight_client._get_instance()
 
+    @public
     def create_chart(
         self, title: str, description: str, url: str, job_id: int | None = None
     ) -> None:
         """Create a chart in the feature store.
 
         Registers an HTML file as a chart in Hopsworks.
-        This enables it to be used in a [`Dashboard`][hsfs.core.dashboard.Dashboard].
+        This enables it to be used in a `Dashboard`.
 
         Each chart with a set `job_id` has a refresh button which triggers the job and redraws the chart once the job finishes.
         You can use this job to conviniently extract and prepare the data from Hopsworks Feature Store using its Python API.
@@ -2310,8 +2361,9 @@ class FeatureStore:
             url=url,
             job=Job(id=job_id) if job_id else None,
         )
-        return ChartApi().create_chart(chart)
+        return ChartApi()._create_chart(chart)
 
+    @public
     def get_charts(self) -> list[Chart]:
         """Get all charts in the feature store.
 
@@ -2330,8 +2382,9 @@ class FeatureStore:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return ChartApi().get_charts()
+        return ChartApi()._get_charts()
 
+    @public
     def get_chart(self, chart_id: int) -> Chart:
         """Get a chart by its ID.
 
@@ -2353,8 +2406,9 @@ class FeatureStore:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return ChartApi().get_chart(chart_id)
+        return ChartApi()._get_chart(chart_id)
 
+    @public
     def create_dashboard(self, name: str, charts: list[Chart] | None = None) -> None:
         """Create a dashboard in the feature store.
 
@@ -2387,8 +2441,9 @@ class FeatureStore:
             name=name,
             charts=charts,
         )
-        return DashboardApi().create_dashboard(dashboard)
+        return DashboardApi()._create_dashboard(dashboard)
 
+    @public
     def get_dashboards(self) -> list[Dashboard]:
         """Get all dashboards in the feature store.
 
@@ -2407,8 +2462,9 @@ class FeatureStore:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return DashboardApi().get_dashboards()
+        return DashboardApi()._get_dashboards()
 
+    @public
     def get_dashboard(self, dashboard_id: int) -> Dashboard:
         """Get a dashboard by its ID.
 
@@ -2430,7 +2486,7 @@ class FeatureStore:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return DashboardApi().get_dashboard(dashboard_id)
+        return DashboardApi()._get_dashboard(dashboard_id)
 
     @public
     @property
@@ -2474,7 +2530,8 @@ class FeatureStore:
         """Name of the offline feature store database."""
         return self._offline_feature_store_name
 
-    @usage.method_logger
+    @public
+    @usage._method_logger
     def search(
         self,
         search_term: str = None,
@@ -2492,9 +2549,9 @@ class FeatureStore:
            search_term: the term to search for.
            keyword_filter: filter results by keywords. Can be a single string or an array of strings.
            tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries,
-               or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
-               schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
-               schema), and ``value`` (the value to match).
+                or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
+                schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
+                schema), and ``value`` (the value to match).
            offset: the number of results to skip (default is 0).
            limit: the number of search results to return (default is 100).
            global_search: By default is false - search in current project only. Set to true if you want to search over all projects
@@ -2570,7 +2627,8 @@ class FeatureStore:
             global_search=global_search,
         )
 
-    @usage.method_logger
+    @public
+    @usage._method_logger
     def search_feature_groups(
         self,
         search_term: str = None,
@@ -2588,9 +2646,9 @@ class FeatureStore:
             search_term: the term to search for.
             keyword_filter: filter results by keywords. Can be a single string or an array of strings.
             tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries,
-               or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
-               schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
-               schema), and ``value`` (the value to match).
+                or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
+                schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
+                schema), and ``value`` (the value to match).
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
             global_search: By default is false - search in current project only. Set to true if you want to search over all projects
@@ -2627,7 +2685,8 @@ class FeatureStore:
             global_search=global_search,
         )
 
-    @usage.method_logger
+    @public
+    @usage._method_logger
     def search_feature_views(
         self,
         search_term: str = None,
@@ -2645,9 +2704,9 @@ class FeatureStore:
             search_term: the term to search for.
             keyword_filter: filter results by keywords. Can be a single string or an array of strings.
             tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries,
-               or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
-               schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
-               schema), and ``value`` (the value to match).
+                or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
+                schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
+                schema), and ``value`` (the value to match).
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
             global_search: By default is false - search in current project only. Set to true if you want to search over all projects
@@ -2684,7 +2743,8 @@ class FeatureStore:
             global_search=global_search,
         )
 
-    @usage.method_logger
+    @public
+    @usage._method_logger
     def search_training_datasets(
         self,
         search_term: str = None,
@@ -2702,9 +2762,9 @@ class FeatureStore:
             search_term: the term to search for.
             keyword_filter: filter results by keywords. Can be a single string or an array of strings.
             tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries,
-               or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
-               schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
-               schema), and ``value`` (the value to match).
+                or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
+                schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
+                schema), and ``value`` (the value to match).
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
             global_search: By default is false - search in current project only. Set to true if you want to search over all projects
@@ -2741,7 +2801,8 @@ class FeatureStore:
             global_search=global_search,
         )
 
-    @usage.method_logger
+    @public
+    @usage._method_logger
     def search_features(
         self,
         search_term: str = None,
@@ -2759,9 +2820,9 @@ class FeatureStore:
             search_term: the term to search for.
             keyword_filter: filter results by keywords. Can be a single string or an array of strings.
             tag_filter: filter results by tags. Can be a single dictionary, an array of dictionaries,
-               or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
-               schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
-               schema), and ``value`` (the value to match).
+                or an array of TagSearchFilter objects. Each tag filter requires: ``name`` (the tag
+                schema name as defined by Hopsworks Admin), ``key`` (the property within that tag
+                schema), and ``value`` (the value to match).
             offset: the number of results to skip (default is 0).
             limit: the number of search results to return (default is 100).
             global_search: By default is false - search in current project only. Set to true if you want to search over all projects

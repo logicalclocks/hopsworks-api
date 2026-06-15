@@ -16,23 +16,17 @@
 
 from __future__ import annotations
 
-import contextlib
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import requests
+from hopsworks_apigen import also_available_as
 from hopsworks_common.client import auth, base
 
 
 if TYPE_CHECKING:
     from urllib.parse import ParseResult
-
-
-with contextlib.suppress(ImportError):
-    import jks
-
-from hopsworks_apigen import also_available_as
 
 
 @also_available_as(
@@ -92,13 +86,9 @@ class Client(base.Client):
         ca_chain_path = Path(self._get_ca_chain_path())
         if not ca_chain_path.exists():
             keystore_pw = self._cert_key
-            ks = jks.KeyStore.load(
-                self._get_jks_key_store_path(), keystore_pw, try_decrypt_keys=True
-            )
-            ts = jks.KeyStore.load(
-                self._get_jks_trust_store_path(), keystore_pw, try_decrypt_keys=True
-            )
-            self._write_ca_chain(ks, ts, ca_chain_path)
+            _, ks_certs = self._load_jks(self._get_jks_key_store_path(), keystore_pw)
+            _, ts_certs = self._load_jks(self._get_jks_trust_store_path(), keystore_pw)
+            self._write_ca_chain(ks_certs, ts_certs, ca_chain_path)
         return str(ca_chain_path)
 
     def _get_hopsworks_rest_endpoint(self):
@@ -173,7 +163,7 @@ class Client(base.Client):
         with pwd_path.open() as f:
             return f.read()
 
-    def replace_public_host(self, url: ParseResult) -> ParseResult:
+    def _replace_public_host(self, url: ParseResult) -> ParseResult:
         """Replace hostname to public hostname set in HOPSWORKS_PUBLIC_HOST.
 
         Parameters:

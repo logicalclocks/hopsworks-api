@@ -32,7 +32,7 @@ class OnlineIngestionApi:
     interacting with the Hopsworks backend.
     """
 
-    def create_online_ingestion(
+    def _create_online_ingestion(
         self,
         feature_group_instance: fg_mod.FeatureGroup,
         online_ingestion_instance: online_ingestion.OnlineIngestion,
@@ -49,7 +49,7 @@ class OnlineIngestionApi:
         Returns:
             OnlineIngestion: The created OnlineIngestion object with metadata from the backend.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -71,7 +71,7 @@ class OnlineIngestionApi:
             feature_group=feature_group_instance,
         )
 
-    def get_online_ingestion(
+    def _get_online_ingestion(
         self,
         feature_group_instance: fg_mod.FeatureGroup,
         query_params: dict[str, str] | None = None,
@@ -90,7 +90,7 @@ class OnlineIngestionApi:
         Returns:
             OnlineIngestion: The OnlineIngestion object(s) matching the query.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,

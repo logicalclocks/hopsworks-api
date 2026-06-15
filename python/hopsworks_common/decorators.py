@@ -25,20 +25,22 @@ from hopsworks_common.core.constants import (
     HAS_CONFLUENT_KAFKA,
     HAS_GREAT_EXPECTATIONS,
     HAS_POLARS,
+    HAS_PYICEBERG,
     HAS_TRINO,
     confluent_kafka_not_installed_message,
     great_expectations_not_installed_message,
     polars_not_installed_message,
+    pyiceberg_not_installed_message,
     trino_not_installed_message,
 )
 
 
 @also_available_as(
-    "hopsworks.decorators.not_connected",
-    "hsfs.decorators.not_connected",
-    "hsml.decorators.not_connected",
+    "hopsworks.decorators._not_connected",
+    "hsfs.decorators._not_connected",
+    "hsml.decorators._not_connected",
 )
-def not_connected(fn):
+def _not_connected(fn):
     @functools.wraps(fn)
     def if_not_connected(inst, *args, **kwargs):
         if inst._connected:
@@ -49,11 +51,11 @@ def not_connected(fn):
 
 
 @also_available_as(
-    "hopsworks.decorators.connected",
-    "hsfs.decorators.connected",
-    "hsml.decorators.connected",
+    "hopsworks.decorators._connected",
+    "hsfs.decorators._connected",
+    "hsml.decorators._connected",
 )
-def connected(fn):
+def _connected(fn):
     @functools.wraps(fn)
     def if_connected(inst, *args, **kwargs):
         if not inst._connected:
@@ -64,16 +66,16 @@ def connected(fn):
 
 
 @also_available_as(
-    "hopsworks.decorators.catch_not_found",
-    "hsfs.decorators.catch_not_found",
-    "hsml.decorators.catch_not_found",
+    "hopsworks.decorators._catch_not_found",
+    "hsfs.decorators._catch_not_found",
+    "hsml.decorators._catch_not_found",
 )
-def catch_not_found(*class_import_paths, fallback_return=None):
+def _catch_not_found(*class_import_paths, fallback_return=None):
     def decorator(f):
         @functools.wraps(f)
         def g(*args, **kwds):
             # Needs to be imported inside function to avoid circular dependency
-            from hopsworks.client.exceptions import RestAPIError
+            from hopsworks_common.client.exceptions import RestAPIError
 
             not_found_error_codes = []
             for class_import_path in class_import_paths:
@@ -144,11 +146,11 @@ else:
 
 
 @also_available_as(
-    "hopsworks.decorators.uses_great_expectations",
-    "hsfs.decorators.uses_great_expectations",
-    "hsml.decorators.uses_great_expectations",
+    "hopsworks.decorators._uses_great_expectations",
+    "hsfs.decorators._uses_great_expectations",
+    "hsml.decorators._uses_great_expectations",
 )
-def uses_great_expectations(f):
+def _uses_great_expectations(f):
     @functools.wraps(f)
     def g(*args, **kwds):
         if not HAS_GREAT_EXPECTATIONS:
@@ -158,7 +160,7 @@ def uses_great_expectations(f):
     return g
 
 
-def uses_polars(f):
+def _uses_polars(f):
     @functools.wraps(f)
     def g(*args, **kwds):
         if not HAS_POLARS:
@@ -168,7 +170,7 @@ def uses_polars(f):
     return g
 
 
-def uses_confluent_kafka(f):
+def _uses_confluent_kafka(f):
     @functools.wraps(f)
     def g(*args, **kwds):
         if not HAS_CONFLUENT_KAFKA:
@@ -178,11 +180,21 @@ def uses_confluent_kafka(f):
     return g
 
 
-def uses_trino(f):
+def _uses_trino(f):
     @functools.wraps(f)
     def g(*args, **kwds):
         if not HAS_TRINO:
             raise ModuleNotFoundError(trino_not_installed_message)
+        return f(*args, **kwds)
+
+    return g
+
+
+def _uses_pyiceberg(f):
+    @functools.wraps(f)
+    def g(*args, **kwds):
+        if not HAS_PYICEBERG:
+            raise ModuleNotFoundError(pyiceberg_not_installed_message)
         return f(*args, **kwds)
 
     return g

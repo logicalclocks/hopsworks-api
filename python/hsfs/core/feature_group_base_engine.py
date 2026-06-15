@@ -38,10 +38,12 @@ class FeatureGroupBaseEngine:
         self._storage_connector_api = storage_connector_api.StorageConnectorApi()
         self._kafka_api = kafka_api.KafkaApi()
 
-    def delete(self, feature_group):
-        self._feature_group_api.delete(feature_group)
+    def _delete(self, feature_group, force=False, delete_feature_views=False):
+        self._feature_group_api._delete(
+            feature_group, force=force, delete_feature_views=delete_feature_views
+        )
 
-    def add_tag(self, feature_group: FeatureGroup, name: str, value: Any):
+    def _add_tag(self, feature_group: FeatureGroup, name: str, value: Any):
         """Attach a name/value tag to a feature group.
 
         Parameters:
@@ -49,18 +51,18 @@ class FeatureGroupBaseEngine:
             name: Name of the tag to be added.
             value: Value of the tag to be added.
         """
-        self._tags_api.add(feature_group, name, value)
+        self._tags_api._add(feature_group, name, value)
 
-    def delete_tag(self, feature_group: FeatureGroup, name: str):
+    def _delete_tag(self, feature_group: FeatureGroup, name: str):
         """Remove a tag from a feature group.
 
         Parameters:
             feature_group: The feature group to remove the tag from.
             name: Name of the tag to be removed.
         """
-        self._tags_api.delete(feature_group, name)
+        self._tags_api._delete(feature_group, name)
 
-    def get_tag(self, feature_group: FeatureGroup, name: str) -> Any:
+    def _get_tag(self, feature_group: FeatureGroup, name: str) -> Any:
         """Get tag with a certain name.
 
         Parameters:
@@ -70,12 +72,12 @@ class FeatureGroupBaseEngine:
         Returns:
             The value of the tag with the specified name, or `None` if it does not exist.
         """
-        tag = self._tags_api.get(feature_group, name)
+        tag = self._tags_api._get(feature_group, name)
         if tag:
             return tag[name]
         return None
 
-    def get_tags(self, feature_group: FeatureGroup) -> dict[str, Any]:
+    def _get_tags(self, feature_group: FeatureGroup) -> dict[str, Any]:
         """Get all tags for a feature group.
 
         Parameters:
@@ -84,12 +86,12 @@ class FeatureGroupBaseEngine:
         Returns:
             A dictionary of all tags for the feature group, or an empty dictionary if none exist.
         """
-        tags = self._tags_api.get(feature_group)
+        tags = self._tags_api._get(feature_group)
         if tags:
             return tags
         return {}
 
-    def get_parent_feature_groups(
+    def _get_parent_feature_groups(
         self, feature_group: FeatureGroup
     ) -> explicit_provenance.Links | None:
         """Get the parents of this feature group, based on explicit provenance.
@@ -104,12 +106,12 @@ class FeatureGroupBaseEngine:
         Returns:
             The feature groups used to generate this feature group.
         """
-        links = self._feature_group_api.get_parent_feature_groups(feature_group)
+        links = self._feature_group_api._get_parent_feature_groups(feature_group)
         if not links.is_empty():
             return links
         return None
 
-    def get_storage_connector_provenance(
+    def _get_storage_connector_provenance(
         self, feature_group: FeatureGroup
     ) -> explicit_provenance.Links | None:
         """Get the parents of this feature group, based on explicit provenance.
@@ -124,12 +126,12 @@ class FeatureGroupBaseEngine:
         Returns:
             The storage connector used to generated this feature group.
         """
-        links = self._feature_group_api.get_storage_connector_provenance(feature_group)
+        links = self._feature_group_api._get_storage_connector_provenance(feature_group)
         if not links.is_empty():
             return links
         return None
 
-    def get_generated_feature_views(
+    def _get_generated_feature_views(
         self, feature_group: FeatureGroup
     ) -> explicit_provenance.Links | None:
         """Get the generated feature view using this feature group, based on explicit provenance.
@@ -144,12 +146,12 @@ class FeatureGroupBaseEngine:
         Returns:
             The feature views generated using this feature group.
         """
-        links = self._feature_group_api.get_generated_feature_views(feature_group)
+        links = self._feature_group_api._get_generated_feature_views(feature_group)
         if not links.is_empty():
             return links
         return None
 
-    def get_generated_feature_groups(
+    def _get_generated_feature_groups(
         self, feature_group: FeatureGroup
     ) -> explicit_provenance.Links | None:
         """Get the generated feature groups using this feature group, based on explicit provenance.
@@ -164,29 +166,29 @@ class FeatureGroupBaseEngine:
         Returns:
             The feature groups generated using this feature group.
         """
-        links = self._feature_group_api.get_generated_feature_groups(feature_group)
+        links = self._feature_group_api._get_generated_feature_groups(feature_group)
         if not links.is_empty():
             return links
         return None
 
-    def update_statistics_config(self, feature_group: FeatureGroup):
+    def _update_statistics_config(self, feature_group: FeatureGroup):
         """Update the statistics configuration of a feature group.
 
         Parameters:
             feature_group: Metadata object of feature group.
         """
-        self._feature_group_api.update_metadata(
+        self._feature_group_api._update_metadata(
             feature_group, feature_group, "updateStatsConfig"
         )
 
-    def new_feature_list(
+    def _new_feature_list(
         self, feature_group: FeatureGroup, updated_features: list[Feature]
     ) -> list[Feature]:
         # take original schema and replaces the updated features and returns the new list
         new_features = []
         for feature in feature_group.columns:
             if not any(
-                util.autofix_feature_name(updated.name) == feature.name
+                util._autofix_feature_name(updated.name) == feature.name
                 for updated in updated_features
             ):
                 new_features.append(feature)
@@ -195,11 +197,11 @@ class FeatureGroupBaseEngine:
     def _verify_schema_compatibility(self, feature_group_features, dataframe_features):
         err = []
         feature_df_dict = {
-            util.autofix_feature_name(feat.name): feat.type
+            util._autofix_feature_name(feat.name): feat.type
             for feat in dataframe_features
         }
         for feature_fg in feature_group_features:
-            name = util.autofix_feature_name(feature_fg.name)
+            name = util._autofix_feature_name(feature_fg.name)
             fg_type = feature_fg.type.lower().replace(" ", "")
             # check if feature exists dataframe
             if name in feature_df_dict:
@@ -227,7 +229,7 @@ class FeatureGroupBaseEngine:
         # any features that are left in lookup table are superfluous
         for feature_df_name, feature_df_type in feature_df_dict.items():
             err += [
-                f"{util.autofix_feature_name(feature_df_name)} (type: '{feature_df_type}') does not exist "
+                f"{util._autofix_feature_name(feature_df_name)} (type: '{feature_df_type}') does not exist "
                 f"in feature group."
             ]
 
@@ -240,7 +242,7 @@ class FeatureGroupBaseEngine:
                 "spaces are automatically replaced with underscores."
             )
 
-    def get_subject(self, feature_group):
+    def _get_subject(self, feature_group):
         return self._kafka_api.get_subject(
             feature_group._feature_store_id,
             feature_group.get_fg_name(),

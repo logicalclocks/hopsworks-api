@@ -79,7 +79,7 @@ def _patch_client(mocker, send_request_return):
     else:
         client_instance._send_request.return_value = send_request_return
     mocker.patch(
-        "hopsworks_common.core.env_var_api.client.get_instance",
+        "hopsworks_common.core.env_var_api.client._get_instance",
         return_value=client_instance,
     )
     return client_instance
@@ -293,7 +293,7 @@ class TestEnvVarsApi:
             ),  # POST
         ]
         mocker.patch(
-            "hopsworks_common.core.env_var_api.client.get_instance",
+            "hopsworks_common.core.env_var_api.client._get_instance",
             return_value=client,
         )
         result = api.set_env_var(
@@ -326,7 +326,7 @@ class TestEnvVarsApi:
             ),  # PUT
         ]
         mocker.patch(
-            "hopsworks_common.core.env_var_api.client.get_instance",
+            "hopsworks_common.core.env_var_api.client._get_instance",
             return_value=client,
         )
         result = api.set_env_var(
@@ -357,7 +357,7 @@ class TestEnvVarsApi:
             ),  # POST
         ]
         mocker.patch(
-            "hopsworks_common.core.env_var_api.client.get_instance",
+            "hopsworks_common.core.env_var_api.client._get_instance",
             return_value=client,
         )
         result = api.set_env_var(
@@ -393,7 +393,7 @@ class TestEnvVarsApi:
             ),  # PUT
         ]
         mocker.patch(
-            "hopsworks_common.core.env_var_api.client.get_instance",
+            "hopsworks_common.core.env_var_api.client._get_instance",
             return_value=client,
         )
         result = api.set_env_var(

@@ -21,7 +21,7 @@ from hopsworks_common import client, git_op_execution
 @also_available_as("hopsworks.core.git_op_execution_api.GitOpExecutionApi")
 class GitOpExecutionApi:
     def _get_execution(self, repo_id, execution_id):
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,

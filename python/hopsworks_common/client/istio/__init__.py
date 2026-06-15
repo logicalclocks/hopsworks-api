@@ -34,6 +34,6 @@ def init(host, port, project=None, api_key_value=None, scheme="http"):
         _client = external.Client(host, port, project, api_key_value, scheme=scheme)
 
 
-def get_instance() -> hopsworks.Client | external.Client | None:
+def _get_instance() -> hopsworks.Client | external.Client | None:
     global _client
     return _client

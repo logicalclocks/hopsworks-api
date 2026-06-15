@@ -22,16 +22,16 @@ class TestPythonSparkConvertDataframe:
     def test_convert_to_default_dataframe_w_timezone_notz(
         self, mocker, dataframe_fixture_times
     ):
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         python_engine = python.Engine()
 
-        default_df_python = python_engine.convert_to_default_dataframe(
+        default_df_python = python_engine._convert_to_default_dataframe(
             dataframe_fixture_times
         )
 
         spark_engine = spark.Engine()
 
-        default_df_spark_from_pd = spark_engine.convert_to_default_dataframe(
+        default_df_spark_from_pd = spark_engine._convert_to_default_dataframe(
             dataframe_fixture_times
         )
 
@@ -46,16 +46,16 @@ class TestPythonSparkConvertDataframe:
     def test_convert_to_default_dataframe_w_timezone_utc(
         self, mocker, dataframe_fixture_times
     ):
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         python_engine = python.Engine()
 
-        default_df_python = python_engine.convert_to_default_dataframe(
+        default_df_python = python_engine._convert_to_default_dataframe(
             dataframe_fixture_times
         )
 
         spark_engine = spark.Engine()
 
-        default_df_spark_from_pd = spark_engine.convert_to_default_dataframe(
+        default_df_spark_from_pd = spark_engine._convert_to_default_dataframe(
             dataframe_fixture_times
         )
 
@@ -67,16 +67,16 @@ class TestPythonSparkConvertDataframe:
     def test_convert_to_default_dataframe_w_timezone_utc_3(
         self, mocker, dataframe_fixture_times
     ):
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         python_engine = python.Engine()
 
-        default_df_python = python_engine.convert_to_default_dataframe(
+        default_df_python = python_engine._convert_to_default_dataframe(
             dataframe_fixture_times
         )
 
         spark_engine = spark.Engine()
 
-        default_df_spark_from_pd = spark_engine.convert_to_default_dataframe(
+        default_df_spark_from_pd = spark_engine._convert_to_default_dataframe(
             dataframe_fixture_times
         )
 
@@ -88,16 +88,16 @@ class TestPythonSparkConvertDataframe:
     def test_convert_to_default_dataframe_w_timezone_timestamp(
         self, mocker, dataframe_fixture_times
     ):
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         python_engine = python.Engine()
 
-        default_df_python = python_engine.convert_to_default_dataframe(
+        default_df_python = python_engine._convert_to_default_dataframe(
             dataframe_fixture_times
         )
 
         spark_engine = spark.Engine()
 
-        default_df_spark_from_pd = spark_engine.convert_to_default_dataframe(
+        default_df_spark_from_pd = spark_engine._convert_to_default_dataframe(
             dataframe_fixture_times
         )
 
@@ -109,16 +109,16 @@ class TestPythonSparkConvertDataframe:
     def test_convert_to_default_dataframe_w_timezone_timestamp_pacific(
         self, mocker, dataframe_fixture_times
     ):
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         python_engine = python.Engine()
 
-        default_df_python = python_engine.convert_to_default_dataframe(
+        default_df_python = python_engine._convert_to_default_dataframe(
             dataframe_fixture_times
         )
 
         spark_engine = spark.Engine()
 
-        default_df_spark_from_pd = spark_engine.convert_to_default_dataframe(
+        default_df_spark_from_pd = spark_engine._convert_to_default_dataframe(
             dataframe_fixture_times
         )
 

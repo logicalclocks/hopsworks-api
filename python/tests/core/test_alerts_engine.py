@@ -36,10 +36,10 @@ class TestAlertsEngine:
             }
         )
         client_mock._project_name = "project1"
-        mocker.patch("hopsworks_common.client.get_instance", return_value=client_mock)
+        mocker.patch("hopsworks_common.client._get_instance", return_value=client_mock)
 
         # Act
-        receiver = engine.await_receiver(receiver_name, timeout)
+        receiver = engine._await_receiver(receiver_name, timeout)
         # Assert
         assert receiver.name == f"project1__{receiver_name}"
 
@@ -57,11 +57,11 @@ class TestAlertsEngine:
             }
         )
         client_mock._project_name = "project1"
-        mocker.patch("hopsworks_common.client.get_instance", return_value=client_mock)
+        mocker.patch("hopsworks_common.client._get_instance", return_value=client_mock)
 
         # Act & Assert
         with pytest.raises(TimeoutError):
-            engine.await_receiver(receiver_name, timeout)
+            engine._await_receiver(receiver_name, timeout)
 
     def test_await_route(self, mocker, backend_fixtures):
         # Arrange
@@ -82,10 +82,10 @@ class TestAlertsEngine:
             }
         )
         client_mock._project_name = "project1"
-        mocker.patch("hopsworks_common.client.get_instance", return_value=client_mock)
+        mocker.patch("hopsworks_common.client._get_instance", return_value=client_mock)
 
         # Act
-        route = engine.await_route(receiver_name, match, timeout)
+        route = engine._await_route(receiver_name, match, timeout)
         # Assert
         assert route.match == {
             "api": "alerts-api",
@@ -114,8 +114,8 @@ class TestAlertsEngine:
             }
         )
         client_mock._project_name = "project1"
-        mocker.patch("hopsworks_common.client.get_instance", return_value=client_mock)
+        mocker.patch("hopsworks_common.client._get_instance", return_value=client_mock)
 
         # Act & Assert
         with pytest.raises(TimeoutError):
-            engine.await_route(receiver_name, match, timeout)
+            engine._await_route(receiver_name, match, timeout)

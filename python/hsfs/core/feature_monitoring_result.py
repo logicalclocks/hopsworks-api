@@ -68,7 +68,7 @@ class FeatureMonitoringResult:
         self._reference_statistics = self._parse_descriptive_statistics(
             reference_statistics
         )
-        self._monitoring_time = util.convert_event_time_to_timestamp(monitoring_time)
+        self._monitoring_time = util._convert_event_time_to_timestamp(monitoring_time)
         self._difference = difference
         self._shift_detected = shift_detected
         self._empty_detection_window = empty_detection_window

@@ -26,14 +26,14 @@ _engine = None
 _engine_type = None
 
 
-def init(engine_type: str) -> None:
+def _init(engine_type: str) -> None:
     global _engine, _engine_type
     python_types = ["python", "training"]
     if _engine_type != engine_type:
         if engine_type in python_types and _engine_type in python_types:
             _engine_type = engine_type
         else:
-            stop()
+            _stop()
     if not _engine:
         if engine_type == "spark":
             _engine = spark.Engine()
@@ -57,15 +57,15 @@ def init(engine_type: str) -> None:
             _engine_type = engine_type
 
 
-def get_instance() -> (
+def _get_instance() -> (
     spark.Engine | spark_no_metastore.Engine | TypeVar("python.Engine")
 ):
-    init(hopsworks_common.connection._hsfs_engine_type)
+    _init(hopsworks_common.connection._hsfs_engine_type)
     return _engine
 
 
 # Used for testing
-def set_instance(
+def _set_instance(
     engine_type: str,
     engine: spark.Engine | spark_no_metastore.Engine | TypeVar("python.Engine"),
 ) -> None:
@@ -74,15 +74,15 @@ def set_instance(
     _engine = engine
 
 
-def get_type() -> str:
+def _get_type() -> str:
     if _engine:
         return hopsworks_common.connection._hsfs_engine_type
     raise Exception("Couldn't find execution engine. Try reconnecting to Hopsworks.")
 
 
-def stop() -> None:
+def _stop() -> None:
     global _engine
     from hsfs.core import arrow_flight_client
 
     _engine = None
-    arrow_flight_client.close()
+    arrow_flight_client._close()

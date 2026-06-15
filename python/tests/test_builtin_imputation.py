@@ -30,6 +30,7 @@ from hsfs.builtin_transformations import (
     impute_mode,
 )
 from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
+from hsfs.core.transformation_execution_dag import TransformationExecutionDAG
 from hsfs.core.transformation_function_engine import TransformationFunctionEngine
 from hsfs.engine import python as python_engine
 from hsfs.transformation_function import TransformationType
@@ -47,9 +48,9 @@ def _make_tf(udf_fn, stats: FeatureDescriptiveStatistics):
 
 def _apply(tf, df, context: dict | None = None):
     engine = python_engine.Engine()
-    hopsworks_engine.set_instance(engine=engine, engine_type="python")
-    return TransformationFunctionEngine.apply_transformation_functions(
-        transformation_functions=[tf],
+    hopsworks_engine._set_instance(engine=engine, engine_type="python")
+    return TransformationFunctionEngine._apply_transformation_functions(
+        execution_graph=TransformationExecutionDAG([tf]),
         data=df,
         transformation_context=context,
     )

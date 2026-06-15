@@ -41,33 +41,33 @@ class ExpectationSuiteEngine:
             feature_store_id=feature_store_id, feature_group_id=feature_group_id
         )
 
-    def save(self, expectation_suite: es.ExpectationSuite) -> es.ExpectationSuite:
+    def _save(self, expectation_suite: es.ExpectationSuite) -> es.ExpectationSuite:
         if expectation_suite.id:
-            return self.update(expectation_suite)
-        return self.create(expectation_suite)
+            return self._update(expectation_suite)
+        return self._create(expectation_suite)
 
-    def create(self, expectation_suite: es.ExpectationSuite) -> es.ExpectationSuite:
-        saved_suite = self._expectation_suite_api.create(expectation_suite)
+    def _create(self, expectation_suite: es.ExpectationSuite) -> es.ExpectationSuite:
+        saved_suite = self._expectation_suite_api._create(expectation_suite)
 
         url = self._get_expectation_suite_url()
         print(f"Attached expectation suite to Feature Group, edit it at {url}")
 
         return saved_suite
 
-    def update(self, expectation_suite: es.ExpectationSuite) -> es.ExpectationSuite:
-        saved_suite = self._expectation_suite_api.update(expectation_suite)
+    def _update(self, expectation_suite: es.ExpectationSuite) -> es.ExpectationSuite:
+        saved_suite = self._expectation_suite_api._update(expectation_suite)
 
         url = self._get_expectation_suite_url()
         print(f"Updated expectation suite attached to Feature Group, edit it at {url}")
 
         return saved_suite
 
-    def update_metadata(
+    def _update_metadata(
         self, expectation_suite: es.ExpectationSuite
     ) -> es.ExpectationSuite:
-        return self._expectation_suite_api.update_metadata(expectation_suite)
+        return self._expectation_suite_api._update_metadata(expectation_suite)
 
-    def update_metadata_from_fields(
+    def _update_metadata_from_fields(
         self,
         id: int,
         feature_group_id: int,
@@ -79,7 +79,7 @@ class ExpectationSuiteEngine:
         expectations: list[GeExpectation],
         **kwargs,
     ) -> None:
-        self._expectation_suite_api.update_metadata(
+        self._expectation_suite_api._update_metadata(
             es.ExpectationSuite(
                 id=id,
                 expectation_suite_name=expectation_suite_name,
@@ -92,21 +92,21 @@ class ExpectationSuiteEngine:
             )
         )
 
-    def get(self) -> es.ExpectationSuite | None:
-        return self._expectation_suite_api.get()
+    def _get(self) -> es.ExpectationSuite | None:
+        return self._expectation_suite_api._get()
 
-    def delete(self, expectation_suite_id: int) -> None:
-        self._expectation_suite_api.delete(expectation_suite_id=expectation_suite_id)
+    def _delete(self, expectation_suite_id: int) -> None:
+        self._expectation_suite_api._delete(expectation_suite_id=expectation_suite_id)
         self._expectation_engine = None
 
     def _get_expectation_suite_url(self) -> str:
         """Build url to land on Hopsworks UI page which summarizes validation results."""
         sub_path = (
             "/p/"
-            + str(client.get_instance()._project_id)
+            + str(client._get_instance()._project_id)
             + "/fs/"
             + str(self._feature_store_id)
             + "/fg/"
             + str(self._feature_group_id)
         )
-        return util.get_hostname_replaced_url(sub_path)
+        return util._get_hostname_replaced_url(sub_path)

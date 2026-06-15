@@ -61,14 +61,14 @@ class DeployableComponentLogs:
 
     @classmethod
     def extract_fields_from_json(cls, json_decamelized):
-        instance_name = util.extract_field_from_json(json_decamelized, "instance_name")
-        content = util.extract_field_from_json(json_decamelized, "content")
+        instance_name = util._extract_field_from_json(json_decamelized, "instance_name")
+        content = util._extract_field_from_json(json_decamelized, "content")
         # ``timestamp`` and ``doc_id`` are missing on the legacy Kubernetes
         # source response. ``extract_field_from_json`` already returns
         # ``None`` for absent keys so this stays back-compat with old
         # backends.
-        timestamp = util.extract_field_from_json(json_decamelized, "timestamp")
-        doc_id = util.extract_field_from_json(json_decamelized, "doc_id")
+        timestamp = util._extract_field_from_json(json_decamelized, "timestamp")
+        doc_id = util._extract_field_from_json(json_decamelized, "doc_id")
         return instance_name, content, timestamp, doc_id
 
     def to_dict(self):

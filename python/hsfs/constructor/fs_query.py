@@ -38,6 +38,7 @@ class FsQuery:
         items: list[dict[str, Any]] | None = None,
         type: str | None = None,
         delta_cached_feature_groups: list[dict[str, Any]] | None = None,
+        iceberg_cached_feature_groups: list[dict[str, Any]] | None = None,
         **kwargs,
     ) -> None:
         self._query = query
@@ -73,6 +74,14 @@ class FsQuery:
             ]
         else:
             self._delta_cached_feature_groups = []
+
+        if iceberg_cached_feature_groups is not None:
+            self._iceberg_cached_feature_groups = [
+                hudi_feature_group_alias.HudiFeatureGroupAlias.from_response_json(fg)
+                for fg in iceberg_cached_feature_groups
+            ]
+        else:
+            self._iceberg_cached_feature_groups = []
 
     @classmethod
     def from_response_json(cls, json_dict: dict[str, Any]) -> FsQuery:
@@ -115,7 +124,7 @@ class FsQuery:
     def hqs_payload_signature(self) -> str | None:
         return self._hqs_payload_signature
 
-    def register_external(
+    def _register_external(
         self,
         spine: TypeVar("pyspark.sql.DataFrame") | TypeVar("pyspark.RDD") | None = None,
     ) -> None:
@@ -125,23 +134,23 @@ class FsQuery:
         for external_fg_alias in self._on_demand_fg_aliases:
             if type(external_fg_alias.on_demand_feature_group).__name__ == "SpineGroup":
                 external_fg_alias.on_demand_feature_group.dataframe = spine
-            engine.get_instance().register_external_temporary_table(
+            engine._get_instance()._register_external_temporary_table(
                 external_fg_alias.on_demand_feature_group,
                 external_fg_alias.alias,
             )
 
-    def register_hudi_tables(
+    def _register_hudi_tables(
         self,
         feature_store_id: int,
         feature_store_name: str,
         read_options: dict[str, Any] | None,
     ) -> None:
         for hudi_fg in self._hudi_cached_feature_groups:
-            engine.get_instance().register_hudi_temporary_table(
+            engine._get_instance()._register_hudi_temporary_table(
                 hudi_fg, feature_store_id, feature_store_name, read_options
             )
 
-    def register_delta_tables(
+    def _register_delta_tables(
         self,
         feature_store_id: int,
         feature_store_name: str,
@@ -149,10 +158,24 @@ class FsQuery:
         is_cdc_query: bool = False,
     ) -> None:
         for delta_fg in self._delta_cached_feature_groups:
-            engine.get_instance().register_delta_temporary_table(
+            engine._get_instance()._register_delta_temporary_table(
                 delta_fg_alias=delta_fg,
                 feature_store_id=feature_store_id,
                 feature_store_name=feature_store_name,
                 read_options=read_options,
                 is_cdc_query=is_cdc_query,
+            )
+
+    def _register_iceberg_tables(
+        self,
+        feature_store_id: int,
+        feature_store_name: str,
+        read_options: dict[str, Any] | None,
+    ) -> None:
+        for iceberg_fg in self._iceberg_cached_feature_groups:
+            engine._get_instance()._register_iceberg_temporary_table(
+                iceberg_fg,
+                feature_store_id,
+                feature_store_name,
+                read_options,
             )
