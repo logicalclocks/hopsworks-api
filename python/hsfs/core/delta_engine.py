@@ -195,12 +195,42 @@ class DeltaEngine:
             from pyspark.sql.functions import col
 
             # CDC query - remove duplicates for upserts and do not include deleted rows
-            # to match behavior of other engines
-            self._spark_session.read.format(self.DELTA_SPARK_FORMAT).options(
-                **delta_options
-            ).load(location).filter(
-                col("_change_type").isin("update_postimage", "insert")
-            ).createOrReplaceTempView(delta_fg_alias.alias)
+            # to match behavior of other engines.
+            #
+            # Why retry: Delta's CDF lower-bound check uses the commit file modification
+            # time, while DeltaTable.history() returns the in-commit creation timestamp.
+            # On a freshly-created table these can differ by tens of milliseconds, so a
+            # pre-flight comparison against history() cannot reliably predict whether
+            # Delta will accept the startingTimestamp. Instead we attempt the read with
+            # startingTimestamp and, if Delta rejects it with the "before the earliest
+            # version" error, retry from the earliest commit version (startingVersion).
+            def _do_cdf_read(opts):
+                return (
+                    self._spark_session.read.format(self.DELTA_SPARK_FORMAT)
+                    .options(**opts)
+                    .load(location)
+                    .filter(col("_change_type").isin("update_postimage", "insert"))
+                )
+
+            try:
+                _do_cdf_read(delta_options).createOrReplaceTempView(
+                    delta_fg_alias.alias
+                )
+            except Exception as e:  # noqa: BLE001
+                if "before the earliest version" not in str(e):
+                    raise
+                _logger.debug(
+                    f"CDF startingTimestamp rejected by Delta ('before the earliest "
+                    f"version'). Retrying from earliest commit version. Error: {e}"
+                )
+                earliest = self._get_delta_earliest_commit(location)
+                retry_opts = {
+                    k: v for k, v in delta_options.items() if k != "startingTimestamp"
+                }
+                retry_opts["startingVersion"] = (
+                    earliest[0] if earliest is not None else 0
+                )
+                _do_cdf_read(retry_opts).createOrReplaceTempView(delta_fg_alias.alias)
 
     def _setup_delta_read_opts(
         self,
@@ -237,29 +267,14 @@ class DeltaEngine:
                     self.DELTA_QUERY_TIME_TRAVEL_AS_OF_INSTANT: _delta_commit_end_time,
                 }
         elif delta_fg_alias.left_feature_group_start_timestamp is not None:
-            # change data feed query with start and end time
-            start_ts = delta_fg_alias.left_feature_group_start_timestamp
-            earliest = self._get_delta_earliest_commit(location) if location else None
-            if earliest is not None and start_ts <= earliest[1]:
-                # Requested start predates the Delta log's first commit. Same
-                # millisecond skew as the snapshot-with-end branch above (the
-                # backend-recorded commit_time can be a few ms before the Delta
-                # log's first commit), e.g. a rolling feature-monitoring window
-                # computed right after a fresh insert. Delta rejects a CDF read
-                # whose startingTimestamp is before the earliest version, so
-                # start the change feed from the earliest commit version instead.
-                delta_options = {
-                    "readChangeFeed": "true",
-                    "startingVersion": earliest[0],
-                }
-            else:
-                _delta_commit_start_time = util._get_delta_datestr_from_timestamp(
-                    delta_fg_alias.left_feature_group_start_timestamp,
-                )
-                delta_options = {
-                    "readChangeFeed": "true",
-                    "startingTimestamp": _delta_commit_start_time,
-                }
+            # change data feed query with start and optional end time
+            _delta_commit_start_time = util._get_delta_datestr_from_timestamp(
+                delta_fg_alias.left_feature_group_start_timestamp,
+            )
+            delta_options = {
+                "readChangeFeed": "true",
+                "startingTimestamp": _delta_commit_start_time,
+            }
             if delta_fg_alias.left_feature_group_end_timestamp is not None:
                 _delta_commit_end_time = util._get_delta_datestr_from_timestamp(
                     delta_fg_alias.left_feature_group_end_timestamp,
