@@ -219,17 +219,37 @@ class DeltaEngine:
             except Exception as e:  # noqa: BLE001
                 if "before the earliest version" not in str(e):
                     raise
+                # Both startingTimestamp and endingTimestamp can carry the same
+                # clock skew: the backend-recorded commit_time is ~200 ms before
+                # Delta's commit-file mtime, so on a freshly-created table both
+                # bounds can fall before Delta's "earliest available version"
+                # threshold. Remove both timestamp bounds and replace them with
+                # version bounds determined from the Delta log.
                 _logger.debug(
-                    f"CDF startingTimestamp rejected by Delta ('before the earliest "
-                    f"version'). Retrying from earliest commit version. Error: {e}"
+                    f"CDF timestamp bound(s) rejected by Delta ('before the earliest "
+                    f"version'). Retrying with version bounds. Error: {e}"
                 )
                 earliest = self._get_delta_earliest_commit(location)
                 retry_opts = {
-                    k: v for k, v in delta_options.items() if k != "startingTimestamp"
+                    k: v
+                    for k, v in delta_options.items()
+                    if k not in ("startingTimestamp", "endingTimestamp")
                 }
                 retry_opts["startingVersion"] = (
                     earliest[0] if earliest is not None else 0
                 )
+                end_ts = delta_fg_alias.left_feature_group_end_timestamp
+                if end_ts is not None:
+                    if earliest is not None and end_ts <= earliest[1]:
+                        # End bound is also at/before the earliest commit — pin
+                        # the read to exactly the earliest version so CDF returns
+                        # the single commit that covers the monitoring window.
+                        retry_opts["endingVersion"] = earliest[0]
+                    else:
+                        # End bound is a genuine later timestamp; keep it as-is.
+                        retry_opts["endingTimestamp"] = (
+                            util._get_delta_datestr_from_timestamp(end_ts)
+                        )
                 _do_cdf_read(retry_opts).createOrReplaceTempView(delta_fg_alias.alias)
 
     def _setup_delta_read_opts(

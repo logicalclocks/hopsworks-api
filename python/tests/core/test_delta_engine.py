@@ -562,6 +562,143 @@ class TestDeltaEngine:
             "tmp"
         )
 
+    def test_register_temporary_table_cdf_retry_both_bounds_before_earliest(
+        self, mocker
+    ):
+        # When BOTH startingTimestamp and endingTimestamp fall before the Delta
+        # log's earliest commit (the fresh-FG skew scenario), the retry must
+        # remove both timestamp keys and set startingVersion=earliest AND
+        # endingVersion=earliest so CDF reads exactly the one commit that
+        # covers the monitoring window.
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        self._patch_pyspark_col(mocker)
+        spark = mock.Mock()
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.prepare_spark_location.return_value = "loc"
+        engine = DeltaEngine(1, "fs", fg, spark, None)
+
+        earliest_version = 0
+        earliest_ts_ms = 1718540946380  # 13:29:06.380
+
+        first_load_result = mock.Mock()
+        first_load_result.filter.return_value.createOrReplaceTempView.side_effect = (
+            Exception(
+                "The provided timestamp (2026-06-16 13:29:06.164) is before the "
+                "earliest version available to this table (2026-06-16 13:29:06.38)."
+            )
+        )
+        retry_load_result = mock.Mock()
+        retry_load_result.filter.return_value.createOrReplaceTempView.return_value = (
+            None
+        )
+        spark.read.format.return_value.options.return_value.load.side_effect = [
+            first_load_result,
+            retry_load_result,
+        ]
+
+        mocker.patch.object(
+            engine,
+            "_get_delta_earliest_commit",
+            return_value=(earliest_version, earliest_ts_ms),
+        )
+        mocker.patch(
+            "hsfs.util._get_delta_datestr_from_timestamp", return_value="ts_str"
+        )
+
+        alias = mock.Mock()
+        alias.alias = "tmp"
+        alias.left_feature_group_start_timestamp = 1718540946164  # 13:29:06.164
+        alias.left_feature_group_end_timestamp = 1718540946164  # same — also before
+
+        # Act
+        engine._register_temporary_table(alias, read_options=None, is_cdc_query=True)
+
+        # Assert — two load calls: first failed, second succeeded
+        assert spark.read.format.return_value.options.return_value.load.call_count == 2
+
+        second_opts_call = spark.read.format.return_value.options.call_args_list[1]
+        retry_opts = (
+            second_opts_call[1] if second_opts_call[1] else second_opts_call[0][0]
+        )
+        assert retry_opts["startingVersion"] == earliest_version
+        assert retry_opts["endingVersion"] == earliest_version
+        assert "startingTimestamp" not in retry_opts
+        assert "endingTimestamp" not in retry_opts
+
+        retry_load_result.filter.return_value.createOrReplaceTempView.assert_called_once_with(
+            "tmp"
+        )
+
+    def test_register_temporary_table_cdf_retry_start_before_earliest_end_later(
+        self, mocker
+    ):
+        # When startingTimestamp is before the earliest commit but endingTimestamp
+        # is a genuine later bound (end > earliest[1]), the retry must use
+        # startingVersion for the start and keep the original endingTimestamp
+        # for the end (NOT switch end to endingVersion).
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        self._patch_pyspark_col(mocker)
+        spark = mock.Mock()
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.prepare_spark_location.return_value = "loc"
+        engine = DeltaEngine(1, "fs", fg, spark, None)
+
+        earliest_version = 0
+        earliest_ts_ms = 1718540946380  # 13:29:06.380
+
+        first_load_result = mock.Mock()
+        first_load_result.filter.return_value.createOrReplaceTempView.side_effect = (
+            Exception(
+                "The provided timestamp (2026-06-16 13:29:06.164) is before the "
+                "earliest version available to this table (2026-06-16 13:29:06.38)."
+            )
+        )
+        retry_load_result = mock.Mock()
+        retry_load_result.filter.return_value.createOrReplaceTempView.return_value = (
+            None
+        )
+        spark.read.format.return_value.options.return_value.load.side_effect = [
+            first_load_result,
+            retry_load_result,
+        ]
+
+        mocker.patch.object(
+            engine,
+            "_get_delta_earliest_commit",
+            return_value=(earliest_version, earliest_ts_ms),
+        )
+        # _get_delta_datestr_from_timestamp is called once for the initial opts
+        # (startingTimestamp) and then once more in the retry for endingTimestamp.
+        mocker.patch(
+            "hsfs.util._get_delta_datestr_from_timestamp", return_value="ts_str"
+        )
+
+        alias = mock.Mock()
+        alias.alias = "tmp"
+        alias.left_feature_group_start_timestamp = 1718540946164  # before earliest
+        alias.left_feature_group_end_timestamp = 1718540950000  # well after earliest
+
+        # Act
+        engine._register_temporary_table(alias, read_options=None, is_cdc_query=True)
+
+        # Assert — two load calls: first failed, second succeeded
+        assert spark.read.format.return_value.options.return_value.load.call_count == 2
+
+        second_opts_call = spark.read.format.return_value.options.call_args_list[1]
+        retry_opts = (
+            second_opts_call[1] if second_opts_call[1] else second_opts_call[0][0]
+        )
+        assert retry_opts["startingVersion"] == earliest_version
+        assert retry_opts["endingTimestamp"] == "ts_str"
+        assert "startingTimestamp" not in retry_opts
+        assert "endingVersion" not in retry_opts
+
+        retry_load_result.filter.return_value.createOrReplaceTempView.assert_called_once_with(
+            "tmp"
+        )
+
     def test_register_temporary_table_cdf_happy_path_no_retry(self, mocker):
         # When the CDF .load() succeeds on the first attempt, no retry occurs and
         # _get_delta_earliest_commit is never called.
