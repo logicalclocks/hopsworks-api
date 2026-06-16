@@ -203,7 +203,7 @@ class Execution:
             and isinstance(self._monitoring, dict)
             and self._monitoring.get("appUrl")
         ):
-            _client = client.get_instance()
+            _client = client._get_instance()
             base_url = _client._base_url.rstrip("/")
             app_url = str(self._monitoring["appUrl"]).lstrip("/")
             if app_url.startswith(("http://", "https://")):

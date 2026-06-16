@@ -170,7 +170,7 @@ class App:
             ```
         """
         if self._serving and self._app_url:
-            _client = client.get_instance()
+            _client = client._get_instance()
             base_url = _client._base_url.rstrip("/")
             app_url = self._app_url.lstrip("/")
             if app_url.startswith(("http://", "https://")):
