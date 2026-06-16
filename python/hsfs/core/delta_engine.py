@@ -238,14 +238,28 @@ class DeltaEngine:
                 }
         elif delta_fg_alias.left_feature_group_start_timestamp is not None:
             # change data feed query with start and end time
-            _delta_commit_start_time = util._get_delta_datestr_from_timestamp(
-                delta_fg_alias.left_feature_group_start_timestamp,
-            )
-
-            delta_options = {
-                "readChangeFeed": "true",
-                "startingTimestamp": _delta_commit_start_time,
-            }
+            start_ts = delta_fg_alias.left_feature_group_start_timestamp
+            earliest = self._get_delta_earliest_commit(location) if location else None
+            if earliest is not None and start_ts <= earliest[1]:
+                # Requested start predates the Delta log's first commit. Same
+                # millisecond skew as the snapshot-with-end branch above (the
+                # backend-recorded commit_time can be a few ms before the Delta
+                # log's first commit), e.g. a rolling feature-monitoring window
+                # computed right after a fresh insert. Delta rejects a CDF read
+                # whose startingTimestamp is before the earliest version, so
+                # start the change feed from the earliest commit version instead.
+                delta_options = {
+                    "readChangeFeed": "true",
+                    "startingVersion": earliest[0],
+                }
+            else:
+                _delta_commit_start_time = util._get_delta_datestr_from_timestamp(
+                    delta_fg_alias.left_feature_group_start_timestamp,
+                )
+                delta_options = {
+                    "readChangeFeed": "true",
+                    "startingTimestamp": _delta_commit_start_time,
+                }
             if delta_fg_alias.left_feature_group_end_timestamp is not None:
                 _delta_commit_end_time = util._get_delta_datestr_from_timestamp(
                     delta_fg_alias.left_feature_group_end_timestamp,
