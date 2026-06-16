@@ -2185,6 +2185,19 @@ class FeatureGroupBase:
             )
 
     @public
+    @property
+    def online_config(self) -> OnlineConfig | None:
+        """Online (RonDB) serving configuration of the feature group, or None.
+
+        Exposes the online table settings, including the secondary indexes.
+        Read [`OnlineConfig.secondary_indexes`][hsfs.online_config.OnlineConfig.secondary_indexes]
+        to see which column groups are indexed in the online store; combine with
+        [`FeatureGroup.partitioned_by`][hsfs.feature_group.FeatureGroup.partitioned_by]
+        to tell apart online-indexed columns and event-time partition grains.
+        """
+        return self._online_config
+
+    @public
     def get_latest_online_ingestion(self) -> online_ingestion.OnlineIngestion:
         """Retrieve the latest online ingestion operation for this feature group.
 
