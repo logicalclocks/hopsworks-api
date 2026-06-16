@@ -301,6 +301,76 @@ class TestDeltaEngine:
         assert opts[engine.DELTA_QUERY_TIME_TRAVEL_AS_OF_INSTANT] == "t"
         assert opts["k"] == "v"
 
+    def test_setup_delta_read_opts_cdf_start_before_earliest_uses_version(self, mocker):
+        # A rolling monitoring window computed right after a fresh insert can have a
+        # backend-recorded start a few ms before the Delta log's first commit. Delta
+        # rejects a CDF read whose startingTimestamp predates the earliest version,
+        # so the change feed must start from the earliest commit version instead.
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        engine = DeltaEngine(1, "fs", fg, None, None)
+        alias = mock.Mock()
+        alias.left_feature_group_start_timestamp = 1000
+        alias.left_feature_group_end_timestamp = 5000
+        mocker.patch.object(
+            engine, "_get_delta_earliest_commit", return_value=(3, 2000)
+        )
+        mocker.patch("hsfs.util._get_delta_datestr_from_timestamp", return_value="t")
+
+        # Act
+        result = engine._setup_delta_read_opts(alias, "hopsfs://nn:8020/p")
+
+        # Assert
+        assert result == {
+            "readChangeFeed": "true",
+            "startingVersion": 3,
+            "endingTimestamp": "t",
+        }
+
+    def test_setup_delta_read_opts_cdf_start_after_earliest_uses_timestamp(
+        self, mocker
+    ):
+        # Normal case: the requested start is at/after the earliest commit, so the
+        # change feed reads from startingTimestamp as before (no regression).
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        engine = DeltaEngine(1, "fs", fg, None, None)
+        alias = mock.Mock()
+        alias.left_feature_group_start_timestamp = 5000
+        alias.left_feature_group_end_timestamp = None
+        mocker.patch.object(
+            engine, "_get_delta_earliest_commit", return_value=(3, 2000)
+        )
+        mocker.patch("hsfs.util._get_delta_datestr_from_timestamp", return_value="t")
+
+        # Act
+        result = engine._setup_delta_read_opts(alias, "hopsfs://nn:8020/p")
+
+        # Assert
+        assert result == {"readChangeFeed": "true", "startingTimestamp": "t"}
+
+    def test_setup_delta_read_opts_end_before_earliest_uses_version(self, mocker):
+        # Snapshot-with-end counterpart of the same skew: an end time before the
+        # Delta log's first commit falls back to versionAsOf on the earliest commit.
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        engine = DeltaEngine(1, "fs", fg, None, None)
+        alias = mock.Mock()
+        alias.left_feature_group_start_timestamp = None
+        alias.left_feature_group_end_timestamp = 1000
+        mocker.patch.object(
+            engine, "_get_delta_earliest_commit", return_value=(3, 2000)
+        )
+
+        # Act
+        result = engine._setup_delta_read_opts(alias, "hopsfs://nn:8020/p")
+
+        # Assert
+        assert result == {engine.DELTA_QUERY_TIME_TRAVEL_AS_OF_VERSION: 3}
+
     def test_generate_merge_query_primary_key_only(self, mocker):
         # Arrange
         _patch_client(mocker, is_external=False)
