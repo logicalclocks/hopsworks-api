@@ -103,9 +103,9 @@ class Client(base.Client):
             self._project_name = None
             return
 
-        self.provide_project(project)
+        self._provide_project(project)
 
-    def provide_project(self, project):
+    def _provide_project(self, project):
         self._project_name = project
         _logger.debug("Project name: %s", self._project_name)
 
@@ -200,7 +200,7 @@ class Client(base.Client):
                 .getOrCreate()
             )
 
-        hopsworks_common.client.get_connection()._provide_project()
+        hopsworks_common.client._get_connection()._provide_project()
 
     def _download_certs(self):
         res = self._materialize_certs()
