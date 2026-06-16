@@ -128,6 +128,19 @@ class TestApp:
 
         assert app.app_url == "https://myhost:443/hopsworks-api/pythonapp/proj/my_app/"
 
+    def test_app_url_when_serving_with_prefixed_path(self, mocker):
+        mock_client = mocker.patch("hopsworks_common.client._get_instance")
+        mock_client.return_value._base_url = "https://myhost:443"
+
+        app = App(
+            name="my_app",
+            state="RUNNING",
+            serving=True,
+            app_url="/hopsworks-api/pythonapp/proj/my_app/",
+        )
+
+        assert app.app_url == "https://myhost:443/hopsworks-api/pythonapp/proj/my_app/"
+
     def test_app_url_when_not_serving(self, mocker):
         mocker.patch("hopsworks_common.client._get_instance")
 

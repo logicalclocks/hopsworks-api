@@ -1,25 +1,34 @@
 ---
 name: hops-app
-description: Use when writing Streamlit or custom Python apps for Hopsworks or managing app
-  deployments. Auto-invoke when user wants to create a dashboard, deploy a Python
-  app from HopsFS or Git, configure app monitoring, or access the feature store
-  from an app. Input an app.py or git repo + environment + memory; output a
-  running app and its URL.
+description: Use when writing Streamlit or custom Python apps for Hopsworks,
+  deploying from HopsFS or Git, migrating legacy apps off `APP_BASE_URL_PATH`,
+  or managing app routing/readiness, monitoring, and public sharing.
+  Auto-invoke when user wants to create a dashboard, deploy a Python app to
+  Hopsworks, configure app routing/readiness, or access the feature store from
+  an app. Input an app source + env + memory; output a running app and its URL.
 ---
 
 # Hopsworks Apps — Python SDK Best Practices
 
 ## Overview
 
-Hopsworks supports deploying **Streamlit** applications and **custom Python** applications as managed apps. Apps are backed by a Hopsworks job and can be sourced from HopsFS or a Git repository. Streamlit apps run the Streamlit server; custom apps run a web server that listens on `$APP_PORT` (for example Flask, FastAPI, or Gradio).
+Hopsworks supports deploying **Streamlit** and **custom Python** applications as
+managed apps. Apps are backed by a Hopsworks job and can be sourced from HopsFS
+or a Git repository. Streamlit apps run the Streamlit server; custom apps run a
+web server that listens on `$APP_PORT` (for example Flask, FastAPI, or
+Gradio). New apps should be written as if they run at `/`; Hopsworks owns the
+public mount prefix (`/hopsworks-api/pythonapp/{projectName}/{appName}/`) and
+forwards requests to the app container.
 
 A Streamlit app is a **UI / consumer of the FTI pipelines**, not a pipeline itself. A custom app is a general-purpose service or API frontend. Streamlit apps read features and predictions written by the feature, training, and inference pipelines (via the feature store, model registry, and online deployments) and present them. They can also act as a thin online-inference front by downloading a model from the registry and predicting locally (an **embedded model**), avoiding a network call to a model deployment.
 
+Custom apps are general-purpose web services such as FastAPI, Flask, Gradio, or plain WSGI/ASGI apps. They should bind to `0.0.0.0` and the injected `APP_PORT`, and should not hardcode `APP_BASE_URL_PATH` in new code. Legacy apps can stay on Compatibility prefix while they are migrated, but new apps should not depend on it.
+
 ## Contract
 
-- **Input:** a Streamlit or custom `app.py` or a Git-backed app + environment (app-requirements.txt on top of cloned python-app-pipeline env) + memory (plus optional monitoring config).
+- **Input:** a Streamlit or custom app + environment + memory.
 - **Output:** a running app and its URL.
-- **Pre-condition:** app code is available either in HopsFS or in a Git repository.
+- **Pre-condition:** the app source is available in HopsFS or Git (project-relative path for the SDK, HopsFS-absolute for the CLI).
 
 ## Smoke-test (cheap pre/post-flight)
 
@@ -34,9 +43,44 @@ Full CLI surface is in **Manage Apps from the CLI** below.
 - Does the app need **custom libraries** not in `python-app-pipeline`? If so, clone the env and install `app-requirements.txt` (see **Your App uses Custom libraries**).
 - Does the app come from **HopsFS or Git**? If Git, ask for `git_url`, `git_provider`, and (if needed) `git_branch` plus the entrypoint.
 - What **memory / cores** should the app get? Defaults are `memory=2048` MB, `cores=1.0`.
+- Does the app need a specific routing mode or readiness path? New apps should use root routing; keep legacy prefix mode only while migrating an older app that still depends on `APP_BASE_URL_PATH`. If the app is already deployed and still uses `APP_BASE_URL_PATH`, treat it as a migration task and confirm whether the code can switch to root routing. Streamlit defaults to `/_stcore/health`, custom apps default to `/`, and `readinessProbePath` can override the probe path when needed.
 - Does the app need **monitoring** narrowed to specific routes? Monitoring is enabled by default and routes are optional; `hops app info` shows the monitoring state and route list when present.
 - Does the app need **public access**? Streamlit sharing is feature-flagged; only ask for it when the platform has it enabled.
 - **Before deleting** — `app.delete()` / `hops app delete --yes` tears down the app irreversibly; confirm the exact name with the user, and never tear down an app you created as a side effect (temp or test ones included) unless they asked.
+
+## Routing and Readiness
+
+- The browser URL is always the proxy mount point: `/hopsworks-api/pythonapp/{projectName}/{appName}/`.
+- New apps should be written as root-based apps and should not depend on `APP_BASE_URL_PATH`.
+- Legacy prefix mode exists only for existing apps that are still being migrated.
+- Hopsworks forwards `X-Forwarded-Prefix` for frameworks that need to generate absolute links.
+- Readiness is separate from browser routing:
+  - Streamlit defaults to `/_stcore/health`
+  - custom apps default to `/`
+  - `readinessProbePath` overrides the default probe path when needed
+- The CLI mirrors the same contract via `hops app create --app-base-path` and
+  `--readiness-probe-path`.
+
+## Migrating Legacy Apps
+
+Legacy apps are apps that were created before the `App base path` migration or
+still depend on `APP_BASE_URL_PATH`. Keep `Compatibility prefix` only as a
+bridge while you update the app code; once the app no longer depends on that
+variable, switch it to `Root routing`.
+
+Migration checklist:
+
+1. Update the app code so route decorators use `/` or the app's own subpath
+   directly instead of `APP_BASE_URL_PATH`.
+2. In the app settings dialog, open **App routing and readiness** and change
+   `Proxy routing mode` to `Root routing`.
+3. Set `App base path` to the public mount point you want, for example `/` or
+   `/myapp`.
+4. Keep `Readiness` separate from browser routing. Custom apps usually probe
+   `/` or `/health`; Streamlit apps default to `/_stcore/health` or
+   `/<base>/_stcore/health`.
+5. Remove any code that builds absolute links from `APP_BASE_URL_PATH` after
+   the app is switched to root routing.
 
 ---
 
@@ -46,6 +90,7 @@ When you create charts in Streamlit apps, prefer to use seaborn over plotly (whi
 
 ### 1. Write the App
 
+Streamlit apps should stay Streamlit-native and root-based:
 
 ```python
 # Users/<username>/app.py
@@ -77,7 +122,7 @@ st.bar_chart(df["amount"].value_counts().head(20))
 
 ### Custom Apps
 
-For custom Python apps, bind to `0.0.0.0` and the injected `APP_PORT`. Use `APP_BASE_URL_PATH` if the app needs to build links that include the proxy prefix.
+For custom Python apps, bind to `0.0.0.0` and the injected `APP_PORT`. Keep `APP_BASE_URL_PATH` only while migrating a legacy app that still needs the proxy prefix.
 
 ```python
 # Users/<username>/app.py
@@ -86,21 +131,33 @@ from fastapi import FastAPI
 
 app = FastAPI()
 
+
 @app.get("/")
 def index():
     return {"status": "ok"}
 
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ["APP_PORT"]))
 ```
 
 ### Git-backed Apps
 
-When the app source lives in Git, leave `app_path` unset and provide the repository fields instead. Git-backed apps are cloned again on each start, so a restart or redeploy picks up new commits.
+When the app source lives in Git, leave `app_path` unset and provide the
+repository fields instead. Git-backed apps are cloned again on each start, so a
+restart or redeploy picks up new commits.
 
-- Streamlit apps: use `app_kind="STREAMLIT"` and set `entrypoint_script` relative to the repository root.
-- Custom apps: use `app_kind="CUSTOM"`, an `entrypoint_command`, and `app_port`.
+- Streamlit apps: use `app_kind="STREAMLIT"` and set `entrypoint_script`
+  relative to the repository root.
+- Custom apps: use `app_kind="CUSTOM"`, an `entrypoint_command`, and
+  `app_port`.
 - Supported Git providers: `GitHub`, `GitLab`, and `BitBucket`.
 
 ```python
@@ -124,32 +181,6 @@ fastapi_app = apps.create_app(
     git_branch="main",
     entrypoint_command='bash -lc "exec python -m uvicorn fastapiapp:app --host 0.0.0.0 --port \"$APP_PORT\""',
     app_port=8080,
-    environment="python-app-pipeline",
-)
-```
-
-```python
-flask_app = apps.create_app(
-    name="flaskfromgithub",
-    app_kind="CUSTOM",
-    git_url="https://github.com/gibchikafa/appshopsworkstests.git",
-    git_provider="GitHub",
-    git_branch="main",
-    entrypoint_command='bash -lc "exec python -m flask --app flaskapp run --host 0.0.0.0 --port \"$APP_PORT\""',
-    app_port=8080,
-    environment="python-app-pipeline",
-)
-```
-
-```python
-gradio_app = apps.create_app(
-    name="gradiofromgithub",
-    app_kind="CUSTOM",
-    git_url="https://github.com/gibchikafa/appshopsworkstests.git",
-    git_provider="GitHub",
-    git_branch="main",
-    entrypoint_command='bash -lc "python -m uv pip install --system --no-cache gradio && exec python gradioapp.py"',
-    app_port=7860,
     environment="python-app-pipeline",
 )
 ```
@@ -196,6 +227,24 @@ app.run(await_serving=True)
 # Access the app
 if app.serving:
     print(f"App URL: {app.app_url}")
+```
+
+```python
+fastapi_app = apps.create_app(
+    name="fastapifromgithub",
+    app_kind="CUSTOM",
+    git_url="https://github.com/gibchikafa/appshopsworkstests.git",
+    git_provider="GitHub",
+    git_branch="main",
+    entrypoint_command=(
+        'bash -lc "python -m uv pip install --system --no-cache fastapi uvicorn && '
+        'exec python -m uvicorn fastapiapp:app --host 0.0.0.0 --port \\"$APP_PORT\\""'
+    ),
+    app_port=8080,
+    environment="python-app-pipeline",
+)
+fastapi_app.run()
+print(fastapi_app.app_url)
 ```
 
 > **The app path differs between the SDK and the `hops` CLI.** The SDK
