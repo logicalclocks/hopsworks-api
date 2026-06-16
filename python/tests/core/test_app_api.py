@@ -137,6 +137,8 @@ class TestAppApiCreate:
             ),
             app_port=8080,
             description="FastAPI demo",
+            app_base_path="/myapp",
+            readiness_probe_path="/health",
         )
 
         body = json.loads(mock_client._send_request.call_args.kwargs["data"])
@@ -149,6 +151,8 @@ class TestAppApiCreate:
         )
         assert body["appPort"] == 8080
         assert body["description"] == "FastAPI demo"
+        assert body["appBasePath"] == "/myapp"
+        assert body["readinessProbePath"] == "/health"
 
     def test_create_custom_app_without_path_omits_app_path(self, mock_client, api):
         api.create_app(

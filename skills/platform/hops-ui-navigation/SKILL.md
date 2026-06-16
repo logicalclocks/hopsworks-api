@@ -67,7 +67,7 @@ Some entries depend on edition, role, or service flags, so a user may not see al
 | Training data, statistics, correlations | AI/ML → Feature Views → (view) → Training Data |
 | A registered model | AI/ML → Model Registry |
 | A serving endpoint / predict | AI/ML → Model Deployments |
-| A Streamlit app URL | AI/ML → Apps |
+| A Python app URL | AI/ML → Apps |
 | A served agent / agent job | Agents → Agent Deployments / Agent Jobs |
 | Python env / install a package | Compute → Environment |
 | Run / schedule a job, see executions | Compute → Jobs |

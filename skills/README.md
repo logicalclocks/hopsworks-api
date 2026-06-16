@@ -33,7 +33,7 @@ into bucket folders:
 - [hops-monitoring](hops/hops-monitoring/SKILL.md) — statistics, drift monitoring, validation, alerts.
 - [hops-job](hops/hops-job/SKILL.md) — jobs and Airflow DAGs.
 - [hops-environments](hops/hops-environments/SKILL.md) — clone a Python env, install custom libs.
-- [hops-app](hops/hops-app/SKILL.md) — Streamlit app deployments.
+- [hops-app](hops/hops-app/SKILL.md) — Python app deployments (Streamlit + custom apps).
 - [hops-superset](hops/hops-superset/SKILL.md) — Superset datasets / charts / dashboards.
 - [hops-agent-deployment](hops/hops-agent-deployment/SKILL.md) — served interactive agent.
 - [hops-agent-job](hops/hops-agent-job/SKILL.md) — scheduled coding-agent job.
