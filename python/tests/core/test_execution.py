@@ -58,7 +58,7 @@ class TestExecution:
         assert ex.app_url == "https://myhost:443/hopsworks-api/pythonapp/proj/my_app/"
 
     def test_app_url_when_running_with_prefixed_monitoring_path(self, mocker):
-        mock_client = mocker.patch("hopsworks_common.client.get_instance")
+        mock_client = mocker.patch("hopsworks_common.client._get_instance")
         mock_client.return_value._base_url = "https://myhost:443"
 
         ex = Execution(
