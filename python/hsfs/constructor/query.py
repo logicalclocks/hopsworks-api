@@ -346,17 +346,23 @@ class Query:
                 filter=self._filter,
             )
         self.check_and_warn_ambiguous_features()
+        if not read_options:
+            read_options = {}
         # When the left FG has partitioned_by set, add grain-column
         # predicates equivalent to any event_time range filter — the grain
         # columns are real partition columns, so every engine prunes on them.
+        # Apply the augmented filter only for the duration of SQL generation
+        # and restore the original afterwards, so reading the same Query
+        # instance repeatedly does not keep nesting AND clauses into _filter.
+        original_filter = self._filter
         if not online:
             from hsfs.constructor.partitioned_by_translator import augment_filter
 
             self._filter = augment_filter(self._filter, self._left_feature_group)
-
-        if not read_options:
-            read_options = {}
-        sql_query, online_conn = self._prep_read(online, read_options)
+        try:
+            sql_query, online_conn = self._prep_read(online, read_options)
+        finally:
+            self._filter = original_filter
 
         schema = None
         if (

@@ -75,6 +75,10 @@ public class PartitionedByTransformer implements Transformer {
     Dataset<Row> out = rowDataset;
     for (String grain : grains) {
       String trimmed = grain.trim();
+      if (trimmed.isEmpty()) {
+        // Skip empty grain names produced by a trailing or doubled comma.
+        continue;
+      }
       out = out.withColumn(trimmed, grainColumn(trimmed, timestampExpr).cast("int"));
     }
     return out;
@@ -129,10 +133,15 @@ public class PartitionedByTransformer implements Transformer {
     }
     if (dtype.equals("long") || dtype.equals("integer") || dtype.equals("short")
         || dtype.equals("byte") || dtype.equals("bigint")) {
-      String expr = "CAST(CASE WHEN ABS(`" + eventTime + "`) <= 9999999999 "
-          + "THEN `" + eventTime + "` "
-          + "ELSE `" + eventTime + "` / 1000 END AS TIMESTAMP)";
-      return functions.expr(expr);
+      // Decode per-row between seconds and milliseconds by absolute
+      // magnitude (<= 9_999_999_999 -> seconds, else ms). Built with the
+      // Column API so the column name is never interpolated into a SQL
+      // string, avoiding identifier-escaping pitfalls.
+      Column raw = functions.col(eventTime);
+      Column seconds = functions
+          .when(functions.abs(raw).leq(functions.lit(9999999999L)), raw)
+          .otherwise(raw.divide(1000));
+      return seconds.cast("timestamp");
     }
     // Best-effort cast for any other declared type.
     return functions.col(eventTime).cast("timestamp");

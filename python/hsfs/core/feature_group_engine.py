@@ -756,8 +756,11 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
 
         Excludes the `partitioned_by` grain columns: the backend appends one
         synthetic grain feature per grain to the FG schema so they're queryable,
-        and the write path derives their values from event_time (client-side on
-        Delta, server-side on Hudi) — the user dataframe must not carry them.
+        and the grain values are always derived from event_time rather than
+        supplied by the user. The Spark write path derives them client-side
+        (for both the Delta and Hudi engines, see `hudi_engine._write_hudi_dataset`),
+        and the backend's Hudi DeltaStreamer job derives them server-side via
+        `PartitionedByTransformer`. Either way the user dataframe must not carry them.
         """
         grain_set = set(getattr(feature_group, "partitioned_by", None) or [])
         if not grain_set:

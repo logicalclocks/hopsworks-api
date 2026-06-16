@@ -157,6 +157,12 @@ class TerminalTools:
 
         Returns:
             A dictionary of the captured environment variables.
+            Empty until the shell first runs ``PROMPT_COMMAND`` and writes the capture file.
         """
         _, _, _, envdir = self._session(session_id)
-        return json.loads((Path(envdir) / "env.json").read_text())
+        env_file = Path(envdir) / "env.json"
+        if not env_file.exists():
+            # ``PROMPT_COMMAND`` has not run yet (e.g. ``get_environ`` called
+            # immediately after ``start_session``), so nothing is captured.
+            return {}
+        return json.loads(env_file.read_text())

@@ -291,10 +291,11 @@ class Feature:
     def offline_only(self) -> bool:
         """Whether this feature is excluded from the online feature store.
 
-        Defaults to `False`. The backend sets this to `True` on the
-        synthetic grain features when a feature group's
-        `partitioned_by` is set and `online_partition_columns=False`,
-        so the column lives only in the offline storage.
+        Defaults to `False`.
+        The backend sets this to `True` on the synthetic grain features
+        when a feature group's `partitioned_by` is set and
+        `online_partition_columns=False`, so the column lives only in the
+        offline storage.
         """
         return self._offline_only
 

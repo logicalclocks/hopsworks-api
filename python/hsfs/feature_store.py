@@ -833,6 +833,14 @@ class FeatureStore:
             online_enabled: Define whether the feature group should be made available also in the online feature store for low latency access.
             time_travel_format: Format used for time travel, either `"DELTA"`, `"HUDI"`, `"ICEBERG"`, or `None` to disable time travel, defaults to `"DELTA"`.
             partition_key: A list of feature names to be used as partition key when writing the feature data to the offline storage, defaults to empty list `[]`.
+            partitioned_by:
+                A list of time grains derived from `event_time` to partition the offline data by, e.g. `["year", "month", "day"]`.
+                Supported grains are `year`, `month`, `week`, `day`, and `hour`.
+                The backend appends one synthetic grain feature per grain to the schema and the write path derives their values from `event_time`, so the user DataFrame must not contain them.
+                Mutually exclusive with `partition_key`; defaults to `None`.
+            online_partition_columns:
+                Whether the synthetic `partitioned_by` grain columns are also stored in the online feature store.
+                When `False` the grain columns live only in the offline storage; defaults to `False`.
             primary_key:
                 A list of feature names to be used as primary key for the feature group.
                 This primary key can be a composite key of multiple features and will be used as joining key, if not specified otherwise.
@@ -1072,6 +1080,14 @@ class FeatureStore:
             online_enabled: Define whether the feature group should be made available also in the online feature store for low latency access.
             time_travel_format: Format used for time travel, either `"DELTA"`, `"HUDI"`, `"ICEBERG"`, or `None` to disable time travel, defaults to `"DELTA"`.
             partition_key: A list of feature names to be used as partition key when writing the feature data to the offline storage, defaults to empty list `[]`.
+            partitioned_by:
+                A list of time grains derived from `event_time` to partition the offline data by, e.g. `["year", "month", "day"]`.
+                Supported grains are `year`, `month`, `week`, `day`, and `hour`.
+                The backend appends one synthetic grain feature per grain to the schema and the write path derives their values from `event_time`, so the user DataFrame must not contain them.
+                Mutually exclusive with `partition_key`; defaults to `None`.
+            online_partition_columns:
+                Whether the synthetic `partitioned_by` grain columns are also stored in the online feature store.
+                When `False` the grain columns live only in the offline storage; defaults to `False`.
             primary_key:
                 A list of feature names to be used as primary key for the feature group.
                 This primary key can be a composite key of multiple features and will be used as joining key, if not specified otherwise.
