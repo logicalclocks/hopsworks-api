@@ -397,8 +397,9 @@ class MonitoringWindowConfigEngine:
         if registered_stats is None:  # if statistics don't exist
             # TODO: What happens if window is TRAINING_DATASET and the TD statistics were not computed???
 
-            # Try the KLL-merge path for rolling reference windows on HUDI/DELTA FGs
-            # with distribution (PDF) monitoring. Only fires for the reference window
+            # Try the KLL-merge path for rolling reference windows on time-travel
+            # (HUDI/DELTA/ICEBERG) FGs with distribution (PDF) monitoring. Only
+            # fires for the reference window
             # since the caller (feature_monitoring_config_engine) passes profile_flags
             # only when distribution metrics are configured.
             merged_fds_list = None
@@ -640,7 +641,11 @@ class MonitoringWindowConfigEngine:
             return False
         if not isinstance(entity, feature_group.FeatureGroup):
             return False
-        if entity.time_travel_format not in ("HUDI", "DELTA"):
+        # The merge path enumerates per-commit statistics via commit-time windows,
+        # so it needs a commit/time-travel format (HUDI, DELTA or ICEBERG). A
+        # non-time-travel FG (time_travel_format=None) has no commit history to
+        # merge over and must fall back to a full-window re-profile.
+        if entity.time_travel_format not in ("HUDI", "DELTA", "ICEBERG"):
             return False
         if profile_flags is None:
             return False

@@ -671,6 +671,26 @@ class TestMergeDispatch:
         # compute_and_save must NOT have been called when merge succeeds.
         stats_engine_mock.compute_and_save_monitoring_statistics.assert_not_called()
 
+    def test_rolling_iceberg_fg_with_pdf_flags_uses_merge_path(self):
+        """Rolling-time + ICEBERG FG + kll=True profile_flags triggers merge path.
+
+        ICEBERG is a commit/time-travel format like HUDI/DELTA, so it is eligible
+        for the per-commit KLL-merge reference path.
+        """
+        fg = _make_hudi_fg("ICEBERG")
+        window_config = _make_rolling_window_config()
+        pdf_profile_flags = {
+            "histograms": True,
+            "kll": True,
+            "histogram_bins": 20,
+            "for_distribution_comparison": True,
+        }
+
+        engine = mwce.MonitoringWindowConfigEngine()
+        result = engine._should_use_merge_path(fg, window_config, pdf_profile_flags)
+
+        assert result
+
     def test_none_format_fg_never_reaches_merge_path(self):
         """NONE time-travel format FG must not trigger merge path."""
         fg = _make_hudi_fg(time_travel_format=None)
