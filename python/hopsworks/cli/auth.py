@@ -60,6 +60,7 @@ def login(
     project: str | None = None,
     engine: str | None = None,
     internal: bool = False,
+    hostname_verification: bool = False,
 ) -> Project:
     """Call ``hopsworks.login()`` with a stable argument shape.
 
@@ -83,6 +84,9 @@ def login(
         engine: Optional SDK engine override (``python``, ``spark``, …).
         internal: When True, call ``hopsworks.login()`` with no args so the
             SDK reads its in-pod credentials from environment variables.
+        hostname_verification: Whether to verify Hopsworks' TLS certificate;
+            False skips verification (the SDK default). Passed straight through
+            to ``hopsworks.login(hostname_verification=...)``.
 
     Returns:
         The authenticated SDK ``Project`` object.
@@ -92,7 +96,7 @@ def login(
     if internal:
         # Let the SDK do its own ``REST_ENDPOINT`` + ``$SECRETS_DIR/token.jwt``
         # discovery. ``project``/``engine`` still apply at the SDK layer.
-        kwargs: dict[str, Any] = {}
+        kwargs: dict[str, Any] = {"hostname_verification": hostname_verification}
         if project:
             kwargs["project"] = project
         if engine:
@@ -109,6 +113,7 @@ def login(
     kwargs = {
         "host": hostname,
         "port": port,
+        "hostname_verification": hostname_verification,
     }
     if api_key_value:
         kwargs["api_key_value"] = api_key_value
@@ -119,7 +124,12 @@ def login(
     return hopsworks.login(**kwargs)
 
 
-def verify(host: str, api_key_value: str, project: str | None = None) -> Project:
+def verify(
+    host: str,
+    api_key_value: str,
+    project: str | None = None,
+    hostname_verification: bool = False,
+) -> Project:
     """Run a minimal login to confirm ``api_key_value`` works against ``host``.
 
     Raises whatever ``hopsworks.login()`` raises on failure so the caller can
@@ -129,8 +139,14 @@ def verify(host: str, api_key_value: str, project: str | None = None) -> Project
         host: Hopsworks host.
         api_key_value: API key to validate.
         project: Optional project to attach to.
+        hostname_verification: Whether to verify Hopsworks' TLS certificate.
 
     Returns:
         The authenticated SDK ``Project`` object.
     """
-    return login(host=host, api_key_value=api_key_value, project=project)
+    return login(
+        host=host,
+        api_key_value=api_key_value,
+        project=project,
+        hostname_verification=hostname_verification,
+    )

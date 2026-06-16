@@ -50,8 +50,17 @@ def _connect(ctx: click.Context, catalog: str | None, schema: str | None) -> Any
     api = _api(ctx)
     cat = catalog or "iceberg"
     sch = schema or _project_schema(ctx)
+    # hops sql verifies the Trino coordinator's TLS certificate by default,
+    # independent of the REST/login default (which is off). An explicit
+    # --verify/--no-verify or HOPSWORKS_HOSTNAME_VERIFICATION still wins, so a
+    # cluster whose Trino load balancer serves a self-signed or IP-SAN-mismatched
+    # certificate stays reachable with --no-verify (the trino driver otherwise
+    # raises an SSL CERTIFICATE_VERIFY_FAILED). Forwarding it here matters because
+    # the flag reaches hopsworks.login() but never the Trino connection on its own.
+    cfg = session.get_config(ctx)
+    verify = cfg.hostname_verification if cfg.hostname_verification_explicit else True
     try:
-        return api.connect(catalog=cat, schema=sch)
+        return api.connect(catalog=cat, schema=sch, verify=verify)
     except Exception as exc:  # noqa: BLE001 - SDK raises a mix of types
         raise click.ClickException(f"Trino connect failed: {exc}") from exc
 

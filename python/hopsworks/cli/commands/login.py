@@ -20,6 +20,13 @@ from hopsworks.cli import auth, config, output
 )
 @click.option("--project", "project_flag", help="Default project to attach to.")
 @click.option(
+    "--verify/--no-verify",
+    "verify_flag",
+    default=None,
+    help="Verify the Hopsworks TLS certificate; --no-verify skips verification "
+    "for self-signed / IP-SAN-mismatched certs. Persisted with --save-key.",
+)
+@click.option(
     "--save-key/--no-save-key",
     default=True,
     help="Persist the API key to ~/.hops.toml. On by default; use --no-save-key to skip.",
@@ -28,6 +35,7 @@ def login_cmd(
     host_flag: str | None,
     api_key_flag: str | None,
     project_flag: str | None,
+    verify_flag: bool | None,
     save_key: bool,
 ) -> None:
     """Authenticate non-interactively with an existing API key.
@@ -39,10 +47,14 @@ def login_cmd(
         host_flag: Value of ``--host``; prompted if neither flag, env, nor config has it.
         api_key_flag: Value of ``--api-key``; prompted with hidden input if absent.
         project_flag: Value of ``--project``; may be None.
+        verify_flag: True for ``--verify``, False for ``--no-verify``, None if neither was passed.
         save_key: When True, persist the validated key to ``~/.hops.toml``.
     """
     cfg = config.load(
-        flag_host=host_flag, flag_api_key=api_key_flag, flag_project=project_flag
+        flag_host=host_flag,
+        flag_api_key=api_key_flag,
+        flag_project=project_flag,
+        flag_hostname_verification=verify_flag,
     )
 
     host = cfg.host or click.prompt("Hopsworks host", default=config.DEFAULT_HOST)
@@ -51,7 +63,12 @@ def login_cmd(
     project = cfg.project or project_flag
 
     try:
-        project_obj = auth.verify(host=host, api_key_value=api_key, project=project)
+        project_obj = auth.verify(
+            host=host,
+            api_key_value=api_key,
+            project=project,
+            hostname_verification=cfg.hostname_verification,
+        )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Login failed: {exc}") from exc
 

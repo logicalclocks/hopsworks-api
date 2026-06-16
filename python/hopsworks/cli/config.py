@@ -44,6 +44,15 @@ class HopsConfig:
     module level.
     The ``internal`` flag is set when the process is running inside a Hopsworks
     pod and auth uses the mounted JWT instead of an API key.
+    The ``hostname_verification`` flag mirrors the SDK's
+    ``hopsworks.login(hostname_verification=...)`` argument: ``True`` verifies
+    the Hopsworks TLS certificate, ``False`` (the default) skips verification so
+    a cluster serving a self-signed or IP-SAN-mismatched certificate is reachable.
+    ``hostname_verification_explicit`` records whether that value came from a real
+    source (CLI flag, ``HOPSWORKS_HOSTNAME_VERIFICATION``, or the saved config)
+    rather than the default. ``hops sql`` reads it to verify the Trino coordinator
+    by default while still honouring an explicit ``--no-verify``; the REST/login
+    path always uses ``hostname_verification`` directly and stays off by default.
     """
 
     host: str | None = None
@@ -54,6 +63,8 @@ class HopsConfig:
     feature_store_id: int | None = None
     jwt_token: str | None = None
     internal: bool = False
+    hostname_verification: bool = False
+    hostname_verification_explicit: bool = False
 
     def mode(self) -> str:
         """Describe which auth mode the CLI is operating in.
@@ -159,10 +170,26 @@ def _migrate_legacy_yaml() -> dict[str, Any]:
     return remapped
 
 
+def _env_truthy(value: str | None) -> bool:
+    """Parse a ``HOPSWORKS_HOSTNAME_VERIFICATION``-style env string into a bool.
+
+    Mirrors the parsing in ``hopsworks.login`` so the CLI and the SDK agree on
+    which values count as enabled.
+
+    Args:
+        value: Raw environment-variable string, or None when unset.
+
+    Returns:
+        True when the string is one of ``true``/``1``/``y``/``yes`` (case-insensitive).
+    """
+    return (value or "").strip().lower() in ("true", "1", "y", "yes")
+
+
 def load(
     flag_host: str | None = None,
     flag_api_key: str | None = None,
     flag_project: str | None = None,
+    flag_hostname_verification: bool | None = None,
     profile: str = "default",
 ) -> HopsConfig:
     """Resolve configuration from flags, environment, and ``~/.hops.toml``.
@@ -171,6 +198,7 @@ def load(
         flag_host: Value of the ``--host`` CLI flag, if set.
         flag_api_key: Value of the ``--api-key`` CLI flag, if set.
         flag_project: Value of the ``--project`` CLI flag, if set.
+        flag_hostname_verification: Value of the ``--verify/--no-verify`` CLI flag, or None when neither was passed.
         profile: TOML table to read from; defaults to ``default``.
 
     Returns:
@@ -187,7 +215,9 @@ def load(
         project_id = os.environ.get("HOPSWORKS_PROJECT_ID")
         if project_id and project_id.isdigit():
             cfg.project_id = int(project_id)
-        return _apply_overrides(cfg, flag_host, flag_api_key, flag_project)
+        return _apply_overrides(
+            cfg, flag_host, flag_api_key, flag_project, flag_hostname_verification
+        )
 
     _migrate_legacy_yaml()
     file_data = _read_toml(CONFIG_PATH).get(profile, {})
@@ -198,6 +228,9 @@ def load(
         cfg.project = file_data.get("project") or None
         cfg.project_id = file_data.get("project_id")
         cfg.feature_store_id = file_data.get("feature_store_id")
+        if "hostname_verification" in file_data:
+            cfg.hostname_verification = bool(file_data.get("hostname_verification"))
+            cfg.hostname_verification_explicit = True
 
     env_host = os.environ.get("HOPSWORKS_HOST") or os.environ.get("REST_ENDPOINT")
     env_api_key = os.environ.get("HOPSWORKS_API_KEY")
@@ -213,7 +246,9 @@ def load(
     if env_project_id and env_project_id.isdigit():
         cfg.project_id = int(env_project_id)
 
-    return _apply_overrides(cfg, flag_host, flag_api_key, flag_project)
+    return _apply_overrides(
+        cfg, flag_host, flag_api_key, flag_project, flag_hostname_verification
+    )
 
 
 def _apply_overrides(
@@ -221,6 +256,7 @@ def _apply_overrides(
     flag_host: str | None,
     flag_api_key: str | None,
     flag_project: str | None,
+    flag_hostname_verification: bool | None = None,
 ) -> HopsConfig:
     if flag_host:
         cfg.host = flag_host
@@ -228,6 +264,17 @@ def _apply_overrides(
         cfg.api_key = flag_api_key
     if flag_project:
         cfg.project = flag_project
+    # Hostname verification precedence: CLI flag > HOPSWORKS_HOSTNAME_VERIFICATION
+    # env var > saved file value > default (off).
+    # The env var is applied here (not only in the external branch) so it is
+    # honoured in internal mode too, matching the SDK, which reads it regardless.
+    env_hv = os.environ.get("HOPSWORKS_HOSTNAME_VERIFICATION")
+    if env_hv is not None:
+        cfg.hostname_verification = _env_truthy(env_hv)
+        cfg.hostname_verification_explicit = True
+    if flag_hostname_verification is not None:
+        cfg.hostname_verification = flag_hostname_verification
+        cfg.hostname_verification_explicit = True
     return cfg
 
 
@@ -252,6 +299,9 @@ def save(cfg: HopsConfig, profile: str = "default") -> None:
             "project": cfg.project,
             "project_id": cfg.project_id,
             "feature_store_id": cfg.feature_store_id,
+            # Written only when enabled: off is the default, so persisting it
+            # would add a line to every existing user's config on resave.
+            "hostname_verification": cfg.hostname_verification or None,
         }.items()
         if v is not None
     }
