@@ -192,7 +192,7 @@ class StatisticsApi:
             A list of statistics objects with feature descriptive statistics, or None.
         """
         _client = client._get_instance()
-        path_params = self.get_path(metadata_instance, None)
+        path_params = self._get_path(metadata_instance, None)
 
         headers = {"content-type": "application/json"}
         query_params = self._build_get_query_params(
