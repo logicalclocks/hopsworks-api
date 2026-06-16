@@ -453,8 +453,8 @@ def _get_feature_group_url(feature_store_id: int, feature_group_id: int) -> str:
     return _get_hostname_replaced_url(sub_path)
 
 
-@also_available_as("hopsworks.util.get_feature_monitoring_url")
-def get_feature_monitoring_url(
+@also_available_as("hopsworks.util._get_feature_monitoring_url")
+def _get_feature_monitoring_url(
     feature_store_id: int,
     feature_monitoring_config_id: int,
     feature_group_id: int | None = None,

@@ -306,7 +306,7 @@ class FeatureMonitoringConfigEngine:
         if registered_config.id is not None:
             print(
                 "Feature monitoring created successfully, explore it at \n"
-                + util.get_feature_monitoring_url(
+                + util._get_feature_monitoring_url(
                     feature_store_id=registered_config.feature_store_id,
                     feature_monitoring_config_id=registered_config.id,
                     feature_group_id=registered_config.feature_group_id,
@@ -754,7 +754,7 @@ class FeatureMonitoringConfigEngine:
 
     # feature-type compatibility helpers
 
-    def is_type_compatible(self, metric: str, feature_type: str) -> bool:
+    def _is_type_compatible(self, metric: str, feature_type: str) -> bool:
         """Return True if the given metric can be computed for a feature of feature_type.
 
         For scalar metrics, numeric-only metrics (mean/max/min/sum/std_dev/count) require
@@ -806,7 +806,7 @@ class FeatureMonitoringConfigEngine:
         # Type-agnostic scalar metrics (VALID_CATEGORICAL_METRICS)
         return True
 
-    def resolve_compatible_features(
+    def _resolve_compatible_features(
         self, metric: str, valid_features: dict[str, str]
     ) -> list[str]:
         """Return feature names from valid_features that are compatible with the given metric.
@@ -823,7 +823,7 @@ class FeatureMonitoringConfigEngine:
         compatible = [
             name
             for name, ftype in valid_features.items()
-            if self.is_type_compatible(metric, ftype)
+            if self._is_type_compatible(metric, ftype)
         ]
         if not compatible:
             from hsfs.feature import Feature

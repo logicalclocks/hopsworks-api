@@ -240,7 +240,7 @@ class FeatureMonitoringConfigApi:
         return Job.from_response_json(_client._send_request("POST", path_params))
 
     @staticmethod
-    def get_by_model(
+    def _get_by_model(
         model_registry_id: int,
         model_id: str,
     ) -> list[fmc.FeatureMonitoringConfig]:

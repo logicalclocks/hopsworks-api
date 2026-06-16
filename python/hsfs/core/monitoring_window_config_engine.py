@@ -729,7 +729,7 @@ class MonitoringWindowConfigEngine:
                 feat_name,
             )
 
-            merged_fds = dist_engine.resolve_merged_reference(fds_list, histogram_bins)
+            merged_fds = dist_engine._resolve_merged_reference(fds_list, histogram_bins)
             if merged_fds is None:
                 # One feature failed to merge — fall back entirely to re-profile.
                 return None

@@ -249,7 +249,7 @@ class FeatureMonitoringResultEngine:
         """
         # Clear the distribution engine's per-run cache so that a reused
         # FeatureMonitoringResultEngine instance doesn't carry state across runs.
-        self._distribution_engine.clear_cache()
+        self._distribution_engine._clear_cache()
 
         # validate fds
         self._validate_detection_and_reference_statistics(
@@ -408,7 +408,7 @@ class FeatureMonitoringResultEngine:
 
         Dispatches on sc_config.distribution_metric:
           - When set: computes a distribution distance (PSI, KL, etc.) via DistributionEngine
-            and distribution_distance.compute().
+            and distribution_distance._compute().
           - When None: falls back to the existing scalar metric path.
 
         Parameters:
@@ -469,7 +469,7 @@ class FeatureMonitoringResultEngine:
         bin_count = sc_config.bin_count or 10
         epsilon = sc_config.smoothing_epsilon or 1e-6
 
-        bin_edges = self._distribution_engine.resolve_bin_edges(
+        bin_edges = self._distribution_engine._resolve_bin_edges(
             reference_fds=reference_statistics,
             detection_fds=detection_statistics,
             binning_strategy=binning_strategy,
@@ -477,14 +477,14 @@ class FeatureMonitoringResultEngine:
             custom_edges=sc_config.custom_bin_edges,
         )
 
-        ref_probs = self._distribution_engine.build_distribution(
+        ref_probs = self._distribution_engine._build_distribution(
             fds=reference_statistics,
             binning_strategy=binning_strategy,
             bin_edges=bin_edges,
             epsilon=epsilon,
             window_id=_WINDOW_REFERENCE,
         )
-        det_probs = self._distribution_engine.build_distribution(
+        det_probs = self._distribution_engine._build_distribution(
             fds=detection_statistics,
             binning_strategy=binning_strategy,
             bin_edges=bin_edges,
@@ -500,7 +500,7 @@ class FeatureMonitoringResultEngine:
             edges_array = np.asarray(bin_edges, dtype=np.float64)
             bin_centres = (edges_array[:-1] + edges_array[1:]) / 2.0
 
-        return distribution_distance.compute(
+        return distribution_distance._compute(
             det_probs=det_probs,
             ref_probs=ref_probs,
             metric=sc_config.distribution_metric,

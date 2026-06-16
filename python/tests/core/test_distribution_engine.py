@@ -67,7 +67,7 @@ def _make_histogram(bin_specs: list[tuple[float, float, int]]) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# resolve_bin_edges — EQUI_WIDTH
+# _resolve_bin_edges — EQUI_WIDTH
 # ---------------------------------------------------------------------------
 
 
@@ -78,7 +78,7 @@ class TestResolveEquiWidth:
         fds = _make_fds(1, histogram=hist, min_val=0.0, max_val=3.0)
         engine = DistributionEngine()
 
-        edges = engine.resolve_bin_edges(
+        edges = engine._resolve_bin_edges(
             reference_fds=fds,
             detection_fds=fds,
             binning_strategy="EQUI_WIDTH",
@@ -100,7 +100,7 @@ class TestResolveEquiWidth:
         engine = DistributionEngine()
 
         with caplog.at_level(logging.INFO, logger="hsfs.core.distribution_engine"):
-            edges = engine.resolve_bin_edges(
+            edges = engine._resolve_bin_edges(
                 reference_fds=fds,
                 detection_fds=fds,
                 binning_strategy="EQUI_WIDTH",
@@ -119,7 +119,7 @@ class TestResolveEquiWidth:
         fds = _make_fds(2, min_val=0.0, max_val=10.0)
         engine = DistributionEngine()
 
-        edges = engine.resolve_bin_edges(
+        edges = engine._resolve_bin_edges(
             reference_fds=fds,
             detection_fds=fds,
             binning_strategy="EQUI_WIDTH",
@@ -136,7 +136,7 @@ class TestResolveEquiWidth:
         engine = DistributionEngine()
 
         with pytest.raises(ValueError, match="min/max are not available"):
-            engine.resolve_bin_edges(
+            engine._resolve_bin_edges(
                 reference_fds=fds,
                 detection_fds=fds,
                 binning_strategy="EQUI_WIDTH",
@@ -149,7 +149,7 @@ class TestResolveEquiWidth:
         fds = _make_fds(4, min_val=5.0, max_val=5.0)
         engine = DistributionEngine()
 
-        edges = engine.resolve_bin_edges(
+        edges = engine._resolve_bin_edges(
             reference_fds=fds,
             detection_fds=fds,
             binning_strategy="EQUI_WIDTH",
@@ -162,7 +162,7 @@ class TestResolveEquiWidth:
 
 
 # ---------------------------------------------------------------------------
-# resolve_bin_edges — EQUI_FREQUENCY
+# _resolve_bin_edges — EQUI_FREQUENCY
 # ---------------------------------------------------------------------------
 
 
@@ -173,7 +173,7 @@ class TestResolveEquiFrequency:
         fds = _make_fds(10, percentiles=percentiles)
         engine = DistributionEngine()
 
-        edges = engine.resolve_bin_edges(
+        edges = engine._resolve_bin_edges(
             reference_fds=fds,
             detection_fds=fds,
             binning_strategy="EQUI_FREQUENCY",
@@ -195,7 +195,7 @@ class TestResolveEquiFrequency:
         engine = DistributionEngine()
 
         with caplog.at_level(logging.WARNING, logger="hsfs.core.distribution_engine"):
-            edges = engine.resolve_bin_edges(
+            edges = engine._resolve_bin_edges(
                 reference_fds=fds,
                 detection_fds=fds,
                 binning_strategy="EQUI_FREQUENCY",
@@ -214,7 +214,7 @@ class TestResolveEquiFrequency:
         engine = DistributionEngine()
 
         # Should not raise — falls back
-        edges = engine.resolve_bin_edges(
+        edges = engine._resolve_bin_edges(
             reference_fds=fds,
             detection_fds=fds,
             binning_strategy="EQUI_FREQUENCY",
@@ -235,7 +235,7 @@ class TestResolveEquiFrequency:
         fds = _make_fds(13, percentiles=percentiles)
         engine = DistributionEngine()
 
-        edges = engine.resolve_bin_edges(
+        edges = engine._resolve_bin_edges(
             reference_fds=fds,
             detection_fds=fds,
             binning_strategy="EQUI_FREQUENCY",
@@ -247,7 +247,7 @@ class TestResolveEquiFrequency:
 
 
 # ---------------------------------------------------------------------------
-# resolve_bin_edges — CUSTOM_EDGES
+# _resolve_bin_edges — CUSTOM_EDGES
 # ---------------------------------------------------------------------------
 
 
@@ -257,7 +257,7 @@ class TestResolveCustomEdges:
         fds = _make_fds(20)
         engine = DistributionEngine()
 
-        edges = engine.resolve_bin_edges(
+        edges = engine._resolve_bin_edges(
             reference_fds=fds,
             detection_fds=fds,
             binning_strategy="CUSTOM_EDGES",
@@ -272,7 +272,7 @@ class TestResolveCustomEdges:
         engine = DistributionEngine()
 
         with pytest.raises(ValueError, match="at least 2 values"):
-            engine.resolve_bin_edges(
+            engine._resolve_bin_edges(
                 reference_fds=fds,
                 detection_fds=fds,
                 binning_strategy="CUSTOM_EDGES",
@@ -285,7 +285,7 @@ class TestResolveCustomEdges:
         engine = DistributionEngine()
 
         with pytest.raises(ValueError, match="strictly increasing"):
-            engine.resolve_bin_edges(
+            engine._resolve_bin_edges(
                 reference_fds=fds,
                 detection_fds=fds,
                 binning_strategy="CUSTOM_EDGES",
@@ -298,7 +298,7 @@ class TestResolveCustomEdges:
         engine = DistributionEngine()
 
         with pytest.raises(ValueError, match="strictly increasing"):
-            engine.resolve_bin_edges(
+            engine._resolve_bin_edges(
                 reference_fds=fds,
                 detection_fds=fds,
                 binning_strategy="CUSTOM_EDGES",
@@ -308,7 +308,7 @@ class TestResolveCustomEdges:
 
 
 # ---------------------------------------------------------------------------
-# resolve_bin_edges — CATEGORICAL
+# _resolve_bin_edges — CATEGORICAL
 # ---------------------------------------------------------------------------
 
 
@@ -327,7 +327,7 @@ class TestResolveCategorical:
         det_fds = self._cat_fds(31, ["green", "blue"])
         engine = DistributionEngine()
 
-        edges = engine.resolve_bin_edges(
+        edges = engine._resolve_bin_edges(
             reference_fds=ref_fds,
             detection_fds=det_fds,
             binning_strategy="CATEGORICAL",
@@ -342,7 +342,7 @@ class TestResolveCategorical:
         det_fds = self._cat_fds(33, [])
         engine = DistributionEngine()
 
-        edges = engine.resolve_bin_edges(
+        edges = engine._resolve_bin_edges(
             reference_fds=ref_fds,
             detection_fds=det_fds,
             binning_strategy="CATEGORICAL",
@@ -362,7 +362,7 @@ class TestResolveCategorical:
         engine = DistributionEngine()
 
         with pytest.raises(ValueError, match="No histogram data"):
-            engine.resolve_bin_edges(
+            engine._resolve_bin_edges(
                 reference_fds=ref_fds,
                 detection_fds=det_fds,
                 binning_strategy="CATEGORICAL",
@@ -382,7 +382,7 @@ class TestUnknownStrategy:
         engine = DistributionEngine()
 
         with pytest.raises(ValueError, match="Unknown binning_strategy"):
-            engine.resolve_bin_edges(
+            engine._resolve_bin_edges(
                 reference_fds=fds,
                 detection_fds=fds,
                 binning_strategy="MAGIC",
@@ -392,7 +392,7 @@ class TestUnknownStrategy:
 
 
 # ---------------------------------------------------------------------------
-# build_distribution invariants
+# _build_distribution invariants
 # ---------------------------------------------------------------------------
 
 
@@ -413,21 +413,21 @@ class TestBuildDistribution:
         )
         engine = DistributionEngine()
 
-        edges = engine.resolve_bin_edges(
+        edges = engine._resolve_bin_edges(
             reference_fds=ref,
             detection_fds=det,
             binning_strategy="EQUI_WIDTH",
             bin_count=3,
             custom_edges=None,
         )
-        ref_probs = engine.build_distribution(
+        ref_probs = engine._build_distribution(
             fds=ref,
             binning_strategy="EQUI_WIDTH",
             bin_edges=edges,
             epsilon=1e-6,
             window_id=_WINDOW_REFERENCE,
         )
-        det_probs = engine.build_distribution(
+        det_probs = engine._build_distribution(
             fds=det,
             binning_strategy="EQUI_WIDTH",
             bin_edges=edges,
@@ -443,7 +443,7 @@ class TestBuildDistribution:
         edges = [0.0, 2.0, 4.0, 6.0]
         engine = DistributionEngine()
 
-        probs = engine.build_distribution(
+        probs = engine._build_distribution(
             fds=fds,
             binning_strategy="EQUI_WIDTH",
             bin_edges=edges,
@@ -478,14 +478,14 @@ class TestBuildDistribution:
         engine = DistributionEngine()
         edges = sorted({"A", "B", "C"})  # ["A", "B", "C"]
 
-        ref_probs = engine.build_distribution(
+        ref_probs = engine._build_distribution(
             fds=ref_fds,
             binning_strategy="CATEGORICAL",
             bin_edges=edges,
             epsilon=0.01,
             window_id=_WINDOW_REFERENCE,
         )
-        det_probs = engine.build_distribution(
+        det_probs = engine._build_distribution(
             fds=det_fds,
             binning_strategy="CATEGORICAL",
             bin_edges=edges,
@@ -518,7 +518,7 @@ class TestCache:
         edges = [0.0, 1.0, 2.0]
 
         # Call twice with the same window_id
-        engine.build_distribution(
+        engine._build_distribution(
             fds=fds,
             binning_strategy="EQUI_WIDTH",
             bin_edges=edges,
@@ -527,7 +527,7 @@ class TestCache:
         )
         initial_cache_size = len(engine._cache)
         # Second call: cache must not grow
-        engine.build_distribution(
+        engine._build_distribution(
             fds=fds,
             binning_strategy="EQUI_WIDTH",
             bin_edges=edges,
@@ -542,7 +542,7 @@ class TestCache:
         engine = DistributionEngine()
         edges = [0.0, 1.0, 2.0]
 
-        engine.build_distribution(
+        engine._build_distribution(
             fds=fds,
             binning_strategy="EQUI_WIDTH",
             bin_edges=edges,
@@ -550,7 +550,7 @@ class TestCache:
             window_id=_WINDOW_REFERENCE,
         )
         first_size = len(engine._cache)
-        engine.build_distribution(
+        engine._build_distribution(
             fds=fds,
             binning_strategy="EQUI_WIDTH",
             bin_edges=edges,
@@ -565,7 +565,7 @@ class TestCache:
         engine = DistributionEngine()
         edges = [0.0, 1.0]
 
-        engine.build_distribution(
+        engine._build_distribution(
             fds=fds,
             binning_strategy="EQUI_WIDTH",
             bin_edges=edges,
@@ -573,12 +573,12 @@ class TestCache:
             window_id=_WINDOW_REFERENCE,
         )
         assert len(engine._cache) > 0
-        engine.clear_cache()
+        engine._clear_cache()
         assert len(engine._cache) == 0
 
 
 # ---------------------------------------------------------------------------
-# resolve_merged_reference
+# _resolve_merged_reference
 # ---------------------------------------------------------------------------
 
 
@@ -655,7 +655,7 @@ class TestResolveMergedReference:
         ]
         engine = self._make_engine_with_jvm_mock(_MERGED_JSON)
 
-        result = engine.resolve_merged_reference(fds_list, histogram_bins=20)
+        result = engine._resolve_merged_reference(fds_list, histogram_bins=20)
 
         assert result is not None
         assert result.feature_name == "amount"
@@ -680,7 +680,7 @@ class TestResolveMergedReference:
         ]
         engine = DistributionEngine()
 
-        result = engine.resolve_merged_reference(fds_list, histogram_bins=20)
+        result = engine._resolve_merged_reference(fds_list, histogram_bins=20)
 
         assert result is None
 
@@ -688,8 +688,8 @@ class TestResolveMergedReference:
         """Empty list and None both return None."""
         engine = DistributionEngine()
 
-        assert engine.resolve_merged_reference([], histogram_bins=20) is None
-        assert engine.resolve_merged_reference(None, histogram_bins=20) is None
+        assert engine._resolve_merged_reference([], histogram_bins=20) is None
+        assert engine._resolve_merged_reference(None, histogram_bins=20) is None
 
     def test_falls_back_when_kll_key_missing(self):
         """An FDS with no kll in extended_statistics triggers fallback."""
@@ -699,6 +699,6 @@ class TestResolveMergedReference:
         ]
         engine = DistributionEngine()
 
-        result = engine.resolve_merged_reference(fds_list, histogram_bins=20)
+        result = engine._resolve_merged_reference(fds_list, histogram_bins=20)
 
         assert result is None

@@ -50,7 +50,7 @@ class DistributionEngine:
         # (fds_id, window_id) -> parsed extended_statistics dict
         self._cache: dict[tuple[int | None, int], dict] = {}
 
-    def clear_cache(self):
+    def _clear_cache(self):
         """Clear the per-run cache. Call at the start of each monitoring run."""
         self._cache.clear()
 
@@ -58,7 +58,7 @@ class DistributionEngine:
     # Public API
     # ------------------------------------------------------------------
 
-    def resolve_bin_edges(
+    def _resolve_bin_edges(
         self,
         reference_fds: FeatureDescriptiveStatistics,
         detection_fds: FeatureDescriptiveStatistics,
@@ -70,7 +70,7 @@ class DistributionEngine:
 
         Bin edges are always derived from the reference window (plus detection
         for CATEGORICAL to union unseen categories). The same edges are then
-        passed to build_distribution for both reference and detection.
+        passed to _build_distribution for both reference and detection.
 
         Parameters:
             reference_fds: Descriptive statistics for the reference window.
@@ -106,7 +106,7 @@ class DistributionEngine:
             "Expected one of: EQUI_WIDTH, EQUI_FREQUENCY, CUSTOM_EDGES, CATEGORICAL."
         )
 
-    def build_distribution(
+    def _build_distribution(
         self,
         fds: FeatureDescriptiveStatistics,
         binning_strategy: str,
@@ -119,7 +119,7 @@ class DistributionEngine:
         Parameters:
             fds: Descriptive statistics for the window.
             binning_strategy: One of EQUI_WIDTH, EQUI_FREQUENCY, CUSTOM_EDGES, CATEGORICAL.
-            bin_edges: Pre-resolved edges (from resolve_bin_edges).
+            bin_edges: Pre-resolved edges (from _resolve_bin_edges).
             epsilon: Small additive constant applied to every bin before renormalisation.
             window_id: Cache discriminator (_WINDOW_REFERENCE or _WINDOW_DETECTION).
 
@@ -139,7 +139,7 @@ class DistributionEngine:
         counts = self._align_numeric_histogram(histogram, bin_edges)
         return self._normalise_with_epsilon(counts, epsilon)
 
-    def resolve_merged_reference(
+    def _resolve_merged_reference(
         self,
         reference_fds_list: list[FeatureDescriptiveStatistics],
         histogram_bins: int,
@@ -154,7 +154,7 @@ class DistributionEngine:
         Returns:
             A FeatureDescriptiveStatistics object with merged percentiles and a
             CDF-approximated histogram, suitable for the unchanged
-            resolve_bin_edges / build_distribution code paths. Returns None if
+            _resolve_bin_edges / _build_distribution code paths. Returns None if
             the merge is not viable — the caller must fall back to the
             full-window re-profile path.
         """

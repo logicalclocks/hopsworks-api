@@ -16,8 +16,8 @@
 """Distribution distance metrics for feature monitoring.
 
 All inputs are expected to be normalised probability vectors (sum to 1).
-Smoothing (epsilon padding) is applied upstream by DistributionEngine.build_distribution
-before calling compute(), so no zero-division guards are needed here beyond what
+Smoothing (epsilon padding) is applied upstream by DistributionEngine._build_distribution
+before calling _compute(), so no zero-division guards are needed here beyond what
 numpy handles naturally.
 """
 
@@ -36,7 +36,7 @@ _SUPPORTED_METRICS = {
 }
 
 
-def compute(
+def _compute(
     det_probs: np.ndarray,
     ref_probs: np.ndarray,
     metric: str,
@@ -87,7 +87,7 @@ def compute(
         raise ValueError(
             f"det_probs and ref_probs must contain only positive values for "
             f"log-based metric '{metric_upper}'. "
-            "Ensure smoothing_epsilon > 0 is applied before calling compute()."
+            "Ensure smoothing_epsilon > 0 is applied before calling _compute()."
         )
 
     if metric_upper == "PSI":

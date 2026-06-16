@@ -638,7 +638,7 @@ class Model:
                 "Install hsfs before fetching model monitoring configurations."
             ) from err
 
-        return FeatureMonitoringConfigApi.get_by_model(
+        return FeatureMonitoringConfigApi._get_by_model(
             model_registry_id=self._model_registry_id,
             model_id=self._id,
         )

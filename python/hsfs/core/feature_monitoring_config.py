@@ -529,7 +529,7 @@ class FeatureMonitoringConfig:
             # Fan out to all type-compatible features.
             if self._valid_features is not None:
                 feature_names = (
-                    self._feature_monitoring_config_engine.resolve_compatible_features(
+                    self._feature_monitoring_config_engine._resolve_compatible_features(
                         metric=metric, valid_features=self._valid_features
                     )
                 )
@@ -549,7 +549,7 @@ class FeatureMonitoringConfig:
                         f"{sorted(self._valid_features)}."
                     )
                 feature_type = self._valid_features[feature_name]
-                if not self._feature_monitoring_config_engine.is_type_compatible(
+                if not self._feature_monitoring_config_engine._is_type_compatible(
                     metric, feature_type
                 ):
                     from hsfs.core.feature_monitoring_config_engine import (
@@ -665,7 +665,7 @@ class FeatureMonitoringConfig:
             # Fan out to all type-compatible features.
             if self._valid_features is not None:
                 feature_names = (
-                    self._feature_monitoring_config_engine.resolve_compatible_features(
+                    self._feature_monitoring_config_engine._resolve_compatible_features(
                         metric=metric_upper, valid_features=self._valid_features
                     )
                 )
@@ -682,7 +682,7 @@ class FeatureMonitoringConfig:
                 and feature_name in self._valid_features
             ):
                 feature_type = self._valid_features[feature_name]
-                if not self._feature_monitoring_config_engine.is_type_compatible(
+                if not self._feature_monitoring_config_engine._is_type_compatible(
                     metric_upper, feature_type
                 ):
                     raise ValueError(

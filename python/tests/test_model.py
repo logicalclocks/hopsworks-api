@@ -517,7 +517,7 @@ class TestModel:
         m_json = backend_fixtures["model"]["get_python"]["response"]["items"][0]
         mock_fm_configs = [mocker.Mock(), mocker.Mock()]
         mock_get_by_model = mocker.patch(
-            "hsfs.core.feature_monitoring_config_api.FeatureMonitoringConfigApi.get_by_model",
+            "hsfs.core.feature_monitoring_config_api.FeatureMonitoringConfigApi._get_by_model",
             return_value=mock_fm_configs,
         )
 
@@ -536,7 +536,7 @@ class TestModel:
         # Arrange
         m_json = backend_fixtures["model"]["get_python"]["response"]["items"][0]
         mocker.patch(
-            "hsfs.core.feature_monitoring_config_api.FeatureMonitoringConfigApi.get_by_model",
+            "hsfs.core.feature_monitoring_config_api.FeatureMonitoringConfigApi._get_by_model",
             return_value=[],
         )
 

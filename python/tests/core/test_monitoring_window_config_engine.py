@@ -826,7 +826,7 @@ class TestMergeDispatch:
             return None
 
         mocker.patch(
-            "hsfs.core.distribution_engine.DistributionEngine.resolve_merged_reference",
+            "hsfs.core.distribution_engine.DistributionEngine._resolve_merged_reference",
             side_effect=fake_resolve_merged,
         )
 
@@ -877,7 +877,7 @@ class TestMergeDispatch:
             return synthetic_a if fds_list[0].feature_name == "feat_a" else synthetic_b
 
         mocker.patch(
-            "hsfs.core.distribution_engine.DistributionEngine.resolve_merged_reference",
+            "hsfs.core.distribution_engine.DistributionEngine._resolve_merged_reference",
             side_effect=fake_resolve_merged,
         )
 
@@ -911,9 +911,9 @@ class TestMergeDispatch:
         stats_engine_mock._get_all_in_time_window.return_value = stats_rows
         engine._statistics_engine = stats_engine_mock
 
-        # If the fallback fires early, resolve_merged_reference should NOT be called.
+        # If the fallback fires early, _resolve_merged_reference should NOT be called.
         resolve_mock = mocker.patch(
-            "hsfs.core.distribution_engine.DistributionEngine.resolve_merged_reference",
+            "hsfs.core.distribution_engine.DistributionEngine._resolve_merged_reference",
         )
 
         result = engine._resolve_rolling_reference_via_merge(

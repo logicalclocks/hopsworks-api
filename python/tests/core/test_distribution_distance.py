@@ -17,7 +17,7 @@ import math
 
 import numpy as np
 import pytest
-from hsfs.core.distribution_distance import compute
+from hsfs.core.distribution_distance import _compute as compute
 
 
 # ---------------------------------------------------------------------------
