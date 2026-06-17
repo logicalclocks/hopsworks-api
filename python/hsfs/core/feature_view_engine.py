@@ -946,7 +946,7 @@ class FeatureViewEngine:
         )
         # schema needs to be set for writing training data or feature serving
         for td in tds:
-            td.schema = feature_view_obj._get_training_dataset_schema(td.version)
+            td.schema = self._get_training_dataset_schema(feature_view_obj, td.version)
         return tds
 
     def _get_training_datasets(self, feature_view_obj):

@@ -1169,6 +1169,25 @@ class TestDeployment:
         assert d.env_vars == {}
         assert p.env_vars == {}
 
+    # get_monitoring_configs
+
+    def test_get_monitoring_configs_delegates_to_model(self, mocker, backend_fixtures):
+        # Arrange
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mock_fm_configs = [mocker.Mock(), mocker.Mock()]
+        mock_model = mocker.Mock()
+        mock_model.get_monitoring_configs.return_value = mock_fm_configs
+        mocker.patch.object(d, "get_model", return_value=mock_model)
+
+        # Act
+        result = d.get_monitoring_configs()
+
+        # Assert
+        assert result == mock_fm_configs
+        d.get_model.assert_called_once()
+        mock_model.get_monitoring_configs.assert_called_once()
+
     # auxiliary methods
 
     def _get_dummy_predictor(self, mocker, backend_fixtures):

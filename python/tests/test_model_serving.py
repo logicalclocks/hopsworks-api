@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-import os
+import os  # noqa: I001
 import zipfile
 
 import build  # noqa: F401  # eagerly load so test patches resolve build.ProjectBuilder

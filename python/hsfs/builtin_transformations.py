@@ -47,7 +47,7 @@ def standard_scaler(
     feature: pd.Series, statistics: TransformationStatistics = feature_statistics
 ) -> pd.Series:
     mean = statistics.feature.mean
-    stddev = statistics.feature.stddev
+    stddev = statistics.feature.std_dev
     if pd.isna(mean):
         return feature
     if pd.isna(stddev) or stddev == 0:

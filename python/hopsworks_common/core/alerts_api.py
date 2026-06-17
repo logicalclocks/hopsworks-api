@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import warnings
 from datetime import datetime, timedelta
 from typing import Literal, get_args
 
@@ -52,6 +53,11 @@ _PROJECT_FS_STATUS_ARG = Literal[
     "feature_validation_success",
     "feature_validation_warning",
     "feature_validation_failure",
+    # new names (added in version ~=3.8.1)
+    "monitoring_shift_undetected",
+    "monitoring_shift_detected",
+    "monitoring_empty_detection_window",
+    # old names kept for one release; will be removed in the next release
     "feature_monitor_shift_undetected",
     "feature_monitor_shift_detected",
 ]
@@ -89,10 +95,52 @@ _VALIDATION_STATUS_ARG = Literal[
 _VALIDATION_STATUS = get_args(_VALIDATION_STATUS_ARG)
 
 _MONITORING_STATUS_ARG = Literal[
+    # new names (added in version ~=3.8.1)
+    "monitoring_shift_undetected",
+    "monitoring_shift_detected",
+    "monitoring_empty_detection_window",
+    # old names kept for one release; will be removed in the next release
     "feature_monitor_shift_undetected",
     "feature_monitor_shift_detected",
 ]
 _MONITORING_STATUS = get_args(_MONITORING_STATUS_ARG)
+
+
+# Mapping from old lowercase status names accepted on the create/input path
+# (used before ~=3.8.1) to their replacements in the new naming scheme.
+_DEPRECATED_STATUS_INPUT_MAP = {
+    "feature_monitor_shift_undetected": "monitoring_shift_undetected",
+    "feature_monitor_shift_detected": "monitoring_shift_detected",
+}
+
+
+def _normalize_status_input(status: str, stacklevel: int = 3) -> str:
+    """Normalize a deprecated status input value to its replacement.
+
+    Called on the alert create path whenever a user passes a status string.
+    If *status* is one of the old names that were renamed in version ~=3.8.1,
+    the function emits a `DeprecationWarning` and returns the new name.
+    Otherwise it returns *status* unchanged.
+
+    Args:
+        status: The status string supplied by the caller.
+        stacklevel: Passed directly to `warnings.warn` to attribute the warning
+            to the user's call to the public `create_*_alert` method rather than
+            to this helper.
+
+    Returns:
+        The normalized status string.
+    """
+    new = _DEPRECATED_STATUS_INPUT_MAP.get(status)
+    if new is not None:
+        warnings.warn(
+            f"Alert status {status!r} is deprecated and will be removed in a future release. "
+            f"Use {new!r} instead.",
+            DeprecationWarning,
+            stacklevel=stacklevel,
+        )
+        return new
+    return status
 
 
 @public("hopsworks.core.alerts_api.AlertsApi")
@@ -469,7 +517,14 @@ class AlertsApi:
 
         Parameters:
             receiver: The receiver of the alert (e.g., email, webhook).
-            status: The status that will trigger the alert (job_finished, job_failed, job_killed, job_long_running, feature_validation_success, feature_validation_warning, feature_validation_failure, feature_monitor_shift_undetected, feature_monitor_shift_detected).
+            status: The status that will trigger the alert (job_finished, job_failed,
+                job_killed, job_long_running, feature_validation_success,
+                feature_validation_warning, feature_validation_failure,
+                monitoring_shift_undetected, monitoring_shift_detected,
+                monitoring_empty_detection_window).
+                The names feature_monitor_shift_undetected and
+                feature_monitor_shift_detected are deprecated since ~=3.8.1 and will
+                be removed in a future release.
             severity: The severity of the alert (warning, critical, info).
             service: The service associated with the alert (Featurestore, Jobs).
             threshold: The threshold for the alert.
@@ -498,6 +553,8 @@ class AlertsApi:
             raise ValueError(
                 f"Jobs service does not support featurestore alerts. Supported values are {_PROJECT_JOB_STATUS}."
             )
+
+        status = _normalize_status_input(status)
 
         # feature_validation_ prefix is added for readablity in the API
         if status.startswith("feature_validation_"):
@@ -547,7 +604,13 @@ class AlertsApi:
             feature_store_id: The ID of the feature store.
             feature_group_id: The ID of the feature group.
             receiver: The receiver of the alert (e.g., email, webhook).
-            status: The status that will trigger the alert (feature_validation_success, feature_validation_warning, feature_validation_failure, feature_monitor_shift_undetected, feature_monitor_shift_detected).
+            status: The status that will trigger the alert (feature_validation_success,
+                feature_validation_warning, feature_validation_failure,
+                monitoring_shift_undetected, monitoring_shift_detected,
+                monitoring_empty_detection_window).
+                The names feature_monitor_shift_undetected and
+                feature_monitor_shift_detected are deprecated since ~=3.8.1 and will
+                be removed in a future release.
             severity: The severity of the alert (warning, critical, info).
 
         Returns:
@@ -563,13 +626,18 @@ class AlertsApi:
                 f"Status must be one of the following: {_VALIDATION_STATUS + _MONITORING_STATUS}."
             )
 
-        # feature_validation_ prefix is added for readablity in the API
-        if status.startswith("feature_validation_"):
-            status = status.replace("feature_validation_", "")
+        status = _normalize_status_input(status)
 
-        # validation_ prefix is added to match the project created alert API
-        if status.startswith("validation_"):
-            status = status.replace("validation_", "")
+        # feature_validation_ prefix is added for readability in the API; map it to the backend's
+        # FeatureStoreAlertStatus VALIDATION_* names (e.g. feature_validation_success ->
+        # validation_success -> VALIDATION_SUCCESS), matching create_project_alert. Do NOT strip the
+        # prefix entirely — that would send the deprecated legacy names (SUCCESS/WARNING/FAILURE) which
+        # only work via the backend's one-release compatibility shim.
+        if status.startswith("feature_validation_"):
+            status = status.replace("feature_validation_", "validation_")
+
+        # monitoring_ prefix is kept as-is; the backend understands the new names
+        # (e.g. monitoring_shift_detected -> MONITORING_SHIFT_DETECTED)
 
         if severity not in _SEVERITY:
             raise ValueError(f"Severity must be one of the following: {_SEVERITY}.")
@@ -618,7 +686,7 @@ class AlertsApi:
 
             alerts_api = project.get_alerts_api()
 
-            new_alert = alerts_api.create_feature_view_alert(67, "fv", 1, receiver="email", status="feature_monitor_shift_undetected", severity="warning")
+            new_alert = alerts_api.create_feature_view_alert(67, "fv", 1, receiver="email", status="monitoring_shift_undetected", severity="warning")
             ```
 
         Parameters:
@@ -626,7 +694,11 @@ class AlertsApi:
             feature_view_name: The name of the feature view.
             feature_view_version: The version of the feature view.
             receiver: The receiver of the alert (e.g., email, webhook).
-            status: The status that will trigger the alert (feature_monitor_shift_undetected, feature_monitor_shift_detected).
+            status: The status that will trigger the alert (monitoring_shift_undetected,
+                monitoring_shift_detected, monitoring_empty_detection_window).
+                The names feature_monitor_shift_undetected and
+                feature_monitor_shift_detected are deprecated since ~=3.8.1 and will
+                be removed in a future release.
             severity: The severity of the alert (warning, critical, info).
 
         Returns:

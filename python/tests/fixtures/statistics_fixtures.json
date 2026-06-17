@@ -31,7 +31,7 @@
           "max": 2,
           "sum": 3,
           "mean": 5.1,
-          "stddev": 6.1,
+          "stdDev": 6.1,
           "percentiles": {
             "25%": 0.4,
             "50%": 0.6,
@@ -67,7 +67,7 @@
               "max": 2,
               "sum": 3,
               "mean": 5.1,
-              "stddev": 6.1,
+              "stdDev": 6.1,
               "percentiles": {
                 "25%": 0.4,
                 "50%": 0.6,
@@ -106,7 +106,7 @@
               "max": 2,
               "sum": 3,
               "mean": 5.1,
-              "stddev": 6.1,
+              "stdDev": 6.1,
               "percentiles": {
                 "25%": 0.4,
                 "50%": 0.6,
@@ -137,7 +137,7 @@
               "max": 2,
               "sum": 3,
               "mean": 5.1,
-              "stddev": 6.1,
+              "stdDev": 6.1,
               "percentiles": {
                 "25%": 0.4,
                 "50%": 0.6,
@@ -179,7 +179,7 @@
                   "max": 2,
                   "sum": 3,
                   "mean": 5.1,
-                  "stddev": 6.1,
+                  "stdDev": 6.1,
                   "percentiles": {
                     "25%": 0.4,
                     "50%": 0.6,
@@ -260,7 +260,7 @@
               "max": 2,
               "sum": 3,
               "mean": 5.1,
-              "stddev": 6.1,
+              "stdDev": 6.1,
               "percentiles": {
                 "25%": 0.4,
                 "50%": 0.6,

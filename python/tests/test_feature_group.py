@@ -796,16 +796,6 @@ class TestFeatureGroup:
             "hsfs.core.feature_group_engine.FeatureGroupEngine._save",
             return_value=(None, None),
         )
-        mock_commit_details = mocker.patch(
-            "hsfs.feature_group.FeatureGroup.commit_details",
-            return_value={
-                "21378543924": {}
-            },  # non-empty dict to simulate successful commit
-        )
-        mock_stats_engine = mocker.patch(
-            "hsfs.core.statistics_engine.StatisticsEngine._compute_and_save_statistics",
-            return_value=None,
-        )
 
         fg = feature_group.FeatureGroup(
             name="test_fg",
@@ -820,9 +810,8 @@ class TestFeatureGroup:
         data = [[1, "test_1"], [2, "test_2"]]
         fg.save(data)
 
+        # Stats are computed by the backend ingestion-triggered FM job, not in the client.
         mock_convert_to_default_dataframe.assert_called_once_with(data)
-        mock_commit_details.assert_called_once()
-        mock_stats_engine.assert_called_once()
 
     def test_save_report_true_default(self, mocker, dataframe_fixture_basic):
         engine = python.Engine()
@@ -835,16 +824,6 @@ class TestFeatureGroup:
         mock_insert = mocker.patch(
             "hsfs.core.feature_group_engine.FeatureGroupEngine._insert",
             return_value=(None, None),
-        )
-        mock_commit_details = mocker.patch(
-            "hsfs.feature_group.FeatureGroup.commit_details",
-            return_value={
-                "21378543924": {}
-            },  # non-empty dict to simulate successful commit
-        )
-        mock_stats_engine = mocker.patch(
-            "hsfs.core.statistics_engine.StatisticsEngine._compute_and_save_statistics",
-            return_value=None,
         )
 
         fg = feature_group.FeatureGroup(
@@ -871,8 +850,6 @@ class TestFeatureGroup:
             transform=True,
             n_processes=None,
         )
-        mock_commit_details.assert_called_once()
-        mock_stats_engine.assert_called_once()
 
     def test_save_report_default_overwritable(self, mocker, dataframe_fixture_basic):
         engine = python.Engine()
@@ -885,16 +862,6 @@ class TestFeatureGroup:
         mock_insert = mocker.patch(
             "hsfs.core.feature_group_engine.FeatureGroupEngine._insert",
             return_value=(None, None),
-        )
-        mock_commit_details = mocker.patch(
-            "hsfs.feature_group.FeatureGroup.commit_details",
-            return_value={
-                "21378543924": {}
-            },  # non-empty dict to simulate successful commit
-        )
-        mock_stats_engine = mocker.patch(
-            "hsfs.core.statistics_engine.StatisticsEngine._compute_and_save_statistics",
-            return_value=None,
         )
 
         fg = feature_group.FeatureGroup(
@@ -922,8 +889,6 @@ class TestFeatureGroup:
             transform=True,
             n_processes=None,
         )
-        mock_commit_details.assert_called_once()
-        mock_stats_engine.assert_called_once()
 
     @pytest.mark.parametrize(
         "sc,expected",
