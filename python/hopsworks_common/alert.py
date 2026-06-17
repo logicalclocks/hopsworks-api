@@ -16,10 +16,59 @@
 from __future__ import annotations
 
 import json
+import warnings
 
 import humps
 from hopsworks_apigen import public
 from hopsworks_common import util
+
+
+# Mapping from old uppercase wire values (emitted by backends before ~=3.8.1)
+# to their replacements in the new naming scheme.
+_DEPRECATED_ALERT_STATUS_WIRE_MAP = {
+    "SUCCESS": "VALIDATION_SUCCESS",
+    "WARNING": "VALIDATION_WARNING",
+    "FAILURE": "VALIDATION_FAILURE",
+    "FEATURE_MONITOR_SHIFT_UNDETECTED": "MONITORING_SHIFT_UNDETECTED",
+    "FEATURE_MONITOR_SHIFT_DETECTED": "MONITORING_SHIFT_DETECTED",
+}
+
+
+def _normalize_alert_status(status: str | None, stacklevel: int = 2) -> str | None:
+    """Normalize a deprecated alert status wire value to its replacement.
+
+    Called during deserialization via `Alert.from_response_json` whenever an
+    `Alert` object is constructed from a backend response.
+    If *status* is one of the old enum names that were renamed in version
+    ~=3.8.1, the function emits a `DeprecationWarning` and returns the new
+    name.
+    Otherwise it returns *status* unchanged.
+
+    Args:
+        status: The raw status string from the backend response, or `None`.
+        stacklevel: Passed directly to `warnings.warn` to attribute the warning
+            to the correct call frame.
+            The default of 2 attributes the warning to the caller of
+            `_normalize_alert_status` (i.e. `from_response_json`), which is
+            the correct frame when the normalization is invoked from
+            `from_response_json`.
+
+    Returns:
+        The normalized status string, or `None` if *status* is `None`.
+    """
+    if status is None:
+        return None
+    new = _DEPRECATED_ALERT_STATUS_WIRE_MAP.get(status)
+    if new is not None:
+        warnings.warn(
+            f"Alert status {status!r} is deprecated and will be removed in a future release. "
+            f"Use {new!r} instead. "
+            "The connected backend may need to be upgraded.",
+            DeprecationWarning,
+            stacklevel=stacklevel,
+        )
+        return new
+    return status
 
 
 @public("hopsworks.alert.Alert")
@@ -46,9 +95,26 @@ class Alert:
         json_decamelized = humps.decamelize(json_dict)
         if "count" in json_decamelized:
             if "items" in json_decamelized:
-                return [cls(**receiver) for receiver in json_decamelized["items"]]
+                return [
+                    cls(
+                        **{
+                            **item,
+                            "status": _normalize_alert_status(
+                                item.get("status"), stacklevel=4
+                            ),
+                        }
+                    )
+                    for item in json_decamelized["items"]
+                ]
             return []
-        return cls(**json_decamelized)
+        return cls(
+            **{
+                **json_decamelized,
+                "status": _normalize_alert_status(
+                    json_decamelized.get("status"), stacklevel=4
+                ),
+            }
+        )
 
     @public
     @property

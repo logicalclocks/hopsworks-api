@@ -1925,16 +1925,16 @@ class FeatureGroupBase:
         )
 
     @public
-    def create_statistics_monitoring(
+    def create_scheduled_statistics(
         self,
         name: str,
-        feature_name: str | None = None,
+        feature_names: str | list[str] | None = None,
         description: str | None = None,
         start_date_time: int | str | datetime | date | pd.Timestamp | None = None,
         end_date_time: int | str | datetime | date | pd.Timestamp | None = None,
         cron_expression: str | None = "0 0 12 ? * * *",
     ) -> fmc.FeatureMonitoringConfig:
-        """Run a job to compute statistics on snapshot of feature data on a schedule.
+        """Create a job to compute statistics on snapshot of feature data on a schedule.
 
         Experimental:
             Public API is subject to change, this feature is not suitable for production use-cases.
@@ -1945,7 +1945,7 @@ class FeatureGroupBase:
             fg = fs.get_feature_group(name="my_feature_group", version=1)
 
             # enable statistics monitoring
-            my_config = fg.create_statistics_monitoring(
+            my_config = fg.create_scheduled_statistics(
                 name="my_config",
                 start_date_time="2021-01-01 00:00:00",
                 description="my description",
@@ -1961,8 +1961,8 @@ class FeatureGroupBase:
             name:
                 Name of the feature monitoring configuration.
                 The name must be unique for all configurations attached to the feature group.
-            feature_name:
-                Name of the feature to monitor.
+            feature_names:
+                Name of the features to monitor.
                 If not specified, statistics will be computed for all features.
             description: Description of the feature monitoring configuration.
             start_date_time: Start date and time from which to start computing statistics.
@@ -1981,24 +1981,33 @@ class FeatureGroupBase:
         """
         if not self._id:
             raise FeatureStoreException(
-                "Only Feature Group registered with Hopsworks can enable scheduled statistics monitoring."
+                "Only Feature Group registered with Hopsworks can enable scheduled statistics."
             )
 
-        return self._feature_monitoring_config_engine._build_default_statistics_monitoring_config(
+        valid_features = {feat.name: feat.type for feat in self._features}
+        valid_feature_names = list(valid_features.keys())
+
+        if feature_names is None:
+            # choose all features if none is selected
+            feature_names = valid_feature_names
+        elif not isinstance(feature_names, list):
+            feature_names = [feature_names]
+
+        return self._feature_monitoring_config_engine._build_default_scheduled_statistics_config(
             name=name,
-            feature_name=feature_name,
+            feature_names=feature_names,
             description=description,
             start_date_time=start_date_time,
-            valid_feature_names=[feat.name for feat in self._features],
+            valid_feature_names=valid_feature_names,
             end_date_time=end_date_time,
             cron_expression=cron_expression,
+            valid_features=valid_features,
         )
 
     @public
     def create_feature_monitoring(
         self,
         name: str,
-        feature_name: str,
         description: str | None = None,
         start_date_time: int | str | datetime | date | pd.Timestamp | None = None,
         end_date_time: int | str | datetime | date | pd.Timestamp | None = None,
@@ -2017,7 +2026,6 @@ class FeatureGroupBase:
             # enable feature monitoring
             my_config = fg.create_feature_monitoring(
                 name="my_monitoring_config",
-                feature_name="my_feature",
                 description="my monitoring config description",
                 cron_expression="0 0 12 ? * * *",
             ).with_detection_window(
@@ -2029,6 +2037,7 @@ class FeatureGroupBase:
                 time_offset="1w1d",
                 window_length="1d",
             ).compare_on(
+                feature_name="my_feature",
                 metric="mean",
                 threshold=0.5,
             ).save()
@@ -2038,7 +2047,6 @@ class FeatureGroupBase:
             name:
                 Name of the feature monitoring configuration.
                 The name must be unique for all configurations attached to the feature group.
-            feature_name: Name of the feature to monitor.
             description: Description of the feature monitoring configuration.
             start_date_time: Start date and time from which to start computing statistics.
             end_date_time: End date and time at which to stop computing statistics.
@@ -2059,14 +2067,15 @@ class FeatureGroupBase:
                 "Only Feature Group registered with Hopsworks can enable feature monitoring."
             )
 
+        valid_features = {feat.name: feat.type for feat in self._features}
         return self._feature_monitoring_config_engine._build_default_feature_monitoring_config(
             name=name,
-            feature_name=feature_name,
             description=description,
             start_date_time=start_date_time,
-            valid_feature_names=[feat.name for feat in self._features],
+            valid_feature_names=list(valid_features.keys()),
             end_date_time=end_date_time,
             cron_expression=cron_expression,
+            valid_features=valid_features,
         )
 
     def __getattr__(self, name: str) -> Any:
@@ -2428,6 +2437,10 @@ class FeatureGroupBase:
             "feature_validation_success",
             "feature_validation_warning",
             "feature_validation_failure",
+            "monitoring_shift_undetected",
+            "monitoring_shift_detected",
+            "monitoring_empty_detection_window",
+            # deprecated since ~=3.8.1; kept for one release
             "feature_monitor_shift_undetected",
             "feature_monitor_shift_detected",
         ],
@@ -2438,6 +2451,9 @@ class FeatureGroupBase:
         Parameters:
             receiver: The receiver of the alert.
             status: The status that will trigger the alert.
+                The names feature_monitor_shift_undetected and
+                feature_monitor_shift_detected are deprecated since ~=3.8.1 and will
+                be removed in a future release.
             severity: The severity of the alert.
 
         Returns:
@@ -3796,24 +3812,8 @@ class FeatureGroup(FeatureGroupBase):
             n_processes=n_processes,
         )
 
-        # Compute stats in client if there is no backfill job:
-        # - spark engine: always compute in client
-        # - python engine: only compute if FG is offline only (no backfill job)
-        if self.statistics_config.enabled and engine._get_type().startswith("spark"):
-            self._statistics_engine._compute_and_save_statistics(
-                self, feature_dataframe
-            )
-        elif (
-            self.statistics_config.enabled
-            and engine._get_type() == "python"
-            and not self.stream
-        ):
-            commit_id = list(self.commit_details(limit=1))[0]
-            self._statistics_engine._compute_and_save_statistics(
-                metadata_instance=self,
-                feature_dataframe=feature_dataframe,
-                feature_group_commit_id=commit_id,
-            )
+        # Stats are computed automatically by the ingestion-triggered FM job on the backend.
+        # No client-side trigger needed.
 
         if user_version is None:
             warnings.warn(
@@ -4023,27 +4023,8 @@ class FeatureGroup(FeatureGroupBase):
             n_processes=n_processes,
         )
 
-        # Compute stats in client if there is no backfill job:
-        # - spark engine: always compute in client
-        # - python engine: only compute if FG is offline only (no backfill job)
-        if (
-            engine._get_type().startswith("spark")
-            and not self.stream
-            and storage_normalized != "online"
-        ):
-            self.compute_statistics()
-        elif (
-            self.statistics_config.enabled
-            and engine._get_type() == "python"
-            and not self.stream
-            and storage_normalized != "online"
-        ):
-            commit_id = list(self.commit_details(limit=1))[0]
-            self._statistics_engine._compute_and_save_statistics(
-                metadata_instance=self,
-                feature_dataframe=feature_dataframe,
-                feature_group_commit_id=commit_id,
-            )
+        # Stats are computed automatically by the ingestion-triggered FM job on the backend.
+        # No client-side trigger needed.
 
         return (
             job,
@@ -5143,7 +5124,8 @@ class ExternalFeatureGroup(FeatureGroupBase):
         )
 
         if self._id:
-            # Got from Hopsworks, deserialize features and storage connector
+            # Got from Hopsworks, deserialize features and storage connector.
+            # self._features is already deserialized above (defaults to []).
             self.primary_key = (
                 [feat.name for feat in self._features if feat.primary is True]
                 if self._features

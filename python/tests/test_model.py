@@ -510,6 +510,43 @@ class TestModel:
         assert mock_fv.init_serving.called
         assert not mock_fv.init_batch_scoring.called
 
+    # get_monitoring_configs
+
+    def test_get_monitoring_configs(self, mocker, backend_fixtures):
+        # Arrange
+        m_json = backend_fixtures["model"]["get_python"]["response"]["items"][0]
+        mock_fm_configs = [mocker.Mock(), mocker.Mock()]
+        mock_get_by_model = mocker.patch(
+            "hsfs.core.feature_monitoring_config_api.FeatureMonitoringConfigApi._get_by_model",
+            return_value=mock_fm_configs,
+        )
+
+        # Act
+        m = model.Model.from_response_json(m_json)
+        result = m.get_monitoring_configs()
+
+        # Assert
+        assert result == mock_fm_configs
+        mock_get_by_model.assert_called_once_with(
+            model_registry_id=m.model_registry_id,
+            model_id=m.id,
+        )
+
+    def test_get_monitoring_configs_empty(self, mocker, backend_fixtures):
+        # Arrange
+        m_json = backend_fixtures["model"]["get_python"]["response"]["items"][0]
+        mocker.patch(
+            "hsfs.core.feature_monitoring_config_api.FeatureMonitoringConfigApi._get_by_model",
+            return_value=[],
+        )
+
+        # Act
+        m = model.Model.from_response_json(m_json)
+        result = m.get_monitoring_configs()
+
+        # Assert
+        assert result == []
+
 
 class TestModelEngine:
     @pytest.mark.parametrize(

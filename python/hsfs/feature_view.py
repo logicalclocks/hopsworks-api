@@ -3873,7 +3873,7 @@ class FeatureView:
         # TODO: Should this filter out scheduled statistics only configs?
         if not self._id:
             raise FeatureStoreException(
-                "Only Feature Group registered with Hopsworks can fetch feature monitoring configurations."
+                "Only Feature View registered with Hopsworks can fetch feature monitoring configurations."
             )
 
         return self._feature_monitoring_config_engine._get_feature_monitoring_configs(
@@ -3896,7 +3896,7 @@ class FeatureView:
         Example:
             ```python3
             # fetch your feature view
-            fv = fs.get_feature_view(name="my_feature_group", version=1)
+            fv = fs.get_feature_view(name="my_feature_view", version=1)
             # fetch feature monitoring history for a given feature monitoring config
             fm_history = fv.get_feature_monitoring_history(
                 config_name="my_config",
@@ -3913,15 +3913,11 @@ class FeatureView:
 
         Parameters:
             config_name: The name of the feature monitoring config to fetch history for.
-                Defaults to None.
             config_id: The id of the feature monitoring config to fetch history for.
-                Defaults to None.
             start_time: The start date of the feature monitoring history to fetch.
-                Defaults to None.
             end_time: The end date of the feature monitoring history to fetch.
-                Defaults to None.
             with_statistics: Whether to include statistics in the feature monitoring history.
-                Defaults to True. If False, only metadata about the monitoring will be fetched.
+                If False, only metadata about the monitoring will be fetched.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
@@ -3946,26 +3942,24 @@ class FeatureView:
         )
 
     @public
-    def create_statistics_monitoring(
+    def create_scheduled_statistics(
         self,
         name: str,
-        feature_name: str | None = None,
+        feature_names: str | list[str] | None = None,
         description: str | None = None,
         start_date_time: int | str | datetime | date | pd.Timestamp | None = None,
         end_date_time: int | str | datetime | date | pd.Timestamp | None = None,
         cron_expression: str | None = "0 0 12 ? * * *",
     ) -> fmc.FeatureMonitoringConfig:
-        """Run a job to compute statistics on snapshot of feature data on a schedule.
-
-        Experimental:
-            Public API is subject to change, this feature is not suitable for production use-cases.
+        """Create a job to compute statistics on snapshot of feature data on a schedule.
 
         Example:
             ```python3
             # fetch feature view
             fv = fs.get_feature_view(name="my_feature_view", version=1)
+
             # enable statistics monitoring
-            my_config = fv._create_statistics_monitoring(
+            my_config = fv.create_scheduled_statistics(
                 name="my_config",
                 start_date_time="2021-01-01 00:00:00",
                 description="my description",
@@ -3980,7 +3974,7 @@ class FeatureView:
         Parameters:
             name: Name of the feature monitoring configuration.
                 name must be unique for all configurations attached to the feature view.
-            feature_name: Name of the feature to monitor. If not specified, statistics
+            feature_names: Names of the features to monitor. If not specified, statistics
                 will be computed for all features.
             description: Description of the feature monitoring configuration.
             start_date_time: Start date and time from which to start computing statistics.
@@ -3998,24 +3992,33 @@ class FeatureView:
         """
         if not self._id:
             raise FeatureStoreException(
-                "Only Feature View registered with Hopsworks can enable scheduled statistics monitoring."
+                "Only Feature View registered with Hopsworks can enable scheduled statistics."
             )
 
-        return self._feature_monitoring_config_engine._build_default_statistics_monitoring_config(
+        valid_features = {feat.name: feat.type for feat in self._features}
+        valid_feature_names = list(valid_features.keys())
+
+        if feature_names is None:
+            # choose all features if none is selected
+            feature_names = valid_feature_names
+        elif not isinstance(feature_names, list):
+            feature_names = [feature_names]
+
+        return self._feature_monitoring_config_engine._build_default_scheduled_statistics_config(
             name=name,
-            feature_name=feature_name,
+            feature_names=feature_names,
             description=description,
             start_date_time=start_date_time,
-            valid_feature_names=[feat.name for feat in self._features],
+            valid_feature_names=valid_feature_names,
             cron_expression=cron_expression,
             end_date_time=end_date_time,
+            valid_features=valid_features,
         )
 
     @public
     def create_feature_monitoring(
         self,
         name: str,
-        feature_name: str,
         description: str | None = None,
         start_date_time: int | str | datetime | date | pd.Timestamp | None = None,
         end_date_time: int | str | datetime | date | pd.Timestamp | None = None,
@@ -4030,10 +4033,10 @@ class FeatureView:
             ```python3
             # fetch feature view
             fg = fs.get_feature_view(name="my_feature_view", version=1)
+
             # enable feature monitoring
             my_config = fg.create_feature_monitoring(
                 name="my_monitoring_config",
-                feature_name="my_feature",
                 description="my monitoring config description",
                 cron_expression="0 0 12 ? * * *",
             ).with_detection_window(
@@ -4044,6 +4047,7 @@ class FeatureView:
                 # compare to a given value
                 specific_value=0.5,
             ).compare_on(
+                feature_name="my_feature",
                 metric="mean",
                 threshold=0.5,
             ).save()
@@ -4051,17 +4055,16 @@ class FeatureView:
 
         Parameters:
             name: Name of the feature monitoring configuration.
-                name must be unique for all configurations attached to the feature group.
-            feature_name: Name of the feature to monitor.
+                name must be unique for all configurations attached to the feature view.
             description: Description of the feature monitoring configuration.
             start_date_time: Start date and time from which to start computing statistics.
             end_date_time: End date and time at which to stop computing statistics.
-            cron_expression: Cron expression to use to schedule the job. The cron expression
-                must be in UTC and follow the Quartz specification. Default is '0 0 12 ? * * *',
-                every day at 12pm UTC.
+            cron_expression: Cron expression to use to schedule the job.
+                The cron expression must be in UTC and follow the Quartz specification.
+                The default value means "every day at 12pm UTC".
 
         Raises:
-            hopsworks.client.exceptions.FeatureStoreException: If the feature view is not registered in Hopsworks
+            hopsworks.client.exceptions.FeatureStoreException: If the feature view is not registered in Hopsworks.
 
         Returns:
             Configuration with minimal information about the feature monitoring.
@@ -4072,15 +4075,147 @@ class FeatureView:
                 "Only Feature View registered with Hopsworks can enable feature monitoring."
             )
 
+        valid_features = {feat.name: feat.type for feat in self._features}
         return self._feature_monitoring_config_engine._build_default_feature_monitoring_config(
             name=name,
-            feature_name=feature_name,
             description=description,
             start_date_time=start_date_time,
-            valid_feature_names=[feat.name for feat in self._features],
+            valid_feature_names=list(valid_features.keys()),
+            end_date_time=end_date_time,
+            cron_expression=cron_expression,
+            valid_features=valid_features,
+        )
+
+    @public
+    def create_model_monitoring(
+        self,
+        name: str,
+        model_name: str,
+        model_version: int,
+        description: str | None = None,
+        start_date_time: int | str | datetime | date | pd.Timestamp | None = None,
+        end_date_time: int | str | datetime | date | pd.Timestamp | None = None,
+        cron_expression: str | None = "0 0 12 ? * * *",
+    ) -> fmc.FeatureMonitoringConfig:
+        """Enable feature monitoring on the inference logs of a specific deployed model.
+
+        Targets the logging feature group (``{fv_name}_{version}_log``) and filters by
+        ``model_name`` and ``model_version`` so the FM job only consumes the inference
+        rows produced by that one deployment. The reference window
+        defaults to the training dataset version used to train the model — this is
+        recorded on the model at registration time. Any explicit
+        :func:`FeatureMonitoringConfig.with_reference_training_dataset` call is validated
+        against the model's training TD version and raises on mismatch.
+
+        Experimental:
+            Public API is subject to change, this feature is not suitable for production use-cases.
+
+        Example:
+            ```python3
+            fv = fs.get_feature_view(name="my_feature_view", version=1)
+
+            my_config = fv.create_model_monitoring(
+                name="model_psi_monitoring",
+                model_name="iris_classifier",
+                model_version=3,
+                cron_expression="0 0 12 ? * * *",
+            ).with_detection_window(
+                # served by this model in the last day
+                time_offset="1d",
+                window_length="1d",
+            ).with_reference_training_dataset(
+                # omitted -> defaults to the TD version used to train iris_classifier v3
+            ).compare_on_distribution(
+                feature_name="petal_length",
+                metric="PSI",
+                threshold=0.2,
+            ).save()
+            ```
+
+        Parameters:
+            name: Name of the feature monitoring configuration. Must be unique among the
+                configurations attached to the logging feature group.
+            model_name: Name of the model whose inference logs are monitored.
+            model_version: Version of the model whose inference logs are monitored.
+            description: Description of the feature monitoring configuration.
+            start_date_time: Start date and time from which to start computing statistics.
+            end_date_time: End date and time at which to stop computing statistics.
+            cron_expression: Cron expression to use to schedule the job. The cron
+                expression must be in UTC and follow the Quartz specification. The
+                default value means "every day at 12pm UTC".
+
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException: If feature logging is not
+                enabled, the feature view is not registered, the named model is not
+                found, or the model has no recorded training dataset version.
+
+        Returns:
+            Configuration with minimal information about the feature monitoring.
+            Additional information are required before feature monitoring is enabled.
+        """
+        if not self.logging_enabled:
+            raise FeatureStoreException(
+                "Feature logging is not enabled for this feature view. "
+                "Call self.enable_logging() first."
+            )
+
+        # Idea A — warn when a sub-hourly cron is used for model monitoring.
+        # The inference-log feature group materializes offline data at most hourly, so a
+        # finer cron produces redundant or incomplete detection windows.
+        if util._is_sub_hour_cron(cron_expression):
+            warnings.warn(
+                f"The cron expression '{cron_expression}' fires more than once per hour "
+                "but the inference-log feature group materializes offline data at most "
+                "hourly. Sub-hourly crons produce redundant or incomplete detection "
+                "windows. Consider using a cron that fires at most once per hour (e.g. "
+                "'0 0 * * * ? *'). ",
+                UserWarning,
+                stacklevel=2,
+            )
+
+        # Lazy imports: hsml is a sibling SDK package and the rest of hsfs imports it
+        # the same way (see explicit_provenance.py).
+        try:
+            from hsml.core import model_api as hsml_model_api
+        except ModuleNotFoundError as err:
+            raise FeatureStoreException(
+                "Model monitoring requires the hsml library, which is not installed. "
+                "Install hsml before creating a model monitoring configuration."
+            ) from err
+
+        _client = client._get_instance()
+        model_meta = hsml_model_api.ModelApi()._get(
+            name=model_name,
+            version=model_version,
+            model_registry_id=_client._project_id,
+        )
+        if model_meta is None:
+            raise FeatureStoreException(
+                f"Model '{model_name}' version {model_version} was not found in the "
+                "model registry of this project."
+            )
+        training_dataset_version = model_meta.training_dataset_version
+        if not training_dataset_version:
+            raise FeatureStoreException(
+                f"Model '{model_name}' version {model_version} has no recorded "
+                "training dataset version. Re-register the model with the feature "
+                "view and training_dataset_version that was used to train it."
+            )
+
+        logging_fg = self.feature_logging.get_feature_group()
+        config = logging_fg.create_feature_monitoring(
+            name=name,
+            description=description,
+            start_date_time=start_date_time,
             end_date_time=end_date_time,
             cron_expression=cron_expression,
         )
+        # Stamp model fields onto the config — they are persisted via to_dict() and
+        # threaded through to the FM job, where they become a Filter on the logging FG.
+        config._model_name = model_name
+        config._model_version = model_version
+        config._associated_model_td_version = training_dataset_version
+        return config
 
     @public
     def get_alerts(self) -> list[FeatureViewAlert] | Alert:
@@ -4122,8 +4257,18 @@ class FeatureView:
     def create_alert(
         self,
         receiver: str,
-        status: str,
-        severity: str,
+        status: Literal[
+            "feature_validation_success",
+            "feature_validation_warning",
+            "feature_validation_failure",
+            "monitoring_shift_undetected",
+            "monitoring_shift_detected",
+            "monitoring_empty_detection_window",
+            # deprecated since ~=3.8.1; kept for one release
+            "feature_monitor_shift_undetected",
+            "feature_monitor_shift_detected",
+        ],
+        severity: Literal["info", "warning", "critical"],
     ) -> FeatureViewAlert:
         """Create an alert for this feature view.
 
@@ -4136,15 +4281,18 @@ class FeatureView:
             # create an alert
             alert = feature_view.create_alert(
                 receiver="email",
-                status="feature_monitor_shift_undetected",
+                status="monitoring_shift_undetected",
                 severity="info",
             )
             ```
 
         Parameters:
-            receiver: str. The receiver of the alert.
-            status: str. The status that will trigger the alert. Can be "feature_monitor_shift_undetected" or "feature_monitor_shift_detected".
-            severity: str. The severity of the alert. Can be "info", "warning" or "critical".
+            receiver: The receiver of the alert.
+            status: The status that will trigger the alert.
+                The names feature_monitor_shift_undetected and
+                feature_monitor_shift_detected are deprecated since ~=3.8.1 and will
+                be removed in a future release.
+            severity: The severity of the alert.
 
         Returns:
             The created FeatureViewAlert object.
@@ -4152,7 +4300,7 @@ class FeatureView:
         Raises:
             ValueError: If the status is not valid.
             ValueError: If the severity is not valid.
-            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._alert_api.create_feature_view_alert(
             feature_store_id=self._feature_store_id,
