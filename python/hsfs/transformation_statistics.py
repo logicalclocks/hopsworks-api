@@ -46,7 +46,7 @@ class FeatureTransformationStatistics:
         max: float | None = None,
         sum: float | None = None,
         mean: float | None = None,
-        stddev: float | None = None,
+        std_dev: float | None = None,
         percentiles: Mapping[str, float] | None = None,
         distinctness: float | None = None,
         entropy: float | None = None,
@@ -65,7 +65,7 @@ class FeatureTransformationStatistics:
         self._max = max
         self._sum = sum
         self._mean = mean
-        self._stddev = stddev
+        self._std_dev = std_dev
         self._percentiles = percentiles
         self._distinctness = distinctness
         self._entropy = entropy
@@ -153,9 +153,9 @@ class FeatureTransformationStatistics:
 
     @public
     @property
-    def stddev(self) -> float | None:
+    def std_dev(self) -> float | None:
         """Standard deviation of the feature values."""
-        return self._stddev
+        return self._std_dev
 
     @public
     @property
