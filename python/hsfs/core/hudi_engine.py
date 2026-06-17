@@ -139,7 +139,7 @@ class HudiEngine:
         # records before the write, so the key generator partitions on them
         # like ordinary columns (and delete payloads resolve their partition
         # path the same way).
-        dataset = partition_grains.materialize_grains_spark(
+        dataset = partition_grains._materialize_grains_spark(
             self._feature_group, dataset
         )
         hudi_options = self._setup_hudi_write_opts(operation, write_options)

@@ -58,7 +58,7 @@ _logger = logging.getLogger(__name__)
 _HIERARCHICAL_GRAINS = ("year", "month", "day", "hour")
 
 
-def augment_filter(
+def _augment_filter(
     f: Filter | Logic | None,
     fg: fg_mod.FeatureGroup,
 ) -> Filter | Logic | None:

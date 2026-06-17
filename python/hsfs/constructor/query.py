@@ -356,9 +356,9 @@ class Query:
         # instance repeatedly does not keep nesting AND clauses into _filter.
         original_filter = self._filter
         if not online:
-            from hsfs.constructor.partitioned_by_translator import augment_filter
+            from hsfs.constructor.partitioned_by_translator import _augment_filter
 
-            self._filter = augment_filter(self._filter, self._left_feature_group)
+            self._filter = _augment_filter(self._filter, self._left_feature_group)
         try:
             sql_query, online_conn = self._prep_read(online, read_options)
         finally:

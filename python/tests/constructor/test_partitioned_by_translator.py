@@ -18,7 +18,7 @@ from unittest.mock import Mock
 
 from hsfs import feature
 from hsfs.constructor.filter import Filter, Logic
-from hsfs.constructor.partitioned_by_translator import augment_filter
+from hsfs.constructor.partitioned_by_translator import _augment_filter
 
 
 def _fake_fg(
@@ -26,7 +26,7 @@ def _fake_fg(
     event_time="ts",
     time_travel_format="DELTA",
 ):
-    """Build a Mock that exposes only what augment_filter reads."""
+    """Build a Mock that exposes only what _augment_filter reads."""
     fg = Mock()
     fg.partitioned_by = partitioned_by
     fg.event_time = event_time
@@ -61,13 +61,13 @@ def _has_predicate(node, feature_name, condition, value=None):
 class TestNoOp:
     def test_returns_input_when_partitioned_by_missing(self):
         f = Filter(feature.Feature("ts"), Filter.GE, "2026-01-01")
-        out = augment_filter(f, _fake_fg(partitioned_by=None))
+        out = _augment_filter(f, _fake_fg(partitioned_by=None))
         assert out is f
 
     def test_returns_input_when_event_time_missing(self):
         f = Filter(feature.Feature("ts"), Filter.GE, "2026-01-01")
         fg = _fake_fg(partitioned_by=["year"], event_time=None)
-        out = augment_filter(f, fg)
+        out = _augment_filter(f, fg)
         assert out is f
 
     def test_non_hierarchical_falls_back(self):
@@ -75,7 +75,7 @@ class TestNoOp:
         # leave the filter unchanged rather than producing incorrect bounds.
         f = Filter(feature.Feature("ts"), Filter.GE, "2026-01-01")
         fg = _fake_fg(partitioned_by=["month"], time_travel_format="DELTA")
-        out = augment_filter(f, fg)
+        out = _augment_filter(f, fg)
         assert out is f
 
     def test_grain_filter_passes_through(self):
@@ -84,7 +84,7 @@ class TestNoOp:
         # predicate is added.
         f = Filter(feature.Feature("year"), Filter.EQ, 2026)
         fg = _fake_fg(partitioned_by=["year"], time_travel_format="HUDI")
-        out = augment_filter(f, fg)
+        out = _augment_filter(f, fg)
         assert out is f
 
     def test_or_short_circuits(self):
@@ -95,7 +95,7 @@ class TestNoOp:
             right_f=Filter(feature.Feature("ts"), Filter.LT, "2025-01-01"),
         )
         fg = _fake_fg(partitioned_by=["year"], time_travel_format="DELTA")
-        out = augment_filter(f, fg)
+        out = _augment_filter(f, fg)
         assert out is f
 
 
@@ -109,7 +109,7 @@ class TestEventTimeToDerived:
     def test_year_lower_bound_delta(self):
         f = Filter(feature.Feature("ts"), Filter.GE, "2026-01-01")
         fg = _fake_fg(partitioned_by=["year"], time_travel_format="DELTA")
-        out = augment_filter(f, fg)
+        out = _augment_filter(f, fg)
         # Original GE on ts still present
         assert _has_predicate(out, "ts", Filter.GE)
         # And a year >= 2026 added
@@ -121,7 +121,7 @@ class TestEventTimeToDerived:
             right_f=Filter(feature.Feature("ts"), Filter.LT, "2027-01-01"),
         )
         fg = _fake_fg(partitioned_by=["year", "month"], time_travel_format="HUDI")
-        out = augment_filter(f, fg)
+        out = _augment_filter(f, fg)
         # Both original predicates preserved
         assert _has_predicate(out, "ts", Filter.GE)
         assert _has_predicate(out, "ts", Filter.LT)
@@ -140,7 +140,7 @@ class TestEventTimeToDerived:
             right_f=Filter(feature.Feature("ts"), Filter.LT, "2026-06-10"),
         )
         fg = _fake_fg(partitioned_by=["year", "month"], time_travel_format="DELTA")
-        out = augment_filter(f, fg)
+        out = _augment_filter(f, fg)
         assert _has_predicate(out, "year", Filter.GE, 2026)
         assert _has_predicate(out, "year", Filter.LE, 2026)
         assert _has_predicate(out, "month", Filter.GE, 4)
@@ -154,7 +154,7 @@ class TestEventTimeToDerived:
             right_f=Filter(feature.Feature("ts"), Filter.LT, "2027-02-01"),
         )
         fg = _fake_fg(partitioned_by=["year", "month"], time_travel_format="DELTA")
-        out = augment_filter(f, fg)
+        out = _augment_filter(f, fg)
         assert _has_predicate(out, "year", Filter.GE, 2026)
         assert _has_predicate(out, "year", Filter.LE, 2027)
         assert not _has_predicate(out, "month", Filter.GE)
@@ -163,14 +163,14 @@ class TestEventTimeToDerived:
     def test_one_sided_range_bounds_year_only(self):
         f = Filter(feature.Feature("ts"), Filter.GE, "2026-04-03")
         fg = _fake_fg(partitioned_by=["year", "month"], time_travel_format="DELTA")
-        out = augment_filter(f, fg)
+        out = _augment_filter(f, fg)
         assert _has_predicate(out, "year", Filter.GE, 2026)
         assert not _has_predicate(out, "month", Filter.GE)
 
     def test_event_time_equality(self):
         f = Filter(feature.Feature("ts"), Filter.EQ, "2026-04-12T00:00:00")
         fg = _fake_fg(partitioned_by=["year"], time_travel_format="HUDI")
-        out = augment_filter(f, fg)
+        out = _augment_filter(f, fg)
         assert _has_predicate(out, "year", Filter.GE, 2026)
         assert _has_predicate(out, "year", Filter.LE, 2026)
 
@@ -182,7 +182,7 @@ class TestEventTimeToDerived:
             right_f=Filter(feature.Feature("ts"), Filter.LT, "2027-01-01T00:00:00"),
         )
         fg = _fake_fg(partitioned_by=["year"], time_travel_format="DELTA")
-        out = augment_filter(f, fg)
+        out = _augment_filter(f, fg)
         assert _has_predicate(out, "year", Filter.GE, 2026)
         assert _has_predicate(out, "year", Filter.LE, 2026)
 

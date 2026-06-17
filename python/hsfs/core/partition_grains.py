@@ -21,8 +21,8 @@ every write. Delta, Hudi, and Iceberg share this derivation so every format
 produces identical grain values for the same event_time input. There are two
 twins:
 
-- `materialize_grains_spark` — for Spark DataFrames (Delta, Hudi, Iceberg).
-- `materialize_grains_arrow` — for PyArrow tables (delta-rs, PyIceberg).
+- `_materialize_grains_spark` — for Spark DataFrames (Delta, Hudi, Iceberg).
+- `_materialize_grains_arrow` — for PyArrow tables (delta-rs, PyIceberg).
 
 The Hudi DeltaStreamer path has a third, JVM twin in `PartitionedByTransformer`.
 """
@@ -30,7 +30,7 @@ The Hudi DeltaStreamer path has a third, JVM twin in `PartitionedByTransformer`.
 from __future__ import annotations
 
 
-def materialize_grains_spark(feature_group, dataset):
+def _materialize_grains_spark(feature_group, dataset):
     """Add the feature group's `partitioned_by` grain columns to a Spark DataFrame.
 
     Values are derived from the feature group's `event_time` column.
@@ -73,10 +73,10 @@ def materialize_grains_spark(feature_group, dataset):
     return dataset
 
 
-def materialize_grains_arrow(feature_group, table):
+def _materialize_grains_arrow(feature_group, table):
     """Add the feature group's `partitioned_by` grain columns to a PyArrow table.
 
-    Arrow twin of [`materialize_grains_spark`][] for the non-Spark write paths
+    Arrow twin of [`_materialize_grains_spark`][] for the non-Spark write paths
     (delta-rs, PyIceberg). Columns already present are left untouched, and the
     table is returned unchanged when the feature group has no `partitioned_by`,
     the input is not a PyArrow table, or the event_time column is absent.

@@ -934,9 +934,7 @@ class TestDeltaEngine:
         out2 = engine._materialize_partitioned_by_grains(out)
         assert out2.column_names == out.column_names
 
-    def test_materialize_partitioned_by_grains_integer_seconds_event_time(
-        self, mocker
-    ):
+    def test_materialize_partitioned_by_grains_integer_seconds_event_time(self, mocker):
         # Arrange
         _patch_client(mocker, is_external=False)
         fg = _make_fg("hopsfs://nn:8020/p")

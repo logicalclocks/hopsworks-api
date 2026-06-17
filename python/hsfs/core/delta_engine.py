@@ -391,7 +391,7 @@ class DeltaEngine:
         # payload only carries primary key + event_time, so materialize the
         # grains on it from event_time, exactly like the write path.
         if self._spark_session is not None:
-            delete_df = partition_grains.materialize_grains_spark(
+            delete_df = partition_grains._materialize_grains_spark(
                 self._feature_group, delete_df
             )
         elif self._feature_group.partitioned_by:
@@ -428,7 +428,7 @@ class DeltaEngine:
         return self._feature_group_api._commit(self._feature_group, fg_commit)
 
     def _write_delta_dataset(self, dataset, write_options, operation="upsert"):
-        dataset = partition_grains.materialize_grains_spark(
+        dataset = partition_grains._materialize_grains_spark(
             self._feature_group, dataset
         )
         location = self._feature_group.prepare_spark_location()
@@ -773,9 +773,9 @@ class DeltaEngine:
         delta-rs partitions only by real, materialized columns, so the grain
         columns (year/month/week/day/hour) derived from event_time must be
         present in the dataframe before the write. Shared with the PyIceberg
-        path via `partition_grains.materialize_grains_arrow`.
+        path via `partition_grains._materialize_grains_arrow`.
         """
-        return partition_grains.materialize_grains_arrow(self._feature_group, table)
+        return partition_grains._materialize_grains_arrow(self._feature_group, table)
 
     @staticmethod
     def _prepare_df_for_delta(df, timestamp_precision="us"):
