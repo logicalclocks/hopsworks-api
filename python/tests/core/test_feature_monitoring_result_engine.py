@@ -15,11 +15,10 @@
 #
 
 from datetime import date, datetime, timedelta
-from unittest.mock import call
 
 import dateutil
+import pytest
 from hsfs import util
-from hsfs.core import feature_monitoring_config as fmc
 from hsfs.core import feature_monitoring_result_engine
 from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
 
@@ -46,7 +45,7 @@ HSFS_CLIENT_GET_INSTANCE = "hopsworks_common.client._get_instance"
 class TestFeatureMonitoringResultEngine:
     # Fetch results
 
-    def test_fetch_all_feature_monitoring_results_by_config_id_via_fg(self, mocker):
+    def test_get_by_config_id_via_fg(self, mocker):
         # Arrange
         start_time = "2022-01-01 10:10:10"
         end_time = "2022-02-02 20:20:20"
@@ -83,7 +82,7 @@ class TestFeatureMonitoringResultEngine:
             == DEFAULT_MONITORING_TIME_SORT_BY
         )
 
-    def test_fetch_all_feature_monitoring_results_by_config_id_via_fv(self, mocker):
+    def test_get_by_config_id_via_fv(self, mocker):
         # Arrange
         start_time = "2022-01-01 01:01:01"
         end_time = "2022-02-02 02:02:02"
@@ -123,219 +122,13 @@ class TestFeatureMonitoringResultEngine:
 
     # Save results
 
-    def test_save_feature_monitoring_result_via_fg(self, mocker):
-        # Arrange
-        result_create_api_mock = mocker.patch(
-            FEATURE_MONITORING_RESULT_CREATE_API,
-        )
-        mocker.patch(
-            "hsfs.core.feature_monitoring_result_engine.FeatureMonitoringResultEngine._get_monitoring_job_execution_id",
-        )
-        result_engine = result_engine = (
-            feature_monitoring_result_engine.FeatureMonitoringResultEngine(
-                feature_store_id=DEFAULT_FEATURE_STORE_ID,
-                feature_group_id=DEFAULT_FEATURE_GROUP_ID,
-            )
-        )
-        result = result_engine._build_feature_monitoring_result(
-            config_id=DEFAULT_CONFIG_ID,
-            feature_name=DEFAULT_FEATURE_NAME,
-        )
-
-        # Act
-        result_engine._save_feature_monitoring_result(result)
-
-        # Assert
-        assert result_create_api_mock.call_args[0][0] == result
-
-    def test_save_feature_monitoring_result_via_fv(self, mocker, backend_fixtures):
-        # Arrange
-        result_create_api_mock = mocker.patch(
-            FEATURE_MONITORING_RESULT_CREATE_API,
-        )
-        mocker.patch(
-            "hsfs.core.feature_monitoring_result_engine.FeatureMonitoringResultEngine._get_monitoring_job_execution_id",
-        )
-        result_engine = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
-            feature_store_id=DEFAULT_FEATURE_STORE_ID,
-            feature_view_name=DEFAULT_FEATURE_VIEW_NAME,
-            feature_view_version=DEFAULT_FEATURE_VIEW_VERSION,
-        )
-        result = result_engine._build_feature_monitoring_result(
-            config_id=DEFAULT_CONFIG_ID,
-            feature_name=DEFAULT_FEATURE_NAME,
-        )
-
-        # Act
-        result_engine._save_feature_monitoring_result(result)
-
-        # Assert
-        assert result_create_api_mock.call_args[0][0] == result
-
-    # Build result
-    def test_build_statistics_monitoring_result_no_reference_stats(
-        self, mocker, backend_fixtures
-    ):
+    def test_save_with_exception(self, mocker):
         # Arrange
         mocker.patch(HSFS_CLIENT_GET_INSTANCE)
-        job_api_last_execution_mock = mocker.patch(
-            LAST_EXECUTION_API,
-        )
-        job_api_get_mock = mocker.patch(GET_JOB_API)
-        result_engine = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
-            feature_store_id=DEFAULT_FEATURE_STORE_ID,
-            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
-        )
-
-        # Act
-        before_time = util._convert_event_time_to_timestamp(
-            datetime.now() - timedelta(seconds=1)
-        )
-        result = result_engine._build_feature_monitoring_result(
-            config_id=DEFAULT_CONFIG_ID,
-            feature_name=DEFAULT_FEATURE_NAME,
-            detection_statistics=FeatureDescriptiveStatistics.from_response_json(
-                backend_fixtures["feature_descriptive_statistics"][
-                    "get_fractional_feature_statistics"
-                ]["response"]
-            ),
-            job_name=DEFAULT_JOB_NAME,
-        )
-        after_time = util._convert_event_time_to_timestamp(
-            datetime.now() + timedelta(seconds=1)
-        )
-
-        # Assert
-        assert result._config_id == DEFAULT_CONFIG_ID
-        assert result._feature_name == DEFAULT_FEATURE_NAME
-        assert result._detection_statistics_id == 52
-        assert result._reference_statistics_id is None
-        assert result._detection_statistics is None
-        assert result._reference_statistics is None
-        assert result._difference is None
-        assert result._shift_detected is False
-        assert after_time >= result._monitoring_time >= before_time
-        job_api_get_mock.assert_called_once_with(name=DEFAULT_JOB_NAME)
-        job_api_last_execution_mock.assert_called_once()
-
-    def test_build_feature_monitoring_result_with_referece_statistics(
-        self, mocker, backend_fixtures
-    ):
-        # Arrange
-        mocker.patch(HSFS_CLIENT_GET_INSTANCE)
-        job_api_last_execution_mock = mocker.patch(
-            LAST_EXECUTION_API,
-        )
-        job_api_get_mock = mocker.patch(GET_JOB_API)
-        result_engine = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
-            feature_store_id=DEFAULT_FEATURE_STORE_ID,
-            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
-        )
-
-        # Act
-        before_time = util._convert_event_time_to_timestamp(
-            datetime.now() - timedelta(seconds=1)
-        )
-        result = result_engine._build_feature_monitoring_result(
-            config_id=DEFAULT_CONFIG_ID,
-            feature_name=DEFAULT_FEATURE_NAME,
-            detection_statistics=FeatureDescriptiveStatistics.from_response_json(
-                backend_fixtures["feature_descriptive_statistics"][
-                    "get_fractional_feature_statistics"
-                ]["response"]
-            ),
-            reference_statistics=FeatureDescriptiveStatistics.from_response_json(
-                backend_fixtures["feature_descriptive_statistics"][
-                    "get_fractional_feature_statistics"
-                ]["response"]
-            ),
-            job_name=DEFAULT_JOB_NAME,
-            difference=DEFAULT_DIFFERENCE,
-        )
-        after_time = util._convert_event_time_to_timestamp(
-            datetime.now() + timedelta(seconds=1)
-        )
-
-        # Assert
-        assert result._config_id == DEFAULT_CONFIG_ID
-        assert result._feature_name == DEFAULT_FEATURE_NAME
-        assert result._detection_statistics_id == 52
-        assert result._reference_statistics_id == 52
-        assert result._detection_statistics is None
-        assert result._reference_statistics is None
-        assert result._difference == DEFAULT_DIFFERENCE
-        assert result._shift_detected is False
-        assert result._specific_value is None
-        assert result._empty_detection_window is False
-        assert result._empty_reference_window is False
-        assert result._raised_exception is False
-        assert after_time >= result._monitoring_time >= before_time
-        job_api_get_mock.assert_called_once_with(name=DEFAULT_JOB_NAME)
-        job_api_last_execution_mock.assert_called_once()
-
-    def test_build_feature_monitoring_result_with_specific_value(
-        self, mocker, backend_fixtures
-    ):
-        # Arrange
-        mocker.patch(HSFS_CLIENT_GET_INSTANCE)
-        job_api_last_execution_mock = mocker.patch(
-            LAST_EXECUTION_API,
-        )
-        job_api_get_mock = mocker.patch(GET_JOB_API)
-        result_engine = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
-            feature_store_id=DEFAULT_FEATURE_STORE_ID,
-            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
-        )
-
-        # Act
-        before_time = util._convert_event_time_to_timestamp(
-            datetime.now() - timedelta(seconds=1)
-        )
-        result = result_engine._build_feature_monitoring_result(
-            config_id=DEFAULT_CONFIG_ID,
-            feature_name=DEFAULT_FEATURE_NAME,
-            detection_statistics=FeatureDescriptiveStatistics.from_response_json(
-                backend_fixtures["feature_descriptive_statistics"][
-                    "get_fractional_feature_statistics"
-                ]["response"]
-            ),
-            specific_value=DEFAULT_SPECIFIC_VALUE,
-            job_name=DEFAULT_JOB_NAME,
-            difference=DEFAULT_DIFFERENCE,
-            shift_detected=True,
-        )
-        after_time = util._convert_event_time_to_timestamp(
-            datetime.now() + timedelta(seconds=1)
-        )
-
-        # Assert
-        assert result._config_id == DEFAULT_CONFIG_ID
-        assert result._feature_name == DEFAULT_FEATURE_NAME
-        assert result._detection_statistics_id == 52
-        assert result._reference_statistics_id is None
-        assert result._detection_statistics is None
-        assert result._reference_statistics is None
-        assert result._difference == DEFAULT_DIFFERENCE
-        assert result._shift_detected is True
-        assert result._specific_value == DEFAULT_SPECIFIC_VALUE
-        assert result._empty_detection_window is False
-        assert result._empty_reference_window is True
-        assert result._raised_exception is False
-        assert after_time >= result._monitoring_time >= before_time
-        job_api_get_mock.assert_called_once_with(name=DEFAULT_JOB_NAME)
-        job_api_last_execution_mock.assert_called_once()
-
-    def test_save_feature_monitoring_result_with_exception(
-        self, mocker, backend_fixtures
-    ):
-        # Arrange
-        mocker.patch(HSFS_CLIENT_GET_INSTANCE)
-        job_api_last_execution_mock = mocker.patch(
-            LAST_EXECUTION_API,
-        )
-        job_api_get_mock = mocker.patch(GET_JOB_API)
+        mocker.patch(LAST_EXECUTION_API)
+        mocker.patch(GET_JOB_API)
         result_engine_save_mock = mocker.patch(
-            "hsfs.core.feature_monitoring_result_engine.FeatureMonitoringResultEngine._save_feature_monitoring_result",
+            "hsfs.core.feature_monitoring_result_engine.FeatureMonitoringResultEngine._save",
         )
         result_engine = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
             feature_store_id=DEFAULT_FEATURE_STORE_ID,
@@ -346,8 +139,8 @@ class TestFeatureMonitoringResultEngine:
         before_time = util._convert_event_time_to_timestamp(
             datetime.now() - timedelta(seconds=1)
         )
-        result_engine._save_feature_monitoring_result_with_exception(
-            config_id=DEFAULT_CONFIG_ID,
+        result_engine._save_with_exception(
+            feature_monitoring_config_id=DEFAULT_CONFIG_ID,
             job_name=DEFAULT_JOB_NAME,
         )
         after_time = util._convert_event_time_to_timestamp(
@@ -356,21 +149,182 @@ class TestFeatureMonitoringResultEngine:
 
         # Assert
         result = result_engine_save_mock.call_args[1]["result"]
-        assert result._config_id == DEFAULT_CONFIG_ID
-        assert result._feature_name == ""
-        assert result._detection_statistics_id is None
-        assert result._reference_statistics_id is None
-        assert result._detection_statistics is None
-        assert result._reference_statistics is None
-        assert result._difference is None
-        assert result._shift_detected is False
-        assert result._specific_value is None
-        assert result._empty_detection_window is True
-        assert result._empty_reference_window is True
+        assert result._feature_monitoring_config_id == DEFAULT_CONFIG_ID
+        assert result._feature_statistics_results is None
         assert result._raised_exception is True
         assert after_time >= result._monitoring_time >= before_time
-        job_api_get_mock.assert_called_once_with(name=DEFAULT_JOB_NAME)
-        job_api_last_execution_mock.assert_called_once()
+
+    # Build result
+
+    def test_build_feature_monitoring_result_no_statistics(self, mocker):
+        # Arrange
+        mocker.patch(HSFS_CLIENT_GET_INSTANCE)
+        mocker.patch(LAST_EXECUTION_API)
+        mocker.patch(GET_JOB_API)
+        result_engine = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+
+        # Act
+        before_time = util._convert_event_time_to_timestamp(
+            datetime.now() - timedelta(seconds=1)
+        )
+        result = result_engine._build_feature_monitoring_result(
+            feature_monitoring_config_id=DEFAULT_CONFIG_ID,
+            feature_statistics_results=None,
+            job_name=DEFAULT_JOB_NAME,
+        )
+        after_time = util._convert_event_time_to_timestamp(
+            datetime.now() + timedelta(seconds=1)
+        )
+
+        # Assert
+        assert result._feature_monitoring_config_id == DEFAULT_CONFIG_ID
+        assert result._feature_store_id == DEFAULT_FEATURE_STORE_ID
+        assert result._feature_statistics_results is None
+        assert result._raised_exception is False
+        assert result._empty_detection_window is False
+        assert result._empty_reference_window is False
+        assert after_time >= result._monitoring_time >= before_time
+
+    def test_build_feature_monitoring_result_with_shifted_features(self, mocker):
+        # Arrange
+        mocker.patch(HSFS_CLIENT_GET_INSTANCE)
+        from hsfs.core.feature_statistics_result import FeatureStatisticsResult
+
+        fs_result = FeatureStatisticsResult(
+            feature_name="amount",
+            shifted_metric_names={"mean"},
+        )
+        result_engine = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+
+        # Act
+        result = result_engine._build_feature_monitoring_result(
+            feature_monitoring_config_id=DEFAULT_CONFIG_ID,
+            feature_statistics_results=[fs_result],
+        )
+
+        # Assert
+        assert result._feature_monitoring_config_id == DEFAULT_CONFIG_ID
+        assert "amount" in result._shifted_feature_names
+        assert result.shift_detected is True
+
+    # Compute methods
+
+    def test_compute_difference_between_specific_values(self):
+        # Arrange
+        result_engine = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+
+        # Act
+        abs_diff = result_engine._compute_difference_between_specific_values(
+            detection_value=25, reference_value=50, relative=False
+        )
+        rel_diff = result_engine._compute_difference_between_specific_values(
+            detection_value=25, reference_value=50, relative=True
+        )
+        inf_diff = result_engine._compute_difference_between_specific_values(
+            detection_value=5, reference_value=0, relative=True
+        )
+
+        # Assert
+        assert abs_diff == 25
+        assert rel_diff == 0.5
+        assert inf_diff == float("inf")
+
+    def test_compute_difference_between_stats(self, backend_fixtures):
+        # Arrange
+        result_engine = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+        detection_statistics = FeatureDescriptiveStatistics.from_response_json(
+            backend_fixtures["feature_descriptive_statistics"][
+                "get_fractional_feature_statistics"
+            ]["response"]
+        )
+        reference_statistics = FeatureDescriptiveStatistics.from_response_json(
+            backend_fixtures["feature_descriptive_statistics"][
+                "get_fractional_feature_statistics"
+            ]["response"]
+        )
+        reference_statistics._count += 6
+
+        # Act
+        mean_difference = result_engine._compute_difference_between_stats(
+            detection_statistics=detection_statistics,
+            reference_statistics=reference_statistics,
+            metric="mean",
+            relative=False,
+        )
+        count_relative_difference = result_engine._compute_difference_between_stats(
+            detection_statistics=detection_statistics,
+            reference_statistics=reference_statistics,
+            metric="count",
+            relative=True,
+        )
+        count_specific_difference = result_engine._compute_difference_between_stats(
+            detection_statistics=detection_statistics,
+            metric="count",
+            relative=False,
+            specific_value=2,
+        )
+        none_difference = result_engine._compute_difference_between_stats(
+            detection_statistics=detection_statistics,
+            metric="mean",
+            relative=False,
+        )
+
+        # Assert
+        assert mean_difference == 0
+        assert count_relative_difference == 0.6
+        assert count_specific_difference == 2
+        assert none_difference is None
+
+    def test_compute_difference_and_shift(self):
+        # Arrange
+        from hsfs.core.statistics_comparison_config import StatisticsComparisonConfig
+
+        result_engine = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+        det_stats = FeatureDescriptiveStatistics(
+            feature_name="amount", feature_type="Fractional", count=10, mean=5.0
+        )
+        ref_stats = FeatureDescriptiveStatistics(
+            feature_name="amount", feature_type="Fractional", count=10, mean=10.0
+        )
+        sc_config_no_shift = StatisticsComparisonConfig(
+            metric="mean", threshold=10.0, relative=False, strict=False, id=1
+        )
+        sc_config_with_shift = StatisticsComparisonConfig(
+            metric="mean", threshold=3.0, relative=False, strict=False, id=2
+        )
+
+        # Act
+        diff_no_shift, no_shift = result_engine._compute_difference_and_shift(
+            sc_config=sc_config_no_shift,
+            detection_statistics=det_stats,
+            reference_statistics=ref_stats,
+        )
+        diff_with_shift, with_shift = result_engine._compute_difference_and_shift(
+            sc_config=sc_config_with_shift,
+            detection_statistics=det_stats,
+            reference_statistics=ref_stats,
+        )
+
+        # Assert
+        assert diff_no_shift == 5.0
+        assert no_shift is False
+        assert diff_with_shift == 5.0
+        assert with_shift is True
 
     # Helper methods
 
@@ -516,275 +470,233 @@ class TestFeatureMonitoringResultEngine:
         assert query_params["sort_by"] == DEFAULT_MONITORING_TIME_SORT_BY
         assert query_params["expand"] == "statistics"
 
-    # Feature monitoring job utils
-    def test_compute_difference_between_specific_values(self):
-        # Arrange
-        detection_specific_value = 25
-        reference_specific_value = 50
-        expected_difference = 25
-        expected_relative_difference = 0.5
+    # ------------------------------------------------------------------
+    # H3 — Distribution dispatch in _compute_difference_and_shift
+    # ------------------------------------------------------------------
+
+    def _make_numeric_fds_with_histogram(
+        self, fid: int, bins: list[tuple]
+    ) -> FeatureDescriptiveStatistics:
+        """Build a FDS with a Deequ-style histogram and matching min/max."""
+        histogram = [
+            {
+                "value": f"{lo} to {hi}",
+                "count": count,
+                "ratio": count / sum(c for _, _, c in bins),
+            }
+            for lo, hi, count in bins
+        ]
+        lo_vals = [b[0] for b in bins]
+        hi_vals = [b[1] for b in bins]
+        return FeatureDescriptiveStatistics(
+            feature_name="amount",
+            feature_type="Fractional",
+            id=fid,
+            count=sum(b[2] for b in bins),
+            min=min(lo_vals),
+            max=max(hi_vals),
+            extended_statistics={"histogram": histogram},
+        )
+
+    def test_distribution_dispatch_distance_in_difference(self):
+        """When distribution_metric is set, distance lands in `difference`."""
+        from hsfs.core.statistics_comparison_config import StatisticsComparisonConfig
+
         result_engine = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
             feature_store_id=DEFAULT_FEATURE_STORE_ID,
             feature_group_id=DEFAULT_FEATURE_GROUP_ID,
         )
 
-        # Act
-        absolute_difference = result_engine._compute_difference_between_specific_values(
-            detection_value=detection_specific_value,
-            reference_value=reference_specific_value,
-            relative=False,
-        )
-        relative_difference = result_engine._compute_difference_between_specific_values(
-            detection_value=detection_specific_value,
-            reference_value=reference_specific_value,
-            relative=True,
+        bins_ref = [(0.0, 1.0, 40), (1.0, 2.0, 30), (2.0, 3.0, 30)]
+        bins_det = [(0.0, 1.0, 20), (1.0, 2.0, 50), (2.0, 3.0, 30)]
+        ref_fds = self._make_numeric_fds_with_histogram(101, bins_ref)
+        det_fds = self._make_numeric_fds_with_histogram(102, bins_det)
+
+        sc_config = StatisticsComparisonConfig(
+            distribution_metric="PSI",
+            threshold=10.0,  # very high — no shift
+            strict=False,
+            binning_strategy="EQUI_WIDTH",
+            bin_count=3,
+            smoothing_epsilon=1e-6,
         )
 
-        # Assert
-        assert absolute_difference == expected_difference
-        assert relative_difference == expected_relative_difference
+        difference, shift_detected = result_engine._compute_difference_and_shift(
+            sc_config=sc_config,
+            detection_statistics=det_fds,
+            reference_statistics=ref_fds,
+        )
 
-    def test_compute_difference_between_stats(self, backend_fixtures):
-        # Arrange
+        assert difference is not None
+        assert difference >= 0.0
+        assert shift_detected is False  # threshold=10.0 > any PSI on small distribution
+
+    def test_strict_boundary_semantics(self):
+        """strict=True uses > (excludes equality); strict=False uses >= (includes equality).
+
+        When difference == threshold exactly:
+          - strict=True  → no shift (difference is not strictly greater than threshold)
+          - strict=False → shift detected (difference equals threshold, which satisfies >=)
+        """
+        from hsfs.core.statistics_comparison_config import StatisticsComparisonConfig
+
         result_engine = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
             feature_store_id=DEFAULT_FEATURE_STORE_ID,
             feature_group_id=DEFAULT_FEATURE_GROUP_ID,
         )
-        detection_statistics = FeatureDescriptiveStatistics.from_response_json(
-            backend_fixtures["feature_descriptive_statistics"][
-                "get_fractional_feature_statistics"
-            ]["response"]
-        )
-        reference_statistics = FeatureDescriptiveStatistics.from_response_json(
-            backend_fixtures["feature_descriptive_statistics"][
-                "get_fractional_feature_statistics"
-            ]["response"]
-        )
-        reference_statistics._count += 6
 
-        # Act
-        mean_difference = result_engine._compute_difference_between_stats(
-            detection_statistics=detection_statistics,
-            reference_statistics=reference_statistics,
+        bins_ref = [(0.0, 1.0, 50), (1.0, 2.0, 50)]
+        bins_det = [(0.0, 1.0, 80), (1.0, 2.0, 20)]
+        ref_fds = self._make_numeric_fds_with_histogram(103, bins_ref)
+        det_fds = self._make_numeric_fds_with_histogram(104, bins_det)
+
+        # Compute the actual distance first so we can set threshold == distance exactly.
+        sc_probe = StatisticsComparisonConfig(
+            distribution_metric="PSI",
+            threshold=100.0,
+            strict=False,
+            binning_strategy="EQUI_WIDTH",
+            bin_count=2,
+            smoothing_epsilon=1e-6,
+        )
+        distance, _ = result_engine._compute_difference_and_shift(
+            sc_config=sc_probe,
+            detection_statistics=det_fds,
+            reference_statistics=ref_fds,
+        )
+
+        # strict=True with threshold == distance → no shift (difference is not > threshold)
+        sc_strict = StatisticsComparisonConfig(
+            distribution_metric="PSI",
+            threshold=distance,
+            strict=True,
+            binning_strategy="EQUI_WIDTH",
+            bin_count=2,
+            smoothing_epsilon=1e-6,
+        )
+        _, shift_strict = result_engine._compute_difference_and_shift(
+            sc_config=sc_strict,
+            detection_statistics=det_fds,
+            reference_statistics=ref_fds,
+        )
+
+        # strict=False with threshold == distance → shift detected (difference >= threshold)
+        sc_nonstrict = StatisticsComparisonConfig(
+            distribution_metric="PSI",
+            threshold=distance,
+            strict=False,
+            binning_strategy="EQUI_WIDTH",
+            bin_count=2,
+            smoothing_epsilon=1e-6,
+        )
+        _, shift_nonstrict = result_engine._compute_difference_and_shift(
+            sc_config=sc_nonstrict,
+            detection_statistics=det_fds,
+            reference_statistics=ref_fds,
+        )
+
+        assert shift_strict is False  # difference is NOT > threshold (they are equal)
+        assert shift_nonstrict is True  # difference >= threshold (equal satisfies >=)
+
+    def test_mixed_children_fixture(self):
+        """A parent with one scalar child and one distribution child produces correct result rows."""
+        from hsfs.core.feature_statistics_config import FeatureStatisticsConfig
+        from hsfs.core.statistics_comparison_config import StatisticsComparisonConfig
+
+        result_engine = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+
+        bins_ref = [(0.0, 1.0, 40), (1.0, 2.0, 30), (2.0, 3.0, 30)]
+        bins_det = [(0.0, 1.0, 20), (1.0, 2.0, 50), (2.0, 3.0, 30)]
+        ref_fds = self._make_numeric_fds_with_histogram(110, bins_ref)
+        ref_fds._mean = 1.0
+        det_fds = self._make_numeric_fds_with_histogram(111, bins_det)
+        det_fds._mean = 1.5
+
+        # scalar child
+        sc_scalar = StatisticsComparisonConfig(
             metric="mean",
-            relative=False,
-            specific_value=None,
+            threshold=5.0,
+            strict=False,
+            id=201,
         )
-        count_relative_difference = result_engine._compute_difference_between_stats(
-            detection_statistics=detection_statistics,
-            reference_statistics=reference_statistics,
-            metric="count",
-            relative=True,
-            specific_value=None,
-        )
-        count_specific_difference = result_engine._compute_difference_between_stats(
-            detection_statistics=detection_statistics,
-            reference_statistics=None,
-            metric="count",
-            relative=False,
-            specific_value=2,
+        # distribution child
+        sc_dist = StatisticsComparisonConfig(
+            distribution_metric="PSI",
+            threshold=10.0,
+            strict=False,
+            id=202,
+            binning_strategy="EQUI_WIDTH",
+            bin_count=3,
+            smoothing_epsilon=1e-6,
         )
 
-        # Assert
-        assert mean_difference == 0
-        assert count_relative_difference == 0.6
-        assert count_specific_difference == 2
-
-    def test_compute_difference_and_shift(self, mocker, backend_fixtures):
-        # Arrange
-        compute_stats_difference_mock = mocker.patch(
-            "hsfs.core.feature_monitoring_result_engine.FeatureMonitoringResultEngine._compute_difference_between_stats",
-            return_value=DEFAULT_DIFFERENCE,
+        # FeatureStatisticsConfig with both children
+        fs_config = FeatureStatisticsConfig(
+            feature_name="amount",
+            statistics_comparison_configs=[sc_scalar, sc_dist],
         )
+
+        fs_result = result_engine._run_feature_statistics_comparisons(
+            fs_config=fs_config,
+            detection_statistics=det_fds,
+            reference_statistics=ref_fds,
+        )
+
+        # Both children should produce a StatisticsComparisonResult row
+        sc_results = fs_result._statistics_comparison_results
+        assert sc_results is not None
+        assert len(sc_results) == 2
+        sc_ids = {r._statistics_comparison_config_id for r in sc_results}
+        assert 201 in sc_ids
+        assert 202 in sc_ids
+
+    def test_validate_passes_when_reference_has_extra_features_in_any_order(self):
+        # Reproduces a real PSI/distribution-monitoring run where the ALL_TIME
+        # reference returns the FG's full schema while the detection re-profile
+        # only covers the configured feature. Order of reference features must
+        # not affect the validator.
         result_engine = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
             feature_store_id=DEFAULT_FEATURE_STORE_ID,
             feature_group_id=DEFAULT_FEATURE_GROUP_ID,
         )
-        fm_config = fmc.FeatureMonitoringConfig.from_response_json(
-            backend_fixtures["feature_monitoring_config"]["get_via_feature_group"][
-                "detection_insert_reference_snapshot"
-            ]["response"]
-        )
-        detection_statistics = FeatureDescriptiveStatistics.from_response_json(
-            backend_fixtures["feature_descriptive_statistics"][
-                "get_fractional_feature_statistics"
-            ]["response"]
-        )
-        reference_statistics = FeatureDescriptiveStatistics.from_response_json(
-            backend_fixtures["feature_descriptive_statistics"][
-                "get_fractional_feature_statistics"
-            ]["response"]
-        )
-
-        # Act
-        fm_config._statistics_comparison_config["threshold"] = DEFAULT_DIFFERENCE + 1
-        (
-            difference_no_shift,
-            no_shift_detected,
-        ) = result_engine._compute_difference_and_shift(
-            fm_config=fm_config,
-            detection_statistics=detection_statistics,
-            reference_statistics=reference_statistics,
-            specific_value=None,
-        )
-        fm_config._statistics_comparison_config["threshold"] = DEFAULT_DIFFERENCE - 1
-        (
-            difference_with_shift,
-            with_shift_detected,
-        ) = result_engine._compute_difference_and_shift(
-            fm_config=fm_config,
-            detection_statistics=detection_statistics,
-            reference_statistics=None,
-            specific_value=10,
-        )
-
-        # Assert
-        assert difference_no_shift == DEFAULT_DIFFERENCE
-        assert no_shift_detected is False
-        assert difference_with_shift == DEFAULT_DIFFERENCE
-        assert with_shift_detected is True
-        compute_stats_difference_mock.assert_has_calls(
-            [
-                call(
-                    detection_statistics=detection_statistics,
-                    reference_statistics=reference_statistics,
-                    metric=fm_config.statistics_comparison_config.get("metric").lower(),
-                    relative=fm_config.statistics_comparison_config.get("relative"),
-                    specific_value=None,
-                ),
-                call(
-                    detection_statistics=detection_statistics,
-                    reference_statistics=None,
-                    metric=fm_config.statistics_comparison_config.get("metric").lower(),
-                    relative=fm_config.statistics_comparison_config.get("relative"),
-                    specific_value=10,
-                ),
-            ],
-            any_order=False,
-        )
-
-    def test_run_and_save_statistics_comparison_single_detection_stats(
-        self, mocker, backend_fixtures
-    ):
-        # Arrange
-        result_engine_save_mock = mocker.patch(
-            "hsfs.core.feature_monitoring_result_engine.FeatureMonitoringResultEngine._save_feature_monitoring_result",
-        )
-        result_engine_build_mock = mocker.patch(
-            "hsfs.core.feature_monitoring_result_engine.FeatureMonitoringResultEngine._build_feature_monitoring_result",
-        )
-        result_engine_compute_mock = mocker.patch(
-            "hsfs.core.feature_monitoring_result_engine.FeatureMonitoringResultEngine._compute_difference_and_shift",
-            return_value=(DEFAULT_DIFFERENCE, True),
-        )
-        result_engine = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
-            feature_store_id=DEFAULT_FEATURE_STORE_ID,
-            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
-        )
-        detection_statistics = FeatureDescriptiveStatistics.from_response_json(
-            backend_fixtures["feature_descriptive_statistics"][
-                "get_fractional_feature_statistics"
-            ]["response"]
-        )
-        detection_statistics_categorical = (
-            FeatureDescriptiveStatistics.from_response_json(
-                backend_fixtures["feature_descriptive_statistics"][
-                    "get_string_feature_statistics"
-                ]["response"]
+        det = [
+            FeatureDescriptiveStatistics(
+                feature_name="amount", feature_type="Fractional", count=10
             )
-        )
-        reference_statistics = FeatureDescriptiveStatistics.from_response_json(
-            backend_fixtures["feature_descriptive_statistics"][
-                "get_fractional_feature_statistics"
-            ]["response"]
-        )
-        fm_config = fmc.FeatureMonitoringConfig.from_response_json(
-            backend_fixtures["feature_monitoring_config"]["get_via_feature_group"][
-                "detection_insert_reference_snapshot"
-            ]["response"]
-        )
+        ]
+        ref = [
+            FeatureDescriptiveStatistics(
+                feature_name="gender", feature_type="String", count=10
+            ),
+            FeatureDescriptiveStatistics(
+                feature_name="country", feature_type="String", count=10
+            ),
+            FeatureDescriptiveStatistics(
+                feature_name="amount", feature_type="Fractional", count=10
+            ),
+        ]
 
-        # Act
-        result_engine._run_and_save_statistics_comparison(
-            fm_config=fm_config,
-            detection_statistics=[detection_statistics],
-            reference_statistics=None,
-            specific_value=None,
-        )
-        result_engine._run_and_save_statistics_comparison(
-            fm_config=fm_config,
-            detection_statistics=[
-                detection_statistics,
-                detection_statistics_categorical,
-            ],
-            reference_statistics=None,
-            specific_value=None,
-        )
-        result_engine._run_and_save_statistics_comparison(
-            fm_config=fm_config,
-            detection_statistics=[detection_statistics],
-            reference_statistics=[reference_statistics],
-            specific_value=None,
-        )
-        result_engine._run_and_save_statistics_comparison(
-            fm_config=fm_config,
-            detection_statistics=[detection_statistics_categorical],
-            reference_statistics=None,
-            specific_value=10,
-        )
+        # Should not raise
+        result_engine._validate_detection_and_reference_statistics(det, ref)
 
-        # Assert
-        assert result_engine_compute_mock.call_count == 2
-        result_engine_compute_mock.assert_has_calls(
-            [
-                call(
-                    fm_config=fm_config,
-                    detection_statistics=detection_statistics,
-                    reference_statistics=reference_statistics,
-                ),
-                call(
-                    fm_config=fm_config,
-                    detection_statistics=detection_statistics_categorical,
-                    specific_value=10,
-                ),
-            ],
-            any_order=False,
+    def test_validate_raises_when_detection_feature_missing_from_reference(self):
+        result_engine = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
         )
-        assert result_engine_build_mock.call_count == 5
-        result_engine_build_mock.assert_has_calls(
-            [
-                call(
-                    config_id=32,
-                    feature_name="amount",
-                    detection_statistics=detection_statistics,
-                ),
-                call(
-                    config_id=32,
-                    feature_name="amount",
-                    detection_statistics=detection_statistics,
-                ),
-                call(
-                    config_id=32,
-                    feature_name="first_name",
-                    detection_statistics=detection_statistics_categorical,
-                ),
-                call(
-                    config_id=32,
-                    feature_name="amount",
-                    detection_statistics=detection_statistics,
-                    reference_statistics=reference_statistics,
-                    difference=6.5,
-                    shift_detected=True,
-                ),
-                call(
-                    config_id=32,
-                    feature_name="first_name",
-                    detection_statistics=detection_statistics_categorical,
-                    specific_value=10,
-                    difference=6.5,
-                    shift_detected=True,
-                ),
-            ],
-            any_order=False,
-        )
-        assert result_engine_save_mock.call_count == 5
+        det = [
+            FeatureDescriptiveStatistics(
+                feature_name="foo", feature_type="Fractional", count=10
+            )
+        ]
+        ref = [
+            FeatureDescriptiveStatistics(
+                feature_name="amount", feature_type="Fractional", count=10
+            )
+        ]
+
+        with pytest.raises(AssertionError):
+            result_engine._validate_detection_and_reference_statistics(det, ref)

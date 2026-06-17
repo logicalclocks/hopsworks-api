@@ -704,7 +704,7 @@ def _build_and_install_package(ds_api, env, package_dir: str, agent_dir: str) ->
 
     Returns the remote path of the runner script to use as `script_file`.
     """
-    from build import ProjectBuilder
+    from build import ProjectBuilder  # noqa: I001
     from build.env import DefaultIsolatedEnv
 
     pkg_name = _read_package_name(package_dir)

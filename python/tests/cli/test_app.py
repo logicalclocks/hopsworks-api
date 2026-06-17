@@ -30,6 +30,8 @@ def _fake_app(**overrides):
     a.monitoring_config = overrides.get("monitoring_config")
     a.monitoringConfig = overrides.get("monitoringConfig")
     a.description = overrides.get("description")
+    a.app_base_path = overrides.get("app_base_path")
+    a.readiness_probe_path = overrides.get("readiness_probe_path")
     a.app_url = overrides.get("app_url")
     return a
 
@@ -115,7 +117,18 @@ def test_app_create_drops_unsupported_kwargs(mock_project):
 
     apps.create_app = old_create_app
     result = CliRunner().invoke(
-        cli, ["app", "create", "legacy", "--path", "Resources/app.py"]
+        cli,
+        [
+            "app",
+            "create",
+            "legacy",
+            "--path",
+            "Resources/app.py",
+            "--app-base-path",
+            "/myapp",
+            "--readiness-probe-path",
+            "/health",
+        ],
     )
     # would TypeError on app_kind without the signature filter
     assert result.exit_code == 0, result.output
@@ -142,12 +155,16 @@ def test_app_info_shows_custom_metadata(mock_project):
         app_port=8080,
         entrypoint_command='python -m uvicorn dash:app --port "$APP_PORT"',
         description="FastAPI demo",
+        app_base_path="/myapp",
+        readiness_probe_path="/health",
     )
     result = CliRunner().invoke(cli, ["app", "info", "dash"])
     assert result.exit_code == 0, result.output
     assert "CUSTOM" in result.output
     assert "8080" in result.output
     assert "FastAPI demo" in result.output
+    assert "/myapp" in result.output
+    assert "/health" in result.output
     assert 'python -m uvicorn dash:app --port "$APP_PORT"' in result.output
 
 
@@ -206,6 +223,8 @@ def test_app_info_json_includes_custom_metadata(mock_project):
         app_port=8080,
         entrypoint_command='python -m uvicorn dash:app --port "$APP_PORT"',
         description="FastAPI demo",
+        app_base_path="/myapp",
+        readiness_probe_path="/health",
     )
     result = CliRunner().invoke(cli, ["--json", "app", "info", "dash"])
     assert result.exit_code == 0, result.output
@@ -216,6 +235,8 @@ def test_app_info_json_includes_custom_metadata(mock_project):
         payload["entrypoint_command"] == 'python -m uvicorn dash:app --port "$APP_PORT"'
     )
     assert payload["description"] == "FastAPI demo"
+    assert payload["app_base_path"] == "/myapp"
+    assert payload["readiness_probe_path"] == "/health"
     assert payload["source"] == "Project file"
 
 
@@ -303,6 +324,10 @@ def test_app_create_forwards_args(mock_project):
             "2",
             "--environment",
             "custom-env",
+            "--app-base-path",
+            "/myapp",
+            "--readiness-probe-path",
+            "/health",
         ],
     )
     assert result.exit_code == 0, result.output
@@ -313,6 +338,8 @@ def test_app_create_forwards_args(mock_project):
         environment="custom-env",
         memory=4096,
         cores=2.0,
+        app_base_path="/myapp",
+        readiness_probe_path="/health",
     )
 
 
@@ -339,6 +366,10 @@ def test_app_create_custom_forwards_args(mock_project):
             "2",
             "--environment",
             "custom-env",
+            "--app-base-path",
+            "/myapp",
+            "--readiness-probe-path",
+            "/health",
         ],
     )
     assert result.exit_code == 0, result.output
@@ -351,6 +382,8 @@ def test_app_create_custom_forwards_args(mock_project):
         environment="custom-env",
         memory=4096,
         cores=2.0,
+        app_base_path="/myapp",
+        readiness_probe_path="/health",
     )
 
 
@@ -412,6 +445,10 @@ def test_app_create_custom_git_forwards_args(mock_project):
             'python -m uvicorn dash:app --host 0.0.0.0 --port "$APP_PORT"',
             "--app-port",
             "8080",
+            "--app-base-path",
+            "/myapp",
+            "--readiness-probe-path",
+            "/health",
         ],
     )
     assert result.exit_code == 0, result.output
@@ -426,6 +463,8 @@ def test_app_create_custom_git_forwards_args(mock_project):
         git_url="https://github.com/gibchikafa/appshopsworkstests.git",
         git_provider="GitHub",
         git_branch="main",
+        app_base_path="/myapp",
+        readiness_probe_path="/health",
     )
 
 

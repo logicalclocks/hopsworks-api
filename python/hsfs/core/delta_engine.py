@@ -102,6 +102,7 @@ def _delta_table_for_path(spark_session, path: str):
 class DeltaEngine:
     DELTA_SPARK_FORMAT = "delta"
     DELTA_QUERY_TIME_TRAVEL_AS_OF_INSTANT = "timestampAsOf"
+    DELTA_QUERY_TIME_TRAVEL_AS_OF_VERSION = "versionAsOf"
     DELTA_ENABLE_CHANGE_DATA_FEED = "delta.enableChangeDataFeed"
     DELTA_DOT_PREFIX = "delta."
     APPEND = "append"
@@ -184,7 +185,7 @@ class DeltaEngine:
         )
 
         delta_options = self._setup_delta_read_opts(
-            delta_fg_alias, read_options=read_options
+            delta_fg_alias, location=location, read_options=read_options
         )
         if not is_cdc_query:
             self._spark_session.read.format(self.DELTA_SPARK_FORMAT).options(
@@ -194,16 +195,67 @@ class DeltaEngine:
             from pyspark.sql.functions import col
 
             # CDC query - remove duplicates for upserts and do not include deleted rows
-            # to match behavior of other engines
-            self._spark_session.read.format(self.DELTA_SPARK_FORMAT).options(
-                **delta_options
-            ).load(location).filter(
-                col("_change_type").isin("update_postimage", "insert")
-            ).createOrReplaceTempView(delta_fg_alias.alias)
+            # to match behavior of other engines.
+            #
+            # Why retry: Delta's CDF lower-bound check uses the commit file modification
+            # time, while DeltaTable.history() returns the in-commit creation timestamp.
+            # On a freshly-created table these can differ by tens of milliseconds, so a
+            # pre-flight comparison against history() cannot reliably predict whether
+            # Delta will accept the startingTimestamp. Instead we attempt the read with
+            # startingTimestamp and, if Delta rejects it with the "before the earliest
+            # version" error, retry from the earliest commit version (startingVersion).
+            def _do_cdf_read(opts):
+                return (
+                    self._spark_session.read.format(self.DELTA_SPARK_FORMAT)
+                    .options(**opts)
+                    .load(location)
+                    .filter(col("_change_type").isin("update_postimage", "insert"))
+                )
+
+            try:
+                _do_cdf_read(delta_options).createOrReplaceTempView(
+                    delta_fg_alias.alias
+                )
+            except Exception as e:  # noqa: BLE001
+                if "before the earliest version" not in str(e):
+                    raise
+                # Both startingTimestamp and endingTimestamp can carry the same
+                # clock skew: the backend-recorded commit_time is ~200 ms before
+                # Delta's commit-file mtime, so on a freshly-created table both
+                # bounds can fall before Delta's "earliest available version"
+                # threshold. Remove both timestamp bounds and replace them with
+                # version bounds determined from the Delta log.
+                _logger.debug(
+                    f"CDF timestamp bound(s) rejected by Delta ('before the earliest "
+                    f"version'). Retrying with version bounds. Error: {e}"
+                )
+                earliest = self._get_delta_earliest_commit(location)
+                retry_opts = {
+                    k: v
+                    for k, v in delta_options.items()
+                    if k not in ("startingTimestamp", "endingTimestamp")
+                }
+                retry_opts["startingVersion"] = (
+                    earliest[0] if earliest is not None else 0
+                )
+                end_ts = delta_fg_alias.left_feature_group_end_timestamp
+                if end_ts is not None:
+                    if earliest is not None and end_ts <= earliest[1]:
+                        # End bound is also at/before the earliest commit — pin
+                        # the read to exactly the earliest version so CDF returns
+                        # the single commit that covers the monitoring window.
+                        retry_opts["endingVersion"] = earliest[0]
+                    else:
+                        # End bound is a genuine later timestamp; keep it as-is.
+                        retry_opts["endingTimestamp"] = (
+                            util._get_delta_datestr_from_timestamp(end_ts)
+                        )
+                _do_cdf_read(retry_opts).createOrReplaceTempView(delta_fg_alias.alias)
 
     def _setup_delta_read_opts(
         self,
         delta_fg_alias: hudi_feature_group_alias.HudiFeatureGroupAlias,
+        location: str | None = None,
         read_options: dict[str, Any] | None = None,
     ):
         delta_options = {}
@@ -218,18 +270,27 @@ class DeltaEngine:
             and delta_fg_alias.left_feature_group_start_timestamp is None
         ):
             # snapshot query with end time
-            _delta_commit_end_time = util._get_delta_datestr_from_timestamp(
-                delta_fg_alias.left_feature_group_end_timestamp
-            )
-            delta_options = {
-                self.DELTA_QUERY_TIME_TRAVEL_AS_OF_INSTANT: _delta_commit_end_time,
-            }
+            end_ts = delta_fg_alias.left_feature_group_end_timestamp
+            earliest = self._get_delta_earliest_commit(location) if location else None
+            if earliest is not None and end_ts <= earliest[1]:
+                # Requested time predates the Delta log's first commit.
+                # Happens when compute_statistics runs immediately after a fresh
+                # insert: the backend-recorded commit_time can be a few ms before
+                # the Delta log's first commit, and Delta rejects timestampAsOf
+                # in that range. Fall back to versionAsOf on the earliest commit.
+                delta_options = {
+                    self.DELTA_QUERY_TIME_TRAVEL_AS_OF_VERSION: earliest[0],
+                }
+            else:
+                _delta_commit_end_time = util._get_delta_datestr_from_timestamp(end_ts)
+                delta_options = {
+                    self.DELTA_QUERY_TIME_TRAVEL_AS_OF_INSTANT: _delta_commit_end_time,
+                }
         elif delta_fg_alias.left_feature_group_start_timestamp is not None:
-            # change data feed query with start and end time
+            # change data feed query with start and optional end time
             _delta_commit_start_time = util._get_delta_datestr_from_timestamp(
                 delta_fg_alias.left_feature_group_start_timestamp,
             )
-
             delta_options = {
                 "readChangeFeed": "true",
                 "startingTimestamp": _delta_commit_start_time,
@@ -253,6 +314,43 @@ class DeltaEngine:
         )
 
         return delta_options
+
+    def _get_delta_earliest_commit(self, location: str):
+        """Get earliest commit from the Delta log.
+
+        Return (version, timestamp_ms) of the earliest commit in the Delta
+        log at `location`, or None if the history cannot be read.
+        """
+        try:
+            if self._spark_session is not None:
+                from delta.tables import DeltaTable
+
+                rows = (
+                    DeltaTable.forPath(self._spark_session, location)
+                    .history()
+                    .select("version", "timestamp")
+                    .collect()
+                )
+                if not rows:
+                    return None
+                oldest = min(rows, key=lambda r: r["version"])
+                return int(oldest["version"]), int(
+                    oldest["timestamp"].timestamp() * 1000
+                )
+
+            from deltalake import DeltaTable as DeltaRsTable
+
+            history = DeltaRsTable(location, storage_options={}).history()
+            if not history:
+                return None
+            oldest = min(history, key=lambda c: c["version"])
+            return (
+                int(oldest["version"]),
+                int(util._convert_event_time_to_timestamp(oldest["timestamp"])),
+            )
+        except Exception as e:
+            _logger.debug(f"Could not read Delta history at {location}: {e}")
+            return None
 
     def _delete_record(self, delete_df):
         storage_options = None

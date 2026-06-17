@@ -24,7 +24,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.json.JSONObject;
 
-import java.util.Map;
+import java.util.List;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 @NoArgsConstructor
@@ -48,8 +48,8 @@ public class FeatureDescriptiveStatistics extends RestDto<FeatureDescriptiveStat
   private Double max;
   private Double sum;
   private Double mean;
-  private Double stddev;
-  private Map<String, Double> percentiles;
+  private Double stdDev;
+  private List<Double> percentiles;
 
   // with exact uniqueness
   private Double distinctness;
@@ -122,7 +122,7 @@ public class FeatureDescriptiveStatistics extends RestDto<FeatureDescriptiveStat
       fds.setMean(statsJson.getDouble("mean"));
     }
     if (statsJson.has("stdDev")) {
-      fds.setStddev(statsJson.getDouble("stdDev"));
+      fds.setStdDev(statsJson.getDouble("stdDev"));
     }
 
     JSONObject extendedStatistics = new JSONObject();

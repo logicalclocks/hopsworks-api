@@ -407,6 +407,10 @@ class Project:
             "feature_validation_success",
             "feature_validation_warning",
             "feature_validation_failure",
+            "monitoring_shift_undetected",
+            "monitoring_shift_detected",
+            "monitoring_empty_detection_window",
+            # deprecated since ~=3.8.1; kept for one release
             "feature_monitor_shift_undetected",
             "feature_monitor_shift_detected",
         ],
@@ -424,6 +428,9 @@ class Project:
         Parameters:
             receiver: The receiver of the alert.
             status: The status of the alert.
+                The names feature_monitor_shift_undetected and
+                feature_monitor_shift_detected are deprecated since ~=3.8.1 and will
+                be removed in a future release.
             severity: The severity of the alert.
 
         Returns:

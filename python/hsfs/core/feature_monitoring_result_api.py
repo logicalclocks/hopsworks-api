@@ -117,6 +117,29 @@ class FeatureMonitoringResultApi:
             _client._send_request("GET", path_params, query_params, headers=headers)
         )
 
+    def _get_latest_by_config_id(
+        self,
+        config_id: int,
+    ) -> FeatureMonitoringResult | None:
+        """Get the most recent Feature Monitoring Result for a given config.
+
+        Parameters:
+            config_id: Id of the feature monitoring config.
+
+        Returns:
+            The most recent feature monitoring result, or ``None`` if no results exist.
+        """
+        results = self._get_by_config_id(
+            config_id=config_id,
+            query_params={
+                "sort_by": "monitoring_time:desc",
+                "offset": 0,
+                "limit": 1,
+                "expand": "statistics",
+            },
+        )
+        return results[0] if results else None
+
     def _get_by_id(
         self,
         result_id: int,

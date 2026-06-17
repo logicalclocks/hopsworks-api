@@ -106,6 +106,8 @@ class AppApi:
         git_provider: str | None = None,
         git_branch: str | None = None,
         entrypoint_script: str | None = None,
+        app_base_path: str | None = None,
+        readiness_probe_path: str | None = None,
     ) -> app.App:
         """Create a new Python app.
 
@@ -143,6 +145,10 @@ class AppApi:
                 BitBucket).
             git_branch: Optional branch to clone for git-backed apps.
             entrypoint_script: Relative entrypoint script for Streamlit git apps.
+            app_base_path: Public mount path for the app, for example ``/`` or
+                ``/myapp``.
+            readiness_probe_path: Optional readiness probe path to use instead of
+                the platform default.
 
         Returns:
             The created App object.
@@ -156,6 +162,8 @@ class AppApi:
         git_provider = self._normalize_git_provider(git_provider)
         git_branch = self._trim_to_none(git_branch)
         entrypoint_script = self._trim_to_none(entrypoint_script)
+        app_base_path = self._trim_to_none(app_base_path)
+        readiness_probe_path = self._trim_to_none(readiness_probe_path)
         git_repo_app = bool(git_url)
         streamlit_app = app_kind_name == "STREAMLIT"
 
@@ -219,6 +227,10 @@ class AppApi:
             config["appPort"] = app_port
         if description is not None:
             config["description"] = description
+        if app_base_path is not None:
+            config["appBasePath"] = app_base_path
+        if readiness_probe_path is not None:
+            config["readinessProbePath"] = readiness_probe_path
 
         path_params = ["project", _client._project_id, "jobs", name]
         headers = {"content-type": "application/json"}

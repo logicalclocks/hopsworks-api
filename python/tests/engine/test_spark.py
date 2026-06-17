@@ -11197,3 +11197,29 @@ class TestSparkConnectMode:
             engine = self._make_connect_engine()
             engine._create_spark_session()
             mock_spark.builder.enableHiveSupport.assert_called_once()
+
+    def test_profile_connect_forwards_kll_and_histogram_bins(self):
+        # In Spark Connect mode profiling falls back to the pandas profiler.
+        # The kll and histogram_bins options must be forwarded so Connect
+        # produces the same statistics as classic Spark.
+        from unittest.mock import patch as mock_patch
+
+        engine = self._make_connect_engine()
+        with mock_patch(
+            "hsfs.engine.python.Engine._profile", return_value="{}"
+        ) as mock_profile:
+            engine._profile(
+                MagicMock(),
+                relevant_columns=["amount"],
+                correlations=False,
+                histograms=False,
+                exact_uniqueness=True,
+                kll=True,
+                histogram_bins=12,
+            )
+
+        # Signature: profile(pdf, relevant_columns, correlations, histograms,
+        # exact_uniqueness, kll, histogram_bins) — assert the last two reach it.
+        args = mock_profile.call_args.args
+        assert args[-2] is True  # kll
+        assert args[-1] == 12  # histogram_bins
