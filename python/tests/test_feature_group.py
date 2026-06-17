@@ -2038,6 +2038,15 @@ def _fg_with_partitioned_by(
 
 
 class TestFeatureGroupPartitionedBy:
+    @pytest.fixture(autouse=True)
+    def mock_has_deltalake(self, mocker):
+        # The helper builds DELTA feature groups; stub the delta-library probe
+        # so these metadata/property tests run where deltalake is not installed
+        # (e.g. the Windows CI runner).
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
+
     def test_partitioned_by_default_none(self):
         fg = _fg_with_partitioned_by()
         assert fg.partitioned_by is None
