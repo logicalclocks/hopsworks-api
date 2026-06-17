@@ -37,6 +37,12 @@ class TestOpenSearchClientSingleton:
                 {},
             ),
             (
+                # Newer OpenSearch k-NN range format
+                "[knn] requires k to be in the range (0, 10000]",
+                VectorDatabaseException.REQUESTED_K_TOO_LARGE,
+                {VectorDatabaseException.REQUESTED_K_TOO_LARGE_INFO_K: 10000},
+            ),
+            (
                 "Result window is too large, from + size must be less than or equal to: [10000] but was [80000]",
                 VectorDatabaseException.REQUESTED_NUM_RESULT_TOO_LARGE,
                 {VectorDatabaseException.REQUESTED_NUM_RESULT_TOO_LARGE_INFO_N: 10000},
@@ -45,6 +51,18 @@ class TestOpenSearchClientSingleton:
                 # Removed the bracket from numbers
                 "Result window is too large, from + size must be less than or equal to: 10000 but was 80000",
                 VectorDatabaseException.REQUESTED_NUM_RESULT_TOO_LARGE,
+                {},
+            ),
+            (
+                # Lower-bound violation is not a "too large" error
+                "[knn] requires k > 0",
+                VectorDatabaseException.OTHERS,
+                {},
+            ),
+            (
+                # Unrelated knn validation must not be misclassified as too large
+                "[knn] requires exactly one of k, distance or score to be set",
+                VectorDatabaseException.OTHERS,
                 {},
             ),
             (

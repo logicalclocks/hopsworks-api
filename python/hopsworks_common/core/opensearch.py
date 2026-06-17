@@ -231,9 +231,19 @@ class ProjectOpenSearchClient:
 
     def _create_vector_database_exception(self, message):
         """Create appropriate VectorDatabaseException based on error message."""
-        if "[knn] requires k" in message:
-            pattern = r"\[knn\] requires k <= (\d+)"
-            match = re.search(pattern, message)
+        # Only an upper-bound violation means "k too large". Older OpenSearch
+        # reported "[knn] requires k <= N"; newer versions (2.x) report
+        # "[knn] requires k to be in the range (0, N]". The upper bound N is the
+        # inclusive max in both forms. Other "[knn] requires k ..." messages
+        # (e.g. "requires k > 0") are not too-large errors and fall through to
+        # OTHERS.
+        if (
+            "[knn] requires k <=" in message
+            or "[knn] requires k to be in the range" in message
+        ):
+            match = re.search(r"\[knn\] requires k <= (\d+)", message) or re.search(
+                r"\[knn\] requires k to be in the range \(\d+, (\d+)\]", message
+            )
             if match:
                 k = match.group(1)
                 reason = VectorDatabaseException.REQUESTED_K_TOO_LARGE
