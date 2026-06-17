@@ -677,6 +677,64 @@ class FeatureView:
             lookback=Lookback.from_user_input(lookback),
         )
 
+    def _offline_only_partition_features(self) -> list[str]:
+        """Names of selected features that are `partitioned_by` grain columns not available online.
+
+        Grain columns are derived from `event_time`.
+        Unless the feature group enabled `online_partition_columns`, they live only in the
+        offline store, so the online serving APIs cannot return them.
+        Walks the query (including joins) so it covers every feature group in the view.
+        """
+        offending: list[str] = []
+
+        def _walk(query) -> None:
+            fg = query._left_feature_group
+            partitioned_by = getattr(fg, "partitioned_by", None) or []
+            online_grains = bool(getattr(fg, "online_partition_columns", False))
+            if partitioned_by and not online_grains:
+                for feat in query._left_features:
+                    if feat.name in partitioned_by and feat.name not in offending:
+                        offending.append(feat.name)
+            for join in query._joins:
+                _walk(join.query)
+
+        if self._query is not None:
+            _walk(self._query)
+        return offending
+
+    def _has_online_feature_group(self) -> bool:
+        """Whether any feature group in the view is online-enabled."""
+        online = False
+
+        def _walk(query) -> None:
+            nonlocal online
+            if getattr(query._left_feature_group, "online_enabled", False):
+                online = True
+            for join in query._joins:
+                _walk(join.query)
+
+        if self._query is not None:
+            _walk(self._query)
+        return online
+
+    def _assert_no_offline_only_partition_features(self) -> None:
+        """Raise if the view explicitly selects a `partitioned_by` grain that is offline-only.
+
+        Such columns cannot be served by the online APIs.
+        """
+        offending = self._offline_only_partition_features()
+        if offending:
+            raise FeatureStoreException(
+                "This feature view selects partitioned_by grain column(s) "
+                f"{offending} that are derived from event_time and stored only "
+                "offline (online_partition_columns is disabled on their feature "
+                "group), so they cannot be retrieved through the online serving "
+                "APIs. Remove these columns from the feature view, or recreate "
+                "their feature group with online_partition_columns=True, to use "
+                "get_feature_vector / get_feature_vectors. The offline APIs "
+                "(get_batch_data / training data) return them normally."
+            )
+
     @public
     def get_feature_vector(
         self,
@@ -825,6 +883,8 @@ class FeatureView:
         Raises:
             hopsworks.client.exceptions.FeatureStoreException: When primary key entry cannot be found in one or more of the feature groups used by this feature view.
         """
+        self._assert_no_offline_only_partition_features()
+
         if not self._vector_server._serving_initialized:
             self.init_serving(external=external)
 
@@ -995,6 +1055,8 @@ class FeatureView:
         Raises:
             hopsworks.client.exceptions.FeatureStoreException: When primary key entry cannot be found in one or more of the feature groups used by this feature view.
         """
+        self._assert_no_offline_only_partition_features()
+
         if not self._vector_server._serving_initialized:
             self.init_serving(external=external, init_rest_client=force_rest_client)
 
