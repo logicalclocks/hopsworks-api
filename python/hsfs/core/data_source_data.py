@@ -43,8 +43,19 @@ class DataSourceData:
         supported_resources: list[str] | None = None,
         **kwargs,
     ):
+        # The backend returns features as raw JSON dicts and from_response_json passes
+        # them straight into this constructor.
+        # Build Feature objects so features matches its annotated type and consumers such
+        # as infer_metadata can read feature.name / feature.type rather than failing with
+        # AttributeError: 'dict' object has no attribute 'name'.
+        # Feature objects passed by direct construction are kept as-is.
+        from hsfs import feature as feature_mod
+
         self._limit = limit
-        self._features = features if features else []
+        self._features = [
+            feature_mod.Feature.from_response_json(f) if isinstance(f, dict) else f
+            for f in (features or [])
+        ]
         self._preview = preview if preview else []
         self._schema_fetch_failed = schema_fetch_failed
         self._schema_fetch_in_progress = schema_fetch_in_progress
