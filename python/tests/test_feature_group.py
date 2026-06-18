@@ -2009,6 +2009,92 @@ class TestExternalFeatureGroupRead:
         fake_query.read.assert_called_once()
 
 
+def _fg_with_partitioned_by(
+    partitioned_by=None,
+    partition_key=None,
+    event_time="ts",
+    online_partition_columns=False,
+):
+    return feature_group.FeatureGroup(
+        name="test",
+        version=1,
+        description="d",
+        online_enabled=False,
+        time_travel_format="DELTA",
+        partition_key=partition_key or [],
+        primary_key=["pk"],
+        foreign_key=[],
+        hudi_precombine_key=None,
+        featurestore_id=1,
+        featurestore_name="fs",
+        features=[],
+        statistics_config={},
+        event_time=event_time,
+        stream=False,
+        expectation_suite=None,
+        partitioned_by=partitioned_by,
+        online_partition_columns=online_partition_columns,
+    )
+
+
+class TestFeatureGroupPartitionedBy:
+    @pytest.fixture(autouse=True)
+    def mock_has_deltalake(self, mocker):
+        # The helper builds DELTA feature groups; stub the delta-library probe
+        # so these metadata/property tests run where deltalake is not installed
+        # (e.g. the Windows CI runner).
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
+
+    def test_partitioned_by_default_none(self):
+        fg = _fg_with_partitioned_by()
+        assert fg.partitioned_by is None
+        assert fg.online_partition_columns is False
+
+    def test_partitioned_by_round_trips_on_object(self):
+        fg = _fg_with_partitioned_by(partitioned_by=["year", "month"])
+        assert fg.partitioned_by == ["year", "month"]
+
+    def test_online_partition_columns_round_trips(self):
+        fg = _fg_with_partitioned_by(
+            partitioned_by=["day"], online_partition_columns=True
+        )
+        assert fg.online_partition_columns is True
+
+    def test_partitioned_by_in_to_dict(self):
+        fg = _fg_with_partitioned_by(partitioned_by=["year", "month"])
+        d = fg.to_dict()
+        assert d["partitionedBy"] == ["year", "month"]
+        assert d["onlinePartitionColumns"] is False
+
+    def test_partitioned_by_and_partition_key_raises(self):
+        with pytest.raises(FeatureStoreException, match="Set either partition_key"):
+            _fg_with_partitioned_by(
+                partitioned_by=["year"], partition_key=["other_col"]
+            )
+
+    def test_partitioned_by_requires_event_time(self):
+        with pytest.raises(FeatureStoreException, match="requires event_time"):
+            _fg_with_partitioned_by(partitioned_by=["day"], event_time=None)
+
+    def test_partitioned_by_rejects_bad_grain(self):
+        with pytest.raises(FeatureStoreException, match="invalid grains.*minute"):
+            _fg_with_partitioned_by(partitioned_by=["minute"])
+
+    def test_partitioned_by_rejects_duplicates(self):
+        with pytest.raises(FeatureStoreException, match="duplicate grains"):
+            _fg_with_partitioned_by(partitioned_by=["day", "day"])
+
+    def test_partitioned_by_rejects_empty_list(self):
+        with pytest.raises(FeatureStoreException, match="non-empty list"):
+            _fg_with_partitioned_by(partitioned_by=[])
+
+    def test_partitioned_by_event_time_collision(self):
+        with pytest.raises(FeatureStoreException, match="collides with a"):
+            _fg_with_partitioned_by(partitioned_by=["year"], event_time="year")
+
+
 class TestFeatureGroupVisualize:
     def test_visualize_transformations(self, mocker):
         mocker.patch("hopsworks_common.client._get_instance")

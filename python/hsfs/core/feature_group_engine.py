@@ -297,7 +297,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             )
         else:
             # else, just verify that feature group schema matches user-provided dataframe
-            self._verify_schema_compatibility(feature_group.columns, dataframe_features)
+            self._verify_schema_compatibility(
+                self._columns_for_user_schema(feature_group), dataframe_features
+            )
 
         # ge validation on python and non stream feature groups on spark
         ge_report = feature_group._great_expectation_engine._validate(
@@ -619,7 +621,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 )
         else:
             # else, just verify that feature group schema matches user-provided dataframe
-            self._verify_schema_compatibility(feature_group.columns, dataframe_features)
+            self._verify_schema_compatibility(
+                self._columns_for_user_schema(feature_group), dataframe_features
+            )
 
         if not feature_group.stream:
             warnings.warn(
@@ -655,7 +659,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group._features = dataframe_features
         elif dataframe_features:
             # User provided a schema; check if it is compatible with dataframe.
-            self._verify_schema_compatibility(feature_group.columns, dataframe_features)
+            self._verify_schema_compatibility(
+                self._columns_for_user_schema(feature_group), dataframe_features
+            )
 
         # set primary, foreign and partition key columns
         # we should move this to the backend
@@ -730,7 +736,10 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         )
 
         if feature_schema_available:
-            # create empty table to write feature schema to table path
+            # create empty table to write feature schema to table path.
+            # partitioned_by FGs are no different here: the grain columns are
+            # real partition columns in the schema, and the client materializes
+            # their values from event_time on each write (see DeltaEngine).
             self._save_empty_table(feature_group, write_options=write_options)
 
         print(
@@ -740,6 +749,23 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 feature_group_id=feature_group.id,
             )
         )
+
+    @staticmethod
+    def _columns_for_user_schema(feature_group):
+        """Return the feature-group columns the user is expected to supply in their dataframe.
+
+        Excludes the `partitioned_by` grain columns: the backend appends one
+        synthetic grain feature per grain to the FG schema so they're queryable,
+        and the grain values are always derived from event_time rather than
+        supplied by the user. The Spark write path derives them client-side
+        (for both the Delta and Hudi engines, see `hudi_engine._write_hudi_dataset`),
+        and the backend's Hudi DeltaStreamer job derives them server-side via
+        `PartitionedByTransformer`. Either way the user dataframe must not carry them.
+        """
+        grain_set = set(getattr(feature_group, "partitioned_by", None) or [])
+        if not grain_set:
+            return feature_group.columns
+        return [c for c in feature_group.columns if c.name not in grain_set]
 
     def _update_ttl(
         self,

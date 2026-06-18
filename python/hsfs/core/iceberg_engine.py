@@ -27,7 +27,7 @@ from hopsworks_common.core.constants import HAS_POLARS
 from hopsworks_common.core.type_systems import _convert_offline_type_to_pyarrow_type
 from hopsworks_common.decorators import _uses_pyiceberg
 from hsfs import feature_group, feature_group_commit, util
-from hsfs.core import feature_group_api, variable_api
+from hsfs.core import feature_group_api, partition_grains, variable_api
 
 
 if TYPE_CHECKING:
@@ -365,6 +365,15 @@ class IcebergEngine:
         if write_options is None:
             write_options = {}
 
+        # partitioned_by: derive the grain columns (year/month/...) from
+        # event_time into the dataframe before the write, so they exist as the
+        # real, identity-partitioned columns the table is partitioned on. A
+        # no-op for non-partitioned_by FGs and for the empty-table create path
+        # (the schema already carries the grains).
+        dataset = partition_grains._materialize_grains_spark(
+            self._feature_group, dataset
+        )
+
         catalog_name, catalog_properties, identifier = self._get_catalog_write_config(
             write_options
         )
@@ -537,6 +546,12 @@ class IcebergEngine:
             location
         )
         merge_keys = self._get_merge_keys()
+        # partitioned_by: the grain columns are part of merge_keys (they are
+        # partition_key), but a delete payload only carries primary key +
+        # event_time, so derive the grains from event_time first.
+        delete_df = partition_grains._materialize_grains_spark(
+            self._feature_group, delete_df
+        )
         _logger.debug(
             f"Deleting records from Iceberg table at {location} on keys {merge_keys}"
         )
@@ -1041,6 +1056,12 @@ class IcebergEngine:
             dataset: Dataset to write to the Iceberg table.
         """
         arrow_table = self._prepare_arrow_table(dataset)
+        # partitioned_by: materialize the grain columns from event_time (Arrow
+        # twin of the Spark path). No-op without partitioned_by or when the
+        # grains are already present (empty-table create path).
+        arrow_table = partition_grains._materialize_grains_arrow(
+            self._feature_group, arrow_table
+        )
 
         catalog_name, catalog_properties, identifier = self._get_catalog_write_config(
             write_options
@@ -1151,7 +1172,13 @@ class IcebergEngine:
             )
 
         merge_keys = self._get_merge_keys()
-        deletes = self._prepare_arrow_table(delete_df).select(merge_keys)
+        # partitioned_by: grain columns are part of merge_keys but a delete
+        # payload only carries primary key + event_time, so derive the grains
+        # from event_time first (Arrow twin of the Spark path).
+        deletes_table = partition_grains._materialize_grains_arrow(
+            self._feature_group, self._prepare_arrow_table(delete_df)
+        )
+        deletes = deletes_table.select(merge_keys)
         existing = table.scan().to_arrow()
         remaining = existing.join(deletes, keys=merge_keys, join_type="left anti")
 

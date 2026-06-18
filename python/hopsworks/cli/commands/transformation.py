@@ -79,6 +79,12 @@ def transformation_create(
     The decorated function is imported in-process and passed to
     ``fs.create_transformation_function()``.
 
+    Security: the source is executed in-process (``_load_udf``) — this is
+    arbitrary code execution by design, as the same UDF runs server-side.
+    Treat ``--code``/``--file`` as trusted input; never assemble a
+    ``hops transformation create --code ...`` invocation from an untrusted
+    source (an agent prompt, a CI variable, a web request).
+
     Args:
         ctx: Click context.
         file_path: Python source path.

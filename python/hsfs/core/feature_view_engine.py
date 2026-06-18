@@ -184,6 +184,19 @@ class FeatureViewEngine:
                     )
                 )
 
+        offline_only_grains = feature_view_obj._offline_only_partition_features()
+        if offline_only_grains and feature_view_obj._has_online_feature_group():
+            warnings.warn(
+                "This feature view selects partitioned_by grain column(s) "
+                f"{offline_only_grains} that are derived from event_time and stored "
+                "only offline (online_partition_columns is disabled on their feature "
+                "group). The online serving APIs (get_feature_vector / "
+                "get_feature_vectors) cannot return these columns and will raise if "
+                "called. The offline APIs (get_batch_data / training data) return "
+                "them normally.",
+                stacklevel=1,
+            )
+
         updated_fv = self._feature_view_api._post(feature_view_obj)
         print(
             "Feature view created successfully, explore it at \n"

@@ -27,7 +27,7 @@ from hopsworks_common.core import project_api
 from hopsworks_common.core.constants import HAS_POLARS
 from hopsworks_common.core.type_systems import _convert_offline_type_to_pyarrow_type
 from hsfs import feature_group, feature_group_commit, util
-from hsfs.core import feature_group_api, variable_api
+from hsfs.core import feature_group_api, partition_grains, variable_api
 
 
 if TYPE_CHECKING:
@@ -385,6 +385,24 @@ class DeltaEngine:
             raise FeatureStoreException(
                 f"Feature group {self._feature_group.name} is not DELTA enabled "
             )
+
+        # partitioned_by: the derived grain columns are partition_key, so the
+        # merge predicate (see _generate_merge_query) references them. A delete
+        # payload only carries primary key + event_time, so materialize the
+        # grains on it from event_time, exactly like the write path.
+        if self._spark_session is not None:
+            delete_df = partition_grains._materialize_grains_spark(
+                self._feature_group, delete_df
+            )
+        elif self._feature_group.partitioned_by:
+            if HAS_POLARS:
+                import polars as pl
+
+                if isinstance(delete_df, pl.DataFrame):
+                    delete_df = delete_df.to_arrow()
+            delete_df = self._prepare_df_for_delta(delete_df)
+            delete_df = self._materialize_partitioned_by_grains(delete_df)
+
         source_alias = (
             f"{self._feature_group.name}_{self._feature_group.version}_source"
         )
@@ -410,6 +428,9 @@ class DeltaEngine:
         return self._feature_group_api._commit(self._feature_group, fg_commit)
 
     def _write_delta_dataset(self, dataset, write_options, operation="upsert"):
+        dataset = partition_grains._materialize_grains_spark(
+            self._feature_group, dataset
+        )
         location = self._feature_group.prepare_spark_location()
         if write_options is None:
             write_options = {}
@@ -637,6 +658,7 @@ class DeltaEngine:
                 dataset = dataset.to_arrow()
 
         dataset = self._prepare_df_for_delta(dataset)
+        dataset = self._materialize_partitioned_by_grains(dataset)
 
         append_requested = operation == "insert" or (
             isinstance(write_options, dict)
@@ -744,6 +766,16 @@ class DeltaEngine:
         return self._get_last_commit_metadata(
             self._spark_session, location, storage_options=storage_options
         )
+
+    def _materialize_partitioned_by_grains(self, table):
+        """Materialize the partitioned_by grain columns into an Arrow table.
+
+        delta-rs partitions only by real, materialized columns, so the grain
+        columns (year/month/week/day/hour) derived from event_time must be
+        present in the dataframe before the write. Shared with the PyIceberg
+        path via `partition_grains._materialize_grains_arrow`.
+        """
+        return partition_grains._materialize_grains_arrow(self._feature_group, table)
 
     @staticmethod
     def _prepare_df_for_delta(df, timestamp_precision="us"):

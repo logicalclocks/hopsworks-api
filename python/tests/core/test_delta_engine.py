@@ -16,7 +16,7 @@
 import os
 import sys
 import types
-from datetime import date
+from datetime import date, datetime
 from unittest import mock
 
 import pandas as pd
@@ -32,6 +32,9 @@ def _make_fg(location: str):
     fg.location = location
     fg.name = "fg"
     fg.version = 1
+    # Non-partitioned by default so grain materialization short-circuits;
+    # partitioned_by tests set this explicitly.
+    fg.partitioned_by = None
     return fg
 
 
@@ -902,6 +905,50 @@ class TestDeltaEngine:
         with pytest.raises(ImportError) as e:
             engine._write_delta_rs_dataset(dataset=mock.Mock())
         assert "hops-deltalake" in str(e.value)
+
+    def test_materialize_partitioned_by_grains_arrow(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.partitioned_by = ["year", "month"]
+        fg.event_time = "event_ts"
+        engine = DeltaEngine(1, "fs", fg, None, None)
+        table = pa.table(
+            {
+                "id": [1, 2],
+                "event_ts": pa.array(
+                    [datetime(2026, 1, 15), datetime(2026, 3, 2)],
+                    type=pa.timestamp("us"),
+                ),
+            }
+        )
+
+        # Act
+        out = engine._materialize_partitioned_by_grains(table)
+
+        # Assert: grain columns derived from event_time, in partitioned_by order
+        assert out.column_names == ["id", "event_ts", "year", "month"]
+        assert out.column("year").to_pylist() == [2026, 2026]
+        assert out.column("month").to_pylist() == [1, 3]
+        # Idempotent: already-present grains are not recomputed or duplicated
+        out2 = engine._materialize_partitioned_by_grains(out)
+        assert out2.column_names == out.column_names
+
+    def test_materialize_partitioned_by_grains_integer_seconds_event_time(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.partitioned_by = ["year"]
+        fg.event_time = "ts"
+        engine = DeltaEngine(1, "fs", fg, None, None)
+        # 1736899200 = 2025-01-15 00:00:00 UTC (10-digit -> seconds)
+        table = pa.table({"id": [1], "ts": pa.array([1736899200], type=pa.int64())})
+
+        # Act
+        out = engine._materialize_partitioned_by_grains(table)
+
+        # Assert
+        assert out.column("year").to_pylist() == [2025]
 
     def test_write_delta_rs_dataset_append_mode_skips_merge(self, mocker, monkeypatch):
         # Arrange
