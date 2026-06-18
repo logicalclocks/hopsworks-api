@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
@@ -27,7 +28,7 @@ from hopsworks_common.core.constants import HAS_POLARS
 from hopsworks_common.core.type_systems import _convert_offline_type_to_pyarrow_type
 from hopsworks_common.decorators import _uses_pyiceberg
 from hsfs import feature_group, feature_group_commit, util
-from hsfs.core import feature_group_api, variable_api
+from hsfs.core import feature_group_api, glue_catalog, variable_api
 
 
 if TYPE_CHECKING:
@@ -210,6 +211,7 @@ class IcebergEngine:
     """
 
     ICEBERG_SPARK_FORMAT = "iceberg"
+    ICEBERG_SPARK_CATALOG_IMPL = "org.apache.iceberg.spark.SparkCatalog"
     ICEBERG_QUERY_TIME_TRAVEL_AS_OF_TIMESTAMP = "as-of-timestamp"
     ICEBERG_START_SNAPSHOT_ID = "start-snapshot-id"
     ICEBERG_END_SNAPSHOT_ID = "end-snapshot-id"
@@ -352,6 +354,80 @@ class IcebergEngine:
                 properties[key[len(self.ICEBERG_CATALOG_PROP_PREFIX) :]] = value
         return catalog_name, properties, identifier
 
+    def _glue_catalog(self) -> glue_catalog.GlueCatalog | None:
+        """Return the feature group's Glue catalog binding, or None if it is not Glue-backed."""
+        return glue_catalog.GlueCatalog.for_feature_group(self._feature_group)
+
+    def _require_absolute_location(self) -> str:
+        """Return the feature group's location, requiring it to be an absolute URI.
+
+        A Glue table is created at the feature group's own location; the
+        location must carry a scheme (e.g. `s3://`) so the data lands in the
+        bucket rather than at a relative local path.
+
+        Returns:
+            The feature group's location.
+
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException: If the location is missing or not absolute.
+        """
+        location = self._feature_group.location
+        if not location or "://" not in location:
+            raise FeatureStoreException(
+                f"Glue feature group {self._feature_group.name} has a non-absolute "
+                f"location {location!r}; expected an absolute URI such as "
+                "'s3://bucket/path'. Set the data source path or check the "
+                "storage connector configuration."
+            )
+        return location
+
+    def _prepare_glue_session(self, glue: glue_catalog.GlueCatalog) -> str:
+        """Configure the session for the Glue catalog and return the qualified table name.
+
+        Shared prologue for the catalog-mediated read, delete and schema
+        evolution paths: it sets the Glue credentials and
+        `spark.sql.catalog.<name>.*` on the session and returns the
+        `<catalog>.<database>.<table>` name those operations address.
+
+        Parameters:
+            glue: The Glue catalog binding for this feature group.
+
+        Returns:
+            The catalog-qualified table name.
+        """
+        glue.configure_spark_session(
+            self._spark_session, self._spark_context, self.ICEBERG_SPARK_CATALOG_IMPL
+        )
+        return glue.qualified_name
+
+    def _glue_catalog_write_options(
+        self, write_options: dict[str, Any] | None
+    ) -> dict[str, Any]:
+        """Augment write options to commit through the Glue Data Catalog.
+
+        Returns the options unchanged when the feature group has no Glue
+        connector or when the caller already selected a catalog explicitly with
+        `iceberg.catalog`.
+        Otherwise the Glue catalog name, properties and table identifier are
+        derived from the connector and data source, so that a plain
+        `fg.insert()` registers the table in the Glue Data Catalog while the
+        data stays on S3.
+        """
+        write_options = dict(write_options or {})
+        if self.ICEBERG_CATALOG_OPTION in write_options:
+            return write_options
+
+        glue = self._glue_catalog()
+        if glue is None:
+            return write_options
+
+        return glue.iceberg_write_options(
+            write_options,
+            catalog_option=self.ICEBERG_CATALOG_OPTION,
+            identifier_option=self.ICEBERG_CATALOG_TABLE_IDENTIFIER_OPTION,
+            property_prefix=self.ICEBERG_CATALOG_PROP_PREFIX,
+        )
+
     @staticmethod
     def _append_requested(operation: str, write_options: dict[str, Any] | None) -> bool:
         return operation == "insert" or (
@@ -365,6 +441,7 @@ class IcebergEngine:
         if write_options is None:
             write_options = {}
 
+        write_options = self._glue_catalog_write_options(write_options)
         catalog_name, catalog_properties, identifier = self._get_catalog_write_config(
             write_options
         )
@@ -396,6 +473,28 @@ class IcebergEngine:
             rows_deleted=rows_deleted,
         )
 
+    def _configure_spark_catalog(
+        self, catalog_name: str, catalog_properties: dict[str, str]
+    ) -> None:
+        """Configure `spark.sql.catalog.<name>.*` on the session from catalog properties.
+
+        Sets the catalog implementation (from the `impl` property, falling back
+        to `SparkCatalog` when not already configured) and forwards the
+        remaining properties.
+        Used by both the catalog write path and the catalog read path so they
+        configure the session identically.
+        """
+        spark = self._spark_session
+        properties = dict(catalog_properties)
+        base_key = f"spark.sql.catalog.{catalog_name}"
+        impl = properties.pop("impl", None)
+        if impl is not None:
+            spark.conf.set(base_key, impl)
+        elif spark.conf.get(base_key, None) is None:
+            spark.conf.set(base_key, self.ICEBERG_SPARK_CATALOG_IMPL)
+        for prop, value in properties.items():
+            spark.conf.set(f"{base_key}.{prop}", value)
+
     def _write_iceberg_dataset_catalog(
         self,
         dataset,
@@ -413,14 +512,11 @@ class IcebergEngine:
         SQL extensions on the session.
         """
         spark = self._spark_session
-        base_key = f"spark.sql.catalog.{catalog_name}"
-        impl = catalog_properties.pop("impl", None)
-        if impl is not None:
-            spark.conf.set(base_key, impl)
-        elif spark.conf.get(base_key, None) is None:
-            spark.conf.set(base_key, "org.apache.iceberg.spark.SparkCatalog")
-        for prop, value in catalog_properties.items():
-            spark.conf.set(f"{base_key}.{prop}", value)
+        glue = self._glue_catalog()
+        if glue is not None:
+            # The Glue metadata client authenticates via the JVM SDK chain.
+            glue.set_jvm_credentials(self._spark_context)
+        self._configure_spark_catalog(catalog_name, catalog_properties)
 
         qualified = f"{catalog_name}.{identifier}"
         _logger.debug(f"Writing Iceberg dataset through catalog table {qualified}")
@@ -527,6 +623,11 @@ class IcebergEngine:
     def _delete_record(self, delete_df) -> feature_group_commit.FeatureGroupCommit:
         if self._spark_session is None:
             return self._delete_pyiceberg_record(delete_df)
+
+        glue = self._glue_catalog()
+        if glue is not None:
+            return self._delete_record_via_catalog(glue, delete_df)
+
         location = self._feature_group.prepare_spark_location()
         if not self._is_iceberg_table_at(location):
             raise FeatureStoreException(
@@ -561,11 +662,59 @@ class IcebergEngine:
         )
         return self._feature_group_api._commit(self._feature_group, fg_commit)
 
+    def _delete_record_via_catalog(
+        self, glue: glue_catalog.GlueCatalog, delete_df
+    ) -> feature_group_commit.FeatureGroupCommit:
+        """Delete records from a Glue Data Catalog table through a SQL `MERGE INTO`.
+
+        Catalog-resolved tables support `MERGE INTO ... WHEN MATCHED THEN
+        DELETE`, which the path-based delete cannot use; this requires the
+        Iceberg Spark SQL extensions on the session.
+        """
+        spark = self._spark_session
+        qualified = self._prepare_glue_session(glue)
+        if not spark.catalog.tableExists(qualified):
+            raise FeatureStoreException(
+                f"Feature group {self._feature_group.name} is not ICEBERG enabled."
+            )
+
+        merge_keys = self._get_merge_keys()
+        _logger.debug(
+            f"Deleting records from Glue catalog table {qualified} on keys {merge_keys}"
+        )
+
+        old_total = self._get_total_records(qualified)
+        deletes_alias = (
+            f"{self._feature_group.name}_{self._feature_group.version}_deletes"
+        )
+        delete_df.select(*merge_keys).createOrReplaceTempView(deletes_alias)
+        merge_condition = " AND ".join(f"t.{key} = u.{key}" for key in merge_keys)
+        spark.sql(
+            f"MERGE INTO {qualified} t USING {deletes_alias} u ON {merge_condition} "
+            "WHEN MATCHED THEN DELETE"
+        )
+
+        rows_deleted = max(old_total - self._get_total_records(qualified), 0)
+        fg_commit = self._get_last_commit_metadata(
+            qualified,
+            rows_inserted=0,
+            rows_updated=0,
+            rows_deleted=rows_deleted,
+        )
+        return self._feature_group_api._commit(self._feature_group, fg_commit)
+
     def _register_temporary_table(
         self,
         iceberg_fg_alias: hudi_feature_group_alias.HudiFeatureGroupAlias,
         read_options: dict[str, Any] | None = None,
     ) -> None:
+        glue = self._glue_catalog()
+        if glue is not None:
+            self._register_temporary_table_via_catalog(
+                glue, iceberg_fg_alias, read_options=read_options
+            )
+            return
+
         location = self._feature_group.prepare_spark_location()
         _logger.debug(
             f"Registering temporary table for Iceberg feature group {self._feature_group.name} v{self._feature_group.version} at location {location}"
@@ -577,6 +726,74 @@ class IcebergEngine:
         self._spark_session.read.format(self.ICEBERG_SPARK_FORMAT).options(
             **iceberg_options
         ).load(location).createOrReplaceTempView(iceberg_fg_alias.alias)
+
+    def _register_temporary_table_via_catalog(
+        self,
+        glue: glue_catalog.GlueCatalog,
+        iceberg_fg_alias: hudi_feature_group_alias.HudiFeatureGroupAlias,
+        read_options: dict[str, Any] | None = None,
+    ) -> None:
+        """Register the feature group's Glue Data Catalog table as a temporary view.
+
+        Configures the Glue catalog on the session and reads through the
+        catalog identifier (`<catalog>.<database>.<table>`) rather than the S3
+        path, because the table's current-metadata pointer lives in Glue, not
+        in the table location's `version-hint.text`.
+        """
+        qualified = self._prepare_glue_session(glue)
+        _logger.debug(
+            f"Registering Glue feature group {self._feature_group.name} "
+            f"v{self._feature_group.version} from catalog table {qualified}"
+        )
+
+        # Time-travel and other read options apply the same way as for a
+        # path-based read; only the addressing differs: a catalog-resolved
+        # table is read with `.table()`, not `.load()`.
+        iceberg_options = self._setup_iceberg_read_opts(
+            iceberg_fg_alias, qualified, read_options=read_options
+        )
+        self._spark_session.read.format(self.ICEBERG_SPARK_FORMAT).options(
+            **iceberg_options
+        ).table(qualified).createOrReplaceTempView(iceberg_fg_alias.alias)
+
+    def _add_columns_via_catalog(self, glue: glue_catalog.GlueCatalog) -> None:
+        """Add the feature group's missing columns to its Glue Data Catalog table.
+
+        Evolves the schema through the catalog (`ALTER TABLE ... ADD COLUMNS`)
+        as a metadata-only commit rather than the path-based `HadoopTables`
+        API, because the table's current-metadata pointer lives in Glue.
+        Only columns missing from the table are added; existing columns are
+        never altered.
+        Requires the Iceberg Spark SQL extensions on the session.
+        """
+        spark = self._spark_session
+        qualified = self._prepare_glue_session(glue)
+        existing_columns = {field.name for field in spark.table(qualified).schema}
+        new_features = [
+            _feature
+            for _feature in self._feature_group.columns
+            if _feature.name not in existing_columns
+        ]
+        if not new_features:
+            return
+
+        column_ddl = ", ".join(
+            f"{_feature.name} {self._iceberg_column_type(_feature.type)}"
+            for _feature in new_features
+        )
+        _logger.debug(f"Adding columns to Glue catalog table {qualified}: {column_ddl}")
+        spark.sql(f"ALTER TABLE {qualified} ADD COLUMNS ({column_ddl})")
+
+    @staticmethod
+    def _iceberg_column_type(feature_type: str) -> str:
+        """Map a Hopsworks feature type to the type used for Iceberg schema evolution.
+
+        Spark's `timestamp` converts to Iceberg `timestamptz`, while Hopsworks
+        stores Hive-style timestamps without a zone, so timestamps are mapped
+        through `timestamp_ntz` instead.
+        The lookahead keeps struct field names (which precede ':') untouched.
+        """
+        return re.sub(r"(?<![\w])timestamp(?![\w:])", "timestamp_ntz", feature_type)
 
     def _setup_iceberg_read_opts(
         self,
@@ -638,15 +855,28 @@ class IcebergEngine:
 
         return iceberg_options
 
+    @staticmethod
+    def _is_catalog_identifier(address: str) -> bool:
+        """Whether *address* is a catalog identifier rather than a filesystem path.
+
+        Catalog identifiers are dotted names (`catalog.db.table`); paths carry a
+        scheme such as `s3a://` or `hopsfs://`.
+        """
+        return "://" not in address
+
     def _read_snapshots(self, location: str) -> list[dict[str, Any]]:
         """Return the table's snapshot log, oldest first.
 
-        Reads the `snapshots` metadata table through the path-based metadata
-        table syntax, so it works without a configured catalog.
+        Reads the `snapshots` metadata table, addressing it through the catalog
+        (`<table>.snapshots`) for catalog identifiers and the path-based
+        metadata-table syntax (`<location>#snapshots`) for filesystem paths.
         """
-        snapshots_df = self._spark_session.read.format(self.ICEBERG_SPARK_FORMAT).load(
-            location + self.SNAPSHOTS_METADATA_SUFFIX
-        )
+        if self._is_catalog_identifier(location):
+            snapshots_df = self._spark_session.table(f"{location}.snapshots")
+        else:
+            snapshots_df = self._spark_session.read.format(
+                self.ICEBERG_SPARK_FORMAT
+            ).load(location + self.SNAPSHOTS_METADATA_SUFFIX)
         snapshots = [row.asDict(recursive=True) for row in snapshots_df.collect()]
         snapshots.sort(key=lambda s: s["committed_at"])
         return snapshots
@@ -871,7 +1101,8 @@ class IcebergEngine:
         connector = self._feature_group.storage_connector
         if connector is None or connector.type == sc.StorageConnector.HOPSFS:
             return {}
-        if connector.type == sc.StorageConnector.S3:
+        if connector.type in (sc.StorageConnector.S3, sc.StorageConnector.GLUE):
+            # Glue tables are stored on S3, so the same S3 FileIO credentials apply.
             props = {}
             if connector.access_key:
                 props["s3.access-key-id"] = connector.access_key
@@ -1042,6 +1273,7 @@ class IcebergEngine:
         """
         arrow_table = self._prepare_arrow_table(dataset)
 
+        write_options = self._glue_catalog_write_options(write_options)
         catalog_name, catalog_properties, identifier = self._get_catalog_write_config(
             write_options
         )
@@ -1108,6 +1340,18 @@ class IcebergEngine:
         from pyiceberg.catalog import Catalog, load_catalog
         from pyiceberg.exceptions import NamespaceAlreadyExistsError
 
+        # The properties extracted from the write options follow the Iceberg
+        # Spark schema; PyIceberg needs its own schema, so for a Glue feature
+        # group rebuild them from the connector's PyIceberg options.
+        glue = self._glue_catalog()
+        create_location = None
+        if glue is not None:
+            catalog_properties = glue.pyiceberg_catalog_properties()
+            # Register the table at the feature group's own S3 location instead
+            # of letting PyIceberg derive it from the catalog warehouse, which
+            # would place a new table at a wrong (possibly local) path.
+            create_location = self._require_absolute_location()
+
         catalog = load_catalog(catalog_name, **catalog_properties)
         _logger.debug(
             f"Writing Iceberg dataset through catalog {catalog_name} table {identifier}"
@@ -1117,7 +1361,9 @@ class IcebergEngine:
         if not catalog.table_exists(identifier):
             with contextlib.suppress(NamespaceAlreadyExistsError):
                 catalog.create_namespace(Catalog.namespace_from(identifier))
-            table = catalog.create_table(identifier, schema=arrow_table.schema)
+            table = catalog.create_table(
+                identifier, schema=arrow_table.schema, location=create_location
+            )
             table.append(arrow_table)
         elif self._append_requested(operation, write_options):
             table = catalog.load_table(identifier)

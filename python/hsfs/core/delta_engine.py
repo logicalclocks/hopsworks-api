@@ -105,6 +105,7 @@ class DeltaEngine:
     DELTA_QUERY_TIME_TRAVEL_AS_OF_VERSION = "versionAsOf"
     DELTA_ENABLE_CHANGE_DATA_FEED = "delta.enableChangeDataFeed"
     DELTA_DOT_PREFIX = "delta."
+    DELTA_GLUE_CATALOG_IMPL = "org.apache.spark.sql.delta.catalog.DeltaCatalog"
     APPEND = "append"
 
     def __init__(
@@ -126,7 +127,7 @@ class DeltaEngine:
                 # Classic Spark: catalog config is mutable at runtime.
                 self._spark_session.conf.set(
                     "spark.sql.catalog.spark_catalog",
-                    "org.apache.spark.sql.delta.catalog.DeltaCatalog",
+                    self.DELTA_GLUE_CATALOG_IMPL,
                 )
             else:
                 # Spark Connect: static config — must be set at builder time.
@@ -451,7 +452,42 @@ class DeltaEngine:
                 dataset.alias(updates_alias), merge_query_str
             ).whenMatchedUpdateAll().whenNotMatchedInsertAll().execute()
 
+        self._sync_glue_catalog(location)
         return self._get_last_commit_metadata(self._spark_session, location)
+
+    def _sync_glue_catalog(self, location: str) -> None:
+        """Register the Delta table in the AWS Glue Data Catalog for discoverability.
+
+        Delta keeps its current state in the on-path transaction log, so the
+        catalog entry is only a `name -> location` registration that lets
+        external engines find the table; the log stays authoritative.
+        The registration is created (and its schema kept current) through a
+        Glue-backed Spark catalog with `CREATE TABLE IF NOT EXISTS ... USING
+        DELTA LOCATION`, which is a no-op once the table exists.
+
+        Does nothing when the feature group has no Glue connector or runs under
+        Spark Connect (the schema sync requires JVM bridge access for the Glue
+        client credentials).
+        """
+        from hsfs.core.glue_catalog import GlueCatalog
+
+        glue = GlueCatalog.for_feature_group(self._feature_group)
+        if glue is None or self._spark_context is None:
+            return
+
+        # Configure a Glue-backed Delta catalog on the session (credentials +
+        # spark.sql.catalog.<name>.*), then register the table by location.
+        glue.configure_spark_session(
+            self._spark_session, self._spark_context, self.DELTA_GLUE_CATALOG_IMPL
+        )
+
+        qualified = glue.qualified_name
+        _logger.debug(f"Registering Delta table in Glue as {qualified}")
+        # CREATE TABLE ... LOCATION adopts the existing log; refreshing it picks
+        # up schema changes so the catalog entry stays current on later writes.
+        self._spark_session.sql(
+            f"CREATE TABLE IF NOT EXISTS {qualified} USING DELTA LOCATION '{location}'"
+        )
 
     def _setup_delta_rs(self):
         _logger.debug("Setting up delta-rs environment")

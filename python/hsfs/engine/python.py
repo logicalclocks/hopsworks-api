@@ -359,7 +359,14 @@ class Engine:
             df_list = self._read_hopsfs(
                 location, data_format, read_options, dataframe_type
             )
-        elif storage_connector.type == storage_connector.S3:
+        elif storage_connector.type in (
+            storage_connector.S3,
+            storage_connector.GLUE,
+        ):
+            # This reads raw files at a path (not a Glue table): a Glue
+            # connector's data lives on S3, so path reads go through S3 the same
+            # way as for an S3 connector. Reading a Glue-registered table by
+            # database/table is a Spark-engine, catalog-mediated path instead.
             df_list = self._read_s3(
                 storage_connector, location, data_format, dataframe_type
             )
@@ -501,9 +508,12 @@ class Engine:
     ) -> list[pd.DataFrame | pl.DataFrame]:
         # get key prefix
         path_parts = location.replace("s3://", "").split("/")
-        _ = path_parts.pop(0)  # pop first element -> bucket
+        location_bucket = path_parts.pop(0)  # pop first element -> bucket
 
         prefix = "/".join(path_parts)
+
+        # Connectors without a fixed bucket (e.g. Glue) take it from the path.
+        bucket = storage_connector.bucket or location_bucket
 
         if storage_connector.session_token is not None:
             # This is only for AWS IAM role passthrough.
@@ -528,14 +538,14 @@ class Engine:
         while object_list.get("is_truncated", False):
             if "NextContinuationToken" in object_list:
                 object_list = s3.list_objects_v2(
-                    Bucket=storage_connector.bucket,
+                    Bucket=bucket,
                     Prefix=prefix,
                     MaxKeys=1000,
                     ContinuationToken=object_list["NextContinuationToken"],
                 )
             else:
                 object_list = s3.list_objects_v2(
-                    Bucket=storage_connector.bucket,
+                    Bucket=bucket,
                     Prefix=prefix,
                     MaxKeys=1000,
                 )
@@ -543,7 +553,7 @@ class Engine:
             for obj in object_list["Contents"]:
                 if not self._is_metadata_file(obj["Key"]) and obj["Size"] > 0:
                     obj = s3.get_object(
-                        Bucket=storage_connector.bucket,
+                        Bucket=bucket,
                         Key=obj["Key"],
                     )
                     if dataframe_type.lower() == "polars":

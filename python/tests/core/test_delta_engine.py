@@ -1959,3 +1959,80 @@ class TestDeltaEngineConnectMode:
             "spark.sql.catalog.spark_catalog",
             "org.apache.spark.sql.delta.catalog.DeltaCatalog",
         )
+
+
+class TestDeltaEngineGlueSync:
+    def _glue_fg(self, mocker):
+        from hsfs import storage_connector
+        from hsfs.core import data_source
+
+        connector = storage_connector.GlueConnector(
+            id=2,
+            name="glue",
+            featurestore_id=1,
+            access_key="ak",
+            secret_key="sk",
+            region="eu-north-1",
+            database="hopsworks_featurestore",
+        )
+        fg = _make_fg("s3://ralfsbucket/iceberg-warehouse/ralfsglue.db/fg_1")
+        fg.data_source = data_source.DataSource(
+            storage_connector=connector, database="ralfsglue", table="fg_1"
+        )
+        fg.storage_connector = connector
+        return fg
+
+    def test_sync_glue_catalog_registers_table(self, mocker):
+        # Arrange
+        _patch_apis(mocker)
+        _patch_client(mocker, is_external=False)
+        spark_session = mock.MagicMock()
+        # No catalog configured yet, so the Delta catalog impl gets set.
+        spark_session.conf.get.return_value = None
+        spark_context = mock.MagicMock()
+        engine = DeltaEngine(
+            feature_store_id=1,
+            feature_store_name="fs",
+            feature_group=self._glue_fg(mocker),
+            spark_session=spark_session,
+            spark_context=spark_context,
+        )
+
+        # Act
+        engine._sync_glue_catalog(
+            "s3://ralfsbucket/iceberg-warehouse/ralfsglue.db/fg_1"
+        )
+
+        # Assert — registers the table under the data source's database/table.
+        sql = spark_session.sql.call_args[0][0]
+        assert "CREATE TABLE IF NOT EXISTS glue_catalog.ralfsglue.fg_1" in sql
+        assert "USING DELTA LOCATION" in sql
+        # Configures a Glue-backed Delta catalog on the session.
+        conf_calls = {
+            c.args[0]: c.args[1] for c in spark_session.conf.set.call_args_list
+        }
+        assert (
+            conf_calls["spark.sql.catalog.glue_catalog"]
+            == DeltaEngine.DELTA_GLUE_CATALOG_IMPL
+        )
+        assert "spark.sql.catalog.glue_catalog.warehouse" in conf_calls
+
+    def test_sync_glue_catalog_noop_without_glue(self, mocker):
+        # Arrange — non-Glue feature group must not touch the catalog.
+        _patch_apis(mocker)
+        _patch_client(mocker, is_external=False)
+        spark_session = mock.MagicMock()
+        engine = DeltaEngine(
+            feature_store_id=1,
+            feature_store_name="fs",
+            feature_group=_make_fg("hopsfs://nn:8020/p"),
+            spark_session=spark_session,
+            spark_context=mock.MagicMock(),
+        )
+        spark_session.sql.reset_mock()
+
+        # Act
+        engine._sync_glue_catalog("hopsfs://nn:8020/p")
+
+        # Assert
+        spark_session.sql.assert_not_called()

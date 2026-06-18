@@ -364,6 +364,56 @@ class TestHudiEngine:
         # Assert — hive sync must be disabled for external (managed) feature groups
         assert result["hoodie.datasource.hive_sync.enable"] == "false"
 
+    def test_setup_hudi_write_opts_glue_sync(self, mocker):
+        # Arrange
+        from hsfs import storage_connector
+
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
+
+        connector = storage_connector.GlueConnector(
+            id=2,
+            name="glue",
+            featurestore_id=99,
+            # Hopsworks-internal database; the data source holds the real Glue one.
+            database="hopsworks_featurestore",
+        )
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=["key1"],
+            partition_key=[],
+            hudi_precombine_key=None,
+            data_source=data_source.DataSource(
+                storage_connector=connector, database="ralfsglue", table="fg_1"
+            ),
+        )
+
+        h_engine = hudi_engine.HudiEngine(
+            feature_store_id=99,
+            feature_store_name="hopsworks_featurestore",
+            feature_group=fg,
+            spark_context=None,
+            spark_session=None,
+        )
+
+        # Act
+        result = h_engine._setup_hudi_write_opts(operation="test", write_options=None)
+
+        # Assert — sync is enabled in Glue mode, targeting the data source's
+        # database/table, via the AWS Glue sync tool.
+        assert result["hoodie.datasource.hive_sync.enable"] == "true"
+        assert result["hoodie.datasource.hive_sync.mode"] == "glue"
+        assert result["hoodie.datasource.hive_sync.database"] == "ralfsglue"
+        assert result["hoodie.datasource.hive_sync.table"] == "fg_1"
+        assert (
+            result["hoodie.meta.sync.classes"]
+            == hudi_engine.HudiEngine.HUDI_GLUE_SYNC_TOOL
+        )
+
     def test_setup_hudi_read_opts(self, mocker, backend_fixtures):
         # Arrange
         feature_store_id = 99

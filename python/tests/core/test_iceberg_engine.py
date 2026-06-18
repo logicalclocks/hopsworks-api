@@ -193,6 +193,127 @@ class TestIcebergEngine:
             "fg_1_alias"
         )
 
+    def test_register_temporary_table_routes_glue_through_catalog(self, mocker):
+        # Arrange
+        from hsfs import storage_connector
+
+        connector = storage_connector.GlueConnector(
+            id=2,
+            name="glue",
+            featurestore_id=99,
+            access_key="ak",
+            secret_key="sk",
+            region="eu-north-1",
+            # Hopsworks-internal database; the data source holds the real Glue one.
+            database="hopsworks_featurestore",
+        )
+        fg = _make_fg(location="s3://ralfsbucket/iceberg-warehouse/ralfsglue.db/fg_1")
+        fg.storage_connector = connector
+        fg.data_source.database = "ralfsglue"
+        fg.data_source.table = "fg_1"
+        spark_session = mocker.Mock()
+        iceberg_engine = _make_engine(mocker, fg=fg, spark_session=spark_session)
+        fg_alias = _make_alias(alias="fg_1_alias")
+
+        # Act
+        iceberg_engine._register_temporary_table(fg_alias, read_options=None)
+
+        # Assert
+        # Reads the catalog-resolved table via .table() (the data source
+        # database wins over the connector's internal one), not the S3 path.
+        table_mock = spark_session.read.format.return_value.options.return_value.table
+        table_mock.assert_called_once_with("glue_catalog.ralfsglue.fg_1")
+        table_mock.return_value.createOrReplaceTempView.assert_called_once_with(
+            "fg_1_alias"
+        )
+        # Configures the Glue catalog on the session.
+        conf_calls = {call.args[0] for call in spark_session.conf.set.call_args_list}
+        assert "spark.sql.catalog.glue_catalog.catalog-impl" in conf_calls
+        assert "spark.sql.catalog.glue_catalog.warehouse" in conf_calls
+
+    def test_glue_catalog_write_options_injects_catalog(self, mocker):
+        # Arrange
+        from hsfs import storage_connector
+
+        connector = storage_connector.GlueConnector(
+            id=2,
+            name="glue",
+            featurestore_id=99,
+            access_key="ak",
+            secret_key="sk",
+            region="eu-north-1",
+            database="ralfsglue",
+        )
+        fg = _make_fg(location="s3://ralfsbucket/iceberg-warehouse/ralfsglue.db/fg_1")
+        fg.storage_connector = connector
+        fg.data_source.database = "ralfsglue"
+        fg.data_source.table = "fg_1"
+        iceberg_engine = _make_engine(mocker, fg=fg)
+
+        # Act
+        options = iceberg_engine._glue_catalog_write_options({})
+
+        # Assert
+        assert options["iceberg.catalog"] == "glue_catalog"
+        assert options["iceberg.catalog.table-identifier"] == "ralfsglue.fg_1"
+        assert options["iceberg.catalog.catalog-impl"] == connector.GLUE_CATALOG_IMPL
+        assert options["iceberg.catalog.s3.access-key-id"] == "ak"
+        # Warehouse is the root, not the per-table location.
+        assert (
+            options["iceberg.catalog.warehouse"] == "s3://ralfsbucket/iceberg-warehouse"
+        )
+
+    def test_glue_warehouse_trims_database_and_table_suffix(self, mocker):
+        # Arrange
+        from hsfs import storage_connector
+        from hsfs.core.glue_catalog import GlueCatalog
+
+        connector = storage_connector.GlueConnector(
+            id=2, name="glue", featurestore_id=99, database="hopsworks_featurestore"
+        )
+        fg = _make_fg(location="s3://ralfsbucket/iceberg-warehouse/ralfsglue.db/fg_1")
+        fg.storage_connector = connector
+        fg.data_source.database = "ralfsglue"
+        fg.data_source.table = "fg_1"
+        glue = GlueCatalog.for_feature_group(fg)
+
+        # Act & Assert — warehouse is the root, identifier uses the data source.
+        assert glue.warehouse == "s3://ralfsbucket/iceberg-warehouse"
+        assert glue.identifier == "ralfsglue.fg_1"
+        assert glue.qualified_name == "glue_catalog.ralfsglue.fg_1"
+
+    def test_glue_catalog_write_options_respects_explicit_catalog(self, mocker):
+        # Arrange
+        from hsfs import storage_connector
+
+        connector = storage_connector.GlueConnector(
+            id=2, name="glue", featurestore_id=99, database="ralfsglue"
+        )
+        fg = _make_fg()
+        fg.storage_connector = connector
+        iceberg_engine = _make_engine(mocker, fg=fg)
+
+        # Act: a user-provided catalog must not be overridden.
+        options = iceberg_engine._glue_catalog_write_options(
+            {"iceberg.catalog": "my_catalog"}
+        )
+
+        # Assert
+        assert options["iceberg.catalog"] == "my_catalog"
+        assert "iceberg.catalog.table-identifier" not in options
+
+    def test_glue_catalog_write_options_noop_without_glue(self, mocker):
+        # Arrange: non-Glue feature group leaves write options untouched.
+        fg = _make_fg()
+        fg.storage_connector = None
+        iceberg_engine = _make_engine(mocker, fg=fg)
+
+        # Act
+        options = iceberg_engine._glue_catalog_write_options({"mode": "append"})
+
+        # Assert
+        assert options == {"mode": "append"}
+
     def test_save_iceberg_fg_calls_write_and_commit(self, mocker):
         # Arrange
         iceberg_engine = _make_engine(mocker)
