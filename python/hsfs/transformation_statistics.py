@@ -21,7 +21,7 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 import humps
-from hopsworks_apigen import public
+from hopsworks_apigen import deprecated, public
 
 
 if TYPE_CHECKING:
@@ -155,6 +155,18 @@ class FeatureTransformationStatistics:
     @property
     def std_dev(self) -> float | None:
         """Standard deviation of the feature values."""
+        return self._std_dev
+
+    @public
+    @property
+    @deprecated(
+        "hsfs.transformation_statistics.FeatureTransformationStatistics.std_dev"
+    )
+    def stddev(self) -> float | None:
+        """Standard deviation of the feature values.
+
+        Deprecated alias for [`std_dev`][hsfs.transformation_statistics.FeatureTransformationStatistics.std_dev].
+        """
         return self._std_dev
 
     @public
