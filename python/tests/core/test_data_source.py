@@ -180,6 +180,7 @@ class TestInferredMetadata:
             ],
             "suggestedPrimaryKey": ["user_id"],
             "suggestedEventTime": "event_time",
+            "suggestedDescription": "User events, one row per event.",
         }
 
         # Act
@@ -192,6 +193,10 @@ class TestInferredMetadata:
         assert inferred.features[0].type == "bigint"
         assert inferred.suggested_primary_key == ["user_id"]
         assert inferred.suggested_event_time == "event_time"
+        assert inferred.suggested_description == "User events, one row per event."
+        assert inferred.to_dict()["suggestedDescription"] == (
+            "User events, one row per event."
+        )
 
 
 class TestDataSourceApiInferMetadata:

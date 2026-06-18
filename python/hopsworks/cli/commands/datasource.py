@@ -530,6 +530,8 @@ def connector_infer_metadata(
         )
     if inferred.suggested_event_time:
         click.echo(f"Suggested event time: {inferred.suggested_event_time}")
+    if inferred.suggested_description:
+        click.echo(f"Suggested description: {inferred.suggested_description}")
 
 
 def _create_connector(ctx: click.Context, body: dict[str, Any]) -> None:
