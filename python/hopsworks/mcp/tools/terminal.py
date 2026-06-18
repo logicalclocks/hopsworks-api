@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import json
+import secrets
 import subprocess
 import tempfile
 from pathlib import Path
@@ -51,18 +52,35 @@ class TerminalTools:
         self.mcp.tool(tags=[TAGS.TERMINAL])(self.add_input)
         self.mcp.tool(tags=[TAGS.TERMINAL])(self.get_output)
 
-        self.sessions: dict[int, tuple[subprocess.Popen, Queue, str, str]] = {}
+        # Keyed by an unguessable session token (not the OS pid, which is
+        # enumerable) so one client cannot drive or read another client's
+        # shell by guessing an identifier.
+        self.sessions: dict[str, tuple[subprocess.Popen, Queue, str, str]] = {}
 
-    def start_session(self, cwd: str) -> int:
+    def _session(self, session_id: str) -> tuple[subprocess.Popen, Queue, str, str]:
+        """Look up a session by token, raising a clean error when unknown."""
+        session = self.sessions.get(session_id)
+        if session is None:
+            raise ValueError("Unknown or expired terminal session.")
+        return session
+
+    def start_session(self, cwd: str) -> str:
         """Start a terminal session in the specified directory.
 
         Parameters:
-            cwd: The directory path to start the session in.
+            cwd: The directory path to start the session in. Must be an
+                existing directory.
 
         Returns:
-            The session process identifier (pid).
+            An opaque session token. Pass it to ``add_input``/``get_output``;
+            it is the only handle to the session and is not derivable from the
+            process table.
         """
         # TODO: delete processes which were used longer than 5 min ago
+
+        cwd_path = Path(cwd).expanduser()
+        if not cwd_path.is_dir():
+            raise ValueError(f"cwd is not an existing directory: {cwd}")
 
         envdir = tempfile.mkdtemp()
 
@@ -71,11 +89,13 @@ class TerminalTools:
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            cwd=cwd,
+            cwd=str(cwd_path),
             text=True,
             bufsize=1,
+            # Capture only PWD on each prompt — never the full environment,
+            # which would write the server's secrets (API key, JWT) to disk.
             env={
-                "PROMPT_COMMAND": f'python -c "import json, os; print(json.dumps(dict(os.environ)))" > {envdir}/env.json'
+                "PROMPT_COMMAND": f'python -c "import json, os; print(json.dumps({{\\"PWD\\": os.environ.get(\\"PWD\\", \\"\\")}}))" > {envdir}/env.json'
             },
         )
 
@@ -84,57 +104,65 @@ class TerminalTools:
         t.daemon = True  # thread dies with the program
         t.start()
 
-        self.sessions[proc.pid] = (proc, output_queue, "", envdir)
+        session_id = secrets.token_urlsafe(32)
+        self.sessions[session_id] = (proc, output_queue, "", envdir)
         # TODO: check for errors
 
-        return proc.pid
+        return session_id
 
-    def add_input(self, pid: int, addon: str):
+    def add_input(self, session_id: str, addon: str):
         r"""Add input to the terminal session.
 
         Note that if you want to simulate pressing Enter, you need to include a newline character.
         So, to run a command, you should set addon to something like "ls -la\n".
 
         Parameters:
-            pid: The process identifier of the terminal session.
+            session_id: The token returned by ``start_session``.
             addon: The input string to add to the session.
         """
-        proc, _, _, _ = self.sessions[pid]
+        proc, _, _, _ = self._session(session_id)
         if not proc.stdin:
             raise Exception("Process stdin is not available")
         proc.stdin.write(addon)
         proc.stdin.flush()
 
-    def get_output(self, pid: int, offset: int = 0) -> str:
+    def get_output(self, session_id: str, offset: int = 0) -> str:
         r"""Get output from the terminal session.
 
         Set offset to the number of characters you have already retrieved, so that only new output is returned.
 
         Parameters:
-            pid: The process identifier of the terminal session.
+            session_id: The token returned by ``start_session``.
             offset: The offset from which to retrieve new output.
 
         Returns:
             The output string from the session starting from the specified offset.
         """
-        proc, output_queue, output, envdir = self.sessions[pid]
+        proc, output_queue, output, envdir = self._session(session_id)
         while True:
             try:
                 output += output_queue.get_nowait()
             except Empty:
-                self.sessions[pid] = (proc, output_queue, output, envdir)
+                self.sessions[session_id] = (proc, output_queue, output, envdir)
                 return output[offset:]
 
-    def get_environ(self, pid: int) -> dict[str, str]:
-        r"""Get the current values of the environment variables of the terminal session.
+    def get_environ(self, session_id: str) -> dict[str, str]:
+        r"""Get the captured environment variables of the terminal session.
 
-        For example, this way you can figure out what the current working directory is by checking the "PWD" variable.
+        Only ``PWD`` is captured (so an agent can track the working directory);
+        the full environment is deliberately not exposed.
 
         Parameters:
-            pid: The process identifier of the terminal session.
+            session_id: The token returned by ``start_session``.
 
         Returns:
-            A dictionary of environment variables.
+            A dictionary of the captured environment variables.
+            Empty until the shell first runs ``PROMPT_COMMAND`` and writes the capture file.
         """
-        _, _, _, envdir = self.sessions[pid]
-        return json.loads((Path(envdir) / "env.json").read_text())
+        _, _, _, envdir = self._session(session_id)
+        env_file = Path(envdir) / "env.json"
+        if not env_file.exists():
+            # ``PROMPT_COMMAND`` has not run yet (e.g. ``get_environ`` called
+            # immediately after ``start_session``), so nothing is captured.
+            return {}
+        return json.loads(env_file.read_text())

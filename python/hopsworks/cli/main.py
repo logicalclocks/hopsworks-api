@@ -11,6 +11,7 @@ like ``--help`` measurably slow (~2 s+); deferring keeps them snappy.
 from __future__ import annotations
 
 import importlib
+import sys
 from typing import TYPE_CHECKING
 
 import click
@@ -186,7 +187,20 @@ class LazyGroup(click.Group):
 )
 @click.version_option(_VERSION, "-v", "--version", prog_name="hops")
 @click.option("--host", "host_flag", help="Hopsworks host URL (overrides config).")
-@click.option("--api-key", "api_key_flag", help="API key (overrides config).")
+@click.option(
+    "--api-key",
+    "api_key_flag",
+    help="API key (overrides config). Avoid in shared shells — a key in argv "
+    "is visible in the process list and shell history. Prefer the "
+    "HOPSWORKS_API_KEY env var or --api-key-stdin.",
+)
+@click.option(
+    "--api-key-stdin",
+    "api_key_stdin",
+    is_flag=True,
+    help="Read the API key from the first line of stdin instead of argv "
+    "(keeps the secret out of the process list and shell history).",
+)
 @click.option("--project", "project_flag", help="Project name (overrides config).")
 @click.option(
     "--verify/--no-verify",
@@ -206,6 +220,7 @@ def cli(
     ctx: click.Context,
     host_flag: str | None,
     api_key_flag: str | None,
+    api_key_stdin: bool,
     project_flag: str | None,
     verify_flag: bool | None,
     json_flag: bool,
@@ -216,11 +231,16 @@ def cli(
         ctx: Click context; we stash the resolved ``HopsConfig`` on ``ctx.obj``.
         host_flag: Value of ``--host`` if provided.
         api_key_flag: Value of ``--api-key`` if provided.
+        api_key_stdin: When True, read the API key from stdin.
         project_flag: Value of ``--project`` if provided.
         verify_flag: True for ``--verify``, False for ``--no-verify``, None if neither was passed.
         json_flag: When True, every output helper switches to JSON mode.
     """
     output.set_json_mode(json_flag)
+    if api_key_stdin:
+        if api_key_flag:
+            raise click.UsageError("Pass --api-key or --api-key-stdin, not both.")
+        api_key_flag = sys.stdin.readline().strip() or None
     ctx.ensure_object(dict)
     ctx.obj["config"] = config.load(
         flag_host=host_flag,
