@@ -86,7 +86,9 @@ class FeatureDescriptiveStatistics:
         self._max = max
         self._sum = sum
         self._mean = mean
-        self._std_dev = std_dev
+        # Accept the legacy lowercase ``stddev`` key (e.g. from backend payloads
+        # or older callers) so the rename to ``std_dev`` stays backward compatible.
+        self._std_dev = std_dev if std_dev is not None else kwargs.get("stddev")
         self._percentiles = percentiles
         self._distinctness = distinctness
         self._entropy = entropy
