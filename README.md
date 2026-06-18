@@ -270,7 +270,7 @@
 | python/hsfs/core/expectation\_suite\_engine.py                                   |       37 |        2 |     95% |    68, 82 |
 | python/hsfs/core/explicit\_provenance.py                                         |      229 |      152 |     34% |35, 38, 41, 44, 57-63, 69, 75, 81, 84, 87, 98, 101, 109-123, 137-140, 149, 159, 175, 184, 188, 207, 210, 217-234, 238-244, 248-261, 265-282, 286-303, 307-352, 372-434, 439-486 |
 | python/hsfs/core/external\_feature\_group\_engine.py                             |       57 |       18 |     68% |36, 79, 93-130, 203-205 |
-| python/hsfs/core/feature\_descriptive\_statistics.py                             |      185 |       20 |     89% |105, 108-109, 125-126, 174, 213, 216, 219, 249, 255, 261, 267, 285, 297, 309, 325, 339, 349, 355 |
+| python/hsfs/core/feature\_descriptive\_statistics.py                             |      185 |       20 |     89% |107, 110-111, 127-128, 176, 215, 218, 221, 251, 257, 263, 269, 287, 299, 311, 327, 341, 351, 357 |
 | python/hsfs/core/feature\_group\_api.py                                          |      146 |       92 |     37% |51-63, 77-89, 159-165, 173-175, 192-214, 230-250, 263-273, 292-306, 335-346, 370-381, 406-421, 439-451, 469-481, 504-521, 542-559, 583-600, 624-641 |
 | python/hsfs/core/feature\_group\_base\_engine.py                                 |       77 |       19 |     75% |78, 92, 109-112, 129-132, 149-152, 169-172, 216 |
 | python/hsfs/core/feature\_group\_engine.py                                       |      254 |       35 |     86% |133, 215-229, 264-265, 378, 390-397, 516-518, 531-533, 546-547, 587-588, 662, 674, 713, 730, 768, 783-790, 839, 868, 875 |
@@ -373,7 +373,7 @@
 | python/hsfs/training\_dataset\_feature.py                                        |       80 |        8 |     90% |59, 88, 134, 150, 160, 163-166 |
 | python/hsfs/training\_dataset\_split.py                                          |       54 |        7 |     87% |52, 60, 68, 76, 84, 87, 90 |
 | python/hsfs/transformation\_function.py                                          |      155 |       15 |     90% |138, 169, 231-233, 241, 548, 575, 585, 616, 641-645 |
-| python/hsfs/transformation\_statistics.py                                        |      134 |       15 |     89% |94, 100, 108, 114, 120, 126, 146, 176, 190, 200, 206, 212, 224, 276, 283 |
+| python/hsfs/transformation\_statistics.py                                        |      139 |       16 |     88% |96, 102, 110, 116, 122, 128, 148, 172, 190, 204, 214, 220, 226, 238, 290, 297 |
 | python/hsfs/usage.py                                                             |        2 |        0 |    100% |           |
 | python/hsfs/user/\_\_init\_\_.py                                                 |        2 |        0 |    100% |           |
 | python/hsfs/util.py                                                              |       82 |       11 |     87% |90, 111-112, 124, 250-264 |
@@ -462,7 +462,7 @@
 | python/hsml/utils/schema/tensor.py                                               |        8 |        0 |    100% |           |
 | python/hsml/utils/schema/tensor\_schema.py                                       |       34 |        0 |    100% |           |
 | python/hsml/version.py                                                           |        2 |        2 |      0% |     17-22 |
-| **TOTAL**                                                                        | **38643** | **12372** | **68%** |           |
+| **TOTAL**                                                                        | **38648** | **12373** | **68%** |           |
 
 
 ## Setup coverage badge
