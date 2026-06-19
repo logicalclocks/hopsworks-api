@@ -269,6 +269,52 @@ class TestGlueConnector:
         assert options["s3.access-key-id"] == "ak"
         assert options["warehouse"] == "s3://ralfsbucket/iceberg-warehouse"
 
+    def test_get_tables_defaults_to_connector_database(self, mocker):
+        # Arrange — get_tables() with no argument uses the connector's database.
+        sc = storage_connector.GlueConnector(
+            id=2,
+            name="test_glue",
+            featurestore_id=67,
+            database="ralfsglue",
+        )
+        mock_get_tables = mocker.patch.object(
+            sc._data_source_api, "_get_tables", return_value=[]
+        )
+
+        # Act
+        sc.get_tables()
+
+        # Assert
+        mock_get_tables.assert_called_once_with(sc, "ralfsglue")
+
+    def test_get_tables_explicit_database_overrides_default(self, mocker):
+        # Arrange
+        sc = storage_connector.GlueConnector(
+            id=2,
+            name="test_glue",
+            featurestore_id=67,
+            database="ralfsglue",
+        )
+        mock_get_tables = mocker.patch.object(
+            sc._data_source_api, "_get_tables", return_value=[]
+        )
+
+        # Act
+        sc.get_tables("otherdb")
+
+        # Assert
+        mock_get_tables.assert_called_once_with(sc, "otherdb")
+
+    def test_get_tables_without_database_raises(self):
+        # Arrange — no database on the connector and none passed.
+        sc = storage_connector.GlueConnector(
+            id=2, name="test_glue", featurestore_id=67
+        )
+
+        # Act & Assert
+        with pytest.raises(ValueError, match="Database name is required for Glue"):
+            sc.get_tables()
+
 
 class TestUnityCatalogConnector:
     def test_from_response_json(self, backend_fixtures):
