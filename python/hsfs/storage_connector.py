@@ -4595,19 +4595,31 @@ class RestConnector(StorageConnector):
 class GlueConnector(StorageConnector):
     """The Glue storage connector integrates with the AWS Glue Data Catalog.
 
-    The connector points at a Glue database whose tables are Apache Iceberg
-    tables physically stored on Amazon S3.
-    Reads and writes go to the table's S3 location, so the connector provides
-    the same S3 credentials (`access_key`, `secret_key`, `session_token`,
-    `region`) that the [`S3Connector`][hsfs.storage_connector.S3Connector]
-    does, and Hopsworks reuses the S3 setup to access the data.
+    The connector points at a Glue database backed by Amazon S3.
+    Data always lives on S3, so the connector provides the same S3 credentials
+    (`access_key`, `secret_key`, `session_token`, `region`) that the
+    [`S3Connector`][hsfs.storage_connector.S3Connector] does.
+    This works for any data format — Apache Iceberg, Delta Lake, Apache Hudi, as
+    well as plain file formats such as `csv` and `parquet`.
 
-    When writing through the Iceberg Spark or PyIceberg catalog (by passing the
-    `iceberg.catalog` write option), the connector also supplies sensible Glue
-    catalog defaults — `catalog-impl` set to AWS Glue and the `warehouse` and
-    `client.region` properties — so the table is registered in the Glue Data
-    Catalog while the data stays on S3.
-    See [`GlueConnector.catalog_options`][hsfs.storage_connector.GlueConnector.catalog_options].
+    How the Glue Data Catalog itself is used depends on the format:
+
+    - Iceberg: the catalog owns the table's current-metadata pointer, so reads
+      and writes are mediated by the catalog (the table is addressed by
+      `<database>.<table>`).
+    - Delta and Hudi: the on-path transaction log or timeline stays
+      authoritative; the catalog is a discoverability mirror that is registered
+      on create and synced on write so external engines (Athena, EMR, ...) can
+      find the table by name.
+    - Plain file formats (`csv`, `parquet`, ...): the connector is used only for
+      S3 access; nothing is registered in the catalog.
+
+    For direct Spark or PyIceberg access outside the feature group APIs, the
+    connector supplies the matching catalog properties; see
+    [`GlueConnector.catalog_options`][hsfs.storage_connector.GlueConnector.catalog_options]
+    (Spark) and
+    [`GlueConnector.pyiceberg_catalog_options`][hsfs.storage_connector.GlueConnector.pyiceberg_catalog_options]
+    (PyIceberg).
 
     Note: Feature group path is optional when the Glue database has a location.
         When creating a feature group from this connector and the Glue database has a location, the feature group path is generated automatically by appending the new table to that database location, so no path needs to be set.
