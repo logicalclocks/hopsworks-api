@@ -200,7 +200,7 @@ class HudiEngine:
         from hsfs.engine import _get_type
 
         is_spark = _get_type() == "spark"
-        glue = GlueCatalog.for_feature_group(self._feature_group)
+        glue = GlueCatalog._for_feature_group(self._feature_group)
         hive_sync = is_spark and (
             self._feature_group.data_source.storage_connector is None
             or glue is not None
@@ -216,7 +216,7 @@ class HudiEngine:
             # and table; the on-path Hudi timeline stays authoritative.
             sync_db, sync_table = glue.database_and_table
             sync_mode = self.HUDI_HIVE_SYNC_MODE_GLUE_VAL
-            glue.set_jvm_credentials(self._spark_context)
+            glue._set_jvm_credentials(self._spark_context)
 
         hudi_options = {
             self.HUDI_KEY_GENERATOR_OPT_KEY: self.HUDI_COMPLEX_KEY_GENERATOR_OPT_VAL,

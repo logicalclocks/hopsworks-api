@@ -492,13 +492,13 @@ class DeltaEngine:
         """
         from hsfs.core.glue_catalog import GlueCatalog
 
-        glue = GlueCatalog.for_feature_group(self._feature_group)
+        glue = GlueCatalog._for_feature_group(self._feature_group)
         if glue is None or self._spark_context is None:
             return
 
         # Configure a Glue-backed Delta catalog on the session (credentials +
         # spark.sql.catalog.<name>.*), then register the table by location.
-        glue.configure_spark_session(
+        glue._configure_spark_session(
             self._spark_session, self._spark_context, self.DELTA_GLUE_CATALOG_IMPL
         )
 

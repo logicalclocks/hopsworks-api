@@ -356,7 +356,7 @@ class IcebergEngine:
 
     def _glue_catalog(self) -> glue_catalog.GlueCatalog | None:
         """Return the feature group's Glue catalog binding, or None if it is not Glue-backed."""
-        return glue_catalog.GlueCatalog.for_feature_group(self._feature_group)
+        return glue_catalog.GlueCatalog._for_feature_group(self._feature_group)
 
     def _require_absolute_location(self) -> str:
         """Return the feature group's location, requiring it to be an absolute URI.
@@ -395,7 +395,7 @@ class IcebergEngine:
         Returns:
             The catalog-qualified table name.
         """
-        glue.configure_spark_session(
+        glue._configure_spark_session(
             self._spark_session, self._spark_context, self.ICEBERG_SPARK_CATALOG_IMPL
         )
         return glue.qualified_name
@@ -421,7 +421,7 @@ class IcebergEngine:
         if glue is None:
             return write_options
 
-        return glue.iceberg_write_options(
+        return glue._iceberg_write_options(
             write_options,
             catalog_option=self.ICEBERG_CATALOG_OPTION,
             identifier_option=self.ICEBERG_CATALOG_TABLE_IDENTIFIER_OPTION,
@@ -525,7 +525,7 @@ class IcebergEngine:
         glue = self._glue_catalog()
         if glue is not None:
             # The Glue metadata client authenticates via the JVM SDK chain.
-            glue.set_jvm_credentials(self._spark_context)
+            glue._set_jvm_credentials(self._spark_context)
         self._configure_spark_catalog(catalog_name, catalog_properties)
 
         qualified = f"{catalog_name}.{identifier}"
@@ -1368,7 +1368,7 @@ class IcebergEngine:
         glue = self._glue_catalog()
         create_location = None
         if glue is not None:
-            catalog_properties = glue.pyiceberg_catalog_properties()
+            catalog_properties = glue._pyiceberg_catalog_properties()
             # Register the table at the feature group's own S3 location instead
             # of letting PyIceberg derive it from the catalog warehouse, which
             # would place a new table at a wrong (possibly local) path.

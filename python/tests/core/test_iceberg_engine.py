@@ -275,7 +275,7 @@ class TestIcebergEngine:
         fg.storage_connector = connector
         fg.data_source.database = "ralfsglue"
         fg.data_source.table = "fg_1"
-        glue = GlueCatalog.for_feature_group(fg)
+        glue = GlueCatalog._for_feature_group(fg)
 
         # Act & Assert — warehouse is the root, identifier uses the data source.
         assert glue.warehouse == "s3://ralfsbucket/iceberg-warehouse"

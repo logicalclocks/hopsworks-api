@@ -49,7 +49,7 @@ class GlueCatalog:
     Holds the feature group and its Glue connector and derives the catalog name,
     database, table and warehouse from them.
     Obtain one with
-    [`GlueCatalog.for_feature_group`][hsfs.core.glue_catalog.GlueCatalog.for_feature_group],
+    [`GlueCatalog._for_feature_group`][hsfs.core.glue_catalog.GlueCatalog._for_feature_group],
     which returns `None` for feature groups that are not Glue-backed.
     """
 
@@ -58,7 +58,7 @@ class GlueCatalog:
         self._connector = connector
 
     @classmethod
-    def for_feature_group(cls, feature_group: FeatureGroup) -> GlueCatalog | None:
+    def _for_feature_group(cls, feature_group: FeatureGroup) -> GlueCatalog | None:
         """Return a `GlueCatalog` for the feature group, or None if it is not Glue-backed.
 
         Parameters:
@@ -144,7 +144,7 @@ class GlueCatalog:
             return location[: location.index(suffix)]
         return location
 
-    def catalog_properties(self) -> dict[str, str]:
+    def _catalog_properties(self) -> dict[str, str]:
         """Return the Spark Iceberg catalog properties for the connector, warehouse included.
 
         Returns:
@@ -152,19 +152,19 @@ class GlueCatalog:
         """
         return self._connector.catalog_options(warehouse=self.warehouse)
 
-    def pyiceberg_catalog_properties(self) -> dict[str, str]:
+    def _pyiceberg_catalog_properties(self) -> dict[str, str]:
         """Return the PyIceberg catalog properties for the connector, warehouse included.
 
         PyIceberg uses a different property schema than the Iceberg Spark
         connector, so this is not interchangeable with
-        [`catalog_properties`][hsfs.core.glue_catalog.GlueCatalog.catalog_properties].
+        [`_catalog_properties`][hsfs.core.glue_catalog.GlueCatalog._catalog_properties].
 
         Returns:
             The connector's PyIceberg catalog options with the warehouse root applied.
         """
         return self._connector.pyiceberg_catalog_options(warehouse=self.warehouse)
 
-    def set_jvm_credentials(self, spark_context) -> None:
+    def _set_jvm_credentials(self, spark_context) -> None:
         """Push the connector's AWS credentials into the driver JVM's SDK system properties.
 
         The Glue metadata client authenticates through the AWS SDK default
@@ -201,7 +201,7 @@ class GlueCatalog:
             jvm.java.lang.System.setProperty("aws.region", connector.region)
         _logger.debug("Set AWS JVM system properties for the Glue catalog client")
 
-    def configure_spark_session(
+    def _configure_spark_session(
         self,
         spark_session,
         spark_context,
@@ -222,10 +222,10 @@ class GlueCatalog:
             default_catalog_impl: The catalog implementation class to use when none is configured.
             catalog_properties: The catalog properties to apply; defaults to the connector's catalog options.
         """
-        self.set_jvm_credentials(spark_context)
+        self._set_jvm_credentials(spark_context)
 
         properties = dict(
-            self.catalog_properties()
+            self._catalog_properties()
             if catalog_properties is None
             else catalog_properties
         )
@@ -238,7 +238,7 @@ class GlueCatalog:
         for prop, value in properties.items():
             spark_session.conf.set(f"{base_key}.{prop}", value)
 
-    def iceberg_write_options(
+    def _iceberg_write_options(
         self,
         write_options: dict[str, Any],
         catalog_option: str,
@@ -263,7 +263,7 @@ class GlueCatalog:
         write_options = dict(write_options)
         write_options[catalog_option] = self.catalog_name
         write_options[identifier_option] = self.identifier
-        for key, value in self.catalog_properties().items():
+        for key, value in self._catalog_properties().items():
             write_options[f"{property_prefix}{key}"] = value
         _logger.debug(
             f"Routing Glue feature group {self._feature_group.name} "
