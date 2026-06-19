@@ -509,6 +509,14 @@ class StorageConnector(ABC):
                         "explicit `database` to get_tables()."
                     )
                 database = self.database
+            elif self.type == StorageConnector.GLUE:
+                if not self.database:
+                    raise ValueError(
+                        "Database name is required for Glue connectors. "
+                        "Set a database on the connector or pass an "
+                        "explicit `database` to get_tables()."
+                    )
+                database = self.database
             elif self.type in [StorageConnector.S3, StorageConnector.GCS]:
                 pass
             else:
