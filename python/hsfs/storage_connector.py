@@ -4608,6 +4608,17 @@ class GlueConnector(StorageConnector):
     `client.region` properties — so the table is registered in the Glue Data
     Catalog while the data stays on S3.
     See [`GlueConnector.catalog_options`][hsfs.storage_connector.GlueConnector.catalog_options].
+
+    Note: Feature group path is optional when the Glue database has a location.
+        When creating a feature group from this connector and the Glue database has a location, the feature group path is generated automatically by appending the new table to that database location, so no path needs to be set.
+        Otherwise, the path must be set explicitly on the data source, for example:
+
+        ```python
+        ds = fs.get_data_source("glue")
+        ds.path = "s3://mybucket/iceberg-warehouse/myglue.db/fg_1/"
+        ```
+
+        An explicitly set path always takes precedence over the generated one.
     """
 
     type = StorageConnector.GLUE
