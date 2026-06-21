@@ -1286,6 +1286,49 @@ class VectorServer:
             feature_vector.hopsworks_logging_metadata = logging_meta_data
         return feature_vector
 
+    def _scan_vectors(
+        self,
+        entry: dict[str, Any],
+        limit: int | None = None,
+        return_type: Literal["list", "pandas", "polars"] = "pandas",
+        force_rest_client: bool = False,
+        force_sql_client: bool = False,
+    ) -> pd.DataFrame | pl.DataFrame | list[dict[str, Any]]:
+        """Return the most-recent rows of the collect feature group for an entity.
+
+        Unlike `get_feature_vector`, which folds the collected rows into one array-typed
+        feature, `scan_vectors` returns the rows themselves (up to the feature view's collect
+        N, or `limit` if smaller), newest-first.
+
+        Parameters:
+            entry: Entity-key values, e.g. {"user_id": 123}.
+            limit: Optional client-side cap on the number of rows returned.
+            return_type: "pandas", "polars", or "list" (list of row dicts).
+            force_rest_client: Force the REST online client.
+            force_sql_client: Force the SQL online client.
+
+        Returns:
+            The collected rows in the requested format.
+        """
+        online_client_choice = self._which_client_and_ensure_initialised(
+            force_rest_client=force_rest_client, force_sql_client=force_sql_client
+        )
+        if online_client_choice == self.DEFAULT_REST_CLIENT:
+            raise exceptions.FeatureStoreException(
+                "scan_vectors is currently served by the SQL online client. Call it with "
+                "force_sql_client=True or set the feature view's default online client to 'sql'."
+            )
+        rows = self.sql_client._get_scan_rows(entry, limit=limit)
+        if return_type == "pandas":
+            return pd.DataFrame(rows)
+        if return_type == "polars":
+            if not HAS_POLARS:
+                raise exceptions.FeatureStoreException(
+                    "polars is not installed; use return_type='pandas' or 'list'."
+                )
+            return pl.DataFrame(rows)
+        return rows
+
     def _get_inference_helper(
         self,
         entry: dict[str, Any],

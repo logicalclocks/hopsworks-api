@@ -81,6 +81,9 @@ class Query:
         joins: list[join_module.Join] | None = None,
         filter: Filter | Logic | dict[str, Any] | None = None,
         limit: int | None = None,
+        collect: int | None = None,
+        collect_order_by: str | Feature | None = None,
+        collect_ascending: bool = False,
         **kwargs,
     ) -> None:
         self._feature_store_name = feature_store_name
@@ -92,6 +95,12 @@ class Query:
         self._joins = joins or []
         self._filter = Logic.from_response_json(filter)
         self._limit = limit
+        # Collect ("most recent N rows per entity"): set by collect(). The
+        # order-by column defaults to the feature group's event_time, resolved
+        # by the backend which owns the feature group metadata.
+        self._collect = collect
+        self._collect_order_by = collect_order_by
+        self._collect_ascending = collect_ascending
         # Lookback configuration for the feature view's joins; set only on the
         # root Query and emitted as the top-level `lookback` field on the wire.
         self._lookback: Lookback | None = None
@@ -731,10 +740,57 @@ class Query:
         self._limit = n
         return self
 
+    @public
+    def collect(
+        self,
+        n: int,
+        order_by: str | Feature | None = None,
+        ascending: bool = False,
+    ) -> Query:
+        """Collect the most recent `n` rows per entity for this query.
+
+        `collect` is the user-facing name for the "limit with order by"
+        transformation: it returns up to `n` rows per entity, ordered by the
+        feature group's event-time column.
+        When the query is used to define a feature view, each collected feature
+        becomes a list-typed feature, served identically offline (training data)
+        and online (`get_feature_vector(s)`).
+
+        `collect` is not terminal: it returns the query so you can keep building,
+        for example joining in features from other feature groups.
+
+        Example:
+            ```python
+            fg = fs.get_feature_group("events_fg")
+            query = fg.select_all().filter(fg.event_type == "x").collect(100)
+            ```
+
+        Parameters:
+            n: Maximum number of rows to collect per entity.
+            order_by: Column to order by, defaults to the feature group's event_time.
+            ascending: Order ascending instead of descending (most recent first).
+
+        Returns:
+            The query object with the applied collect.
+        """
+        if n is None or n <= 0:
+            raise ValueError("collect(n): n must be a positive integer")
+        self._collect = n
+        self._collect_order_by = order_by
+        self._collect_ascending = ascending
+        return self
+
     def json(self) -> str:
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self) -> dict[str, Any]:
+        # collect_order_by may be a Feature or a column-name string; the backend
+        # expects a column name, so serialize a Feature to its name.
+        collect_order_by = (
+            self._collect_order_by.name
+            if hasattr(self._collect_order_by, "name")
+            else self._collect_order_by
+        )
         payload: dict[str, Any] = {
             "featureStoreName": self._feature_store_name,
             "featureStoreId": self._feature_store_id,
@@ -745,6 +801,9 @@ class Query:
             "joins": self._joins,
             "filter": self._filter,
             "limit": self._limit,
+            "collect": self._collect,
+            "collectOrderBy": collect_order_by,
+            "collectAscending": self._collect_ascending,
             "hiveEngine": self._python_engine,
         }
         if self._lookback is not None:
@@ -788,6 +847,9 @@ class Query:
             ],
             filter=json_decamelized.get("filter", None),
             limit=json_decamelized.get("limit", None),
+            collect=json_decamelized.get("collect", None),
+            collect_order_by=json_decamelized.get("collect_order_by", None),
+            collect_ascending=json_decamelized.get("collect_ascending", False),
         )
         # Restore Lookback from the wire payload so cross-process consumers
         # that reconstruct a Query from JSON keep the lookback. Local-process

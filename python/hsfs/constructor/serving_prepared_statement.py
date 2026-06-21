@@ -33,6 +33,7 @@ class ServingPreparedStatement:
         | None = None,
         query_online: str | None = None,
         prefix: str | None = None,
+        collect_n: int | None = None,
         type: str | None = None,
         items: list[dict[str, Any]] | None = None,
         count: int | None = None,
@@ -45,6 +46,9 @@ class ServingPreparedStatement:
         self.prepared_statement_parameters = prepared_statement_parameters
         self._query_online = query_online
         self._prefix = prefix
+        # collect ("most recent N rows per entity"): when set, this statement returns up to
+        # collect_n rows per entity to fold into list-typed features (see online_store_sql_engine).
+        self._collect_n = collect_n
 
     @classmethod
     def from_response_json(
@@ -102,6 +106,10 @@ class ServingPreparedStatement:
     @property
     def prefix(self) -> str | None:
         return self._prefix
+
+    @property
+    def collect_n(self) -> int | None:
+        return self._collect_n
 
     @feature_group_id.setter
     def feature_group_id(self, feature_group_id: int | None) -> None:

@@ -13,6 +13,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+import json
 import logging
 import warnings
 
@@ -822,6 +823,80 @@ class TestQuery:
 
         # The query sent to the backend should have _limit == 7 during _prep_read
         assert captured_limit[0] == 7
+
+    def test_collect_sets_state(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        # Act
+        q = TestQuery.fg1.select_all().collect(100)
+
+        # Assert
+        assert q._collect == 100
+        assert q._collect_order_by is None
+        assert q._collect_ascending is False
+
+    def test_collect_returns_self(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        # Act
+        q = TestQuery.fg1.select_all()
+        result = q.collect(5)
+
+        # Assert
+        assert result is q
+
+    def test_collect_with_order_by_and_ascending(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        # Act
+        q = TestQuery.fg1.select_all().collect(50, order_by="ts", ascending=True)
+
+        # Assert
+        assert q._collect == 50
+        assert q._collect_order_by == "ts"
+        assert q._collect_ascending is True
+
+    def test_collect_rejects_non_positive(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        with pytest.raises(ValueError):
+            TestQuery.fg1.select_all().collect(0)
+
+    def test_collect_to_dict(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        # Act
+        d = TestQuery.fg1.select_all().collect(100).to_dict()
+
+        # Assert
+        assert d["collect"] == 100
+        assert d["collectOrderBy"] is None
+        assert d["collectAscending"] is False
+
+    def test_collect_to_dict_order_by_feature_serialized_to_name(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        # Act: a Feature order_by must serialize to its column name for the backend
+        d = (
+            TestQuery.fg1.select_all()
+            .collect(100, order_by=TestQuery.fg1["label"])
+            .to_dict()
+        )
+
+        # Assert
+        assert d["collectOrderBy"] == TestQuery.fg1["label"].name
+
+    def test_collect_round_trip(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        # Act: serialize to wire JSON and back preserves collect state
+        original = TestQuery.fg1.select_all().collect(25, order_by="ts", ascending=True)
+        restored = query.Query.from_response_json(json.loads(original.json()))
+
+        # Assert
+        assert restored._collect == 25
+        assert restored._collect_order_by == "ts"
+        assert restored._collect_ascending is True
 
 
 class TestQueryRead:

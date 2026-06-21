@@ -54,6 +54,10 @@ _logger = logging.getLogger(__name__)
 
 
 class OnlineStoreSqlClient:
+    # Alias of the ROW_NUMBER column the backend adds to a collect (most recent N rows per
+    # entity) prepared statement. It is dropped when folding the N rows into list features.
+    COLLECT_RANK_ALIAS = "hopsworks_collect_rank"
+
     BATCH_HELPER_KEY = "batch_helper_column"
     SINGLE_HELPER_KEY = "single_helper_column"
     BATCH_VECTOR_KEY = "batch_feature_vectors"
@@ -84,6 +88,8 @@ class OnlineStoreSqlClient:
 
         self._prefix_by_serving_index = None
         self._pkname_by_serving_index = None
+        # prepared_statement_index -> collect N (None when the statement is a regular point read)
+        self._collect_n_by_serving_index: dict[int, int] = {}
         self._serving_key_by_serving_index: dict[str, ServingKey] = {}
         self._serving_keys: set[ServingKey] = set(serving_keys or [])
 
@@ -229,6 +235,11 @@ class OnlineStoreSqlClient:
         self.prefix_by_serving_index = {
             statement.prepared_statement_index: statement.prefix
             for statement in prepared_statements
+        }
+        self._collect_n_by_serving_index = {
+            statement.prepared_statement_index: statement.collect_n
+            for statement in prepared_statements
+            if statement.collect_n is not None
         }
         self._feature_name_order_by_psp = {
             statement.prepared_statement_index: {
@@ -410,10 +421,41 @@ class OnlineStoreSqlClient:
             entries, self.parametrised_prepared_statements[self.BATCH_HELPER_KEY]
         )
 
+    def _get_scan_rows(
+        self, entry: dict[str, Any], limit: int | None = None
+    ) -> list[dict[str, Any]]:
+        """Return the most-recent rows of the collect feature group(s) for one entity.
+
+        This is the row-level (un-folded) view of the collect operation used by
+        `FeatureView.scan_vectors`: the online query already orders by the collect order
+        column and caps at the feature view's collect N, so this returns up to N rows per
+        collect feature group, newest-first, with the internal rank column dropped.
+
+        Parameters:
+            entry: Entity-key values (e.g. {"user_id": 123}).
+            limit: Optional client-side cap on the number of rows returned (<= the FV collect N).
+
+        Returns:
+            A list of row dicts (feature name -> value), newest-first.
+        """
+        rows = self._single_vector_result(
+            entry,
+            self.parametrised_prepared_statements[self.SINGLE_VECTOR_KEY],
+            raw_rows=True,
+        )
+        return rows[:limit] if limit is not None else rows
+
     def _single_vector_result(
-        self, entry: dict[str, Any], prepared_statement_objects: dict[int, sql.text]
-    ) -> dict[str, Any]:
-        """Retrieve single vector with parallel queries using aiomysql engine."""
+        self,
+        entry: dict[str, Any],
+        prepared_statement_objects: dict[int, sql.text],
+        raw_rows: bool = False,
+    ) -> dict[str, Any] | list[dict[str, Any]]:
+        """Retrieve single vector with parallel queries using aiomysql engine.
+
+        When `raw_rows` is True, return the collect feature group's rows as a list of dicts
+        (the un-folded scan result) instead of the assembled single feature vector.
+        """
         if all(isinstance(val, list) for val in entry.values()):
             raise ValueError(
                 "Entry is expected to be single value per primary key. "
@@ -467,7 +509,35 @@ class OnlineStoreSqlClient:
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(f"Retrieved feature vectors: {results_dict}")
             _logger.debug("Constructing serving vector from results")
+        if raw_rows:
+            # Return the un-folded rows of the collect statement(s) for this entity,
+            # newest-first, with the internal rank column dropped. Used by scan_vectors.
+            scan_rows: list[dict[str, Any]] = []
+            for key in results_dict:
+                if self._collect_n_by_serving_index.get(key) is None:
+                    continue
+                for row in results_dict[key]:
+                    scan_rows.append(
+                        {
+                            col: val
+                            for col, val in dict(row).items()
+                            if col != self.COLLECT_RANK_ALIAS
+                        }
+                    )
+            return scan_rows
+
         for key in results_dict:
+            collect_n = self._collect_n_by_serving_index.get(key)
+            if collect_n is not None:
+                # collect feature group: fold the up-to-N rows into list-typed features
+                pk_names = {
+                    sk.feature_name
+                    for sk in self.serving_key_by_serving_index.get(key, [])
+                }
+                serving_vector.update(
+                    self._fold_collect_rows(results_dict[key], pk_names)
+                )
+                continue
             for row in results_dict[key]:
                 if _logger.isEnabledFor(logging.DEBUG):
                     _logger.debug(f"Processing row: {row} for prepared statement {key}")
@@ -475,6 +545,31 @@ class OnlineStoreSqlClient:
                 serving_vector.update(result_dict)
 
         return serving_vector
+
+    def _fold_collect_rows(self, rows: list[Any], pk_names: set[str]) -> dict[str, Any]:
+        """Fold the up-to-N rows of a collect feature group into one feature dict.
+
+        Entity-key columns stay scalar (the entity id, identical across rows); every other
+        column becomes a list, ordered most-recent-first as returned by the query, with the
+        hopsworks_collect_rank helper column dropped.
+
+        Nulls are PRESERVED so that all collected columns stay row-aligned: element i of every
+        list refers to the same collected event (v2 Design Contract C1, fixing the prior
+        per-column null-skip that desynced columns). The v2 target shape is a single
+        array<struct> feature per collect feature group; that requires the backend collected-
+        feature schema and is the remaining reimplementation. Until then, columns are kept
+        aligned here so no consumer sees mismatched-length lists.
+        """
+        folded: dict[str, Any] = {}
+        for row in rows:
+            for col, val in dict(row).items():
+                if col == self.COLLECT_RANK_ALIAS:
+                    continue
+                if col in pk_names:
+                    folded[col] = val
+                else:
+                    folded.setdefault(col, []).append(val)
+        return folded
 
     def _batch_vector_results(
         self,
@@ -561,19 +656,35 @@ class OnlineStoreSqlClient:
                     f"Use prefix from prepare statement because prefix from serving key is collision adjusted {prefix_features}."
                 )
                 _logger.debug("iterate over results by index of the prepared statement")
-            for row in parallel_results[prepared_statement_index]:
-                if _logger.isEnabledFor(logging.DEBUG):
-                    _logger.debug(f"Processing row: {row}")
-                row_dict = dict(row)
-                # can primary key be complex feature? No, not supported.
-                result_dict = row_dict
-                if _logger.isEnabledFor(logging.DEBUG):
-                    _logger.debug(
-                        f"Add result to statement results: {self._get_result_key(prefix_features, row_dict)} : {result_dict}"
+            collect_n = self._collect_n_by_serving_index.get(prepared_statement_index)
+            if collect_n is not None:
+                # collect feature group: group the up-to-N rows per entity, then fold each
+                # group into list-typed features keyed by the entity's serving key.
+                grouped: dict[Any, list[dict[str, Any]]] = {}
+                for row in parallel_results[prepared_statement_index]:
+                    row_dict = dict(row)
+                    grouped.setdefault(
+                        self._get_result_key(prefix_features, row_dict), []
+                    ).append(row_dict)
+                pk_names = set(prefix_features)
+                for result_key, group_rows in grouped.items():
+                    statement_results[result_key] = self._fold_collect_rows(
+                        group_rows, pk_names
                     )
-                statement_results[self._get_result_key(prefix_features, row_dict)] = (
-                    result_dict
-                )
+            else:
+                for row in parallel_results[prepared_statement_index]:
+                    if _logger.isEnabledFor(logging.DEBUG):
+                        _logger.debug(f"Processing row: {row}")
+                    row_dict = dict(row)
+                    # can primary key be complex feature? No, not supported.
+                    result_dict = row_dict
+                    if _logger.isEnabledFor(logging.DEBUG):
+                        _logger.debug(
+                            f"Add result to statement results: {self._get_result_key(prefix_features, row_dict)} : {result_dict}"
+                        )
+                    statement_results[
+                        self._get_result_key(prefix_features, row_dict)
+                    ] = result_dict
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug(
                     f"Add partial results to batch results: {statement_results}"
