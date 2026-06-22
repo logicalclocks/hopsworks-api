@@ -59,10 +59,23 @@
              Spark image already ships (see docker-images/base-image/
              spark-feature-pipeline/spark_install.sh). -->
         <dependency>
-            <groupId>org.apache.hudi</groupId>
+            <groupId>io.hops.hudi</groupId>
             <artifactId>hudi-utilities_2.12</artifactId>
             <version>${hudi.version}</version>
             <scope>provided</scope>
+            <!-- hudi-spark-common_2.12:1.0.2.1 is published corrupt on archiva
+                 (truncated jar, missing zip end-of-central-directory record),
+                 which breaks javac when it scans the compile classpath. Nothing
+                 in this module references it (PartitionedByTransformer only uses
+                 the Transformer interface, TypedProperties, and Spark SQL types),
+                 and it is provided at runtime by the Spark image, so exclude it.
+                 Drop this exclusion once the artifact is re-deployed correctly. -->
+            <exclusions>
+                <exclusion>
+                    <groupId>io.hops.hudi</groupId>
+                    <artifactId>hudi-spark-common_2.12</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <!-- Spark SQL types referenced by PartitionedByTransformer (Dataset,
