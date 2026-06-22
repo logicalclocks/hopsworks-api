@@ -307,9 +307,7 @@ class TestGlueConnector:
 
     def test_get_tables_without_database_raises(self):
         # Arrange — no database on the connector and none passed.
-        sc = storage_connector.GlueConnector(
-            id=2, name="test_glue", featurestore_id=67
-        )
+        sc = storage_connector.GlueConnector(id=2, name="test_glue", featurestore_id=67)
 
         # Act & Assert
         with pytest.raises(ValueError, match="Database name is required for Glue"):
