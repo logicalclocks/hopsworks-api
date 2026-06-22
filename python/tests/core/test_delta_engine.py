@@ -172,7 +172,7 @@ class TestDeltaEngine:
         # Assert
         # env should be set
         assert os.environ["PEMS_DIR"] == "/tmp/pems"
-        assert os.environ["HOPSFS_CLOUD_DATANODE_HOSTNAME_OVERRIDE"] == "dn.example.com"
+        assert os.environ["HOPSFS_CLIENT_REMOTE_ACCESS_ENABLED"] == "true"
         assert os.environ["LIBHDFS_DEFAULT_USER"] == f"{cl.project_name}__user1"
 
     def test_setup_delta_rs_external_no_datanode_lb(self, mocker):

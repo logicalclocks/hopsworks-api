@@ -365,21 +365,9 @@ class DeltaEngine:
         _client = client._get_instance()
         if _client._is_external():
             _logger.debug("Setting up delta-rs for external client")
+            os.environ["HOPSFS_CLIENT_REMOTE_ACCESS_ENABLED"] = "true"
             os.environ["PEMS_DIR"] = _client._get_certs_folder()
             _logger.debug(f"PEMS_DIR set to {os.environ['PEMS_DIR']}")
-            try:
-                datanode_ip = self._variable_api._get_loadbalancer_external_domain(
-                    "datanode"
-                )
-                _logger.debug(
-                    f"Setting HOPSFS_CLOUD_DATANODE_HOSTNAME_OVERRIDE to {datanode_ip}"
-                )
-                os.environ["HOPSFS_CLOUD_DATANODE_HOSTNAME_OVERRIDE"] = datanode_ip
-            except FeatureStoreException as e:
-                raise FeatureStoreException(
-                    "Failed to write to delta table in external cluster. Make sure datanode load balancer has been setup on the cluster."
-                ) from e
-
             user_name = self._project_api._get_user_info().get("username", None)
 
             if not user_name:
