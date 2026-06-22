@@ -11,6 +11,7 @@ like ``--help`` measurably slow (~2 s+); deferring keeps them snappy.
 from __future__ import annotations
 
 import importlib
+import sys
 from typing import TYPE_CHECKING
 
 import click
@@ -46,6 +47,7 @@ _LAZY_SUBCOMMANDS: dict[str, str] = {
     "trino": "hopsworks.cli.commands.trino:trino_group",
     "sql": "hopsworks.cli.commands.trino:trino_query",  # top-level alias of `trino query`
     "context": "hopsworks.cli.commands.context:context_cmd",
+    "skills": "hopsworks.cli.commands.skills:skills_group",
     "init": "hopsworks.cli.commands.init:init_cmd",
     "update": "hopsworks.cli.commands.update:update_cmd",
 }
@@ -66,23 +68,40 @@ def _json_eager_callback(
     return value
 
 
-def _inject_json_option(cmd: click.Command) -> None:
-    """Recursively add ``--json`` to *cmd* and every nested subcommand.
+def _verify_eager_callback(
+    ctx: click.Context, _param: click.Parameter, value: bool | None
+) -> bool | None:
+    """Apply a ``--verify/--no-verify`` flag parsed at any command level.
 
-    Click only honours the ``--json`` flag at the level it was declared on. The
-    root ``cli`` group already has it (so ``hops --json fg list`` works), but
-    callers — especially LLM-driven tools that compose commands left-to-right
-    — naturally write ``hops fg list --json``. Walking the loaded command's
-    subtree on first dispatch and appending an eager ``--json`` to every node
-    that doesn't already have one makes both forms work without touching
-    every command file. ``expose_value=False`` keeps the existing leaf
-    callbacks (which don't take a ``json_flag`` kwarg) source-compatible; the
-    eager callback flips :func:`output.set_json_mode` before the leaf runs.
+    The root command resolves the config before subcommands parse, so a flag
+    written after the subcommand (``hops sql ... --no-verify``) cannot reach
+    :func:`config.load`. Instead it is applied here by overriding the
+    already-resolved config that :mod:`hopsworks.cli.session` reads at login.
+    ``None`` means neither flag was passed, so the resolved value stands.
     """
-    already_has_json = any(
-        "--json" in (getattr(p, "opts", None) or []) for p in cmd.params
-    )
-    if not already_has_json:
+    if value is not None:
+        cfg = ctx.ensure_object(dict).get("config")
+        if cfg is not None:
+            cfg.hostname_verification = value
+            cfg.hostname_verification_explicit = True
+    return value
+
+
+def _inject_global_options(cmd: click.Command) -> None:
+    """Recursively add the global ``--json`` and ``--verify/--no-verify`` flags.
+
+    Click only honours a flag at the level it was declared on. The root ``cli``
+    group already has both (so ``hops --json fg list`` works), but callers —
+    especially LLM-driven tools that compose commands left-to-right — naturally
+    write ``hops fg list --json`` or ``hops sql ... --no-verify``. Walking the
+    loaded command's subtree on first dispatch and appending the flags to every
+    node that does not already declare them makes both forms work without
+    touching every command file. ``expose_value=False`` keeps the existing leaf
+    callbacks (which take neither kwarg) source-compatible; the eager callbacks
+    run before the leaf, flipping JSON mode and the resolved hostname-verification
+    setting respectively.
+    """
+    if not any("--json" in (getattr(p, "opts", None) or []) for p in cmd.params):
         cmd.params.append(
             click.Option(
                 ["--json"],
@@ -93,12 +112,26 @@ def _inject_json_option(cmd: click.Command) -> None:
                 help="Output as JSON (machine-readable; for LLMs and scripts).",
             )
         )
-    # ``LazyGroup`` does its own json injection on demand — recursing into it
-    # would force-load every subcommand and defeat the lazy import. Recurse
-    # only for already-loaded ordinary groups.
+    if not any("--verify" in (getattr(p, "opts", None) or []) for p in cmd.params):
+        cmd.params.append(
+            click.Option(
+                ["--verify/--no-verify"],
+                default=None,
+                expose_value=False,
+                is_eager=True,
+                callback=_verify_eager_callback,
+                help=(
+                    "Verify the Hopsworks TLS certificate; --no-verify skips "
+                    "verification for self-signed / IP-SAN-mismatched certs."
+                ),
+            )
+        )
+    # ``LazyGroup`` does its own injection on demand — recursing into it would
+    # force-load every subcommand and defeat the lazy import. Recurse only for
+    # already-loaded ordinary groups.
     if isinstance(cmd, click.Group) and not isinstance(cmd, LazyGroup):
         for sub in cmd.commands.values():
-            _inject_json_option(sub)
+            _inject_global_options(sub)
 
 
 class LazyGroup(click.Group):
@@ -109,9 +142,9 @@ class LazyGroup(click.Group):
     --help), keeping cold paths (``hops --help``, ``hops setup``) free of
     SDK / pandas / pyarrow import cost.
 
-    Loaded commands have :func:`_inject_json_option` applied to them so the
-    ``--json`` flag works at every nesting level — exactly the behaviour the
-    eager pre-load used to provide.
+    Loaded commands have :func:`_inject_global_options` applied to them so the
+    ``--json`` and ``--verify/--no-verify`` flags work at every nesting level —
+    exactly the behaviour the eager pre-load used to provide.
     """
 
     def __init__(
@@ -135,7 +168,7 @@ class LazyGroup(click.Group):
         module_path, _, attr = target.partition(":")
         module = importlib.import_module(module_path)
         cmd = getattr(module, attr)
-        _inject_json_option(cmd)
+        _inject_global_options(cmd)
         # Cache the loaded command so subsequent lookups (and Click's own
         # bookkeeping) reuse the same instance.
         self.commands[name] = cmd
@@ -154,15 +187,42 @@ class LazyGroup(click.Group):
 )
 @click.version_option(_VERSION, "-v", "--version", prog_name="hops")
 @click.option("--host", "host_flag", help="Hopsworks host URL (overrides config).")
-@click.option("--api-key", "api_key_flag", help="API key (overrides config).")
+@click.option(
+    "--api-key",
+    "api_key_flag",
+    help="API key (overrides config). Avoid in shared shells — a key in argv "
+    "is visible in the process list and shell history. Prefer the "
+    "HOPSWORKS_API_KEY env var or --api-key-stdin.",
+)
+@click.option(
+    "--api-key-stdin",
+    "api_key_stdin",
+    is_flag=True,
+    help="Read the API key from the first line of stdin instead of argv "
+    "(keeps the secret out of the process list and shell history).",
+)
 @click.option("--project", "project_flag", help="Project name (overrides config).")
+@click.option(
+    "--verify/--no-verify",
+    "verify_flag",
+    default=None,
+    help=(
+        "Verify the Hopsworks TLS certificate (hostname verification). Use "
+        "--no-verify to skip verification when a cluster serves a self-signed "
+        "or IP-SAN-mismatched certificate. Maps to the SDK's "
+        "hopsworks.login(hostname_verification=...); overridden by "
+        "HOPSWORKS_HOSTNAME_VERIFICATION when that env var is set."
+    ),
+)
 @click.option("--json", "json_flag", is_flag=True, help="Output as JSON (for LLMs).")
 @click.pass_context
 def cli(
     ctx: click.Context,
     host_flag: str | None,
     api_key_flag: str | None,
+    api_key_stdin: bool,
     project_flag: str | None,
+    verify_flag: bool | None,
     json_flag: bool,
 ) -> None:
     """Root ``hops`` command; child commands pull the resolved config via ``ctx.obj``.
@@ -171,15 +231,22 @@ def cli(
         ctx: Click context; we stash the resolved ``HopsConfig`` on ``ctx.obj``.
         host_flag: Value of ``--host`` if provided.
         api_key_flag: Value of ``--api-key`` if provided.
+        api_key_stdin: When True, read the API key from stdin.
         project_flag: Value of ``--project`` if provided.
+        verify_flag: True for ``--verify``, False for ``--no-verify``, None if neither was passed.
         json_flag: When True, every output helper switches to JSON mode.
     """
     output.set_json_mode(json_flag)
+    if api_key_stdin:
+        if api_key_flag:
+            raise click.UsageError("Pass --api-key or --api-key-stdin, not both.")
+        api_key_flag = sys.stdin.readline().strip() or None
     ctx.ensure_object(dict)
     ctx.obj["config"] = config.load(
         flag_host=host_flag,
         flag_api_key=api_key_flag,
         flag_project=project_flag,
+        flag_hostname_verification=verify_flag,
     )
 
 

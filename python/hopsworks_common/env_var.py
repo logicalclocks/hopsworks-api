@@ -42,6 +42,8 @@ class EnvVar:
         expand=None,
         items=None,
         count=None,
+        visibility=None,
+        project_id_scope=None,
         **kwargs,
     ):
         self._name = name
@@ -50,6 +52,8 @@ class EnvVar:
         self._secret_backed = secret_backed
         self._added_on = added_on
         self._updated_on = updated_on
+        self._visibility = visibility
+        self._project_id_scope = project_id_scope
         self._env_var_api = env_var_api.EnvVarsApi()
 
     @classmethod
@@ -85,6 +89,18 @@ class EnvVar:
 
     @public
     @property
+    def visibility(self):
+        """Visibility of the environment variable."""
+        return self._visibility
+
+    @public
+    @property
+    def project_id_scope(self):
+        """Project ID scope for project-shared environment variables."""
+        return self._project_id_scope
+
+    @public
+    @property
     def created(self):
         """Date when the environment variable was created."""
         return self._added_on
@@ -115,6 +131,8 @@ class EnvVar:
         data = {
             "name": self._name,
             "value": "***" if self._value is not None else None,
+            "visibility": self._visibility,
+            "project_id_scope": self._project_id_scope,
             "added_on": self._added_on,
             "updated_on": self._updated_on,
         }
@@ -137,4 +155,4 @@ class EnvVar:
     @public
     def get_url(self):
         """Get url to the environment variables page in Hopsworks."""
-        return util.get_hostname_replaced_url("/account/env-variables")
+        return util._get_hostname_replaced_url("/account/env-variables")

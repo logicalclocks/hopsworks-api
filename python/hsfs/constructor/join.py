@@ -46,9 +46,9 @@ class Join:
         **kwargs,
     ) -> None:
         self._query = query
-        self._on = util.parse_features(on)
-        self._left_on = util.parse_features(left_on)
-        self._right_on = util.parse_features(right_on)
+        self._on = util._parse_features(on)
+        self._left_on = util._parse_features(left_on)
+        self._right_on = util._parse_features(right_on)
         self._join_type = join_type or self.LEFT
         self._prefix = prefix
 

@@ -125,7 +125,7 @@ def create_fv_td(job_conf: dict[Any, Any]) -> None:
     training_helper_columns = user_write_options.get("training_helper_columns")
     primary_keys = user_write_options.get("primary_keys")
     event_time = user_write_options.get("event_time")
-    fv_engine.compute_training_dataset(
+    fv_engine._compute_training_dataset(
         feature_view_obj=fv,
         user_write_options=user_write_options,
         primary_keys=primary_keys,
@@ -137,7 +137,11 @@ def create_fv_td(job_conf: dict[Any, Any]) -> None:
 
 def compute_stats(job_conf: dict[Any, Any]) -> None:
     """
-    Compute/Update statistics on a feature group
+    Compute/Update statistics on a feature group.
+
+    When `end_commit_time` is present in job_conf (set by the backend from the
+    POST /compute query params), statistics are scoped to that commit so they
+    are persisted against the specific batch rather than over head.
     """
     feature_store = job_conf.pop("feature_store")
     fs = get_feature_store_handle(feature_store)
@@ -158,7 +162,14 @@ def compute_stats(job_conf: dict[Any, Any]) -> None:
             training_dataset_version=job_conf["td_version"],
         )
 
-    entity.compute_statistics()
+    end_commit_time = job_conf.get("end_commit_time")
+    if end_commit_time is not None and entity_type == "fg":
+        # Commit-scoped: read the FG as-of the commit and persist stats against it.
+        entity._statistics_engine.compute_and_save_statistics(
+            entity, feature_group_commit_id=int(end_commit_time)
+        )
+    else:
+        entity.compute_statistics()
 
 
 def ge_validate(job_conf: dict[Any, Any]) -> None:
@@ -207,7 +218,9 @@ def import_fg(job_conf: dict[Any, Any]) -> None:
     fg.insert(df)
 
 
-def run_feature_monitoring(job_conf: dict[str, str]) -> None:
+def run_feature_monitoring(
+    job_conf: dict[str, str], end_commit_time: int | None = None
+) -> None:
     """
     Run feature monitoring for a given entity (feature_group or feature_view)
     based on a feature monitoring configuration.
@@ -239,18 +252,18 @@ def run_feature_monitoring(job_conf: dict[str, str]) -> None:
     )
 
     try:
-        monitoring_config_engine.run_feature_monitoring(
+        monitoring_config_engine._run_feature_monitoring(
             entity=entity,
             config_name=job_conf["config_name"],
+            end_commit_time=end_commit_time,
         )
     except Exception as e:
-        config = monitoring_config_engine.get_feature_monitoring_configs(
+        config = monitoring_config_engine._get_feature_monitoring_configs(
             name=job_conf["config_name"]
         )
-        monitoring_config_engine._result_engine.save_feature_monitoring_result_with_exception(
-            config_id=config.id,
+        monitoring_config_engine._result_engine._save_with_exception(
+            feature_monitoring_config_id=config.id,
             job_name=config.job_name,
-            feature_name=config.feature_name,
         )
         raise e
 
@@ -278,7 +291,7 @@ def offline_fg_materialization(
 
     entity = fs.get_feature_group(name=job_conf["name"], version=job_conf["version"])
 
-    read_options = kafka_engine.get_kafka_config(
+    read_options = kafka_engine._get_kafka_config(
         entity.feature_store_id, {}, engine="spark"
     )
 
@@ -296,7 +309,7 @@ def offline_fg_materialization(
         starting_offset_string = None
 
     # get the current low watermark offsets for all partitions
-    low_offsets_string = kafka_engine.kafka_get_offsets(
+    low_offsets_string = kafka_engine._kafka_get_offsets(
         topic_name=entity._online_topic_name,
         feature_store_id=entity.feature_store_id,
         offline_write_options={},
@@ -313,7 +326,7 @@ def offline_fg_materialization(
     print(f"startingOffsets: {starting_offset_string}")
 
     # get ending offsets
-    ending_offset_string = kafka_engine.kafka_get_offsets(
+    ending_offset_string = kafka_engine._kafka_get_offsets(
         topic_name=entity._online_topic_name,
         feature_store_id=entity.feature_store_id,
         offline_write_options={},
@@ -357,7 +370,7 @@ def offline_fg_materialization(
     filtered_df = filtered_df.limit(limit)
 
     # deserialize dataframe so that it can be properly saved
-    deserialized_df = engine.get_instance()._deserialize_from_avro(entity, filtered_df)
+    deserialized_df = engine._get_instance()._deserialize_from_avro(entity, filtered_df)
 
     # de-duplicate records
     # timestamp cannot be relied on to order the records in case of duplicates, if they are produced together they would have the same timestamp.
@@ -419,7 +432,7 @@ def update_table_schema_fg(spark: SparkSession, job_conf: dict[Any, Any]) -> Non
     entity = fs.get_feature_group(name=job_conf["name"], version=job_conf["version"])
 
     entity.stream = False
-    engine.get_instance().update_table_schema(entity)
+    engine._get_instance()._update_table_schema(entity)
 
 
 def _build_offsets(initial_check_point_string: str):
@@ -517,7 +530,7 @@ if __name__ == "__main__":
             "compute_stats",
             "ge_validate",
             "import_fg",
-            "run_feature_monitoring",
+            "run_fm",
             "delta_vacuum_fg",
             "offline_fg_materialization",
             "update_table_schema_fg",
@@ -546,6 +559,23 @@ if __name__ == "__main__":
         help="Kafka offset to start consuming from",
     )
 
+    parser.add_argument(
+        "-end_commit_time",
+        type=int,
+        default=None,
+        help="Commit timestamp (ms) that triggered this feature monitoring job",
+    )
+    parser.add_argument(
+        "-start_commit_time",
+        type=int,
+        default=None,
+        help=(
+            "Optional lower bound commit timestamp (ms). Accepted for wire compatibility "
+            "with the statistics/compute endpoint; currently not propagated into the "
+            "monitoring window engine for INGESTION configs."
+        ),
+    )
+
     args = parser.parse_args()
     job_conf = read_job_conf(args.path)
 
@@ -563,8 +593,8 @@ if __name__ == "__main__":
             ge_validate(job_conf)
         elif args.op == "import_fg":
             import_fg(job_conf)
-        elif args.op == "run_feature_monitoring":
-            run_feature_monitoring(job_conf)
+        elif args.op == "run_fm":
+            run_feature_monitoring(job_conf, end_commit_time=args.end_commit_time)
         elif args.op == "delta_vacuum_fg":
             delta_vacuum_fg(spark, job_conf)
         elif args.op == "offline_fg_materialization":

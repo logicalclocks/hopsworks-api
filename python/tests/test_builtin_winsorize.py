@@ -21,6 +21,7 @@ from hsfs import engine as hopsworks_engine
 from hsfs import transformation_function
 from hsfs.builtin_transformations import winsorize
 from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
+from hsfs.core.transformation_execution_dag import TransformationExecutionDAG
 from hsfs.core.transformation_function_engine import TransformationFunctionEngine
 from hsfs.engine import python as python_engine
 from hsfs.transformation_function import TransformationType
@@ -48,11 +49,11 @@ def test_winsorize_default_thresholds():
     ]
 
     engine = python_engine.Engine()
-    hopsworks_engine.set_instance(engine=engine, engine_type="python")
+    hopsworks_engine._set_instance(engine=engine, engine_type="python")
 
     # Act
-    result = TransformationFunctionEngine.apply_transformation_functions(
-        transformation_functions=[tf], data=df
+    result = TransformationFunctionEngine._apply_transformation_functions(
+        execution_graph=TransformationExecutionDAG([tf]), data=df
     )
 
     # Assert - defaults clip at 1st and 99th percentiles (values 1 and 99)
@@ -88,11 +89,11 @@ def test_winsorize_context_override():
     ]
 
     engine = python_engine.Engine()
-    hopsworks_engine.set_instance(engine=engine, engine_type="python")
+    hopsworks_engine._set_instance(engine=engine, engine_type="python")
 
     # Act - Override percentile thresholds via context parameter
-    result = TransformationFunctionEngine.apply_transformation_functions(
-        transformation_functions=[tf],
+    result = TransformationFunctionEngine._apply_transformation_functions(
+        execution_graph=TransformationExecutionDAG([tf]),
         data=df,
         transformation_context={"p_low": 5, "p_high": 95},
     )

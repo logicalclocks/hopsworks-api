@@ -16,15 +16,28 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from typing import TYPE_CHECKING
 
-from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import util
+from hsfs.core import distribution_distance
 from hsfs.core import feature_monitoring_config as fmc
+from hsfs.core.distribution_engine import (
+    _WINDOW_DETECTION,
+    _WINDOW_REFERENCE,
+    DistributionEngine,
+)
 from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
 from hsfs.core.feature_monitoring_config_api import FeatureMonitoringConfigApi
 from hsfs.core.feature_monitoring_result import FeatureMonitoringResult
 from hsfs.core.feature_monitoring_result_api import FeatureMonitoringResultApi
+from hsfs.core.feature_statistics_result import FeatureStatisticsResult
 from hsfs.core.job_api import JobApi
+from hsfs.core.statistics_comparison_result import StatisticsComparisonResult
+
+
+if TYPE_CHECKING:
+    from hsfs.core.feature_statistics_config import FeatureStatisticsConfig
+    from hsfs.core.statistics_comparison_config import StatisticsComparisonConfig
 
 
 class FeatureMonitoringResultEngine:
@@ -67,81 +80,11 @@ class FeatureMonitoringResultEngine:
             feature_view_version=feature_view_version,
         )
         self._job_api = JobApi()
+        self._distribution_engine = DistributionEngine()
 
-    def build_feature_monitoring_result(
-        self,
-        config_id: int,
-        feature_name: str,
-        detection_statistics: FeatureDescriptiveStatistics | None = None,
-        reference_statistics: FeatureDescriptiveStatistics | float | None = None,
-        specific_value: float | None = None,
-        shift_detected: bool = False,
-        difference: float | None = None,
-        raised_exception: bool = False,
-        execution_id: int | None = None,
-        job_name: str | None = None,
-    ) -> FeatureMonitoringResult:
-        """Build feature monitoring result.
+    # CRUD
 
-        Parameters:
-            config_id: ID of the feature monitoring configuration.
-            feature_name: Name of the feature being monitored.
-            detection_statistics: Statistics computed from the detection data.
-            reference_statistics: Statistics computed from the reference data.
-            specific_value: A specific value used as reference.
-            shift_detected:
-                Whether a shift is detected between the detection and reference window.
-                It is used to decide whether to trigger an alert.
-            difference: Difference between detection statistics and reference statistics.
-            raised_exception: Whether an exception was raised during monitoring.
-            execution_id: ID of the job execution.
-            job_name: Name of the monitoring job.
-
-        Returns:
-            Saved Feature monitoring result.
-        """
-        monitoring_time = round(
-            util.convert_event_time_to_timestamp(datetime.now()), -3
-        )
-        if execution_id is None and job_name is not None:
-            execution_id = self.get_monitoring_job_execution_id(job_name)
-        else:
-            execution_id = 0
-        detection_statistics_id = (
-            detection_statistics.id
-            if isinstance(detection_statistics, FeatureDescriptiveStatistics)
-            else None
-        )
-        reference_statistics_id = (
-            reference_statistics.id
-            if isinstance(reference_statistics, FeatureDescriptiveStatistics)
-            else None
-        )
-        if raised_exception and feature_name is None:
-            # if feature name is null it is a whole entity monitoring job
-            feature_name = ""
-
-        return FeatureMonitoringResult(
-            feature_store_id=self._feature_store_id,
-            config_id=config_id,
-            execution_id=execution_id,
-            feature_name=feature_name,
-            detection_statistics_id=detection_statistics_id,
-            reference_statistics_id=reference_statistics_id,
-            specific_value=specific_value,
-            difference=difference,
-            shift_detected=shift_detected,
-            monitoring_time=monitoring_time,
-            raised_exception=raised_exception,
-            empty_detection_window=self.is_monitoring_window_empty(
-                detection_statistics
-            ),
-            empty_reference_window=self.is_monitoring_window_empty(
-                reference_statistics
-            ),
-        )
-
-    def save_feature_monitoring_result(
+    def _save(
         self,
         result: FeatureMonitoringResult,
     ) -> FeatureMonitoringResult:
@@ -153,40 +96,34 @@ class FeatureMonitoringResultEngine:
         Returns:
             Saved Feature monitoring result.
         """
-        return self._feature_monitoring_result_api.create(
+        return self._feature_monitoring_result_api._create(
             result,
         )
 
-    def fetch_all_feature_monitoring_results_by_config_id(
+    def _save_with_exception(
         self,
-        config_id: int,
-        start_time: str | int | datetime | date | None = None,
-        end_time: str | int | datetime | date | None = None,
-        with_statistics: bool = False,
-    ) -> list[FeatureMonitoringResult]:
-        """Fetch all feature monitoring results by config id.
+        feature_monitoring_config_id: int,
+        job_name: str,
+    ) -> FeatureMonitoringResult:
+        """Save feature monitoring result with raised_exception flag.
 
         Parameters:
-            config_id: Id of the feature monitoring configuration.
-            start_time: Query results with monitoring time greater than or equal to start_time.
-            end_time: Query results with monitoring time less than or equal to end_time.
-            with_statistics: Whether to include the statistics attached to the results or not.
+            feature_monitoring_config_id: int. Id of the feature monitoring configuration.
+            job_name: str. Name of the monitoring job.
 
         Returns:
-            List of feature monitoring results.
+            FeatureMonitoringResult. Saved Feature monitoring result.
         """
-        query_params = self._build_query_params(
-            start_time=start_time,
-            end_time=end_time,
-            with_statistics=with_statistics,
+        return self._save(
+            result=self._build_feature_monitoring_result(
+                feature_monitoring_config_id=feature_monitoring_config_id,
+                feature_statistics_results=None,
+                job_name=job_name,
+                raised_exception=True,
+            ),
         )
 
-        return self._feature_monitoring_result_api.get_by_config_id(
-            config_id=config_id,
-            query_params=query_params,
-        )
-
-    def get_feature_monitoring_results(
+    def _get_feature_monitoring_results(
         self,
         config_id: int | None = None,
         config_name: str | None = None,
@@ -221,7 +158,7 @@ class FeatureMonitoringResultEngine:
                 "Only one of config_id or config_name can be provided to fetch feature monitoring results."
             )
         if config_name is not None and isinstance(config_name, str):
-            config = self._feature_monitoring_config_api.get_by_name(config_name)
+            config = self._feature_monitoring_config_api._get_by_name(config_name)
             if not isinstance(config, fmc.FeatureMonitoringConfig):
                 return []
             config_id = config._id
@@ -232,212 +169,345 @@ class FeatureMonitoringResultEngine:
         elif config_id is not None and not isinstance(config_id, int):
             raise TypeError(f"config_id must be of type int. Got {type(config_id)}.")
 
-        return self.fetch_all_feature_monitoring_results_by_config_id(
+        return self._fetch_all_feature_monitoring_results_by_config_id(
             config_id=config_id,
             start_time=start_time,
             end_time=end_time,
             with_statistics=with_statistics,
         )
 
-    def _build_query_params(
+    def _get_latest_by_config_id(
         self,
-        start_time: str | int | datetime | date | None,
-        end_time: str | int | datetime | date | None,
-        with_statistics: bool,
-    ) -> dict[str, str | list[str]]:
-        """Build query parameters for feature monitoring result API calls.
+        config_id: int,
+    ) -> FeatureMonitoringResult | None:
+        """Fetch the most recent feature monitoring result for a given config.
 
         Parameters:
-            start_time: Query results with monitoring time greater than or equal to start_time.
-            end_time: Query results with monitoring time less than or equal to end_time.
-            with_statistics: Whether to include the statistics attached to the results or not.
+            config_id: ID of the feature monitoring configuration.
 
         Returns:
-            Query parameters.
+            The most recent ``FeatureMonitoringResult``, or ``None`` if none exist.
         """
-        query_params = {"sort_by": "monitoring_time:desc"}
+        return self._feature_monitoring_result_api._get_latest_by_config_id(
+            config_id=config_id,
+        )
 
-        filter_by = []
-        if start_time:
-            timestamp_start_time = util.convert_event_time_to_timestamp(start_time)
-            filter_by.append(f"monitoring_time_gte:{timestamp_start_time}")
-        if end_time:
-            timestamp_end_time = util.convert_event_time_to_timestamp(end_time)
-            filter_by.append(f"monitoring_time_lte:{timestamp_end_time}")
-        if len(filter_by) > 0:
-            query_params["filter_by"] = filter_by
+    def _fetch_all_feature_monitoring_results_by_config_id(
+        self,
+        config_id: int,
+        start_time: str | int | datetime | date | None = None,
+        end_time: str | int | datetime | date | None = None,
+        with_statistics: bool = False,
+    ) -> list[FeatureMonitoringResult]:
+        """Fetch all feature monitoring results by config id.
 
-        if with_statistics:
-            query_params["expand"] = "statistics"
+        Parameters:
+            config_id: int. Id of the feature monitoring configuration.
+            start_time: Union[str, int, datetime, date, None].
+                Query results with monitoring time greater than or equal to start_time.
+            end_time: Union[str, int, datetime, date, None].
+                Query results with monitoring time less than or equal to end_time.
+            with_statistics: bool.
+                Whether to include the statistics attached to the results or not
 
-        return query_params
+        Returns:
+            List[FeatureMonitoringResult]. List of feature monitoring results.
+        """
+        query_params = self._build_query_params(
+            start_time=start_time,
+            end_time=end_time,
+            with_statistics=with_statistics,
+        )
 
-    def run_and_save_statistics_comparison(
+        return self._feature_monitoring_result_api._get_by_config_id(
+            config_id=config_id,
+            query_params=query_params,
+        )
+
+    # operations
+
+    def _run_and_save_statistics_comparison(
         self,
         fm_config: fmc.FeatureMonitoringConfig,
         detection_statistics: list[FeatureDescriptiveStatistics],
         reference_statistics: list[FeatureDescriptiveStatistics] | None = None,
-        specific_value: float | None = None,
-    ) -> list[FeatureMonitoringResult]:
+        detection_window_commit_time: int | None = None,
+    ) -> FeatureMonitoringResult:
         """Run and upload statistics comparison between detection and reference stats.
 
         Parameters:
-            fm_config: Feature monitoring configuration.
-            detection_statistics: Computed statistics from detection data.
-            reference_statistics: Computed statistics from reference data.
-            specific_value: A specific value to use as reference.
+            fm_config: FeatureMonitoringConfig. Feature monitoring configuration.
+            detection_statistics: List[FeatureDescriptiveStatistics]. Computed statistics from detection data.
+            reference_statistics: Optional[List[FeatureDescriptiveStatistics]]]. Computed statistics from reference data.
+            detection_window_commit_time: int or None.
+                Commit timestamp (ms) to which the detection window was anchored.
+                Passed through to the persisted result for use by the reuse-without-recompute
+                guard on subsequent runs (model-monitoring / logging-FG path only).
 
         Returns:
             Feature monitoring result.
         """
-        if specific_value:
-            # compare detection statistics against a specific value
-            assert reference_statistics is None
-            return self._run_and_save_statistics_comparison_specific_value(
-                fm_config, detection_statistics, specific_value
-            )
+        # Clear the distribution engine's per-run cache so that a reused
+        # FeatureMonitoringResultEngine instance doesn't carry state across runs.
+        self._distribution_engine._clear_cache()
 
+        # validate fds
+        self._validate_detection_and_reference_statistics(
+            detection_statistics=detection_statistics,
+            reference_statistics=reference_statistics,
+        )
+
+        # create fds dicts
+        detection_stats_dict, empty_detection_window = {}, False
+        reference_stats_dict, empty_reference_window = None, None
+        for det_fds in detection_statistics:
+            detection_stats_dict[det_fds.feature_name] = det_fds
+            if self._is_monitoring_window_empty(det_fds):
+                empty_detection_window = True
         if reference_statistics is not None:
-            # compare detection statistics against reference statistics
-            return self._run_and_save_statistics_comparison_reference_stats(
-                fm_config, detection_statistics, reference_statistics
-            )
+            reference_stats_dict, empty_reference_window = {}, False
+            for ref_fds in reference_statistics:
+                reference_stats_dict[ref_fds.feature_name] = ref_fds
+                if self._is_monitoring_window_empty(ref_fds):
+                    empty_reference_window = True
 
-        # otherwise, no comparison needed
-        return [
-            self.save_feature_monitoring_result(
-                result=self.build_feature_monitoring_result(
-                    config_id=fm_config.id,
-                    feature_name=det_fds.feature_name,
-                    detection_statistics=det_fds,
+        # Build fs_results. Two modes:
+        #  - per-FSC mode: the config declares feature_statistics_configs (a column subset), so we
+        #    build one result per FSC whose feature was profiled, running statistics comparisons.
+        #    The JVM ColumnProfiler skips unprofilable types (timestamp/date/binary/complex), and
+        #    schema evolution may add FG features after the FSCs were materialised — so FSCs can
+        #    legitimately exceed the computed stats. Missing features are silently skipped here;
+        #    the backend result validator accepts a subset of expected features.
+        #  - all-features mode: the config has no FSCs (ingestion-FM backfill / no column subset
+        #    specified). There is nothing to compare against, but the backend still requires a
+        #    non-empty featureStatisticsResults, so emit one comparison-less result per profiled
+        #    feature (STATISTICS_COMPUTATION only).
+        fs_results = []
+        if fm_config.feature_statistics_configs:
+            for fs_config in fm_config.feature_statistics_configs:
+                det_fds = detection_stats_dict.get(fs_config.feature_name)
+                if det_fds is None:
+                    continue
+                ref_fds = (
+                    reference_stats_dict.get(fs_config.feature_name)
+                    if reference_stats_dict is not None
+                    else None
                 )
-            )
-            for det_fds in detection_statistics
-        ]
-
-    def _run_and_save_statistics_comparison_specific_value(
-        self,
-        fm_config: fmc.FeatureMonitoringConfig,
-        detection_statistics: list[FeatureDescriptiveStatistics],
-        specific_value: float,
-    ):
-        assert len(detection_statistics) == 1, (
-            "detection_statistics must a be a single FeatureDescriptiveStatistics object "
-            "if reference_statistics or specific_value is provided."
-        )
-        det_fds = detection_statistics[0]
-        difference, shift_detected = self.compute_difference_and_shift(
-            fm_config=fm_config,
-            detection_statistics=det_fds,
-            specific_value=specific_value,
-        )
-        return [
-            self.save_feature_monitoring_result(
-                result=self.build_feature_monitoring_result(
-                    config_id=fm_config.id,
-                    feature_name=det_fds.feature_name,
-                    detection_statistics=det_fds,
-                    difference=difference,
-                    shift_detected=shift_detected,
-                    specific_value=specific_value,
+                fs_result = self._run_feature_statistics_comparisons(
+                    fs_config,
+                    det_fds,
+                    ref_fds,
                 )
-            )
-        ]
+                fs_results.append(fs_result)
+        else:
+            for feature_name, det_fds in detection_stats_dict.items():
+                ref_fds = (
+                    reference_stats_dict.get(feature_name)
+                    if reference_stats_dict is not None
+                    else None
+                )
+                fs_results.append(
+                    self._build_feature_statistics_result(
+                        feature_name=feature_name,
+                        detection_statistics=det_fds,
+                        reference_statistics=ref_fds,
+                        statistics_comparison_results=None,
+                        shifted_metric_names=set(),
+                    )
+                )
 
-    def _run_and_save_statistics_comparison_reference_stats(
-        self,
-        fm_config: fmc.FeatureMonitoringConfig,
-        detection_statistics: list[FeatureDescriptiveStatistics],
-        reference_statistics: list[FeatureDescriptiveStatistics],
-    ):
-        assert len(reference_statistics) == len(detection_statistics), (
-            "detection_statistics and reference_statistics must contain the same number of feature statistics"
+        # build fm result
+        assert fm_config.id is not None
+        fm_result = self._build_feature_monitoring_result(
+            feature_monitoring_config_id=fm_config.id,
+            feature_statistics_results=fs_results,
+            empty_detection_window=empty_detection_window,
+            empty_reference_window=empty_reference_window,
+            detection_window_commit_time=detection_window_commit_time,
         )
-        det_stats_set, ref_stats_set = set(), set()
-        for det_fds, ref_fds in zip(
-            detection_statistics, reference_statistics, strict=False
-        ):
-            det_stats_set.add((det_fds.feature_name, det_fds.feature_type))
-            ref_stats_set.add((ref_fds.feature_name, ref_fds.feature_type))
+
+        # save and return
+        return self._save(fm_result)
+
+    def _validate_detection_and_reference_statistics(
+        self,
+        detection_statistics: list[FeatureDescriptiveStatistics],
+        reference_statistics: list[FeatureDescriptiveStatistics] | None,
+    ):
+        if reference_statistics is None:
+            return
+
+        mismatch_msg = "Detection feature statistics must contain a reference feature statistics for the same feature and feature type."
+        assert len(reference_statistics) >= len(detection_statistics), mismatch_msg
+
+        det_stats_feat_names = {fds.feature_name for fds in detection_statistics}
+        ref_stats_feat_names = {fds.feature_name for fds in reference_statistics}
+        det_stats_set = {
+            (fds.feature_name, fds.feature_type) for fds in detection_statistics
+        }
+        ref_stats_set = {
+            (fds.feature_name, fds.feature_type) for fds in reference_statistics
+        }
+
+        assert det_stats_feat_names.issubset(ref_stats_feat_names), mismatch_msg
 
         # check if detection and reference statistics contain the same features and feature types.
         # statistics computed on empty data will have feature type None, which can falsify the equality.
         # we shouldn't raise an exception in that case, so we just ignore it by checking the count statistic.
-        if (
-            (det_stats_set != ref_stats_set)
-            and (detection_statistics[0].count != 0)
-            and (reference_statistics[0].count != 0)
-        ):
-            raise FeatureStoreException(
-                "Detection and reference statistics do not contain the same features or feature types"
-            )
 
-        # sort by feature name
-        sorted_det_stats, sorted_ref_stats = (
-            sorted(detection_statistics, key=lambda fds: fds.feature_name),
-            sorted(reference_statistics, key=lambda fds: fds.feature_name),
+        assert (
+            det_stats_set.issubset(ref_stats_set)
+            or detection_statistics[0].count == 0
+            or reference_statistics[0].count == 0
+        ), mismatch_msg
+
+    def _run_feature_statistics_comparisons(
+        self,
+        fs_config: FeatureStatisticsConfig,
+        detection_statistics: FeatureDescriptiveStatistics,
+        reference_statistics: FeatureDescriptiveStatistics | None,
+    ) -> FeatureStatisticsResult:
+        sc_results = None
+        shifted_metric_names = set()
+        if fs_config.statistics_comparison_configs is not None:
+            sc_results = []
+            for sc_config in fs_config.statistics_comparison_configs:
+                difference, shift_detected = self._compute_difference_and_shift(
+                    sc_config=sc_config,
+                    detection_statistics=detection_statistics,
+                    reference_statistics=reference_statistics,
+                )
+                assert sc_config.id is not None
+                if difference is not None:
+                    scr = StatisticsComparisonResult(
+                        sc_config.id,
+                        shift_detected=shift_detected,
+                        difference=difference,
+                    )
+                    sc_results.append(scr)
+                    if shift_detected:
+                        shifted_metric_names.add(
+                            sc_config.metric or sc_config.distribution_metric
+                        )
+
+        return self._build_feature_statistics_result(
+            feature_name=fs_config.feature_name,
+            detection_statistics=detection_statistics,
+            reference_statistics=reference_statistics,
+            statistics_comparison_results=sc_results if sc_results else None,
+            shifted_metric_names=shifted_metric_names,
         )
 
-        fm_results = []
-        for det_fds, ref_fds in zip(sorted_det_stats, sorted_ref_stats, strict=False):
-            difference, shift_detected = self.compute_difference_and_shift(
-                fm_config=fm_config,
-                detection_statistics=det_fds,
-                reference_statistics=ref_fds,
-            )
-            fm_results.append(
-                self.save_feature_monitoring_result(
-                    result=self.build_feature_monitoring_result(
-                        config_id=fm_config.id,
-                        feature_name=det_fds.feature_name,
-                        detection_statistics=det_fds,
-                        reference_statistics=ref_fds,
-                        difference=difference,
-                        shift_detected=shift_detected,
-                    )
-                )
-            )
-        return fm_results
-
-    def compute_difference_and_shift(
+    def _compute_difference_and_shift(
         self,
-        fm_config: fmc.FeatureMonitoringConfig,
+        sc_config: StatisticsComparisonConfig,
         detection_statistics: FeatureDescriptiveStatistics,
-        reference_statistics: FeatureDescriptiveStatistics | float | None = None,
-        specific_value: float | None = None,
+        reference_statistics: FeatureDescriptiveStatistics | None = None,
     ) -> tuple[float | None, bool]:
         """Compute the difference and detect shift between the reference and detection statistics.
 
+        Dispatches on sc_config.distribution_metric:
+          - When set: computes a distribution distance (PSI, KL, etc.) via DistributionEngine
+            and distribution_distance._compute().
+          - When None: falls back to the existing scalar metric path.
+
         Parameters:
-            fm_config: Feature monitoring configuration.
+            sc_config: Statistics comparison configuration (scalar or distribution child).
             detection_statistics: Computed statistics from detection data.
-            reference_statistics: Computed statistics from reference data, or a specific value to use as reference.
-            specific_value: A specific value to use as reference.
+            reference_statistics: Computed statistics from reference data.
 
         Returns:
-            The difference between the reference and detection statistics, and whether shift was detected or not
+            The difference between the reference and detection statistics, and whether shift was detected or not.
         """
-        difference = self.compute_difference_between_stats(
-            detection_statistics=detection_statistics,
-            reference_statistics=reference_statistics,
-            metric=fm_config.statistics_comparison_config["metric"].lower(),
-            relative=fm_config.statistics_comparison_config["relative"],
-            specific_value=specific_value,
-        )
-        if difference is None:
-            return None, False  # no difference, no shift detected
-
-        if fm_config.statistics_comparison_config["strict"]:
-            shift_detected = (
-                difference >= fm_config.statistics_comparison_config["threshold"]
+        if sc_config.distribution_metric is not None:
+            difference = self._compute_distribution_distance(
+                sc_config=sc_config,
+                detection_statistics=detection_statistics,
+                reference_statistics=reference_statistics,
             )
         else:
-            shift_detected = (
-                difference > fm_config.statistics_comparison_config["threshold"]
+            difference = self._compute_difference_between_stats(
+                detection_statistics=detection_statistics,
+                reference_statistics=reference_statistics,
+                metric=sc_config.metric,
+                relative=sc_config.relative,
+                specific_value=sc_config.specific_value,
             )
+
+        if difference is None or sc_config.threshold is None:
+            # if no difference can be computed or threshold not provided, no shift detected
+            return difference, False
+
+        if sc_config.strict:
+            shift_detected = difference > sc_config.threshold
+        else:
+            shift_detected = difference >= sc_config.threshold
         return difference, shift_detected
 
-    def compute_difference_between_stats(
+    def _compute_distribution_distance(
+        self,
+        sc_config: StatisticsComparisonConfig,
+        detection_statistics: FeatureDescriptiveStatistics,
+        reference_statistics: FeatureDescriptiveStatistics | None,
+    ) -> float | None:
+        """Compute a distribution distance metric between detection and reference windows.
+
+        Returns None if either window is empty.
+        """
+        import numpy as np
+
+        if reference_statistics is None:
+            return None
+        if self._is_monitoring_window_empty(detection_statistics):
+            return None
+        if self._is_monitoring_window_empty(reference_statistics):
+            return None
+
+        binning_strategy = sc_config.binning_strategy or _default_binning_strategy(
+            reference_statistics
+        )
+        bin_count = sc_config.bin_count or 10
+        epsilon = sc_config.smoothing_epsilon or 1e-6
+
+        bin_edges = self._distribution_engine._resolve_bin_edges(
+            reference_fds=reference_statistics,
+            detection_fds=detection_statistics,
+            binning_strategy=binning_strategy,
+            bin_count=bin_count,
+            custom_edges=sc_config.custom_bin_edges,
+        )
+
+        ref_probs = self._distribution_engine._build_distribution(
+            fds=reference_statistics,
+            binning_strategy=binning_strategy,
+            bin_edges=bin_edges,
+            epsilon=epsilon,
+            window_id=_WINDOW_REFERENCE,
+        )
+        det_probs = self._distribution_engine._build_distribution(
+            fds=detection_statistics,
+            binning_strategy=binning_strategy,
+            bin_edges=bin_edges,
+            epsilon=epsilon,
+            window_id=_WINDOW_DETECTION,
+        )
+
+        # bin_centres is required for WASSERSTEIN; only meaningful for numeric strategies.
+        bin_centres = None
+        if sc_config.distribution_metric == "WASSERSTEIN" and isinstance(
+            bin_edges[0], (int, float)
+        ):
+            edges_array = np.asarray(bin_edges, dtype=np.float64)
+            bin_centres = (edges_array[:-1] + edges_array[1:]) / 2.0
+
+        return distribution_distance._compute(
+            det_probs=det_probs,
+            ref_probs=ref_probs,
+            metric=sc_config.distribution_metric,
+            bin_centres=bin_centres,
+        )
+
+    def _compute_difference_between_stats(
         self,
         detection_statistics: FeatureDescriptiveStatistics,
         metric: str,
@@ -455,26 +525,37 @@ class FeatureMonitoringResultEngine:
             specific_value: A specific value to use as reference.
 
         Returns:
-            The difference between the reference and detection statistics, or `None` if there are no values to compare.
+            `Optional[float]`. The difference between the reference and detection statistics, or None if there
+                               are no values to compare
         """
-        if (detection_statistics.count == 0) or (
-            specific_value is None and reference_statistics.count == 0
-        ):
-            # if stats on empty data, no difference can be computed
-            return None
+        if reference_statistics is None and specific_value is None:
+            return None  # no difference can be computed
+
+        metric_lower = metric.lower()  # ensure lower case
+
+        if metric_lower != "count":
+            # on empty data, only the count metric can be used to compute the difference
+            if self._is_monitoring_window_empty(detection_statistics):
+                # if det stats on empty data, no difference can be computed
+                return None
+            if specific_value is None and self._is_monitoring_window_empty(
+                reference_statistics
+            ):
+                # if ref stats on empty data, no difference can be computed unless a specific value is provided
+                return None
 
         # otherwise, both detection and reference value can be obtained
-        detection_value = detection_statistics.get_value(metric)
+        detection_value = detection_statistics.get_value(metric_lower)
         reference_value = (
             specific_value
             if specific_value is not None
-            else reference_statistics.get_value(metric)
+            else reference_statistics.get_value(metric_lower)
         )
-        return self.compute_difference_between_specific_values(
+        return self._compute_difference_between_specific_values(
             detection_value, reference_value, relative
         )
 
-    def compute_difference_between_specific_values(
+    def _compute_difference_between_specific_values(
         self,
         detection_value: float,
         reference_value: float,
@@ -497,7 +578,124 @@ class FeatureMonitoringResultEngine:
             return diff / reference_value
         return diff
 
-    def get_monitoring_job_execution_id(
+    # builders
+
+    def _build_feature_monitoring_result(
+        self,
+        feature_monitoring_config_id: int,
+        feature_statistics_results: list[FeatureStatisticsResult] | None,
+        empty_detection_window: bool = False,
+        empty_reference_window: bool | None = False,
+        raised_exception: bool = False,
+        execution_id: int | None = None,
+        job_name: str | None = None,
+        detection_window_commit_time: int | None = None,
+    ) -> FeatureMonitoringResult:
+        """Build feature monitoring result.
+
+        Parameters:
+            feature_monitoring_config_id: int. Id of the feature monitoring configuration.
+            feature_statistics_results: list of FeatureStatisticsResult or None. Statistics results per feature.
+            empty_detection_window: bool. Whether the detection window is empty.
+            empty_reference_window: bool or None. Whether the reference window is empty.
+            raised_exception: bool. Whether an exception was raised during monitoring.
+            execution_id: int or None. Id of the job execution.
+            job_name: str or None. Name of the monitoring job.
+            detection_window_commit_time: int or None.
+                Commit timestamp (ms) to which the detection window end was anchored.
+                Set only for model-monitoring configs on logging feature groups.
+
+        Returns:
+            FeatureMonitoringResult. Saved Feature monitoring result.
+        """
+        monitoring_time = round(
+            util._convert_event_time_to_timestamp(datetime.now()), -3
+        )
+        if execution_id is None and job_name is not None:
+            execution_id = self._get_monitoring_job_execution_id(job_name)
+        else:
+            execution_id = 0
+
+        # get shifted features
+        shifted_feature_names = set()
+        if feature_statistics_results is not None:
+            for fsr in feature_statistics_results:
+                if fsr.shifted_metric_names:
+                    shifted_feature_names.add(fsr.feature_name)
+
+        return FeatureMonitoringResult(
+            feature_store_id=self._feature_store_id,
+            feature_monitoring_config_id=feature_monitoring_config_id,
+            execution_id=execution_id,
+            feature_statistics_results=feature_statistics_results,
+            monitoring_time=monitoring_time,
+            raised_exception=raised_exception,
+            shifted_feature_names=shifted_feature_names,
+            empty_detection_window=empty_detection_window,
+            empty_reference_window=empty_reference_window,
+            detection_window_commit_time=detection_window_commit_time,
+        )
+
+    def _build_feature_statistics_result(
+        self,
+        feature_name: str,
+        detection_statistics: FeatureDescriptiveStatistics,
+        reference_statistics: FeatureDescriptiveStatistics | None,
+        statistics_comparison_results: list[StatisticsComparisonResult] | None = None,
+        shifted_metric_names: set | None = None,
+    ) -> FeatureStatisticsResult:
+        detection_statistics_id = detection_statistics.id
+        reference_statistics_id = (
+            reference_statistics.id
+            if isinstance(reference_statistics, FeatureDescriptiveStatistics)
+            else None
+        )
+
+        return FeatureStatisticsResult(
+            feature_name=feature_name,
+            statistics_comparison_results=statistics_comparison_results,
+            detection_statistics_id=detection_statistics_id,
+            reference_statistics_id=reference_statistics_id,
+            shifted_metric_names=shifted_metric_names,
+        )
+
+    def _build_query_params(
+        self,
+        start_time: str | int | datetime | date | None,
+        end_time: str | int | datetime | date | None,
+        with_statistics: bool,
+    ) -> dict[str, str | list[str]]:
+        """Build query parameters for feature monitoring result API calls.
+
+        Parameters:
+            start_time: Union[str, int, datetime, date, None].
+                Query results with monitoring time greater than or equal to start_time.
+            end_time: Union[str, int, datetime, date, None].
+                Query results with monitoring time less than or equal to end_time.
+            with_statistics: bool.
+                Whether to include the statistics attached to the results or not
+
+        Returns:
+            Dict[str, Union[str, List[str]]]. Query parameters.
+        """
+        query_params = {"sort_by": "monitoring_time:desc"}
+
+        filter_by = []
+        if start_time:
+            timestamp_start_time = util._convert_event_time_to_timestamp(start_time)
+            filter_by.append(f"monitoring_time_gte:{timestamp_start_time}")
+        if end_time:
+            timestamp_end_time = util._convert_event_time_to_timestamp(end_time)
+            filter_by.append(f"monitoring_time_lte:{timestamp_end_time}")
+        if len(filter_by) > 0:
+            query_params["filter_by"] = filter_by
+
+        if with_statistics:
+            query_params["expand"] = "statistics"
+
+        return query_params
+
+    def _get_monitoring_job_execution_id(
         self,
         job_name: str,
     ) -> int:
@@ -520,10 +718,10 @@ class FeatureMonitoringResultEngine:
             else 0
         )
 
-    def is_monitoring_window_empty(
+    def _is_monitoring_window_empty(
         self,
         monitoring_window_statistics: FeatureDescriptiveStatistics | None = None,
-    ) -> bool:
+    ) -> bool | None:
         """Check if the monitoring window is empty.
 
         Parameters:
@@ -532,32 +730,34 @@ class FeatureMonitoringResultEngine:
         Returns:
             Whether the monitoring window is empty or not.
         """
-        return bool(
-            monitoring_window_statistics is None
-            or monitoring_window_statistics.count == 0
-        )
+        if monitoring_window_statistics is None:
+            return None
+        return monitoring_window_statistics.count == 0
 
-    def save_feature_monitoring_result_with_exception(
-        self,
-        config_id: int,
-        job_name: str,
-        feature_name: str | None = None,
-    ) -> FeatureMonitoringResult:
-        """Save feature monitoring result with raised_exception flag.
 
-        Parameters:
-            config_id: Id of the feature monitoring configuration.
-            job_name: Name of the monitoring job.
-            feature_name: Name of the feature being monitored.
+# ------------------------------------------------------------------
+# Module-level helpers
+# ------------------------------------------------------------------
 
-        Returns:
-            Saved Feature monitoring result.
-        """
-        return self.save_feature_monitoring_result(
-            result=self.build_feature_monitoring_result(
-                config_id=config_id,
-                job_name=job_name,
-                raised_exception=True,
-                feature_name=feature_name,
-            ),
-        )
+
+def _default_binning_strategy(fds: FeatureDescriptiveStatistics) -> str:
+    """Return the default binning strategy for the given feature statistics.
+
+    Uses CATEGORICAL for non-numeric features (string, boolean, etc.)
+    and EQUI_FREQUENCY for numeric ones.
+    """
+    feature_type = (fds.feature_type or "").lower()
+    numeric_types = {
+        "integral",
+        "fractional",
+        "int",
+        "bigint",
+        "tinyint",
+        "smallint",
+        "float",
+        "double",
+    }
+    # Deequ reports "Integral" / "Fractional"; Hive uses "int" / "double" etc.
+    if feature_type in numeric_types or feature_type.startswith("decimal"):
+        return "EQUI_FREQUENCY"
+    return "CATEGORICAL"

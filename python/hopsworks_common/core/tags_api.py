@@ -40,8 +40,8 @@ class TagsApi:
         self._feature_store_id = feature_store_id
         self._entity_type = entity_type
 
-    @usage.method_logger
-    def add(
+    @usage._method_logger
+    def _add(
         self,
         metadata_instance: TrainingDataset | FeatureGroup,
         name: str,
@@ -59,16 +59,16 @@ class TagsApi:
             value: Value of the tag to be added.
             training_dataset_version: Version of the training dataset.
         """
-        _client = client.get_instance()
-        path_params = self.get_path(metadata_instance, training_dataset_version) + [
+        _client = client._get_instance()
+        path_params = self._get_path(metadata_instance, training_dataset_version) + [
             name
         ]
         headers = {"content-type": "application/json"}
         json_value = json.dumps(value)
         _client._send_request("PUT", path_params, headers=headers, data=json_value)
 
-    @usage.method_logger
-    def delete(
+    @usage._method_logger
+    def _delete(
         self,
         metadata_instance: TrainingDataset | FeatureGroup,
         name: str,
@@ -83,16 +83,16 @@ class TagsApi:
             name: Name of the tag to be removed.
             training_dataset_version: Version of the training dataset.
         """
-        _client = client.get_instance()
-        path_params = self.get_path(metadata_instance, training_dataset_version) + [
+        _client = client._get_instance()
+        path_params = self._get_path(metadata_instance, training_dataset_version) + [
             name
         ]
 
         _client._send_request("DELETE", path_params)
 
-    @usage.method_logger
-    @decorators.catch_not_found("hopsworks_common.tag.Tag", fallback_return={})
-    def get(
+    @usage._method_logger
+    @decorators._catch_not_found("hopsworks_common.tag.Tag", fallback_return={})
+    def _get(
         self,
         metadata_instance: TrainingDataset | FeatureGroup,
         name: str | None = None,
@@ -110,8 +110,8 @@ class TagsApi:
         Returns:
             Dict of tag name/values.
         """
-        _client = client.get_instance()
-        path_params = self.get_path(metadata_instance, training_dataset_version)
+        _client = client._get_instance()
+        path_params = self._get_path(metadata_instance, training_dataset_version)
 
         if name is not None:
             path_params.append(name)
@@ -123,9 +123,9 @@ class TagsApi:
             )
         }
 
-    @usage.method_logger
-    def get_path(self, metadata_instance, training_dataset_version=None):
-        _client = client.get_instance()
+    @usage._method_logger
+    def _get_path(self, metadata_instance, training_dataset_version=None):
+        _client = client._get_instance()
         if hasattr(metadata_instance, "training_data"):
             # Only FeatureView has training_data method
             path = [

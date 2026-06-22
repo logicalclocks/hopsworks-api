@@ -43,7 +43,7 @@ class GreatExpectationEngine:
         """
         self._feature_store_id = feature_store_id
 
-    def validate(
+    def _validate(
         self,
         feature_group: fg_mod.FeatureGroup | fg_mod.ExternalFeatureGroup,
         dataframe: pd.DataFrame,
@@ -64,11 +64,11 @@ class GreatExpectationEngine:
         if validation_options is None:
             validation_options = {}
 
-        suite = self.fetch_or_convert_expectation_suite(
+        suite = self._fetch_or_convert_expectation_suite(
             feature_group, expectation_suite, validation_options
         )
 
-        if self.should_run_validation(
+        if self._should_run_validation(
             expectation_suite=suite, validation_options=validation_options
         ):
             if not HAS_GREAT_EXPECTATIONS:
@@ -77,10 +77,10 @@ class GreatExpectationEngine:
                     "but Great Expectations is not installed. Please install it using `pip install great_expectations`.\n"
                     "Alternatively you can disable Great Expectations validation by setting `run_validation=False`"
                     "in the validation_options, or disable/delete the suite in the Feature Group Edit UI.\n"
-                    f"{util.get_feature_group_url(feature_group.feature_store_id, feature_group.id)}."
+                    f"{util._get_feature_group_url(feature_group.feature_store_id, feature_group.id)}."
                 )
 
-            report = engine.get_instance().validate_with_great_expectations(
+            report = engine._get_instance()._validate_with_great_expectations(
                 dataframe=dataframe,
                 expectation_suite=suite.to_ge_type(),
                 ge_validate_kwargs=validation_options.get("ge_validate_kwargs", {}),
@@ -99,7 +99,7 @@ class GreatExpectationEngine:
             ):
                 ingestion_result = "REJECTED"
 
-        return self.save_or_convert_report(
+        return self._save_or_convert_report(
             feature_group=feature_group,
             report=report,
             save_report=save_report,
@@ -108,7 +108,7 @@ class GreatExpectationEngine:
             ge_type=ge_type,
         )
 
-    def fetch_or_convert_expectation_suite(
+    def _fetch_or_convert_expectation_suite(
         self,
         feature_group: fg_mod.FeatureGroup | fg_mod.ExternalFeatureGroup,
         expectation_suite: great_expectations.core.ExpectationSuite
@@ -136,7 +136,7 @@ class GreatExpectationEngine:
             return feature_group.expectation_suite
         return feature_group.get_expectation_suite(ge_type=False)
 
-    def should_run_validation(
+    def _should_run_validation(
         self,
         expectation_suite: es.ExpectationSuite | None,
         validation_options: dict[str, Any],
@@ -151,7 +151,7 @@ class GreatExpectationEngine:
             "run_validation", expectation_suite.run_validation
         )
 
-    def save_or_convert_report(
+    def _save_or_convert_report(
         self,
         feature_group,
         report: great_expectations.core.ExpectationSuiteValidationResult,

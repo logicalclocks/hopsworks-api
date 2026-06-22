@@ -27,7 +27,11 @@ def _fake_app(**overrides):
     a.git_branch = overrides.get("git_branch")
     a.latest_commit = overrides.get("latest_commit")
     a.entrypoint_script = overrides.get("entrypoint_script")
+    a.monitoring_config = overrides.get("monitoring_config")
+    a.monitoringConfig = overrides.get("monitoringConfig")
     a.description = overrides.get("description")
+    a.app_base_path = overrides.get("app_base_path")
+    a.readiness_probe_path = overrides.get("readiness_probe_path")
     a.app_url = overrides.get("app_url")
     return a
 
@@ -43,6 +47,91 @@ def test_app_list_renders_rows(mock_project):
     assert "a1" in result.output
     assert "a2" in result.output
     assert "RUNNING" in result.output
+
+
+def test_app_logs_prints_streams(mock_project):
+    apps = mock_project.get_app_api.return_value
+    a = _fake_app(name="dash")
+    a.get_logs.return_value = {"stdout": "hello out", "stderr": "boom err"}
+    apps.get_app.return_value = a
+    result = CliRunner().invoke(cli, ["app", "logs", "dash"])
+    assert result.exit_code == 0, result.output
+    assert "hello out" in result.output
+    assert "boom err" in result.output
+
+
+def test_app_logs_stderr_only(mock_project):
+    apps = mock_project.get_app_api.return_value
+    a = _fake_app(name="dash")
+    a.get_logs.return_value = {"stdout": "hello out", "stderr": "boom err"}
+    apps.get_app.return_value = a
+    result = CliRunner().invoke(cli, ["app", "logs", "dash", "--stream", "stderr"])
+    assert result.exit_code == 0, result.output
+    assert "boom err" in result.output
+    assert "hello out" not in result.output
+
+
+def test_app_logs_running_points_to_ui(mock_project):
+    # A running app has no execution log file yet; the CLI must point at the UI
+    # live logs instead of hitting the endpoint that 400s (#11).
+    apps = mock_project.get_app_api.return_value
+    a = _fake_app(name="dash", state="RUNNING", serving=True)
+    a.get_url.return_value = "https://hopsworks.ai.local/p/119/apps"
+    apps.get_app.return_value = a
+    result = CliRunner().invoke(cli, ["app", "logs", "dash"])
+    assert result.exit_code == 0, result.output
+    assert "still running" in result.output
+    assert "https://hopsworks.ai.local/p/119/apps" in result.output
+    a.get_logs.assert_not_called()
+
+
+def test_app_logs_handles_still_running_error(mock_project):
+    # Race: state looked final but the backend still rejected with 130010.
+    # Fall back to the same live-logs guidance, not a raw error.
+    apps = mock_project.get_app_api.return_value
+    a = _fake_app(name="dash", state="CREATED", serving=False)
+    a.get_url.return_value = "https://hopsworks.ai.local/p/119/apps"
+    a.get_logs.side_effect = RuntimeError(
+        "errorCode 130010 Job still running. Execution state is invalid."
+    )
+    apps.get_app.return_value = a
+    result = CliRunner().invoke(cli, ["app", "logs", "dash"])
+    assert result.exit_code == 0, result.output
+    assert "still running" in result.output
+
+
+def test_app_create_drops_unsupported_kwargs(mock_project):
+    """Create stays resilient when the deployed SDK predates app_kind etc."""
+    apps = mock_project.get_app_api.return_value
+    created = _fake_app(name="legacy")
+
+    def old_create_app(
+        name,
+        app_path=None,
+        environment="python-app-pipeline",
+        memory=2048,
+        cores=1.0,
+        env_vars=None,
+    ):
+        return created
+
+    apps.create_app = old_create_app
+    result = CliRunner().invoke(
+        cli,
+        [
+            "app",
+            "create",
+            "legacy",
+            "--path",
+            "Resources/app.py",
+            "--app-base-path",
+            "/myapp",
+            "--readiness-probe-path",
+            "/health",
+        ],
+    )
+    # would TypeError on app_kind without the signature filter
+    assert result.exit_code == 0, result.output
 
 
 def test_app_info_shows_url(mock_project):
@@ -66,13 +155,38 @@ def test_app_info_shows_custom_metadata(mock_project):
         app_port=8080,
         entrypoint_command='python -m uvicorn dash:app --port "$APP_PORT"',
         description="FastAPI demo",
+        app_base_path="/myapp",
+        readiness_probe_path="/health",
     )
     result = CliRunner().invoke(cli, ["app", "info", "dash"])
     assert result.exit_code == 0, result.output
     assert "CUSTOM" in result.output
     assert "8080" in result.output
     assert "FastAPI demo" in result.output
+    assert "/myapp" in result.output
+    assert "/health" in result.output
     assert 'python -m uvicorn dash:app --port "$APP_PORT"' in result.output
+
+
+def test_app_info_shows_monitoring_routes(mock_project):
+    apps = mock_project.get_app_api.return_value
+    apps.get_app.return_value = _fake_app(
+        name="dash",
+        state="RUNNING",
+        serving=True,
+        monitoringConfig={
+            "enabled": True,
+            "routes": [
+                {"path": "/api", "matchType": "prefix"},
+                {"path": "/predict", "matchType": "exact"},
+            ],
+        },
+    )
+    result = CliRunner().invoke(cli, ["app", "info", "dash"])
+    assert result.exit_code == 0, result.output
+    assert "Monitoring routes" in result.output
+    assert "/api (prefix)" in result.output
+    assert "/predict (exact)" in result.output
 
 
 def test_app_info_shows_git_metadata(mock_project):
@@ -109,6 +223,8 @@ def test_app_info_json_includes_custom_metadata(mock_project):
         app_port=8080,
         entrypoint_command='python -m uvicorn dash:app --port "$APP_PORT"',
         description="FastAPI demo",
+        app_base_path="/myapp",
+        readiness_probe_path="/health",
     )
     result = CliRunner().invoke(cli, ["--json", "app", "info", "dash"])
     assert result.exit_code == 0, result.output
@@ -119,6 +235,8 @@ def test_app_info_json_includes_custom_metadata(mock_project):
         payload["entrypoint_command"] == 'python -m uvicorn dash:app --port "$APP_PORT"'
     )
     assert payload["description"] == "FastAPI demo"
+    assert payload["app_base_path"] == "/myapp"
+    assert payload["readiness_probe_path"] == "/health"
     assert payload["source"] == "Project file"
 
 
@@ -144,6 +262,31 @@ def test_app_info_json_includes_git_metadata(mock_project):
     assert payload["git_branch"] == "main"
     assert payload["latest_commit"] == "0123456789abcdef0123456789abcdef01234567"
     assert payload["entrypoint_script"] == "streamlitapp.py"
+
+
+def test_app_info_json_includes_monitoring_config(mock_project):
+    apps = mock_project.get_app_api.return_value
+    apps.get_app.return_value = _fake_app(
+        name="dash",
+        state="RUNNING",
+        serving=True,
+        monitoring_config={
+            "enabled": True,
+            "routes": [
+                {"path": "/api", "matchType": "prefix"},
+                {"path": "/predict", "matchType": "exact"},
+            ],
+        },
+    )
+    result = CliRunner().invoke(cli, ["--json", "app", "info", "dash"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["monitoring"] == "enabled"
+    assert payload["monitoring_config"]["enabled"] is True
+    assert payload["monitoring_config"]["routes"] == [
+        {"path": "/api", "matchType": "prefix"},
+        {"path": "/predict", "matchType": "exact"},
+    ]
 
 
 def test_app_url_exits_non_zero_when_not_serving(mock_project):
@@ -181,6 +324,10 @@ def test_app_create_forwards_args(mock_project):
             "2",
             "--environment",
             "custom-env",
+            "--app-base-path",
+            "/myapp",
+            "--readiness-probe-path",
+            "/health",
         ],
     )
     assert result.exit_code == 0, result.output
@@ -191,6 +338,8 @@ def test_app_create_forwards_args(mock_project):
         environment="custom-env",
         memory=4096,
         cores=2.0,
+        app_base_path="/myapp",
+        readiness_probe_path="/health",
     )
 
 
@@ -217,6 +366,10 @@ def test_app_create_custom_forwards_args(mock_project):
             "2",
             "--environment",
             "custom-env",
+            "--app-base-path",
+            "/myapp",
+            "--readiness-probe-path",
+            "/health",
         ],
     )
     assert result.exit_code == 0, result.output
@@ -229,6 +382,8 @@ def test_app_create_custom_forwards_args(mock_project):
         environment="custom-env",
         memory=4096,
         cores=2.0,
+        app_base_path="/myapp",
+        readiness_probe_path="/health",
     )
 
 
@@ -290,6 +445,10 @@ def test_app_create_custom_git_forwards_args(mock_project):
             'python -m uvicorn dash:app --host 0.0.0.0 --port "$APP_PORT"',
             "--app-port",
             "8080",
+            "--app-base-path",
+            "/myapp",
+            "--readiness-probe-path",
+            "/health",
         ],
     )
     assert result.exit_code == 0, result.output
@@ -304,6 +463,8 @@ def test_app_create_custom_git_forwards_args(mock_project):
         git_url="https://github.com/gibchikafa/appshopsworkstests.git",
         git_provider="GitHub",
         git_branch="main",
+        app_base_path="/myapp",
+        readiness_probe_path="/health",
     )
 
 

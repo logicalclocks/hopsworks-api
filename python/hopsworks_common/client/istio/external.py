@@ -58,7 +58,7 @@ class Client(istio.Client):
         """Closes a client."""
         self._connected = False
 
-    def replace_public_host(self, url: ParseResult) -> ParseResult:
+    def _replace_public_host(self, url: ParseResult) -> ParseResult:
         """No need to replace as we are already in external client.
 
         Parameters:

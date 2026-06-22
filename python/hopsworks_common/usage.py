@@ -51,27 +51,27 @@ class EnvironmentAttribute:
         except ImportError:
             return ""
 
-    def get_hsml_version(self):
+    def _get_hsml_version(self):
         if self._hsml_version is None:
             self._hsml_version = self._get_lib_version("hsml")
         return self._hsml_version
 
-    def get_hsfs_version(self):
+    def _get_hsfs_version(self):
         if self._hsfs_version is None:
             self._hsfs_version = self._get_lib_version("hsfs")
         return self._hsfs_version
 
-    def get_hopsworks_version(self):
+    def _get_hopsworks_version(self):
         if self._hopsworks_version is None:
             self._hopsworks_version = self._get_lib_version("hopsworks")
         return self._hopsworks_version
 
-    def get_python_version(self):
+    def _get_python_version(self):
         if not self._python_version:
             self._python_version = platform.python_version()
         return self._python_version
 
-    def get_user_id(self):
+    def _get_user_id(self):
         if not self._user_id:
             hopsworks_dir = _create_hopsworks_dir_if_not_exist()
             user_id_file = join(hopsworks_dir, _USER_ID_FILE)
@@ -84,18 +84,18 @@ class EnvironmentAttribute:
                     fw.write(self._user_id)
         return self._user_id
 
-    def get_platform(self):
+    def _get_platform(self):
         if not self._platform:
             self._platform = platform.platform()
         return self._platform
 
-    def get_backend_host_name(self):
+    def _get_backend_host_name(self):
         return _backend_hostname
 
-    def get_backend_version(self):
+    def _get_backend_version(self):
         return _backend_version
 
-    def get_timezone(self):
+    def _get_timezone(self):
         if self._timezone is None:
             self._timezone = datetime.now().astimezone().tzinfo
         return self._timezone
@@ -103,14 +103,14 @@ class EnvironmentAttribute:
     def json(self):
         return json.dumps(
             {
-                "platform": self.get_platform(),
-                "hsml_version": self.get_hsml_version(),
-                "hsfs_version": self.get_hsfs_version(),
-                "hopsworks_version": self.get_hopsworks_version(),
-                "user_id": self.get_user_id(),
-                "backend_version": self.get_backend_version(),
-                "timezone": str(self.get_timezone()),
-                "python_version": self.get_python_version(),
+                "platform": self._get_platform(),
+                "hsml_version": self._get_hsml_version(),
+                "hsfs_version": self._get_hsfs_version(),
+                "hopsworks_version": self._get_hopsworks_version(),
+                "user_id": self._get_user_id(),
+                "backend_version": self._get_backend_version(),
+                "timezone": str(self._get_timezone()),
+                "python_version": self._get_python_version(),
             }
         )
 
@@ -120,16 +120,16 @@ class MethodCounter:
         self.method_counts = {}
         random.seed(42)
 
-    def add(self, m):
+    def _add(self, m):
         s = self._get_method_name(m)
         self.method_counts[s] = self.method_counts.get(s, 0) + 1
 
-    def get_count(self, m):
+    def _get_count(self, m):
         s = self._get_method_name(m)
         return self.method_counts.get(s, 0)
 
-    def should_sample(self, m):
-        cnt = self.get_count(m)
+    def _should_sample(self, m):
+        cnt = self._get_count(m)
         if cnt < 100:
             return True
         if cnt < 1000:
@@ -143,7 +143,7 @@ class MethodCounter:
 
 
 _logger = logging.getLogger(__name__)
-_handler = logging.StreamHandler(stream=sys.stdout)
+_handler = logging.StreamHandler(stream=sys.stderr)
 _handler.setFormatter(
     logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 )
@@ -158,24 +158,26 @@ _backend_hostname = None
 _backend_version = None
 HOPSWORKS_DIR = join(expanduser("~"), ".hopsworks")
 _USER_ID_FILE = "user_id"
-_is_enabled = os.environ.get("ENABLE_HOPSWORKS_USAGE", default="true").lower() == "true"
+_is_enabled = (
+    os.environ.get("ENABLE_HOPSWORKS_USAGE", default="false").lower() == "true"
+)
 
 
-def enable():
+def _enable():
     global _is_enabled
     _is_enabled = True
 
 
-def disable():
+def _disable():
     global _is_enabled
     _is_enabled = False
 
 
-def get_env():
+def _get_env():
     return _env_attr.json()
 
 
-def init_usage(hostname, backend_version):
+def _init_usage(hostname, backend_version):
     global _backend_hostname, _backend_version, _is_enabled
     _backend_hostname = hostname
     _backend_version = backend_version
@@ -220,7 +222,7 @@ def _extract_method_name_line_and_file(e):
     return "\t".join(tb_result)
 
 
-def method_logger(func):
+def _method_logger(func):
     # Disable usage BEFORE import hsfs, return function itself
     if not _is_enabled:
         return func
@@ -243,9 +245,9 @@ def method_logger(func):
             try:
                 end_time = time.perf_counter()
                 execution_time = end_time - start_time
-                _method_counter.add(func)
+                _method_counter._add(func)
                 # Send log to REST API server
-                if exception or _method_counter.should_sample(func):
+                if exception or _method_counter._should_sample(func):
                     _executor.submit(_send_log, execution_time, func, exception)
             except Exception:
                 pass
@@ -254,27 +256,27 @@ def method_logger(func):
 
 
 def _send_log(execution_time, func, exception):
-    tz = _env_attr.get_timezone()
+    tz = _env_attr._get_timezone()
     zoned_datetime = datetime.now(tz=tz)
     log_data = {
         # env
-        "user_id": _env_attr.get_user_id(),
+        "user_id": _env_attr._get_user_id(),
         "tz": tz.tzname(zoned_datetime),
         "datetime": zoned_datetime.astimezone(timezone.utc).strftime(
             "%Y-%m-%d %H:%M:%S %Z"
         ),
-        "backend_hostname": _hash_string(_env_attr.get_backend_host_name()),
-        "backend_version": _env_attr.get_backend_version(),
-        "platform": _env_attr.get_platform(),
-        "python_version": _env_attr.get_python_version(),
-        "hsml_version": _env_attr.get_hsml_version(),
-        "hsfs_version": _env_attr.get_hsfs_version(),
-        "hopsworks_version": _env_attr.get_hopsworks_version(),
+        "backend_hostname": _hash_string(_env_attr._get_backend_host_name()),
+        "backend_version": _env_attr._get_backend_version(),
+        "platform": _env_attr._get_platform(),
+        "python_version": _env_attr._get_python_version(),
+        "hsml_version": _env_attr._get_hsml_version(),
+        "hsfs_version": _env_attr._get_hsfs_version(),
+        "hopsworks_version": _env_attr._get_hopsworks_version(),
         # method
         "method_name": func.__name__,
         "module_name": func.__module__,
         "execution_time": int(execution_time * 1000),
-        "num_call": _method_counter.get_count(func),
+        "num_call": _method_counter._get_count(func),
         # error
         "error_message": str(exception) if exception else None,
         "stack_trace": (

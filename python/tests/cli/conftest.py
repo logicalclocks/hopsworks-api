@@ -24,6 +24,7 @@ def tmp_home(tmp_path, monkeypatch):
         "HOPSWORKS_API_KEY",
         "HOPSWORKS_PROJECT",
         "HOPSWORKS_PROJECT_ID",
+        "HOPSWORKS_HOSTNAME_VERIFICATION",
         "REST_ENDPOINT",
         "PROJECT_NAME",
         "SECRETS_DIR",

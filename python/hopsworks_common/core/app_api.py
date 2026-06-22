@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING
 
 from hopsworks_apigen import public
 from hopsworks_common import client, usage, util
+from hopsworks_common.client.exceptions import RestAPIError
 
 
 if TYPE_CHECKING:
@@ -41,7 +42,7 @@ class AppApi:
         self._log = logging.getLogger(__name__)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_apps(self) -> list[app.App]:
         """Get all apps in the project.
 
@@ -50,36 +51,45 @@ class AppApi:
         """
         from hopsworks_common import app
 
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["project", _client._project_id, "apps"]
         headers = {"content-type": "application/json"}
         response = _client._send_request("GET", path_params, headers=headers)
         return app.App.from_response_json_list(response)
 
     @public
-    @usage.method_logger
-    def get_app(self, name: str) -> app.App:
+    @usage._method_logger
+    def get_app(self, name: str) -> app.App | None:
         """Get an app by name.
 
         Parameters:
             name: Name of the app.
 
         Returns:
-            App object.
+            App object, or ``None`` if no app with that name exists, so a
+            reuse-if-exists guard does not have to catch a 404.
 
         Raises:
-            hopsworks.client.exceptions.RestAPIError: If the app does not exist or the backend encounters an error.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error other than a 404.
         """
         from hopsworks_common import app
 
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["project", _client._project_id, "apps", name]
         headers = {"content-type": "application/json"}
-        response = _client._send_request("GET", path_params, headers=headers)
+        try:
+            response = _client._send_request("GET", path_params, headers=headers)
+        except RestAPIError as err:
+            if (
+                getattr(err.response, "status_code", None)
+                == RestAPIError.STATUS_CODE_NOT_FOUND
+            ):
+                return None
+            raise
         return app.App.from_response_json(response)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_app(
         self,
         name: str,
@@ -96,6 +106,8 @@ class AppApi:
         git_provider: str | None = None,
         git_branch: str | None = None,
         entrypoint_script: str | None = None,
+        app_base_path: str | None = None,
+        readiness_probe_path: str | None = None,
     ) -> app.App:
         """Create a new Python app.
 
@@ -133,11 +145,15 @@ class AppApi:
                 BitBucket).
             git_branch: Optional branch to clone for git-backed apps.
             entrypoint_script: Relative entrypoint script for Streamlit git apps.
+            app_base_path: Public mount path for the app, for example ``/`` or
+                ``/myapp``.
+            readiness_probe_path: Optional readiness probe path to use instead of
+                the platform default.
 
         Returns:
             The created App object.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
 
         app_kind_name = str(getattr(app_kind, "name", app_kind) or "STREAMLIT").upper()
         app_path = self._trim_to_none(app_path)
@@ -146,6 +162,8 @@ class AppApi:
         git_provider = self._normalize_git_provider(git_provider)
         git_branch = self._trim_to_none(git_branch)
         entrypoint_script = self._trim_to_none(entrypoint_script)
+        app_base_path = self._trim_to_none(app_base_path)
+        readiness_probe_path = self._trim_to_none(readiness_probe_path)
         git_repo_app = bool(git_url)
         streamlit_app = app_kind_name == "STREAMLIT"
 
@@ -178,7 +196,7 @@ class AppApi:
                 )
 
         if app_path and not git_repo_app:
-            app_path = util.convert_to_abs(app_path, _client._project_name)
+            app_path = util._convert_to_abs(app_path, _client._project_name)
             if not app_path.startswith("hdfs://"):
                 app_path = "hdfs://" + app_path
 
@@ -209,6 +227,10 @@ class AppApi:
             config["appPort"] = app_port
         if description is not None:
             config["description"] = description
+        if app_base_path is not None:
+            config["appBasePath"] = app_base_path
+        if readiness_probe_path is not None:
+            config["readinessProbePath"] = readiness_probe_path
 
         path_params = ["project", _client._project_id, "jobs", name]
         headers = {"content-type": "application/json"}
@@ -229,7 +251,7 @@ class AppApi:
         backend applies the runtime override; otherwise falls back to the legacy
         text/plain POST that Jersey dispatches to the no-body start handler.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -248,7 +270,7 @@ class AppApi:
 
     def _stop(self, app_name: str, execution_id: int):
         """Stop an app execution."""
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -265,7 +287,7 @@ class AppApi:
 
     def _redeploy(self, app_name: str):
         """Redeploy a running app."""
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -276,9 +298,28 @@ class AppApi:
         headers = {"content-type": "application/json"}
         return _client._send_request("POST", path_params, headers=headers)
 
+    def _set_public(self, app_name: str, enabled: bool):
+        """Enable or disable public (no-login) access for a Streamlit app.
+
+        On enable the response carries the share token (data-owner only); the
+        caller builds the share URL from it.
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "apps",
+            app_name,
+            "public",
+        ]
+        headers = {"content-type": "application/json"}
+        return _client._send_request(
+            "POST", path_params, headers=headers, data=json.dumps({"enabled": enabled})
+        )
+
     def _get_log(self, app_name: str, execution_id: int, log_type: str) -> dict:
         """Get stdout or stderr log metadata for an app execution."""
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -294,7 +335,7 @@ class AppApi:
 
     def _delete(self, app_name: str):
         """Delete an app."""
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,

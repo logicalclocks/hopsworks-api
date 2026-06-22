@@ -26,7 +26,29 @@ def test_fg_delete_confirms_and_calls_sdk(mock_project):
     fs.get_feature_group.return_value = fg
     result = CliRunner().invoke(cli, ["fg", "delete", "txn", "--yes"])
     assert result.exit_code == 0, result.output
-    fg.delete.assert_called_once()
+    fg.delete.assert_called_once_with(force=False, delete_feature_views=False)
+
+
+def test_fg_delete_force_leaves_feature_views(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    fg = mock.MagicMock()
+    fg.name, fg.version = "txn", 1
+    fs.get_feature_group.return_value = fg
+    result = CliRunner().invoke(cli, ["fg", "delete", "txn", "--yes", "--force"])
+    assert result.exit_code == 0, result.output
+    fg.delete.assert_called_once_with(force=True, delete_feature_views=False)
+
+
+def test_fg_delete_cascades_feature_views(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    fg = mock.MagicMock()
+    fg.name, fg.version = "txn", 1
+    fs.get_feature_group.return_value = fg
+    result = CliRunner().invoke(
+        cli, ["fg", "delete", "txn", "--yes", "--delete-feature-views"]
+    )
+    assert result.exit_code == 0, result.output
+    fg.delete.assert_called_once_with(force=False, delete_feature_views=True)
 
 
 def test_fg_delete_aborts_without_yes(mock_project):
@@ -38,6 +60,46 @@ def test_fg_delete_aborts_without_yes(mock_project):
     result = CliRunner().invoke(cli, ["fg", "delete", "txn"], input="n\n")
     assert result.exit_code != 0
     fg.delete.assert_not_called()
+
+
+# --- fg append-features ---------------------------------------------------
+
+
+def test_fg_append_features_parses_and_calls_sdk(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    fg = mock.MagicMock()
+    fg.name, fg.version = "txn", 1
+    fs.get_feature_group.return_value = fg
+    result = CliRunner().invoke(
+        cli,
+        [
+            "fg",
+            "append-features",
+            "txn",
+            "--features",
+            "score:double:Risk score,tier:string,extra:int:",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    fg.append_features.assert_called_once()
+    appended = fg.append_features.call_args.args[0]
+    assert [f.name for f in appended] == ["score", "tier", "extra"]
+    assert [f.type for f in appended] == ["double", "string", "int"]
+    # Optional per-column description: parsed when given, None when omitted
+    # (no third field) or empty (a trailing colon).
+    assert [f.description for f in appended] == ["Risk score", None, None]
+
+
+def test_fg_append_features_rejects_bad_spec(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    fg = mock.MagicMock()
+    fg.name, fg.version = "txn", 1
+    fs.get_feature_group.return_value = fg
+    result = CliRunner().invoke(
+        cli, ["fg", "append-features", "txn", "--features", "noType"]
+    )
+    assert result.exit_code != 0
+    fg.append_features.assert_not_called()
 
 
 # --- fg keywords / add / remove -------------------------------------------

@@ -120,6 +120,48 @@ def test_fg_preview(mock_project):
     assert "id" in result.output
 
 
+def test_fg_preview_truncates_wide_columns(mock_project):
+    import pandas as pd
+
+    fs = mock_project.get_feature_store.return_value
+    fg = _feature_group("transactions", features=[_feature("id", "bigint")])
+    fg.read.return_value = pd.DataFrame({"id": [1], "emb": [[0.1] * 1536]})
+    fs.get_feature_group.return_value = fg
+    result = CliRunner().invoke(cli, ["fg", "preview", "transactions"])
+    assert result.exit_code == 0, result.output
+    # wide embedding collapsed, not dumped in full
+    assert "len=1536" in result.output
+
+
+def test_fg_preview_columns_projection(mock_project):
+    import pandas as pd
+
+    fs = mock_project.get_feature_store.return_value
+    fg = _feature_group("transactions", features=[_feature("id", "bigint")])
+    fg.read.return_value = pd.DataFrame({"id": [1, 2], "emb": [[0.1] * 4, [0.2] * 4]})
+    fs.get_feature_group.return_value = fg
+    result = CliRunner().invoke(
+        cli, ["fg", "preview", "transactions", "--columns", "id"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "id" in result.output
+    assert "emb" not in result.output  # projected out
+
+
+def test_fg_preview_bad_column_errors(mock_project):
+    import pandas as pd
+
+    fs = mock_project.get_feature_store.return_value
+    fg = _feature_group("transactions", features=[_feature("id", "bigint")])
+    fg.read.return_value = pd.DataFrame({"id": [1, 2]})
+    fs.get_feature_group.return_value = fg
+    result = CliRunner().invoke(
+        cli, ["fg", "preview", "transactions", "--columns", "nope"]
+    )
+    assert result.exit_code != 0
+    assert "nope" in result.output
+
+
 # --- fv --------------------------------------------------------------------
 
 
@@ -144,10 +186,32 @@ def test_fv_info(mock_project):
     fv = mock.MagicMock()
     fv.id, fv.name, fv.version = 11, "fraud_fv", 1
     fv.labels, fv.description, fv.features = ["fraud"], "", []
+    fv.transformation_functions = []
     fs.get_feature_view.return_value = fv
     result = CliRunner().invoke(cli, ["fv", "info", "fraud_fv"])
     assert result.exit_code == 0, result.output
     assert "fraud_fv" in result.output
+
+
+def test_fv_info_shows_transformations(mock_project):
+    """Post-transform output and dropped columns surface in fv info."""
+    fs = mock_project.get_feature_store.return_value
+    fv = mock.MagicMock()
+    fv.id, fv.name, fv.version = 11, "fraud_fv", 1
+    fv.labels, fv.description, fv.features = ["fraud"], "", []
+    tf = mock.MagicMock()
+    tf.output_column_names = ["zscore_scaler_amount_"]
+    feat = mock.MagicMock()
+    feat.feature_name = "amount"
+    tf.hopsworks_udf.function_name = "zscore_scaler"
+    tf.hopsworks_udf.transformation_features = [feat]
+    tf.hopsworks_udf.dropped_features = ["amount"]
+    fv.transformation_functions = [tf]
+    fs.get_feature_view.return_value = fv
+    result = CliRunner().invoke(cli, ["fv", "info", "fraud_fv"])
+    assert result.exit_code == 0, result.output
+    assert "zscore_scaler_amount_" in result.output
+    assert "zscore_scaler" in result.output
 
 
 # --- datasource ------------------------------------------------------------
@@ -305,17 +369,50 @@ def test_model_info_specific_version(mock_project):
 # --- deployment ------------------------------------------------------------
 
 
-def test_deployment_list(mock_project):
+def test_deployment_list_shows_live_status(mock_project):
+    # list must show the live state from get_state(), not the empty cached
+    # attributes that used to render "-" (#10). No cached status is set here.
     ms = mock.MagicMock()
-    d = mock.MagicMock()
+    d = mock.MagicMock(
+        spec=["id", "name", "model_name", "model_version", "serving_tool", "get_state"]
+    )
     d.id, d.name = 1, "fraud_predict"
     d.model_name, d.model_version = "fraud_detector", 1
-    d.serving_tool, d.model_server, d.status = "KSERVE", "PYTHON", "RUNNING"
+    d.serving_tool = "KSERVE"
+    d.get_state.return_value.status = "Running"
     ms.get_deployments.return_value = [d]
     mock_project.get_model_serving.return_value = ms
     result = CliRunner().invoke(cli, ["deployment", "list"])
     assert result.exit_code == 0, result.output
     assert "fraud_predict" in result.output
+    assert "Running" in result.output
+
+
+def test_deployment_list_falls_back_when_state_errors(mock_project):
+    # When the live state call fails, fall back to a cached status attribute
+    # rather than crashing the whole list.
+    ms = mock.MagicMock()
+    d = mock.MagicMock(
+        spec=[
+            "id",
+            "name",
+            "model_name",
+            "model_version",
+            "serving_tool",
+            "get_state",
+            "status",
+        ]
+    )
+    d.id, d.name = 2, "churn_predict"
+    d.model_name, d.model_version = "churn_model", 1
+    d.serving_tool = "KSERVE"
+    d.get_state.side_effect = RuntimeError("backend down")
+    d.status = "Stopped"
+    ms.get_deployments.return_value = [d]
+    mock_project.get_model_serving.return_value = ms
+    result = CliRunner().invoke(cli, ["deployment", "list"])
+    assert result.exit_code == 0, result.output
+    assert "Stopped" in result.output
 
 
 def test_deployment_info_not_found(mock_project):
@@ -417,3 +514,38 @@ def test_unauthenticated_command_suggests_setup(tmp_home):
     result = CliRunner().invoke(cli, ["fg", "list"])
     assert result.exit_code != 0
     assert "hops setup" in result.output
+
+
+# --- trino ----------------------------------------------------------------
+
+
+def test_trino_sql_alias_registered():
+    # `hops trino sql ...` is a natural guess; without the alias it failed with
+    # a bare "No such command 'sql'" (#3). Both names must resolve.
+    from hopsworks.cli.commands.trino import trino_group
+
+    assert "sql" in trino_group.commands
+    assert "query" in trino_group.commands
+    assert trino_group.commands["sql"] is trino_group.commands["query"]
+
+
+# --- stdout hygiene -------------------------------------------------------
+
+
+def test_login_banner_does_not_pollute_stdout(authed_config, capsys):
+    # hopsworks.login() prints a "Logged in to project ..." banner; the CLI
+    # must keep it off stdout so --json output and pipes stay parseable (#6).
+    import click
+    from hopsworks.cli import session
+
+    def fake_login(**kwargs):
+        print("Logged in to project, explore it here http://x")
+        return mock.MagicMock(name="Project")
+
+    ctx = click.Context(click.Command("x"))
+    with mock.patch.object(session.auth, "login", side_effect=fake_login):
+        session.get_project(ctx)
+
+    captured = capsys.readouterr()
+    assert "Logged in to project" not in captured.out
+    assert "Logged in to project" in captured.err

@@ -39,10 +39,10 @@ class TestValidationReportEngine:
         mock_vr_engine_get_validation_report_url.return_value = validation_report_url
 
         # Act
-        vr_engine.save(validation_report=None)
+        vr_engine._save(validation_report=None)
 
         # Assert
-        assert mock_vr_api.return_value.create.call_count == 1
+        assert mock_vr_api.return_value._create.call_count == 1
         assert mock_print.call_count == 1
         assert (
             mock_print.call_args[0][0]
@@ -70,10 +70,10 @@ class TestValidationReportEngine:
         mock_vr_engine_get_validation_report_url.return_value = validation_report_url
 
         # Act
-        vr_engine.get_last()
+        vr_engine._get_last()
 
         # Assert
-        assert mock_vr_api.return_value.get_last.call_count == 1
+        assert mock_vr_api.return_value._get_last.call_count == 1
         assert mock_print.call_count == 1
         assert (
             mock_print.call_args[0][0]
@@ -102,10 +102,10 @@ class TestValidationReportEngine:
         mock_vr_engine_get_validation_report_url.return_value = validation_report_url
 
         # Act
-        vr_engine.get_all()
+        vr_engine._get_all()
 
         # Assert
-        assert mock_vr_api.return_value.get_all.call_count == 1
+        assert mock_vr_api.return_value._get_all.call_count == 1
         assert mock_print.call_count == 1
         assert (
             mock_print.call_args[0][0]
@@ -128,19 +128,19 @@ class TestValidationReportEngine:
         )
 
         # Act
-        vr_engine.delete(validation_report_id=validation_report_id)
+        vr_engine._delete(validation_report_id=validation_report_id)
 
         # Assert
-        assert mock_vr_api.return_value.delete.call_count == 1
+        assert mock_vr_api.return_value._delete.call_count == 1
 
     def test_get_validation_report_url(self, mocker):
         # Arrange
         feature_store_id = 99
         feature_group_id = 10
 
-        mock_client_get_instance = mocker.patch("hopsworks_common.client.get_instance")
+        mock_client_get_instance = mocker.patch("hopsworks_common.client._get_instance")
         mock_util_get_hostname_replaced_url = mocker.patch(
-            "hsfs.util.get_hostname_replaced_url"
+            "hsfs.util._get_hostname_replaced_url"
         )
 
         vr_engine = validation_report_engine.ValidationReportEngine(

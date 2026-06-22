@@ -106,9 +106,9 @@ class OnlineStoreSqlClient:
         # Safely stop the async task thread.
         # The connection pool will be closed during garbage collection by aiomysql.
         if self._async_task_thread.is_alive():
-            self._async_task_thread.stop()
+            self._async_task_thread._stop()
 
-    def fetch_prepared_statements(
+    def _fetch_prepared_statements(
         self,
         entity: feature_view.FeatureView | training_dataset.TrainingDataset,
         inference_helper_columns: bool,
@@ -130,7 +130,7 @@ class OnlineStoreSqlClient:
                 _logger.debug(
                     f"Initialising prepared statements for feature view {entity.name} version {entity.version}."
                 )
-            for key in self.get_prepared_statement_labels(
+            for key in self._get_prepared_statement_labels(
                 inference_helper_columns,
                 with_logging_meta_data,
                 feature_vector_with_inference_helpers,
@@ -138,7 +138,7 @@ class OnlineStoreSqlClient:
                 if _logger.isEnabledFor(logging.DEBUG):
                     _logger.debug(f"Fetching prepared statement for key {key}")
                 self.prepared_statements[key] = (
-                    self.feature_view_api.get_serving_prepared_statement(
+                    self.feature_view_api._get_serving_prepared_statement(
                         entity.name,
                         entity.version,
                         batch=key.startswith("batch"),
@@ -155,14 +155,14 @@ class OnlineStoreSqlClient:
                 _logger.debug(
                     f"Initialising prepared statements for training dataset {entity.name} version {entity.version}."
                 )
-            for key in self.get_prepared_statement_labels(
+            for key in self._get_prepared_statement_labels(
                 with_inference_helper_column=False,
                 with_logging_meta_data=with_logging_meta_data,
             ):
                 if _logger.isEnabledFor(logging.DEBUG):
                     _logger.debug(f"Fetching prepared statement for key {key}")
                 self.prepared_statements[key] = (
-                    self.training_dataset_api.get_serving_prepared_statement(
+                    self.training_dataset_api._get_serving_prepared_statement(
                         entity, batch=key.startswith("batch")
                     )
                 )
@@ -182,7 +182,7 @@ class OnlineStoreSqlClient:
                 if ps.feature_group_id not in self.skip_fg_ids
             }
 
-    def init_prepared_statements(
+    def _init_prepared_statements(
         self,
         entity: feature_view.FeatureView | training_dataset.TrainingDataset,
         inference_helper_columns: bool,
@@ -193,18 +193,18 @@ class OnlineStoreSqlClient:
             _logger.debug(
                 "Fetch and reset prepared statements and external as user may be re-initialising with different parameters"
             )
-        self.fetch_prepared_statements(
+        self._fetch_prepared_statements(
             entity,
             inference_helper_columns,
             with_logging_meta_data=with_logging_meta_data,
             feature_vector_with_inference_helpers=feature_vector_with_inference_helpers,
         )
 
-        self.init_parametrize_and_serving_utils(
+        self._init_parametrize_and_serving_utils(
             self.prepared_statements[self.BATCH_VECTOR_KEY]
         )
 
-        for key in self.get_prepared_statement_labels(
+        for key in self._get_prepared_statement_labels(
             inference_helper_columns,
             with_logging_meta_data,
             feature_vector_with_inference_helpers,
@@ -217,7 +217,7 @@ class OnlineStoreSqlClient:
                 )
             )
 
-    def init_parametrize_and_serving_utils(
+    def _init_parametrize_and_serving_utils(
         self,
         prepared_statements: list[ServingPreparedStatement],
     ) -> None:
@@ -288,7 +288,7 @@ class OnlineStoreSqlClient:
 
         return prepared_statements_dict
 
-    def init_async_mysql_connection(self, options=None):
+    def _init_async_mysql_connection(self, options=None):
         assert self._prepared_statements.get(self.SINGLE_VECTOR_KEY) is not None, (
             "Prepared statements are not initialized. "
             "Please call `init_prepared_statement` method first."
@@ -297,12 +297,12 @@ class OnlineStoreSqlClient:
             _logger.debug(
                 "Fetching storage connector for sql connection to Online Feature Store."
             )
-        self._online_connector = self._storage_connector_api.get_online_connector(
+        self._online_connector = self._storage_connector_api._get_online_connector(
             self._feature_store_id
         )
         self._connection_options = options
         self._hostname = (
-            variable_api.VariableApi().get_loadbalancer_external_domain("mysqld")
+            variable_api.VariableApi()._get_loadbalancer_external_domain("mysqld")
             if self._external
             else None
         )
@@ -318,7 +318,7 @@ class OnlineStoreSqlClient:
             )
             self._async_task_thread.start()
 
-    def get_single_feature_vector(
+    def _get_single_feature_vector(
         self,
         entry: dict[str, Any],
         logging_data: bool = False,
@@ -350,7 +350,7 @@ class OnlineStoreSqlClient:
             self.parametrised_prepared_statements[key],
         )
 
-    def get_batch_feature_vectors(
+    def _get_batch_feature_vectors(
         self,
         entries: list[dict[str, Any]],
         logging_data: bool = False,
@@ -382,7 +382,7 @@ class OnlineStoreSqlClient:
             self.parametrised_prepared_statements[key],
         )
 
-    def get_inference_helper_vector(self, entry: dict[str, Any]) -> dict[str, Any]:
+    def _get_inference_helper_vector(self, entry: dict[str, Any]) -> dict[str, Any]:
         """Retrieve single inference helper vector with parallel queries using aiomysql engine.
 
         Parameters:
@@ -395,7 +395,7 @@ class OnlineStoreSqlClient:
             entry, self.parametrised_prepared_statements[self.SINGLE_HELPER_KEY]
         )
 
-    def get_batch_inference_helper_vectors(
+    def _get_batch_inference_helper_vectors(
         self, entries: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
         """Retrieve batch inference helper vectors with parallel queries using aiomysql engine.
@@ -454,7 +454,7 @@ class OnlineStoreSqlClient:
             _logger.debug(
                 f"Executing prepared statements for serving vector with entries: {bind_entries}"
             )
-        results_dict = self._async_task_thread.submit(
+        results_dict = self._async_task_thread._submit(
             AsyncTask(
                 task_function=self._execute_prep_statements,
                 task_args=(
@@ -535,7 +535,7 @@ class OnlineStoreSqlClient:
                 f"Executing prepared statements for batch vector with entries: {entry_values}"
             )
         # run all the prepared statements in parallel using aiomysql engine
-        parallel_results = self._async_task_thread.submit(
+        parallel_results = self._async_task_thread._submit(
             AsyncTask(
                 task_function=self._execute_prep_statements,
                 task_args=(prepared_stmts_to_execute, entry_values),
@@ -594,7 +594,7 @@ class OnlineStoreSqlClient:
                 )
         return batch_results, serving_keys_all_fg
 
-    def refresh_mysql_connection(self):
+    def _refresh_mysql_connection(self):
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug("Refreshing MySQL connection.")
         try:
@@ -616,14 +616,14 @@ class OnlineStoreSqlClient:
             _logger.debug(
                 "Retrieve MySQL connection details from the online storage connector."
             )
-        online_conn = self._storage_connector_api.get_online_connector(
+        online_conn = self._storage_connector_api._get_online_connector(
             self._feature_store_id
         )
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
                 f"Creating MySQL {'external' if self.external is True else ''}engine with options: {options}."
             )
-        self._prepared_statement_engine = util_sql.create_mysql_engine(
+        self._prepared_statement_engine = util_sql._create_mysql_engine(
             online_conn, self._external, options=options
         )
 
@@ -682,7 +682,7 @@ class OnlineStoreSqlClient:
         return tuple(result_key)
 
     @staticmethod
-    def get_prepared_statement_labels(
+    def _get_prepared_statement_labels(
         with_inference_helper_column: bool = False,
         with_logging_meta_data: bool = False,
         feature_vector_with_inference_helpers: bool = False,
@@ -712,7 +712,7 @@ class OnlineStoreSqlClient:
         return prepared_statements_list
 
     async def _get_connection_pool(self, default_min_size: int) -> None:
-        return await util_sql.create_async_engine(
+        return await util_sql._create_async_engine(
             self._online_connector,
             self._external,
             default_min_size,
@@ -894,7 +894,7 @@ class OnlineStoreSqlClient:
             _logger.debug(
                 "Build serving keys from prepared statements ignoring prefix to ensure compatibility with older version."
             )
-        self._serving_keys = util.build_serving_keys_from_prepared_statements(
+        self._serving_keys = util._build_serving_keys_from_prepared_statements(
             self.prepared_statements[
                 self.BATCH_VECTOR_KEY
             ],  # use batch to avoid issue with label_fg

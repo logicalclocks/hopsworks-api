@@ -38,7 +38,7 @@ class TrainingDatasetFeature:
         transformation_function: TransformationFunction | None = None,
         **kwargs,
     ):
-        self._name = util.autofix_feature_name(name)
+        self._name = util._autofix_feature_name(name)
         self._type = type
         self._index = index
         self._feature_group = (

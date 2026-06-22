@@ -86,8 +86,8 @@ def spark_df():
 
 @pytest.fixture
 def feature_group_data():
-    with mock.patch("hopsworks_common.client.get_instance"):
-        engine.init("python")
+    with mock.patch("hopsworks_common.client._get_instance"):
+        engine._init("python")
     with mock.patch(
         "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
     ):
@@ -108,8 +108,8 @@ def feature_group_data():
 
 @pytest.fixture
 def feature_group_created():
-    with mock.patch("hopsworks_common.client.get_instance"):
-        engine.init("python")
+    with mock.patch("hopsworks_common.client._get_instance"):
+        engine._init("python")
     return feature_group.FeatureGroup(
         name="test_existing_fg",
         id=1,
@@ -149,7 +149,7 @@ class BaseDataFrameTest:
         with pytest.raises(
             ValueError, match=f"Primary key column {KEY} is missing in input dataframe"
         ):
-            DataFrameValidator().validate_schema(
+            DataFrameValidator()._validate_schema(
                 feature_group_data, df, feature_group_data.columns
             )
 
@@ -166,7 +166,7 @@ class BaseDataFrameTest:
         with pytest.raises(
             ValueError, match="Primary key column primary_key contains null values"
         ):
-            DataFrameValidator().validate_schema(
+            DataFrameValidator()._validate_schema(
                 feature_group_data, modified_df, feature_group_data.columns
             )
 
@@ -187,12 +187,12 @@ class BaseDataFrameTest:
         # Act, Assert
         if online_enabled:
             with pytest.raises(ValueError, match="String length exceeded"):
-                DataFrameValidator().validate_schema(
+                DataFrameValidator()._validate_schema(
                     feature_group_created, modified_df, feature_group_created.columns
                 )
         else:
             # Should not raise when online is disabled
-            df_features = DataFrameValidator().validate_schema(
+            df_features = DataFrameValidator()._validate_schema(
                 feature_group_created, modified_df, feature_group_created.columns
             )
             assert isinstance(df_features, list)
@@ -209,12 +209,12 @@ class BaseDataFrameTest:
         # Act, Assert
         if online_enabled:
             with pytest.raises(ValueError, match="String length exceeded"):
-                DataFrameValidator().validate_schema(
+                DataFrameValidator()._validate_schema(
                     feature_group_data, modified_df, feature_group_data.columns
                 )
         else:
             # Should not raise when online is disabled
-            df_features = DataFrameValidator().validate_schema(
+            df_features = DataFrameValidator()._validate_schema(
                 feature_group_data, modified_df, feature_group_data.columns
             )
             assert isinstance(df_features, list)
@@ -229,7 +229,7 @@ class BaseDataFrameTest:
         self._update_online_enabled(feature_group_data, online_enabled)
 
         # Act
-        df_features = DataFrameValidator().validate_schema(
+        df_features = DataFrameValidator()._validate_schema(
             feature_group_data, df, feature_group_data.columns
         )
         # Assert
@@ -256,12 +256,41 @@ class BaseDataFrameTest:
         feature_group_data.columns = []
 
         # Act
-        df_features = DataFrameValidator().validate_schema(
+        df_features = DataFrameValidator()._validate_schema(
             feature_group_data, modified_df, initial_features
         )
 
         # Assert
         assert df_features[2].online_type == "varchar(200)"
+
+    @pytest.mark.parametrize(
+        "online_enabled",
+        [True, False],
+    )
+    def test_string_length_warning_only_when_online(
+        self, online_enabled, df, feature_group_data, caplog
+    ):
+        # An offline-only feature group still gets its varchar widened (harmless
+        # metadata), but must not log the "... in online table" warning, which
+        # is misleading noise when there is no online table.
+        feature_group_data.online_enabled = online_enabled
+        feature_group_data.columns = []
+        initial_features = [
+            Feature("primary_key", "int"),
+            Feature("event_time", "string"),
+            Feature("string_col", "string"),
+        ]
+        modified_df = self._modify_row(df, 0, string_col="a" * 301)
+
+        with caplog.at_level("WARNING"):
+            df_features = DataFrameValidator()._validate_schema(
+                feature_group_data, modified_df, initial_features
+            )
+
+        # Widened either way (301 -> varchar(400)).
+        assert df_features[2].online_type == "varchar(400)"
+        # Warning only for an online feature group.
+        assert ("in online table" in caplog.text) is online_enabled
 
     @pytest.mark.parametrize(
         "online_enabled",
@@ -276,7 +305,7 @@ class BaseDataFrameTest:
         modified_df = self._modify_row(df, 0, string_col="b" * 1001)
 
         # Act
-        df_features = DataFrameValidator().validate_schema(
+        df_features = DataFrameValidator()._validate_schema(
             feature_group_data, modified_df, feature_group_data.columns
         )
 
@@ -298,7 +327,7 @@ class BaseDataFrameTest:
 
         # Act
         with pytest.raises(ValueError) as excinfo:
-            DataFrameValidator().validate_schema(
+            DataFrameValidator()._validate_schema(
                 feature_group_data, modified_df, feature_group_data.columns
             )
 
@@ -337,7 +366,7 @@ class TestPandasDataframe(BaseDataFrameTest):
         # Arrange
 
         # Act
-        validator = DataFrameValidator.get_validator(df)
+        validator = DataFrameValidator._get_validator(df)
 
         # Assert
         assert isinstance(validator, PandasValidator)
@@ -360,7 +389,7 @@ class TestPandasDataframe(BaseDataFrameTest):
         )
 
         # Act
-        string_cols = PandasValidator.get_string_columns(df)
+        string_cols = PandasValidator._get_string_columns(df)
 
         # Assert
         # validate that only 'val' is detected as a string column
@@ -394,7 +423,7 @@ class TestPolarsDataframe(BaseDataFrameTest):
         # Arrange
 
         # Act
-        validator = DataFrameValidator.get_validator(df)
+        validator = DataFrameValidator._get_validator(df)
 
         # Assert
         assert isinstance(validator, PolarsValidator)
@@ -433,7 +462,7 @@ class TestSparkDataframe(BaseDataFrameTest):
         # Arrange
 
         # Act
-        validator = DataFrameValidator.get_validator(spark_df)
+        validator = DataFrameValidator._get_validator(spark_df)
 
         # Assert
         assert isinstance(validator, PySparkValidator)

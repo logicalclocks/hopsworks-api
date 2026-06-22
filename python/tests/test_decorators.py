@@ -17,8 +17,8 @@ import pytest
 from hsml.decorators import (
     HopsworksConnectionError,
     NoHopsworksConnectionError,
-    connected,
-    not_connected,
+    _connected,
+    _not_connected,
 )
 
 
@@ -30,7 +30,7 @@ class TestDecorators:
         mock_instance = mocker.MagicMock()
         mock_instance._connected = False
 
-        @not_connected
+        @_not_connected
         def assert_not_connected(inst, arg, key_arg):
             assert not inst._connected
             assert arg == "arg"
@@ -44,7 +44,7 @@ class TestDecorators:
         mock_instance = mocker.MagicMock()
         mock_instance._connected = True
 
-        @not_connected
+        @_not_connected
         def assert_not_connected(inst, arg, key_arg):
             pass
 
@@ -59,7 +59,7 @@ class TestDecorators:
         mock_instance = mocker.MagicMock()
         mock_instance._connected = True
 
-        @connected
+        @_connected
         def assert_connected(inst, arg, key_arg):
             assert inst._connected
             assert arg == "arg"
@@ -73,7 +73,7 @@ class TestDecorators:
         mock_instance = mocker.MagicMock()
         mock_instance._connected = False
 
-        @connected
+        @_connected
         def assert_connected(inst, arg, key_arg):
             pass
 

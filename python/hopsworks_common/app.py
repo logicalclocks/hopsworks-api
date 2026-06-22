@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+import urllib.parse
 
 import humps
 from hopsworks_apigen import public
@@ -79,6 +80,10 @@ class App:
         git_branch=None,
         latest_commit=None,
         entrypoint_script=None,
+        app_base_path=None,
+        readiness_probe_path=None,
+        public_access=None,
+        public_token=None,
         **kwargs,
     ):
         self._job_id = job_id
@@ -107,6 +112,10 @@ class App:
         self._git_branch = git_branch
         self._latest_commit = latest_commit
         self._entrypoint_script = entrypoint_script
+        self._app_base_path = app_base_path
+        self._readiness_probe_path = readiness_probe_path
+        self._public_access = public_access or False
+        self._public_token = public_token
         # Runtime env-var override; set by AppApi.create_app() and applied on run().
         # Not part of the persisted app config — the backend has no field for it.
         self._env_vars: dict[str, str] | None = None
@@ -161,8 +170,14 @@ class App:
             ```
         """
         if self._serving and self._app_url:
-            _client = client.get_instance()
-            return _client._base_url.rstrip("/") + "/hopsworks-api/" + self._app_url
+            _client = client._get_instance()
+            base_url = _client._base_url.rstrip("/")
+            app_url = self._app_url.lstrip("/")
+            if app_url.startswith(("http://", "https://")):
+                return app_url
+            if app_url.startswith("hopsworks-api/"):
+                return base_url + "/" + app_url
+            return base_url + "/hopsworks-api/" + app_url
         return None
 
     @public
@@ -227,6 +242,18 @@ class App:
 
     @public
     @property
+    def app_base_path(self) -> str | None:
+        """Configured app base path."""
+        return self._app_base_path
+
+    @public
+    @property
+    def readiness_probe_path(self) -> str | None:
+        """Configured readiness probe path."""
+        return self._readiness_probe_path
+
+    @public
+    @property
     def execution_id(self) -> int | None:
         """ID of the current/latest execution."""
         return self._execution_id
@@ -250,7 +277,7 @@ class App:
         return self._memory_requested
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def run(self, await_serving: bool = True) -> App:
         """Start the app.
 
@@ -284,7 +311,7 @@ class App:
         return self._refresh()
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def redeploy(self, await_serving: bool = True) -> App:
         """Redeploy the app by rolling its Kubernetes deployment.
 
@@ -307,7 +334,71 @@ class App:
         return self._refresh()
 
     @public
-    @usage.method_logger
+    @property
+    def public_access(self) -> bool:
+        """Whether the app is publicly accessible without a Hopsworks login."""
+        return self._public_access
+
+    @public
+    @property
+    def public_url(self) -> str | None:
+        """Public share URL.
+
+        None when the app is not public, or when the caller is not a data owner
+        (only data owners receive the share token from the backend).
+        """
+        return self._build_public_url(self._public_token)
+
+    def _build_public_url(self, token: str | None) -> str | None:
+        if not token:
+            return None
+        _client = client._get_instance()
+        project = urllib.parse.quote(_client._project_name, safe="")
+        name = urllib.parse.quote(self._name, safe="")
+        return (
+            _client._base_url.rstrip("/")
+            + "/hopsworks-api/pythonapp/"
+            + project
+            + "/"
+            + name
+            + "/__public?t="
+            + urllib.parse.quote(token, safe="")
+        )
+
+    @public
+    @usage._method_logger
+    def make_public(self) -> str | None:
+        """Make this Streamlit app reachable without a Hopsworks login.
+
+        Returns:
+            `str`. The share URL to give out.
+
+        Danger:
+            Anyone with the link can use the app with the app's own credentials,
+            data access, and secrets.
+            This is not read-only access.
+            Only data owners can enable it, and only Streamlit apps are eligible.
+        """
+        _logger.info("Making app public: %s", self._name)
+        response = self._app_api._set_public(self._name, True)
+        self._public_access = True
+        self._public_token = response.get("publicToken") if response else None
+        return self.public_url
+
+    @public
+    @usage._method_logger
+    def make_private(self) -> None:
+        """Revoke public access.
+
+        Every outstanding public link stops working immediately.
+        """
+        _logger.info("Making app private: %s", self._name)
+        self._app_api._set_public(self._name, False)
+        self._public_access = False
+        self._public_token = None
+
+    @public
+    @usage._method_logger
     def stop(self) -> App:
         """Stop the app.
 
@@ -331,7 +422,7 @@ class App:
         return self._refresh()
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def delete(self):
         """Delete the app entirely.
 
@@ -341,7 +432,7 @@ class App:
         self._app_api._delete(self._name)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_logs(self) -> dict[str, str]:
         """Get stdout and stderr logs for the latest app execution.
 
@@ -372,8 +463,8 @@ class App:
         Returns:
             The URL to the app page in the Hopsworks UI.
         """
-        _client = client.get_instance()
-        return util.get_hostname_replaced_url(
+        _client = client._get_instance()
+        return util._get_hostname_replaced_url(
             "/p/" + str(_client._project_id) + "/apps"
         )
 
@@ -404,6 +495,8 @@ class App:
         self._git_branch = updated._git_branch
         self._latest_commit = updated._latest_commit
         self._entrypoint_script = updated._entrypoint_script
+        self._public_access = updated._public_access
+        self._public_token = updated._public_token
         return self
 
     def _wait_for_serving(self) -> App:

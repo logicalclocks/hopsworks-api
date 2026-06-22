@@ -45,13 +45,14 @@ class TestFeatureGroupWriter:
             validation_options={"fetch_expectation_suite": False},
             transformation_context=None,
             transform=True,
+            n_processes=None,
         )
         assert fg._multi_part_insert is False
 
     def test_fg_writer_cache_management(self, mocker, dataframe_fixture_basic):
         engine = python.Engine()
-        mocker.patch("hsfs.engine.get_instance", return_value=engine)
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine._get_instance", return_value=engine)
+        mocker.patch("hopsworks_common.client._get_instance")
         producer, feature_writers, writer_m = (
             mocker.MagicMock(),
             mocker.MagicMock(),
@@ -66,9 +67,9 @@ class TestFeatureGroupWriter:
             "hsfs.core.kafka_engine._init_kafka_resources",
             return_value=(producer, headers, feature_writers, writer_m),
         )
-        mocker.patch("hsfs.core.kafka_engine.encode_complex_features")
+        mocker.patch("hsfs.core.kafka_engine._encode_complex_features")
         mocker.patch("hsfs.core.job.Job")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         fg = feature_group.FeatureGroup(
             name="test",
@@ -77,7 +78,9 @@ class TestFeatureGroupWriter:
             primary_key=[],
             partition_key=[],
             id=10,
-            features=engine.parse_schema_feature_group(dataframe_fixture_basic, "HUDI"),
+            features=engine._parse_schema_feature_group(
+                dataframe_fixture_basic, "HUDI"
+            ),
             stream=True,
         )
         fg.feature_store = mocker.MagicMock()
@@ -108,8 +111,8 @@ class TestFeatureGroupWriter:
 
     def test_fg_writer_without_context_manager(self, mocker, dataframe_fixture_basic):
         engine = python.Engine()
-        mocker.patch("hsfs.engine.get_instance", return_value=engine)
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hsfs.engine._get_instance", return_value=engine)
+        mocker.patch("hopsworks_common.client._get_instance")
         producer, feature_writers, writer_m = (
             mocker.MagicMock(),
             mocker.MagicMock(),
@@ -124,9 +127,9 @@ class TestFeatureGroupWriter:
             "hsfs.core.kafka_engine._init_kafka_resources",
             return_value=(producer, headers, feature_writers, writer_m),
         )
-        mocker.patch("hsfs.core.kafka_engine.encode_complex_features")
+        mocker.patch("hsfs.core.kafka_engine._encode_complex_features")
         mocker.patch("hsfs.core.job.Job")
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
 
         fg = feature_group.FeatureGroup(
             name="test",
@@ -135,7 +138,9 @@ class TestFeatureGroupWriter:
             primary_key=[],
             partition_key=[],
             id=10,
-            features=engine.parse_schema_feature_group(dataframe_fixture_basic, "HUDI"),
+            features=engine._parse_schema_feature_group(
+                dataframe_fixture_basic, "HUDI"
+            ),
             stream=True,
         )
         fg.feature_store = mocker.MagicMock()

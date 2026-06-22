@@ -39,7 +39,7 @@ class ExecutionApi:
         (endpoint accepts `application/json`); otherwise falls back to the original plain-text
         args body for backwards compatibility.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["project", _client._project_id, "jobs", job.name, "executions"]
 
         use_json = (
@@ -86,7 +86,7 @@ class ExecutionApi:
         )
 
     def _get(self, job, id):
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -102,7 +102,7 @@ class ExecutionApi:
         )
 
     def _get_all(self, job):
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["project", _client._project_id, "jobs", job.name, "executions"]
 
         query_params = {"sort_by": "submissiontime:desc"}
@@ -116,7 +116,7 @@ class ExecutionApi:
         )
 
     def _delete(self, job_name, id):
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -128,7 +128,7 @@ class ExecutionApi:
         _client._send_request("DELETE", path_params)
 
     def _stop(self, job_name: str, id: int) -> None:
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,

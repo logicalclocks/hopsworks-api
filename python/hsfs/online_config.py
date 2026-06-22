@@ -19,6 +19,7 @@ from typing import Any
 
 import humps
 from hopsworks_apigen import public
+from hopsworks_common import util
 
 
 INDEX_TYPE_HASH = "HASH"
@@ -35,6 +36,7 @@ class OnlineConfig:
         online_comments: list[str] = None,
         table_space: str = None,
         primary_key_index_type: str = None,
+        secondary_indexes: list[list[str]] = None,
         **kwargs,
     ):
         self._online_comments = online_comments
@@ -42,6 +44,7 @@ class OnlineConfig:
         self._primary_key_index_type = self._normalize_primary_key_index_type(
             primary_key_index_type
         )
+        self._secondary_indexes = self._validate_secondary_indexes(secondary_indexes)
 
     @staticmethod
     def _normalize_primary_key_index_type(value: str | None) -> str | None:
@@ -60,6 +63,51 @@ class OnlineConfig:
             )
         return normalized
 
+    @staticmethod
+    def _validate_secondary_indexes(
+        value: list[list[str]] | None,
+    ) -> list[list[str]] | None:
+        if value is None:
+            return None
+        if not isinstance(value, list):
+            raise TypeError(
+                f"secondary_indexes must be a list of column-name lists or None, "
+                f"got {type(value).__name__}."
+            )
+        normalized_indexes = []
+        seen_indexes = set()
+        for i, idx in enumerate(value):
+            if not isinstance(idx, list) or len(idx) == 0:
+                raise ValueError(
+                    f"secondary_indexes[{i}] must be a non-empty list of column names."
+                )
+            seen_columns = set()
+            normalized_columns = []
+            for col in idx:
+                if not isinstance(col, str) or not col.strip():
+                    raise ValueError(
+                        f"secondary_indexes[{i}] contains an invalid column name: {col!r}."
+                    )
+                # Sanitize with the same input as the feature-creation path (lower
+                # case, spaces to underscores) so the index targets the real online
+                # table column. Do not strip first: a padded name like " user " must
+                # map to "_user_" to match the created column, not "user".
+                normalized = util._autofix_feature_name(col, warn=True)
+                if normalized in seen_columns:
+                    raise ValueError(
+                        f"secondary_indexes[{i}] contains duplicate column name: {normalized!r}."
+                    )
+                seen_columns.add(normalized)
+                normalized_columns.append(normalized)
+            index_definition = tuple(normalized_columns)
+            if index_definition in seen_indexes:
+                raise ValueError(
+                    f"secondary_indexes contains duplicate index definition at position {i}: {normalized_columns!r}."
+                )
+            seen_indexes.add(index_definition)
+            normalized_indexes.append(normalized_columns)
+        return normalized_indexes
+
     @classmethod
     def from_response_json(cls, json_dict: dict[str, Any]) -> OnlineConfig:
         if json_dict is None:
@@ -69,11 +117,14 @@ class OnlineConfig:
         return cls(**json_decamelized)
 
     def to_dict(self):
-        return {
+        d = {
             "onlineComments": self._online_comments,
             "tableSpace": self._table_space,
             "primaryKeyIndexType": self._primary_key_index_type,
         }
+        if self._secondary_indexes is not None:
+            d["secondaryIndexes"] = self._secondary_indexes
+        return d
 
     @public
     @property
@@ -126,3 +177,33 @@ class OnlineConfig:
         self._primary_key_index_type = self._normalize_primary_key_index_type(
             primary_key_index_type
         )
+
+    @public
+    @property
+    def secondary_indexes(self) -> list[list[str]] | None:
+        """Secondary indexes for the online feature store table.
+
+        Each element is a list of feature names that form one index.
+        The backend names each index automatically as `idx_<col1>_<col2>_...`.
+        Feature names are sanitized to lower case with spaces replaced by underscores, matching the online table column names.
+
+        Example:
+            ```python
+            OnlineConfig(secondary_indexes=[["user_id"], ["country", "city"]])
+            ```
+
+        Generates DDL:
+            ```sql
+            KEY `idx_user_id`(`user_id`),
+            KEY `idx_country_city`(`country`,`city`)
+            ```
+
+        Warning: Create-only
+            Set at feature group creation time only.
+            Indexes cannot be added or removed after the table has been created without recreating it.
+        """
+        return self._secondary_indexes
+
+    @secondary_indexes.setter
+    def secondary_indexes(self, value: list[list[str]] | None) -> None:
+        self._secondary_indexes = self._validate_secondary_indexes(value)

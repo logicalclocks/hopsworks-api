@@ -42,11 +42,11 @@ def _patch_client(mocker):
     """Patch HTTP client + engine so `FeatureGroup` and `Query` construct cheaply.
 
     `FeatureGroupBase.__init__` instantiates `VariableApi`/`AlertsApi`, both of
-    which look up the HTTP client. `Query.__init__` calls `engine.get_type()`.
+    which look up the HTTP client. `Query.__init__` calls `engine._get_type()`.
     Mocking these avoids any network or engine-init work in unit tests.
     """
-    mocker.patch("hopsworks_common.client.get_instance")
-    mocker.patch("hsfs.engine.get_type", return_value="python")
+    mocker.patch("hopsworks_common.client._get_instance")
+    mocker.patch("hsfs.engine._get_type", return_value="python")
 
 
 def _fg(name, version=1, featurestore_id=99):

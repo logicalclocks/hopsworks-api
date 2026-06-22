@@ -19,6 +19,7 @@ import math
 import pandas as pd
 from hsfs import engine as hopsworks_engine
 from hsfs import transformation_function
+from hsfs.core.transformation_execution_dag import TransformationExecutionDAG
 from hsfs.core.transformation_function_engine import TransformationFunctionEngine
 from hsfs.engine import python as python_engine
 from hsfs.transformation_function import TransformationType
@@ -42,11 +43,11 @@ def test_log_transform_python_engine():
     )
 
     engine = python_engine.Engine()
-    hopsworks_engine.set_instance(engine=engine, engine_type="python")
+    hopsworks_engine._set_instance(engine=engine, engine_type="python")
 
     # Act
-    result = TransformationFunctionEngine.apply_transformation_functions(
-        transformation_functions=[tf], data=df
+    result = TransformationFunctionEngine._apply_transformation_functions(
+        execution_graph=TransformationExecutionDAG([tf]), data=df
     )
 
     # Assert

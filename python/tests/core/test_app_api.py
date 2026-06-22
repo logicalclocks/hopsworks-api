@@ -36,7 +36,7 @@ class TestAppApiCreate:
         client_mock._project_name = "demo"
         client_mock._send_request.return_value = {}
         mocker.patch(
-            "hopsworks_common.core.app_api.client.get_instance",
+            "hopsworks_common.core.app_api.client._get_instance",
             return_value=client_mock,
         )
         return client_mock
@@ -49,7 +49,7 @@ class TestAppApiCreate:
 
     def test_create_streamlit_app_defaults(self, mock_client, api, mocker):
         mocker.patch(
-            "hopsworks_common.core.app_api.util.convert_to_abs",
+            "hopsworks_common.core.app_api.util._convert_to_abs",
             return_value="/Projects/demo/Resources/app.py",
         )
 
@@ -123,7 +123,7 @@ class TestAppApiCreate:
 
     def test_create_custom_app_payload(self, mock_client, api, mocker):
         mocker.patch(
-            "hopsworks_common.core.app_api.util.convert_to_abs",
+            "hopsworks_common.core.app_api.util._convert_to_abs",
             return_value="/Projects/demo/Resources/fastapi_custom_app.py",
         )
 
@@ -137,6 +137,8 @@ class TestAppApiCreate:
             ),
             app_port=8080,
             description="FastAPI demo",
+            app_base_path="/myapp",
+            readiness_probe_path="/health",
         )
 
         body = json.loads(mock_client._send_request.call_args.kwargs["data"])
@@ -149,6 +151,8 @@ class TestAppApiCreate:
         )
         assert body["appPort"] == 8080
         assert body["description"] == "FastAPI demo"
+        assert body["appBasePath"] == "/myapp"
+        assert body["readinessProbePath"] == "/health"
 
     def test_create_custom_app_without_path_omits_app_path(self, mock_client, api):
         api.create_app(
@@ -210,3 +214,25 @@ class TestAppApiCreate:
             "my_app",
             "redeploy",
         ]
+
+    def test_set_public_enable_posts_to_backend(self, mock_client):
+        api = AppApi()
+        api._set_public("my_app", True)
+
+        assert mock_client._send_request.call_args.args[0] == "POST"
+        assert mock_client._send_request.call_args.args[1] == [
+            "project",
+            119,
+            "apps",
+            "my_app",
+            "public",
+        ]
+        body = json.loads(mock_client._send_request.call_args.kwargs["data"])
+        assert body == {"enabled": True}
+
+    def test_set_public_disable_sends_enabled_false(self, mock_client):
+        api = AppApi()
+        api._set_public("my_app", False)
+
+        body = json.loads(mock_client._send_request.call_args.kwargs["data"])
+        assert body == {"enabled": False}

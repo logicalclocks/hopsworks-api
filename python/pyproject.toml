@@ -42,7 +42,7 @@ dependencies = [
     "boto3",
     "pandas[mysql]<2.4.0",
     "numpy>=1.26.3,<2.5.0",
-    "pyjks",
+    "cryptography",
     "mock",
     "avro==1.12.0",
     "PyMySQL[rsa]",
@@ -50,7 +50,7 @@ dependencies = [
     "fsspec<2025.12.0",
     "retrying",
     "hopsworks_aiomysql[sa]==0.2.2",
-    "opensearch-py>=1.1.0,<=2.4.2",
+    "opensearch-py>=1.1.0,<=2.8.0",
     "tqdm",
     "grpcio>=1.49.1,<2.0.0",         # ^1.49.1
     "protobuf>=4.25.4,<5.0.0",       # ^4.25.4
@@ -74,6 +74,7 @@ python = [
     "fastavro>=1.4.11,<=1.12.0",
     "tqdm",
     "hops-deltalake==1.4.0-post121; sys_platform == 'linux' or (sys_platform == 'darwin' and platform_machine == 'arm64')",
+    "pyiceberg>=0.9.0,<0.12.0",
     "httpx<=0.28.1",
 ]
 sqlalchemy-1 = [

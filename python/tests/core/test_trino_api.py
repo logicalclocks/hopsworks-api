@@ -53,7 +53,7 @@ class TestTrinoApi:
         """Create a TrinoApi instance with mocked dependencies."""
         # Mock VariableApi
         mock_variable_api = Mock()
-        mock_variable_api.get_service_discovery_domain.return_value = "example.local"
+        mock_variable_api._get_service_discovery_domain.return_value = "example.local"
         mocker.patch(
             "hopsworks_common.core.trino_api.VariableApi",
             return_value=mock_variable_api,
@@ -69,7 +69,7 @@ class TestTrinoApi:
 
         # Mock ProjectApi
         mock_project_api = Mock()
-        mock_project_api.get_user_info.return_value = {"username": "test_user"}
+        mock_project_api._get_user_info.return_value = {"username": "test_user"}
         mocker.patch(
             "hopsworks_common.core.trino_api.project_api.ProjectApi",
             return_value=mock_project_api,
@@ -103,7 +103,7 @@ class TestTrinoApi:
         mocker.patch("hopsworks_common.core.trino_api.secret_api.SecretsApi")
         mocker.patch("hopsworks_common.core.trino_api.project_api.ProjectApi")
         mocker.patch(
-            "hopsworks_common.core.trino_api.client.get_instance",
+            "hopsworks_common.core.trino_api.client._get_instance",
             return_value=Mock(_project_name=mock_project.name),
         )
 
@@ -121,7 +121,7 @@ class TestTrinoApi:
         )
         mock_client = Mock()
         mocker.patch(
-            "hopsworks_common.core.trino_api.client.get_instance",
+            "hopsworks_common.core.trino_api.client._get_instance",
             return_value=mock_client,
         )
         mock_client._get_ca_chain_path.return_value = os.path.join(
@@ -145,17 +145,31 @@ class TestTrinoApi:
         assert result == os.path.join("path", "to", "custom", "ca.pem")
 
     def test_get_ca_chain_path_external_client(self, mocker, trino_api):
-        """Test SSL certificate for external client."""
+        """Test SSL certificate for external client.
+
+        The external client downloads the cluster CA chain to disk at login, so
+        ``verify=True`` must point the trino driver at that chain rather than
+        the system trust store; otherwise verification fails with "unable to get
+        local issuer certificate" because the internal CA is not in the OS bundle.
+        """
         # Arrange
         mocker.patch(
             "hopsworks_common.core.trino_api.client._is_external", return_value=True
+        )
+        mock_client = Mock()
+        mocker.patch(
+            "hopsworks_common.core.trino_api.client._get_instance",
+            return_value=mock_client,
+        )
+        mock_client._get_ca_chain_path.return_value = os.path.join(
+            "/tmp", "trino_ca_chain.pem"
         )
 
         # Act
         result = trino_api._get_ca_chain_path(verify=True)
 
         # Assert
-        assert result is True
+        assert result == os.path.join("/tmp", "trino_ca_chain.pem")
 
         # Act with verify disabled
         result = trino_api._get_ca_chain_path(verify=False)
@@ -186,7 +200,7 @@ class TestTrinoApi:
         mocker.patch(
             "hopsworks_common.core.trino_api.client._is_external", return_value=True
         )
-        trino_api._variable_api.get_loadbalancer_external_domain.return_value = (
+        trino_api._variable_api._get_loadbalancer_external_domain.return_value = (
             "trino.example.com"
         )
 
@@ -195,7 +209,7 @@ class TestTrinoApi:
 
         # Assert
         assert host == "trino.example.com"
-        trino_api._variable_api.get_loadbalancer_external_domain.assert_called_once_with(
+        trino_api._variable_api._get_loadbalancer_external_domain.assert_called_once_with(
             "trino"
         )
 
@@ -267,7 +281,7 @@ class TestTrinoApi:
         )
         mock_client = Mock()
         mocker.patch(
-            "hopsworks_common.core.trino_api.client.get_instance",
+            "hopsworks_common.core.trino_api.client._get_instance",
             return_value=mock_client,
         )
         mock_client._get_ca_chain_path.return_value = os.path.join(
@@ -303,8 +317,16 @@ class TestTrinoApi:
         mocker.patch(
             "hopsworks_common.core.trino_api.client._is_external", return_value=True
         )
-        trino_api._variable_api.get_loadbalancer_external_domain.return_value = (
+        trino_api._variable_api._get_loadbalancer_external_domain.return_value = (
             "trino.example.com"
+        )
+        mock_client = Mock()
+        mocker.patch(
+            "hopsworks_common.core.trino_api.client._get_instance",
+            return_value=mock_client,
+        )
+        mock_client._get_ca_chain_path.return_value = os.path.join(
+            "/tmp", "trino_ca_chain.pem"
         )
         mock_connection = Mock()
         mock_trino_connect = mocker.patch(
@@ -327,7 +349,9 @@ class TestTrinoApi:
         assert call_kwargs["catalog"] == "iceberg"
         assert call_kwargs["schema"] == "my_db"
         assert call_kwargs["isolation_level"] == IsolationLevel.READ_UNCOMMITTED
-        assert call_kwargs["verify"] is True
+        # External client verifies against the downloaded cluster CA chain, not
+        # the system trust store (which lacks the internal CA).
+        assert call_kwargs["verify"] == os.path.join("/tmp", "trino_ca_chain.pem")
 
     def test_connect_with_custom_parameters(self, mocker, trino_api):
         """Test connecting to Trino with custom parameters."""
@@ -335,8 +359,16 @@ class TestTrinoApi:
         mocker.patch(
             "hopsworks_common.core.trino_api.client._is_external", return_value=True
         )
-        trino_api._variable_api.get_loadbalancer_external_domain.return_value = (
+        trino_api._variable_api._get_loadbalancer_external_domain.return_value = (
             "trino.example.com"
+        )
+        mock_client = Mock()
+        mocker.patch(
+            "hopsworks_common.core.trino_api.client._get_instance",
+            return_value=mock_client,
+        )
+        mock_client._get_ca_chain_path.return_value = os.path.join(
+            "/tmp", "trino_ca_chain.pem"
         )
         mock_connection = Mock()
         mock_trino_connect = mocker.patch(
@@ -375,7 +407,7 @@ class TestTrinoApi:
         )
         mock_client = Mock()
         mocker.patch(
-            "hopsworks_common.core.trino_api.client.get_instance",
+            "hopsworks_common.core.trino_api.client._get_instance",
             return_value=mock_client,
         )
         mock_client._get_ca_chain_path.return_value = os.path.join(
@@ -416,8 +448,16 @@ class TestTrinoApi:
         mocker.patch(
             "hopsworks_common.core.trino_api.client._is_external", return_value=True
         )
-        trino_api._variable_api.get_loadbalancer_external_domain.return_value = (
+        trino_api._variable_api._get_loadbalancer_external_domain.return_value = (
             "trino.example.com"
+        )
+        mock_client = Mock()
+        mocker.patch(
+            "hopsworks_common.core.trino_api.client._get_instance",
+            return_value=mock_client,
+        )
+        mock_client._get_ca_chain_path.return_value = os.path.join(
+            "/tmp", "trino_ca_chain.pem"
         )
         mock_engine = Mock()
         mock_create_engine = mocker.patch(
@@ -438,7 +478,8 @@ class TestTrinoApi:
         assert "trino.example.com" in url_str
         assert "iceberg" in url_str
         assert "my_db" in url_str
-        assert connect_args["verify"] is True
+        # External client verifies against the downloaded cluster CA chain.
+        assert connect_args["verify"] == os.path.join("/tmp", "trino_ca_chain.pem")
 
     def test_create_engine_with_custom_parameters(self, mocker, trino_api):
         """Test creating SQLAlchemy engine with custom parameters."""
@@ -446,8 +487,16 @@ class TestTrinoApi:
         mocker.patch(
             "hopsworks_common.core.trino_api.client._is_external", return_value=True
         )
-        trino_api._variable_api.get_loadbalancer_external_domain.return_value = (
+        trino_api._variable_api._get_loadbalancer_external_domain.return_value = (
             "trino.example.com"
+        )
+        mock_client = Mock()
+        mocker.patch(
+            "hopsworks_common.core.trino_api.client._get_instance",
+            return_value=mock_client,
+        )
+        mock_client._get_ca_chain_path.return_value = os.path.join(
+            "/tmp", "trino_ca_chain.pem"
         )
         mock_engine = Mock()
         mock_create_engine = mocker.patch(

@@ -21,7 +21,7 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 import humps
-from hopsworks_apigen import public
+from hopsworks_apigen import deprecated, public
 
 
 if TYPE_CHECKING:
@@ -46,7 +46,7 @@ class FeatureTransformationStatistics:
         max: float | None = None,
         sum: float | None = None,
         mean: float | None = None,
-        stddev: float | None = None,
+        std_dev: float | None = None,
         percentiles: Mapping[str, float] | None = None,
         distinctness: float | None = None,
         entropy: float | None = None,
@@ -65,7 +65,9 @@ class FeatureTransformationStatistics:
         self._max = max
         self._sum = sum
         self._mean = mean
-        self._stddev = stddev
+        # Accept the legacy lowercase ``stddev`` key (e.g. from backend payloads
+        # or older callers) so the rename to ``std_dev`` stays backward compatible.
+        self._std_dev = std_dev if std_dev is not None else kwargs.get("stddev")
         self._percentiles = percentiles
         self._distinctness = distinctness
         self._entropy = entropy
@@ -153,9 +155,21 @@ class FeatureTransformationStatistics:
 
     @public
     @property
-    def stddev(self) -> float | None:
+    def std_dev(self) -> float | None:
         """Standard deviation of the feature values."""
-        return self._stddev
+        return self._std_dev
+
+    @public
+    @property
+    @deprecated(
+        "hsfs.transformation_statistics.FeatureTransformationStatistics.std_dev"
+    )
+    def stddev(self) -> float | None:
+        """Standard deviation of the feature values.
+
+        Deprecated alias for [`std_dev`][hsfs.transformation_statistics.FeatureTransformationStatistics.std_dev].
+        """
+        return self._std_dev
 
     @public
     @property
@@ -260,12 +274,13 @@ class TransformationStatistics:
     def __init__(self, *features: str):
         self._features = features
         self.__dict__.update(
-            {feature: self.init_statistics(feature) for feature in features}
+            {feature: self._init_statistics(feature) for feature in features}
         )
 
-    def init_statistics(self, feature_name: str) -> FeatureTransformationStatistics:
+    def _init_statistics(self, feature_name: str) -> FeatureTransformationStatistics:
         return FeatureTransformationStatistics(feature_name=feature_name)
 
+    @public
     def set_statistics(
         self,
         feature_name: str,

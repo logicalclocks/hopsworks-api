@@ -2,9 +2,10 @@
 
 Covers the full feature-group surface: ``list``, ``info``, ``preview``,
 ``features`` (reads) plus ``create``, ``create-external``, ``insert``,
-``derive``, ``delete``, ``stats``, ``search``, ``keywords``/``add-keyword``/
-``remove-keyword`` (writes). All operations go through the SDK in-process so
-Hopsworks domain logic is invoked directly, with no subprocess hop.
+``derive``, ``append-features``, ``delete``, ``stats``, ``search``,
+``keywords``/``add-keyword``/``remove-keyword`` (writes). All operations go
+through the SDK in-process so Hopsworks domain logic is invoked directly, with
+no subprocess hop.
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import click
-from hopsworks.cli import joinspec, output, session
+from hopsworks.cli import joinspec, lineage, output, session
 
 
 @click.group("fg")
@@ -84,6 +85,7 @@ def fg_info(
         ["Primary key", ", ".join(getattr(fg, "primary_key", []) or []) or "-"],
         ["Event time", getattr(fg, "event_time", None) or "-"],
         ["Description", output.first_line(getattr(fg, "description", ""))],
+        ["Tags", output.format_mapping(output.read_tags(fg))],
     ]
     output.print_table(["FIELD", "VALUE"], rows)
 
@@ -99,6 +101,11 @@ def fg_info(
     "--featurestore",
     help="Pin lookup to this feature store by name (for shared/ambiguous names).",
 )
+@click.option(
+    "--columns",
+    help="Comma-separated columns to show (projection); useful to skip wide "
+    "embedding/array columns.",
+)
 @click.pass_context
 def fg_preview(
     ctx: click.Context,
@@ -107,8 +114,13 @@ def fg_preview(
     n: int,
     online: bool,
     featurestore: str | None,
+    columns: str | None,
 ) -> None:
     """Show the first ``n`` rows of a feature group.
+
+    Wide array/struct columns (embeddings, nested arrays) are collapsed to a
+    ``[len=N] head…`` preview in the table view so one row stays one line; use
+    ``--columns`` to project, or ``--json`` for the untruncated values.
 
     Args:
         ctx: Click context.
@@ -117,6 +129,7 @@ def fg_preview(
         n: Number of rows to fetch.
         online: When True, read from the online store.
         featurestore: Pin lookup to this feature store by name.
+        columns: Optional comma-separated column projection.
     """
     fg = _get_fg(ctx, name, version, featurestore)
     try:
@@ -124,13 +137,22 @@ def fg_preview(
     except Exception as exc:  # noqa: BLE001 - SDK raises a bag of types
         raise click.ClickException(f"Could not read feature group: {exc}") from exc
 
+    if columns:
+        wanted = [c.strip() for c in columns.split(",") if c.strip()]
+        missing = [c for c in wanted if c not in df.columns]
+        if missing:
+            raise click.BadParameter(
+                f"Unknown column(s): {', '.join(missing)}", param_hint="--columns"
+            )
+        df = df[wanted]
+
     if output.JSON_MODE:
         output.print_json(df.to_dict(orient="records"))
         return
 
-    columns = list(df.columns)
-    rows = [[row[c] for c in columns] for _, row in df.iterrows()]
-    output.print_table(columns, rows)
+    cols = list(df.columns)
+    rows = [[_truncate_cell(row[c]) for c in cols] for _, row in df.iterrows()]
+    output.print_table(cols, rows)
 
 
 @fg_group.command("features")
@@ -165,6 +187,57 @@ def fg_features(
             ]
         )
     output.print_table(["NAME", "TYPE", "PK", "PARTITION", "DESCRIPTION"], rows)
+
+
+@fg_group.command("lineage")
+@click.argument("name")
+@click.option("--version", type=int, help="Feature group version; defaults to latest.")
+@click.option(
+    "--featurestore",
+    help="Pin lookup to this feature store by name (for shared/ambiguous names).",
+)
+@click.pass_context
+def fg_lineage(
+    ctx: click.Context, name: str, version: int | None, featurestore: str | None
+) -> None:
+    """Show upstream and downstream lineage for a feature group.
+
+    Upstream covers parent feature groups, the storage connector, and the
+    data source.
+    Downstream covers generated feature views and feature groups.
+
+    Args:
+        ctx: Click context.
+        name: Feature group name.
+        version: Specific version; latest if omitted.
+        featurestore: Pin lookup to this feature store by name.
+    """
+    fg = _get_fg(ctx, name, version, featurestore)
+    label = f"feature group {getattr(fg, 'name', name)} v{getattr(fg, 'version', '?')}"
+    sections = [
+        (
+            "upstream",
+            "parent_feature_group",
+            lineage.fetch(fg.get_parent_feature_groups),
+        ),
+        (
+            "upstream",
+            "storage_connector",
+            lineage.fetch(fg.get_storage_connector_provenance),
+        ),
+        ("upstream", "data_source", lineage.fetch(fg.get_data_source_provenance)),
+        (
+            "downstream",
+            "feature_view",
+            lineage.fetch(fg.get_generated_feature_views),
+        ),
+        (
+            "downstream",
+            "feature_group",
+            lineage.fetch(fg.get_generated_feature_groups),
+        ),
+    ]
+    lineage.render(label, sections)
 
 
 def _get_fg(
@@ -232,6 +305,7 @@ def _fg_to_dict(fg: Any) -> dict[str, Any]:
         "primary_key": list(getattr(fg, "primary_key", []) or []),
         "event_time": getattr(fg, "event_time", None),
         "description": getattr(fg, "description", None),
+        "tags": output.read_tags(fg),
         "features": [
             {
                 "name": getattr(f, "name", None),
@@ -263,7 +337,7 @@ def _fg_to_dict(fg: Any) -> dict[str, Any]:
 @click.option(
     "--features",
     "features_spec",
-    help='Comma-separated schema, e.g. "id:bigint,amount:double".',
+    help='Comma-separated schema "name:type[:description]", e.g. "id:bigint:User id,amount:double".',
 )
 @click.option("--event-time", "event_time", help="Name of the event-time column.")
 @click.option(
@@ -298,7 +372,7 @@ def fg_create(
         name: Feature group name.
         version: Version; auto-assigned when omitted.
         primary_key: Comma-separated primary keys.
-        features_spec: Comma-separated ``name:type`` pairs.
+        features_spec: Comma-separated ``name:type[:description]`` items.
         event_time: Event-time column name.
         partition_key: Comma-separated partition keys.
         online: Whether to enable the online store.
@@ -633,14 +707,72 @@ def fg_derive(
     output.success("✓ Derived feature group %s from %s", name, base_fg)
 
 
+@fg_group.command("append-features")
+@click.argument("name")
+@click.option(
+    "--features",
+    "features_spec",
+    required=True,
+    help='New columns "name:type[:description]", e.g. "score:double:Risk score,tier:string".',
+)
+@click.option("--version", type=int, help="Feature group version; defaults to latest.")
+@click.pass_context
+def fg_append_features(
+    ctx: click.Context, name: str, features_spec: str, version: int | None
+) -> None:
+    """Append new columns to an existing feature group, in place.
+
+    Append-only schema evolution: it keeps the same feature group version so
+    downstream consumers are never disturbed. Existing columns cannot be
+    dropped, renamed, or retyped from here; that is a breaking change, so bump
+    to a new version instead. New columns cannot be primary or partition keys,
+    and existing rows are not backfilled (they read null until reinserted).
+    Feature views built on this feature group keep their old projection and do
+    not see the appended columns; create a new feature view to use them.
+
+    Args:
+        ctx: Click context.
+        name: Feature group name.
+        features_spec: New columns as comma-separated ``name:type[:description]`` items.
+        version: Feature group version; defaults to latest.
+    """
+    fg = _get_fg(ctx, name, version)
+    features = _build_features(features_spec)
+    if not features:
+        raise click.UsageError("Provide at least one new column via --features.")
+    try:
+        fg.append_features(features)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Append failed: {exc}") from exc
+    output.success("✓ Appended %d feature(s) to %s", len(features), name)
+
+
 @fg_group.command("delete")
 @click.argument("name")
 @click.option(
     "--version", type=int, help="Feature group version; required when multiple exist."
 )
 @click.option("--yes", is_flag=True, help="Skip the interactive confirmation prompt.")
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Delete even if used by feature views, leaving those feature views in place.",
+)
+@click.option(
+    "--delete-feature-views",
+    is_flag=True,
+    help="Also delete the feature views that depend on this feature group, along with "
+    "their training data.",
+)
 @click.pass_context
-def fg_delete(ctx: click.Context, name: str, version: int | None, yes: bool) -> None:
+def fg_delete(
+    ctx: click.Context,
+    name: str,
+    version: int | None,
+    yes: bool,
+    force: bool,
+    delete_feature_views: bool,
+) -> None:
     """Delete a feature group and all its data.
 
     Args:
@@ -648,16 +780,27 @@ def fg_delete(ctx: click.Context, name: str, version: int | None, yes: bool) -> 
         name: Feature group name.
         version: Specific version to delete.
         yes: Skip confirmation when True.
+        force: Delete even if feature views depend on it, leaving them in place.
+        delete_feature_views: Also delete the dependent feature views and their training data.
     """
     fg = _get_fg(ctx, name, version)
     if not yes and not output.JSON_MODE:
+        if delete_feature_views:
+            extra = " Any feature views using it (and their training data) will also be deleted."
+        elif force:
+            extra = (
+                " It will be deleted even if feature views depend on it; "
+                "those feature views are left in place but will no longer work."
+            )
+        else:
+            extra = ""
         click.confirm(
             f"Delete feature group '{name}' v{getattr(fg, 'version', '?')}? "
-            "This wipes all offline and online data.",
+            f"This wipes all offline and online data.{extra}",
             abort=True,
         )
     try:
-        fg.delete()
+        fg.delete(force=force, delete_feature_views=delete_feature_views)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Delete failed: {exc}") from exc
     output.success("✓ Deleted feature group %s", name)
@@ -699,7 +842,26 @@ def fg_stats(ctx: click.Context, name: str, version: int | None, compute: bool) 
         to_dict = getattr(stats, "to_dict", None)
         output.print_json(to_dict() if callable(to_dict) else {"stats": str(stats)})
         return
-    output.info("%s", stats)
+
+    fds = getattr(stats, "feature_descriptive_statistics", None)
+    if not fds:
+        output.info("%s", stats)
+        return
+    rows = [
+        [
+            getattr(s, "feature_name", "?"),
+            _stat_num(getattr(s, "count", None), as_int=True),
+            _stat_num(getattr(s, "completeness", None)),
+            _stat_num(getattr(s, "min", None)),
+            _stat_num(getattr(s, "max", None)),
+            _stat_num(getattr(s, "mean", None)),
+            _stat_num(getattr(s, "stddev", None)),
+        ]
+        for s in fds
+    ]
+    output.print_table(
+        ["FEATURE", "COUNT", "COMPLETE", "MIN", "MAX", "MEAN", "STDDEV"], rows
+    )
 
 
 @fg_group.command("search")
@@ -833,6 +995,39 @@ def fg_remove_keyword(
 # region Helpers
 
 
+def _stat_num(value: Any, as_int: bool = False) -> str:
+    """Format a single statistic for the table view; ``None`` renders as ``-``."""
+    if value is None:
+        return "-"
+    if as_int and isinstance(value, (int, float)):
+        return str(int(value))
+    if isinstance(value, float):
+        return f"{value:.4g}"
+    return str(value)
+
+
+def _truncate_cell(value: Any, width: int = 60) -> str:
+    """Collapse a wide list/array cell to a length + head preview.
+
+    Embeddings and struct arrays would otherwise blow up the row; long scalars
+    are truncated to ``width``.
+    """
+    is_seq = isinstance(value, (list, tuple)) or (
+        hasattr(value, "tolist") and hasattr(value, "__len__")
+    )
+    if is_seq:
+        try:
+            seq = list(value)
+        except TypeError:
+            seq = None
+        if seq is not None:
+            head = ", ".join(str(x)[:12] for x in seq[:3])
+            tail = ", …" if len(seq) > 3 else ""
+            return f"[len={len(seq)}] {head}{tail}"
+    text = str(value)
+    return text if len(text) <= width else text[: width - 1] + "…"
+
+
 def _split_csv(value: str | None) -> list[str]:
     if not value:
         return []
@@ -859,11 +1054,15 @@ def _build_features(spec: str | None) -> list[Any]:
             continue
         if ":" not in item:
             raise click.BadParameter(
-                f"Feature '{item}' must be 'name:type'.",
+                f"Feature '{item}' must be 'name:type[:description]'.",
                 param_hint="--features",
             )
-        col, dtype = item.split(":", 1)
-        out.append(Feature(col.strip(), dtype.strip()))
+        # name:type[:description]; the description (optional) is everything
+        # after the second colon, so it may contain colons but not a comma,
+        # which separates items. CLI-expressible types carry no inner colon.
+        col, dtype, *desc = item.split(":", 2)
+        description = desc[0].strip() if desc else None
+        out.append(Feature(col.strip(), dtype.strip(), description=description or None))
     return out
 
 

@@ -14,14 +14,14 @@
 #   limitations under the License.
 #
 
-import os
+import os  # noqa: I001
 import zipfile
 
 import build  # noqa: F401  # eagerly load so test patches resolve build.ProjectBuilder
 import build.env  # noqa: F401  # eagerly load so test patches resolve build.env.DefaultIsolatedEnv
 import pytest
 from hopsworks_common.client.exceptions import RestAPIError
-from hsml import model_serving
+from hsml import deployment_tracing_config, model_serving
 
 
 @pytest.fixture
@@ -67,6 +67,42 @@ class TestDeployAgentEntryValidation:
         bad.write_text("not python")
         with pytest.raises(ValueError, match="must be a .py file"):
             ms.deploy_agent(entry=str(bad), name="agent")
+
+
+class TestTracingForwarding:
+    def test_create_predictor_forwards_tracing(self, ms, mocker):
+        # Arrange
+        tracing = deployment_tracing_config.DeploymentTracingConfig(
+            enabled=True,
+            otel_tracing_storage=deployment_tracing_config.DeploymentTracingConfig.STORAGE_OFFLINE,
+        )
+        model = mocker.Mock()
+        model._get_default_serving_name.return_value = "my_model"
+        mock_for_model = mocker.patch("hsml.model_serving.Predictor.for_model")
+
+        # Act
+        ms.create_predictor(model, tracing=tracing)
+
+        # Assert
+        assert mock_for_model.call_args.kwargs["tracing"] is tracing
+
+    def test_create_endpoint_forwards_tracing(self, ms, mocker):
+        # Arrange
+        tracing = deployment_tracing_config.DeploymentTracingConfig(
+            enabled=True,
+            otel_tracing_storage=deployment_tracing_config.DeploymentTracingConfig.STORAGE_BOTH,
+        )
+        mock_for_server = mocker.patch("hsml.model_serving.Predictor.for_server")
+
+        # Act
+        ms.create_endpoint(
+            name="endpoint",
+            script_file="script.py",
+            tracing=tracing,
+        )
+
+        # Assert
+        assert mock_for_server.call_args.kwargs["tracing"] is tracing
 
 
 class TestDeployAgentIdentifierValidation:
@@ -271,6 +307,25 @@ class TestDeployAgentScript:
         env.install_requirements.assert_called_once_with(
             "Resources/agents/my_agent/requirements.txt"
         )
+
+    def test_forwards_tracing(self, ms, mocker, tmp_path, stub_apis):
+        # Arrange
+        ds_api, _, _ = stub_apis
+        script = tmp_path / "agent.py"
+        script.write_text("")
+        mocker.patch.object(ms, "get_deployment", return_value=None)
+        mock_for_server = mocker.patch("hsml.model_serving.Predictor.for_server")
+        tracing = deployment_tracing_config.DeploymentTracingConfig(
+            enabled=True,
+            otel_tracing_storage=deployment_tracing_config.DeploymentTracingConfig.STORAGE_OFFLINE,
+        )
+
+        # Act
+        ms.deploy_agent(entry=str(script), name="my_agent", tracing=tracing)
+
+        # Assert
+        ds_api.upload.assert_called_once()
+        assert mock_for_server.call_args.kwargs["tracing"] is tracing
 
 
 class TestDeployAgentPackage:

@@ -34,7 +34,7 @@ class HuggingFaceApi:
         pass
 
     def _base_path(self, model_registry_id: int) -> list:
-        _client = client.get_instance()
+        _client = client._get_instance()
         return [
             "project",
             _client._project_id,
@@ -44,7 +44,7 @@ class HuggingFaceApi:
             "huggingface",
         ]
 
-    def start_import(
+    def _start_import(
         self,
         model_registry_id: int,
         hugging_face_model_id: str,
@@ -82,7 +82,7 @@ class HuggingFaceApi:
         if selected_filenames:
             body["selectedFilenames"] = list(selected_filenames)
 
-        _client = client.get_instance()
+        _client = client._get_instance()
         return _client._send_request(
             "POST",
             self._base_path(model_registry_id),
@@ -90,7 +90,7 @@ class HuggingFaceApi:
             data=json.dumps(body),
         )
 
-    def get_status(self, model_registry_id: int, job_id: str) -> dict:
+    def _get_status(self, model_registry_id: int, job_id: str) -> dict:
         """Poll the status of a running or finished HuggingFace import job.
 
         Parameters:
@@ -100,13 +100,13 @@ class HuggingFaceApi:
         Returns:
             backend response describing the current job status
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         return _client._send_request(
             "GET",
             self._base_path(model_registry_id) + ["status", job_id],
         )
 
-    def cancel(
+    def _cancel(
         self, model_registry_id: int, job_id: str, cleanup: bool = False
     ) -> None:
         """Cancel an import. If ``cleanup`` is true, the partial directory is removed.
@@ -116,7 +116,7 @@ class HuggingFaceApi:
             job_id: id of the import job to cancel
             cleanup: when true, the backend deletes the partially downloaded model directory
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         query_params = {"cleanup": "true"} if cleanup else None
         _client._send_request(
             "DELETE",

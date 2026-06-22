@@ -51,6 +51,7 @@ class Feature:
         foreign: bool = False,
         partition: bool = False,
         hudi_precombine_key: bool = False,
+        offline_only: bool = False,
         online_type: str | None = None,
         default_value: str | None = None,
         feature_group_id: int | None = None,
@@ -60,16 +61,19 @@ class Feature:
         | None = None,
         on_demand: bool = False,
         use_fully_qualified_name=False,
+        column_name: str | None = None,
         **kwargs,
     ) -> None:
         self._original_name = name
-        self._name = util.autofix_feature_name(name, warn=True)
+        self._name = util._autofix_feature_name(name, warn=True)
+        self._column_name = column_name if column_name is not None else name
         self._type = type
         self._description = description
         self._primary = primary
         self._foreign = foreign
         self._partition = partition
         self._hudi_precombine_key = hudi_precombine_key
+        self._offline_only = bool(offline_only)
         self._online_type = online_type
         self._default_value = default_value
         self._use_fully_qualified_name = use_fully_qualified_name
@@ -103,6 +107,7 @@ class Feature:
             "description": self._description,
             "partition": self._partition,
             "hudiPrecombineKey": self._hudi_precombine_key,
+            "offlineOnly": self._offline_only,
             "primary": self._primary,
             "foreign": self._foreign,
             "onlineType": self._online_type,
@@ -110,6 +115,7 @@ class Feature:
             "featureGroupId": self._feature_group_id,
             "onDemand": self.on_demand,
             "useFullyQualifiedName": self._use_fully_qualified_name,
+            "columnName": self._column_name,
         }
 
     def _get_fully_qualified_feature_name(
@@ -129,7 +135,7 @@ class Feature:
             str: The fully qualified feature name.
         """
         if self.use_fully_qualified_name:
-            return util.generate_fully_qualified_feature_name(
+            return util._generate_fully_qualified_feature_name(
                 feature_group=feature_group, feature_name=self._name
             )
         if prefix:
@@ -183,6 +189,16 @@ class Feature:
     def original_name(self) -> str:
         """Original feature name before client-side sanitization."""
         return self._original_name
+
+    @public
+    @property
+    def column_name(self) -> str:
+        """Source column name in the external data source, preserving original casing."""
+        return self._column_name
+
+    @column_name.setter
+    def column_name(self, column_name: str) -> None:
+        self._column_name = column_name
 
     @public
     @property
@@ -272,6 +288,23 @@ class Feature:
 
     @public
     @property
+    def offline_only(self) -> bool:
+        """Whether this feature is excluded from the online feature store.
+
+        Defaults to `False`.
+        The backend sets this to `True` on the synthetic grain features
+        when a feature group's `partitioned_by` is set and
+        `online_partition_columns=False`, so the column lives only in the
+        offline storage.
+        """
+        return self._offline_only
+
+    @offline_only.setter
+    def offline_only(self, offline_only: bool) -> None:
+        self._offline_only = bool(offline_only)
+
+    @public
+    @property
     def default_value(self) -> str | None:
         """Default value of the feature as string, if the feature was appended to the feature group."""
         return self._default_value
@@ -299,7 +332,7 @@ class Feature:
     def _get_filter_value(self, value: Any) -> Any:
         if self.type == "timestamp":
             return datetime.fromtimestamp(
-                util.convert_event_time_to_timestamp(value) / 1000, tz=timezone.utc
+                util._convert_event_time_to_timestamp(value) / 1000, tz=timezone.utc
             ).strftime("%Y-%m-%d %H:%M:%S")
         return value
 

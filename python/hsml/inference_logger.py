@@ -38,7 +38,7 @@ class InferenceLogger:
         mode: str | None = INFERENCE_LOGGER.MODE_ALL,
         **kwargs,
     ):
-        self._kafka_topic = util.get_obj_from_json(kafka_topic, KafkaTopic)
+        self._kafka_topic = util._get_obj_from_json(kafka_topic, KafkaTopic)
         self._mode = self._validate_mode(mode, self._kafka_topic) or (
             INFERENCE_LOGGER.MODE_ALL
             if self._kafka_topic is not None
@@ -48,12 +48,12 @@ class InferenceLogger:
     @public
     def describe(self):
         """Print a JSON description of the inference logger."""
-        util.pretty_print(self)
+        util._pretty_print(self)
 
     @classmethod
     def _validate_mode(cls, mode, kafka_topic):
         if mode is not None:
-            modes = list(util.get_members(INFERENCE_LOGGER))
+            modes = list(util._get_members(INFERENCE_LOGGER))
             if mode not in modes:
                 raise ValueError(
                     "Inference logging mode '{}' is not valid. Possible values are '{}'".format(
@@ -80,11 +80,11 @@ class InferenceLogger:
     @classmethod
     def extract_fields_from_json(cls, json_decamelized):
         kwargs = {}
-        kwargs["kafka_topic"] = util.extract_field_from_json(
+        kwargs["kafka_topic"] = util._extract_field_from_json(
             json_decamelized,
             ["kafka_topic_dto", "kafka_topic"],
         )
-        kwargs["mode"] = util.extract_field_from_json(
+        kwargs["mode"] = util._extract_field_from_json(
             json_decamelized, ["inference_logging", "mode"]
         )
         return kwargs

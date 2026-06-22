@@ -37,7 +37,7 @@ class TestHudiEngine:
         )
 
         # Act
-        h_engine.save_hudi_fg(
+        h_engine._save_hudi_fg(
             dataset=None,
             save_mode=None,
             operation=None,
@@ -46,8 +46,8 @@ class TestHudiEngine:
         )
 
         # Assert
-        assert mock_fg_api.return_value.commit.call_count == 1
-        assert mock_fg_api.return_value.commit.call_args[0][1].validation_id == 10
+        assert mock_fg_api.return_value._commit.call_count == 1
+        assert mock_fg_api.return_value._commit.call_args[0][1].validation_id == 10
 
     def test_delete_record(self, mocker):
         # Arrange
@@ -67,10 +67,10 @@ class TestHudiEngine:
         )
 
         # Act
-        h_engine.delete_record(delete_df=None, write_options={})
+        h_engine._delete_record(delete_df=None, write_options={})
 
         # Assert
-        assert mock_fg_api.return_value.commit.call_count == 1
+        assert mock_fg_api.return_value._commit.call_count == 1
         assert (
             "hoodie.datasource.write.payload.class"
             in mock_hudi_engine_write_hudi_dataset.call_args[0][3]
@@ -107,7 +107,7 @@ class TestHudiEngine:
         )
 
         # Act
-        h_engine.register_temporary_table(
+        h_engine._register_temporary_table(
             hudi_fg_alias=hudi_fg_alias, read_options=None
         )
 
@@ -177,7 +177,7 @@ class TestHudiEngine:
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
         mocker.patch(
             "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
         )
@@ -234,11 +234,53 @@ class TestHudiEngine:
             "hoodie.datasource.write.storage.type": "COPY_ON_WRITE",
         }
 
+    def test__setup_hudi_write_opts_partitioned_by(self, mocker):
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=["key1"],
+            partition_key=[],
+            event_time="event_ts",
+            partitioned_by=["year", "month"],
+            hudi_precombine_key=None,
+        )
+
+        h_engine = hudi_engine.HudiEngine(
+            feature_store_id=feature_store_id,
+            feature_store_name=None,
+            feature_group=fg,
+            spark_context=None,
+            spark_session=None,
+        )
+
+        # Act
+        result = h_engine._setup_hudi_write_opts(operation="test", write_options={})
+
+        # Assert: the grain columns partition like ordinary SIMPLE fields
+        # (they are materialized into the records before the write), with
+        # hive-style paths so the layout matches the Delta path.
+        assert (
+            result["hoodie.datasource.write.partitionpath.field"]
+            == "year:SIMPLE,month:SIMPLE"
+        )
+        assert result["hoodie.datasource.hive_sync.partition_fields"] == "year,month"
+        assert result["hoodie.datasource.write.hive_style_partitioning"] == "true"
+        assert not any("keygen.timebased" in k for k in result)
+
     def test_write_hudi_dataset_hudi_precombine_key(self, mocker):
         # Arrange
         feature_store_id = 99
 
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
 
         fg = feature_group.FeatureGroup(
             name="test",
@@ -305,7 +347,7 @@ class TestHudiEngine:
         self, mocker, engine_type, expected_hive_sync
     ):
         # Arrange
-        mocker.patch("hsfs.engine.get_type", return_value=engine_type)
+        mocker.patch("hsfs.engine._get_type", return_value=engine_type)
         mocker.patch(
             "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
         )
@@ -335,7 +377,7 @@ class TestHudiEngine:
 
     def test_setup_hudi_write_opts_hive_sync_external_fg(self, mocker):
         # Arrange
-        mocker.patch("hsfs.engine.get_type", return_value="spark")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
         mocker.patch(
             "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
         )
@@ -369,7 +411,7 @@ class TestHudiEngine:
         feature_store_id = 99
 
         mock_util_get_hudi_datestr_from_timestamp = mocker.patch(
-            "hsfs.util.get_hudi_datestr_from_timestamp"
+            "hsfs.util._get_hudi_datestr_from_timestamp"
         )
 
         h_engine = hudi_engine.HudiEngine(
@@ -405,7 +447,7 @@ class TestHudiEngine:
         feature_store_id = 99
 
         mock_util_get_hudi_datestr_from_timestamp = mocker.patch(
-            "hsfs.util.get_hudi_datestr_from_timestamp"
+            "hsfs.util._get_hudi_datestr_from_timestamp"
         )
 
         h_engine = hudi_engine.HudiEngine(
@@ -443,7 +485,7 @@ class TestHudiEngine:
         feature_store_id = 99
 
         mock_util_get_timestamp_from_date_string = mocker.patch(
-            "hsfs.util.get_timestamp_from_date_string"
+            "hsfs.util._get_timestamp_from_date_string"
         )
 
         h_engine = hudi_engine.HudiEngine(

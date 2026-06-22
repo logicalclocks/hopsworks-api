@@ -22,7 +22,7 @@
     <parent>
         <artifactId>hsfs-parent</artifactId>
         <groupId>com.logicalclocks</groupId>
-        <version>5.0.0-SNAPSHOT</version>
+        <version>5.1.0-SNAPSHOT</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
@@ -52,20 +52,12 @@
             </exclusions>
         </dependency>
 
+        <!-- datasketches-java: KllDoublesSketch for mergeable percentile sketches.
+             Replaces the Deequ-based profiling path as of Phase 1.5 (FSTORE-1412). -->
         <dependency>
-            <groupId>com.logicalclocks</groupId>
-            <artifactId>deequ_${scala-short.version}</artifactId>
-            <version>${deequ.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.apache.spark</groupId>
-                    <artifactId>*</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>org.scala-lang</groupId>
-                    <artifactId>*</artifactId>
-                </exclusion>
-            </exclusions>
+            <groupId>org.apache.datasketches</groupId>
+            <artifactId>datasketches-java</artifactId>
+            <version>${datasketches.version}</version>
         </dependency>
 
         <dependency>

@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import click
-from hopsworks.cli import output, session
+from hopsworks.cli import lineage, output, session
 
 
 @click.group("deployment")
@@ -45,7 +45,7 @@ def deployment_list(ctx: click.Context) -> None:
                 getattr(d, "model_name", "?"),
                 getattr(d, "model_version", "?"),
                 getattr(d, "serving_tool", "-"),
-                _deployment_status(d),
+                _deployment_status_live(d),
             ]
         )
     output.print_table(["ID", "NAME", "MODEL", "VERSION", "TOOL", "STATUS"], rows)
@@ -107,9 +107,9 @@ def deployment_status(ctx: click.Context, name: str) -> None:
 def _deployment_status(d: Any) -> str:
     """Return a best-effort status string without triggering a network call.
 
-    Deployment status in the SDK is lazy-loaded via ``.state``, which issues a
-    REST call. For the list view we avoid that — many deployments can be slow
-    — and fall back to any cached status attribute.
+    The no-network fallback used by ``_deployment_status_live`` when the live
+    ``get_state()`` call fails. Reads whatever status attribute the SDK already
+    cached on the deployment.
 
     Args:
         d: Deployment instance.
@@ -125,11 +125,11 @@ def _deployment_status(d: Any) -> str:
 
 
 def _deployment_status_live(d: Any) -> str:
-    """Status for a single deployment, fetching live state when available.
+    """Status for a deployment, fetching live state when available.
 
-    Unlike the list view, ``info`` can afford the REST call ``get_state()``
-    makes, so the Status reflects reality. The cached attributes are usually
-    empty (which rendered "-"); fall back to them only if the call fails.
+    Both ``list`` and ``info`` use this: ``get_state()`` issues a REST call so
+    the Status reflects reality. The cached attributes are usually empty (which
+    rendered "-"), so fall back to them only if the call fails.
 
     Args:
         d: Deployment instance.
@@ -481,6 +481,39 @@ def deployment_delete(ctx: click.Context, name: str, yes: bool, force: bool) -> 
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Delete failed: {exc}") from exc
     output.success("✓ Deleted deployment %s", name)
+
+
+@deployment_group.command("lineage")
+@click.argument("name")
+@click.pass_context
+def deployment_lineage(ctx: click.Context, name: str) -> None:
+    """Show lineage for a deployment.
+
+    A deployment serves a model, so its upstream lineage is that model plus
+    the model's own feature view and training dataset provenance.
+
+    Args:
+        ctx: Click context.
+        name: Deployment name.
+    """
+    deployment = _get_deployment(ctx, name)
+    model = lineage.fetch(deployment.get_model)
+    label = f"deployment {getattr(deployment, 'name', name)}"
+    sections: list[tuple[str, str, Any]] = [("upstream", "model", model)]
+    if model is not None:
+        sections += [
+            (
+                "upstream",
+                "feature_view",
+                lineage.fetch(model.get_feature_view_provenance),
+            ),
+            (
+                "upstream",
+                "training_dataset",
+                lineage.fetch(model.get_training_dataset_provenance),
+            ),
+        ]
+    lineage.render(label, sections)
 
 
 def _get_deployment(ctx: click.Context, name: str) -> Any:

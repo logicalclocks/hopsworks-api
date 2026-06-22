@@ -41,7 +41,7 @@ class TestFeatureDescriptiveStatistics:
         assert result._max == 2
         assert result._sum == 3
         assert result._mean == 5.1
-        assert result._stddev == 6.1
+        assert result._std_dev == 6.1
         assert result._percentiles == {"25%": 0.4, "50%": 0.6, "75%": 0.86}
         assert result._distinctness == 0.9
         assert result._entropy == 0.8
@@ -72,7 +72,7 @@ class TestFeatureDescriptiveStatistics:
         assert result._max == 2
         assert result._sum == 3
         assert result._mean == 5.1
-        assert result._stddev == 6.1
+        assert result._std_dev == 6.1
         assert result._percentiles == {"25%": 0.4, "50%": 0.6, "75%": 0.86}
         assert result._distinctness == 0.9
         assert result._entropy == 0.8
@@ -153,7 +153,7 @@ class TestFeatureDescriptiveStatistics:
         assert result._max is None
         assert result._sum is None
         assert result._mean is None
-        assert result._stddev is None
+        assert result._std_dev is None
         assert result._percentiles is None
         assert result._distinctness is None
         assert result._entropy is None
@@ -184,7 +184,7 @@ class TestFeatureDescriptiveStatistics:
         assert result._max is None
         assert result._sum is None
         assert result._mean is None
-        assert result._stddev is None
+        assert result._std_dev is None
         assert result._percentiles is None
         assert result._distinctness is None
         assert result._entropy is None
@@ -216,7 +216,7 @@ class TestFeatureDescriptiveStatistics:
         assert result._max == 2
         assert result._sum == 3
         assert result._mean == 5.1
-        assert result._stddev == 6.1
+        assert result._std_dev == 6.1
         assert result._percentiles == {"25%": 0.4, "50%": 0.6, "75%": 0.86}
         assert result._distinctness == 0.9
         assert result._entropy == 0.8
@@ -233,7 +233,7 @@ class TestFeatureDescriptiveStatistics:
         ]["response"]
 
         # Act
-        result = FeatureDescriptiveStatistics.from_deequ_json(result_json)
+        result = FeatureDescriptiveStatistics._from_deequ_json(result_json)
 
         # Assert
         assert isinstance(result, FeatureDescriptiveStatistics)
@@ -248,7 +248,7 @@ class TestFeatureDescriptiveStatistics:
         assert result._max == 2
         assert result._sum == 3
         assert result._mean == 5.1
-        assert result._stddev == 6.1
+        assert result._std_dev == 6.1
         # assert result._percentiles == {"25%": 0.4, "50%": 0.6, "75%": 0.86}  # TODO: Parse deequ approxPercentiles
         assert result._distinctness == 0.9
         assert result._entropy == 0.8
@@ -262,7 +262,7 @@ class TestFeatureDescriptiveStatistics:
         ]["response"]
 
         # Act
-        result = FeatureDescriptiveStatistics.from_deequ_json(result_json)
+        result = FeatureDescriptiveStatistics._from_deequ_json(result_json)
 
         # Assert
         assert isinstance(result, FeatureDescriptiveStatistics)
@@ -277,7 +277,7 @@ class TestFeatureDescriptiveStatistics:
         assert result._max == 2
         assert result._sum == 3
         assert result._mean == 5.1
-        assert result._stddev == 6.1
+        assert result._std_dev == 6.1
         # assert result._percentiles == {"25%": 0.4, "50%": 0.6, "75%": 0.86}  # TODO: Parse deequ approxPercentiles
         assert result._distinctness == 0.9
         assert result._entropy == 0.8
@@ -291,7 +291,7 @@ class TestFeatureDescriptiveStatistics:
         ]["response"]
 
         # Act
-        result = FeatureDescriptiveStatistics.from_deequ_json(result_json)
+        result = FeatureDescriptiveStatistics._from_deequ_json(result_json)
 
         # Assert
         assert isinstance(result, FeatureDescriptiveStatistics)
@@ -314,7 +314,7 @@ class TestFeatureDescriptiveStatistics:
         ]["response"]
 
         # Act
-        result = FeatureDescriptiveStatistics.from_deequ_json(result_json)
+        result = FeatureDescriptiveStatistics._from_deequ_json(result_json)
 
         # Assert
         assert isinstance(result, FeatureDescriptiveStatistics)
@@ -329,3 +329,57 @@ class TestFeatureDescriptiveStatistics:
         assert result._entropy == 0.8
         assert result._uniqueness == 0.7
         assert result._exact_num_distinct_values == 10
+
+    def test_from_deequ_json_kll_legacy_format(self):
+        # Legacy Deequ KLL wrapper — dict with "buckets" + "sketch" keys.
+        # from_deequ_json must carry it through unchanged so Phase 2.B can
+        # dispatch on the absence of "kllFormat".
+        json_dict = {
+            "column": "amount",
+            "dataType": "Fractional",
+            "numRecordsNull": 0,
+            "numRecordsNonNull": 10,
+            "kll": {
+                "buckets": [
+                    {"low_value": 0.0, "high_value": 1.0, "count": 5, "ratio": 0.5},
+                    {"low_value": 1.0, "high_value": 2.0, "count": 5, "ratio": 0.5},
+                ],
+                "sketch": {"parameters": {"c": 0.64, "k": 2048.0}, "data": "[[...]]"},
+            },
+        }
+
+        result = FeatureDescriptiveStatistics._from_deequ_json(json_dict)
+
+        assert result._extended_statistics is not None
+        kll = result._extended_statistics["kll"]
+        assert "buckets" in kll
+        assert "sketch" in kll
+        assert "kllFormat" not in kll  # legacy marker: no version key
+        assert kll["sketch"]["parameters"]["k"] == 2048.0
+
+    def test_from_deequ_json_kll_native_format(self):
+        # Native datasketches-java KLL — dict with "kllFormat", "bytes", and "buckets".
+        # from_deequ_json must carry it through unchanged so Phase 2.B's merge path
+        # can dispatch on kllFormat == "datasketches-native-v1".
+        json_dict = {
+            "column": "amount",
+            "dataType": "Fractional",
+            "numRecordsNull": 0,
+            "numRecordsNonNull": 10,
+            "kll": {
+                "kllFormat": "datasketches-native-v1",
+                "bytes": "AgEAAIAAAAAAAAAAAAAAAA==",
+                "buckets": [
+                    {"low_value": 0.0, "high_value": 1.0, "count": 5, "ratio": 0.5},
+                    {"low_value": 1.0, "high_value": 2.0, "count": 5, "ratio": 0.5},
+                ],
+            },
+        }
+
+        result = FeatureDescriptiveStatistics._from_deequ_json(json_dict)
+
+        assert result._extended_statistics is not None
+        kll = result._extended_statistics["kll"]
+        assert kll.get("kllFormat") == "datasketches-native-v1"
+        assert kll.get("bytes") == "AgEAAIAAAAAAAAAAAAAAAA=="
+        assert "buckets" in kll

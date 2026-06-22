@@ -25,13 +25,6 @@ import warnings
 from pathlib import Path
 from typing import Literal
 
-# Lightweight imports happen eagerly. Heavy submodules (`hsfs`, `hsml`,
-# `hopsworks.connection`, …) are loaded on first attribute access via the
-# PEP 562 ``__getattr__`` below. This keeps ``import hopsworks`` cheap for
-# entry points (the ``hops`` CLI, dependent libraries' import-time checks)
-# that don't need the full feature-store / model-registry surface area.
-from hopsworks.core import project_api, secret_api
-from hopsworks.decorators import NoHopsworksConnectionError
 from hopsworks_apigen import public
 from hopsworks_common import client, constants, project, usage, version
 from hopsworks_common.client.exceptions import (
@@ -40,7 +33,14 @@ from hopsworks_common.client.exceptions import (
     RestAPIError,
 )
 from hopsworks_common.constants import CLIENT
-from hopsworks_common.core import env_var_api
+
+# Lightweight imports happen eagerly. Heavy submodules (`hsfs`, `hsml`,
+# `hopsworks.connection`, …) are loaded on first attribute access via the
+# PEP 562 ``__getattr__`` below. This keeps ``import hopsworks`` cheap for
+# entry points (the ``hops`` CLI, dependent libraries' import-time checks)
+# that don't need the full feature-store / model-registry surface area.
+from hopsworks_common.core import env_var_api, project_api, secret_api
+from hopsworks_common.decorators import NoHopsworksConnectionError
 from requests.exceptions import SSLError
 
 
@@ -86,7 +86,7 @@ def _load_hsml():  # type: ignore[no-untyped-def]
 
 
 def _load_connection_class():  # type: ignore[no-untyped-def]
-    from hopsworks.connection import Connection
+    from hopsworks_common.connection import Connection
 
     return Connection
 
@@ -102,7 +102,7 @@ _LAZY = {
     "hsml": _load_hsml,
     "Connection": _load_connection_class,
     "build_spark": _load_build_spark,
-    "connection": lambda: _load_connection_class().connection,
+    "connection": lambda: _load_connection_class()._connection,
     # ``udf`` is the public entry point for hopsworks UDFs; pulling it through
     # ``hsfs`` keeps the lazy-load path consistent.
     "udf": lambda: _load_hsfs().hopsworks_udf.udf,
@@ -176,7 +176,7 @@ if not any(isinstance(f, _HsfsHsmlAliasFinder) for f in sys.meta_path):
 
 def _make_connection(*args, **kwargs):  # type: ignore[no-untyped-def]
     """Factory: create a new Connection via the lazy-loaded Connection class."""
-    return _load_connection_class().connection(*args, **kwargs)
+    return _load_connection_class()._connection(*args, **kwargs)
 
 
 # Holds the active Connection instance after login(); points to _make_connection
@@ -184,10 +184,13 @@ def _make_connection(*args, **kwargs):  # type: ignore[no-untyped-def]
 # create a fresh connection regardless of prior auth state.
 _hw_connection = _make_connection
 
+# Logs go to stderr so stdout carries only a command's payload.
+# A library writing INFO to stdout breaks any caller that parses stdout (the
+# `hops` CLI `--json` output, shell pipelines): the banner lands in the data.
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s: %(message)s",
-    stream=sys.stdout,
+    stream=sys.stderr,
 )
 
 
@@ -278,7 +281,7 @@ def login(
         _hw_connection = _hw_connection(
             hostname_verification=hostname_verification, engine=engine
         )
-        _connected_project = _hw_connection.get_project()
+        _connected_project = _hw_connection._get_project()
         _initialize_module_apis()
         print("\nLogged in to project, explore it here " + _connected_project.get_url())
         return _connected_project
@@ -493,6 +496,7 @@ def _prompt_project(valid_connection, project, is_saas):
             raise ProjectException(f"Could not find project {project}") from x
 
 
+@public
 def logout():
     """Cleans up and closes the connection for hopsworks."""
     global _hw_connection
@@ -501,9 +505,9 @@ def logout():
     global _env_vars_api
 
     if _is_connection_active():
-        _hw_connection.close()
+        _hw_connection._close()
 
-    client.stop()
+    client._stop()
     _project_api = None
     _secrets_api = None
     _env_vars_api = None
@@ -624,14 +628,26 @@ def get_env_vars_api() -> env_var_api.EnvVarsApi:
 
 
 def _set_active_project(project):
-    _client = client.get_instance()
+    _client = client._get_instance()
     if _client._is_external():
-        _client.provide_project(project.name)
+        _client._provide_project(project.name)
 
 
+@public
 def disable_usage_logging():
-    usage.disable()
+    """Disable anonymous usage logging for this SDK session.
+
+    Usage logging is already disabled by default; call this to be explicit or
+    after it has been enabled elsewhere.
+    """
+    usage._disable()
 
 
-def get_sdk_info():
-    return usage.get_env()
+@public
+def get_sdk_info() -> str:
+    """Return the environment information the SDK reports for usage logging.
+
+    Returns:
+        A JSON string describing the SDK and runtime environment.
+    """
+    return usage._get_env()

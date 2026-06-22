@@ -17,7 +17,7 @@ from unittest import mock
 from unittest.mock import MagicMock
 
 import pytest
-from hopsworks_common.util import convert_event_time_to_timestamp
+from hopsworks_common.util import _convert_event_time_to_timestamp
 from hsfs.client.exceptions import FeatureStoreException
 from hsfs.core import vector_db_client
 from hsfs.embedding import EmbeddingIndex
@@ -29,7 +29,7 @@ class TestVectorDbClient:
     embedding_index = EmbeddingIndex("2249__embedding_default_embedding")
     embedding_index.add_embedding("f2", 3)
     embedding_index._col_prefix = ""
-    with mock.patch("hopsworks_common.client.get_instance"):
+    with mock.patch("hopsworks_common.client._get_instance"):
         fg = FeatureGroup("test_fg", 1, 99, id=1, embedding_index=embedding_index)
         f1 = Feature("f1", feature_group=fg, primary=True, type="int")
         f2 = Feature("f2", feature_group=fg, primary=True, type="int")
@@ -42,10 +42,10 @@ class TestVectorDbClient:
 
     @pytest.fixture(autouse=True)
     def setup_mocks(self, mocker):
-        mocker.patch("hsfs.engine.get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
         # Mock the OpenSearchClientSingleton to return a MagicMock instead of creating a real client
         self.mock_os_wrapper = MagicMock()
-        self.mock_os_wrapper.search.return_value = {
+        self.mock_os_wrapper._search.return_value = {
             "hits": {
                 "hits": [
                     {
@@ -88,7 +88,7 @@ class TestVectorDbClient:
                     {
                         "range": {
                             "f_ts": {
-                                "gt": convert_event_time_to_timestamp(
+                                "gt": _convert_event_time_to_timestamp(
                                     "2024-04-18 12:00:25"
                                 )
                             }
@@ -149,7 +149,7 @@ class TestVectorDbClient:
                     {
                         "range": {
                             "46_f_ts": {
-                                "gt": convert_event_time_to_timestamp(
+                                "gt": _convert_event_time_to_timestamp(
                                     "2024-04-18 12:00:25"
                                 )
                             }
@@ -457,7 +457,7 @@ class TestVectorDbClient:
             self.target._check_filter("f1 > 20", self.fg2)
 
     def test_read_with_keys(self):
-        actual = self.target.read(
+        actual = self.target._read(
             self.fg.id, self.fg.columns, keys={"f1": 10, "f2": 20}
         )
 
@@ -465,21 +465,21 @@ class TestVectorDbClient:
             "query": {"bool": {"must": [{"match": {"f1": 10}}, {"match": {"f2": 20}}]}},
             "_source": ["f1", "f2", "f3", "f_bool", "f_ts"],
         }
-        self.mock_os_wrapper.search.assert_called_once_with(
+        self.mock_os_wrapper._search.assert_called_once_with(
             body=expected_query, index="2249__embedding_default_embedding"
         )
         expected = [{"f1": 4, "f2": [9, 4, 4]}]
         assert actual == expected
 
     def test_read_with_pk(self):
-        actual = self.target.read(self.fg.id, self.fg.columns, pk="f1")
+        actual = self.target._read(self.fg.id, self.fg.columns, pk="f1")
 
         expected_query = {
             "query": {"bool": {"must": [{"exists": {"field": "f1"}}]}},
             "size": 10,
             "_source": ["f1", "f2", "f3", "f_bool", "f_ts"],
         }
-        self.mock_os_wrapper.search.assert_called_once_with(
+        self.mock_os_wrapper._search.assert_called_once_with(
             body=expected_query, index="2249__embedding_default_embedding"
         )
         expected = [{"f1": 4, "f2": [9, 4, 4]}]
@@ -487,4 +487,32 @@ class TestVectorDbClient:
 
     def test_read_without_pk_or_keys(self):
         with pytest.raises(FeatureStoreException):
-            self.target.read(self.fg.id, self.fg.columns)
+            self.target._read(self.fg.id, self.fg.columns)
+
+    def test_find_neighbors_builds_knn_query_without_filter(self):
+        self.target._find_neighbors([1.0, 2.0, 3.0], feature=self.f2, k=5)
+
+        body = self.mock_os_wrapper._search.call_args.kwargs["body"]
+        assert body["size"] == 5
+        knn = body["query"]["knn"]["f2"]
+        assert knn["vector"] == [1.0, 2.0, 3.0]
+        assert knn["k"] == 5
+        # The filter lives inside the knn clause (OpenSearch 2.x KNN syntax),
+        # not as a sibling bool/post_filter.
+        assert knn["filter"] == {"bool": {"must": [{"exists": {"field": "f2"}}]}}
+
+    def test_find_neighbors_builds_knn_query_with_filter(self):
+        self.target._find_neighbors(
+            [1.0, 2.0, 3.0], feature=self.f2, k=5, filter=self.f3 > 10
+        )
+
+        body = self.mock_os_wrapper._search.call_args.kwargs["body"]
+        knn = body["query"]["knn"]["f2"]
+        assert knn["filter"] == {
+            "bool": {
+                "must": [
+                    {"exists": {"field": "f2"}},
+                    {"range": {"f3": {"gt": 10}}},
+                ]
+            }
+        }

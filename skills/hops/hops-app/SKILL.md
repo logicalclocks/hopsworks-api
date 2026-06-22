@@ -1,25 +1,96 @@
 ---
-name: hopsworks-apps
-description: Use when writing Streamlit apps for Hopsworks or managing app
-  deployments. Auto-invoke when user wants to create a Streamlit dashboard, deploy a
-  Python app to Hopsworks, or access the feature store from a Streamlit application.
-allowed-tools: Read, Grep, Glob, Edit, Write, Bash
+name: hops-app
+description: Use when writing Streamlit or custom Python apps for Hopsworks,
+  deploying from HopsFS or Git, migrating legacy apps off `APP_BASE_URL_PATH`,
+  or managing app routing/readiness, monitoring, and public sharing.
+  Auto-invoke when user wants to create a dashboard, deploy a Python app to
+  Hopsworks, configure app routing/readiness, or access the feature store from
+  an app. Input an app source + env + memory; output a running app and its URL.
 ---
 
-# Hopsworks Streamlit Apps — Python SDK Best Practices
+# Hopsworks Apps — Python SDK Best Practices
 
 ## Overview
 
-Hopsworks supports deploying **Streamlit** applications as managed apps. Apps are Python scripts backed by a Hopsworks job that runs the Streamlit server. Only Streamlit apps are currently supported.
+Hopsworks supports deploying **Streamlit** and **custom Python** applications as
+managed apps. Apps are backed by a Hopsworks job and can be sourced from HopsFS
+or a Git repository. Streamlit apps run the Streamlit server; custom apps run a
+web server that listens on `$APP_PORT` (for example Flask, FastAPI, or
+Gradio). New apps should be written as if they run at `/`; Hopsworks owns the
+public mount prefix (`/hopsworks-api/pythonapp/{projectName}/{appName}/`) and
+forwards requests to the app container.
+
+A Streamlit app is a **UI / consumer of the FTI pipelines**, not a pipeline itself. A custom app is a general-purpose service or API frontend. Streamlit apps read features and predictions written by the feature, training, and inference pipelines (via the feature store, model registry, and online deployments) and present them. They can also act as a thin online-inference front by downloading a model from the registry and predicting locally (an **embedded model**), avoiding a network call to a model deployment.
+
+Custom apps are general-purpose web services such as FastAPI, Flask, Gradio, or plain WSGI/ASGI apps. They should bind to `0.0.0.0` and the injected `APP_PORT`, and should not hardcode `APP_BASE_URL_PATH` in new code. Legacy apps can stay on Compatibility prefix while they are migrated, but new apps should not depend on it.
+
+## Contract
+
+- **Input:** a Streamlit or custom app + environment + memory.
+- **Output:** a running app and its URL.
+- **Pre-condition:** the app source is available in HopsFS or Git (project-relative path for the SDK, HopsFS-absolute for the CLI).
+
+## Smoke-test (cheap pre/post-flight)
+
+```bash
+hops app list                 # confirm state before; verify it is RUNNING/serving after
+```
+
+Full CLI surface is in **Manage Apps from the CLI** below.
+
+## Ask the user (only when state is ambiguous)
+
+- Does the app need **custom libraries** not in `python-app-pipeline`? If so, clone the env and install `app-requirements.txt` (see **Your App uses Custom libraries**).
+- Does the app come from **HopsFS or Git**? If Git, ask for `git_url`, `git_provider`, and (if needed) `git_branch` plus the entrypoint.
+- What **memory / cores** should the app get? Defaults are `memory=2048` MB, `cores=1.0`.
+- Does the app need a specific routing mode or readiness path? New apps should use root routing; keep legacy prefix mode only while migrating an older app that still depends on `APP_BASE_URL_PATH`. If the app is already deployed and still uses `APP_BASE_URL_PATH`, treat it as a migration task and confirm whether the code can switch to root routing. Streamlit defaults to `/_stcore/health`, custom apps default to `/`, and `readinessProbePath` can override the probe path when needed.
+- Does the app need **monitoring** narrowed to specific routes? Monitoring is enabled by default and routes are optional; `hops app info` shows the monitoring state and route list when present.
+- Does the app need **public access**? Streamlit sharing is feature-flagged; only ask for it when the platform has it enabled.
+- **Before deleting** — `app.delete()` / `hops app delete --yes` tears down the app irreversibly; confirm the exact name with the user, and never tear down an app you created as a side effect (temp or test ones included) unless they asked.
+
+## Routing and Readiness
+
+- The browser URL is always the proxy mount point: `/hopsworks-api/pythonapp/{projectName}/{appName}/`.
+- New apps should be written as root-based apps and should not depend on `APP_BASE_URL_PATH`.
+- Legacy prefix mode exists only for existing apps that are still being migrated.
+- Hopsworks forwards `X-Forwarded-Prefix` for frameworks that need to generate absolute links.
+- Readiness is separate from browser routing:
+  - Streamlit defaults to `/_stcore/health`
+  - custom apps default to `/`
+  - `readinessProbePath` overrides the default probe path when needed
+- The CLI mirrors the same contract via `hops app create --app-base-path` and
+  `--readiness-probe-path`.
+
+## Migrating Legacy Apps
+
+Legacy apps are apps that were created before the `App base path` migration or
+still depend on `APP_BASE_URL_PATH`. Keep `Compatibility prefix` only as a
+bridge while you update the app code; once the app no longer depends on that
+variable, switch it to `Root routing`.
+
+Migration checklist:
+
+1. Update the app code so route decorators use `/` or the app's own subpath
+   directly instead of `APP_BASE_URL_PATH`.
+2. In the app settings dialog, open **App routing and readiness** and change
+   `Proxy routing mode` to `Root routing`.
+3. Set `App base path` to the public mount point you want, for example `/` or
+   `/myapp`.
+4. Keep `Readiness` separate from browser routing. Custom apps usually probe
+   `/` or `/health`; Streamlit apps default to `/_stcore/health` or
+   `/<base>/_stcore/health`.
+5. Remove any code that builds absolute links from `APP_BASE_URL_PATH` after
+   the app is switched to root routing.
 
 ---
 
 ## Creating and Running an App
 
-When you create charts, prefer to use seaborn over plotly (which isn't installed by default).
+When you create charts in Streamlit apps, prefer to use seaborn over plotly (which isn't installed by default).
 
-### 1. Write a Streamlit Script
+### 1. Write the App
 
+Streamlit apps should stay Streamlit-native and root-based:
 
 ```python
 # Users/<username>/app.py
@@ -49,19 +120,89 @@ st.subheader("Amount Distribution")
 st.bar_chart(df["amount"].value_counts().head(20))
 ```
 
+### Custom Apps
+
+For custom Python apps, bind to `0.0.0.0` and the injected `APP_PORT`. Keep `APP_BASE_URL_PATH` only while migrating a legacy app that still needs the proxy prefix.
+
+```python
+# Users/<username>/app.py
+import os
+from fastapi import FastAPI
+
+app = FastAPI()
+
+
+@app.get("/")
+def index():
+    return {"status": "ok"}
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ["APP_PORT"]))
+```
+
+### Git-backed Apps
+
+When the app source lives in Git, leave `app_path` unset and provide the
+repository fields instead. Git-backed apps are cloned again on each start, so a
+restart or redeploy picks up new commits.
+
+- Streamlit apps: use `app_kind="STREAMLIT"` and set `entrypoint_script`
+  relative to the repository root.
+- Custom apps: use `app_kind="CUSTOM"`, an `entrypoint_command`, and
+  `app_port`.
+- Supported Git providers: `GitHub`, `GitLab`, and `BitBucket`.
+
+```python
+streamlit_app = apps.create_app(
+    name="streamlitfromgithub",
+    app_kind="STREAMLIT",
+    git_url="https://github.com/gibchikafa/appshopsworkstests.git",
+    git_provider="GitHub",
+    git_branch="main",
+    entrypoint_script="streamlitapp.py",
+    environment="python-app-pipeline",
+)
+```
+
+```python
+fastapi_app = apps.create_app(
+    name="fastapifromgithub",
+    app_kind="CUSTOM",
+    git_url="https://github.com/gibchikafa/appshopsworkstests.git",
+    git_provider="GitHub",
+    git_branch="main",
+    entrypoint_command='bash -lc "exec python -m uvicorn fastapiapp:app --host 0.0.0.0 --port \"$APP_PORT\""',
+    app_port=8080,
+    environment="python-app-pipeline",
+)
+```
+
 ## Your App uses Custom libraries
 
-If an app uses libraries that are not installed in `python-app-pipeline`, you need to clone the `python-app-pipline` Python environment, install the requirements (e.g., app-requirements.txt) in the cloned environment, and then create the app using the cloned environment. If no app-requirements.txt file exists, prompt the user to create one. You should also warn the user that installing the app-requirements.txt file in the user's cloned Python environment takes a couple of minutes.
+If the app needs libraries not in `python-app-pipeline`, clone that base env and
+install the app's `app-requirements.txt` into the clone (it takes a few minutes;
+warn the user, and prompt for a requirements file if none exists). Full workflow:
+[hops-environments](../hops-environments/SKILL.md).
 
+```python
 env_api = project.get_environment_api()
-# Clone from an existing environment
 cloned_env = env_api.create_environment(
-    "my_cloned_env",                                                                                                                                                                        
-    description="Cloned from feature pipeline env",
-    base_environment_name="python-app-pipeline",                                                                                                                                        
-)                                                                
+    "my_cloned_env", base_environment_name="python-app-pipeline",
+)
 cloned_env.install_requirements("Users/<username>/app-requirements.txt")
-     
+```
+
+Then pass `environment="my_cloned_env"` to `create_app(...)` below, not the base.
+
+If the app loads a pickled model (e.g. scikit-learn via `joblib`), the base `python-app-pipeline` may ship a different scikit-learn than the one that pickled it, and the load fails. The base env has no library-introspection API (no `get_libraries`), so you cannot read its versions. Clone the base and pin the model's exact training versions (e.g. `scikit-learn==1.8.0` plus matching `numpy`/`scipy`/`joblib`) in the requirements file.
 
 ### 2. Create and Run the App
 
@@ -88,12 +229,59 @@ if app.serving:
     print(f"App URL: {app.app_url}")
 ```
 
+```python
+fastapi_app = apps.create_app(
+    name="fastapifromgithub",
+    app_kind="CUSTOM",
+    git_url="https://github.com/gibchikafa/appshopsworkstests.git",
+    git_provider="GitHub",
+    git_branch="main",
+    entrypoint_command=(
+        'bash -lc "python -m uv pip install --system --no-cache fastapi uvicorn && '
+        'exec python -m uvicorn fastapiapp:app --host 0.0.0.0 --port \\"$APP_PORT\\""'
+    ),
+    app_port=8080,
+    environment="python-app-pipeline",
+)
+fastapi_app.run()
+print(fastapi_app.app_url)
+```
+
+> **The app path differs between the SDK and the `hops` CLI.** The SDK
+> `create_app(app_path=...)` takes a **project-relative** path
+> (`Users/<username>/app.py`); the CLI `hops app create --path` takes the
+> **HopsFS absolute** path (`/Projects/<project>/Users/<username>/app.py`). Each
+> surface rejects the other's form, so don't copy one into the other.
+
+## Monitoring
+
+Monitoring is enabled by default. Leave routes empty to use the default ignored-path behavior, or add routes to narrow the signal.
+
+Monitoring config shape:
+
+```python
+monitoringConfig = {
+    "enabled": True,
+    "routes": [
+        {"path": "/api", "matchType": "prefix"},
+        {"path": "/predict", "matchType": "exact"},
+    ],
+}
+```
+
+- `enabled`: turns app monitoring on or off.
+- `routes`: optional list of monitored paths. If omitted or empty, Hopsworks uses the default ignored-path behavior.
+- `path`: absolute request path to include.
+- `matchType`: `prefix` or `exact`.
+- Streamlit ignores internal/static paths like `/_stcore/health`, `/_stcore/host-config`, `/_stcore/stream`, and `/static` by default.
+- Custom apps should leave framework noise like `/static`, `/docs`, `/openapi.json`, `/redoc`, and `/favicon.ico` out of the monitored routes unless you want them counted.
+
 ---
 
 ## App Lifecycle
 
 ```python
-app.run(await_serving=True)   # blocks until Streamlit is ready
+app.run(await_serving=True)   # blocks until the app is ready
 app.run(await_serving=False)   # returns immediately
 
 print(app.get_url())
@@ -109,7 +297,7 @@ app.delete()
 | State | Description |
 |---|---|
 | `INITIALIZING` | App is starting up |
-| `RUNNING` | App container is running (check `serving` for Streamlit readiness) |
+| `RUNNING` | App container is running (check `serving` for readiness) |
 | `KILLED` | App was stopped by user |
 | `STOPPED` | App was stopped |
 | `FAILED` | App crashed or failed to start |
@@ -148,8 +336,12 @@ Apps run in a Python environment that provides pre-installed packages. The defau
 ```python
 env_api = project.get_environment_api()
 
-# Get or create environment
+# get_environment returns None for a missing environment, it does NOT raise.
+# Guard with `is None`; a try/except never fires and you hit
+# `AttributeError: 'NoneType' has no attribute 'install_requirements'`.
 env = env_api.get_environment("python-app-pipeline")
+if env is None:
+    env = env_api.create_environment("python-app-pipeline")
 
 # Install from requirements.txt
 env.install_requirements("Resources/requirements.txt", await_installation=True)
@@ -184,6 +376,13 @@ fv.init_serving(training_dataset_version=1)
 vector = fv.get_feature_vector(entry={"user_id": 123}, return_type="pandas")
 ```
 
+> **A just-created feature group is not queryable via Trino/`hops sql`
+> immediately.** The offline table syncs into the Trino catalog with a short lag,
+> so a `SELECT ... FROM <fresh_fg>` right after `insert` can return
+> `TABLE_NOT_FOUND`. Online feature-vector reads are available before the offline
+> Trino table is, so don't hardcode a UI bound from a fresh Trino query — make the
+> app not-found-safe (warn on an empty online vector) instead of trusting a range.
+
 ### Model Registry
 
 ```python
@@ -193,6 +392,12 @@ model = mr.get_model("fraud_model", version=1)
 # Download model files
 model_dir = model.download()
 ```
+
+For an embedded model (predict locally instead of calling a deployment), cache the
+downloaded model and its feature view in `@st.cache_resource` so the download and
+load happen once, not per rerun. Apply the same MDTs/ODTs the model saw in
+training — the feature view does this for you when you read through it — so there
+is no training/serving skew.
 
 ### Model Serving
 
@@ -243,6 +448,28 @@ def init_feature_view():
 fv = init_feature_view()
 ```
 
+### Cold Start: do not block the first render
+
+A common footgun: doing heavy work at the top of the script — `connect()`, `init_serving()`, or calling an online deployment — runs on every cold load and blocks the first paint, so the app shows RUNNING but the page appears to hang until everything is "fully loaded". Keep the top of the script cheap:
+
+- Wrap the connection and FV/serving handle in `@st.cache_resource` (above) so they initialize once, not per rerun.
+- Do not call an online deployment at import time. Trigger it from a button / form submit, and show `st.spinner(...)` so the wait is visible instead of looking frozen.
+- Guard against a not-yet-ready deployment: check `deployment.is_running()` before `predict`, and surface a message rather than blocking.
+
+```python
+@st.cache_resource
+def get_deployment():
+    return project.get_model_serving().get_deployment("fraud_predictor")
+
+if st.button("Score"):
+    dep = get_deployment()
+    if dep.is_running():
+        with st.spinner("Scoring…"):
+            st.write(dep.predict(inputs=[{"id": user_id}]))
+    else:
+        st.warning("Deployment is starting — try again shortly.")
+```
+
 ---
 
 ## Hopsworks look & feel
@@ -251,8 +478,21 @@ Apps render as a bare default Streamlit page unless you theme them. Drop in the
 Hopsworks palette so a shipped app reads as part of the platform — brand accents
 only, don't restyle every widget.
 
-`.streamlit/config.toml` (next to the app script):
+`.streamlit/config.toml` — **must sit in the same directory as the app script**,
+not in `~/.streamlit/`. Streamlit reads config from the script's own directory
+(and CWD), so an app under `customer_spend_fti/app.py` needs
+`customer_spend_fti/.streamlit/config.toml`. Copy it per app directory.
+
 ```toml
+[server]
+fileWatcherType = "none"   # REQUIRED on HopsFS/FUSE: the watcher stats the
+headless = true            # script over FUSE on the event loop and blocks the
+runOnSave = false          # readiness probe, making the managed app flap
+                           # serving<->running. Without this the app never holds.
+
+[browser]
+gatherUsageStats = false
+
 [theme]
 primaryColor = "#1EB182"           # Hopsworks teal-green
 backgroundColor = "#0E1117"
@@ -368,9 +608,34 @@ app.run()
 | Create app | `apps.create_app(name=..., app_path=...)` |
 | Start app | `app.run(await_serving=True)` |
 | Stop app | `app.stop()` |
+| Redeploy app | `app.redeploy()` |
 | Delete app | `app.delete()` |
 | Get app URL | `app.app_url` |
 | List all apps | `apps.get_apps()` |
 | Get app by name | `apps.get_app("name")` |
 | Check if serving | `app.serving` |
 | Install deps | `env.install_requirements("Resources/requirements.txt")` |
+
+---
+
+## Manage Apps from the CLI
+
+```bash
+hops app list                 # apps + state
+hops app info <name>          # detail (id, type, source)
+hops app url <name>           # the app URL
+hops app start <name> / stop <name>
+hops app logs <name>          # tail logs (newer CLI)
+hops app delete <name> --yes  # non-interactive
+```
+
+`hops app create <name> --path /Projects/<project>/Users/<user>/app.py --start`
+takes a HopsFS-absolute path (the SDK `create_app(app_path=...)` takes a
+project-relative one). `--start` creates, starts, and waits for serving in one
+call (no separate `hops app start`). `logs` / `redeploy` may be absent on older
+deployed `hops` binaries.
+
+## Next Steps
+
+- Read features in the app: **hops-fg** / **hops-fv**. Query via SQL: **hops-trino-sql**.
+- Dashboards instead of an app: **hops-superset**.

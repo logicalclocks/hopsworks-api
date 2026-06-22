@@ -48,7 +48,7 @@ class Resources:
     @public
     def describe(self):
         """Print a JSON description of the resource configuration."""
-        util.pretty_print(self)
+        util._pretty_print(self)
 
     @classmethod
     def from_response_json(cls, json_dict):
@@ -62,9 +62,9 @@ class Resources:
     @classmethod
     def extract_fields_from_json(cls, json_decamelized):
         kwargs = {}
-        kwargs["cores"] = util.extract_field_from_json(json_decamelized, "cores")
-        kwargs["memory"] = util.extract_field_from_json(json_decamelized, "memory")
-        kwargs["gpus"] = util.extract_field_from_json(json_decamelized, "gpus")
+        kwargs["cores"] = util._extract_field_from_json(json_decamelized, "cores")
+        kwargs["memory"] = util._extract_field_from_json(json_decamelized, "memory")
+        kwargs["gpus"] = util._extract_field_from_json(json_decamelized, "gpus")
         return kwargs
 
     def json(self):
@@ -124,7 +124,7 @@ class ComponentResources(ABC):
         limits: Resources | dict | Default | None = None,
     ):
         self._num_instances = num_instances
-        self._requests = util.get_obj_from_json(requests, Resources) or Resources(
+        self._requests = util._get_obj_from_json(requests, Resources) or Resources(
             RESOURCES.MIN_CORES, RESOURCES.MIN_MEMORY, RESOURCES.GPUS
         )
         self._fill_missing_resources(
@@ -133,7 +133,7 @@ class ComponentResources(ABC):
             RESOURCES.MIN_MEMORY,
             RESOURCES.GPUS,
         )
-        self._limits = util.get_obj_from_json(limits, Resources) or Resources(
+        self._limits = util._get_obj_from_json(limits, Resources) or Resources(
             RESOURCES.MAX_CORES, RESOURCES.MAX_MEMORY, RESOURCES.GPUS
         )
         self._fill_missing_resources(
@@ -146,7 +146,7 @@ class ComponentResources(ABC):
     @public
     def describe(self):
         """Print a JSON description of the resource configuration."""
-        util.pretty_print(self)
+        util._pretty_print(self)
 
     @classmethod
     def _fill_missing_resources(cls, resources, cores, memory, gpus):
@@ -180,10 +180,10 @@ class ComponentResources(ABC):
             resources = json_decamelized
 
         # extract resource fields
-        kwargs["requests"] = util.extract_field_from_json(
+        kwargs["requests"] = util._extract_field_from_json(
             resources, "requests", as_instance_of=Resources
         )
-        kwargs["limits"] = util.extract_field_from_json(
+        kwargs["limits"] = util._extract_field_from_json(
             resources, "limits", as_instance_of=Resources
         )
 
@@ -193,7 +193,7 @@ class ComponentResources(ABC):
         elif "num_instances" in json_decamelized:
             kwargs["num_instances"] = json_decamelized.pop("num_instances")
         else:
-            kwargs["num_instances"] = util.extract_field_from_json(
+            kwargs["num_instances"] = util._extract_field_from_json(
                 resources, [cls.NUM_INSTANCES_KEY, "num_instances"]
             )
 

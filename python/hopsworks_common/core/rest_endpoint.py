@@ -67,6 +67,7 @@ class QueryParams:
     def name(self) -> str:
         return self._name
 
+    @public
     @property
     def key(self) -> str:
         return self._name
@@ -90,6 +91,7 @@ class PaginationConfig:
             if value is not None
         }
 
+    @public
     @classmethod
     def from_type(
         cls,

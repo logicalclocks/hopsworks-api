@@ -1,15 +1,48 @@
 ---
 name: hops-superset
-description: Use when building Superset charts or dashboards inside Hopsworks via the Python SDK. Auto-invoke when the user wants to create Superset charts/dashboards/datasets, visualize a feature group in Superset, or interact with `project.get_superset_api()`.
+description: Use when building Superset charts or dashboards inside Hopsworks via the Python SDK. Auto-invoke when the user wants to create Superset charts/dashboards/datasets, visualize a feature group in Superset, or interact with `project.get_superset_api()`. Input an offline-materialized FG; output a published Superset dashboard + URL.
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 
 # Hopsworks Superset — Charts, Datasets, and Dashboards
 
+Render Hopsworks feature groups as Superset charts and dashboards via the Python
+SDK (`project.get_superset_api()`).
+
+## Contract
+
+- **Input:** an offline-materialized feature group (queryable in Trino).
+- **Output:** a published Superset dashboard (charts + datasets) and its URL.
+- **Pre-condition:** Superset enabled on the cluster, and the FG materialized to
+  the offline (Trino) store.
+
+## Smoke-test (cheap pre/post-flight)
+
+Confirm auth + Superset reachability before building anything — cheapest from the
+CLI, no Python:
+
+```bash
+hops superset dataset list      # auth + Superset reachable in one shot
+# or in Python: api.list_databases()  -> find the Trino DB id (see §2)
+```
+
+The `hops superset {dataset,chart,dashboard} {list,info,create,delete}` CLI is the
+quickest path to list/inspect/clean up (delete takes `--yes`). Re-run
+`hops superset dashboard list` after building to verify the result.
+
+## Ask the user (only when state is ambiguous)
+
+- Which feature group (and version) to chart.
+- Which columns / metrics to visualize, and which chart types (see the viz_type
+  enum in §3).
+- **Before deleting** — `api.delete_chart/dataset/dashboard(id)` / `hops superset ... delete --yes` is irreversible; confirm with the user which object to remove, and never delete one you created as a side effect (temp or test ones included) unless they asked.
+
+---
+
 Feature groups (FGs) are referenced in superset as either:
-delta.<project_name>_featuregroup.<featuregroup_name>_<version>
+delta.<project_name>_featurestore.<featuregroup_name>_<version>
 or
-hudi.<project_name>_featuregroup.<featuregroup_name>_<version>
+hudi.<project_name>_featurestore.<featuregroup_name>_<version>
 depending on whether they are a delta offline feature group or a hudi offline feature group.
 For example, the delta FG, transactions, in the jim project is referenced as:
 
@@ -32,6 +65,9 @@ Use this skill whenever the user wants to:
 - Render a feature group (or any Trino table) in Superset
 - Create / update / delete Superset charts, datasets, or dashboards programmatically
 - Wire a Hopsworks feature group into an existing Superset dashboard
+- Build a custom monitoring dashboard over a model's **logging feature group**
+  (feature drift, prediction distributions, KPI degradation) — the logs an
+  inference pipeline writes are an offline FG, so they chart the same way
 - Debug Superset chart errors like `Item with key "X" is not registered` or `Empty query?`
 
 ---
@@ -47,6 +83,11 @@ import hopsworks
 project = hopsworks.login()
 api = project.get_superset_api()
 ```
+
+**Pre-condition / smoke-test.** Superset must be enabled on the cluster and the FG
+you chart must be materialized to the offline (Trino) store. See the **Smoke-test**
+section above to confirm reachability (CLI: `hops superset dataset list`; Python:
+`api.list_databases()` → find the Trino DB id, see §2).
 
 Methods available on `api`:
 
@@ -81,12 +122,11 @@ api.update_dashboard(dashboard_id: int, **kwargs) -> dict
 api.delete_dashboard(dashboard_id: int) -> dict
 ```
 
-Raw requests (for paging, or endpoints the SDK doesn't wrap) go through
-`api._request("GET", "/api/v1/...")` — the same client, auth headers included.
+`_request(...)` is **internal** (underscore-prefixed, not `@public`): it carries no cross-release stability guarantee. Prefer the `@public` methods above (`list_*`, `create_*`, `get_*`, `update_*`, `delete_*`) as the supported surface. Reach for `api._request("GET", "/api/v1/...")` only for what the public API does not cover yet — paging, or endpoints the SDK doesn't wrap — knowing it may break on upgrade.
 
 ### Paging helper
 
-`list_*()` returns only the first page (~25 rows). Paginate manually:
+`list_*()` returns only the first page (~25 rows). There is no public paged-list method yet, so paginate via the internal `_request` (escape hatch — see the note above):
 
 ```python
 def list_all(api, resource):
@@ -124,8 +164,8 @@ Rules:
 - Table name is `<fg_name>_<version>` — the version suffix is required.
 - The Trino DB connection in Superset defaults its catalog to `hive`, so you
   **must** fully qualify with `delta.` or the query resolves to the wrong catalog.
-- Trino database id varies per Hopsworks install. Use `api.list_databases()`
-  to look it up, or cache it (e.g. Trino DB id = 2 on project `af`).
+- Trino database id varies per Hopsworks install — never hardcode it. Always
+  resolve it with `api.list_databases()` / `find_trino_db_id(api)` below.
 
 ### Look up the Trino database id
 
@@ -196,324 +236,13 @@ Legacy viz_type keys are unregistered in current Superset and fail with
 `Item with key "X" is not registered`. Hand-rolled chart scripts often copy
 stale examples — always use the keys below.
 
-### Complete registered viz_type enum
-
-From Superset's `VizType` enum — these are the only keys the server accepts.
-
-| Category | Viz name | viz_type key |
-|---|---|---|
-| Big number | Big Number | `big_number` |
-| Big number | Big Number Total | `big_number_total` |
-| Big number | Period-over-period KPI | `pop_kpi` |
-| Categorical | Pie | `pie` |
-| Categorical | Funnel | `funnel` |
-| Categorical | Radar | `radar` |
-| Categorical | Rose | `rose` |
-| Categorical | Chord | `chord` |
-| Categorical | Sankey | `sankey_v2` |
-| Categorical | Sunburst | `sunburst_v2` |
-| Categorical | Treemap | `treemap_v2` |
-| Categorical | Partition | `partition` |
-| Distribution | Histogram | `histogram_v2` |
-| Distribution | Box Plot | `box_plot` |
-| Time series | Bar (categorical or time) | `echarts_timeseries_bar` |
-| Time series | Line | `echarts_timeseries_line` |
-| Time series | Smooth Line | `echarts_timeseries_smooth` |
-| Time series | Step | `echarts_timeseries_step` |
-| Time series | Area | `echarts_area` |
-| Time series | Scatter | `echarts_timeseries_scatter` |
-| Time series | Generic time series | `echarts_timeseries` |
-| Time series | Mixed time series | `mixed_timeseries` |
-| Time series | Waterfall | `waterfall` |
-| Time series | Compare | `compare` |
-| Time series | Time Pivot | `time_pivot` |
-| Time series | Time Table | `time_table` |
-| Correlation | Heatmap | `heatmap_v2` |
-| Correlation | Bubble | `bubble_v2` |
-| Correlation | Parallel Coords | `para` |
-| Correlation | Paired t-test | `paired_ttest` |
-| Tabular | Table | `table` |
-| Tabular | Table (AG Grid) | `ag-grid-table` |
-| Tabular | Pivot Table | `pivot_table_v2` |
-| Gauge/other | Gauge | `gauge_chart` |
-| Gauge/other | Bullet | `bullet` |
-| Gauge/other | Calendar heatmap | `cal_heatmap` |
-| Maps | Country Map | `country_map` |
-| Maps | World Map | `world_map` |
-| Maps | MapBox | `mapbox` |
-| Maps | Point cluster | `point_cluster_map` |
-| Maps | Cartodiagram | `cartodiagram` |
-| Other | Graph | `graph_chart` |
-| Other | Tree | `tree_chart` |
-| Other | Gantt | `gantt_chart` |
-| Other | Horizon | `horizon` |
-| Other | Word cloud | `word_cloud` |
-| Other | Handlebars | `handlebars` |
-
-### Legacy keys that will FAIL
-
-| Legacy (don't use) | Modern replacement |
-|---|---|
-| `dist_bar` | `echarts_timeseries_bar` (with `x_axis_force_categorical: true`) |
-| `bar` | `echarts_timeseries_bar` |
-| `line` | `echarts_timeseries_line` |
-| `area` | `echarts_area` |
-| `histogram` | `histogram_v2` |
-| `heatmap` | `heatmap_v2` |
-| `bubble` | `bubble_v2` |
-| `pivot_table` | `pivot_table_v2` |
-| `sankey` | `sankey_v2` |
-| `sunburst` | `sunburst_v2` |
-| `treemap` | `treemap_v2` |
+The full registered `viz_type` enum (the keys the server accepts) and the legacy keys that fail are tabulated in [references/viz_types.md](references/viz_types.md).
 
 ---
 
 ## 4. Creating charts — param schemas
 
-`create_chart` takes a JSON-string `params` blob whose shape is **viz-type
-specific**. The shared `COUNT_METRIC` below is a valid adhoc SQL metric
-reusable across every viz:
-
-```python
-import json
-
-COUNT_METRIC = {
-    "expressionType": "SQL",
-    "sqlExpression": "COUNT(*)",
-    "label": "count",
-    "optionName": "metric_count",
-    "hasCustomLabel": True,
-}
-
-# Or an aggregate on a column:
-SUM_AMOUNT = {
-    "expressionType": "SIMPLE",
-    "column": {"column_name": "amount", "type": "DOUBLE"},
-    "aggregate": "SUM",
-    "label": "total_amount",
-    "optionName": "metric_sum_amount",
-    "hasCustomLabel": True,
-}
-
-# adhoc_filters (reusable building block):
-# Simple column filter:
-#   {"expressionType": "SIMPLE", "subject": "country", "operator": "==",
-#    "comparator": "US", "clause": "WHERE"}
-# Raw SQL filter:
-#   {"expressionType": "SQL", "sqlExpression": "amount > 100", "clause": "WHERE"}
-```
-
-### big_number_total — single KPI
-
-```python
-params = {
-    "viz_type": "big_number_total",
-    "metric": COUNT_METRIC,
-    "adhoc_filters": [],
-    "y_axis_format": "SMART_NUMBER",
-    "subheader": "Total customers",
-}
-```
-
-### big_number — KPI with trend line
-
-```python
-params = {
-    "viz_type": "big_number",
-    "metric": COUNT_METRIC,
-    "granularity_sqla": "created_at",     # temporal column
-    "time_range": "No filter",
-    "adhoc_filters": [],
-    "compare_lag": "1",
-    "compare_suffix": "vs prev",
-    "y_axis_format": "SMART_NUMBER",
-}
-```
-
-### pie
-
-```python
-params = {
-    "viz_type": "pie",
-    "groupby": ["category_col"],
-    "metric": COUNT_METRIC,
-    "adhoc_filters": [],
-    "row_limit": 100,
-    "sort_by_metric": True,
-    "show_legend": True,
-    "label_type": "key_percent",          # or "key", "value", "percent"
-    "donut": False,
-    "innerRadius": 30,
-    "outerRadius": 70,
-}
-```
-
-### echarts_timeseries_bar — bar chart (use for categorical bars too)
-
-This replaces the legacy `dist_bar`. For a **categorical** (non-temporal)
-x-axis, set `x_axis_force_categorical: true`.
-
-```python
-params = {
-    "viz_type": "echarts_timeseries_bar",
-    "x_axis": "some_category_col",        # this is the grouping column, NOT `groupby`
-    "x_axis_force_categorical": True,     # REQUIRED for string x_axis
-    "metrics": [COUNT_METRIC],
-    "groupby": [],                        # only for series breakdown (stacked)
-    "adhoc_filters": [],
-    "row_limit": 100,
-    "orientation": "vertical",            # or "horizontal"
-    "order_desc": True,
-    # Sort bars by metric:
-    "timeseries_limit_metric": COUNT_METRIC,
-    "x_axis_sort": "count",               # must match the metric's `label`
-    "x_axis_sort_asc": False,
-    "show_legend": False,
-    "y_axis_format": "SMART_NUMBER",
-}
-```
-
-For a **time-series** bar chart, use a datetime column as `x_axis` and drop
-`x_axis_force_categorical`. Add `time_grain_sqla` (e.g. `"P1D"`, `"P1M"`).
-
-### echarts_timeseries_line
-
-```python
-params = {
-    "viz_type": "echarts_timeseries_line",
-    "x_axis": "event_ts",
-    "time_grain_sqla": "P1D",             # P1D=day, PT1H=hour, P1M=month, P1Y=year
-    "metrics": [COUNT_METRIC],
-    "groupby": [],                        # series breakdown columns
-    "adhoc_filters": [],
-    "row_limit": 10000,
-    "show_legend": True,
-    "markerEnabled": False,
-    "y_axis_format": "SMART_NUMBER",
-}
-```
-
-### histogram_v2
-
-```python
-params = {
-    "viz_type": "histogram_v2",
-    "column": "numeric_col",              # SINGLE string (not `all_columns_x` array)
-    "groupby": [],                        # optional series breakdown
-    "adhoc_filters": [],
-    "row_limit": 50000,
-    "bins": 20,
-    "normalize": False,
-    "cumulative": False,
-    "x_axis_title": "Value",              # NOT `x_axis_label`
-    "y_axis_title": "Count",              # NOT `y_axis_label`
-    "x_axis_format": "SMART_NUMBER",
-    "y_axis_format": "SMART_NUMBER",
-}
-```
-
-### table — tabular view
-
-```python
-params = {
-    "viz_type": "table",
-    "query_mode": "aggregate",            # or "raw" for row-level
-    "groupby": ["col1", "col2"],
-    "metrics": [COUNT_METRIC],
-    "adhoc_filters": [],
-    "row_limit": 100,
-    "order_by_cols": [json.dumps(["count", False])],  # list of JSON-encoded [col, asc]
-    "show_cell_bars": True,
-    "table_timestamp_format": "smart_date",
-}
-```
-
-### pivot_table_v2
-
-```python
-params = {
-    "viz_type": "pivot_table_v2",
-    "groupbyRows": ["row_col"],
-    "groupbyColumns": ["pivot_col"],
-    "metrics": [COUNT_METRIC],
-    "adhoc_filters": [],
-    "row_limit": 10000,
-    "aggregateFunction": "Sum",
-    "rowTotals": True,
-    "colTotals": True,
-}
-```
-
-### heatmap_v2
-
-```python
-params = {
-    "viz_type": "heatmap_v2",
-    "x_axis": "x_col",
-    "groupby": "y_col",
-    "metric": COUNT_METRIC,
-    "adhoc_filters": [],
-    "row_limit": 10000,
-    "normalize_across": "heatmap",        # or "x", "y"
-    "linear_color_scheme": "schemeBlues",
-}
-```
-
-### bubble_v2 (scatter with size)
-
-```python
-params = {
-    "viz_type": "bubble_v2",
-    "x_axis": {"expressionType": "SIMPLE",
-               "column": {"column_name": "feature_x", "type": "DOUBLE"},
-               "aggregate": "AVG", "label": "x"},
-    "y_axis": {"expressionType": "SIMPLE",
-               "column": {"column_name": "feature_y", "type": "DOUBLE"},
-               "aggregate": "AVG", "label": "y"},
-    "size": COUNT_METRIC,
-    "entity": "group_col",
-    "adhoc_filters": [],
-    "row_limit": 1000,
-}
-```
-
-### box_plot
-
-```python
-params = {
-    "viz_type": "box_plot",
-    "x_axis": "category_col",
-    "x_axis_force_categorical": True,
-    "metrics": [SUM_AMOUNT],              # numeric metric(s) to summarize
-    "groupby": [],
-    "adhoc_filters": [],
-    "row_limit": 10000,
-    "whiskerOptions": "Tukey",            # or "Min/max", "2/98 percentiles", etc.
-}
-```
-
-### funnel
-
-```python
-params = {
-    "viz_type": "funnel",
-    "groupby": ["stage_col"],
-    "metric": COUNT_METRIC,
-    "adhoc_filters": [],
-    "row_limit": 10,
-    "sort_by_metric": True,
-}
-```
-
-### Replace-by-name helper for idempotent chart scripts
-
-```python
-def replace_chart(api, slice_name, **kwargs):
-    for c in list_all(api, "chart"):
-        if c.get("slice_name") == slice_name:
-            api.delete_chart(c["id"])
-    return api.create_chart(slice_name=slice_name, **kwargs)["id"]
-```
+`create_chart` takes a JSON-string `params` blob whose shape is **viz-type specific**. The reusable metric/filter building blocks (`COUNT_METRIC`, `SUM_AMOUNT`, `adhoc_filters`), a copy-paste `params` block for each supported viz type, and a replace-by-name idempotency helper are in [references/chart_params.md](references/chart_params.md).
 
 ---
 
@@ -626,7 +355,9 @@ https://<hopsworks-host>/hopsworks-api/superset/superset/dashboard/<id>/
 import json
 import hopsworks
 
-PROJECT_NAME = "af"
+# Columns below (state, age, …) are illustrative — swap for real ones from
+# `hops fg features <FG_NAME> --version <FG_VERSION>`.
+PROJECT_NAME = "<your_project>"        # don't hardcode; set to project.name after login
 FG_NAME, FG_VERSION = "customers", 1
 
 COUNT_METRIC = {
@@ -725,3 +456,22 @@ if __name__ == "__main__":
 | Create dashboard | `api.create_dashboard(dashboard_title=..., published=True, position_json=...)` |
 | Delete | `api.delete_chart(id)` / `api.delete_dataset(id)` / `api.delete_dashboard(id)` |
 | Paginate any list | `api._request("GET", f"/api/v1/{resource}/?q=(page:{p},page_size:100)")` |
+
+---
+
+## Next Steps
+
+- Get a feature group materialized offline to chart: **hops-fg**.
+- Inspect / query the underlying Trino table: **hops-trino-sql**, **hops-data-discovery**.
+- A custom interactive app instead of BI dashboards: **hops-app**.
+
+### Monitoring dashboards
+
+Inference pipelines log untransformed features, transformed features, and
+predictions to a per-model logging feature group. That FG is offline-queryable
+in Trino like any other, so the same dataset/chart/dashboard machinery here
+builds feature- and model-monitoring dashboards: chart a feature's distribution
+over a recent detection window against its training-time reference, or track a
+KPI over time to spot degradation. Build the drift jobs themselves (univariate /
+multivariate, deviation-from-mean, NannyML) in the inference pipeline; use this
+skill to surface their outputs.

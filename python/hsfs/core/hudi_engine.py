@@ -20,7 +20,7 @@ import os
 from urllib.parse import unquote, urlsplit
 
 from hsfs import feature_group_commit, util
-from hsfs.core import dataset_api, feature_group_api
+from hsfs.core import dataset_api, feature_group_api, partition_grains
 
 
 class HudiEngine:
@@ -40,6 +40,7 @@ class HudiEngine:
     HUDI_TABLE_OPERATION = "hoodie.datasource.write.operation"
     HUDI_WRITE_RECORD_KEY = "hoodie.datasource.write.recordkey.field"
     HUDI_PARTITION_FIELD = "hoodie.datasource.write.partitionpath.field"
+    HUDI_HIVE_STYLE_PARTITIONING = "hoodie.datasource.write.hive_style_partitioning"
     HUDI_WRITE_PRECOMBINE_FIELD = "hoodie.datasource.write.precombine.field"
 
     HUDI_HIVE_SYNC_ENABLE = "hoodie.datasource.hive_sync.enable"
@@ -106,24 +107,24 @@ class HudiEngine:
         self._feature_group_api = feature_group_api.FeatureGroupApi()
         self._dataset_api = dataset_api.DatasetApi()
 
-    def save_hudi_fg(
+    def _save_hudi_fg(
         self, dataset, save_mode, operation, write_options, validation_id=None
     ):
         fg_commit = self._write_hudi_dataset(
             dataset, save_mode, operation, write_options
         )
         fg_commit.validation_id = validation_id
-        return self._feature_group_api.commit(self._feature_group, fg_commit)
+        return self._feature_group_api._commit(self._feature_group, fg_commit)
 
-    def delete_record(self, delete_df, write_options):
+    def _delete_record(self, delete_df, write_options):
         write_options[self.PAYLOAD_CLASS_OPT_KEY] = self.PAYLOAD_CLASS_OPT_VAL
 
         fg_commit = self._write_hudi_dataset(
             delete_df, "append", self.HUDI_UPSERT, write_options
         )
-        return self._feature_group_api.commit(self._feature_group, fg_commit)
+        return self._feature_group_api._commit(self._feature_group, fg_commit)
 
-    def register_temporary_table(self, hudi_fg_alias, read_options):
+    def _register_temporary_table(self, hudi_fg_alias, read_options):
         location = self._feature_group.prepare_spark_location()
 
         hudi_options = self._setup_hudi_read_opts(hudi_fg_alias, read_options)
@@ -134,6 +135,13 @@ class HudiEngine:
     def _write_hudi_dataset(self, dataset, save_mode, operation, write_options):
         location = self._feature_group.prepare_spark_location()
 
+        # partitioned_by grain columns are derived from event_time into the
+        # records before the write, so the key generator partitions on them
+        # like ordinary columns (and delete payloads resolve their partition
+        # path the same way).
+        dataset = partition_grains._materialize_grains_spark(
+            self._feature_group, dataset
+        )
         hudi_options = self._setup_hudi_write_opts(operation, write_options)
         self._migrate_table(self._spark_context, hudi_options, location)
         dataset.write.format(HudiEngine.HUDI_SPARK_FORMAT).options(**hudi_options).mode(
@@ -151,16 +159,27 @@ class HudiEngine:
         if self._feature_group.event_time is not None:
             primary_key = primary_key + "," + self._feature_group.event_time
 
-        partition_key = (
-            ",".join(self._feature_group.partition_key)
-            if len(self._feature_group.partition_key) >= 1
-            else ""
-        )
-        partition_path = (
-            ":SIMPLE,".join(self._feature_group.partition_key) + ":SIMPLE"
-            if len(self._feature_group.partition_key) >= 1
-            else ""
-        )
+        # When `partitioned_by` is set, the grain columns were materialized
+        # into the records by `_write_hudi_dataset`, so they partition like
+        # ordinary columns via SIMPLE key types. Hive-style paths
+        # (year=2026/month=04/...) keep the on-disk layout identical to the
+        # Delta path — and to what the backend's DeltaStreamer config (see
+        # FsJobManagerController.injectHudiPartitionedByOptions) produces.
+        partitioned_by = getattr(self._feature_group, "partitioned_by", None)
+        if partitioned_by:
+            partition_key = ",".join(partitioned_by)
+            partition_path = ":SIMPLE,".join(partitioned_by) + ":SIMPLE"
+        else:
+            partition_key = (
+                ",".join(self._feature_group.partition_key)
+                if len(self._feature_group.partition_key) >= 1
+                else ""
+            )
+            partition_path = (
+                ":SIMPLE,".join(self._feature_group.partition_key) + ":SIMPLE"
+                if len(self._feature_group.partition_key) >= 1
+                else ""
+            )
         pre_combine_key = (
             self._feature_group.hudi_precombine_key
             if self._feature_group.hudi_precombine_key
@@ -169,11 +188,11 @@ class HudiEngine:
 
         # only enable hive sync when using a Spark engine with a metastore and no storage connector,
         # as the storage connector means data is saved in an external storage
-        from hsfs.engine import get_type
+        from hsfs.engine import _get_type
 
         hive_sync = (
             self._feature_group.data_source.storage_connector is None
-            and get_type() == "spark"
+            and _get_type() == "spark"
         )
 
         hudi_options = {
@@ -205,6 +224,9 @@ class HudiEngine:
             self.HUDI_HIVE_SYNC_AUTO_CREATE_DATABASE: "false",
         }
         hudi_options.update(HudiEngine.HUDI_DEFAULT_PARALLELISM)
+
+        if partitioned_by:
+            hudi_options[self.HUDI_HIVE_STYLE_PARTITIONING] = "true"
 
         if write_options:
             hudi_options.update(write_options)
@@ -238,7 +260,7 @@ class HudiEngine:
             and hudi_fg_alias.left_feature_group_start_timestamp is None
         ):
             # snapshot query with end time
-            _hudi_commit_end_time = util.get_hudi_datestr_from_timestamp(
+            _hudi_commit_end_time = util._get_hudi_datestr_from_timestamp(
                 hudi_fg_alias.left_feature_group_end_timestamp
             )
 
@@ -251,7 +273,7 @@ class HudiEngine:
             and hudi_fg_alias.left_feature_group_start_timestamp is not None
         ):
             # incremental query with start time until now
-            _hudi_commit_start_time = util.get_hudi_datestr_from_timestamp(
+            _hudi_commit_start_time = util._get_hudi_datestr_from_timestamp(
                 hudi_fg_alias.left_feature_group_start_timestamp
             )
 
@@ -261,10 +283,10 @@ class HudiEngine:
             }
         else:
             # incremental query with start and end time
-            _hudi_commit_start_time = util.get_hudi_datestr_from_timestamp(
+            _hudi_commit_start_time = util._get_hudi_datestr_from_timestamp(
                 hudi_fg_alias.left_feature_group_start_timestamp
             )
-            _hudi_commit_end_time = util.get_hudi_datestr_from_timestamp(
+            _hudi_commit_end_time = util._get_hudi_datestr_from_timestamp(
                 hudi_fg_alias.left_feature_group_end_timestamp
             )
 
@@ -302,13 +324,13 @@ class HudiEngine:
         return feature_group_commit.FeatureGroupCommit(
             commitid=None,
             commit_date_string=latest_commit.getCompletionTime(),
-            commit_time=util.get_timestamp_from_date_string(
+            commit_time=util._get_timestamp_from_date_string(
                 latest_commit.getCompletionTime()
             ),
             rows_inserted=commit_metadata.fetchTotalInsertRecordsWritten(),
             rows_updated=commit_metadata.fetchTotalUpdateRecordsWritten(),
             rows_deleted=commit_metadata.getTotalRecordsDeleted(),
-            last_active_commit_time=util.get_timestamp_from_date_string(
+            last_active_commit_time=util._get_timestamp_from_date_string(
                 oldest_commit.getCompletionTime()
             ),
             table_size=table_size,
