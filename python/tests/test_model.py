@@ -549,69 +549,9 @@ class TestModel:
 
 
 class TestModelEngine:
-    @pytest.mark.parametrize(
-        "model_path,expected_hdfs_path",
-        [
-            # /hopsfs/ is the per-project mount: strip the prefix to get a
-            # project-relative dataset path.
-            (
-                "/hopsfs/Models/model.pkl",
-                "Models/model.pkl",
-            ),
-            # /mnt/hopsfs/ is the cluster-wide mount rooted at /Projects/, so
-            # the path is /mnt/hopsfs/<projectName>/<rest>. Strip both segments.
-            (
-                "/mnt/hopsfs/demo/Models/model.pkl",
-                "Models/model.pkl",
-            ),
-            # The actual failing case from the loadtest run on 2026-05-09.
-            (
-                "/mnt/hopsfs/demo/Resources/workflows/models/tensorflow",
-                "Resources/workflows/models/tensorflow",
-            ),
-        ],
-    )
-    def test_normalize_hopsfs_mount_path(self, mocker, model_path, expected_hdfs_path):
-        mocker.patch("hsml.engine.model_engine.model_api.ModelApi")
-        mocker.patch("hsml.engine.model_engine.dataset_api.DatasetApi")
-        mocker.patch("hsml.engine.model_engine.local_engine.LocalEngine")
-
-        engine = model_engine.ModelEngine()
-
-        assert engine._normalize_hopsfs_mount_path(model_path) == expected_hdfs_path
-
-    def test_normalize_hopsfs_mount_path_returns_none_for_local_path(self, mocker):
-        mocker.patch("hsml.engine.model_engine.model_api.ModelApi")
-        mocker.patch("hsml.engine.model_engine.dataset_api.DatasetApi")
-        mocker.patch("hsml.engine.model_engine.local_engine.LocalEngine")
-
-        engine = model_engine.ModelEngine()
-
-        assert engine._normalize_hopsfs_mount_path("local/model.pkl") is None
-
-    @pytest.mark.parametrize(
-        "model_path,expected_hdfs_path",
-        [
-            (
-                "/hopsfs/Models/hopsfs/archive/model.pkl",
-                "Models/hopsfs/archive/model.pkl",
-            ),
-            (
-                "/mnt/hopsfs/demo/Models/mnt/hopsfs/archive/model.pkl",
-                "Models/mnt/hopsfs/archive/model.pkl",
-            ),
-        ],
-    )
-    def test_normalize_hopsfs_mount_path_strips_only_leading_prefix(
-        self, mocker, model_path, expected_hdfs_path
-    ):
-        mocker.patch("hsml.engine.model_engine.model_api.ModelApi")
-        mocker.patch("hsml.engine.model_engine.dataset_api.DatasetApi")
-        mocker.patch("hsml.engine.model_engine.local_engine.LocalEngine")
-
-        engine = model_engine.ModelEngine()
-
-        assert engine._normalize_hopsfs_mount_path(model_path) == expected_hdfs_path
+    # Note: `normalize_hopsfs_mount_path` itself is exercised in
+    # `tests/test_local_paths.py` since it now lives in `hsml.utils.local_paths`
+    # and is shared between the model and serving engines.
 
     @pytest.mark.parametrize(
         "model_path,expected_hdfs_path",
