@@ -74,12 +74,8 @@ class TestUploadLocalServingFiles:
 
         eng._upload_local_serving_files(deployment)
 
-        assert (
-            predictor.script_file == "hopsfs::script_file::./predictor.py"
-        )
-        assert (
-            predictor.config_file == "hopsfs::config_file::./vllm.yaml"
-        )
+        assert predictor.script_file == "hopsfs::script_file::./predictor.py"
+        assert predictor.config_file == "hopsfs::config_file::./vllm.yaml"
         assert (
             predictor.transformer.script_file
             == "hopsfs::transformer.script_file::./transformer.py"
@@ -122,9 +118,7 @@ class TestUploadLocalServingFiles:
             side_effect=lambda engine, name, p, **kw: p,
         )
 
-        predictor = _FakePredictor(
-            script_file=None, config_file=None, transformer=None
-        )
+        predictor = _FakePredictor(script_file=None, config_file=None, transformer=None)
         deployment = _FakeDeployment(predictor, name="my_dep")
 
         eng._upload_local_serving_files(deployment)
@@ -206,9 +200,7 @@ class TestSave:
         eng._create.assert_called_once_with(deployment)
         eng._update.assert_not_called()
 
-    def test_upload_runs_and_update_called_for_existing_deployment(
-        self, mocker
-    ):
+    def test_upload_runs_and_update_called_for_existing_deployment(self, mocker):
         eng = self._engine(mocker)
         mock_upload = mocker.patch.object(eng, "_upload_local_serving_files")
 

@@ -547,8 +547,12 @@ class ServingEngine:
         ]
         if predictor.transformer is not None:
             targets.append(
-                (predictor.transformer, "script_file", "transformer",
-                 "transformer.script_file"),
+                (
+                    predictor.transformer,
+                    "script_file",
+                    "transformer",
+                    "transformer.script_file",
+                ),
             )
 
         for obj, field, subdir, field_label in targets:

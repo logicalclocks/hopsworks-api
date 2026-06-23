@@ -76,7 +76,9 @@ class TestNormalizeHopsfsMountPath:
 
     def test_non_mount_returns_none(self):
         assert normalize_hopsfs_mount_path("/tmp/foo.py") is None
-        assert normalize_hopsfs_mount_path("/Projects/myproject/Resources/foo.py") is None
+        assert (
+            normalize_hopsfs_mount_path("/Projects/myproject/Resources/foo.py") is None
+        )
         assert normalize_hopsfs_mount_path("./foo.py") is None
         assert normalize_hopsfs_mount_path("foo.py") is None
         assert normalize_hopsfs_mount_path("local/model.pkl") is None
@@ -92,9 +94,7 @@ class TestResolveServingFile:
         )
         local_engine._upload.assert_not_called()
 
-    def test_absolute_local_file_uploaded(
-        self, tmp_path, project_name, local_engine
-    ):
+    def test_absolute_local_file_uploaded(self, tmp_path, project_name, local_engine):
         local = tmp_path / "predictor.py"
         local.write_text("# noop\n")
 
@@ -195,9 +195,7 @@ class TestResolveServingFile:
         assert out == f"/Projects/{project_name}/Resources/foo.py"
         local_engine._upload.assert_not_called()
 
-    def test_absolute_hopsfs_path_passthrough(
-        self, project_name, local_engine
-    ):
+    def test_absolute_hopsfs_path_passthrough(self, project_name, local_engine):
         # /Projects/<p>/... that exists in HopsFS → return as-is, no upload.
         # `os.path.exists` is False (no FUSE mount), so step 3 runs.
         local_engine._dataset_api.exists.return_value = True
@@ -213,9 +211,7 @@ class TestResolveServingFile:
         assert out == f"/Projects/{project_name}/Resources/foo.py"
         local_engine._upload.assert_not_called()
 
-    def test_project_relative_hopsfs_path_expanded(
-        self, project_name, local_engine
-    ):
+    def test_project_relative_hopsfs_path_expanded(self, project_name, local_engine):
         # The form returned by `dataset_api.upload("file.py", "Resources")`.
         local_engine._dataset_api.exists.return_value = True
 
@@ -230,9 +226,7 @@ class TestResolveServingFile:
         assert out == f"/Projects/{project_name}/Resources/foo.py"
         local_engine._upload.assert_not_called()
 
-    def test_hdfs_uri_stripped_to_absolute(
-        self, project_name, local_engine
-    ):
+    def test_hdfs_uri_stripped_to_absolute(self, project_name, local_engine):
         local_engine._dataset_api.exists.return_value = True
 
         out = resolve_serving_file(
@@ -259,9 +253,7 @@ class TestResolveServingFile:
             )
         local_engine._upload.assert_not_called()
 
-    def test_local_uploads_to_role_subdir(
-        self, tmp_path, project_name, local_engine
-    ):
+    def test_local_uploads_to_role_subdir(self, tmp_path, project_name, local_engine):
         # Predictor and transformer with the same basename land in
         # different subdirs.
         f = tmp_path / "script.py"
@@ -278,16 +270,12 @@ class TestResolveServingFile:
             subdir="transformer",
         )
 
-        assert predictor_out.endswith(
-            "/Deployments/dep/resources/predictor/script.py"
-        )
+        assert predictor_out.endswith("/Deployments/dep/resources/predictor/script.py")
         assert transformer_out.endswith(
             "/Deployments/dep/resources/transformer/script.py"
         )
 
-    def test_overwrite_false_propagated(
-        self, tmp_path, project_name, local_engine
-    ):
+    def test_overwrite_false_propagated(self, tmp_path, project_name, local_engine):
         local = tmp_path / "predictor.py"
         local.write_text("# noop\n")
 

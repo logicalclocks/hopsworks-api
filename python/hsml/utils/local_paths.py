@@ -32,10 +32,10 @@ def normalize_hopsfs_mount_path(path: str) -> str | None:
     # (project name) too so the result is project-relative.
     base = MODEL_REGISTRY.HOPSFS_MOUNT_PREFIX_BASE
     if path.startswith(base + "/"):
-        rest = path[len(base) + 1:]
+        rest = path[len(base) + 1 :]
         first_slash = rest.find("/")
         if first_slash != -1 and first_slash + 1 < len(rest):
-            return rest[first_slash + 1:]
+            return rest[first_slash + 1 :]
     return None
 
 
