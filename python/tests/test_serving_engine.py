@@ -180,8 +180,9 @@ class TestUploadLocalServingFiles:
 
 
 class TestSave:
-    """Tests for ServingEngine._save() — that save runs the upload pass
-    and then dispatches to create / update based on the deployment id.
+    """Tests for ServingEngine._save() method.
+
+    Tests for ServingEngine._save() - that save runs the upload pass and then dispatches to create / update based on the deployment id.
     """
 
     def _engine(self, mocker):
