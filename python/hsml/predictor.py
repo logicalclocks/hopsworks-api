@@ -82,6 +82,9 @@ class Predictor(DeployableComponent):
         vllm_variant: str | None = None,
         vllm_image_tag: str | None = None,
         tracing: DeploymentTracingConfig | dict | Default | None = None,
+        git_url: str | None = None,
+        git_provider: str | None = None,
+        git_branch: str | None = None,
         **kwargs,
     ):
         serving_tool = (
@@ -131,6 +134,9 @@ class Predictor(DeployableComponent):
         self._project_name = None
         self._env_vars = env_vars
         self._tracing = util._get_obj_from_json(tracing, DeploymentTracingConfig)
+        self._git_url = git_url
+        self._git_provider = git_provider
+        self._git_branch = git_branch
         self._vllm_variant = vllm_variant
         self._vllm_image_tag = vllm_image_tag
 
@@ -328,6 +334,13 @@ class Predictor(DeployableComponent):
             ["tracing", "tracing_config"],
             as_instance_of=DeploymentTracingConfig,
         )
+        kwargs["git_url"] = util._extract_field_from_json(json_decamelized, "git_url")
+        kwargs["git_provider"] = util._extract_field_from_json(
+            json_decamelized, "git_provider"
+        )
+        kwargs["git_branch"] = util._extract_field_from_json(
+            json_decamelized, "git_branch"
+        )
         kwargs["id"] = json_decamelized.pop("id")
         kwargs["created_at"] = json_decamelized.pop("created")
         kwargs["creator"] = json_decamelized.pop("creator")
@@ -407,6 +420,12 @@ class Predictor(DeployableComponent):
             json = {**json, **self._transformer.to_dict()}
         if self._tracing is not None:
             json = {**json, "tracing": self._tracing.to_dict()}
+        if self._git_url is not None:
+            json = {**json, "gitUrl": self._git_url}
+        if self._git_provider is not None:
+            json = {**json, "gitProvider": self._git_provider}
+        if self._git_branch is not None:
+            json = {**json, "gitBranch": self._git_branch}
         if self._scaling_configuration is not None:
             json = {**json, **self._scaling_configuration.to_dict()}
         return json
@@ -588,6 +607,36 @@ class Predictor(DeployableComponent):
     @tracing.setter
     def tracing(self, tracing: DeploymentTracingConfig | dict | Default | None):
         self._tracing = util._get_obj_from_json(tracing, DeploymentTracingConfig)
+
+    @public
+    @property
+    def git_url(self):
+        """Configured Git repository URL for this deployment."""
+        return self._git_url
+
+    @git_url.setter
+    def git_url(self, git_url: str | None):
+        self._git_url = git_url
+
+    @public
+    @property
+    def git_provider(self):
+        """Configured Git provider for this deployment."""
+        return self._git_provider
+
+    @git_provider.setter
+    def git_provider(self, git_provider: str | None):
+        self._git_provider = git_provider
+
+    @public
+    @property
+    def git_branch(self):
+        """Configured Git branch for this deployment."""
+        return self._git_branch
+
+    @git_branch.setter
+    def git_branch(self, git_branch: str | None):
+        self._git_branch = git_branch
 
     @public
     @property
@@ -785,4 +834,11 @@ class Predictor(DeployableComponent):
             if self._description is not None
             else ""
         )
-        return f"Predictor(name: {self._name!r}" + desc + ")"
+        git = ""
+        if self._git_url is not None:
+            git += f", git_url: {self._git_url!r}"
+        if self._git_provider is not None:
+            git += f", git_provider: {self._git_provider!r}"
+        if self._git_branch is not None:
+            git += f", git_branch: {self._git_branch!r}"
+        return f"Predictor(name: {self._name!r}" + desc + git + ")"

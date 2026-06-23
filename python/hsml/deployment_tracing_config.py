@@ -30,6 +30,10 @@ class DeploymentTracingConfig:
         enabled: Whether tracing is enabled.
         otel_tracing_storage: Where traces are stored. Allowed values are
             ``online``, ``offline`` and ``both``. Defaults to ``online``.
+        otel_input_token_price_per_million: Optional input token price used to
+            compute trace cost metrics.
+        otel_output_token_price_per_million: Optional output token price used to
+            compute trace cost metrics.
     """
 
     STORAGE_ONLINE = "online"
@@ -41,11 +45,19 @@ class DeploymentTracingConfig:
         self,
         enabled: bool | None = None,
         otel_tracing_storage: str | None = STORAGE_ONLINE,
+        otel_input_token_price_per_million: float | None = None,
+        otel_output_token_price_per_million: float | None = None,
         **kwargs,
     ):
         self._enabled = enabled
         self._otel_tracing_storage = self._validate_otel_tracing_storage(
             otel_tracing_storage
+        )
+        self._otel_input_token_price_per_million = (
+            otel_input_token_price_per_million
+        )
+        self._otel_output_token_price_per_million = (
+            otel_output_token_price_per_million
         )
 
     @public
@@ -89,6 +101,12 @@ class DeploymentTracingConfig:
         kwargs["otel_tracing_storage"] = util._extract_field_from_json(
             config, "otel_tracing_storage"
         )
+        kwargs["otel_input_token_price_per_million"] = util._extract_field_from_json(
+            config, "otel_input_token_price_per_million"
+        )
+        kwargs["otel_output_token_price_per_million"] = util._extract_field_from_json(
+            config, "otel_output_token_price_per_million"
+        )
         return kwargs
 
     def update_from_response_json(self, json_dict):
@@ -103,6 +121,14 @@ class DeploymentTracingConfig:
         json = {"otelTracingStorage": self._otel_tracing_storage}
         if self._enabled is not None:
             json["enabled"] = self._enabled
+        if self._otel_input_token_price_per_million is not None:
+            json["otelInputTokenPricePerMillion"] = (
+                self._otel_input_token_price_per_million
+            )
+        if self._otel_output_token_price_per_million is not None:
+            json["otelOutputTokenPricePerMillion"] = (
+                self._otel_output_token_price_per_million
+            )
         return json
 
     @public
@@ -127,9 +153,41 @@ class DeploymentTracingConfig:
             otel_tracing_storage
         )
 
+    @public
+    @property
+    def otel_input_token_price_per_million(self):
+        """Optional input token price used to compute trace cost metrics."""
+        return self._otel_input_token_price_per_million
+
+    @otel_input_token_price_per_million.setter
+    def otel_input_token_price_per_million(
+        self, otel_input_token_price_per_million: float | None
+    ):
+        self._otel_input_token_price_per_million = (
+            otel_input_token_price_per_million
+        )
+
+    @public
+    @property
+    def otel_output_token_price_per_million(self):
+        """Optional output token price used to compute trace cost metrics."""
+        return self._otel_output_token_price_per_million
+
+    @otel_output_token_price_per_million.setter
+    def otel_output_token_price_per_million(
+        self, otel_output_token_price_per_million: float | None
+    ):
+        self._otel_output_token_price_per_million = (
+            otel_output_token_price_per_million
+        )
+
     def __repr__(self):
         return (
             "DeploymentTracingConfig("
             f"enabled: {self._enabled!r}, "
-            f"otel_tracing_storage: {self._otel_tracing_storage!r})"
+            f"otel_tracing_storage: {self._otel_tracing_storage!r}, "
+            f"otel_input_token_price_per_million: "
+            f"{self._otel_input_token_price_per_million!r}, "
+            f"otel_output_token_price_per_million: "
+            f"{self._otel_output_token_price_per_million!r})"
         )
