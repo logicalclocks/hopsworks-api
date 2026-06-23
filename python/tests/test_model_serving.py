@@ -347,9 +347,7 @@ class TestDeployAgentScript:
         ds_api.upload.assert_called_once()
         assert mock_for_server.call_args.kwargs["tracing"] is tracing
 
-    def test_git_source_uses_relative_entry_without_upload(
-        self, ms, mocker, stub_apis
-    ):
+    def test_git_source_uses_relative_entry_without_upload(self, ms, mocker, stub_apis):
         # Arrange
         ds_api, env_api, _ = stub_apis
         mocker.patch.object(ms, "get_deployment", return_value=None)
