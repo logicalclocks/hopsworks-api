@@ -20,7 +20,7 @@ from hopsworks_common import client
 from hopsworks_common.constants import MODEL_REGISTRY, MODEL_SERVING
 
 
-def normalize_hopsfs_mount_path(path: str) -> str | None:
+def _normalize_hopsfs_mount_path(path: str) -> str | None:
     """Project-relative HopsFS path for a FUSE-mounted ``path``, or ``None``.
 
     Recognizes ``/hopsfs/<rest>`` (per-project mount in Jobs/Jupyter pods)
@@ -39,7 +39,7 @@ def normalize_hopsfs_mount_path(path: str) -> str | None:
     return None
 
 
-def resolve_serving_file(
+def _resolve_serving_file(
     local_engine,
     deployment_name: str,
     path: str | None,
@@ -134,7 +134,7 @@ def _resolve_local_or_mount(
     # Normalize away `./` and `../` segments that `os.path.join(cwd, path)`
     # leaves intact, so the returned HopsFS path is clean.
     abs_path = os.path.normpath(abs_path)
-    mount_relative = normalize_hopsfs_mount_path(abs_path)
+    mount_relative = _normalize_hopsfs_mount_path(abs_path)
     if mount_relative is not None:
         return f"/Projects/{project_name}/{mount_relative}"
 

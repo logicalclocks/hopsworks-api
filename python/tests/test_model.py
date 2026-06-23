@@ -549,7 +549,7 @@ class TestModel:
 
 
 class TestModelEngine:
-    # Note: `normalize_hopsfs_mount_path` itself is exercised in
+    # Note: `_normalize_hopsfs_mount_path` itself is exercised in
     # `tests/test_local_paths.py` since it now lives in `hsml.utils.local_paths`
     # and is shared between the model and serving engines.
 

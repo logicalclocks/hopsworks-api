@@ -16,8 +16,8 @@
 
 import pytest
 from hsml.utils.local_paths import (
-    normalize_hopsfs_mount_path,
-    resolve_serving_file,
+    _normalize_hopsfs_mount_path,
+    _resolve_serving_file,
 )
 
 
@@ -37,7 +37,7 @@ def project_name(mocker):
 def local_engine(mocker):
     # `_ensure_dataset_dir` consults engine._dataset_api.exists() per
     # intermediate segment; default to "nothing exists" so the resolver
-    # creates every parent. `resolve_serving_file` step 3 also calls
+    # creates every parent. `_resolve_serving_file` step 3 also calls
     # `_dataset_api.exists(path)` to detect HopsFS membership; tests that
     # exercise that branch override the return_value.
     engine = mocker.Mock()
@@ -72,22 +72,22 @@ class TestNormalizeHopsfsMountPath:
         ],
     )
     def test_mount_paths_normalized(self, path, expected):
-        assert normalize_hopsfs_mount_path(path) == expected
+        assert _normalize_hopsfs_mount_path(path) == expected
 
     def test_non_mount_returns_none(self):
-        assert normalize_hopsfs_mount_path("/tmp/foo.py") is None
+        assert _normalize_hopsfs_mount_path("/tmp/foo.py") is None
         assert (
-            normalize_hopsfs_mount_path("/Projects/myproject/Resources/foo.py") is None
+            _normalize_hopsfs_mount_path("/Projects/myproject/Resources/foo.py") is None
         )
-        assert normalize_hopsfs_mount_path("./foo.py") is None
-        assert normalize_hopsfs_mount_path("foo.py") is None
-        assert normalize_hopsfs_mount_path("local/model.pkl") is None
+        assert _normalize_hopsfs_mount_path("./foo.py") is None
+        assert _normalize_hopsfs_mount_path("foo.py") is None
+        assert _normalize_hopsfs_mount_path("local/model.pkl") is None
 
 
 class TestResolveServingFile:
     def test_none_returns_none(self, local_engine):
         assert (
-            resolve_serving_file(
+            _resolve_serving_file(
                 local_engine, "my_dep", None, "script_file", subdir="predictor"
             )
             is None
@@ -98,7 +98,7 @@ class TestResolveServingFile:
         local = tmp_path / "predictor.py"
         local.write_text("# noop\n")
 
-        out = resolve_serving_file(
+        out = _resolve_serving_file(
             local_engine,
             "my_dep",
             str(local),
@@ -130,7 +130,7 @@ class TestResolveServingFile:
         local.write_text("# noop\n")
         monkeypatch.chdir(tmp_path)
 
-        out = resolve_serving_file(
+        out = _resolve_serving_file(
             local_engine,
             "my_dep",
             "./predictor.py",
@@ -149,7 +149,7 @@ class TestResolveServingFile:
         mocker.patch("os.getcwd", return_value="/hopsfs/Resources")
         mocker.patch("os.path.exists", return_value=True)
 
-        out = resolve_serving_file(
+        out = _resolve_serving_file(
             local_engine,
             "my_dep",
             "./foo.py",
@@ -167,7 +167,7 @@ class TestResolveServingFile:
         # /Projects/<p>/<rest>.
         mocker.patch("os.path.exists", return_value=True)
 
-        out = resolve_serving_file(
+        out = _resolve_serving_file(
             local_engine,
             "my_dep",
             "/hopsfs/Resources/foo.py",
@@ -184,7 +184,7 @@ class TestResolveServingFile:
         # Absolute /mnt/hopsfs/<project>/<rest> on disk → no upload.
         mocker.patch("os.path.exists", return_value=True)
 
-        out = resolve_serving_file(
+        out = _resolve_serving_file(
             local_engine,
             "my_dep",
             "/mnt/hopsfs/myproject/Resources/foo.py",
@@ -200,7 +200,7 @@ class TestResolveServingFile:
         # `os.path.exists` is False (no FUSE mount), so step 3 runs.
         local_engine._dataset_api.exists.return_value = True
 
-        out = resolve_serving_file(
+        out = _resolve_serving_file(
             local_engine,
             "my_dep",
             f"/Projects/{project_name}/Resources/foo.py",
@@ -215,7 +215,7 @@ class TestResolveServingFile:
         # The form returned by `dataset_api.upload("file.py", "Resources")`.
         local_engine._dataset_api.exists.return_value = True
 
-        out = resolve_serving_file(
+        out = _resolve_serving_file(
             local_engine,
             "my_dep",
             "Resources/foo.py",
@@ -229,7 +229,7 @@ class TestResolveServingFile:
     def test_hdfs_uri_stripped_to_absolute(self, project_name, local_engine):
         local_engine._dataset_api.exists.return_value = True
 
-        out = resolve_serving_file(
+        out = _resolve_serving_file(
             local_engine,
             "my_dep",
             f"hdfs://namenode:8020/Projects/{project_name}/Resources/foo.py",
@@ -244,7 +244,7 @@ class TestResolveServingFile:
         # Not on disk; HopsFS says it doesn't exist either. Default fixture
         # has `_dataset_api.exists.return_value = False`.
         with pytest.raises(ValueError, match="Could not find script_file"):
-            resolve_serving_file(
+            _resolve_serving_file(
                 local_engine,
                 "my_dep",
                 "./does_not_exist.py",
@@ -259,10 +259,10 @@ class TestResolveServingFile:
         f = tmp_path / "script.py"
         f.write_text("# noop\n")
 
-        predictor_out = resolve_serving_file(
+        predictor_out = _resolve_serving_file(
             local_engine, "dep", str(f), "script_file", subdir="predictor"
         )
-        transformer_out = resolve_serving_file(
+        transformer_out = _resolve_serving_file(
             local_engine,
             "dep",
             str(f),
@@ -279,7 +279,7 @@ class TestResolveServingFile:
         local = tmp_path / "predictor.py"
         local.write_text("# noop\n")
 
-        resolve_serving_file(
+        _resolve_serving_file(
             local_engine,
             "my_dep",
             str(local),

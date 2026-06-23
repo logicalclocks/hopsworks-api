@@ -33,7 +33,7 @@ from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
 from hopsworks_common.core import dataset_api, inode
 from hsml.core import serving_api
 from hsml.engine import local_engine
-from hsml.utils.local_paths import resolve_serving_file
+from hsml.utils.local_paths import _resolve_serving_file
 from tqdm.auto import tqdm
 
 
@@ -556,7 +556,7 @@ class ServingEngine:
             )
 
         for obj, field, subdir, field_label in targets:
-            resolved = resolve_serving_file(
+            resolved = _resolve_serving_file(
                 self._engine,
                 deployment_name,
                 getattr(obj, field),

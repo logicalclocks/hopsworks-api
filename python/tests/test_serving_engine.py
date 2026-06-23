@@ -40,7 +40,7 @@ class TestUploadLocalServingFiles:
     """Tests for ServingEngine._upload_local_serving_files.
 
     The actual upload + path-rewrite logic lives in
-    `hsml.util.local_paths.resolve_serving_file` (covered by
+    `hsml.utils.local_paths._resolve_serving_file` (covered by
     test_local_paths.py). These tests focus on the engine wiring: that all
     three fields are processed, that the rewritten paths land back on the
     in-memory predictor/transformer, and that the transformer is skipped when
@@ -59,7 +59,7 @@ class TestUploadLocalServingFiles:
         # was passed in.
         mocker.patch.object(
             serving_engine,
-            "resolve_serving_file",
+            "_resolve_serving_file",
             side_effect=lambda engine, name, p, **kw: (
                 None if p is None else f"hopsfs::{kw['field_name']}::{p}"
             ),
@@ -87,7 +87,7 @@ class TestUploadLocalServingFiles:
         eng = self._engine(mocker)
         mock_resolve = mocker.patch.object(
             serving_engine,
-            "resolve_serving_file",
+            "_resolve_serving_file",
             side_effect=lambda engine, name, p, **kw: p,
         )
 
@@ -114,7 +114,7 @@ class TestUploadLocalServingFiles:
         eng = self._engine(mocker)
         mocker.patch.object(
             serving_engine,
-            "resolve_serving_file",
+            "_resolve_serving_file",
             side_effect=lambda engine, name, p, **kw: p,
         )
 
@@ -131,7 +131,7 @@ class TestUploadLocalServingFiles:
         eng = self._engine(mocker)
         mock_resolve = mocker.patch.object(
             serving_engine,
-            "resolve_serving_file",
+            "_resolve_serving_file",
             side_effect=lambda engine, name, p, **kw: p,
         )
 
@@ -155,7 +155,7 @@ class TestUploadLocalServingFiles:
         eng = self._engine(mocker)
         mock_resolve = mocker.patch.object(
             serving_engine,
-            "resolve_serving_file",
+            "_resolve_serving_file",
             side_effect=lambda engine, name, p, **kw: p,
         )
 

@@ -29,7 +29,7 @@ from hopsworks_common.client.exceptions import ModelRegistryException, RestAPIEr
 from hopsworks_common.core import dataset_api, inode
 from hsml.core import model_api
 from hsml.engine import local_engine
-from hsml.utils.local_paths import normalize_hopsfs_mount_path
+from hsml.utils.local_paths import _normalize_hopsfs_mount_path
 from tqdm.auto import tqdm
 
 
@@ -296,7 +296,7 @@ class ModelEngine:
     ):
         """Save model files from a local path. The local path can be on hopsfs mount."""
         # check hopsfs mount
-        from_hdfs_model_path = normalize_hopsfs_mount_path(model_path)
+        from_hdfs_model_path = _normalize_hopsfs_mount_path(model_path)
         if from_hdfs_model_path is not None:
             self._copy_or_move_hopsfs_model(
                 from_hdfs_model_path=from_hdfs_model_path,
