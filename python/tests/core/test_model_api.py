@@ -90,6 +90,19 @@ class TestModelApi:
         # Assert
         assert result == 7
 
+    def test_get_tag_absent_name_returns_none(self, mocker):
+        # The public Model.get_tag contract is "value or None if it does not
+        # exist"; an empty response yields None rather than raising.
+        # Arrange
+        api = ModelApi()
+        _patch_client(mocker, {"count": 0, "items": []})
+
+        # Act
+        result = api._get_tag(_model(), "missing")
+
+        # Assert
+        assert result is None
+
     @pytest.mark.parametrize("bad_value", [{"a": 1}, 7, ["x"], True])
     def test_get_tags_does_not_double_decode(self, mocker, bad_value):
         # Arrange

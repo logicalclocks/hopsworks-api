@@ -67,6 +67,27 @@ class TestTag:
         assert len(t_list) == 1
         assert t_list[0].value == value
 
+    @pytest.mark.parametrize(
+        "stored_value, expected",
+        [
+            (json_module.dumps(7), 7),
+            (json_module.dumps(True), True),
+            (json_module.dumps(["a", "b"]), ["a", "b"]),
+            (json_module.dumps("quoted"), "quoted"),
+            # A plain non-JSON string is left untouched (decode is suppressed).
+            ("plain text", "plain text"),
+        ],
+    )
+    def test_from_response_json_value_decoding(self, stored_value, expected):
+        # Arrange
+        response = {"count": 1, "items": [{"name": "t", "value": stored_value}]}
+
+        # Act
+        t_list = tag.Tag.from_response_json(humps.camelize(response))
+
+        # Assert
+        assert t_list[0].value == expected
+
     # constructor
 
     def test_constructor(self, backend_fixtures):
