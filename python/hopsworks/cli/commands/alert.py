@@ -11,6 +11,12 @@ view.
 Every alert is wired to a *receiver* (the notification channel). List the
 existing ones with ``hops alert receiver list`` and create new ones with
 ``hops alert receiver create`` before attaching an alert to them.
+
+Note: creating and deleting receivers requires the Hopsworks administrator
+role (``HOPS_ADMIN``); a regular project member can list and use receivers
+but not manage them. There is no ``receiver delete`` command because the SDK
+exposes no ``delete_receiver`` method — receivers must be removed by an
+administrator through the cluster admin UI.
 """
 
 from __future__ import annotations
@@ -311,7 +317,13 @@ def alert_trigger(
 
 @alert_group.group("receiver")
 def receiver_group() -> None:
-    """Alert receiver (notification channel) commands."""
+    """Alert receiver (notification channel) commands.
+
+    Listing and inspecting receivers is open to any project member. Creating a
+    receiver requires the Hopsworks administrator role (``HOPS_ADMIN``). There
+    is no delete command: the SDK exposes no ``delete_receiver`` method, so
+    receivers must be removed by an administrator through the cluster admin UI.
+    """
 
 
 @receiver_group.command("list")
@@ -390,6 +402,11 @@ def receiver_create(
     send_resolved: bool,
 ) -> None:
     """Create an alert receiver. Provide exactly one channel type.
+
+    Requires the Hopsworks administrator role (``HOPS_ADMIN``). A non-admin
+    project member will get a permission error from the backend. Receivers
+    cannot be deleted from the CLI or SDK (no ``delete_receiver`` method);
+    an administrator must remove them through the cluster admin UI.
 
     Args:
         ctx: Click context.
