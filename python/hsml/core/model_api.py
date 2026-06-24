@@ -231,8 +231,10 @@ class ModelApi:
             model_instance.id,
             "tags",
         ]
+        # Tag.from_response_json already deserializes each value from its JSON
+        # string, so the value is used directly without a second json.loads.
         return {
-            tag._name: json.loads(tag._value)
+            tag._name: tag._value
             for tag in tag.Tag.from_response_json(
                 _client._send_request("GET", path_params)
             )
@@ -263,9 +265,15 @@ class ModelApi:
             name,
         ]
 
-        return tag.Tag.from_response_json(_client._send_request("GET", path_params))[
-            name
-        ]
+        # from_response_json returns a list of Tag objects, so build the
+        # name->value mapping and look the requested tag up by name.
+        tags = {
+            tag._name: tag._value
+            for tag in tag.Tag.from_response_json(
+                _client._send_request("GET", path_params)
+            )
+        }
+        return tags.get(name)
 
     def _get_feature_view_provenance(
         self, model_instance

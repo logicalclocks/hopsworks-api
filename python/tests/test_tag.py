@@ -14,6 +14,8 @@
 #   limitations under the License.
 #
 
+import json as json_module
+
 import humps
 import pytest
 from hsml import tag
@@ -46,6 +48,24 @@ class TestTag:
 
         # Assert
         assert len(t_list) == 0
+
+    def test_from_response_json_decodes_json_value(self):
+        # The backend stores values as JSON strings; from_response_json is the
+        # single point that deserializes them, so a non-string value must come
+        # back as the decoded object (not the JSON string).
+        # Arrange
+        value = {"owner": "team-a", "cols": [1, 2]}
+        response = {
+            "count": 1,
+            "items": [{"name": "meta", "value": json_module.dumps(value)}],
+        }
+
+        # Act
+        t_list = tag.Tag.from_response_json(humps.camelize(response))
+
+        # Assert
+        assert len(t_list) == 1
+        assert t_list[0].value == value
 
     # constructor
 
