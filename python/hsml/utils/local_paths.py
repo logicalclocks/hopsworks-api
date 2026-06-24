@@ -132,8 +132,10 @@ def _resolve_local_or_mount(
     ``Deployments/<deployment_name>/resources/<subdir>/``.
     """
     # Normalize away `./` and `../` segments that `os.path.join(cwd, path)`
-    # leaves intact, so the returned HopsFS path is clean.
-    abs_path = os.path.normpath(abs_path)
+    # leaves intact, so the returned HopsFS path is clean. On Windows,
+    # `os.path.normpath` also converts forward slashes to backslashes — undo
+    # that so the FUSE-mount prefix check is platform-agnostic.
+    abs_path = os.path.normpath(abs_path).replace(os.sep, "/")
     mount_relative = _normalize_hopsfs_mount_path(abs_path)
     if mount_relative is not None:
         return f"/Projects/{project_name}/{mount_relative}"
