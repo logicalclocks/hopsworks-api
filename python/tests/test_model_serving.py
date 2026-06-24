@@ -104,6 +104,26 @@ class TestTracingForwarding:
         # Assert
         assert mock_for_server.call_args.kwargs["tracing"] is tracing
 
+    def test_create_endpoint_forwards_git_source(self, ms, mocker):
+        # Arrange
+        mock_for_server = mocker.patch("hsml.model_serving.Predictor.for_server")
+
+        # Act
+        ms.create_endpoint(
+            name="endpoint",
+            script_file="src/endpoint.py",
+            git_url="https://github.com/example/repo.git",
+            git_provider="github",
+            git_branch="main",
+        )
+
+        # Assert
+        kwargs = mock_for_server.call_args.kwargs
+        assert kwargs["script_file"] == "src/endpoint.py"
+        assert kwargs["git_url"] == "https://github.com/example/repo.git"
+        assert kwargs["git_provider"] == "GitHub"
+        assert kwargs["git_branch"] == "main"
+
 
 class TestDeployAgentIdentifierValidation:
     @pytest.fixture
@@ -326,6 +346,34 @@ class TestDeployAgentScript:
         # Assert
         ds_api.upload.assert_called_once()
         assert mock_for_server.call_args.kwargs["tracing"] is tracing
+
+    def test_git_source_uses_relative_entry_without_upload(self, ms, mocker, stub_apis):
+        # Arrange
+        ds_api, env_api, _ = stub_apis
+        mocker.patch.object(ms, "get_deployment", return_value=None)
+        mock_for_server = mocker.patch("hsml.model_serving.Predictor.for_server")
+        deployed = mocker.MagicMock(name="deployment")
+        mock_for_server.return_value.deploy.return_value = deployed
+
+        # Act
+        result = ms.deploy_agent(
+            entry="src/agents/my_agent.py",
+            git_url="https://github.com/example/repo.git",
+            git_provider="github",
+            git_branch="main",
+        )
+
+        # Assert
+        assert result is deployed
+        ds_api.upload.assert_not_called()
+        ds_api.exists.assert_not_called()
+        env_api.get_environment.assert_called_once_with("my_agent")
+        kwargs = mock_for_server.call_args.kwargs
+        assert kwargs["name"] == "my_agent"
+        assert kwargs["script_file"] == "src/agents/my_agent.py"
+        assert kwargs["git_url"] == "https://github.com/example/repo.git"
+        assert kwargs["git_provider"] == "GitHub"
+        assert kwargs["git_branch"] == "main"
 
 
 class TestDeployAgentPackage:
