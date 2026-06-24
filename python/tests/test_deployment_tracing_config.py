@@ -37,6 +37,21 @@ class TestDeploymentTracingConfig:
         assert restored.enabled is True
         assert restored.otel_tracing_storage == DeploymentTracingConfig.STORAGE_BOTH
 
+    def test_round_trip_with_cost_prices(self):
+        config = DeploymentTracingConfig(
+            enabled=True,
+            otel_tracing_storage=DeploymentTracingConfig.STORAGE_OFFLINE,
+            input_token_price_per_million_tokens=1.25,
+            output_token_price_per_million_tokens=2.5,
+        )
+
+        restored = DeploymentTracingConfig.from_response_json(config.to_dict())
+
+        assert restored.enabled is True
+        assert restored.otel_tracing_storage == DeploymentTracingConfig.STORAGE_OFFLINE
+        assert restored.input_token_price_per_million_tokens == 1.25
+        assert restored.output_token_price_per_million_tokens == 2.5
+
     def test_rejects_invalid_storage(self):
         with pytest.raises(ValueError, match="Possible values"):
             DeploymentTracingConfig(otel_tracing_storage="invalid")

@@ -24,6 +24,15 @@ A Streamlit app is a **UI / consumer of the FTI pipelines**, not a pipeline itse
 
 Custom apps are general-purpose web services such as FastAPI, Flask, Gradio, or plain WSGI/ASGI apps. They should bind to `0.0.0.0` and the injected `APP_PORT`, and should not hardcode `APP_BASE_URL_PATH` in new code. Legacy apps can stay on Compatibility prefix while they are migrated, but new apps should not depend on it.
 
+## Proxy Behavior
+
+Hopsworks places Python apps behind `/hopsworks-api/pythonapp/{projectName}/{appName}/`, but the proxy is not a general-purpose client-side URL rewriter.
+
+- It can forward the browser mount, rewrite some HTML/CSS links, and preserve redirects.
+- It does not reliably rewrite arbitrary JavaScript string literals or client-side `fetch("/api/...")` calls.
+- If a framework needs a public base path, the app must derive it itself via framework support, `X-Forwarded-Prefix`, or explicit relative URLs.
+- For Next.js, prefer a mount-aware `basePath` / `assetPrefix` / API-path helper when the app must run under the Hopsworks subpath.
+
 ## Contract
 
 - **Input:** a Streamlit or custom app + environment + memory.
@@ -51,9 +60,10 @@ Full CLI surface is in **Manage Apps from the CLI** below.
 ## Routing and Readiness
 
 - The browser URL is always the proxy mount point: `/hopsworks-api/pythonapp/{projectName}/{appName}/`.
-- New apps should be written as root-based apps and should not depend on `APP_BASE_URL_PATH`.
+- New apps should be mount-aware and should not depend on `APP_BASE_URL_PATH`.
 - Legacy prefix mode exists only for existing apps that are still being migrated.
 - Hopsworks forwards `X-Forwarded-Prefix` for frameworks that need to generate absolute links.
+- Do not expect the proxy to repair client-side JavaScript paths such as `fetch("/api/...")`.
 - Readiness is separate from browser routing:
   - Streamlit defaults to `/_stcore/health`
   - custom apps default to `/`
@@ -71,7 +81,8 @@ variable, switch it to `Root routing`.
 Migration checklist:
 
 1. Update the app code so route decorators use `/` or the app's own subpath
-   directly instead of `APP_BASE_URL_PATH`.
+   directly instead of `APP_BASE_URL_PATH`. For browser code, build API and
+   asset URLs from the app mount instead of assuming the site root.
 2. In the app settings dialog, open **App routing and readiness** and change
    `Proxy routing mode` to `Root routing`.
 3. Set `App base path` to the public mount point you want, for example `/` or
