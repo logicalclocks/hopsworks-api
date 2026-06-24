@@ -242,7 +242,7 @@ class ModelApi:
         }
 
     @decorators._catch_not_found("hopsworks_common.tag.Tag", fallback_return=None)
-    def _get_tag(self, model_instance: model.Model, name: str) -> Any:
+    def _get_tag(self, model_instance: model.Model, name: str) -> Any | None:
         """Get the tag.
 
         Gets the tag for a specific name
