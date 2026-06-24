@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from hsml import client, decorators, model, tag
 from hsml.core import explicit_provenance
@@ -241,7 +242,7 @@ class ModelApi:
         }
 
     @decorators._catch_not_found("hopsworks_common.tag.Tag", fallback_return=None)
-    def _get_tag(self, model_instance: model.Model, name: str) -> dict | None:
+    def _get_tag(self, model_instance: model.Model, name: str) -> Any:
         """Get the tag.
 
         Gets the tag for a specific name
@@ -251,7 +252,7 @@ class ModelApi:
             name: tag name
 
         Returns:
-            dict of tag name/value
+            The value of the tag with the specified name, or `None` if it does not exist.
         """
         _client = client._get_instance()
         path_params = [
