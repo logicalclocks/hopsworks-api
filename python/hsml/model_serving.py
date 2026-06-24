@@ -907,7 +907,7 @@ def _validate_git_agent_source(
     if not _is_valid_https_url(git_url):
         raise ValueError("Git URL must be a valid https URL.")
     if not git_provider:
-        raise ValueError("Git provider is required for Git-backed agent deployments.")
+        raise ValueError("Git provider is required for Git-backed deployments.")
     if not _is_safe_relative_path(entry):
         raise ValueError("Predictor script must be a safe relative path.")
     if not entry.endswith(".py"):
