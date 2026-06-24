@@ -24,6 +24,7 @@ from hsml import (
     deployment,
     inference_endpoint,
     predictor_state,
+    tag,
 )
 from hsml.client.istio.utils.infer_type import (
     InferInput,
@@ -111,6 +112,106 @@ class ServingApi:
             deployment_instance.model_registry_id = _client._project_id
             deployment_instance.project_name = _client._project_name
         return deployment_instances
+
+    def _set_tag(
+        self, deployment_instance: deployment.Deployment, name: str, value: str | dict
+    ) -> None:
+        """Attach a name/value tag to a deployment.
+
+        A tag consists of a name/value pair.
+        Tag names are unique identifiers.
+        The value of a tag can be any valid json - primitives, arrays or json objects.
+
+        Parameters:
+            deployment_instance: deployment instance to attach the tag to
+            name: name of the tag to be added
+            value: value of the tag to be added
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "serving",
+            str(deployment_instance.id),
+            "tags",
+            name,
+        ]
+        headers = {"content-type": "application/json"}
+        json_value = json.dumps(value)
+        _client._send_request("PUT", path_params, headers=headers, data=json_value)
+
+    def _delete_tag(
+        self, deployment_instance: deployment.Deployment, name: str
+    ) -> None:
+        """Delete a tag attached to a deployment.
+
+        Tag names are unique identifiers.
+
+        Parameters:
+            deployment_instance: deployment instance to delete the tag from
+            name: name of the tag to be removed
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "serving",
+            str(deployment_instance.id),
+            "tags",
+            name,
+        ]
+        _client._send_request("DELETE", path_params)
+
+    @decorators._catch_not_found("hopsworks_common.tag.Tag", fallback_return={})
+    def _get_tags(self, deployment_instance: deployment.Deployment) -> dict:
+        """Get all tags attached to a deployment.
+
+        Parameters:
+            deployment_instance: deployment instance to get the tags from
+
+        Returns:
+            dict of tag name/values
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "serving",
+            str(deployment_instance.id),
+            "tags",
+        ]
+        return {
+            t._name: json.loads(t._value)
+            for t in tag.Tag.from_response_json(
+                _client._send_request("GET", path_params)
+            )
+        }
+
+    @decorators._catch_not_found("hopsworks_common.tag.Tag", fallback_return=None)
+    def _get_tag(
+        self, deployment_instance: deployment.Deployment, name: str
+    ) -> dict | None:
+        """Get the tag with a specific name attached to a deployment.
+
+        Parameters:
+            deployment_instance: deployment instance to get the tag from
+            name: tag name
+
+        Returns:
+            the tag value, or `None` if it does not exist
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "serving",
+            str(deployment_instance.id),
+            "tags",
+            name,
+        ]
+        return tag.Tag.from_response_json(_client._send_request("GET", path_params))[
+            name
+        ]
 
     def _get_inference_endpoints(self) -> list[inference_endpoint.InferenceEndpoint]:
         """Get inference endpoints.

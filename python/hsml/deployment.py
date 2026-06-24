@@ -163,6 +163,64 @@ class Deployment:
         self._serving_engine._delete(self, force)
 
     @public
+    @usage._method_logger
+    def add_tag(self, name: str, value: str | dict):
+        """Attach a tag to a deployment.
+
+        A tag consists of a <name,value> pair.
+        Tag names are unique identifiers across the whole cluster.
+        The value of a tag can be any valid json - primitives, arrays or json objects.
+
+        Parameters:
+            name: Name of the tag to be added.
+            value: Value of the tag to be added.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to add the tag.
+        """
+        self._serving_engine._set_tag(self, name, value)
+
+    @public
+    @usage._method_logger
+    def delete_tag(self, name: str):
+        """Delete a tag attached to a deployment.
+
+        Parameters:
+            name: Name of the tag to be removed.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to delete the tag.
+        """
+        self._serving_engine._delete_tag(self, name)
+
+    @public
+    def get_tag(self, name: str) -> str | None:
+        """Get the value of a tag attached to a deployment.
+
+        Parameters:
+            name: Name of the tag to get.
+
+        Returns:
+            tag value, or `None` if it does not exist.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the tag.
+        """
+        return self._serving_engine._get_tag(self, name)
+
+    @public
+    def get_tags(self) -> dict:
+        """Retrieve all tags attached to a deployment.
+
+        Returns:
+            Dictionary of tag name/values.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the tags.
+        """
+        return self._serving_engine._get_tags(self)
+
+    @public
     def get_state(self) -> PredictorState:
         """Get the current state of the deployment.
 
