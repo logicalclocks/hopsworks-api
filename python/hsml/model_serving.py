@@ -245,8 +245,8 @@ class ModelServing:
             name: Name of the predictor.
             artifact_version: (**Deprecated**) Version number of the model artifact to deploy, `CREATE` to create a new model artifact or `MODEL-ONLY` to reuse the shared artifact containing only the model files.
             serving_tool: Serving tool used to deploy the model server.
-            script_file: Path to a custom predictor script implementing the Predict class.
-            config_file: Model server configuration file to be passed to the model deployment.
+            script_file: Path to a custom predictor script implementing the Predict class, either local or already uploaded to HopsFS. The script must implement a `Predictor` class with a `predict(self, inputs)` method that takes the model inputs and returns the model predictions. The script is passed to the model deployment and can be accessed via the `SCRIPT_FILE_PATH` environment variable from within the predictor script.
+            config_file: Model server configuration file to be passed to the model deployment, either local or already uploaded to HopsFS.
                 It can be accessed via `CONFIG_FILE_PATH` environment variable from a predictor script.
                 For LLM deployments without a predictor script, this file is used to configure the vLLM engine.
             resources: Resources to be allocated for the predictor.
@@ -301,9 +301,6 @@ class ModelServing:
             ```python
             # login into Hopsworks using hopsworks.login()
 
-            # get Dataset API instance
-            dataset_api = project.get_dataset_api()
-
             # get Hopsworks Model Serving handle
             ms = project.get_model_serving()
 
@@ -321,16 +318,17 @@ class ModelServing:
                     ''' Transform the predictions computed by the model before returning a response '''
                     return outputs
 
-            uploaded_file_path = dataset_api.upload("my_transformer.py", "Resources", overwrite=True)
-            transformer_script_path = os.path.join("/Projects", project.name, uploaded_file_path)
+            # Local path — auto-uploaded on save.
+            my_transformer = ms.create_transformer(script_file="my_transformer.py")
 
-            my_transformer = ms.create_transformer(script_file=uploaded_file_path)
+            # Or an already-uploaded HopsFS path:
+            my_transformer = ms.create_transformer(
+                script_file="/Projects/<project>/Resources/my_transformer.py"
+            )
 
-            # or
-
+            # Or the Transformer class directly:
             from hsml.transformer import Transformer
-
-            my_transformer = Transformer(script_file)
+            my_transformer = Transformer(script_file="my_transformer.py")
             ```
 
         Example: Create a deployment with the transformer
@@ -348,7 +346,7 @@ class ModelServing:
             This method is lazy and does not persist any metadata or deploy any transformer. To create a deployment using this transformer, set it in the `predictor.transformer` property.
 
         Parameters:
-            script_file: Path to a custom predictor script implementing the Transformer class.
+            script_file: Path to a custom predictor script implementing the Transformer class, either local or already uploaded to HopsFS.
             resources: Resources to be allocated for the transformer.
             scaling_configuration: Scaling configuration for the transformer.
             env_vars: Environment variables to set on the transformer.
@@ -402,7 +400,7 @@ class ModelServing:
 
         Parameters:
             name: Name of the endpoint.
-            script_file: Path to a custom script file implementing a HTTP server.
+            script_file: Path to a custom script file implementing a HTTP server, either local or already uploaded to HopsFS.
             description: Description of the endpoint.
             resources: Resources to be allocated for the predictor.
             inference_logger: Inference logger configuration.

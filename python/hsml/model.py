@@ -404,8 +404,8 @@ class Model:
             artifact_version: **Deprecated**. Version number of the model artifact to deploy, `CREATE` to create a new model artifact
             or `MODEL-ONLY` to reuse the shared artifact containing only the model files.
             serving_tool: Serving tool used to deploy the model server.
-            script_file: Path to a custom predictor script implementing the Predict class.
-            config_file: Model server configuration file to be passed to the model deployment.
+            script_file: Path to a custom predictor script implementing the Predict class, either local or already uploaded to HopsFS.
+            config_file: Model server configuration file to be passed to the model deployment, either local or already uploaded to HopsFS.
                 It can be accessed via `CONFIG_FILE_PATH` environment variable from a predictor or transformer script.
                 For LLM deployments without a predictor script, this file is used to configure the vLLM engine.
             resources: Resources to be allocated for the predictor.
