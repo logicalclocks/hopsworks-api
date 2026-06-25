@@ -85,8 +85,10 @@ class Predictor(DeployableComponent):
         git_url: str | None = None,
         git_provider: str | None = None,
         git_branch: str | None = None,
+        missing_mandatory_tags=None,
         **kwargs,
     ):
+        self._missing_mandatory_tags = missing_mandatory_tags or []
         serving_tool = (
             self._validate_serving_tool(serving_tool)
             or self._get_default_serving_tool()
@@ -362,6 +364,9 @@ class Predictor(DeployableComponent):
         )
         kwargs["vllm_image_tag"] = util._extract_field_from_json(
             json_decamelized, "vllm_image_tag"
+        )
+        kwargs["missing_mandatory_tags"] = util._extract_field_from_json(
+            json_decamelized, "missing_mandatory_tags"
         )
         return kwargs
 
