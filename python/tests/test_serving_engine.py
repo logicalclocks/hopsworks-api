@@ -172,6 +172,25 @@ class TestUploadLocalServingFiles:
             assert call.args[0] is eng._engine  # the LocalEngine
             assert call.args[1] == "my_dep_123"  # deployment_name
 
+    def test_is_update_derived_from_deployment_id(self, mocker):
+        # A deployment with an id is an update: the resolver is told so, so it
+        # passes backend-managed references through instead of raising.
+        eng = self._engine(mocker)
+        mock_resolve = mocker.patch.object(
+            serving_engine,
+            "_resolve_serving_file",
+            side_effect=lambda engine, name, p, **kw: p,
+        )
+
+        predictor = _FakePredictor(script_file="predictor.py", config_file=None)
+
+        eng._upload_local_serving_files(_FakeDeployment(predictor, "d", id=None))
+        assert all(c.kwargs["is_update"] is False for c in mock_resolve.mock_calls)
+
+        mock_resolve.reset_mock()
+        eng._upload_local_serving_files(_FakeDeployment(predictor, "d", id=42))
+        assert all(c.kwargs["is_update"] is True for c in mock_resolve.mock_calls)
+
 
 class TestSave:
     """Tests for ServingEngine._save() method.

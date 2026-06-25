@@ -46,6 +46,7 @@ def _resolve_serving_file(
     field_name: str,
     subdir: str,
     overwrite: bool = True,
+    is_update: bool = False,
 ) -> str | None:
     """Resolve a user-supplied serving file path to an absolute HopsFS path.
 
@@ -61,7 +62,13 @@ def _resolve_serving_file(
     4. ``DatasetApi.exists(path)`` is true → it's a HopsFS path (absolute,
        project-relative, or ``hdfs://``); rewrite to the absolute
        ``/Projects/<p>/...`` form and return.
-    5. Otherwise → raise ``ValueError``.
+    5. Unresolved.
+       On update, a bare basename is a backend-managed reference (a
+       deployment fetched from the backend reports ``script_file`` /
+       ``config_file`` that way) and is returned unchanged.
+       A create, or an update with a path-like value (one containing a
+       separator) that resolved to nothing, is a genuine mistake and raises
+       ``ValueError`` instead of deferring to a later backend failure.
 
     ``subdir`` is the per-role subfolder (``"predictor"``, ``"transformer"``,
     ``"config"``) under ``Deployments/<name>/resources/``; it prevents
@@ -98,6 +105,15 @@ def _resolve_serving_file(
         if path.startswith("/Projects/"):
             return path
         return f"/Projects/{project_name}/{path.lstrip('/')}"
+
+    if is_update and os.path.basename(path) == path:
+        # Persisted deployment: the backend reports script_file / config_file
+        # as a bare basename (no separator), which is neither a local file nor
+        # resolvable via DatasetApi.exists. Pass it through untouched. A
+        # path-like value that resolved to nothing (e.g. "./missing.py" or a
+        # typoed "/Projects/..." path) is a genuine mistake, so fall through
+        # and raise rather than defer the error to a later backend failure.
+        return path
 
     raise ValueError(
         f"Could not find {field_name}: '{path}' in the local filesystem "
