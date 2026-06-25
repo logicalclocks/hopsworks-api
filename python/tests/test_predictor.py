@@ -1212,6 +1212,38 @@ class TestPredictor:
         assert restored.tracing.enabled is True
         assert restored.tracing.otel_tracing_storage == "offline"
 
+    def test_git_wire_round_trip(self, mocker):
+        # Git metadata should survive serialisation for git-backed agent deployments.
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        mocker.patch(
+            "hsml.predictor.Predictor._validate_serving_tool",
+            return_value=PREDICTOR.SERVING_TOOL_KSERVE,
+        )
+        mocker.patch(
+            "hsml.predictor.Predictor._validate_resources",
+            return_value=resources.PredictorResources(0),
+        )
+
+        p = predictor.Predictor(
+            name="my_agent",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            script_file="src/agent.py",
+            model_framework=MODEL.FRAMEWORK_PYTHON,
+            git_url="https://github.com/org/repo.git",
+            git_provider="GitHub",
+            git_branch="main",
+        )
+
+        serialized = p.to_dict()
+        restored = predictor.Predictor.from_response_json(serialized)
+
+        assert serialized["gitUrl"] == "https://github.com/org/repo.git"
+        assert serialized["gitProvider"] == "GitHub"
+        assert serialized["gitBranch"] == "main"
+        assert restored.git_url == "https://github.com/org/repo.git"
+        assert restored.git_provider == "GitHub"
+        assert restored.git_branch == "main"
+
     # vLLM variant round-trip
 
     def test_vllm_variant_vllm_round_trip(self, mocker, backend_fixtures):

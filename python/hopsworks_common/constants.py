@@ -165,6 +165,8 @@ class MODEL_REGISTRY:
 class MODEL_SERVING:
     DEPLOYMENTS_DATASET = "Deployments"
     ARTIFACTS_DIR_NAME = "Artifacts"  # legacy, kept for backward compatibility (<4.6)
+    # Subfolder for user-uploaded files at Deployments/<name>/resources/<role>/
+    DEPLOYMENT_RESOURCES_DIR = "resources"
 
 
 class RESOURCES:

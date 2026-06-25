@@ -38,7 +38,13 @@ class LocalEngine:
     def _delete(self, model_instance):
         self._model_api._delete(model_instance)
 
-    def _upload(self, local_path: str, remote_path: str, upload_configuration=None):
+    def _upload(
+        self,
+        local_path: str,
+        remote_path: str,
+        upload_configuration=None,
+        overwrite: bool = False,
+    ):
         local_path = self._get_abs_path(local_path)
         remote_path = self._prepend_project_path(remote_path)
 
@@ -50,6 +56,7 @@ class LocalEngine:
             self._hdfs_api._upload(
                 local_path=local_path,
                 upload_path=remote_path,
+                overwrite=overwrite,
                 buffer_size=upload_configuration.get(
                     "buffer_size", self._hdfs_api.DEFAULT_BUFFER_SIZE
                 ),
@@ -59,6 +66,7 @@ class LocalEngine:
             self._dataset_api.upload(
                 local_path,
                 remote_path,
+                overwrite=overwrite,
                 chunk_size=upload_configuration.get(
                     "chunk_size", self._dataset_api.DEFAULT_UPLOAD_FLOW_CHUNK_SIZE
                 ),
