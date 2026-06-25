@@ -116,8 +116,9 @@ class TagsApi:
         if name is not None:
             path_params.append(name)
 
+        # from_response_json already returns deserialized values.
         return {
-            tag._name: json.loads(tag._value)
+            tag._name: tag._value
             for tag in tag.Tag.from_response_json(
                 _client._send_request("GET", path_params)
             )
