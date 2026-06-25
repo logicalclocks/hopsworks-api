@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage for python/hsfs/core/transformation_function_engine.py: 82%</title>
+    <title>Coverage for python/hsfs/core/transformation_function_engine.py: 83%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_c827f16f.png">
     <link rel="stylesheet" href="style_cb_4667309f.css" type="text/css">
     <script src="coverage_html_cb_dd2e7eb5.js" defer></script>
@@ -12,7 +12,7 @@
     <div class="content">
         <h1>
             <span class="text">Coverage for </span><b>python<span class="sep">/</span>hsfs<span class="sep">/</span>core<span class="sep">/</span>transformation_function_engine.py</b>:
-            <span class="pc_cov">82%</span>
+            <span class="pc_cov">83%</span>
         </h1>
         <aside id="help_panel_wrapper">
             <input id="help_panel_state" type="checkbox">
@@ -55,8 +55,8 @@
         </aside>
         <h2>
             <span class="text">504 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">415<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">89<span class="text"> missing</span></button>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">417<span class="text"> run</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">87<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">3<span class="text"> excluded</span></button>
         </h2>
         <p class="text">
@@ -65,7 +65,7 @@
             <a id="nextFileLink" class="nav" href="z_8e412babf0efab20_type_systems_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.14.2">coverage.py v7.14.2</a>,
-            created at 2026-06-25 11:37 +0000
+            created at 2026-06-25 15:04 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -973,9 +973,9 @@
     <p class="run"><span class="n"><a id="t891" href="#t891">891</a></span><span class="t">                    <span class="nam">sorter</span><span class="op">.</span><span class="nam">done</span><span class="op">(</span><span class="nam">tf_id</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t892" href="#t892">892</a></span><span class="t">        <span class="key">except</span> <span class="op">(</span><span class="nam">Exception</span><span class="op">,</span> <span class="nam">BrokenProcessPool</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t893" href="#t893">893</a></span><span class="t">            <span class="key">for</span> <span class="nam">f</span> <span class="key">in</span> <span class="nam">future_to_tf</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t894" href="#t894">894</a></span><span class="t">                <span class="nam">f</span><span class="op">.</span><span class="nam">cancel</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t894" href="#t894">894</a></span><span class="t">                <span class="nam">f</span><span class="op">.</span><span class="nam">cancel</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t895" href="#t895">895</a></span><span class="t">            <span class="key">if</span> <span class="nam">future_to_tf</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t896" href="#t896">896</a></span><span class="t">                <span class="nam">wait</span><span class="op">(</span><span class="nam">future_to_tf</span><span class="op">.</span><span class="nam">keys</span><span class="op">(</span><span class="op">)</span><span class="op">,</span> <span class="nam">return_when</span><span class="op">=</span><span class="nam">ALL_COMPLETED</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t896" href="#t896">896</a></span><span class="t">                <span class="nam">wait</span><span class="op">(</span><span class="nam">future_to_tf</span><span class="op">.</span><span class="nam">keys</span><span class="op">(</span><span class="op">)</span><span class="op">,</span> <span class="nam">return_when</span><span class="op">=</span><span class="nam">ALL_COMPLETED</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t897" href="#t897">897</a></span><span class="t">            <span class="nam">TransformationFunctionEngine</span><span class="op">.</span><span class="nam">_shutdown_process_pool</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t898" href="#t898">898</a></span><span class="t">                <span class="nam">wait</span><span class="op">=</span><span class="key">False</span><span class="op">,</span> <span class="nam">cancel_futures</span><span class="op">=</span><span class="key">True</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t899" href="#t899">899</a></span><span class="t">            <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
@@ -1761,7 +1761,7 @@
             <a class="nav" href="z_8e412babf0efab20_type_systems_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.14.2">coverage.py v7.14.2</a>,
-            created at 2026-06-25 11:37 +0000
+            created at 2026-06-25 15:04 +0000
         </p>
     </div>
 </footer>

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage for python/hopsworks_common/core/dataset_api.py: 32%</title>
+    <title>Coverage for python/hopsworks_common/core/dataset_api.py: 34%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_c827f16f.png">
     <link rel="stylesheet" href="style_cb_4667309f.css" type="text/css">
     <script src="coverage_html_cb_dd2e7eb5.js" defer></script>
@@ -12,7 +12,7 @@
     <div class="content">
         <h1>
             <span class="text">Coverage for </span><b>python<span class="sep">/</span>hopsworks_common<span class="sep">/</span>core<span class="sep">/</span>dataset_api.py</b>:
-            <span class="pc_cov">32%</span>
+            <span class="pc_cov">34%</span>
         </h1>
         <aside id="help_panel_wrapper">
             <input id="help_panel_state" type="checkbox">
@@ -55,8 +55,8 @@
         </aside>
         <h2>
             <span class="text">365 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">118<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">247<span class="text"> missing</span></button>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">124<span class="text"> run</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">241<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">3<span class="text"> excluded</span></button>
         </h2>
         <p class="text">
@@ -65,7 +65,7 @@
             <a id="nextFileLink" class="nav" href="z_dd6d59c20c28dd08_env_var_api_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.14.2">coverage.py v7.14.2</a>,
-            created at 2026-06-25 11:37 +0000
+            created at 2026-06-25 15:04 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -1218,28 +1218,29 @@
     <p class="pln"><span class="n"><a id="t1136" href="#t1136">1136</a></span><span class="t"><span class="str">        Returns:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t1137" href="#t1137">1137</a></span><span class="t"><span class="str">            Tag names and values.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t1138" href="#t1138">1138</a></span><span class="t"><span class="str">        """</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t1139" href="#t1139">1139</a></span><span class="t">        <span class="nam">_client</span> <span class="op">=</span> <span class="nam">client</span><span class="op">.</span><span class="nam">_get_instance</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t1140" href="#t1140">1140</a></span><span class="t">        <span class="nam">path_params</span> <span class="op">=</span> <span class="op">[</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t1141" href="#t1141">1141</a></span><span class="t">            <span class="str">"project"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t1142" href="#t1142">1142</a></span><span class="t">            <span class="nam">_client</span><span class="op">.</span><span class="nam">_project_id</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t1143" href="#t1143">1143</a></span><span class="t">            <span class="str">"dataset"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t1144" href="#t1144">1144</a></span><span class="t">            <span class="str">"tags"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t1145" href="#t1145">1145</a></span><span class="t">        <span class="op">]</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t1139" href="#t1139">1139</a></span><span class="t">        <span class="nam">_client</span> <span class="op">=</span> <span class="nam">client</span><span class="op">.</span><span class="nam">_get_instance</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t1140" href="#t1140">1140</a></span><span class="t">        <span class="nam">path_params</span> <span class="op">=</span> <span class="op">[</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t1141" href="#t1141">1141</a></span><span class="t">            <span class="str">"project"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t1142" href="#t1142">1142</a></span><span class="t">            <span class="nam">_client</span><span class="op">.</span><span class="nam">_project_id</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t1143" href="#t1143">1143</a></span><span class="t">            <span class="str">"dataset"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t1144" href="#t1144">1144</a></span><span class="t">            <span class="str">"tags"</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t1145" href="#t1145">1145</a></span><span class="t">        <span class="op">]</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t1146" href="#t1146">1146</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t1147" href="#t1147">1147</a></span><span class="t">        <span class="key">if</span> <span class="nam">name</span> <span class="key">is</span> <span class="key">not</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t1147" href="#t1147">1147</a></span><span class="t">        <span class="key">if</span> <span class="nam">name</span> <span class="key">is</span> <span class="key">not</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t1148" href="#t1148">1148</a></span><span class="t">            <span class="nam">path_params</span><span class="op">.</span><span class="nam">append</span><span class="op">(</span><span class="str">"schema"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t1149" href="#t1149">1149</a></span><span class="t">            <span class="nam">path_params</span><span class="op">.</span><span class="nam">append</span><span class="op">(</span><span class="nam">name</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t1150" href="#t1150">1150</a></span><span class="t">        <span class="key">else</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t1151" href="#t1151">1151</a></span><span class="t">            <span class="nam">path_params</span><span class="op">.</span><span class="nam">append</span><span class="op">(</span><span class="str">"all"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t1151" href="#t1151">1151</a></span><span class="t">            <span class="nam">path_params</span><span class="op">.</span><span class="nam">append</span><span class="op">(</span><span class="str">"all"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t1152" href="#t1152">1152</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t1153" href="#t1153">1153</a></span><span class="t">        <span class="nam">path_params</span><span class="op">.</span><span class="nam">append</span><span class="op">(</span><span class="nam">path</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t1153" href="#t1153">1153</a></span><span class="t">        <span class="nam">path_params</span><span class="op">.</span><span class="nam">append</span><span class="op">(</span><span class="nam">path</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t1154" href="#t1154">1154</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t1155" href="#t1155">1155</a></span><span class="t">        <span class="key">return</span> <span class="op">{</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t1156" href="#t1156">1156</a></span><span class="t">            <span class="nam">tag</span><span class="op">.</span><span class="nam">_name</span><span class="op">:</span> <span class="nam">json</span><span class="op">.</span><span class="nam">loads</span><span class="op">(</span><span class="nam">tag</span><span class="op">.</span><span class="nam">_value</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t1157" href="#t1157">1157</a></span><span class="t">            <span class="key">for</span> <span class="nam">tag</span> <span class="key">in</span> <span class="nam">tag</span><span class="op">.</span><span class="nam">Tag</span><span class="op">.</span><span class="nam">from_response_json</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t1158" href="#t1158">1158</a></span><span class="t">                <span class="nam">_client</span><span class="op">.</span><span class="nam">_send_request</span><span class="op">(</span><span class="str">"GET"</span><span class="op">,</span> <span class="nam">path_params</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t1159" href="#t1159">1159</a></span><span class="t">            <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t1160" href="#t1160">1160</a></span><span class="t">        <span class="op">}</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t1155" href="#t1155">1155</a></span><span class="t">        <span class="com"># from_response_json already returns deserialized values.</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t1156" href="#t1156">1156</a></span><span class="t">        <span class="key">return</span> <span class="op">{</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t1157" href="#t1157">1157</a></span><span class="t">            <span class="nam">tag</span><span class="op">.</span><span class="nam">_name</span><span class="op">:</span> <span class="nam">tag</span><span class="op">.</span><span class="nam">_value</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t1158" href="#t1158">1158</a></span><span class="t">            <span class="key">for</span> <span class="nam">tag</span> <span class="key">in</span> <span class="nam">tag</span><span class="op">.</span><span class="nam">Tag</span><span class="op">.</span><span class="nam">from_response_json</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t1159" href="#t1159">1159</a></span><span class="t">                <span class="nam">_client</span><span class="op">.</span><span class="nam">_send_request</span><span class="op">(</span><span class="str">"GET"</span><span class="op">,</span> <span class="nam">path_params</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t1160" href="#t1160">1160</a></span><span class="t">            <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t1161" href="#t1161">1161</a></span><span class="t">        <span class="op">}</span>&nbsp;</span><span class="r"></span></p>
 </main>
 <footer>
     <div class="content">
@@ -1249,7 +1250,7 @@
             <a class="nav" href="z_dd6d59c20c28dd08_env_var_api_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.14.2">coverage.py v7.14.2</a>,
-            created at 2026-06-25 11:37 +0000
+            created at 2026-06-25 15:04 +0000
         </p>
     </div>
 </footer>
