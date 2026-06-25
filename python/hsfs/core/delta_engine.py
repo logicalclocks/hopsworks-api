@@ -506,8 +506,11 @@ class DeltaEngine:
         _logger.debug(f"Registering Delta table in Glue as {qualified}")
         # CREATE TABLE ... LOCATION adopts the existing log; refreshing it picks
         # up schema changes so the catalog entry stays current on later writes.
+        # Escape single quotes in the location so a path containing one cannot
+        # break out of the SQL string literal.
+        escaped_location = location.replace("'", "''")
         self._spark_session.sql(
-            f"CREATE TABLE IF NOT EXISTS {qualified} USING DELTA LOCATION '{location}'"
+            f"CREATE TABLE IF NOT EXISTS {qualified} USING DELTA LOCATION '{escaped_location}'"
         )
 
     def _setup_delta_rs(self):

@@ -784,7 +784,7 @@ public class SparkEngine extends EngineBase {
       throws IOException, FeatureStoreException {
     // Glue tables are backed by S3, so reading them needs the same S3 Hadoop configuration as the
     // S3 connector: AWS credentials (with the temporary-credentials provider when a session token
-    // is present) plus any user-supplied fs.s3a.* options.
+    // is present) plus the endpoint/path-style/SSL fs.s3a.* options the S3 connector forwards.
     if (!Strings.isNullOrEmpty(storageConnector.getAccessKey())) {
       sparkSession.sparkContext().hadoopConfiguration()
           .set(Constants.S3_ACCESS_KEY_ENV, storageConnector.getAccessKey());
@@ -799,10 +799,20 @@ public class SparkEngine extends EngineBase {
       sparkSession.sparkContext().hadoopConfiguration()
           .set(Constants.S3_SESSION_KEY_ENV, storageConnector.getSessionToken());
     }
+    // Forward the S3-compatible endpoint/path-style/SSL options the same way the S3 connector does,
+    // so Glue reads work against S3-compatible stores (MinIO, Wasabi, Tigris, ...) too.
     Map<String, String> sparkOptions = storageConnector.sparkOptions();
     if (sparkOptions.containsKey(Constants.S3_ENDPOINT)) {
       sparkSession.sparkContext().hadoopConfiguration()
           .set(Constants.S3_ENDPOINT, sparkOptions.get(Constants.S3_ENDPOINT));
+    }
+    if (sparkOptions.containsKey(Constants.S3_PATH_STYLE_ACCESS)) {
+      sparkSession.sparkContext().hadoopConfiguration()
+          .set(Constants.S3_PATH_STYLE_ACCESS, sparkOptions.get(Constants.S3_PATH_STYLE_ACCESS));
+    }
+    if (sparkOptions.containsKey(Constants.S3_CONNECTION_USE_SSL)) {
+      sparkSession.sparkContext().hadoopConfiguration()
+          .set(Constants.S3_CONNECTION_USE_SSL, sparkOptions.get(Constants.S3_CONNECTION_USE_SSL));
     }
   }
 

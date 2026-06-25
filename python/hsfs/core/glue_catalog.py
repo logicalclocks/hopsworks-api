@@ -137,8 +137,10 @@ class GlueCatalog:
         location = self._feature_group.location
         if not location:
             return None
-        data_source = self._feature_group.data_source
-        database = data_source.database if data_source else None
+        # Use the same database resolution as the identifier (data source first,
+        # then connector default), so the suffix to trim matches the one used to
+        # lay the table out under the warehouse.
+        database, _ = self.database_and_table
         suffix = f"/{database}.db/" if database else None
         if suffix and suffix in location:
             return location[: location.index(suffix)]

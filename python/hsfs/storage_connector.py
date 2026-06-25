@@ -4662,7 +4662,7 @@ class GlueConnector(StorageConnector):
         region: str | None = None,
         database: str | None = None,
         table: str | None = None,
-        arguments: dict[str, Any] | None = None,
+        arguments: list[dict[str, Any]] | dict[str, Any] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(id, name, description, featurestore_id)
@@ -4711,7 +4711,11 @@ class GlueConnector(StorageConnector):
     @public
     @property
     def database(self) -> str | None:
-        """Name of the Glue database the connector points to."""
+        """Default Glue database for the connector.
+
+        This is only a fallback: when a feature group's data source specifies a
+        database, that one takes precedence over this connector default.
+        """
         return self._database
 
     @public
@@ -4737,7 +4741,7 @@ class GlueConnector(StorageConnector):
 
     @public
     @property
-    def arguments(self) -> dict[str, Any] | None:
+    def arguments(self) -> dict[str, Any]:
         """Additional Spark options for the connector, passed as a dictionary.
 
         These are forwarded to the S3 setup the same way as for the
