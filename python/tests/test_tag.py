@@ -50,9 +50,6 @@ class TestTag:
         assert len(t_list) == 0
 
     def test_from_response_json_decodes_json_value(self):
-        # The backend stores values as JSON strings; from_response_json is the
-        # single point that deserializes them, so a non-string value must come
-        # back as the decoded object (not the JSON string).
         # Arrange
         value = {"owner": "team-a", "cols": [1, 2]}
         response = {
@@ -74,7 +71,6 @@ class TestTag:
             (json_module.dumps(True), True),
             (json_module.dumps(["a", "b"]), ["a", "b"]),
             (json_module.dumps("quoted"), "quoted"),
-            # A plain non-JSON string is left untouched (decode is suppressed).
             ("plain text", "plain text"),
         ],
     )

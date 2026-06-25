@@ -23,7 +23,6 @@ from hopsworks_common.core.tags_api import TagsApi
 
 
 def _tags_response(name: str, value: str) -> dict:
-    # value is the JSON-encoded string the backend stores for the tag.
     return {
         "count": 1,
         "items": [{"name": name, "value": value, "schema": "test_schema"}],
@@ -41,17 +40,13 @@ def _patch_client(mocker, send_request_return) -> MagicMock:
     return client_instance
 
 
-# A feature-group-like metadata object: has an id and no `training_data`
-# attribute, so TagsApi._get_path takes the featuregroups/trainingdatasets branch.
+# A feature-group-like metadata object: an id and no `training_data` attribute,
+# so TagsApi._get_path takes the featuregroups/trainingdatasets branch.
 def _fg_metadata() -> SimpleNamespace:
     return SimpleNamespace(id=14)
 
 
 class TestTagsApi:
-    # TagsApi._get backs get_tag/get_tags for feature groups, feature views,
-    # and training datasets. Tag.from_response_json already deserializes the
-    # value, so _get must not deserialize it a second time.
-
     def test_get_decodes_json_object_value(self, mocker):
         # Arrange
         api = TagsApi(feature_store_id=99, entity_type="featuregroups")
@@ -65,8 +60,6 @@ class TestTagsApi:
         assert result == {"meta": value}
 
     def test_get_decodes_numeric_value(self, mocker):
-        # A non-string decoded value is what triggered the TypeError from the
-        # redundant second json.loads (json.loads(5) is a TypeError).
         # Arrange
         api = TagsApi(feature_store_id=99, entity_type="featuregroups")
         _patch_client(mocker, _tags_response("version", json.dumps(7)))
@@ -78,8 +71,6 @@ class TestTagsApi:
         assert result == {"version": 7}
 
     def test_get_preserves_plain_string_value(self, mocker):
-        # A tag value that is not valid JSON stays a string; the old double
-        # decode raised JSONDecodeError on it.
         # Arrange
         api = TagsApi(feature_store_id=99, entity_type="featuregroups")
         _patch_client(mocker, _tags_response("note", "just a plain string"))
@@ -117,8 +108,7 @@ class TestTagsApi:
         assert result == {}
 
     def test_get_feature_view_uses_featureview_path(self, mocker):
-        # A feature-view-like object has a `training_data` attribute, so
-        # _get_path takes the featureview branch; decoding is identical.
+        # A feature-view-like object has a `training_data` attribute (featureview path).
         # Arrange
         api = TagsApi(feature_store_id=99, entity_type="featuregroups")
         fv_metadata = SimpleNamespace(
@@ -138,8 +128,6 @@ class TestTagsApi:
 
     @pytest.mark.parametrize("bad_value", [{"a": 1}, 7, ["x"], True])
     def test_get_does_not_double_decode(self, mocker, bad_value):
-        # Regression guard: every non-string value must round-trip without the
-        # second json.loads that previously raised TypeError.
         # Arrange
         api = TagsApi(feature_store_id=99, entity_type="featuregroups")
         _patch_client(mocker, _tags_response("t", json.dumps(bad_value)))

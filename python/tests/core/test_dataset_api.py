@@ -105,10 +105,6 @@ class TestDatasetApiUploadChunk:
 
 
 class TestDatasetApiTags:
-    # DatasetApi.get_tags builds its name->value dict the same way as
-    # TagsApi/ModelApi; Tag.from_response_json already deserializes the value,
-    # so get_tags must not decode it a second time.
-
     def _patch_client(self, mocker, send_request_return) -> MagicMock:
         client_instance = MagicMock()
         client_instance._project_id = 1

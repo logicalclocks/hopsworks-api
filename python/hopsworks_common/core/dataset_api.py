@@ -1152,8 +1152,7 @@ class DatasetApi:
 
         path_params.append(path)
 
-        # Tag.from_response_json already deserializes each value from its JSON
-        # string, so the value is used directly without a second json.loads.
+        # from_response_json already returns deserialized values.
         return {
             tag._name: tag._value
             for tag in tag.Tag.from_response_json(

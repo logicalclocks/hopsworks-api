@@ -23,7 +23,6 @@ from hsml.core.model_api import ModelApi
 
 
 def _tags_response(items: list[tuple[str, str]]) -> dict:
-    # Each item value is the JSON-encoded string the backend stores for the tag.
     return {
         "count": len(items),
         "items": [{"name": name, "value": value} for name, value in items],
@@ -46,10 +45,6 @@ def _model() -> SimpleNamespace:
 
 
 class TestModelApi:
-    # ModelApi._get_tags/_get_tag mirror the feature-store tag path; the value
-    # is already deserialized by Tag.from_response_json and must not be decoded
-    # a second time.
-
     def test_get_tags_decodes_values_without_double_decode(self, mocker):
         # Arrange
         api = ModelApi()
@@ -66,8 +61,6 @@ class TestModelApi:
         assert result == {"meta": value, "count": 9}
 
     def test_get_tag_returns_value_for_name(self, mocker):
-        # _get_tag previously indexed the list returned by from_response_json by
-        # string name, which is always a TypeError.
         # Arrange
         api = ModelApi()
         value = {"owner": "team-a"}
@@ -91,8 +84,6 @@ class TestModelApi:
         assert result == 7
 
     def test_get_tag_absent_name_returns_none(self, mocker):
-        # The public Model.get_tag contract is "value or None if it does not
-        # exist"; an empty response yields None rather than raising.
         # Arrange
         api = ModelApi()
         _patch_client(mocker, {"count": 0, "items": []})

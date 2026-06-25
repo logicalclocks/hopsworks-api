@@ -232,8 +232,7 @@ class ModelApi:
             model_instance.id,
             "tags",
         ]
-        # Tag.from_response_json already deserializes each value from its JSON
-        # string, so the value is used directly without a second json.loads.
+        # from_response_json already returns deserialized values.
         return {
             tag._name: tag._value
             for tag in tag.Tag.from_response_json(
@@ -266,8 +265,7 @@ class ModelApi:
             name,
         ]
 
-        # from_response_json returns a list of Tag objects, so build the
-        # name->value mapping and look the requested tag up by name.
+        # from_response_json returns a list of tags; look the value up by name.
         tags = {
             tag._name: tag._value
             for tag in tag.Tag.from_response_json(
