@@ -36,6 +36,7 @@ from hsml.schema import Schema
 
 
 if TYPE_CHECKING:
+    from hopsworks_common.job import Job
     from hsfs import feature_view
     from hsfs.core.feature_monitoring_config import FeatureMonitoringConfig
     from hsml import deployment, tag
@@ -76,6 +77,7 @@ class Model:
         href=None,
         feature_view=None,
         training_dataset_version=None,
+        training_job_name=None,
         **kwargs,
     ):
         self._id = id
@@ -97,6 +99,9 @@ class Model:
         self._input_example = input_example
         self._framework = framework
         self._model_schema = model_schema
+        # FSTORE-2053: name of the Hopsworks job that produced this model version.
+        # Set by the backend when the model was exported via a job (read-only from SDK).
+        self._training_job_name = training_job_name
 
         # This is needed for update_from_response_json function to not overwrite name of the shared registry this model originates from
         if not hasattr(self, "_shared_registry_project_name"):
@@ -651,6 +656,9 @@ class Model:
         start_date_time: int | str | None = None,
         end_date_time: int | str | None = None,
         cron_expression: str | None = "0 0 12 ? * * *",
+        retrain_model_after_num_shifts: int | None = None,
+        model_retraining_job: Job | None = None,
+        model_retraining_job_execution_args: str | None = None,
     ) -> FeatureMonitoringConfig:
         """Create a model monitoring config for this model.
 
@@ -670,6 +678,7 @@ class Model:
 
             my_model.create_model_monitoring(
                 name="psi_drift",
+                retrain_model_after_num_shifts=3,
             ).with_detection_window(
                 time_offset="1d", window_length="1d",
             ).with_reference_training_dataset(  # defaults to model's TD version
@@ -684,11 +693,22 @@ class Model:
             start_date_time: Start date and time from which to start computing statistics.
             end_date_time: End date and time at which to stop computing statistics.
             cron_expression: Cron expression scheduling the FM job (UTC, Quartz).
+            retrain_model_after_num_shifts: Number of consecutive drift-detected runs
+                that trigger automated re-training. Must be a positive integer.
+                Added in version ~=3.8.1.
+            model_retraining_job: Hopsworks job to run when re-training is triggered.
+                When None and re-training is enabled, the backend resolves the job from
+                the model version's originating job or mints a default PYTHON job.
+                Added in version ~=3.8.1.
+            model_retraining_job_execution_args: Execution arguments passed to the
+                re-training job at trigger time.
+                Added in version ~=3.8.1.
 
         Raises:
             hopsworks.client.exceptions.FeatureStoreException: If this model has no
                 parent feature view recorded in its provenance, or if downstream
-                FV validation fails (no logging enabled, no recorded TD version, ...).
+                FV validation fails (no logging enabled, no recorded TD version, or
+                ``retrain_model_after_num_shifts`` is not a positive integer).
 
         Returns:
             A ``FeatureMonitoringConfig`` builder. Call ``with_detection_window``,
@@ -711,6 +731,9 @@ class Model:
             start_date_time=start_date_time,
             end_date_time=end_date_time,
             cron_expression=cron_expression,
+            retrain_model_after_num_shifts=retrain_model_after_num_shifts,
+            model_retraining_job=model_retraining_job,
+            model_retraining_job_execution_args=model_retraining_job_execution_args,
         )
 
     def _get_default_serving_name(self):
@@ -736,7 +759,7 @@ class Model:
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
-        return {
+        d = {
             "id": self._name + "_" + str(self._version),
             "projectName": self._project_name,
             "name": self._name,
@@ -751,6 +774,10 @@ class Model:
             "featureView": util._feature_view_to_json(self._feature_view),
             "trainingDatasetVersion": self._training_dataset_version,
         }
+        # FSTORE-2053: emit only when set (backend-assigned, read-only from SDK).
+        if self._training_job_name is not None:
+            d["trainingJobName"] = self._training_job_name
+        return d
 
     @public
     @property
@@ -849,6 +876,17 @@ class Model:
     @program.setter
     def program(self, program):
         self._program = program
+
+    @public
+    @property
+    def training_job_name(self) -> str | None:
+        """Name of the Hopsworks job that produced this model version.
+
+        Set by the backend when the model was exported via a job. None when the model
+        was saved from a notebook or an external SDK client.
+        Added in version ~=3.8.1.
+        """
+        return self._training_job_name
 
     @public
     @property

@@ -134,6 +134,9 @@ class FeatureMonitoringConfig:
         feature_view_version: int | None = None,
         model_name: str | None = None,
         model_version: int | None = None,
+        retrain_model_after_num_shifts: int | None = None,
+        model_retraining_job_name: str | None = None,
+        model_retraining_job_execution_args: str | None = None,
         valid_feature_names: list[str] | None = None,
         valid_features: dict[str, str] | None = None,
         href: str | None = None,
@@ -161,6 +164,12 @@ class FeatureMonitoringConfig:
         # model_name AND model_version. Persisted via to_dict/from_response_json.
         self._model_name = model_name
         self._model_version = model_version
+        # FSTORE-2053: automated re-training on drift. The job is stored by name (the
+        # backend resolves the name to a jobs row). All three are nullable; they are only
+        # meaningful when model_version is set.
+        self._retrain_model_after_num_shifts = retrain_model_after_num_shifts
+        self._model_retraining_job_name = model_retraining_job_name
+        self._model_retraining_job_execution_args = model_retraining_job_execution_args
         # In-memory only (not serialized): set by FeatureView.create_model_monitoring so
         # with_reference_training_dataset can default to / validate against the model's TD.
         self._associated_model_td_version: int | None = None
@@ -270,6 +279,18 @@ class FeatureMonitoringConfig:
             the_dict["modelName"] = self._model_name
         if self._model_version is not None:
             the_dict["modelVersion"] = self._model_version
+
+        # FSTORE-2053: re-training fields — emit only when set.
+        if self._retrain_model_after_num_shifts is not None:
+            the_dict["retrainModelAfterNumShifts"] = (
+                self._retrain_model_after_num_shifts
+            )
+        if self._model_retraining_job_name is not None:
+            the_dict["modelRetrainingJobName"] = self._model_retraining_job_name
+        if self._model_retraining_job_execution_args is not None:
+            the_dict["modelRetrainingJobExecutionArgs"] = (
+                self._model_retraining_job_execution_args
+            )
 
         # Backend-assigned entity IDs — emit only when set (populated from server responses).
         if self._training_dataset_id is not None:
@@ -1065,6 +1086,39 @@ class FeatureMonitoringConfig:
     def model_version(self) -> int | None:
         """Version of the model whose inference logs are filtered by this configuration."""
         return self._model_version
+
+    @public
+    @property
+    def retrain_model_after_num_shifts(self) -> int | None:
+        """Number of consecutive drift-detected runs that trigger automated re-training.
+
+        When set, the backend counts leading consecutive runs where drift was detected
+        (after the last re-training trigger) and fires a re-training job once the count
+        reaches this threshold. Only valid on model monitoring configs (model FK present).
+        Added in version ~=3.8.1.
+        """
+        return self._retrain_model_after_num_shifts
+
+    @public
+    @property
+    def model_retraining_job_name(self) -> str | None:
+        """Name of the Hopsworks job to run when automated re-training is triggered.
+
+        When None and re-training is enabled, the backend resolves the job from the
+        model version's originating job (if recorded) or mints a default PYTHON job
+        pointing at the model's program file.
+        Added in version ~=3.8.1.
+        """
+        return self._model_retraining_job_name
+
+    @public
+    @property
+    def model_retraining_job_execution_args(self) -> str | None:
+        """Execution arguments passed to the re-training job at trigger time.
+
+        Added in version ~=3.8.1.
+        """
+        return self._model_retraining_job_execution_args
 
     @public
     @property
