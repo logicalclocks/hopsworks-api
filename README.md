@@ -333,7 +333,7 @@
 | python/hsfs/core/training\_dataset\_job\_conf.py                                 |       37 |       14 |     62% |25-28, 32, 36, 40, 44, 48, 52, 56, 60, 63, 66 |
 | python/hsfs/core/transformation\_execution\_dag.py                               |      179 |       25 |     86% |78, 200, 209-220, 262, 327-328, 346-360 |
 | python/hsfs/core/transformation\_function\_api.py                                |       26 |       16 |     38% |42-51, 80-95, 108-118 |
-| python/hsfs/core/transformation\_function\_engine.py                             |      504 |       87 |     83% |215-216, 224-228, 252, 283-287, 309, 314-327, 361-363, 384, 398, 789, 829-830, 839, 844-849, 856-862, 951-971, 984-1000, 1043-1053, 1108, 1203-1236, 1279-1286, 1397, 1509-1514, 1565, 1622-1627, 1660 |
+| python/hsfs/core/transformation\_function\_engine.py                             |      504 |       89 |     82% |215-216, 224-228, 252, 283-287, 309, 314-327, 361-363, 384, 398, 789, 829-830, 839, 844-849, 856-862, 894, 896, 951-971, 984-1000, 1043-1053, 1108, 1203-1236, 1279-1286, 1397, 1509-1514, 1565, 1622-1627, 1660 |
 | python/hsfs/core/type\_systems.py                                                |        2 |        0 |    100% |           |
 | python/hsfs/core/util\_sql.py                                                    |       38 |       21 |     45% |37-74, 91-106 |
 | python/hsfs/core/validation\_report\_api.py                                      |       34 |       21 |     38% |44-65, 75-87, 95-113, 123-140 |
@@ -417,7 +417,7 @@
 | python/hsml/engine/\_\_init\_\_.py                                               |        0 |        0 |    100% |           |
 | python/hsml/engine/local\_engine.py                                              |       46 |       26 |     43% |35-36, 39, 48-66, 84-103, 106-108, 111-113, 116, 119-122 |
 | python/hsml/engine/model\_engine.py                                              |      406 |      231 |     43% |82-102, 108-135, 145, 157-158, 168, 174-185, 203-232, 238-245, 258-278, 319-403, 406, 416-539, 592-594, 612, 617, 663-664, 669, 681, 684-685, 717-724, 735-738, 740, 746, 753-754, 770-771, 781-782, 814-816, 840-865, 868-885, 888-902, 905, 915, 924, 933, 941, 958, 975 |
-| python/hsml/engine/serving\_engine.py                                            |      431 |      316 |     27% |77-114, 117-169, 172-210, 213-252, 255-275, 278-309, 312-315, 322-327, 330-331, 342-371, 377-384, 387-442, 445-472, 475-520, 569-583, 586-593, 596-621, 716-718, 755, 810-842, 852-860, 869-931, 943-964, 979-983, 988-1020 |
+| python/hsml/engine/serving\_engine.py                                            |      432 |      316 |     27% |77-114, 117-169, 172-210, 213-252, 255-275, 278-309, 312-315, 322-327, 330-331, 342-371, 377-384, 387-442, 445-472, 475-520, 575-589, 592-599, 602-627, 722-724, 761, 816-848, 858-866, 875-937, 949-970, 985-989, 994-1026 |
 | python/hsml/inference\_batcher.py                                                |       77 |       13 |     83% |52, 83-85, 88, 93, 95, 97, 108, 118, 128, 138, 141 |
 | python/hsml/inference\_endpoint.py                                               |       84 |        7 |     92% |54, 67, 109-111, 133, 155 |
 | python/hsml/inference\_logger.py                                                 |       66 |        9 |     86% |51, 93-95, 98, 103, 114, 124, 127 |
@@ -457,14 +457,14 @@
 | python/hsml/transformer.py                                                       |       69 |        7 |     90% |33, 74, 124-127, 146 |
 | python/hsml/util/\_\_init\_\_.py                                                 |       18 |       18 |      0% |      5-22 |
 | python/hsml/utils/\_\_init\_\_.py                                                |        0 |        0 |    100% |           |
-| python/hsml/utils/local\_paths.py                                                |       48 |        1 |     98% |       117 |
+| python/hsml/utils/local\_paths.py                                                |       50 |        1 |     98% |       133 |
 | python/hsml/utils/schema/\_\_init\_\_.py                                         |        0 |        0 |    100% |           |
 | python/hsml/utils/schema/column.py                                               |        7 |        0 |    100% |           |
 | python/hsml/utils/schema/columnar\_schema.py                                     |       61 |        0 |    100% |           |
 | python/hsml/utils/schema/tensor.py                                               |        8 |        0 |    100% |           |
 | python/hsml/utils/schema/tensor\_schema.py                                       |       34 |        0 |    100% |           |
 | python/hsml/version.py                                                           |        2 |        2 |      0% |     17-22 |
-| **TOTAL**                                                                        | **39158** | **12484** | **68%** |           |
+| **TOTAL**                                                                        | **39161** | **12486** | **68%** |           |
 
 
 ## Setup coverage badge
