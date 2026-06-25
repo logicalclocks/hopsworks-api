@@ -62,12 +62,13 @@ def _resolve_serving_file(
     4. ``DatasetApi.exists(path)`` is true → it's a HopsFS path (absolute,
        project-relative, or ``hdfs://``); rewrite to the absolute
        ``/Projects/<p>/...`` form and return.
-    5. Otherwise, on create → raise ``ValueError``; on update
-       (``is_update``) → return unchanged. A deployment fetched from the
-       backend reports ``script_file`` / ``config_file`` as backend-managed
-       references (often a bare basename) that are neither local files nor
-       resolvable via ``DatasetApi.exists``; re-resolving them on every save
-       would spuriously fail, so they are passed through untouched.
+    5. Unresolved.
+       On update, a bare basename is a backend-managed reference (a
+       deployment fetched from the backend reports ``script_file`` /
+       ``config_file`` that way) and is returned unchanged.
+       A create, or an update with a path-like value (one containing a
+       separator) that resolved to nothing, is a genuine mistake and raises
+       ``ValueError`` instead of deferring to a later backend failure.
 
     ``subdir`` is the per-role subfolder (``"predictor"``, ``"transformer"``,
     ``"config"``) under ``Deployments/<name>/resources/``; it prevents
@@ -105,11 +106,13 @@ def _resolve_serving_file(
             return path
         return f"/Projects/{project_name}/{path.lstrip('/')}"
 
-    if is_update:
-        # Persisted deployment: the backend returns script_file / config_file
-        # as backend-managed references (often a bare basename), not a
-        # resolvable local or HopsFS path. Only genuinely new local paths
-        # (handled above) get re-uploaded; leave everything else untouched.
+    if is_update and os.path.basename(path) == path:
+        # Persisted deployment: the backend reports script_file / config_file
+        # as a bare basename (no separator), which is neither a local file nor
+        # resolvable via DatasetApi.exists. Pass it through untouched. A
+        # path-like value that resolved to nothing (e.g. "./missing.py" or a
+        # typoed "/Projects/..." path) is a genuine mistake, so fall through
+        # and raise rather than defer the error to a later backend failure.
         return path
 
     raise ValueError(

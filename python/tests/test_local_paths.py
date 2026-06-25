@@ -292,6 +292,27 @@ class TestResolveServingFile:
         assert out.endswith("/Deployments/my_dep/resources/predictor/new_predictor.py")
         local_engine._upload.assert_called_once()
 
+    @pytest.mark.parametrize(
+        "bad_path", ["./does_not_exist.py", "/Projects/p/typo.py", "subdir/x.py"]
+    )
+    def test_update_path_like_value_still_raises(
+        self, bad_path, project_name, local_engine
+    ):
+        # On update, the passthrough only covers bare basenames (backend-managed
+        # references). A path-like value (contains a separator) that resolved to
+        # nothing is a genuine mistake — a missing local path or a typoed HopsFS
+        # path — so it must still raise rather than defer to a backend failure.
+        with pytest.raises(ValueError, match="Could not find script_file"):
+            _resolve_serving_file(
+                local_engine,
+                "my_dep",
+                bad_path,
+                "script_file",
+                subdir="predictor",
+                is_update=True,
+            )
+        local_engine._upload.assert_not_called()
+
     def test_local_uploads_to_role_subdir(self, tmp_path, project_name, local_engine):
         # Predictor and transformer with the same basename land in
         # different subdirs.
