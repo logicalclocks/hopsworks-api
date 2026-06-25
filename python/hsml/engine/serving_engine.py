@@ -522,8 +522,10 @@ class ServingEngine:
     def _save(self, deployment_instance, await_update: int):
         # Local paths on script_file / config_file are auto-uploaded under
         # /Projects/<p>/Deployments/<name>/resources/ and rewritten to
-        # HopsFS paths in-memory. The fields then hold HopsFS paths, so
-        # re-saving without reassigning the field is a no-op for uploads.
+        # HopsFS paths in-memory. On update of a deployment fetched from the
+        # backend, these fields hold backend-managed references (e.g. a bare
+        # basename), which are left untouched; only newly-assigned local
+        # paths are re-uploaded.
         self._upload_local_serving_files(deployment_instance)
 
         if deployment_instance.id is None:
@@ -536,10 +538,13 @@ class ServingEngine:
 
         Rewrites the in-memory fields to HopsFS paths. HopsFS / ``None`` are
         left untouched. Each role uploads to its own subdirectory to avoid
-        basename collisions.
+        basename collisions. On update of a persisted deployment, fields that
+        are not new local paths (e.g. backend-managed references returned by
+        ``get_deployment``) are passed through unchanged.
         """
         predictor = deployment_instance._predictor
         deployment_name = deployment_instance.name
+        is_update = deployment_instance.id is not None
 
         targets = [
             (predictor, "script_file", "predictor", "script_file"),
@@ -562,6 +567,7 @@ class ServingEngine:
                 getattr(obj, field),
                 field_name=field_label,
                 subdir=subdir,
+                is_update=is_update,
             )
             setattr(obj, field, resolved)
 

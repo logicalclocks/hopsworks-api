@@ -46,6 +46,7 @@ def _resolve_serving_file(
     field_name: str,
     subdir: str,
     overwrite: bool = True,
+    is_update: bool = False,
 ) -> str | None:
     """Resolve a user-supplied serving file path to an absolute HopsFS path.
 
@@ -61,7 +62,12 @@ def _resolve_serving_file(
     4. ``DatasetApi.exists(path)`` is true → it's a HopsFS path (absolute,
        project-relative, or ``hdfs://``); rewrite to the absolute
        ``/Projects/<p>/...`` form and return.
-    5. Otherwise → raise ``ValueError``.
+    5. Otherwise, on create → raise ``ValueError``; on update
+       (``is_update``) → return unchanged. A deployment fetched from the
+       backend reports ``script_file`` / ``config_file`` as backend-managed
+       references (often a bare basename) that are neither local files nor
+       resolvable via ``DatasetApi.exists``; re-resolving them on every save
+       would spuriously fail, so they are passed through untouched.
 
     ``subdir`` is the per-role subfolder (``"predictor"``, ``"transformer"``,
     ``"config"``) under ``Deployments/<name>/resources/``; it prevents
@@ -98,6 +104,13 @@ def _resolve_serving_file(
         if path.startswith("/Projects/"):
             return path
         return f"/Projects/{project_name}/{path.lstrip('/')}"
+
+    if is_update:
+        # Persisted deployment: the backend returns script_file / config_file
+        # as backend-managed references (often a bare basename), not a
+        # resolvable local or HopsFS path. Only genuinely new local paths
+        # (handled above) get re-uploaded; leave everything else untouched.
+        return path
 
     raise ValueError(
         f"Could not find {field_name}: '{path}' in the local filesystem "
