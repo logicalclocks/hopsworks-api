@@ -215,6 +215,7 @@ class TestDeployment:
         class MockPredictor:
             _name = "name"
             _description = "description"
+            _missing_mandatory_tags = []
 
         p = MockPredictor()
         mock_deployment_init = mocker.patch(
@@ -226,7 +227,10 @@ class TestDeployment:
 
         # Assert
         mock_deployment_init.assert_called_once_with(
-            predictor=p, name=p._name, description=p._description
+            predictor=p,
+            name=p._name,
+            description=p._description,
+            missing_mandatory_tags=p._missing_mandatory_tags,
         )
 
     # save
