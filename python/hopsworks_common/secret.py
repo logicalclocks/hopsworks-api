@@ -124,4 +124,4 @@ class Secret:
     def get_url(self):
         """Get url to the secret in Hopsworks."""
         path = "/account/secrets"
-        return util.get_hostname_replaced_url(path)
+        return util._get_hostname_replaced_url(path)

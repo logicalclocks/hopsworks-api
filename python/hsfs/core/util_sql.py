@@ -31,7 +31,7 @@ if HAS_AIOMYSQL:
     from aiomysql.sa import create_engine as async_create_engine
 
 
-def create_mysql_engine(
+def _create_mysql_engine(
     online_conn: Any, external: bool, options: dict[str, Any] | None = None
 ) -> Any:
     online_options = online_conn.spark_options()
@@ -44,7 +44,7 @@ def create_mysql_engine(
     if external:
         # This only works with external clients.
         # Hopsworks clients should use the storage connector
-        host = variable_api.VariableApi().get_loadbalancer_external_domain("mysqld")
+        host = variable_api.VariableApi()._get_loadbalancer_external_domain("mysqld")
         online_options["url"] = re.sub(
             "://[0-9a-zA-Z.]+:",
             f"://{host}:",
@@ -74,7 +74,7 @@ def create_mysql_engine(
     return create_engine(sql_alchemy_conn_str, **options)
 
 
-async def create_async_engine(
+async def _create_async_engine(
     online_conn: Any,
     external: bool,
     default_min_size: int,
@@ -93,7 +93,7 @@ async def create_async_engine(
     url = make_url(online_options["url"].replace("jdbc:", ""))
     if hostname is None:
         if external:
-            hostname = variable_api.VariableApi().get_loadbalancer_external_domain(
+            hostname = variable_api.VariableApi()._get_loadbalancer_external_domain(
                 "mysqld"
             )
         else:

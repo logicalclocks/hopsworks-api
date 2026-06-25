@@ -31,14 +31,20 @@ class LocalEngine:
         except Exception:
             self._hdfs_api = None
 
-    def mkdir(self, remote_path: str):
+    def _mkdir(self, remote_path: str):
         remote_path = self._prepend_project_path(remote_path)
         self._dataset_api.mkdir(remote_path)
 
-    def delete(self, model_instance):
-        self._model_api.delete(model_instance)
+    def _delete(self, model_instance):
+        self._model_api._delete(model_instance)
 
-    def upload(self, local_path: str, remote_path: str, upload_configuration=None):
+    def _upload(
+        self,
+        local_path: str,
+        remote_path: str,
+        upload_configuration=None,
+        overwrite: bool = False,
+    ):
         local_path = self._get_abs_path(local_path)
         remote_path = self._prepend_project_path(remote_path)
 
@@ -47,9 +53,10 @@ class LocalEngine:
 
         if self._hdfs_api is not None:
             # use the hdfs client if available
-            self._hdfs_api.upload(
+            self._hdfs_api._upload(
                 local_path=local_path,
                 upload_path=remote_path,
+                overwrite=overwrite,
                 buffer_size=upload_configuration.get(
                     "buffer_size", self._hdfs_api.DEFAULT_BUFFER_SIZE
                 ),
@@ -59,6 +66,7 @@ class LocalEngine:
             self._dataset_api.upload(
                 local_path,
                 remote_path,
+                overwrite=overwrite,
                 chunk_size=upload_configuration.get(
                     "chunk_size", self._dataset_api.DEFAULT_UPLOAD_FLOW_CHUNK_SIZE
                 ),
@@ -72,7 +80,7 @@ class LocalEngine:
                 ),
             )
 
-    def download(self, remote_path: str, local_path: str, download_configuration=None):
+    def _download(self, remote_path: str, local_path: str, download_configuration=None):
         local_path = self._get_abs_path(local_path)
         remote_path = self._prepend_project_path(remote_path)
 
@@ -83,7 +91,7 @@ class LocalEngine:
 
         if self._hdfs_api is not None:
             # use the hdfs client if available
-            self._hdfs_api.download(
+            self._hdfs_api._download(
                 path=remote_path,
                 local_path=local_path,
                 buffer_size=download_configuration.get(
@@ -94,12 +102,12 @@ class LocalEngine:
             # otherwise, use the REST API
             self._dataset_api.download(remote_path, local_path)
 
-    def copy(self, source_path, destination_path):
+    def _copy(self, source_path, destination_path):
         source_path = self._prepend_project_path(source_path)
         destination_path = self._prepend_project_path(destination_path)
         self._dataset_api.copy(source_path, destination_path)
 
-    def move(self, source_path, destination_path):
+    def _move(self, source_path, destination_path):
         source_path = self._prepend_project_path(source_path)
         destination_path = self._prepend_project_path(destination_path)
         self._dataset_api.move(source_path, destination_path)
@@ -109,6 +117,6 @@ class LocalEngine:
 
     def _prepend_project_path(self, remote_path: str):
         if not remote_path.startswith("/Projects/"):
-            _client = client.get_instance()
+            _client = client._get_instance()
             remote_path = f"/Projects/{_client._project_name}/{remote_path}"
         return remote_path

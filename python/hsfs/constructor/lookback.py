@@ -18,7 +18,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from hopsworks_apigen import public
-from hopsworks_common.util import convert_event_time_to_timestamp
+from hopsworks_common.util import _convert_event_time_to_timestamp
 from hsfs.decorators import typechecked
 
 
@@ -81,8 +81,8 @@ class FeatureGroupLookback:
         if start is None:
             raise ValueError("FeatureGroupLookback `start` is required.")
         if end is not None:
-            start_ms = convert_event_time_to_timestamp(start)
-            end_ms = convert_event_time_to_timestamp(end)
+            start_ms = _convert_event_time_to_timestamp(start)
+            end_ms = _convert_event_time_to_timestamp(end)
             if start_ms >= end_ms:
                 raise ValueError(
                     f"FeatureGroupLookback `start` ({start!r}) must be strictly earlier "
@@ -121,10 +121,10 @@ class FeatureGroupLookback:
         """
         payload: dict[str, Any] = {
             "lookbackKey": self._key,
-            "start": convert_event_time_to_timestamp(self._start),
+            "start": _convert_event_time_to_timestamp(self._start),
         }
         if self._end is not None:
-            payload["end"] = convert_event_time_to_timestamp(self._end)
+            payload["end"] = _convert_event_time_to_timestamp(self._end)
         return payload
 
     @classmethod

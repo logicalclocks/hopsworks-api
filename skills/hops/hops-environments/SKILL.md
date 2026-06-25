@@ -36,7 +36,7 @@ the workload, then add libs.
 | Feature pipeline (Spark) | `spark-feature-pipeline` |
 | Training | `pandas-training-pipeline`, `torch-training-pipeline`, `tensorflow-training-pipeline`, `ray-training-pipeline` |
 | Inference / deployment | `pandas-inference-pipeline`, `torch-inference-pipeline`, `tensorflow-inference-pipeline`, `minimal-inference-pipeline` |
-| Streamlit app | `python-app-pipeline` |
+| Streamlit / Custom app | `python-app-pipeline` |
 | Agent job / deployment | `agent-job`, `python-agent-pipeline` |
 
 `hops env list` shows the live set for the project — it can differ from this table.

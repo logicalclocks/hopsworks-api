@@ -28,7 +28,7 @@ class GitProviderApi:
         self._git_engine = git_engine.GitEngine()
 
     def _get_providers(self):
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["users", "git", "provider"]
 
         return git_provider.GitProvider.from_response_json(
@@ -46,7 +46,7 @@ class GitProviderApi:
         )
 
     def _get_provider(self, provider: str, host: str = None):
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["users", "git", "provider"]
 
         providers = git_provider.GitProvider.from_response_json(
@@ -67,7 +67,7 @@ class GitProviderApi:
         return None
 
     def _set_provider(self, provider: str, username: str, token: str, host: str):
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["users", "git", "provider"]
 
         provider_config = {
@@ -85,7 +85,7 @@ class GitProviderApi:
         )
 
     def _delete_provider(self, provider: str, host: str):
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["users", "secrets", f"{provider.lower()}_token_{host}"]
         _client._send_request("DELETE", path_params)
         path_params = [

@@ -19,6 +19,7 @@ import copy
 import pytest
 from hopsworks_common.constants import SCALING_CONFIG
 from hsml import (
+    deployment_tracing_config,
     inference_batcher,
     inference_logger,
     predictor,
@@ -204,7 +205,7 @@ class TestPredictor:
             "hsml.predictor.Predictor._validate_serving_tool",
             return_value=p_json["serving_tool"],
         )
-        mock_resources = util.get_obj_from_json(
+        mock_resources = util._get_obj_from_json(
             copy.deepcopy(p_json["predictor_resources"]), resources.PredictorResources
         )
         mock_validate_resources = mocker.patch(
@@ -303,7 +304,7 @@ class TestPredictor:
         self._mock_serving_variables(
             mocker, SERVING_NUM_INSTANCES_NO_LIMIT, is_saas_connection=False
         )
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         # Act
         st = predictor.Predictor._validate_serving_tool(PREDICTOR.SERVING_TOOL_DEFAULT)
@@ -316,7 +317,7 @@ class TestPredictor:
         self._mock_serving_variables(
             mocker, SERVING_NUM_INSTANCES_NO_LIMIT, is_saas_connection=False
         )
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         # Act
         with pytest.raises(ValueError) as e_info:
@@ -330,7 +331,7 @@ class TestPredictor:
         self._mock_serving_variables(
             mocker, SERVING_NUM_INSTANCES_NO_LIMIT, is_saas_connection=True
         )
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         # Act
         st = predictor.Predictor._validate_serving_tool(PREDICTOR.SERVING_TOOL_KSERVE)
@@ -343,7 +344,7 @@ class TestPredictor:
         self._mock_serving_variables(
             mocker, SERVING_NUM_INSTANCES_NO_LIMIT, is_saas_connection=True
         )
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
 
         # Act
         with pytest.raises(ValueError) as e_info:
@@ -640,7 +641,7 @@ class TestPredictor:
             pass
 
         mock_get_predictor_for_model = mocker.patch(
-            "hopsworks_common.util.get_predictor_for_model",
+            "hopsworks_common.util._get_predictor_for_model",
             return_value=True,
             spec=spec,
         )
@@ -748,7 +749,7 @@ class TestPredictor:
         mock_istio_client = mocker.MagicMock()
         mock_istio_client._base_url = "https://istio.example.com"
         mocker.patch(
-            "hopsworks_common.client.istio.get_instance",
+            "hopsworks_common.client.istio._get_instance",
             return_value=mock_istio_client,
         )
 
@@ -771,7 +772,7 @@ class TestPredictor:
         # Arrange
         self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
         mocker.patch(
-            "hopsworks_common.client.istio.get_instance",
+            "hopsworks_common.client.istio._get_instance",
             return_value=None,
         )
 
@@ -798,7 +799,7 @@ class TestPredictor:
         mock_istio_client = mocker.MagicMock()
         mock_istio_client._base_url = "https://istio.example.com"
         mocker.patch(
-            "hopsworks_common.client.istio.get_instance",
+            "hopsworks_common.client.istio._get_instance",
             return_value=mock_istio_client,
         )
 
@@ -823,7 +824,7 @@ class TestPredictor:
         mock_istio_client = mocker.MagicMock()
         mock_istio_client._base_url = "https://istio.example.com"
         mocker.patch(
-            "hopsworks_common.client.istio.get_instance",
+            "hopsworks_common.client.istio._get_instance",
             return_value=mock_istio_client,
         )
 
@@ -848,7 +849,7 @@ class TestPredictor:
         mock_istio_client = mocker.MagicMock()
         mock_istio_client._base_url = "https://istio.example.com"
         mocker.patch(
-            "hopsworks_common.client.istio.get_instance",
+            "hopsworks_common.client.istio._get_instance",
             return_value=mock_istio_client,
         )
 
@@ -869,7 +870,7 @@ class TestPredictor:
         # Arrange
         self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
         mocker.patch(
-            "hopsworks_common.client.istio.get_instance",
+            "hopsworks_common.client.istio._get_instance",
             return_value=None,
         )
 
@@ -896,7 +897,7 @@ class TestPredictor:
         mock_istio_client = mocker.MagicMock()
         mock_istio_client._base_url = "https://istio.example.com"
         mocker.patch(
-            "hopsworks_common.client.istio.get_instance",
+            "hopsworks_common.client.istio._get_instance",
             return_value=mock_istio_client,
         )
 
@@ -922,14 +923,14 @@ class TestPredictor:
         # Arrange
         self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
         mocker.patch(
-            "hopsworks_common.client.istio.get_instance",
+            "hopsworks_common.client.istio._get_instance",
             return_value=None,
         )
         mock_hopsworks_client = mocker.MagicMock()
         mock_hopsworks_client._base_url = "https://hopsworks.example.com"
         mock_hopsworks_client._project_id = 123
         mocker.patch(
-            "hopsworks_common.client.get_instance",
+            "hopsworks_common.client._get_instance",
             return_value=mock_hopsworks_client,
         )
 
@@ -957,7 +958,7 @@ class TestPredictor:
         mock_istio_client = mocker.MagicMock()
         mock_istio_client._base_url = "https://istio.example.com"
         mocker.patch(
-            "hopsworks_common.client.istio.get_instance",
+            "hopsworks_common.client.istio._get_instance",
             return_value=mock_istio_client,
         )
 
@@ -982,7 +983,7 @@ class TestPredictor:
         mock_istio_client = mocker.MagicMock()
         mock_istio_client._base_url = "https://istio.example.com"
         mocker.patch(
-            "hopsworks_common.client.istio.get_instance",
+            "hopsworks_common.client.istio._get_instance",
             return_value=mock_istio_client,
         )
 
@@ -1175,6 +1176,74 @@ class TestPredictor:
 
         assert kwargs["env_vars"] == {"FOO": "bar", "K": "V=with=eq"}
 
+    def test_tracing_wire_round_trip(self, mocker):
+        # The tracing object must survive serialisation as a nested payload and
+        # come back from the wire as a strongly typed config object.
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        mocker.patch(
+            "hsml.predictor.Predictor._validate_serving_tool",
+            return_value=PREDICTOR.SERVING_TOOL_KSERVE,
+        )
+        mocker.patch(
+            "hsml.predictor.Predictor._validate_resources",
+            return_value=resources.PredictorResources(0),
+        )
+
+        tracing = deployment_tracing_config.DeploymentTracingConfig(
+            enabled=True,
+            otel_tracing_storage=deployment_tracing_config.DeploymentTracingConfig.STORAGE_OFFLINE,
+        )
+
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="my_model",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+            tracing=tracing,
+        )
+
+        serialized = p.to_dict()
+        restored = predictor.Predictor.from_response_json(serialized)
+
+        assert serialized["tracing"]["otelTracingStorage"] == "offline"
+        assert serialized["tracing"]["enabled"] is True
+        assert restored.tracing is not None
+        assert restored.tracing.enabled is True
+        assert restored.tracing.otel_tracing_storage == "offline"
+
+    def test_git_wire_round_trip(self, mocker):
+        # Git metadata should survive serialisation for git-backed agent deployments.
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        mocker.patch(
+            "hsml.predictor.Predictor._validate_serving_tool",
+            return_value=PREDICTOR.SERVING_TOOL_KSERVE,
+        )
+        mocker.patch(
+            "hsml.predictor.Predictor._validate_resources",
+            return_value=resources.PredictorResources(0),
+        )
+
+        p = predictor.Predictor(
+            name="my_agent",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            script_file="src/agent.py",
+            model_framework=MODEL.FRAMEWORK_PYTHON,
+            git_url="https://github.com/org/repo.git",
+            git_provider="GitHub",
+            git_branch="main",
+        )
+
+        serialized = p.to_dict()
+        restored = predictor.Predictor.from_response_json(serialized)
+
+        assert serialized["gitUrl"] == "https://github.com/org/repo.git"
+        assert serialized["gitProvider"] == "GitHub"
+        assert serialized["gitBranch"] == "main"
+        assert restored.git_url == "https://github.com/org/repo.git"
+        assert restored.git_provider == "GitHub"
+        assert restored.git_branch == "main"
+
     # vLLM variant round-trip
 
     def test_vllm_variant_vllm_round_trip(self, mocker, backend_fixtures):
@@ -1306,7 +1375,7 @@ class TestPredictor:
             )
 
         mocker.patch(
-            "hopsworks_common.util.get_predictor_for_model",
+            "hopsworks_common.util._get_predictor_for_model",
             side_effect=fake_get_predictor_for_model,
         )
 
@@ -1359,18 +1428,18 @@ class TestPredictor:
         is_kserve_installed=True,
     ):
         mocker.patch(
-            "hopsworks_common.client.get_serving_num_instances_limits",
+            "hopsworks_common.client._get_serving_num_instances_limits",
             return_value=num_instances,
         )
         mocker.patch(
-            "hopsworks_common.client.is_scale_to_zero_required",
+            "hopsworks_common.client._is_scale_to_zero_required",
             return_value=force_scale_to_zero,
         )
         mocker.patch(
-            "hopsworks_common.client.is_saas_connection",
+            "hopsworks_common.client._is_saas_connection",
             return_value=is_saas_connection,
         )
         mocker.patch(
-            "hopsworks_common.client.is_kserve_installed",
+            "hopsworks_common.client._is_kserve_installed",
             return_value=is_kserve_installed,
         )

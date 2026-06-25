@@ -82,7 +82,7 @@ class FeatureColumnMapping:
 
     @feature_name.setter
     def feature_name(self, feature_name: str) -> None:
-        self._feature_name = util.autofix_feature_name(feature_name, warn=True)
+        self._feature_name = util._autofix_feature_name(feature_name, warn=True)
 
 
 @public("hopsworks.core.FullLoadConfig")
@@ -109,6 +109,7 @@ class FullLoadConfig:
             initial_value=json_decamelized.get("initial_value"),
         )
 
+    @public
     @property
     def source_cursor_field(self) -> str | None:
         return self._source_cursor_field
@@ -117,6 +118,7 @@ class FullLoadConfig:
     def source_cursor_field(self, source_cursor_field: str | None) -> None:
         self._source_cursor_field = source_cursor_field
 
+    @public
     @property
     def initial_value(self) -> str | None:
         return self._initial_value
@@ -195,7 +197,7 @@ class LoadingConfig:
                         )
                     else:
                         incremental_config["initialIngestionDate"] = (
-                            util.get_timestamp_from_date_string(initial_value)
+                            util._get_timestamp_from_date_string(initial_value)
                         )
             if all(value is None for value in incremental_config.values()):
                 incremental_config = None
@@ -420,7 +422,7 @@ class SinkJobConfiguration:
             ),
         )
 
-    def set_extra_params(self, **kwargs) -> None:
+    def _set_extra_params(self, **kwargs) -> None:
         self._featuregroup_id = kwargs.get("featuregroup_id")
         self._featurestore_id = kwargs.get("featurestore_id")
         self._storage_connector_id = kwargs.get("storage_connector_id")
@@ -457,6 +459,7 @@ class SinkJobConfiguration:
     ) -> None:
         self._sql_source_fetch_chunk_size = sql_source_fetch_chunk_size
 
+    @public
     @property
     def source_read_workers(self) -> int | None:
         return self._source_read_workers
@@ -465,6 +468,7 @@ class SinkJobConfiguration:
     def source_read_workers(self, source_read_workers: int | None) -> None:
         self._source_read_workers = source_read_workers
 
+    @public
     @property
     def data_processing_workers(self) -> int | None:
         return self._data_processing_workers
@@ -473,6 +477,7 @@ class SinkJobConfiguration:
     def data_processing_workers(self, data_processing_workers: int | None) -> None:
         self._data_processing_workers = data_processing_workers
 
+    @public
     @property
     def max_upload_batch_size_mb(self) -> int | None:
         return self._max_upload_batch_size_mb
@@ -481,6 +486,7 @@ class SinkJobConfiguration:
     def max_upload_batch_size_mb(self, max_upload_batch_size_mb: int | None) -> None:
         self._max_upload_batch_size_mb = max_upload_batch_size_mb
 
+    @public
     @property
     def sql_table_num_partitions(self) -> int | None:
         return self._sql_table_num_partitions
@@ -489,6 +495,7 @@ class SinkJobConfiguration:
     def sql_table_num_partitions(self, sql_table_num_partitions: int | None) -> None:
         self._sql_table_num_partitions = sql_table_num_partitions
 
+    @public
     @property
     def loading_config(self) -> LoadingConfig | dict | None:
         return self._loading_config
@@ -564,6 +571,7 @@ class SinkJobConfiguration:
                 f"got {type(write_mode).__name__}."
             )
 
+    @public
     @property
     def schedule_config(self) -> JobSchedule | None:
         return self._schedule_config

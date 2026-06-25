@@ -57,7 +57,7 @@ def _handle_opensearch_exception(func):
             # args[0] is 'self' - the ProjectOpenSearchClient instance
             client_wrapper = args[0] if args else None
             if client_wrapper and isinstance(client_wrapper, ProjectOpenSearchClient):
-                client_wrapper.refresh_opensearch_connection()
+                client_wrapper._refresh_opensearch_connection()
             return func(*args, **kw)
         except RequestError as e:
             caused_by = e.info.get("error") and e.info["error"].get("caused_by")
@@ -92,7 +92,7 @@ def _handle_opensearch_exception(func):
                 and isinstance(client_wrapper, ProjectOpenSearchClient)
                 and not client_wrapper.is_cluster_client
             ):
-                OpenSearchClientSingleton.invalidate_cache(
+                OpenSearchClientSingleton._invalidate_cache(
                     client_wrapper.feature_store_id, close_opensearch_client=True
                 )
             raise e
@@ -190,8 +190,8 @@ class ProjectOpenSearchClient:
         retry_on_exception=_is_timeout,
     )
     @_handle_opensearch_exception
-    def search(self, index=None, body=None, options=None):
-        return self.get_opensearch_client().search(
+    def _search(self, index=None, body=None, options=None):
+        return self._get_opensearch_client().search(
             body=body, index=index, params=OpensearchRequestOption.get_options(options)
         )
 
@@ -201,39 +201,49 @@ class ProjectOpenSearchClient:
         retry_on_exception=_is_timeout,
     )
     @_handle_opensearch_exception
-    def count(self, index, body=None, options=None):
-        result = self.get_opensearch_client().count(
+    def _count(self, index, body=None, options=None):
+        result = self._get_opensearch_client().count(
             index=index, body=body, params=OpensearchRequestOption.get_options(options)
         )
         return result["count"]
 
-    def refresh_opensearch_connection(self):
+    def _refresh_opensearch_connection(self):
         """Refresh the OpenSearch connection for the client."""
         if self.is_cluster_client:
-            OpenSearchClientSingleton.get_instance().close_cluster_client()
+            OpenSearchClientSingleton._get_instance()._close_cluster_client()
         else:
-            self.get_opensearch_client().close()
+            self._get_opensearch_client().close()
         self._opensearch_client = None
         # Recreate the client
-        self.get_opensearch_client()
+        self._get_opensearch_client()
 
-    def close(self):
+    def _close(self):
         """Close the underlying OpenSearch client."""
         # Close the client if it is a federated connector client otherwise the cluster client is closed when python client is closed
-        OpenSearchClientSingleton.invalidate_cache(
+        OpenSearchClientSingleton._invalidate_cache(
             self._feature_store_id, close_opensearch_client=self.is_cluster_client
         )
 
         # For default client, close the cluster client
         if not self._feature_store_id:
-            OpenSearchClientSingleton.get_instance().close_cluster_client()
+            OpenSearchClientSingleton._get_instance()._close_cluster_client()
         self._opensearch_client = None
 
     def _create_vector_database_exception(self, message):
         """Create appropriate VectorDatabaseException based on error message."""
-        if "[knn] requires k" in message:
-            pattern = r"\[knn\] requires k <= (\d+)"
-            match = re.search(pattern, message)
+        # Only an upper-bound violation means "k too large". Older OpenSearch
+        # reported "[knn] requires k <= N"; newer versions (2.x) report
+        # "[knn] requires k to be in the range (0, N]". The upper bound N is the
+        # inclusive max in both forms. Other "[knn] requires k ..." messages
+        # (e.g. "requires k > 0") are not too-large errors and fall through to
+        # OTHERS.
+        if (
+            "[knn] requires k <=" in message
+            or "[knn] requires k to be in the range" in message
+        ):
+            match = re.search(r"\[knn\] requires k <= (\d+)", message) or re.search(
+                r"\[knn\] requires k to be in the range \(\d+, (\d+)\]", message
+            )
             if match:
                 k = match.group(1)
                 reason = VectorDatabaseException.REQUESTED_K_TOO_LARGE
@@ -274,19 +284,17 @@ class ProjectOpenSearchClient:
             info = {}
         return VectorDatabaseException(reason, message, info)
 
-    def get_opensearch_client(self):
+    def _get_opensearch_client(self):
         """Get the underlying OpenSearch client."""
         if self.is_cluster_client:
-            return (
-                OpenSearchClientSingleton.get_instance().get_or_create_cluster_client()
-            )
+            return OpenSearchClientSingleton._get_instance()._get_or_create_cluster_client()
         if (
             self._opensearch_client is None
         ):  # when refreshing the connection, opensearch_client is None
             with self._client_lock:
                 if self._opensearch_client is None:
                     _, self._opensearch_client = (
-                        OpenSearchClientSingleton.get_instance()._get_or_create_opensearch_client(
+                        OpenSearchClientSingleton._get_instance()._get_or_create_opensearch_client(
                             self._feature_store_id
                         )
                     )
@@ -380,7 +388,7 @@ class OpenSearchClientSingleton:
         from hsfs.core import storage_connector_api
 
         connector_api = storage_connector_api.StorageConnectorApi()
-        connector = connector_api.get(feature_store_id, self.FEDERATED_CONNECTOR_NAME)
+        connector = connector_api._get(feature_store_id, self.FEDERATED_CONNECTOR_NAME)
 
         if connector is None:
             # Connector doesn't exist, do not cache anything
@@ -420,13 +428,13 @@ class OpenSearchClientSingleton:
         logging.getLogger("opensearch").setLevel(logging.WARNING)
 
         if feature_store_id is None:
-            return True, self.get_or_create_cluster_client()
+            return True, self._get_or_create_cluster_client()
 
         # Try to get federated connector config first
         opensearch_config = self._get_federated_opensearch_config(feature_store_id)
 
         if opensearch_config is None:
-            return True, self.get_or_create_cluster_client()
+            return True, self._get_or_create_cluster_client()
 
         opensearch_config[OPENSEARCH_CONFIG.HEADERS] = {
             "Authorization": self._opensearch_api._get_authorization_token(
@@ -437,7 +445,7 @@ class OpenSearchClientSingleton:
         # Dedicated client for this feature store
         return False, OpenSearch(**opensearch_config)
 
-    def get_or_create_cluster_client(self):
+    def _get_or_create_cluster_client(self):
         """Get or create a cluster client."""
         if self._default_opensearch_client is not None:
             return self._default_opensearch_client
@@ -447,7 +455,7 @@ class OpenSearchClientSingleton:
         )
         return self._default_opensearch_client
 
-    def close_cluster_client(self):
+    def _close_cluster_client(self):
         """Close the cluster client."""
         with self._cache_lock:
             if self._default_opensearch_client is not None:
@@ -455,13 +463,13 @@ class OpenSearchClientSingleton:
                 self._default_opensearch_client = None
 
     @classmethod
-    def close_all(cls):
+    def _close_all(cls):
         """Close all cached OpenSearch clients. Thread-safe."""
         if cls._instance and hasattr(cls._instance, "_wrapper_cache"):
             with cls._instance._cache_lock:
                 for client in list(cls._instance._wrapper_cache.values()):
                     with contextlib.suppress(Exception):
-                        client.close()
+                        client._close()
                 cls._instance._wrapper_cache.clear()
                 # Also clear federated connector cache
                 if hasattr(cls._instance, "_federated_connector_cache"):
@@ -472,7 +480,7 @@ class OpenSearchClientSingleton:
         cls._instance = None
 
     @classmethod
-    def get_instance(cls) -> OpenSearchClientSingleton:
+    def _get_instance(cls) -> OpenSearchClientSingleton:
         """Get the singleton instance.
 
         Returns:
@@ -481,7 +489,7 @@ class OpenSearchClientSingleton:
         return cls._instance
 
     @classmethod
-    def invalidate_cache(
+    def _invalidate_cache(
         cls, feature_store_id: int = None, close_opensearch_client: bool = False
     ):
         """Invalidate cached ProjectOpenSearchClient and connector config.
@@ -504,7 +512,7 @@ class OpenSearchClientSingleton:
                         with contextlib.suppress(Exception):
                             closed_client = cls._instance._wrapper_cache[
                                 fs_cache_key
-                            ].get_opensearch_client()
+                            ]._get_opensearch_client()
                             closed_client.close()
                     del cls._instance._wrapper_cache[fs_cache_key]
 

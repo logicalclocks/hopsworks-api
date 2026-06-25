@@ -39,7 +39,7 @@ class PredictorStateCondition:
     @public
     def describe(self):
         """Print a JSON description of the predictor state condition."""
-        util.pretty_print(self)
+        util._pretty_print(self)
 
     @classmethod
     def from_response_json(cls, json_dict):
@@ -54,8 +54,8 @@ class PredictorStateCondition:
     def extract_fields_from_json(cls, json_decamelized):
         kwargs = {}
         kwargs["type"] = json_decamelized.pop("type")  # required
-        kwargs["status"] = util.extract_field_from_json(json_decamelized, "status")
-        kwargs["reason"] = util.extract_field_from_json(json_decamelized, "reason")
+        kwargs["status"] = util._extract_field_from_json(json_decamelized, "status")
+        kwargs["reason"] = util._extract_field_from_json(json_decamelized, "reason")
         return kwargs
 
     def update_from_response_json(self, json_dict):

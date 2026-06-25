@@ -513,10 +513,10 @@ class TestTransformer:
     # auxiliary methods
     def _mock_serving_variables(self, mocker, num_instances, force_scale_to_zero=False):
         mocker.patch(
-            "hopsworks_common.client.get_serving_num_instances_limits",
+            "hopsworks_common.client._get_serving_num_instances_limits",
             return_value=num_instances,
         )
         mocker.patch(
-            "hopsworks_common.client.is_scale_to_zero_required",
+            "hopsworks_common.client._is_scale_to_zero_required",
             return_value=force_scale_to_zero,
         )

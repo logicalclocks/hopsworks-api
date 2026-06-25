@@ -60,7 +60,7 @@ class TestStorageConnectorGetData:
         )
         mocker.patch.object(
             connector._data_source_api,
-            "get_crm_resources",
+            "_get_crm_resources",
             return_value=type(
                 "CRMResources", (), {"supported_resources": ["contacts", "deals"]}
             )(),

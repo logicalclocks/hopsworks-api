@@ -49,7 +49,7 @@ class InferenceBatcher:
     @public
     def describe(self):
         """Print a JSON description of the inference batcher."""
-        util.pretty_print(self)
+        util._pretty_print(self)
 
     @classmethod
     def from_response_json(cls, json_dict):
@@ -68,14 +68,14 @@ class InferenceBatcher:
             else json_decamelized
         )
         kwargs = {}
-        kwargs["enabled"] = util.extract_field_from_json(
+        kwargs["enabled"] = util._extract_field_from_json(
             config, ["batching_enabled", "enabled"]
         )
-        kwargs["max_batch_size"] = util.extract_field_from_json(
+        kwargs["max_batch_size"] = util._extract_field_from_json(
             config, "max_batch_size"
         )
-        kwargs["max_latency"] = util.extract_field_from_json(config, "max_latency")
-        kwargs["timeout"] = util.extract_field_from_json(config, "timeout")
+        kwargs["max_latency"] = util._extract_field_from_json(config, "max_latency")
+        kwargs["timeout"] = util._extract_field_from_json(config, "timeout")
 
         return kwargs
 

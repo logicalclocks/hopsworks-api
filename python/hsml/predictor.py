@@ -29,6 +29,7 @@ from hopsworks_common.constants import (
 )
 from hsml import deployment
 from hsml.deployable_component import DeployableComponent
+from hsml.deployment_tracing_config import DeploymentTracingConfig
 from hsml.inference_batcher import InferenceBatcher
 from hsml.inference_logger import InferenceLogger
 from hsml.predictor_state import PredictorState
@@ -80,6 +81,10 @@ class Predictor(DeployableComponent):
         env_vars: dict[str, str] | None = None,
         vllm_variant: str | None = None,
         vllm_image_tag: str | None = None,
+        tracing: DeploymentTracingConfig | dict | Default | None = None,
+        git_url: str | None = None,
+        git_provider: str | None = None,
+        git_branch: str | None = None,
         **kwargs,
     ):
         serving_tool = (
@@ -87,10 +92,10 @@ class Predictor(DeployableComponent):
             or self._get_default_serving_tool()
         )
         resources = self._validate_resources(
-            util.get_obj_from_json(resources, PredictorResources), serving_tool
+            util._get_obj_from_json(resources, PredictorResources), serving_tool
         ) or self._get_default_resources(serving_tool)
 
-        self._scaling_configuration = util.get_obj_from_json(
+        self._scaling_configuration = util._get_obj_from_json(
             scaling_configuration, PredictorScalingConfig
         ) or PredictorScalingConfig.get_default_scaling_configuration(
             serving_tool=serving_tool,
@@ -118,16 +123,20 @@ class Predictor(DeployableComponent):
         self._created_at = created_at
         self._creator = creator
 
-        self._inference_logger = util.get_obj_from_json(
+        self._inference_logger = util._get_obj_from_json(
             inference_logger, InferenceLogger
         )
-        self._transformer = util.get_obj_from_json(transformer, Transformer)
+        self._transformer = util._get_obj_from_json(transformer, Transformer)
         self._validate_script_file(self._model_framework, self._script_file)
         self._api_protocol = api_protocol
         self._environment = environment
         self._project_namespace = project_namespace
         self._project_name = None
         self._env_vars = env_vars
+        self._tracing = util._get_obj_from_json(tracing, DeploymentTracingConfig)
+        self._git_url = git_url
+        self._git_provider = git_provider
+        self._git_branch = git_branch
         self._vllm_variant = vllm_variant
         self._vllm_image_tag = vllm_image_tag
 
@@ -170,7 +179,7 @@ class Predictor(DeployableComponent):
     @public
     def describe(self):
         """Print a JSON description of the predictor."""
-        util.pretty_print(self)
+        util._pretty_print(self)
 
     def _set_state(self, state: PredictorState):
         """Set the state of the predictor."""
@@ -179,7 +188,7 @@ class Predictor(DeployableComponent):
     @classmethod
     def _validate_serving_tool(cls, serving_tool):
         if serving_tool is not None:
-            if client.is_saas_connection():
+            if client._is_saas_connection():
                 # only kserve supported in saasy hopsworks
                 if serving_tool != PREDICTOR.SERVING_TOOL_KSERVE:
                     raise ValueError(
@@ -187,7 +196,7 @@ class Predictor(DeployableComponent):
                     )
                 return serving_tool
             # if not saas, check valid serving_tool
-            serving_tools = list(util.get_members(PREDICTOR, prefix="SERVING_TOOL"))
+            serving_tools = list(util._get_members(PREDICTOR, prefix="SERVING_TOOL"))
             if serving_tool not in serving_tools:
                 raise ValueError(
                     "Serving tool '{}' is not valid. Possible values are '{}'".format(
@@ -216,7 +225,7 @@ class Predictor(DeployableComponent):
         # set kserve as default if it is available
         return (
             PREDICTOR.SERVING_TOOL_KSERVE
-            if client.is_kserve_installed()
+            if client._is_kserve_installed()
             else PREDICTOR.SERVING_TOOL_DEFAULT
         )
 
@@ -226,7 +235,7 @@ class Predictor(DeployableComponent):
             resources is not None
             and serving_tool == PREDICTOR.SERVING_TOOL_KSERVE
             and cls._get_raw_num_instances(resources) != 0
-            and client.is_scale_to_zero_required()
+            and client._is_scale_to_zero_required()
         ):
             # ensure scale-to-zero for kserve deployments when required
             raise ValueError(
@@ -239,11 +248,12 @@ class Predictor(DeployableComponent):
         num_instances = (
             0  # enable scale-to-zero by default if required
             if serving_tool == PREDICTOR.SERVING_TOOL_KSERVE
-            and client.is_scale_to_zero_required()
+            and client._is_scale_to_zero_required()
             else SCALING_CONFIG.MIN_NUM_INSTANCES
         )
         return PredictorResources(num_instances)
 
+    @public
     @classmethod
     def for_model(cls, model, **kwargs):
         kwargs["model_name"] = model.name
@@ -251,13 +261,13 @@ class Predictor(DeployableComponent):
         kwargs["model_version"] = model.version
 
         # get predictor for specific model, includes model type-related validations
-        return util.get_predictor_for_model(model=model, **kwargs)
+        return util._get_predictor_for_model(model=model, **kwargs)
 
     @public
     @classmethod
     def for_server(cls, name: str, script_file: str, **kwargs):
         # get predictor for a HTTP server without model
-        return util.get_predictor_for_server(
+        return util._get_predictor_for_server(
             name=name, script_file=script_file, **kwargs
         )
 
@@ -284,20 +294,20 @@ class Predictor(DeployableComponent):
     def extract_fields_from_json(cls, json_decamelized):
         kwargs = {}
         kwargs["name"] = json_decamelized.pop("name")
-        kwargs["description"] = util.extract_field_from_json(
+        kwargs["description"] = util._extract_field_from_json(
             json_decamelized, "description"
         )
         kwargs["version"] = json_decamelized.pop("version")
         with_model = "model_version" in json_decamelized
-        kwargs["model_name"] = util.extract_field_from_json(
+        kwargs["model_name"] = util._extract_field_from_json(
             json_decamelized,
             "model_name",
             default=(kwargs["name"] if with_model else None),
         )
-        kwargs["model_version"] = util.extract_field_from_json(
+        kwargs["model_version"] = util._extract_field_from_json(
             json_decamelized, "model_version"
         )
-        kwargs["model_path"] = util.extract_field_from_json(
+        kwargs["model_path"] = util._extract_field_from_json(
             json_decamelized, "model_path"
         )
         kwargs["model_framework"] = (
@@ -309,16 +319,28 @@ class Predictor(DeployableComponent):
         )
         kwargs["model_server"] = json_decamelized.pop("model_server")
         kwargs["serving_tool"] = json_decamelized.pop("serving_tool")
-        kwargs["script_file"] = util.extract_field_from_json(
+        kwargs["script_file"] = util._extract_field_from_json(
             json_decamelized, "predictor"
         )
-        kwargs["config_file"] = util.extract_field_from_json(
+        kwargs["config_file"] = util._extract_field_from_json(
             json_decamelized, "config_file"
         )
         kwargs["resources"] = PredictorResources.from_json(json_decamelized)
         kwargs["inference_logger"] = InferenceLogger.from_json(json_decamelized)
         kwargs["inference_batcher"] = InferenceBatcher.from_json(json_decamelized)
         kwargs["transformer"] = Transformer.from_json(json_decamelized)
+        kwargs["tracing"] = util._extract_field_from_json(
+            json_decamelized,
+            ["tracing", "tracing_config"],
+            as_instance_of=DeploymentTracingConfig,
+        )
+        kwargs["git_url"] = util._extract_field_from_json(json_decamelized, "git_url")
+        kwargs["git_provider"] = util._extract_field_from_json(
+            json_decamelized, "git_provider"
+        )
+        kwargs["git_branch"] = util._extract_field_from_json(
+            json_decamelized, "git_branch"
+        )
         kwargs["id"] = json_decamelized.pop("id")
         kwargs["created_at"] = json_decamelized.pop("created")
         kwargs["creator"] = json_decamelized.pop("creator")
@@ -335,10 +357,10 @@ class Predictor(DeployableComponent):
         kwargs["scaling_configuration"] = PredictorScalingConfig.from_json(
             json_decamelized
         )
-        kwargs["vllm_variant"] = util.extract_field_from_json(
+        kwargs["vllm_variant"] = util._extract_field_from_json(
             json_decamelized, "vllm_variant"
         )
-        kwargs["vllm_image_tag"] = util.extract_field_from_json(
+        kwargs["vllm_image_tag"] = util._extract_field_from_json(
             json_decamelized, "vllm_image_tag"
         )
         return kwargs
@@ -396,6 +418,14 @@ class Predictor(DeployableComponent):
             json = {**json, **self._inference_batcher.to_dict()}
         if self._transformer is not None:
             json = {**json, **self._transformer.to_dict()}
+        if self._tracing is not None:
+            json = {**json, "tracing": self._tracing.to_dict()}
+        if self._git_url is not None:
+            json = {**json, "gitUrl": self._git_url}
+        if self._git_provider is not None:
+            json = {**json, "gitProvider": self._git_provider}
+        if self._git_branch is not None:
+            json = {**json, "gitBranch": self._git_branch}
         if self._scaling_configuration is not None:
             json = {**json, **self._scaling_configuration.to_dict()}
         return json
@@ -570,6 +600,46 @@ class Predictor(DeployableComponent):
 
     @public
     @property
+    def tracing(self):
+        """Tracing configuration attached to the predictor."""
+        return self._tracing
+
+    @tracing.setter
+    def tracing(self, tracing: DeploymentTracingConfig | dict | Default | None):
+        self._tracing = util._get_obj_from_json(tracing, DeploymentTracingConfig)
+
+    @public
+    @property
+    def git_url(self):
+        """Configured Git repository URL for this deployment."""
+        return self._git_url
+
+    @git_url.setter
+    def git_url(self, git_url: str | None):
+        self._git_url = git_url
+
+    @public
+    @property
+    def git_provider(self):
+        """Configured Git provider for this deployment."""
+        return self._git_provider
+
+    @git_provider.setter
+    def git_provider(self, git_provider: str | None):
+        self._git_provider = git_provider
+
+    @public
+    @property
+    def git_branch(self):
+        """Configured Git branch for this deployment."""
+        return self._git_branch
+
+    @git_branch.setter
+    def git_branch(self, git_branch: str | None):
+        self._git_branch = git_branch
+
+    @public
+    @property
     def created_at(self):
         """Created at date of the predictor."""
         return self._created_at
@@ -609,6 +679,7 @@ class Predictor(DeployableComponent):
     def env_vars(self, env_vars: dict[str, str] | None):
         self._env_vars = env_vars
 
+    @public
     @property
     def environment(self):
         """Name of the inference environment."""
@@ -682,7 +753,7 @@ class Predictor(DeployableComponent):
 
         serving = serving_api.ServingApi()
 
-        istio_client = client.istio.get_instance()
+        istio_client = client.istio._get_instance()
         if istio_client is not None:
             path_parts = serving._get_istio_inference_path(self, base_only=True)
             return f"{istio_client._base_url}/{'/'.join(str(p) for p in path_parts)}"
@@ -745,13 +816,13 @@ class Predictor(DeployableComponent):
         serving = serving_api.ServingApi()
 
         # Try Istio client first
-        istio_client = client.istio.get_instance()
+        istio_client = client.istio._get_instance()
         if istio_client is not None:
             path_parts = serving._get_istio_inference_path(self, base_only=False)
             return f"{istio_client._base_url}/{'/'.join(str(p) for p in path_parts)}"
 
         # Fallback to Hopsworks REST API path
-        hopsworks_client = client.get_instance()
+        hopsworks_client = client._get_instance()
         path_parts = serving._get_hopsworks_inference_path(
             hopsworks_client._project_id, self
         )
@@ -763,4 +834,11 @@ class Predictor(DeployableComponent):
             if self._description is not None
             else ""
         )
-        return f"Predictor(name: {self._name!r}" + desc + ")"
+        git = ""
+        if self._git_url is not None:
+            git += f", git_url: {self._git_url!r}"
+        if self._git_provider is not None:
+            git += f", git_provider: {self._git_provider!r}"
+        if self._git_branch is not None:
+            git += f", git_branch: {self._git_branch!r}"
+        return f"Predictor(name: {self._name!r}" + desc + git + ")"

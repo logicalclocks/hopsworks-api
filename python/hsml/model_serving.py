@@ -42,9 +42,17 @@ except ImportError:
 
 
 _AGENT_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+_GIT_PROVIDER_ALIASES = {
+    "github": "GitHub",
+    "gitlab": "GitLab",
+    "bitbucket": "BitBucket",
+}
+_SAFE_GIT_RELATIVE_PATH_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
+_SAFE_GIT_BRANCH_NAME_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 
 
 if TYPE_CHECKING:
+    from hsml.deployment_tracing_config import DeploymentTracingConfig
     from hsml.inference_batcher import InferenceBatcher
     from hsml.inference_endpoint import InferenceEndpoint
     from hsml.inference_logger import InferenceLogger
@@ -69,7 +77,7 @@ class ModelServing:
         self._serving_api = serving_api.ServingApi()
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_deployment_by_id(self, id: int) -> Deployment | None:
         """Get a deployment by id from Model Serving.
 
@@ -92,10 +100,10 @@ class ModelServing:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If unable to retrieve deployment from model serving.
         """
-        return self._serving_api.get_by_id(id)
+        return self._serving_api._get_by_id(id)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_deployment(self, name: str = None) -> Deployment | None:
         """Get a deployment by name from Model Serving.
 
@@ -121,10 +129,10 @@ class ModelServing:
         """
         if name is None and ("DEPLOYMENT_NAME" in os.environ):
             name = os.environ["DEPLOYMENT_NAME"]
-        return self._serving_api.get(name)
+        return self._serving_api._get(name)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def get_deployments(
         self, model: Model = None, status: str = None
     ) -> list[Deployment]:
@@ -163,10 +171,10 @@ class ModelServing:
         if status is not None:
             self._validate_deployment_status(status)
 
-        return self._serving_api.get_all(model_name, status)
+        return self._serving_api._get_all(model_name, status)
 
     def _validate_deployment_status(self, status):
-        statuses = list(util.get_members(PREDICTOR_STATE, prefix="STATUS"))
+        statuses = list(util._get_members(PREDICTOR_STATE, prefix="STATUS"))
         status = status.upper()
         if status not in statuses:
             raise ValueError(
@@ -183,10 +191,10 @@ class ModelServing:
         Returns:
             Inference endpoints for model inference
         """
-        return self._serving_api.get_inference_endpoints()
+        return self._serving_api._get_inference_endpoints()
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_predictor(
         self,
         model: Model,
@@ -206,6 +214,7 @@ class ModelServing:
         env_vars: dict | None = None,
         vllm_variant: str | None = None,
         vllm_image_tag: str | None = None,
+        tracing: DeploymentTracingConfig | dict | None = None,
     ) -> Predictor:
         """Create a Predictor metadata object.
 
@@ -236,8 +245,8 @@ class ModelServing:
             name: Name of the predictor.
             artifact_version: (**Deprecated**) Version number of the model artifact to deploy, `CREATE` to create a new model artifact or `MODEL-ONLY` to reuse the shared artifact containing only the model files.
             serving_tool: Serving tool used to deploy the model server.
-            script_file: Path to a custom predictor script implementing the Predict class.
-            config_file: Model server configuration file to be passed to the model deployment.
+            script_file: Path to a custom predictor script implementing the Predict class, either local or already uploaded to HopsFS. The script must implement a `Predictor` class with a `predict(self, inputs)` method that takes the model inputs and returns the model predictions. The script is passed to the model deployment and can be accessed via the `SCRIPT_FILE_PATH` environment variable from within the predictor script.
+            config_file: Model server configuration file to be passed to the model deployment, either local or already uploaded to HopsFS.
                 It can be accessed via `CONFIG_FILE_PATH` environment variable from a predictor script.
                 For LLM deployments without a predictor script, this file is used to configure the vLLM engine.
             resources: Resources to be allocated for the predictor.
@@ -250,6 +259,7 @@ class ModelServing:
             env_vars: Environment variables to set on the predictor.
             vllm_variant: vLLM image variant for vLLM deployments. One of `'VLLM'` or `'VLLM_OMNI'`. Ignored for non-vLLM model servers.
             vllm_image_tag: vLLM image tag override. `None` uses the cluster default; if set, it should match one of the tags made available by a cluster administrator. Ignored for non-vLLM model servers.
+            tracing: Tracing configuration for the predictor.
 
         Returns:
             The predictor metadata object.
@@ -273,10 +283,11 @@ class ModelServing:
             env_vars=env_vars,
             vllm_variant=vllm_variant,
             vllm_image_tag=vllm_image_tag,
+            tracing=tracing,
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_transformer(
         self,
         script_file: str | None = None,
@@ -289,9 +300,6 @@ class ModelServing:
         Example:
             ```python
             # login into Hopsworks using hopsworks.login()
-
-            # get Dataset API instance
-            dataset_api = project.get_dataset_api()
 
             # get Hopsworks Model Serving handle
             ms = project.get_model_serving()
@@ -310,16 +318,17 @@ class ModelServing:
                     ''' Transform the predictions computed by the model before returning a response '''
                     return outputs
 
-            uploaded_file_path = dataset_api.upload("my_transformer.py", "Resources", overwrite=True)
-            transformer_script_path = os.path.join("/Projects", project.name, uploaded_file_path)
+            # Local path — auto-uploaded on save.
+            my_transformer = ms.create_transformer(script_file="my_transformer.py")
 
-            my_transformer = ms.create_transformer(script_file=uploaded_file_path)
+            # Or an already-uploaded HopsFS path:
+            my_transformer = ms.create_transformer(
+                script_file="/Projects/<project>/Resources/my_transformer.py"
+            )
 
-            # or
-
+            # Or the Transformer class directly:
             from hsml.transformer import Transformer
-
-            my_transformer = Transformer(script_file)
+            my_transformer = Transformer(script_file="my_transformer.py")
             ```
 
         Example: Create a deployment with the transformer
@@ -337,7 +346,7 @@ class ModelServing:
             This method is lazy and does not persist any metadata or deploy any transformer. To create a deployment using this transformer, set it in the `predictor.transformer` property.
 
         Parameters:
-            script_file: Path to a custom predictor script implementing the Transformer class.
+            script_file: Path to a custom predictor script implementing the Transformer class, either local or already uploaded to HopsFS.
             resources: Resources to be allocated for the transformer.
             scaling_configuration: Scaling configuration for the transformer.
             env_vars: Environment variables to set on the transformer.
@@ -353,7 +362,7 @@ class ModelServing:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_endpoint(
         self,
         name: str,
@@ -366,6 +375,10 @@ class ModelServing:
         environment: str | None = None,
         scaling_configuration: PredictorScalingConfig | dict | None = None,
         env_vars: dict | None = None,
+        tracing: DeploymentTracingConfig | dict | None = None,
+        git_url: str | None = None,
+        git_provider: str | None = None,
+        git_branch: str | None = None,
     ) -> Predictor:
         """Create an Entrypoint metadata object.
 
@@ -387,7 +400,7 @@ class ModelServing:
 
         Parameters:
             name: Name of the endpoint.
-            script_file: Path to a custom script file implementing a HTTP server.
+            script_file: Path to a custom script file implementing a HTTP server, either local or already uploaded to HopsFS.
             description: Description of the endpoint.
             resources: Resources to be allocated for the predictor.
             inference_logger: Inference logger configuration.
@@ -396,10 +409,21 @@ class ModelServing:
             environment: The project Python environment to use
             scaling_configuration: Scaling configuration for the predictor.
             env_vars: Environment variables to set on the predictor.
+            tracing: Tracing configuration for the endpoint.
+            git_url: Optional Git repository URL for a git-backed endpoint.
+            git_provider: Git provider for git-backed endpoints.
+            git_branch: Optional branch to clone for git-backed endpoints.
 
         Returns:
             The predictor metadata object.
         """
+        git_url = _trim_to_none(git_url)
+        git_provider = _normalize_git_provider(git_provider)
+        git_branch = _trim_to_none(git_branch)
+
+        if git_url is not None:
+            _validate_git_agent_source(script_file, git_url, git_provider, git_branch)
+
         return Predictor.for_server(
             name=name,
             script_file=script_file,
@@ -411,10 +435,14 @@ class ModelServing:
             environment=environment,
             scaling_configuration=scaling_configuration,
             env_vars=env_vars,
+            tracing=tracing,
+            git_url=git_url,
+            git_provider=git_provider,
+            git_branch=git_branch,
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def deploy_agent(
         self,
         entry: str,
@@ -428,6 +456,10 @@ class ModelServing:
         inference_batcher: InferenceBatcher | dict | None = None,
         api_protocol: str | None = IE.API_PROTOCOL_REST,
         scaling_configuration: PredictorScalingConfig | dict | None = None,
+        tracing: DeploymentTracingConfig | dict | None = None,
+        git_url: str | None = None,
+        git_provider: str | None = None,
+        git_branch: str | None = None,
     ) -> Deployment:
         """Deploy a Python script or package as an agent.
 
@@ -439,6 +471,7 @@ class ModelServing:
         Pass either a `.py` script or a directory containing a `pyproject.toml`.
         For a script, the file is uploaded and run directly.
         For a package, a wheel is built locally with the project's PEP 517 backend, uploaded, and installed; a small runner module invokes the package via `runpy.run_module`.
+        When `git_url` is set, `entry` must be a safe relative `.py` path inside the repository and is used as-is.
 
         ```python
         ms = project.get_model_serving()
@@ -469,6 +502,11 @@ class ModelServing:
             inference_batcher: Inference batcher configuration.
             api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC').
             scaling_configuration: Scaling configuration for the predictor.
+            tracing: Tracing configuration for the deployment.
+            git_url: Optional Git repository URL. When set, `entry` is treated as
+                a relative path inside the repository and is not uploaded.
+            git_provider: Git provider for git-backed agent deployments.
+            git_branch: Optional branch to clone for git-backed agent deployments.
 
         Returns:
             The deployment metadata object.
@@ -477,18 +515,39 @@ class ModelServing:
             ValueError: If `entry` is neither a `.py` file nor a directory with `pyproject.toml`, or if `name`/`environment` contain characters outside `[A-Za-z0-9_-]`.
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        entry_abs = os.path.abspath(entry)
-        is_script = os.path.isfile(entry_abs) and entry_abs.endswith(".py")
-        is_package = os.path.isdir(entry_abs) and os.path.isfile(
-            os.path.join(entry_abs, "pyproject.toml")
-        )
-        if not (is_script or is_package):
-            raise ValueError(
-                f"entry must be a .py file or a directory containing pyproject.toml: {entry}"
+        entry = _trim_to_none(entry)
+        if entry is None:
+            raise ValueError("entry must not be empty")
+        requirements = _trim_to_none(requirements)
+
+        git_url = _trim_to_none(git_url)
+        git_provider = _normalize_git_provider(git_provider)
+        git_branch = _trim_to_none(git_branch)
+        git_backed = git_url is not None
+
+        if git_backed:
+            _validate_git_agent_source(entry, git_url, git_provider, git_branch)
+            is_script = True
+            is_package = False
+            script_file = entry
+        else:
+            entry_abs = os.path.abspath(entry)
+            is_script = os.path.isfile(entry_abs) and entry_abs.endswith(".py")
+            is_package = os.path.isdir(entry_abs) and os.path.isfile(
+                os.path.join(entry_abs, "pyproject.toml")
             )
+            if not (is_script or is_package):
+                raise ValueError(
+                    f"entry must be a .py file or a directory containing pyproject.toml: {entry}"
+                )
+
+            script_file = None
 
         if name is None:
-            name = os.path.basename(entry_abs)
+            default_name_source = entry
+            if not git_backed:
+                default_name_source = os.path.basename(entry_abs)
+            name = os.path.basename(default_name_source)
             if is_script:
                 name = os.path.splitext(name)[0]
         _validate_agent_identifier(name, "name")
@@ -502,19 +561,7 @@ class ModelServing:
         ds_api = _dataset_api.DatasetApi()
         env_api = _environment_api.EnvironmentApi()
 
-        _ensure_dataset_dir(ds_api, agent_dir)
-
-        env = env_api.get_environment(env_name) or env_api.create_environment(
-            env_name, base_environment_name="python-agent-pipeline"
-        )
-
-        if is_script:
-            script_file = ds_api.upload(entry_abs, agent_dir, overwrite=True)
-        else:
-            script_file = _build_and_install_package(ds_api, env, entry_abs, agent_dir)
-        # The serving backend expects the script path under /Projects/<proj>/...
-        script_file = util.convert_to_abs(script_file, self._project_name)
-
+        requirements_abs = None
         if requirements is not None:
             requirements_abs = os.path.abspath(requirements)
             if not os.path.isfile(requirements_abs):
@@ -522,6 +569,25 @@ class ModelServing:
                     "requirements must be a path to an existing file: "
                     + requirements_abs
                 )
+
+        if not git_backed or requirements_abs is not None:
+            _ensure_dataset_dir(ds_api, agent_dir)
+
+        env = env_api.get_environment(env_name) or env_api.create_environment(
+            env_name, base_environment_name="python-agent-pipeline"
+        )
+
+        if not git_backed:
+            if is_script:
+                script_file = ds_api.upload(entry_abs, agent_dir, overwrite=True)
+            else:
+                script_file = _build_and_install_package(
+                    ds_api, env, entry_abs, agent_dir
+                )
+            # The serving backend expects the script path under /Projects/<proj>/...
+            script_file = util._convert_to_abs(script_file, self._project_name)
+
+        if requirements_abs is not None:
             req_remote = ds_api.upload(requirements_abs, agent_dir, overwrite=True)
             env.install_requirements(req_remote)
 
@@ -535,6 +601,10 @@ class ModelServing:
             api_protocol=api_protocol,
             environment=env_name,
             scaling_configuration=scaling_configuration,
+            tracing=tracing,
+            git_url=git_url if git_backed else None,
+            git_provider=git_provider if git_backed else None,
+            git_branch=git_branch if git_backed else None,
         )
 
         existing = self.get_deployment(name)
@@ -551,7 +621,7 @@ class ModelServing:
         return predictor.deploy()
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def create_deployment(
         self,
         predictor: Predictor,
@@ -694,7 +764,7 @@ def _build_and_install_package(ds_api, env, package_dir: str, agent_dir: str) ->
 
     Returns the remote path of the runner script to use as `script_file`.
     """
-    from build import ProjectBuilder
+    from build import ProjectBuilder  # noqa: I001
     from build.env import DefaultIsolatedEnv
 
     pkg_name = _read_package_name(package_dir)
@@ -777,3 +847,68 @@ def _read_package_name(package_dir: str) -> str:
             f"Cannot read [project].name as a static string from {package_dir}/pyproject.toml"
         )
     return pkg_name
+
+
+def _trim_to_none(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        value = str(value)
+    trimmed = value.strip()
+    return trimmed or None
+
+
+def _normalize_git_provider(git_provider: str | None) -> str | None:
+    if hasattr(git_provider, "git_provider"):
+        git_provider = git_provider.git_provider
+    provider = _trim_to_none(git_provider)
+    if not provider:
+        return None
+    normalized = _GIT_PROVIDER_ALIASES.get(provider.lower())
+    return normalized or provider
+
+
+def _is_valid_https_url(value: str | None) -> bool:
+    if not value:
+        return False
+    from urllib.parse import urlparse
+
+    try:
+        parsed = urlparse(value)
+    except ValueError:
+        return False
+    return parsed.scheme.lower() == "https" and bool(parsed.netloc)
+
+
+def _is_safe_relative_path(value: str) -> bool:
+    return (
+        not value.startswith("/")
+        and ".." not in value
+        and bool(_SAFE_GIT_RELATIVE_PATH_RE.fullmatch(value))
+    )
+
+
+def _is_safe_branch_name(value: str) -> bool:
+    return (
+        not value.startswith("-")
+        and ".." not in value
+        and bool(_SAFE_GIT_BRANCH_NAME_RE.fullmatch(value))
+    )
+
+
+def _validate_git_agent_source(
+    entry: str,
+    git_url: str | None,
+    git_provider: str | None,
+    git_branch: str | None,
+) -> None:
+    if not _is_valid_https_url(git_url):
+        raise ValueError("Git URL must be a valid https URL.")
+    if not git_provider:
+        raise ValueError("Git provider is required for Git-backed deployments.")
+    if not _is_safe_relative_path(entry):
+        raise ValueError("Predictor script must be a safe relative path.")
+    if not entry.endswith(".py"):
+        raise ValueError("Predictor script must be a .py file.")
+    if git_branch is not None and not _is_safe_branch_name(git_branch):
+        raise ValueError("Git branch must be a safe branch name.")

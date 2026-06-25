@@ -65,23 +65,26 @@ class Environment:
             return [cls(**env) for env in json_decamelized["items"]]
         return cls(**json_decamelized)
 
+    @public
     @property
     def python_version(self):
         """Python version of the environment."""
         return self._python_version
 
+    @public
     @property
     def name(self):
         """Name of the environment."""
         return self._name
 
+    @public
     @property
     def description(self):
         """Description of the environment."""
         return self._description
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def install_wheel(self, path: str, await_installation: bool | None = True):
         """Install a python library packaged in a wheel file.
 
@@ -109,12 +112,12 @@ class Environment:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         # Wait for any ongoing environment operations
-        self._environment_engine.await_environment_command(self.name)
+        self._environment_engine._await_environment_command(self.name)
 
         library_name = os.path.basename(path)
 
-        _client = client.get_instance()
-        path = util.convert_to_abs(path, _client._project_name)
+        _client = client._get_instance()
+        path = util._convert_to_abs(path, _client._project_name)
 
         library_spec = {
             "dependencyUrl": path,
@@ -125,10 +128,10 @@ class Environment:
         self._library_api._install(library_name, self.name, library_spec)
 
         if await_installation:
-            self._environment_engine.await_library_command(self.name, library_name)
+            self._environment_engine._await_library_command(self.name, library_name)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def install_requirements(self, path: str, await_installation: bool | None = True):
         """Install libraries specified in a `requirements.txt` file.
 
@@ -156,12 +159,12 @@ class Environment:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         # Wait for any ongoing environment operations
-        self._environment_engine.await_environment_command(self.name)
+        self._environment_engine._await_environment_command(self.name)
 
         library_name = os.path.basename(path)
 
-        _client = client.get_instance()
-        path = util.convert_to_abs(path, _client._project_name)
+        _client = client._get_instance()
+        path = util._convert_to_abs(path, _client._project_name)
 
         library_spec = {
             "dependencyUrl": path,
@@ -172,10 +175,10 @@ class Environment:
         self._library_api._install(library_name, self.name, library_spec)
 
         if await_installation:
-            self._environment_engine.await_library_command(self.name, library_name)
+            self._environment_engine._await_library_command(self.name, library_name)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def uninstall(
         self, library_name: str, await_uninstallation: bool | None = True
     ) -> None:
@@ -200,15 +203,15 @@ class Environment:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         # Wait for any ongoing environment operations
-        self._environment_engine.await_environment_command(self.name)
+        self._environment_engine._await_environment_command(self.name)
 
         self._library_api._uninstall(library_name, self.name)
 
         if await_uninstallation:
-            self._environment_engine.await_library_command(self.name, library_name)
+            self._environment_engine._await_library_command(self.name, library_name)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def delete(self):
         """Delete the environment.
 

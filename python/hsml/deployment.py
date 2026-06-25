@@ -28,7 +28,9 @@ from hsml.engine import serving_engine
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from hsfs.core.feature_monitoring_config import FeatureMonitoringConfig
     from hsml.client.istio.utils.infer_type import InferInput
+    from hsml.deployment_tracing_config import DeploymentTracingConfig
     from hsml.inference_batcher import InferenceBatcher
     from hsml.inference_logger import InferenceLogger
     from hsml.predictor_state import PredictorState
@@ -76,7 +78,7 @@ class Deployment:
         self._model_registry_id = None
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def save(self, await_update: int | None = 600):
         """Persist this deployment including the predictor and metadata to Model Serving.
 
@@ -88,10 +90,10 @@ class Deployment:
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
-        self._serving_engine.save(self, await_update)
+        self._serving_engine._save(self, await_update)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def start(self, await_running: int | None = 600):
         """Start the deployment.
 
@@ -103,10 +105,10 @@ class Deployment:
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
-        self._serving_engine.start(self, await_status=await_running)
+        self._serving_engine._start(self, await_status=await_running)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def stop(self, await_stopped: int | None = 600):
         """Stop the deployment.
 
@@ -118,10 +120,10 @@ class Deployment:
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
-        self._serving_engine.stop(self, await_status=await_stopped)
+        self._serving_engine._stop(self, await_status=await_stopped)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def restart(
         self,
         await_stopped: int | None = 600,
@@ -143,7 +145,7 @@ class Deployment:
         self.start(await_running=await_running)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def delete(self, force: bool = False):
         """Delete the deployment.
 
@@ -158,7 +160,7 @@ class Deployment:
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
-        self._serving_engine.delete(self, force)
+        self._serving_engine._delete(self, force)
 
     @public
     def get_state(self) -> PredictorState:
@@ -170,7 +172,7 @@ class Deployment:
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
-        return self._serving_engine.get_state(self)
+        return self._serving_engine._get_state(self)
 
     @public
     def is_created(self) -> bool:
@@ -183,7 +185,7 @@ class Deployment:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
         return (
-            self._serving_engine.get_state(self).status
+            self._serving_engine._get_state(self).status
             != PREDICTOR_STATE.STATUS_CREATING
         )
 
@@ -201,7 +203,7 @@ class Deployment:
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
-        status = self._serving_engine.get_state(self).status
+        status = self._serving_engine._get_state(self).status
         return (
             status == PREDICTOR_STATE.STATUS_RUNNING
             or (or_idle and status == PREDICTOR_STATE.STATUS_IDLE)
@@ -221,7 +223,7 @@ class Deployment:
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
-        status = self._serving_engine.get_state(self).status
+        status = self._serving_engine._get_state(self).status
         return status == PREDICTOR_STATE.STATUS_STOPPED or (
             or_created
             and (
@@ -273,17 +275,112 @@ class Deployment:
             predictions = my_deployment.predict(data)
             ```
         """
-        return self._serving_engine.predict(self, data, inputs)
+        return self._serving_engine._predict(self, data, inputs)
 
     @public
     def get_model(self):
         """Retrieve the metadata object for the model being used by this deployment."""
-        return self._model_api.get(
+        return self._model_api._get(
             self.model_name, self.model_version, self.model_registry_id
         )
 
     @public
-    @usage.method_logger
+    def get_monitoring_configs(self) -> list[FeatureMonitoringConfig]:
+        """Get the feature monitoring configurations for the model deployed by this deployment.
+
+        Delegates to the underlying model's ``get_monitoring_configs`` method.
+
+        Example:
+            ```python
+
+            import hopsworks
+
+            project = hopsworks.login()
+
+            ms = project.get_model_serving()
+            my_deployment = ms.get_deployment("my_deployment")
+
+            fm_configs = my_deployment.get_monitoring_configs()
+            ```
+
+        Returns:
+            List of `FeatureMonitoringConfig` objects for the deployed model version.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
+        """
+        return self.get_model().get_monitoring_configs()
+
+    @public
+    def create_model_monitoring(
+        self,
+        name: str,
+        description: str | None = None,
+        start_date_time: int | str | None = None,
+        end_date_time: int | str | None = None,
+        cron_expression: str | None = "0 0 12 ? * * *",
+    ) -> FeatureMonitoringConfig:
+        """Create a model monitoring config bound to this deployment's model.
+
+        Resolves the model's parent feature view from the registered provenance and
+        delegates to ``feature_view.create_model_monitoring`` with this deployment's
+        ``model_name`` and ``model_version`` already filled in. The resulting config
+        targets the FV's logging feature group, filters by this model+version, and
+        defaults the reference training dataset to the version that was used to train
+        the model.
+
+        Experimental:
+            Public API is subject to change, this feature is not suitable for production use-cases.
+
+        Example:
+            ```python3
+            my_deployment = ms.get_deployment(name="my_deployment")
+            my_deployment.create_model_monitoring(
+                name="psi_drift",
+            ).with_detection_window(
+                time_offset="1d", window_length="1d",
+            ).with_reference_training_dataset(  # defaults to model's TD version
+            ).compare_on_distribution(
+                feature_name="amount", metric="PSI", threshold=0.2,
+            ).save()
+            ```
+
+        Parameters:
+            name: Name of the feature monitoring configuration.
+            description: Description of the feature monitoring configuration.
+            start_date_time: Start date and time from which to start computing statistics.
+            end_date_time: End date and time at which to stop computing statistics.
+            cron_expression: Cron expression scheduling the FM job (UTC, Quartz).
+
+        Raises:
+            hopsworks.client.exceptions.ModelServingException: If the deployment's
+                model has no parent feature view recorded in its provenance.
+
+        Returns:
+            A ``FeatureMonitoringConfig`` builder. Call ``with_detection_window``,
+            ``with_reference_*``, ``compare_on``/``compare_on_distribution``, and
+            ``save()`` to register it.
+        """
+        model_meta = self.get_model()
+        fv = model_meta.get_feature_view(init=False)
+        if fv is None:
+            raise ModelServingException(
+                f"Cannot create model monitoring for deployment '{self.name}': "
+                f"model '{self.model_name}' v{self.model_version} has no parent "
+                "feature view recorded in its provenance."
+            )
+        return fv.create_model_monitoring(
+            name=name,
+            model_name=self.model_name,
+            model_version=self.model_version,
+            description=description,
+            start_date_time=start_date_time,
+            end_date_time=end_date_time,
+            cron_expression=cron_expression,
+        )
+
+    @public
+    @usage._method_logger
     def download_artifact_files(self, local_path: str | None = None):
         """Download the artifact files served by the deployment.
 
@@ -293,7 +390,9 @@ class Deployment:
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
-        return self._serving_engine.download_artifact_files(self, local_path=local_path)
+        return self._serving_engine._download_artifact_files(
+            self, local_path=local_path
+        )
 
     @public
     def get_logs(self, component: str = "predictor", tail: int = 10):
@@ -313,7 +412,7 @@ class Deployment:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
         # validate component
-        components = list(util.get_members(DEPLOYABLE_COMPONENT))
+        components = list(util._get_members(DEPLOYABLE_COMPONENT))
         if component not in components:
             raise ValueError(
                 "Component '{}' is not valid. Possible values are '{}'".format(
@@ -321,7 +420,7 @@ class Deployment:
                 )
             )
 
-        logs = self._serving_engine.get_logs(self, component, tail)
+        logs = self._serving_engine._get_logs(self, component, tail)
         if logs is not None:
             for log in logs:
                 print(log, end="\n\n")
@@ -361,14 +460,14 @@ class Deployment:
             matching lines; ``==> <instance> <==\\n`` block headers when
             multiple instances are present.
         """
-        components = list(util.get_members(DEPLOYABLE_COMPONENT))
+        components = list(util._get_members(DEPLOYABLE_COMPONENT))
         if component not in components:
             raise ValueError(
                 "Component '{}' is not valid. Possible values are '{}'".format(
                     component, ", ".join(components)
                 )
             )
-        return self._serving_engine.read_logs(
+        return self._serving_engine._read_logs(
             self,
             component=component,
             tail=tail,
@@ -414,14 +513,14 @@ class Deployment:
         Yields:
             Plain-text log chunks containing only newly observed content.
         """
-        components = list(util.get_members(DEPLOYABLE_COMPONENT))
+        components = list(util._get_members(DEPLOYABLE_COMPONENT))
         if component not in components:
             raise ValueError(
                 "Component '{}' is not valid. Possible values are '{}'".format(
                     component, ", ".join(components)
                 )
             )
-        yield from self._serving_engine.tail_logs(
+        yield from self._serving_engine._tail_logs(
             self,
             component=component,
             interval=interval,
@@ -436,11 +535,11 @@ class Deployment:
         """Get url to the deployment in Hopsworks."""
         path = (
             "/p/"
-            + str(client.get_instance()._project_id)
+            + str(client._get_instance()._project_id)
             + "/deployments/"
             + str(self.id)
         )
-        return util.get_hostname_replaced_url(path)
+        return util._get_hostname_replaced_url(path)
 
     @public
     def get_endpoint_url(self) -> str | None:
@@ -511,20 +610,20 @@ class Deployment:
     @public
     def describe(self):
         """Print a JSON description of the deployment."""
-        util.pretty_print(self)
+        util._pretty_print(self)
 
     @classmethod
     def from_response_json(cls, json_dict):
         predictors = predictor_mod.Predictor.from_response_json(json_dict)
         if isinstance(predictors, list):
             return [
-                cls.from_predictor(predictor_instance)
+                cls._from_predictor(predictor_instance)
                 for predictor_instance in predictors
             ]
-        return cls.from_predictor(predictors)
+        return cls._from_predictor(predictors)
 
     @classmethod
-    def from_predictor(cls, predictor_instance):
+    def _from_predictor(cls, predictor_instance):
         return Deployment(
             predictor=predictor_instance,
             name=predictor_instance._name,
@@ -747,6 +846,16 @@ class Deployment:
     @transformer.setter
     def transformer(self, transformer: Transformer):
         self._predictor.transformer = transformer
+
+    @public
+    @property
+    def tracing(self):
+        """Tracing configuration attached to this deployment."""
+        return self._predictor.tracing
+
+    @tracing.setter
+    def tracing(self, tracing: DeploymentTracingConfig | dict | None):
+        self._predictor.tracing = tracing
 
     @public
     @property

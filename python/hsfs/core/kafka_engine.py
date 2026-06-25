@@ -29,7 +29,7 @@ from hopsworks_common.core.constants import (
     HAS_PANDAS,
     avro_not_installed_message,
 )
-from hopsworks_common.decorators import uses_confluent_kafka
+from hopsworks_common.decorators import _uses_confluent_kafka
 from hsfs.core import online_ingestion, online_ingestion_api, storage_connector_api
 from tqdm import tqdm
 
@@ -57,20 +57,20 @@ if TYPE_CHECKING:
     from hsfs.feature_group import ExternalFeatureGroup, FeatureGroup
 
 
-@uses_confluent_kafka
-def init_kafka_consumer(
+@_uses_confluent_kafka
+def _init_kafka_consumer(
     feature_store_id: int,
     offline_write_options: dict[str, Any],
 ) -> Consumer:
     # setup kafka consumer
-    consumer_config = get_kafka_config(feature_store_id, offline_write_options)
+    consumer_config = _get_kafka_config(feature_store_id, offline_write_options)
     if "group.id" not in consumer_config:
         consumer_config["group.id"] = "hsfs_consumer_group"
 
     return Consumer(consumer_config)
 
 
-def init_kafka_resources(
+def _get_kafka_resources(
     feature_group: FeatureGroup | ExternalFeatureGroup,
     offline_write_options: dict[str, Any],
     num_entries: int | None = None,
@@ -104,31 +104,31 @@ def _init_kafka_resources(
     Producer, dict[str, bytes], dict[str, Callable[..., bytes]], Callable[..., bytes] :
 ]:
     # setup kafka producer
-    producer = init_kafka_producer(
+    producer = _init_kafka_producer(
         feature_group.feature_store_id, offline_write_options
     )
     # setup headers
-    headers = get_headers(feature_group, num_entries, offline_write_options)
+    headers = _get_headers(feature_group, num_entries, offline_write_options)
     # setup writers
-    feature_writers, writer = get_writer_function(feature_group)
+    feature_writers, writer = _get_writer_function(feature_group)
 
     return producer, headers, feature_writers, writer
 
 
-def get_writer_function(
+def _get_writer_function(
     feature_group: FeatureGroup | ExternalFeatureGroup,
 ) -> tuple[dict[str, Callable[..., bytes]], Callable[..., bytes]]:
     # setup complex feature writers
     feature_writers = {
-        feature: get_encoder_func(feature_group._get_feature_avro_schema(feature))
+        feature: _get_encoder_func(feature_group._get_feature_avro_schema(feature))
         for feature in feature_group.get_complex_features()
     }
     # setup row writer function
-    writer = get_encoder_func(feature_group._get_encoded_avro_schema())
+    writer = _get_encoder_func(feature_group._get_encoded_avro_schema())
     return (feature_writers, writer)
 
 
-def get_headers(
+def _get_headers(
     feature_group: FeatureGroup | ExternalFeatureGroup,
     num_entries: int | None = None,
     options: dict[str, Any] | None = None,
@@ -149,7 +149,7 @@ def get_headers(
     if feature_group.online_enabled:
         # setup online ingestion id
         online_ingestion_instance = (
-            online_ingestion_api.OnlineIngestionApi().create_online_ingestion(
+            online_ingestion_api.OnlineIngestionApi()._create_online_ingestion(
                 feature_group, online_ingestion.OnlineIngestion(num_entries=num_entries)
             )
         )
@@ -158,23 +158,23 @@ def get_headers(
     return headers
 
 
-@uses_confluent_kafka
-def init_kafka_producer(
+@_uses_confluent_kafka
+def _init_kafka_producer(
     feature_store_id: int,
     offline_write_options: dict[str, Any],
 ) -> Producer:
     # setup kafka producer
-    return Producer(get_kafka_config(feature_store_id, offline_write_options))
+    return Producer(_get_kafka_config(feature_store_id, offline_write_options))
 
 
-@uses_confluent_kafka
-def kafka_get_offsets(
+@_uses_confluent_kafka
+def _kafka_get_offsets(
     topic_name: str,
     feature_store_id: int,
     offline_write_options: dict[str, Any],
     high: bool,
 ) -> str:
-    consumer = init_kafka_consumer(feature_store_id, offline_write_options)
+    consumer = _init_kafka_consumer(feature_store_id, offline_write_options)
     topics = consumer.list_topics(
         timeout=offline_write_options.get("kafka_timeout", 6)
     ).topics
@@ -193,7 +193,7 @@ def kafka_get_offsets(
     return ""
 
 
-def kafka_produce(
+def _kafka_produce(
     producer: Producer,
     key: str,
     encoded_row: bytes,
@@ -224,7 +224,7 @@ def kafka_produce(
             producer.poll(1)
 
 
-def encode_complex_features(
+def _encode_complex_features(
     feature_writers: dict[str, callable], row: dict[str, Any]
 ) -> dict[str, Any]:
     for feature_name, writer in feature_writers.items():
@@ -234,7 +234,7 @@ def encode_complex_features(
     return row
 
 
-def get_encoder_func(writer_schema: str) -> callable:
+def _get_encoder_func(writer_schema: str) -> callable:
     if HAS_FAST_AVRO:
         schema = json.loads(writer_schema)
         parsed_schema = parse_schema(schema)
@@ -248,7 +248,7 @@ def get_encoder_func(writer_schema: str) -> callable:
     return lambda record, outf: writer.write(record, avro.io.BinaryEncoder(outf))
 
 
-def encode_row(complex_feature_writers, writer, row):
+def _encode_row(complex_feature_writers, writer, row):
     # transform special data types
     # here we might need to handle also timestamps and other complex types
     # possible optimizaiton: make it based on type so we don't need to loop over
@@ -265,14 +265,14 @@ def encode_row(complex_feature_writers, writer, row):
             if HAS_PANDAS and isinstance(row[k], pd._libs.missing.NAType):
                 row[k] = None
     # encode complex features
-    row = encode_complex_features(complex_feature_writers, row)
+    row = _encode_complex_features(complex_feature_writers, row)
     # encode feature row
     with BytesIO() as outf:
         writer(row, outf)
         return outf.getvalue()
 
 
-def get_kafka_config(
+def _get_kafka_config(
     feature_store_id: int,
     write_options: dict[str, Any] | None = None,
     engine: Literal["spark", "confluent"] = "confluent",
@@ -281,8 +281,10 @@ def get_kafka_config(
         write_options = {}
     external = client._is_external() and not write_options.get("internal_kafka", False)
 
-    storage_connector = storage_connector_api.StorageConnectorApi().get_kafka_connector(
-        feature_store_id, external
+    storage_connector = (
+        storage_connector_api.StorageConnectorApi()._get_kafka_connector(
+            feature_store_id, external
+        )
     )
 
     if engine == "spark":
@@ -294,8 +296,8 @@ def get_kafka_config(
     return config
 
 
-@uses_confluent_kafka
-def build_ack_callback_and_optional_progress_bar(
+@_uses_confluent_kafka
+def _build_ack_callback_and_optional_progress_bar(
     n_rows: int, is_multi_part_insert: bool, offline_write_options: dict[str, Any]
 ) -> tuple[Callable, tqdm | None]:
     if not is_multi_part_insert:

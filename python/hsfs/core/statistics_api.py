@@ -33,7 +33,7 @@ class StatisticsApi:
         self._feature_store_id = feature_store_id
         self._entity_type = entity_type  # TODO: Support FV
 
-    def post(
+    def _post(
         self,
         metadata_instance: feature_view.FeatureView
         | training_dataset.TrainingDataset
@@ -41,8 +41,8 @@ class StatisticsApi:
         stats: statistics.Statistics,
         training_dataset_version: int | None,
     ) -> statistics.Statistics | None:
-        _client = client.get_instance()
-        path_params = self.get_path(metadata_instance, training_dataset_version)
+        _client = client._get_instance()
+        path_params = self._get_path(metadata_instance, training_dataset_version)
 
         headers = {"content-type": "application/json"}
         stats = statistics.Statistics.from_response_json(
@@ -52,7 +52,7 @@ class StatisticsApi:
         )
         return self._extract_single_stats(stats)
 
-    def get(
+    def _get(
         self,
         metadata_instance: feature_view.FeatureView
         | training_dataset.TrainingDataset
@@ -60,7 +60,7 @@ class StatisticsApi:
         computation_time: int | None = None,
         start_commit_time: int | None = None,
         end_commit_time: int | None = None,
-        feature_names: list[str] = None,
+        feature_names: list[str] | None = None,
         row_percentage: float | None = None,
         before_transformation: bool | None = None,
         training_dataset_version: int | None = None,
@@ -81,8 +81,8 @@ class StatisticsApi:
             The statistics object, or `None` if not found.
         """
         # get statistics by entity + filters + sorts, including the feature descriptive statistics
-        _client = client.get_instance()
-        path_params = self.get_path(metadata_instance, training_dataset_version)
+        _client = client._get_instance()
+        path_params = self._get_path(metadata_instance, training_dataset_version)
 
         # single statistics
         offset, limit = 0, 1
@@ -109,7 +109,7 @@ class StatisticsApi:
         )
         return self._extract_single_stats(stats)
 
-    def get_all(
+    def _get_all(
         self,
         metadata_instance: feature_view.FeatureView
         | training_dataset.TrainingDataset
@@ -138,8 +138,8 @@ class StatisticsApi:
             A list of statistics objects, or `None` if not found.
         """
         # get all statistics by entity + filters + sorts, without the feature descriptive statistics
-        _client = client.get_instance()
-        path_params = self.get_path(metadata_instance, training_dataset_version)
+        _client = client._get_instance()
+        path_params = self._get_path(metadata_instance, training_dataset_version)
 
         # multiple statistics
         offset, limit = 0, None
@@ -164,29 +164,88 @@ class StatisticsApi:
             _client._send_request("GET", path_params, query_params, headers=headers)
         )
 
-    def compute(
+    def _get_all_in_window(
+        self,
+        metadata_instance: feature_view.FeatureView
+        | training_dataset.TrainingDataset
+        | feature_group.FeatureGroup,
+        start_commit_time: int | None = None,
+        end_commit_time: int | None = None,
+        feature_names: list[str] | None = None,
+        limit: int | None = None,
+    ) -> list[statistics.Statistics] | None:
+        """Get all statistics rows for an entity within a commit time window, with content.
+
+        Used by the KLL-merge path to enumerate per-batch statistics rows. Passing `limit`
+        caps the response size; callers should treat a fully-populated response as a
+        signal to fall back to re-profile (the merge sample would be truncated).
+
+        Parameters:
+            metadata_instance: metadata object of the instance
+            start_commit_time: Window start commit time (inclusive)
+            end_commit_time: Window end commit time (inclusive)
+            feature_names: List of feature names to retrieve statistics for
+            limit: Maximum number of rows to return; None = unlimited (not recommended
+                for content-heavy responses).
+
+        Returns:
+            A list of statistics objects with feature descriptive statistics, or None.
+        """
+        _client = client._get_instance()
+        path_params = self._get_path(metadata_instance, None)
+
+        headers = {"content-type": "application/json"}
+        query_params = self._build_get_query_params(
+            start_commit_time=start_commit_time,
+            end_commit_time=end_commit_time,
+            filter_eq_times=False,
+            feature_names=feature_names,
+            offset=0,
+            limit=limit,
+            with_content=True,
+        )
+
+        return statistics.Statistics.from_response_json(
+            _client._send_request("GET", path_params, query_params, headers=headers)
+        )
+
+    def _compute(
         self,
         metadata_instance: training_dataset.TrainingDataset
         | feature_view.FeatureView
         | feature_group.FeatureGroup,
         training_dataset_version: int | None = None,
+        start_commit_time: int | None = None,
+        end_commit_time: int | None = None,
     ) -> job.Job:
         """Compute statistics for an entity.
 
         Parameters:
             metadata_instance: metadata object of the instance to compute statistics for
             training_dataset_version: version of the training dataset metadata object
+            start_commit_time: optional lower bound of the commit window to scope stats to.
+            end_commit_time: optional upper bound of the commit window. When set on a feature
+                group, statistics are persisted against this specific commit rather than head.
 
         Returns:
             The job metadata object for the statistics computation job.
         """
-        _client = client.get_instance()
-        path_params = self.get_path(metadata_instance, training_dataset_version) + [
+        _client = client._get_instance()
+        path_params = self._get_path(metadata_instance, training_dataset_version) + [
             "compute"
         ]
-        return job.Job.from_response_json(_client._send_request("POST", path_params))
+        query_params = {}
+        if start_commit_time is not None:
+            query_params["start_commit_time"] = start_commit_time
+        if end_commit_time is not None:
+            query_params["end_commit_time"] = end_commit_time
+        return job.Job.from_response_json(
+            _client._send_request(
+                "POST", path_params, query_params=query_params or None
+            )
+        )
 
-    def get_path(
+    def _get_path(
         self,
         metadata_instance: training_dataset.TrainingDataset
         | feature_group.FeatureGroup
@@ -202,7 +261,7 @@ class StatisticsApi:
         Returns:
             The API path as a list of path segments.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         if isinstance(metadata_instance, feature_view.FeatureView):
             path = [
                 "project",
@@ -232,7 +291,7 @@ class StatisticsApi:
         ]
 
     def _extract_single_stats(
-        self, stats: statistics.Statistics | list[statistics.Statistics]
+        self, stats: statistics.Statistics | list[statistics.Statistics] | None
     ) -> statistics.Statistics | None:
         return stats[0] if isinstance(stats, list) else stats
 

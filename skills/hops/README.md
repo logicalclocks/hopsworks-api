@@ -11,7 +11,7 @@ canonical list is `hops skills list --bucket hops`.
 - [hops-online-inference](hops-online-inference/SKILL.md) — Deploy a model (KServe) and serve online predictions.
 - [hops-monitoring](hops-monitoring/SKILL.md) — Statistics, feature/drift monitoring, Great Expectations validation, alerts, feature logging.
 - [hops-job](hops-job/SKILL.md) — Create, run, and schedule Hopsworks jobs (and Airflow DAGs).
-- [hops-app](hops-app/SKILL.md) — Build and manage Streamlit app deployments.
+- [hops-app](hops-app/SKILL.md) — Build and manage Python app deployments (Streamlit + custom apps).
 - [hops-environments](hops-environments/SKILL.md) — Clone a base Python environment and install custom libraries for jobs/apps/deployments.
 - [hops-superset](hops-superset/SKILL.md) — Build Superset datasets, charts, and dashboards.
 - [hops-agent-deployment](hops-agent-deployment/SKILL.md) — Deploy an interactive agent (e.g. LlamaIndex) as a served deployment.

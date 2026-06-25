@@ -71,7 +71,7 @@ class DatasetApi:
     DEFAULT_FLOW_CHUNK_SIZE = DEFAULT_DOWNLOAD_FLOW_CHUNK_SIZE
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def download(
         self,
         path: str,
@@ -103,7 +103,7 @@ class DatasetApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -168,7 +168,7 @@ class DatasetApi:
         return local_path
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def upload(
         self,
         local_path: str,
@@ -419,7 +419,7 @@ class DatasetApi:
         }
 
     def _upload_request(self, params, path, file_name, chunk):
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["project", _client._project_id, "dataset", "upload", path]
 
         # Flow configuration params are sent as form data
@@ -436,12 +436,13 @@ class DatasetApi:
         Returns:
             Dataset metadata.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["project", _client._project_id, "dataset", path]
         headers = {"content-type": "application/json"}
         return _client._send_request("GET", path_params, headers=headers)
 
-    def get(self, path: str):
+    @public
+    def get(self, path: str) -> dict:
         """**Deprecated**.
 
         Get dataset metadata.
@@ -470,6 +471,7 @@ class DatasetApi:
         except RestAPIError:
             return False
 
+    @public
     def path_exists(self, remote_path: str) -> bool:
         """**Deprecated**, use `exists` instead.
 
@@ -484,7 +486,7 @@ class DatasetApi:
         return self.exists(remote_path)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def remove(self, path: str):
         """Remove a path in the Hopsworks Filesystem.
 
@@ -494,10 +496,11 @@ class DatasetApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["project", _client._project_id, "dataset", path]
         return _client._send_request("DELETE", path_params)
 
+    @public
     def rm(self, remote_path: str):
         """**Deprecated**, use `remove` instead.
 
@@ -512,7 +515,7 @@ class DatasetApi:
         return self.remove(remote_path)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def share(
         self,
         path: str,
@@ -560,7 +563,7 @@ class DatasetApi:
             )
         if not target_project:
             raise ValueError("target_project must be a non-empty project name")
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["project", _client._project_id, "dataset", path]
         query_params = {
             "action": "SHARE",
@@ -580,7 +583,7 @@ class DatasetApi:
             raise
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def unshare(self, path: str, target_project: str) -> None:
         """Revoke a previously-granted dataset share with another project.
 
@@ -610,7 +613,7 @@ class DatasetApi:
         """
         if not target_project:
             raise ValueError("target_project must be a non-empty project name")
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["project", _client._project_id, "dataset", path]
         query_params = {
             "action": "UNSHARE",
@@ -629,7 +632,7 @@ class DatasetApi:
             raise
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def mkdir(self, path: str) -> str:
         """Create a directory in the Hopsworks Filesystem.
 
@@ -652,7 +655,7 @@ class DatasetApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["project", _client._project_id, "dataset", path]
         query_params = {
             "action": "create",
@@ -666,7 +669,7 @@ class DatasetApi:
         )["attributes"]["path"]
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def copy(self, source_path: str, destination_path: str, overwrite: bool = False):
         """Copy a file or directory in the Hopsworks Filesystem.
 
@@ -701,7 +704,7 @@ class DatasetApi:
                     f"{destination_path} already exists, set overwrite=True to overwrite it"
                 )
 
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["project", _client._project_id, "dataset", source_path]
         query_params = {
             "action": "copy",
@@ -710,7 +713,7 @@ class DatasetApi:
         _client._send_request("POST", path_params, query_params=query_params)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def move(self, source_path: str, destination_path: str, overwrite: bool = False):
         """Move a file or directory in the Hopsworks Filesystem.
 
@@ -745,7 +748,7 @@ class DatasetApi:
                     f"{destination_path} already exists, set overwrite=True to overwrite it"
                 )
 
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["project", _client._project_id, "dataset", source_path]
         query_params = {
             "action": "move",
@@ -754,7 +757,7 @@ class DatasetApi:
         _client._send_request("POST", path_params, query_params=query_params)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def upload_feature_group(
         self, feature_group: FeatureGroup, path: str, dataframe: pd.DataFrame
     ):
@@ -788,14 +791,14 @@ class DatasetApi:
             self._upload_request(
                 query_params,
                 path,
-                util.feature_group_name(feature_group),
+                util._feature_group_name(feature_group),
                 df_parquet[i : i + self.DEFAULT_FLOW_CHUNK_SIZE],
             )
 
             chunk_number += 1
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def list(self, path: str, offset: int = 0, limit: int = 1000) -> list[str]:
         """List the files and directories from a path in the Hopsworks Filesystem.
 
@@ -824,7 +827,7 @@ class DatasetApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         # Normalize path so we can check if the path refers to the root or not
         # That is needed as different backend entities are returned depending on if it is a top level dataset or a subdirectory
         normalized_path = os.path.normpath(path)
@@ -841,11 +844,11 @@ class DatasetApi:
         files = []
         for item in items:
             files.append(
-                util.convert_to_project_rel_path(item.path, _client._project_name)
+                util._convert_to_project_rel_path(item.path, _client._project_name)
             )
         return files
 
-    @usage.method_logger
+    @usage._method_logger
     def _list_dataset_path(
         self,
         path: str,
@@ -864,7 +867,7 @@ class DatasetApi:
         Returns:
             Count of Dataset or Inodes and objects.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -884,7 +887,7 @@ class DatasetApi:
         return items["count"], cls.from_response_json(items)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def read_content(self, path: str, dataset_type: str = "DATASET") -> dict | None:
         """Read the content of a file.
 
@@ -897,7 +900,7 @@ class DatasetApi:
         Returns:
             An object with `content` attribute containing the file content as bytes, or `None` if the file was not found.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
 
         path_params = [
             "project",
@@ -928,7 +931,7 @@ class DatasetApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["project", _client._project_id, "dataset", remote_path]
         headers = {"content-type": "application/json"}
         query_params = {"action": "PERMISSION", "permissions": permissions}
@@ -961,7 +964,7 @@ class DatasetApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = ["project", _client._project_id, "dataset", remote_path]
 
         query_params = {"action": action}
@@ -1066,6 +1069,7 @@ class DatasetApi:
 
     # region Dataset Tags
 
+    @public
     def add(self, path: str, name: str, value: str):
         """**Deprecated**.
 
@@ -1079,7 +1083,7 @@ class DatasetApi:
             name: Name of the tag to be added.
             value: Value of the tag to be added.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -1093,6 +1097,7 @@ class DatasetApi:
         json_value = json.dumps(value)
         _client._send_request("PUT", path_params, headers=headers, data=json_value)
 
+    @public
     def delete(self, path: str, name: str):
         """**Deprecated**.
 
@@ -1104,7 +1109,7 @@ class DatasetApi:
             path: Path to delete the tags.
             name: Name of the tag to be removed.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -1116,6 +1121,7 @@ class DatasetApi:
         ]
         _client._send_request("DELETE", path_params)
 
+    @public
     def get_tags(self, path: str, name: str | None = None) -> dict:
         """**Deprecated**.
 
@@ -1130,7 +1136,7 @@ class DatasetApi:
         Returns:
             Tag names and values.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -1146,8 +1152,9 @@ class DatasetApi:
 
         path_params.append(path)
 
+        # from_response_json already returns deserialized values.
         return {
-            tag._name: json.loads(tag._value)
+            tag._name: tag._value
             for tag in tag.Tag.from_response_json(
                 _client._send_request("GET", path_params)
             )

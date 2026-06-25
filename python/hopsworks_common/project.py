@@ -19,16 +19,13 @@ import json
 from typing import TYPE_CHECKING, Literal
 
 import humps
-from hopsworks_apigen import public
+from hopsworks_apigen import deprecated, public
 from hopsworks_common import alert, client, util
 from hopsworks_common.core import (
     alerts_api,
     app_api,
-    chart_api,
-    dashboard_api,
     dataset_api,
     environment_api,
-    flink_cluster_api,
     git_api,
     job_api,
     kafka_api,
@@ -87,7 +84,6 @@ class Project:
         self._kafka_api = kafka_api.KafkaApi()
         self._job_api = job_api.JobApi()
         self._jobs_api = self._job_api  # deprecated
-        self._flink_cluster_api = flink_cluster_api.FlinkClusterApi()
         self._git_api = git_api.GitApi()
         self._dataset_api = dataset_api.DatasetApi()
         self._environment_api = environment_api.EnvironmentApi()
@@ -96,8 +92,6 @@ class Project:
         self._project_namespace = project_namespace
         self._trino_api = None
         self._superset_api = None
-        self._chart_api = None
-        self._dashboard_api = None
 
     @classmethod
     def from_response_json(cls, json_dict):
@@ -150,7 +144,7 @@ class Project:
         The home directory is located at `/Projects/<project_name>/Users/<username>`
         and is created automatically when a user joins a project.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         if hasattr(_client, "_username") and _client._username:
             # External client stores the username directly
             username = _client._username
@@ -184,7 +178,7 @@ class Project:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return client.get_connection().get_feature_store(name)
+        return client._get_connection()._get_feature_store(name)
 
     @public
     def get_model_registry(self) -> ModelRegistry:
@@ -205,7 +199,7 @@ class Project:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return client.get_connection().get_model_registry()
+        return client._get_connection()._get_model_registry()
 
     @public
     def get_model_serving(self) -> ModelServing:
@@ -226,7 +220,7 @@ class Project:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return client.get_connection().get_model_serving()
+        return client._get_connection()._get_model_serving()
 
     @public
     def get_kafka_api(self) -> kafka_api.KafkaApi:
@@ -235,9 +229,9 @@ class Project:
         Returns:
             The Kafka Api handle.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         if _client._is_external():
-            _client.download_certs()
+            _client._download_certs()
         return self._kafka_api
 
     @public
@@ -247,9 +241,9 @@ class Project:
         Returns:
             The OpenSearch Api handle.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         if _client._is_external():
-            _client.download_certs()
+            _client._download_certs()
         return self._opensearch_api
 
     @public
@@ -279,18 +273,10 @@ class Project:
         """
         return self._app_api
 
+    @deprecated("hopsworks.project.Project.get_job_api")
     def get_jobs_api(self):
         """**Deprecated**, use get_job_api instead. Excluded from docs to prevent API breakage."""
         return self.get_job_api()
-
-    @public
-    def get_flink_cluster_api(self) -> flink_cluster_api.FlinkClusterApi:
-        """Get the flink cluster API for the project.
-
-        Returns:
-            The Flink Cluster Api handle.
-        """
-        return self._flink_cluster_api
 
     @public
     def get_git_api(self) -> git_api.GitApi:
@@ -360,28 +346,6 @@ class Project:
         return self._superset_api
 
     @public
-    def get_chart_api(self) -> chart_api.ChartApi:
-        """Get the chart API for the project.
-
-        Returns:
-            The chart API handle, lazily constructed on first call.
-        """
-        if self._chart_api is None:
-            self._chart_api = chart_api.ChartApi()
-        return self._chart_api
-
-    @public
-    def get_dashboard_api(self) -> dashboard_api.DashboardApi:
-        """Get the dashboard API for the project.
-
-        Returns:
-            The dashboard API handle, lazily constructed on first call.
-        """
-        if self._dashboard_api is None:
-            self._dashboard_api = dashboard_api.DashboardApi()
-        return self._dashboard_api
-
-    @public
     def get_alerts(self) -> list[alert.ProjectAlert]:
         """Get all alerts for the project.
 
@@ -443,6 +407,10 @@ class Project:
             "feature_validation_success",
             "feature_validation_warning",
             "feature_validation_failure",
+            "monitoring_shift_undetected",
+            "monitoring_shift_detected",
+            "monitoring_empty_detection_window",
+            # deprecated since ~=3.8.1; kept for one release
             "feature_monitor_shift_undetected",
             "feature_monitor_shift_detected",
         ],
@@ -460,6 +428,9 @@ class Project:
         Parameters:
             receiver: The receiver of the alert.
             status: The status of the alert.
+                The names feature_monitor_shift_undetected and
+                feature_monitor_shift_detected are deprecated since ~=3.8.1 and will
+                be removed in a future release.
             severity: The severity of the alert.
 
         Returns:
@@ -488,4 +459,4 @@ class Project:
     def get_url(self):
         """Get url to the project in Hopsworks."""
         path = "/p/" + str(self.id)
-        return util.get_hostname_replaced_url(path)
+        return util._get_hostname_replaced_url(path)

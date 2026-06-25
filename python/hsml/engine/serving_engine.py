@@ -33,6 +33,7 @@ from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
 from hopsworks_common.core import dataset_api, inode
 from hsml.core import serving_api
 from hsml.engine import local_engine
+from hsml.utils.local_paths import _resolve_serving_file
 from tqdm.auto import tqdm
 
 
@@ -112,7 +113,7 @@ class ServingEngine:
             )
         return None
 
-    def start(self, deployment_instance, await_status: int) -> bool:
+    def _start(self, deployment_instance, await_status: int) -> bool:
         (done, state) = self._check_status(
             deployment_instance, PREDICTOR_STATE.STATUS_RUNNING
         )
@@ -145,7 +146,7 @@ class ServingEngine:
                         update_progress,
                     )
 
-                self._serving_api.post(
+                self._serving_api._post(
                     deployment_instance, DEPLOYMENT.ACTION_START
                 )  # start deployment
 
@@ -156,7 +157,7 @@ class ServingEngine:
                     update_progress,
                 )
             except RestAPIError as re:
-                self.stop(deployment_instance, await_status=0)
+                self._stop(deployment_instance, await_status=0)
                 raise re
 
         if state.status == PREDICTOR_STATE.STATUS_RUNNING:
@@ -167,7 +168,7 @@ class ServingEngine:
             else:
                 print("Start making predictions by using `.predict()`")
 
-    def stop(self, deployment_instance, await_status: int) -> bool:
+    def _stop(self, deployment_instance, await_status: int) -> bool:
         (done, state) = self._check_status(
             deployment_instance, PREDICTOR_STATE.STATUS_STOPPED
         )
@@ -194,7 +195,7 @@ class ServingEngine:
                     pbar.set_description(desc)
 
             update_progress(state, num_instances)
-            self._serving_api.post(
+            self._serving_api._post(
                 deployment_instance, DEPLOYMENT.ACTION_STOP
             )  # stop deployment
 
@@ -363,7 +364,7 @@ class ServingEngine:
             else:
                 # if it's a file, download it
                 local_file_path = os.path.join(to_local_path, basename)
-                self._engine.download(entry.path, local_file_path)
+                self._engine._download(entry.path, local_file_path)
                 n_files += 1
                 update_download_progress(n_dirs=n_dirs, n_files=n_files)
 
@@ -382,7 +383,7 @@ class ServingEngine:
         )
         update_download_progress(n_dirs=n_dirs, n_files=n_files, done=True)
 
-    def download_artifact_files(self, deployment_instance, local_path=None):
+    def _download_artifact_files(self, deployment_instance, local_path=None):
         if deployment_instance.id is None:
             raise ModelServingException(
                 "Deployment is not created yet. To create the deployment use `.save()`"
@@ -440,15 +441,15 @@ class ServingEngine:
 
         return local_path
 
-    def create(self, deployment_instance):
+    def _create(self, deployment_instance):
         try:
-            self._serving_api.put(deployment_instance)
+            self._serving_api._put(deployment_instance)
             print("Deployment created, explore it at " + deployment_instance.get_url())
         except RestAPIError as re:
             raise_err = True
             if re.error_code == ModelServingException.ERROR_CODE_DUPLICATED_ENTRY:
                 msg = "Deployment with the same name already exists"
-                existing_deployment = self._serving_api.get(deployment_instance.name)
+                existing_deployment = self._serving_api._get(deployment_instance.name)
                 if (
                     existing_deployment.model_name == deployment_instance.model_name
                     and existing_deployment.model_version
@@ -470,7 +471,7 @@ class ServingEngine:
         if deployment_instance.is_stopped():
             print("Before making predictions, start the deployment by using `.start()`")
 
-    def update(self, deployment_instance, await_update):
+    def _update(self, deployment_instance, await_update):
         state = deployment_instance.get_state()
         if state is None:
             return
@@ -487,7 +488,7 @@ class ServingEngine:
             or state.status == PREDICTOR_STATE.STATUS_FAILED
         ):
             # if running, it's fine
-            self._serving_api.put(deployment_instance)
+            self._serving_api._put(deployment_instance)
             print("Deployment updated, applying changes to running instances...")
             state = self._poll_deployment_status(  # wait for status
                 deployment_instance, PREDICTOR_STATE.STATUS_RUNNING, await_update
@@ -512,22 +513,65 @@ class ServingEngine:
             or state.status == PREDICTOR_STATE.STATUS_STOPPED
         ):
             # if stopped, it's fine
-            self._serving_api.put(deployment_instance)
+            self._serving_api._put(deployment_instance)
             print("Deployment updated, explore it at " + deployment_instance.get_url())
             return
 
         raise ValueError("Unknown deployment status: " + state.status)
 
-    def save(self, deployment_instance, await_update: int):
+    def _save(self, deployment_instance, await_update: int):
+        # Local paths on script_file / config_file are auto-uploaded under
+        # /Projects/<p>/Deployments/<name>/resources/ and rewritten to
+        # HopsFS paths in-memory. On update of a deployment fetched from the
+        # backend, these fields hold backend-managed references (e.g. a bare
+        # basename), which are left untouched; only newly-assigned local
+        # paths are re-uploaded.
+        self._upload_local_serving_files(deployment_instance)
+
         if deployment_instance.id is None:
-            # if new deployment
-            self.create(deployment_instance)
+            self._create(deployment_instance)
             return
+        self._update(deployment_instance, await_update)
 
-        # if existing deployment
-        self.update(deployment_instance, await_update)
+    def _upload_local_serving_files(self, deployment_instance):
+        """Upload local ``script_file`` / ``config_file`` paths.
 
-    def delete(self, deployment_instance, force=False):
+        Rewrites the in-memory fields to HopsFS paths. HopsFS / ``None`` are
+        left untouched. Each role uploads to its own subdirectory to avoid
+        basename collisions. On update of a persisted deployment, fields that
+        are not new local paths (e.g. backend-managed references returned by
+        ``get_deployment``) are passed through unchanged.
+        """
+        predictor = deployment_instance._predictor
+        deployment_name = deployment_instance.name
+        is_update = deployment_instance.id is not None
+
+        targets = [
+            (predictor, "script_file", "predictor", "script_file"),
+            (predictor, "config_file", "config", "config_file"),
+        ]
+        if predictor.transformer is not None:
+            targets.append(
+                (
+                    predictor.transformer,
+                    "script_file",
+                    "transformer",
+                    "transformer.script_file",
+                ),
+            )
+
+        for obj, field, subdir, field_label in targets:
+            resolved = _resolve_serving_file(
+                self._engine,
+                deployment_name,
+                getattr(obj, field),
+                field_name=field_label,
+                subdir=subdir,
+                is_update=is_update,
+            )
+            setattr(obj, field, resolved)
+
+    def _delete(self, deployment_instance, force=False):
         state = deployment_instance.get_state()
         if state is None:
             return
@@ -541,12 +585,12 @@ class ServingEngine:
                 "Deployment not stopped, please stop it first by using `.stop()` or check its status with .get_state()"
             )
 
-        self._serving_api.delete(deployment_instance)
+        self._serving_api._delete(deployment_instance)
         print("Deployment deleted successfully")
 
-    def get_state(self, deployment_instance):
+    def _get_state(self, deployment_instance):
         try:
-            state = self._serving_api.get_state(deployment_instance)
+            state = self._serving_api._get_state(deployment_instance)
         except RestAPIError as re:
             if re.error_code == ModelServingException.ERROR_CODE_SERVING_NOT_FOUND:
                 raise ModelServingException("Deployment not found") from re
@@ -554,8 +598,8 @@ class ServingEngine:
         deployment_instance._predictor._set_state(state)
         return state
 
-    def get_logs(self, deployment_instance, component, tail):
-        state = self.get_state(deployment_instance)
+    def _get_logs(self, deployment_instance, component, tail):
+        state = self._get_state(deployment_instance)
         if state is None:
             return None
 
@@ -580,7 +624,7 @@ class ServingEngine:
             end="\n\n",
         )
 
-        return self._serving_api.get_logs(deployment_instance, component, tail)
+        return self._serving_api._get_logs(deployment_instance, component, tail)
 
     # ----- Programmatic log APIs (read_logs / tail_logs) ---------------------
     # These never print and never short-circuit on deployment state. The
@@ -588,7 +632,7 @@ class ServingEngine:
     # the legacy "deployment is stopping → return None" guard would just hide
     # data that is in fact retrievable.
 
-    def read_logs(
+    def _read_logs(
         self,
         deployment_instance,
         component: str = "predictor",
@@ -615,7 +659,7 @@ class ServingEngine:
         Returns:
             All matching log chunks concatenated into a single string.
         """
-        chunks = self._serving_api.get_logs(
+        chunks = self._serving_api._get_logs(
             deployment_instance,
             component,
             tail,
@@ -626,7 +670,7 @@ class ServingEngine:
         )
         return self._format_log_chunks(chunks or [])
 
-    def tail_logs(
+    def _tail_logs(
         self,
         deployment_instance,
         component: str = "predictor",
@@ -685,7 +729,7 @@ class ServingEngine:
 
         while True:
             chunks = (
-                self._serving_api.get_logs(
+                self._serving_api._get_logs(
                     deployment_instance,
                     component,
                     # Bounded per-poll fetch. Larger values just mean more work
@@ -726,7 +770,7 @@ class ServingEngine:
                 yield self._format_log_chunks(new_chunks)
 
             if stop_on_status is not None:
-                state = self.get_state(deployment_instance)
+                state = self._get_state(deployment_instance)
                 if state is not None and state.status == stop_on_status:
                     return
 
@@ -762,7 +806,7 @@ class ServingEngine:
 
     # Model inference
 
-    def predict(
+    def _predict(
         self,
         deployment_instance,
         data: dict | list[InferInput],
@@ -785,7 +829,7 @@ class ServingEngine:
         serving_tool = deployment_instance.predictor.serving_tool
         through_hopsworks = serving_tool != PREDICTOR.SERVING_TOOL_KSERVE
         try:
-            return self._serving_api.send_inference_request(
+            return self._serving_api._send_inference_request(
                 deployment_instance, payload, through_hopsworks
             )
         except RestAPIError as re:

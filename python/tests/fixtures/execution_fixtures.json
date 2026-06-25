@@ -17,7 +17,6 @@
           "user": "test_user",
           "files_to_remove": "test_files_to_remove",
           "duration": "test_duration",
-          "flink_master_url": "test_flink_master_url",
           "monitoring": "test_monitoring",
           "type": "test_type",
           "href": "test_href"

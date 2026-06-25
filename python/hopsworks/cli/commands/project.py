@@ -29,7 +29,7 @@ def project_list(ctx: click.Context) -> None:
     projects = []
     if api is not None:
         try:
-            projects = api.get_projects()
+            projects = api._get_projects()
         except Exception:  # noqa: BLE001
             projects = []
     if not projects:

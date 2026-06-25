@@ -35,9 +35,9 @@ _online_store_rest_client = None
 
 
 @also_available_as(
-    "hsfs.client.online_store_rest_client.init_or_reset_online_store_rest_client"
+    "hsfs.client.online_store_rest_client._init_or_reset_online_store_rest_client"
 )
-def init_or_reset_online_store_rest_client(
+def _init_or_reset_online_store_rest_client(
     transport: requests.adapters.HTTPAdapter
     | requests.adapters.BaseAdapter
     | None = None,
@@ -50,7 +50,7 @@ def init_or_reset_online_store_rest_client(
             transport=transport, optional_config=optional_config
         )
     elif reset_client:
-        _online_store_rest_client.reset_client(
+        _online_store_rest_client._reset_client(
             transport=transport, optional_config=optional_config
         )
     else:
@@ -62,8 +62,8 @@ def init_or_reset_online_store_rest_client(
             )
 
 
-@also_available_as("hsfs.client.online_store_rest_client.get_instance")
-def get_instance() -> OnlineStoreRestClientSingleton:
+@also_available_as("hsfs.client.online_store_rest_client._get_instance")
+def _get_instance() -> OnlineStoreRestClientSingleton:
     global _online_store_rest_client
     if _online_store_rest_client is None:
         if _logger.isEnabledFor(logging.WARNING):
@@ -120,9 +120,9 @@ class OnlineStoreRestClientSingleton:
             optional_config=optional_config,
             use_current_config=False,
         )
-        self.is_connected()
+        self._is_connected()
 
-    def reset_client(
+    def _reset_client(
         self,
         transport: requests.adapters.HTTPAdapter
         | requests.adapters.BaseAdapter
@@ -259,12 +259,12 @@ class OnlineStoreRestClientSingleton:
                 f"Default RonDB Rest Server host and port: {url.host}:{url.port}"
             )
             _logger.debug(
-                f"Using CA Certs from Hopsworks Client: {client.get_instance()._get_ca_chain_path()}"
+                f"Using CA Certs from Hopsworks Client: {client._get_instance()._get_ca_chain_path()}"
             )
         return {
             self.HOST: url.host,
             self.PORT: url.port,
-            self.CA_CERTS: client.get_instance()._get_ca_chain_path(),
+            self.CA_CERTS: client._get_instance()._get_ca_chain_path(),
         }
 
     def _get_rondb_rest_server_endpoint(self) -> str:
@@ -283,7 +283,7 @@ class OnlineStoreRestClientSingleton:
                 _logger.debug(
                     "External Online Store REST Client : Retrieving RonDB Rest Server endpoint via loadbalancer."
                 )
-            external_domain = self.variable_api.get_loadbalancer_external_domain(
+            external_domain = self.variable_api._get_loadbalancer_external_domain(
                 "online_store_rest_server"
             )
             default_url = f"https://{external_domain}:{self._DEFAULT_ONLINE_STORE_REST_CLIENT_PORT}"
@@ -296,7 +296,7 @@ class OnlineStoreRestClientSingleton:
             _logger.debug(
                 "Internal Online Store REST Client : Retrieving RonDB Rest Server endpoint via service discovery."
             )
-        service_discovery_domain = self.variable_api.get_service_discovery_domain()
+        service_discovery_domain = self.variable_api._get_service_discovery_domain()
         if service_discovery_domain == "":
             raise FeatureStoreException(
                 "Client could not get Online Store hostname from service_discovery_domain. "
@@ -309,7 +309,7 @@ class OnlineStoreRestClientSingleton:
             )
         return default_url
 
-    def send_request(
+    def _send_request(
         self,
         method: str,
         path_params: list[str],
@@ -338,7 +338,7 @@ class OnlineStoreRestClientSingleton:
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug("Checking Hopsworks connection.")
         assert (
-            client.get_instance() is not None and client.get_instance()._connected
+            client._get_instance() is not None and client._get_instance()._connected
         ), """Hopsworks Client is not connected. Please connect to Hopsworks cluster
             via hopsworks.login before initialising the Online Store REST Client.
             """
@@ -354,7 +354,7 @@ class OnlineStoreRestClientSingleton:
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug("Setting authentication for Online Store REST Client.")
         if client._is_external():
-            assert hasattr(client.get_instance()._auth, "_token"), (
+            assert hasattr(client._get_instance()._auth, "_token"), (
                 "External client must use API Key authentication. Contact your system administrator."
             )
             if _logger.isEnabledFor(logging.DEBUG):
@@ -362,7 +362,7 @@ class OnlineStoreRestClientSingleton:
                     "External Online Store REST Client : Setting authentication using Hopsworks Client API Key."
                 )
             self._auth = client.auth.OnlineStoreKeyAuth(
-                client.get_instance()._auth._token
+                client._get_instance()._auth._token
             )
         elif isinstance(optional_config, dict) and optional_config.get(
             self.API_KEY, False
@@ -383,7 +383,7 @@ class OnlineStoreRestClientSingleton:
                 f"Provide a configuration with the {self.API_KEY} key."
             )
 
-    def is_connected(self):
+    def _is_connected(self):
         """If Online Store Rest Client is initialised, ping RonDB Rest Server to ensure connection is active."""
         if self._session is None:
             if _logger.isEnabledFor(logging.DEBUG):
@@ -395,7 +395,7 @@ class OnlineStoreRestClientSingleton:
             _logger.debug(
                 "Checking Online Store REST Client is connected. Pinging RonDB Rest Server."
             )
-        if not self.send_request("GET", ["ping"]):
+        if not self._send_request("GET", ["ping"]):
             warn("Ping failed, RonDB Rest Server is not reachable.", stacklevel=2)
             return False
         return True

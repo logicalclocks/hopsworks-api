@@ -15,9 +15,9 @@
 #
 
 import pytest
-from hsml import deployment, predictor
+from hsml import deployment, deployment_tracing_config, predictor, resources
 from hsml.client.exceptions import ModelServingException
-from hsml.constants import PREDICTOR_STATE
+from hsml.constants import MODEL, PREDICTOR, PREDICTOR_STATE
 from hsml.core import serving_api
 from hsml.engine import serving_engine
 
@@ -33,7 +33,7 @@ class TestDeployment:
             return_value=preds,
         )
         mock_from_predictor = mocker.patch(
-            "hsml.deployment.Deployment.from_predictor", return_value=preds[0]
+            "hsml.deployment.Deployment._from_predictor", return_value=preds[0]
         )
 
         # Act
@@ -53,7 +53,7 @@ class TestDeployment:
             return_value=pred,
         )
         mock_from_predictor = mocker.patch(
-            "hsml.deployment.Deployment.from_predictor", return_value=pred
+            "hsml.deployment.Deployment._from_predictor", return_value=pred
         )
 
         # Act
@@ -110,6 +110,46 @@ class TestDeployment:
         # Assert
         assert "not an instance of the Predictor class" in str(e_info.value)
 
+    def test_tracing_property_delegates_to_predictor(self, mocker):
+        # Arrange
+        mocker.patch(
+            "hsml.predictor.Predictor._validate_serving_tool",
+            return_value=PREDICTOR.SERVING_TOOL_KSERVE,
+        )
+        mocker.patch(
+            "hsml.predictor.Predictor._validate_resources",
+            return_value=resources.PredictorResources(0),
+        )
+
+        tracing = deployment_tracing_config.DeploymentTracingConfig(
+            enabled=True,
+            otel_tracing_storage=deployment_tracing_config.DeploymentTracingConfig.STORAGE_OFFLINE,
+        )
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="my_model",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+            tracing=tracing,
+        )
+
+        # Act
+        d = deployment.Deployment(predictor=p)
+
+        # Assert
+        assert d.tracing is tracing
+        assert d.tracing.otel_tracing_storage == "offline"
+
+        updated_tracing = deployment_tracing_config.DeploymentTracingConfig(
+            enabled=False,
+            otel_tracing_storage=deployment_tracing_config.DeploymentTracingConfig.STORAGE_BOTH,
+        )
+        d.tracing = updated_tracing
+
+        assert p.tracing is updated_tracing
+        assert p.tracing.otel_tracing_storage == "both"
+
     # from predictor
 
     def test_from_predictor(self, mocker):
@@ -124,7 +164,7 @@ class TestDeployment:
         )
 
         # Act
-        deployment.Deployment.from_predictor(p)
+        deployment.Deployment._from_predictor(p)
 
         # Assert
         mock_deployment_init.assert_called_once_with(
@@ -138,7 +178,7 @@ class TestDeployment:
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
         mock_serving_engine_save = mocker.patch(
-            "hsml.engine.serving_engine.ServingEngine.save"
+            "hsml.engine.serving_engine.ServingEngine._save"
         )
 
         # Act
@@ -152,7 +192,7 @@ class TestDeployment:
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
         mock_serving_engine_save = mocker.patch(
-            "hsml.engine.serving_engine.ServingEngine.save"
+            "hsml.engine.serving_engine.ServingEngine._save"
         )
 
         # Act
@@ -169,7 +209,7 @@ class TestDeployment:
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
         mock_serving_engine_start = mocker.patch(
-            "hsml.engine.serving_engine.ServingEngine.start"
+            "hsml.engine.serving_engine.ServingEngine._start"
         )
 
         # Act
@@ -183,7 +223,7 @@ class TestDeployment:
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
         mock_serving_engine_start = mocker.patch(
-            "hsml.engine.serving_engine.ServingEngine.start"
+            "hsml.engine.serving_engine.ServingEngine._start"
         )
 
         # Act
@@ -200,7 +240,7 @@ class TestDeployment:
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
         mock_serving_engine_stop = mocker.patch(
-            "hsml.engine.serving_engine.ServingEngine.stop"
+            "hsml.engine.serving_engine.ServingEngine._stop"
         )
 
         # Act
@@ -214,7 +254,7 @@ class TestDeployment:
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
         mock_serving_engine_start = mocker.patch(
-            "hsml.engine.serving_engine.ServingEngine.stop"
+            "hsml.engine.serving_engine.ServingEngine._stop"
         )
 
         # Act
@@ -278,7 +318,7 @@ class TestDeployment:
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
         mock_serving_engine_delete = mocker.patch(
-            "hsml.engine.serving_engine.ServingEngine.delete"
+            "hsml.engine.serving_engine.ServingEngine._delete"
         )
 
         # Act
@@ -292,7 +332,7 @@ class TestDeployment:
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
         mock_serving_engine_delete = mocker.patch(
-            "hsml.engine.serving_engine.ServingEngine.delete"
+            "hsml.engine.serving_engine.ServingEngine._delete"
         )
 
         # Act
@@ -309,7 +349,7 @@ class TestDeployment:
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
         mock_serving_engine_get_state = mocker.patch(
-            "hsml.engine.serving_engine.ServingEngine.get_state"
+            "hsml.engine.serving_engine.ServingEngine._get_state"
         )
 
         # Act
@@ -332,7 +372,7 @@ class TestDeployment:
                 self.status = status
 
         mocker.patch(
-            "hsml.engine.serving_engine.ServingEngine.get_state",
+            "hsml.engine.serving_engine.ServingEngine._get_state",
             return_value=MockPredictorState(PREDICTOR_STATE.STATUS_CREATING),
         )
 
@@ -364,7 +404,7 @@ class TestDeployment:
 
         for valid_status in valid_statuses:
             mocker.patch(
-                "hsml.engine.serving_engine.ServingEngine.get_state",
+                "hsml.engine.serving_engine.ServingEngine._get_state",
                 return_value=MockPredictorState(valid_status),
             )
 
@@ -383,7 +423,7 @@ class TestDeployment:
                 self.status = status
 
         mocker.patch(
-            "hsml.engine.serving_engine.ServingEngine.get_state",
+            "hsml.engine.serving_engine.ServingEngine._get_state",
             return_value=MockPredictorState(PREDICTOR_STATE.STATUS_RUNNING),
         )
 
@@ -413,7 +453,7 @@ class TestDeployment:
 
         for valid_status in valid_statuses:
             mocker.patch(
-                "hsml.engine.serving_engine.ServingEngine.get_state",
+                "hsml.engine.serving_engine.ServingEngine._get_state",
                 return_value=MockPredictorState(valid_status),
             )
 
@@ -436,7 +476,7 @@ class TestDeployment:
 
         for valid_status in valid_statuses:
             mocker.patch(
-                "hsml.engine.serving_engine.ServingEngine.get_state",
+                "hsml.engine.serving_engine.ServingEngine._get_state",
                 return_value=MockPredictorState(valid_status),
             )
 
@@ -466,7 +506,7 @@ class TestDeployment:
 
         for valid_status in valid_statuses:
             mocker.patch(
-                "hsml.engine.serving_engine.ServingEngine.get_state",
+                "hsml.engine.serving_engine.ServingEngine._get_state",
                 return_value=MockPredictorState(valid_status),
             )
 
@@ -496,7 +536,7 @@ class TestDeployment:
 
         for valid_status in valid_statuses:
             mocker.patch(
-                "hsml.engine.serving_engine.ServingEngine.get_state",
+                "hsml.engine.serving_engine.ServingEngine._get_state",
                 return_value=MockPredictorState(valid_status),
             )
 
@@ -526,7 +566,7 @@ class TestDeployment:
 
         for valid_status in valid_statuses:
             mocker.patch(
-                "hsml.engine.serving_engine.ServingEngine.get_state",
+                "hsml.engine.serving_engine.ServingEngine._get_state",
                 return_value=MockPredictorState(valid_status),
             )
 
@@ -545,7 +585,7 @@ class TestDeployment:
                 self.status = status
 
         mocker.patch(
-            "hsml.engine.serving_engine.ServingEngine.get_state",
+            "hsml.engine.serving_engine.ServingEngine._get_state",
             return_value=MockPredictorState(PREDICTOR_STATE.STATUS_STOPPED),
         )
 
@@ -575,7 +615,7 @@ class TestDeployment:
 
         for valid_status in valid_statuses:
             mocker.patch(
-                "hsml.engine.serving_engine.ServingEngine.get_state",
+                "hsml.engine.serving_engine.ServingEngine._get_state",
                 return_value=MockPredictorState(valid_status),
             )
 
@@ -605,7 +645,7 @@ class TestDeployment:
 
         for valid_status in valid_statuses:
             mocker.patch(
-                "hsml.engine.serving_engine.ServingEngine.get_state",
+                "hsml.engine.serving_engine.ServingEngine._get_state",
                 return_value=MockPredictorState(valid_status),
             )
 
@@ -635,7 +675,7 @@ class TestDeployment:
 
         for valid_status in valid_statuses:
             mocker.patch(
-                "hsml.engine.serving_engine.ServingEngine.get_state",
+                "hsml.engine.serving_engine.ServingEngine._get_state",
                 return_value=MockPredictorState(valid_status),
             )
 
@@ -649,7 +689,7 @@ class TestDeployment:
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
         mock_serving_engine_predict = mocker.patch(
-            "hsml.engine.serving_engine.ServingEngine.predict"
+            "hsml.engine.serving_engine.ServingEngine._predict"
         )
 
         # Act
@@ -665,7 +705,7 @@ class TestDeployment:
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
         mock_serving_engine_download_artifact_files = mocker.patch(
-            "hsml.engine.serving_engine.ServingEngine.download_artifact_files"
+            "hsml.engine.serving_engine.ServingEngine._download_artifact_files"
         )
 
         # Act
@@ -683,7 +723,7 @@ class TestDeployment:
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
         mock_util_get_members = mocker.patch(
-            "hopsworks_common.util.get_members", return_value=["predictor"]
+            "hopsworks_common.util._get_members", return_value=["predictor"]
         )
         mock_print = mocker.patch("builtins.print")
 
@@ -693,7 +733,7 @@ class TestDeployment:
 
         mock_logs = [MockLogs()]
         mock_serving_get_logs = mocker.patch(
-            "hsml.engine.serving_engine.ServingEngine.get_logs",
+            "hsml.engine.serving_engine.ServingEngine._get_logs",
             return_value=mock_logs,
         )
 
@@ -710,7 +750,7 @@ class TestDeployment:
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
         mock_util_get_members = mocker.patch(
-            "hopsworks_common.util.get_members", return_value=["valid"]
+            "hopsworks_common.util._get_members", return_value=["valid"]
         )
         mock_print = mocker.patch("builtins.print")
 
@@ -720,7 +760,7 @@ class TestDeployment:
 
         mock_logs = [MockLogs()]
         mock_serving_get_logs = mocker.patch(
-            "hsml.engine.serving_engine.ServingEngine.get_logs",
+            "hsml.engine.serving_engine.ServingEngine._get_logs",
             return_value=mock_logs,
         )
 
@@ -749,7 +789,7 @@ class TestDeployment:
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
         mock_util_get_members = mocker.patch(
-            "hopsworks_common.util.get_members", return_value=["predictor"]
+            "hopsworks_common.util._get_members", return_value=["predictor"]
         )
         mock_print = mocker.patch("builtins.print")
 
@@ -759,7 +799,7 @@ class TestDeployment:
 
         mock_logs = [MockLogs()]
         mock_serving_get_logs = mocker.patch(
-            "hsml.engine.serving_engine.ServingEngine.get_logs",
+            "hsml.engine.serving_engine.ServingEngine._get_logs",
             return_value=mock_logs,
         )
 
@@ -776,12 +816,12 @@ class TestDeployment:
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
         mock_util_get_members = mocker.patch(
-            "hopsworks_common.util.get_members", return_value=["predictor"]
+            "hopsworks_common.util._get_members", return_value=["predictor"]
         )
         mock_print = mocker.patch("builtins.print")
 
         mock_serving_get_logs = mocker.patch(
-            "hsml.engine.serving_engine.ServingEngine.get_logs",
+            "hsml.engine.serving_engine.ServingEngine._get_logs",
             return_value=None,
         )
 
@@ -815,13 +855,13 @@ class TestDeployment:
         # Arrange
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
-        mocker.patch("hopsworks_common.util.get_members", return_value=["predictor"])
+        mocker.patch("hopsworks_common.util._get_members", return_value=["predictor"])
         chunks = [
             self._make_chunk(content="hello\n"),
             self._make_chunk(content="world"),
         ]
         mock_api = mocker.patch(
-            "hsml.core.serving_api.ServingApi.get_logs", return_value=chunks
+            "hsml.core.serving_api.ServingApi._get_logs", return_value=chunks
         )
 
         # Act
@@ -839,9 +879,9 @@ class TestDeployment:
     ):
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
-        mocker.patch("hopsworks_common.util.get_members", return_value=["predictor"])
+        mocker.patch("hopsworks_common.util._get_members", return_value=["predictor"])
         mock_api = mocker.patch(
-            "hsml.core.serving_api.ServingApi.get_logs", return_value=[]
+            "hsml.core.serving_api.ServingApi._get_logs", return_value=[]
         )
 
         d.read_logs(
@@ -858,7 +898,7 @@ class TestDeployment:
         assert kwargs["since"] == "2026-05-08T00:00:00Z"
         assert kwargs["until"] == "2026-05-08T01:00:00Z"
         assert kwargs["pod"] == "my-pod-0"
-        # tail goes through positionally per ServingApi.get_logs signature.
+        # tail goes through positionally per ServingApi._get_logs signature.
         assert mock_api.call_args.args[2] == 200
 
     def test_read_logs_multiple_instances_get_block_headers(
@@ -866,9 +906,9 @@ class TestDeployment:
     ):
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
-        mocker.patch("hopsworks_common.util.get_members", return_value=["predictor"])
+        mocker.patch("hopsworks_common.util._get_members", return_value=["predictor"])
         mocker.patch(
-            "hsml.core.serving_api.ServingApi.get_logs",
+            "hsml.core.serving_api.ServingApi._get_logs",
             return_value=[
                 self._make_chunk(instance_name="pod-A", content="a1\n"),
                 self._make_chunk(instance_name="pod-B", content="b1\n"),
@@ -886,7 +926,7 @@ class TestDeployment:
     ):
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
-        mocker.patch("hopsworks_common.util.get_members", return_value=["predictor"])
+        mocker.patch("hopsworks_common.util._get_members", return_value=["predictor"])
         # First poll: two new entries. Second poll: doc_id "x1" already
         # seen, doc_id "x3" is new → only "x3" should be yielded.
         first = [
@@ -906,7 +946,7 @@ class TestDeployment:
             ),
         ]
         mocker.patch(
-            "hsml.core.serving_api.ServingApi.get_logs",
+            "hsml.core.serving_api.ServingApi._get_logs",
             side_effect=[first, second, []],
         )
         # No real sleeps in the test.
@@ -930,7 +970,7 @@ class TestDeployment:
     def test_tail_logs_dedup_hash_for_kubernetes_source(self, mocker, backend_fixtures):
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
-        mocker.patch("hopsworks_common.util.get_members", return_value=["predictor"])
+        mocker.patch("hopsworks_common.util._get_members", return_value=["predictor"])
         # No timestamp / doc_id → engine falls back to (instance, content) hash.
         first = [self._make_chunk(content="boot\n")]
         second = [
@@ -938,7 +978,7 @@ class TestDeployment:
             self._make_chunk(content="ready\n"),
         ]
         mocker.patch(
-            "hsml.core.serving_api.ServingApi.get_logs",
+            "hsml.core.serving_api.ServingApi._get_logs",
             side_effect=[first, second],
         )
         mocker.patch("time.sleep")
@@ -956,15 +996,15 @@ class TestDeployment:
     def test_tail_logs_stops_on_status(self, mocker, backend_fixtures):
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
-        mocker.patch("hopsworks_common.util.get_members", return_value=["predictor"])
-        mocker.patch("hsml.core.serving_api.ServingApi.get_logs", return_value=[])
+        mocker.patch("hopsworks_common.util._get_members", return_value=["predictor"])
+        mocker.patch("hsml.core.serving_api.ServingApi._get_logs", return_value=[])
         # First state probe returns Running, second returns Stopped → loop exits.
         states = [
             mocker.MagicMock(status="Running"),
             mocker.MagicMock(status="Stopped"),
         ]
         mocker.patch(
-            "hsml.engine.serving_engine.ServingEngine.get_state",
+            "hsml.engine.serving_engine.ServingEngine._get_state",
             side_effect=states,
         )
         mocker.patch("time.sleep")
@@ -977,14 +1017,14 @@ class TestDeployment:
         # users who depend on its print behaviour are not silently broken.
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
-        mocker.patch("hopsworks_common.util.get_members", return_value=["predictor"])
+        mocker.patch("hopsworks_common.util._get_members", return_value=["predictor"])
 
         class MockLog:
             def __repr__(self):
                 return "[mock log line]"
 
         mocker.patch(
-            "hsml.engine.serving_engine.ServingEngine.get_logs",
+            "hsml.engine.serving_engine.ServingEngine._get_logs",
             return_value=[MockLog()],
         )
 
@@ -1008,10 +1048,10 @@ class TestDeployment:
         path = "/p/" + str(mock_client._project_id) + "/deployments/" + str(d.id)
 
         mock_util_get_hostname_replaced_url = mocker.patch(
-            "hopsworks_common.util.get_hostname_replaced_url", return_value="url"
+            "hopsworks_common.util._get_hostname_replaced_url", return_value="url"
         )
         mock_client_get_instance = mocker.patch(
-            "hopsworks_common.client.get_instance", return_value=mock_client
+            "hopsworks_common.client._get_instance", return_value=mock_client
         )
 
         # Act
@@ -1129,6 +1169,25 @@ class TestDeployment:
         assert d.env_vars == {}
         assert p.env_vars == {}
 
+    # get_monitoring_configs
+
+    def test_get_monitoring_configs_delegates_to_model(self, mocker, backend_fixtures):
+        # Arrange
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mock_fm_configs = [mocker.Mock(), mocker.Mock()]
+        mock_model = mocker.Mock()
+        mock_model.get_monitoring_configs.return_value = mock_fm_configs
+        mocker.patch.object(d, "get_model", return_value=mock_model)
+
+        # Act
+        result = d.get_monitoring_configs()
+
+        # Assert
+        assert result == mock_fm_configs
+        d.get_model.assert_called_once()
+        mock_model.get_monitoring_configs.assert_called_once()
+
     # auxiliary methods
 
     def _get_dummy_predictor(self, mocker, backend_fixtures):
@@ -1138,7 +1197,7 @@ class TestDeployment:
         mocker.patch("hsml.predictor.Predictor._validate_serving_tool")
         mocker.patch("hsml.predictor.Predictor._validate_resources")
         mocker.patch("hsml.predictor.Predictor._validate_script_file")
-        mocker.patch("hopsworks_common.util.get_obj_from_json")
+        mocker.patch("hopsworks_common.util._get_obj_from_json")
         return predictor.Predictor(
             id=p_json["id"],
             name=p_json["name"],

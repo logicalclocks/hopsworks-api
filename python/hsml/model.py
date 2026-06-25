@@ -37,6 +37,7 @@ from hsml.schema import Schema
 
 if TYPE_CHECKING:
     from hsfs import feature_view
+    from hsfs.core.feature_monitoring_config import FeatureMonitoringConfig
     from hsml import deployment, tag
     from hsml.inference_batcher import InferenceBatcher
     from hsml.inference_logger import InferenceLogger
@@ -108,7 +109,7 @@ class Model:
         self._training_dataset_version = training_dataset_version
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def save(
         self,
         model_path: str,
@@ -168,7 +169,7 @@ class Model:
                     stacklevel=1,
                 )
 
-        return self._model_engine.save(
+        return self._model_engine._save(
             model_instance=self,
             model_path=model_path,
             await_registration=await_registration,
@@ -177,7 +178,7 @@ class Model:
         )
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def download(self, local_path: str | None = None) -> str:
         """Download the model files.
 
@@ -203,10 +204,10 @@ class Model:
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
         """
-        return self._model_engine.download(model_instance=self, local_path=local_path)
+        return self._model_engine._download(model_instance=self, local_path=local_path)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def delete(self):
         """Delete the model.
 
@@ -217,7 +218,7 @@ class Model:
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
         """
-        self._model_engine.delete(model_instance=self)
+        self._model_engine._delete(model_instance=self)
 
     @public
     @staticmethod
@@ -279,7 +280,7 @@ class Model:
 
         return sum(
             Model._clear_cache_base(cache_base, project_name, model_name, version)
-            for cache_base in model_engine.model_cache_base_dirs()
+            for cache_base in model_engine._model_cache_base_dirs()
         )
 
     @staticmethod
@@ -358,7 +359,7 @@ class Model:
         return removed_count
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def deploy(
         self,
         name: str | None = None,
@@ -403,8 +404,8 @@ class Model:
             artifact_version: **Deprecated**. Version number of the model artifact to deploy, `CREATE` to create a new model artifact
             or `MODEL-ONLY` to reuse the shared artifact containing only the model files.
             serving_tool: Serving tool used to deploy the model server.
-            script_file: Path to a custom predictor script implementing the Predict class.
-            config_file: Model server configuration file to be passed to the model deployment.
+            script_file: Path to a custom predictor script implementing the Predict class, either local or already uploaded to HopsFS.
+            config_file: Model server configuration file to be passed to the model deployment, either local or already uploaded to HopsFS.
                 It can be accessed via `CONFIG_FILE_PATH` environment variable from a predictor or transformer script.
                 For LLM deployments without a predictor script, this file is used to configure the vLLM engine.
             resources: Resources to be allocated for the predictor.
@@ -449,7 +450,7 @@ class Model:
         return predictor.deploy()
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def add_tag(self, name: str, value: str | dict):
         """Attach a tag to a model.
 
@@ -463,10 +464,10 @@ class Model:
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to add the tag.
         """
-        self._model_engine.set_tag(model_instance=self, name=name, value=value)
+        self._model_engine._set_tag(model_instance=self, name=name, value=value)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def set_tag(self, name: str, value: str | dict):
         """Deprecated: Use add_tag instead.
 
@@ -479,10 +480,10 @@ class Model:
             DeprecationWarning,
             stacklevel=2,
         )
-        self._model_engine.set_tag(model_instance=self, name=name, value=value)
+        self._model_engine._set_tag(model_instance=self, name=name, value=value)
 
     @public
-    @usage.method_logger
+    @usage._method_logger
     def delete_tag(self, name: str):
         """Delete a tag attached to a model.
 
@@ -492,7 +493,7 @@ class Model:
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to delete the tag.
         """
-        self._model_engine.delete_tag(model_instance=self, name=name)
+        self._model_engine._delete_tag(model_instance=self, name=name)
 
     @public
     def get_tag(self, name: str) -> str | None:
@@ -507,7 +508,7 @@ class Model:
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the tag.
         """
-        return self._model_engine.get_tag(model_instance=self, name=name)
+        return self._model_engine._get_tag(model_instance=self, name=name)
 
     @public
     def get_tags(self) -> dict[str, tag.Tag]:
@@ -519,20 +520,20 @@ class Model:
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case of a server error.
         """
-        return self._model_engine.get_tags(model_instance=self)
+        return self._model_engine._get_tags(model_instance=self)
 
     @public
     def get_url(self):
         """Get url to the model in Hopsworks."""
         path = (
             "/p/"
-            + str(client.get_instance()._project_id)
+            + str(client._get_instance()._project_id)
             + "/models/"
             + str(self.name)
             + "/"
             + str(self.version)
         )
-        return util.get_hostname_replaced_url(sub_path=path)
+        return util._get_hostname_replaced_url(sub_path=path)
 
     @public
     def get_feature_view(
@@ -585,7 +586,7 @@ class Model:
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the feature view provenance.
         """
-        return self._model_engine.get_feature_view_provenance(model_instance=self)
+        return self._model_engine._get_feature_view_provenance(model_instance=self)
 
     @public
     def get_training_dataset_provenance(self) -> explicit_provenance.Links:
@@ -600,7 +601,117 @@ class Model:
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the training dataset provenance.
         """
-        return self._model_engine.get_training_dataset_provenance(model_instance=self)
+        return self._model_engine._get_training_dataset_provenance(model_instance=self)
+
+    @public
+    def get_monitoring_configs(self) -> list[FeatureMonitoringConfig]:
+        """Get the feature monitoring configurations for this model version.
+
+        Example:
+            ```python
+
+            import hopsworks
+
+            project = hopsworks.login()
+
+            mr = project.get_model_registry()
+            my_model = mr.get_model("my_model", version=1)
+
+            fm_configs = my_model.get_monitoring_configs()
+            ```
+
+        Returns:
+            List of `FeatureMonitoringConfig` objects for this model version.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
+        """
+        try:
+            from hsfs.core.feature_monitoring_config_api import (
+                FeatureMonitoringConfigApi,
+            )
+        except ModuleNotFoundError as err:
+            from hopsworks_common.client.exceptions import FeatureStoreException
+
+            raise FeatureStoreException(
+                "Feature monitoring requires the hsfs library, which is not installed. "
+                "Install hsfs before fetching model monitoring configurations."
+            ) from err
+
+        return FeatureMonitoringConfigApi._get_by_model(
+            model_registry_id=self._model_registry_id,
+            model_id=self._id,
+        )
+
+    @public
+    def create_model_monitoring(
+        self,
+        name: str,
+        description: str | None = None,
+        start_date_time: int | str | None = None,
+        end_date_time: int | str | None = None,
+        cron_expression: str | None = "0 0 12 ? * * *",
+    ) -> FeatureMonitoringConfig:
+        """Create a model monitoring config for this model.
+
+        Resolves this model's parent feature view via provenance and delegates to
+        ``feature_view.create_model_monitoring`` with this model's ``name`` and
+        ``version`` already filled in. The resulting config targets the FV's
+        logging feature group, filters by this model + version, and defaults the
+        reference training dataset to the version that was used to train the model.
+
+        Experimental:
+            Public API is subject to change, this feature is not suitable for production use-cases.
+
+        Example:
+            ```python3
+            mr = project.get_model_registry()
+            my_model = mr.get_model("my_model", version=1)
+
+            my_model.create_model_monitoring(
+                name="psi_drift",
+            ).with_detection_window(
+                time_offset="1d", window_length="1d",
+            ).with_reference_training_dataset(  # defaults to model's TD version
+            ).compare_on_distribution(
+                feature_name="amount", metric="PSI", threshold=0.2,
+            ).save()
+            ```
+
+        Parameters:
+            name: Name of the feature monitoring configuration.
+            description: Description of the feature monitoring configuration.
+            start_date_time: Start date and time from which to start computing statistics.
+            end_date_time: End date and time at which to stop computing statistics.
+            cron_expression: Cron expression scheduling the FM job (UTC, Quartz).
+
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException: If this model has no
+                parent feature view recorded in its provenance, or if downstream
+                FV validation fails (no logging enabled, no recorded TD version, ...).
+
+        Returns:
+            A ``FeatureMonitoringConfig`` builder. Call ``with_detection_window``,
+            ``with_reference_*``, ``compare_on`` / ``compare_on_distribution``,
+            and ``save()`` to register it.
+        """
+        fv = self.get_feature_view(init=False)
+        if fv is None:
+            from hopsworks_common.client.exceptions import FeatureStoreException
+
+            raise FeatureStoreException(
+                f"Cannot create model monitoring for model '{self.name}' "
+                f"v{self.version}: no parent feature view recorded in its provenance."
+            )
+        return fv.create_model_monitoring(
+            name=name,
+            model_name=self.name,
+            model_version=self.version,
+            description=description,
+            start_date_time=start_date_time,
+            end_date_time=end_date_time,
+            cron_expression=cron_expression,
+        )
 
     def _get_default_serving_name(self):
         return re.sub(r"[^a-zA-Z0-9]", "", self._name)
@@ -611,8 +722,8 @@ class Model:
         if "count" in json_decamelized:
             if json_decamelized["count"] == 0:
                 return []
-            return [util.set_model_class(model) for model in json_decamelized["items"]]
-        return util.set_model_class(json_decamelized)
+            return [util._set_model_class(model) for model in json_decamelized["items"]]
+        return util._set_model_class(json_decamelized)
 
     def update_from_response_json(self, json_dict):
         json_decamelized = humps.decamelize(json_dict)
@@ -637,7 +748,7 @@ class Model:
             "metrics": self._training_metrics,
             "environment": self._environment,
             "program": self._program,
-            "featureView": util.feature_view_to_json(self._feature_view),
+            "featureView": util._feature_view_to_json(self._feature_view),
             "trainingDatasetVersion": self._training_dataset_version,
         }
 
@@ -706,7 +817,7 @@ class Model:
     def environment(self):
         """Input example of the model."""
         if self._environment is not None:
-            return self._model_engine.read_file(
+            return self._model_engine._read_file(
                 model_instance=self, resource="environment.yml"
             )
         return self._environment
@@ -730,7 +841,7 @@ class Model:
     def program(self):
         """Executable used to export the model."""
         if self._program is not None:
-            return self._model_engine.read_file(
+            return self._model_engine._read_file(
                 model_instance=self, resource=self._program
             )
         return None
@@ -753,7 +864,7 @@ class Model:
     @property
     def input_example(self):
         """input_example of the model."""
-        return self._model_engine.read_json(
+        return self._model_engine._read_json(
             model_instance=self, resource="input_example.json"
         )
 
@@ -775,7 +886,7 @@ class Model:
     @property
     def model_schema(self):
         """Model schema of the model."""
-        return self._model_engine.read_json(
+        return self._model_engine._read_json(
             model_instance=self, resource="model_schema.json"
         )
 

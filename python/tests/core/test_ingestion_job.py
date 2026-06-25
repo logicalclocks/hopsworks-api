@@ -24,7 +24,7 @@ class TestIngestionJob:
         json = backend_fixtures["ingestion_job"]["get"]["response"]
 
         # Act
-        mocker.patch("hopsworks_common.client.get_instance")
+        mocker.patch("hopsworks_common.client._get_instance")
         ij = ingestion_job.IngestionJob.from_response_json(json)
 
         # Assert

@@ -18,6 +18,7 @@ import warnings
 from typing import TYPE_CHECKING, Any
 
 from hopsworks_common.client import exceptions
+from hopsworks_common.core.constants import HAS_PYICEBERG
 from hopsworks_common.core.sink_job_configuration import (
     FeatureColumnMapping,
     SinkJobConfiguration,
@@ -28,7 +29,9 @@ from hsfs.core import (
     delta_engine,
     feature_group_base_engine,
     hudi_engine,
+    iceberg_engine,
     job_api,
+    transformation_execution_dag,
     transformation_function_engine,
 )
 from hsfs.core.deltastreamer_jobconf import DeltaStreamerJobConf
@@ -40,7 +43,6 @@ if TYPE_CHECKING:
     import pandas as pd
     import polars as pl
     from hsfs.feature import Feature
-    from hsfs.transformation_function import TransformationFunction
 
 
 class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
@@ -92,17 +94,23 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         for feat in features:
             if feat.name not in dropped_features:
                 updated_schema.append(feat)
+        # Also filter out transformed (intermediate) features that are dropped
+        # by downstream transformation functions in the chain.
+        transformed_features = [
+            feat for feat in transformed_features if feat.name not in dropped_features
+        ]
         return updated_schema + transformed_features
 
-    def save(
+    def _save(
         self,
         feature_group: fg.FeatureGroup | fg.ExternalFeatureGroup,
         feature_dataframe,
         write_options,
         transformation_context: dict[str, Any] = None,
         validation_options: dict = None,
+        n_processes: int | None = None,
     ):
-        dataframe_features = engine.get_instance().parse_schema_feature_group(
+        dataframe_features = engine._get_instance()._parse_schema_feature_group(
             feature_dataframe, feature_group.time_travel_format
         )
         dataframe_features = (
@@ -114,11 +122,12 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         # Currently on-demand transformation functions not supported in external feature groups.
         if feature_group.transformation_functions:
             if not isinstance(feature_group, fg.ExternalFeatureGroup):
-                feature_dataframe = transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(
-                    transformation_functions=feature_group.transformation_functions,
+                feature_dataframe = transformation_function_engine.TransformationFunctionEngine._apply_transformation_functions(
+                    execution_graph=feature_group._transformation_function_execution_dag,
                     data=feature_dataframe,
                     online=False,
                     transformation_context=transformation_context,
+                    n_processes=n_processes,
                 )
             else:
                 warnings.warn(
@@ -126,7 +135,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                     stacklevel=1,
                 )
 
-        util.validate_embedding_feature_type(
+        util._validate_embedding_feature_type(
             feature_group.embedding_index, dataframe_features
         )
 
@@ -137,18 +146,18 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             and validation_options.get("schema_validation", True)
         ):
             # validate df schema
-            dataframe_features = DataFrameValidator().validate_schema(
+            dataframe_features = DataFrameValidator()._validate_schema(
                 feature_group, feature_dataframe, dataframe_features
             )
 
-        self.save_feature_group_metadata(
+        self._save_feature_group_metadata(
             feature_group,
             dataframe_features,
             write_options,
         )
 
         # ge validation on python and non stream feature groups on spark
-        ge_report = feature_group._great_expectation_engine.validate(
+        ge_report = feature_group._great_expectation_engine._validate(
             feature_group=feature_group,
             dataframe=feature_dataframe,
             validation_options=validation_options or {},
@@ -162,12 +171,12 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         online_write_options = write_options
 
         return (
-            engine.get_instance().save_dataframe(
+            engine._get_instance()._save_dataframe(
                 feature_group,
                 feature_dataframe,
                 (
                     hudi_engine.HudiEngine.HUDI_BULK_INSERT
-                    if feature_group.time_travel_format in ["HUDI", "DELTA"]
+                    if feature_group.time_travel_format in ["HUDI", "DELTA", "ICEBERG"]
                     else None
                 ),
                 feature_group.online_enabled,
@@ -178,33 +187,39 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             ge_report,
         )
 
-    def apply_on_demand_transformations(
+    def _apply_on_demand_transformations(
         self,
-        transformation_functions: list[TransformationFunction],
+        execution_graph: transformation_execution_dag.TransformationExecutionDAG,
         data: pd.DataFrame | pl.DataFrame | list[dict[str, Any]],
         online: bool = False,
         transformation_context: dict[str, Any] | list[dict[str, Any]] = None,
         request_parameters: dict[str, Any] | list[dict[str, Any]] = None,
+        n_processes: int | None = None,
     ) -> list[dict[str, Any]] | pd.DataFrame:
         """Function to apply on demand transformations to the passed dataframe or list of dictionaries.
 
         Parameters:
-            transformation_functions: List of transformation functions to apply.
+            execution_graph: The transformation DAG containing on-demand transformation functions with dependency tracking.
             data: The dataframe or list of dictionaries to apply the transformations to.
-            online: Apply the transformations for online or offline usecase. This parameter is applicable when a transformation function is defined using the `default` execution mode.
+            online: Apply the transformations for online or offline usecase.
+                This parameter is applicable when a transformation function is defined using the `default` execution mode.
             transformation_context: Transformation context to be used when applying the transformations.
             request_parameters: Request parameters to be used when applying the transformations.
+            n_processes: Number of worker processes for applying transformation functions in parallel.
+                Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
+                Ignored by the Spark engine.
 
         Returns:
             The updated dataframe or list of dictionaries with the transformations applied.
         """
         try:
-            df = transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(
-                transformation_functions=transformation_functions,
+            df = transformation_function_engine.TransformationFunctionEngine._apply_transformation_functions(
+                execution_graph=execution_graph,
                 data=data,
                 online=online,
                 transformation_context=transformation_context,
                 request_parameters=request_parameters,
+                n_processes=n_processes,
             )
         except exceptions.TransformationFunctionException as e:
             raise exceptions.FeatureStoreException(
@@ -213,7 +228,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             ) from e
         return df
 
-    def insert(
+    def _insert(
         self,
         feature_group: fg.FeatureGroup | fg.ExternalFeatureGroup,
         feature_dataframe,
@@ -224,8 +239,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         validation_options: dict = None,
         transformation_context: dict[str, Any] = None,
         transform: bool = True,
+        n_processes: int | None = None,
     ):
-        dataframe_features = engine.get_instance().parse_schema_feature_group(
+        dataframe_features = engine._get_instance()._parse_schema_feature_group(
             feature_dataframe,
             feature_group.time_travel_format,
             features=feature_group.columns,
@@ -238,11 +254,12 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             and transform
         ):
             try:
-                feature_dataframe = transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(
-                    transformation_functions=feature_group.transformation_functions,
+                feature_dataframe = transformation_function_engine.TransformationFunctionEngine._apply_transformation_functions(
+                    execution_graph=feature_group._transformation_function_execution_dag,
                     data=feature_dataframe,
                     transformation_context=transformation_context,
                     online=False,
+                    n_processes=n_processes,
                 )
             except exceptions.TransformationFunctionException as e:
                 raise exceptions.FeatureStoreException(
@@ -256,7 +273,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 )
             )
 
-        util.validate_embedding_feature_type(
+        util._validate_embedding_feature_type(
             feature_group.embedding_index, dataframe_features
         )
 
@@ -267,23 +284,25 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             and validation_options.get("schema_validation", True)
         ):
             # validate df schema
-            dataframe_features = DataFrameValidator().validate_schema(
+            dataframe_features = DataFrameValidator()._validate_schema(
                 feature_group, feature_dataframe, dataframe_features
             )
 
         if not feature_group._id:
             # only save metadata if feature group does not exist
-            self.save_feature_group_metadata(
+            self._save_feature_group_metadata(
                 feature_group,
                 dataframe_features,
                 write_options,
             )
         else:
             # else, just verify that feature group schema matches user-provided dataframe
-            self._verify_schema_compatibility(feature_group.columns, dataframe_features)
+            self._verify_schema_compatibility(
+                self._columns_for_user_schema(feature_group), dataframe_features
+            )
 
         # ge validation on python and non stream feature groups on spark
-        ge_report = feature_group._great_expectation_engine.validate(
+        ge_report = feature_group._great_expectation_engine._validate(
             feature_group=feature_group,
             dataframe=feature_dataframe,
             validation_options=validation_options or {},
@@ -292,7 +311,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         )
 
         if ge_report is not None and ge_report.ingestion_result == "REJECTED":
-            feature_group_url = util.get_feature_group_url(
+            feature_group_url = util._get_feature_group_url(
                 feature_store_id=feature_group.feature_store_id,
                 feature_group_id=feature_group.id,
             )
@@ -311,10 +330,10 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             )
 
         if overwrite:
-            self._feature_group_api.delete_content(feature_group)
+            self._feature_group_api._delete_content(feature_group)
 
         return (
-            engine.get_instance().save_dataframe(
+            engine._get_instance()._save_dataframe(
                 feature_group,
                 feature_dataframe,
                 "bulk_insert" if overwrite else operation,
@@ -326,27 +345,25 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             ge_report,
         )
 
-    def delete(self, feature_group):
-        self._feature_group_api.delete(feature_group)
-
-    def commit_details(self, feature_group, wallclock_time, limit):
+    def _commit_details(self, feature_group, wallclock_time, limit):
         if (
             feature_group._time_travel_format is None
-            or feature_group._time_travel_format.upper() not in ["HUDI", "DELTA"]
+            or feature_group._time_travel_format.upper()
+            not in ["HUDI", "DELTA", "ICEBERG"]
         ):
             raise exceptions.FeatureStoreException(
                 "commit_details can only be used on time travel enabled feature groups"
             )
 
-        wallclock_timestamp = util.convert_event_time_to_timestamp(wallclock_time)
+        wallclock_timestamp = util._convert_event_time_to_timestamp(wallclock_time)
 
-        feature_group_commits = self._feature_group_api.get_commit_details(
+        feature_group_commits = self._feature_group_api._get_commit_details(
             feature_group, wallclock_timestamp, limit
         )
         commit_details = {}
         for feature_group_commit in feature_group_commits:
             commit_details[feature_group_commit.commitid] = {
-                "committedOn": util.get_hudi_datestr_from_timestamp(
+                "committedOn": util._get_hudi_datestr_from_timestamp(
                     feature_group_commit.commitid
                 ),
                 "rowsUpdated": feature_group_commit.rows_updated,
@@ -357,15 +374,15 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
 
     @staticmethod
     def _get_spark_session_and_context():
-        if isinstance(engine.get_instance(), engine.spark.Engine):
+        if isinstance(engine._get_instance(), engine.spark.Engine):
             return (
-                engine.get_instance()._spark_session,
-                engine.get_instance()._spark_context,
+                engine._get_instance()._spark_session,
+                engine._get_instance()._spark_context,
             )
         return None, None
 
     @staticmethod
-    def commit_delete(feature_group, delete_df, write_options):
+    def _commit_delete(feature_group, delete_df, write_options):
         spark_session, spark_context = (
             FeatureGroupEngine._get_spark_session_and_context()
         )
@@ -377,7 +394,16 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 spark_session,
                 spark_context,
             )
-            return delta_engine_instance.delete_record(delete_df)
+            return delta_engine_instance._delete_record(delete_df)
+        if feature_group.time_travel_format == "ICEBERG":
+            iceberg_engine_instance = iceberg_engine.IcebergEngine(
+                feature_group.feature_store_id,
+                feature_group.feature_store_name,
+                feature_group,
+                spark_session,
+                spark_context,
+            )
+            return iceberg_engine_instance._delete_record(delete_df)
         if spark_context is None:
             raise exceptions.FeatureStoreException(
                 "Hudi feature group deletes are not supported with Spark Connect. "
@@ -390,10 +416,10 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             spark_context,
             spark_session,
         )
-        return hudi_engine_instance.delete_record(delete_df, write_options)
+        return hudi_engine_instance._delete_record(delete_df, write_options)
 
     @staticmethod
-    def delta_vacuum(feature_group, retention_hours):
+    def _delta_vacuum(feature_group, retention_hours):
         if feature_group.time_travel_format == "DELTA":
             spark_session, spark_context = (
                 FeatureGroupEngine._get_spark_session_and_context()
@@ -406,15 +432,15 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 spark_session,
                 spark_context,
             )
-            return delta_engine_instance.vacuum(retention_hours)
+            return delta_engine_instance._vacuum(retention_hours)
         return None
 
-    def sql(self, query, feature_store_name, dataframe_type, online, read_options):
+    def _sql(self, query, feature_store_name, dataframe_type, online, read_options):
         if online and self._online_conn is None:
-            self._online_conn = self._storage_connector_api.get_online_connector(
+            self._online_conn = self._storage_connector_api._get_online_connector(
                 self._feature_store_id
             )
-        return engine.get_instance().sql(
+        return engine._get_instance()._sql(
             query,
             feature_store_name,
             self._online_conn if online else None,
@@ -427,11 +453,11 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         # the user object in corrupted state
         copy_feature_group = fg.FeatureGroup.from_response_json(feature_group.to_dict())
         copy_feature_group.columns = features
-        self._feature_group_api.update_metadata(
+        self._feature_group_api._update_metadata(
             feature_group, copy_feature_group, "updateMetadata"
         )
 
-    def update_features(
+    def _update_features(
         self, feature_group: fg.FeatureGroup, updated_features: list[Feature]
     ) -> None:
         """Updates features safely.
@@ -443,10 +469,10 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 This will replace the existing list of features.
         """
         self._update_features_metadata(
-            feature_group, self.new_feature_list(feature_group, updated_features)
+            feature_group, self._new_feature_list(feature_group, updated_features)
         )
 
-    def append_features(
+    def _append_features(
         self, feature_group: fg.FeatureGroup, new_features: list[Feature]
     ) -> None:
         """Appends features to a feature group.
@@ -461,9 +487,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         )
 
         # write empty dataframe to update parquet schema
-        engine.get_instance().update_table_schema(feature_group)
+        engine._get_instance()._update_table_schema(feature_group)
 
-    def update_description(
+    def _update_description(
         self, feature_group: fg.FeatureGroup, description: str
     ) -> None:
         """Updates the description of a feature group.
@@ -474,11 +500,11 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         """
         copy_feature_group = fg.FeatureGroup.from_response_json(feature_group.to_dict())
         copy_feature_group.description = description
-        self._feature_group_api.update_metadata(
+        self._feature_group_api._update_metadata(
             feature_group, copy_feature_group, "updateMetadata"
         )
 
-    def update_topic_name(
+    def _update_topic_name(
         self, feature_group: fg.FeatureGroup, topic_name: str
     ) -> None:
         """Updates the topic_name of a feature group.
@@ -489,11 +515,11 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         """
         copy_feature_group = fg.FeatureGroup.from_response_json(feature_group.to_dict())
         copy_feature_group.topic_name = topic_name
-        self._feature_group_api.update_metadata(
+        self._feature_group_api._update_metadata(
             feature_group, copy_feature_group, "updateMetadata"
         )
 
-    def update_notification_topic_name(
+    def _update_notification_topic_name(
         self, feature_group: fg.FeatureGroup, notification_topic_name: str
     ) -> None:
         """Updates the notification_topic_name of a feature group.
@@ -504,11 +530,11 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         """
         copy_feature_group = fg.FeatureGroup.from_response_json(feature_group.to_dict())
         copy_feature_group.notification_topic_name = notification_topic_name
-        self._feature_group_api.update_metadata(
+        self._feature_group_api._update_metadata(
             feature_group, copy_feature_group, "updateMetadata"
         )
 
-    def update_deprecated(
+    def _update_deprecated(
         self, feature_group: fg.FeatureGroup, deprecate: bool
     ) -> None:
         """Updates the deprecation status of a feature group.
@@ -518,11 +544,11 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             deprecate: The new deprecation status to set on the feature group.
         """
         copy_feature_group = fg.FeatureGroup.from_response_json(feature_group.to_dict())
-        self._feature_group_api.update_metadata(
+        self._feature_group_api._update_metadata(
             feature_group, copy_feature_group, "deprecate", deprecate
         )
 
-    def insert_stream(
+    def _insert_stream(
         self,
         feature_group: fg.FeatureGroup | fg.ExternalFeatureGroup,
         dataframe,
@@ -541,7 +567,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 "It is currently only possible to stream to the online storage."
             )
 
-        dataframe_features = engine.get_instance().parse_schema_feature_group(
+        dataframe_features = engine._get_instance()._parse_schema_feature_group(
             dataframe, feature_group.time_travel_format
         )
         dataframe_features = (
@@ -552,8 +578,8 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
 
         if feature_group.transformation_functions and transform:
             try:
-                dataframe = transformation_function_engine.TransformationFunctionEngine.apply_transformation_functions(
-                    transformation_functions=feature_group.transformation_functions,
+                dataframe = transformation_function_engine.TransformationFunctionEngine._apply_transformation_functions(
+                    execution_graph=feature_group._transformation_function_execution_dag,
                     data=dataframe,
                     online=False,
                     transformation_context=transformation_context,
@@ -564,12 +590,12 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                     "Please verify that the correct feature names are used in the transformation function and that these features exist in the dataframe being inserted"
                 ) from e
 
-        util.validate_embedding_feature_type(
+        util._validate_embedding_feature_type(
             feature_group.embedding_index, dataframe_features
         )
 
         if not feature_group._id:
-            self.save_feature_group_metadata(
+            self._save_feature_group_metadata(
                 feature_group,
                 dataframe_features,
                 write_options,
@@ -580,9 +606,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 # we will use save_dataframe method on empty dataframe to create directory structure
                 offline_write_options = write_options
                 online_write_options = write_options
-                engine.get_instance().save_dataframe(
+                engine._get_instance()._save_dataframe(
                     feature_group,
-                    engine.get_instance().create_empty_df(dataframe),
+                    engine._get_instance()._create_empty_df(dataframe),
                     (
                         hudi_engine.HudiEngine.HUDI_BULK_INSERT
                         if feature_group.time_travel_format == "HUDI"
@@ -595,7 +621,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 )
         else:
             # else, just verify that feature group schema matches user-provided dataframe
-            self._verify_schema_compatibility(feature_group.columns, dataframe_features)
+            self._verify_schema_compatibility(
+                self._columns_for_user_schema(feature_group), dataframe_features
+            )
 
         if not feature_group.stream:
             warnings.warn(
@@ -604,7 +632,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 stacklevel=1,
             )
 
-        return engine.get_instance().save_stream_dataframe(
+        return engine._get_instance()._save_stream_dataframe(
             feature_group,
             dataframe,
             query_name,
@@ -615,7 +643,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             write_options,
         )
 
-    def save_feature_group_metadata(
+    def _save_feature_group_metadata(
         self,
         feature_group,
         dataframe_features,
@@ -631,11 +659,13 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group._features = dataframe_features
         elif dataframe_features:
             # User provided a schema; check if it is compatible with dataframe.
-            self._verify_schema_compatibility(feature_group.columns, dataframe_features)
+            self._verify_schema_compatibility(
+                self._columns_for_user_schema(feature_group), dataframe_features
+            )
 
         # set primary, foreign and partition key columns
         # we should move this to the backend
-        util.verify_attribute_key_names(feature_group)
+        util._verify_attribute_key_names(feature_group)
 
         for feat in feature_group.columns:
             if feat.name in feature_group.primary_key:
@@ -691,7 +721,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             if feature_group.data_source
             else None
         )
-        new_fg = self._feature_group_api.save(feature_group)
+        new_fg = self._feature_group_api._save(feature_group)
         if (
             pre_save_rest_endpoint
             and new_fg.data_source
@@ -706,18 +736,38 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         )
 
         if feature_schema_available:
-            # create empty table to write feature schema to table path
-            self.save_empty_table(feature_group, write_options=write_options)
+            # create empty table to write feature schema to table path.
+            # partitioned_by FGs are no different here: the grain columns are
+            # real partition columns in the schema, and the client materializes
+            # their values from event_time on each write (see DeltaEngine).
+            self._save_empty_table(feature_group, write_options=write_options)
 
         print(
             "Feature Group created successfully, explore it at \n"
-            + util.get_feature_group_url(
+            + util._get_feature_group_url(
                 feature_store_id=feature_group.feature_store_id,
                 feature_group_id=feature_group.id,
             )
         )
 
-    def update_ttl(
+    @staticmethod
+    def _columns_for_user_schema(feature_group):
+        """Return the feature-group columns the user is expected to supply in their dataframe.
+
+        Excludes the `partitioned_by` grain columns: the backend appends one
+        synthetic grain feature per grain to the FG schema so they're queryable,
+        and the grain values are always derived from event_time rather than
+        supplied by the user. The Spark write path derives them client-side
+        (for both the Delta and Hudi engines, see `hudi_engine._write_hudi_dataset`),
+        and the backend's Hudi DeltaStreamer job derives them server-side via
+        `PartitionedByTransformer`. Either way the user dataframe must not carry them.
+        """
+        grain_set = set(getattr(feature_group, "partitioned_by", None) or [])
+        if not grain_set:
+            return feature_group.columns
+        return [c for c in feature_group.columns if c.name not in grain_set]
+
+    def _update_ttl(
         self,
         feature_group: fg.FeatureGroup,
         ttl: int | None = None,
@@ -737,18 +787,20 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         if enabled is not None:
             copy_feature_group.ttl_enabled = enabled
 
-        self._feature_group_api.update_metadata(
+        self._feature_group_api._update_metadata(
             feature_group, copy_feature_group, "updateMetadata"
         )
 
-    def save_empty_table(self, feature_group, write_options=None):
-        # If time travel format is DELTA, an empty table is needed to be created
+    def _save_empty_table(self, feature_group, write_options=None):
+        # If time travel format is DELTA or ICEBERG, an empty table is needed to be created
         # such that the feature schema is written to the table and
         # the subsequent writes in python can refer to that schema.
-        if (
-            feature_group.time_travel_format is not None
-            and feature_group.time_travel_format.upper() == "DELTA"
-        ):
+        time_travel_format = (
+            feature_group.time_travel_format.upper()
+            if feature_group.time_travel_format is not None
+            else None
+        )
+        if time_travel_format == "DELTA":
             spark_session, spark_context = (
                 FeatureGroupEngine._get_spark_session_and_context()
             )
@@ -760,7 +812,32 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 spark_session,
                 spark_context,
             )
-            delta_engine_instance.save_empty_table(write_options=write_options)
+            delta_engine_instance._save_empty_table(write_options=write_options)
+        elif time_travel_format == "ICEBERG":
+            spark_session, spark_context = (
+                FeatureGroupEngine._get_spark_session_and_context()
+            )
+            if spark_session is None and not HAS_PYICEBERG:
+                # Without Spark and without pyiceberg the table cannot be
+                # created client-side; the materialization job running on the
+                # cluster creates it on first write instead.
+                return
+
+            iceberg_engine_instance = iceberg_engine.IcebergEngine(
+                feature_group.feature_store_id,
+                feature_group.feature_store_name,
+                feature_group,
+                spark_session,
+                spark_context,
+            )
+            if (
+                spark_session is None
+                and not iceberg_engine_instance._pyiceberg_write_supported()
+            ):
+                # PyIceberg cannot reach this storage from this client; the
+                # materialization job creates the table on first write instead.
+                return
+            iceberg_engine_instance._save_empty_table(write_options=write_options)
 
     def _create_sink_job_if_needed(
         self,
@@ -789,7 +866,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             and feature_group.data_source.rest_endpoint
         ):
             kwargs["endpoint_config"] = feature_group.data_source.rest_endpoint
-        sink_job_conf.set_extra_params(**kwargs)
+        sink_job_conf._set_extra_params(**kwargs)
         job = self._job_api.create(job_name, sink_job_conf)
         feature_group._sink_job = job
         feature_group._sink_job_conf = sink_job_conf
@@ -819,4 +896,4 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         return sink_job_conf
 
     def _get_default_ingestion_job_name(self, feature_group: fg.FeatureGroup) -> str:
-        return f"{feature_group.storage_connector.name}_to_{util.feature_group_name(feature_group)}"
+        return f"{feature_group.storage_connector.name}_to_{util._feature_group_name(feature_group)}"

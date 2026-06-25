@@ -77,10 +77,8 @@ class RestAPIError(Exception):
         self.response = response
 
 
-@also_available_as(
-    "hopsworks.client.exceptions.UnknownSecretStorageError",
-    "hsml.client.exceptions.UnknownSecretStorageError",
-)
+@public("hopsworks.client.exceptions.UnknownSecretStorageError")
+@also_available_as("hsml.client.exceptions.UnknownSecretStorageError")
 class UnknownSecretStorageError(Exception):
     """This exception will be raised if an unused secrets storage is passed as a parameter."""
 
@@ -91,26 +89,28 @@ class FeatureStoreException(Exception):
     """Generic feature store exception."""
 
 
+@public("hopsworks.client.exceptions.TransformationFunctionException")
+@also_available_as("hsml.client.exceptions.TransformationFunctionException")
 class TransformationFunctionException(Exception):
     """Exception raised when a transformation function fails."""
 
     def __init__(
         self,
         message: str,
-        missing_features: set[str],
-        transformation_function_name: str,
-        transformation_type: str,
+        missing_features: set[str] | None = None,
+        transformation_function_name: str | None = None,
+        transformation_type: str | None = None,
     ) -> None:
         self.missing_features = missing_features
         self.transformation_function_name = transformation_function_name
-        self.transformation_type = transformation_type.replace("_", "-")
+        self.transformation_type = (
+            transformation_type.replace("_", "-") if transformation_type else None
+        )
         super().__init__(message)
 
 
-@also_available_as(
-    "hopsworks.client.exceptions.VectorDatabaseException",
-    "hsml.client.exceptions.VectorDatabaseException",
-)
+@public("hopsworks.client.exceptions.VectorDatabaseException")
+@also_available_as("hsml.client.exceptions.VectorDatabaseException")
 class VectorDatabaseException(Exception):
     # reason
     REQUESTED_K_TOO_LARGE = "REQUESTED_K_TOO_LARGE"
@@ -126,10 +126,12 @@ class VectorDatabaseException(Exception):
         self._info = info
         self._reason = reason
 
+    @public
     @property
     def reason(self) -> str:
         return self._reason
 
+    @public
     @property
     def info(self) -> str:
         return self._info
@@ -144,10 +146,8 @@ class DataValidationException(FeatureStoreException):
         super().__init__(message)
 
 
-@also_available_as(
-    "hopsworks.client.exceptions.ExternalClientError",
-    "hsml.client.exceptions.ExternalClientError",
-)
+@public("hopsworks.client.exceptions.ExternalClientError")
+@also_available_as("hsml.client.exceptions.ExternalClientError")
 class ExternalClientError(TypeError):
     """Raised when external client cannot be initialized due to missing arguments."""
 
@@ -179,32 +179,26 @@ class HopsworksSSLClientError(SSLError):
         super().__init__(message)
 
 
-@also_available_as(
-    "hopsworks.client.exceptions.GitException", "hsml.client.exceptions.GitException"
-)
+@public("hopsworks.client.exceptions.GitException")
+@also_available_as("hsml.client.exceptions.GitException")
 class GitException(Exception):
     """Generic git exception."""
 
 
-@also_available_as(
-    "hopsworks.client.exceptions.JobException", "hsml.client.exceptions.JobException"
-)
+@public("hopsworks.client.exceptions.JobException")
+@also_available_as("hsml.client.exceptions.JobException")
 class JobException(Exception):
     """Generic job exception."""
 
 
-@also_available_as(
-    "hopsworks.client.exceptions.EnvironmentException",
-    "hsml.client.exceptions.EnvironmentException",
-)
+@public("hopsworks.client.exceptions.EnvironmentException")
+@also_available_as("hsml.client.exceptions.EnvironmentException")
 class EnvironmentException(Exception):
     """Generic python environment exception."""
 
 
-@also_available_as(
-    "hopsworks.client.exceptions.KafkaException",
-    "hsml.client.exceptions.KafkaException",
-)
+@public("hopsworks.client.exceptions.KafkaException")
+@also_available_as("hsml.client.exceptions.KafkaException")
 class KafkaException(Exception):
     """Generic kafka exception."""
 
@@ -215,31 +209,25 @@ class DatasetException(Exception):
     """Generic dataset exception."""
 
 
-@also_available_as(
-    "hopsworks.client.exceptions.ProjectException",
-    "hsml.client.exceptions.ProjectException",
-)
+@public("hopsworks.client.exceptions.ProjectException")
+@also_available_as("hsml.client.exceptions.ProjectException")
 class ProjectException(Exception):
     """Generic project exception."""
 
 
-@also_available_as(
-    "hopsworks.client.exceptions.OpenSearchException",
-    "hsml.client.exceptions.OpenSearchException",
-)
+@public("hopsworks.client.exceptions.OpenSearchException")
+@also_available_as("hsml.client.exceptions.OpenSearchException")
 class OpenSearchException(Exception):
     """Generic opensearch exception."""
 
 
-@also_available_as(
-    "hopsworks.client.exceptions.JobExecutionException",
-    "hsml.client.exceptions.JobExecutionException",
-)
+@public("hopsworks.client.exceptions.JobExecutionException")
+@also_available_as("hsml.client.exceptions.JobExecutionException")
 class JobExecutionException(Exception):
     """Generic job executions exception."""
 
 
-@also_available_as("hsml.client.exceptions.ModelRegistryException")
+@public("hsml.client.exceptions.ModelRegistryException")
 class ModelRegistryException(Exception):
     """Generic model registry exception."""
 
@@ -281,7 +269,7 @@ class HuggingFaceImportException(ModelRegistryException):
         super().__init__(self.message)
 
 
-@also_available_as("hsml.client.exceptions.ModelServingException")
+@public("hsml.client.exceptions.ModelServingException")
 class ModelServingException(Exception):
     """Generic model serving exception."""
 
@@ -292,6 +280,8 @@ class ModelServingException(Exception):
     ERROR_CODE_DEPLOYMENT_NOT_RUNNING = 250001
 
 
+@public("hopsworks.client.exceptions.DataSourceException")
+@also_available_as("hsml.client.exceptions.DataSourceException")
 class DataSourceException(Exception):
     """Generic data source exception."""
 
@@ -319,5 +309,7 @@ class PlatformIntelligenceException(Exception):
         super().__init__(message)
 
 
+@public("hopsworks.client.exceptions.TrinoException")
+@also_available_as("hsml.client.exceptions.TrinoException")
 class TrinoException(Exception):
     """Generic Trino exception."""

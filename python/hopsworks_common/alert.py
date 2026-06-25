@@ -16,10 +16,59 @@
 from __future__ import annotations
 
 import json
+import warnings
 
 import humps
 from hopsworks_apigen import public
 from hopsworks_common import util
+
+
+# Mapping from old uppercase wire values (emitted by backends before ~=3.8.1)
+# to their replacements in the new naming scheme.
+_DEPRECATED_ALERT_STATUS_WIRE_MAP = {
+    "SUCCESS": "VALIDATION_SUCCESS",
+    "WARNING": "VALIDATION_WARNING",
+    "FAILURE": "VALIDATION_FAILURE",
+    "FEATURE_MONITOR_SHIFT_UNDETECTED": "MONITORING_SHIFT_UNDETECTED",
+    "FEATURE_MONITOR_SHIFT_DETECTED": "MONITORING_SHIFT_DETECTED",
+}
+
+
+def _normalize_alert_status(status: str | None, stacklevel: int = 2) -> str | None:
+    """Normalize a deprecated alert status wire value to its replacement.
+
+    Called during deserialization via `Alert.from_response_json` whenever an
+    `Alert` object is constructed from a backend response.
+    If *status* is one of the old enum names that were renamed in version
+    ~=3.8.1, the function emits a `DeprecationWarning` and returns the new
+    name.
+    Otherwise it returns *status* unchanged.
+
+    Args:
+        status: The raw status string from the backend response, or `None`.
+        stacklevel: Passed directly to `warnings.warn` to attribute the warning
+            to the correct call frame.
+            The default of 2 attributes the warning to the caller of
+            `_normalize_alert_status` (i.e. `from_response_json`), which is
+            the correct frame when the normalization is invoked from
+            `from_response_json`.
+
+    Returns:
+        The normalized status string, or `None` if *status* is `None`.
+    """
+    if status is None:
+        return None
+    new = _DEPRECATED_ALERT_STATUS_WIRE_MAP.get(status)
+    if new is not None:
+        warnings.warn(
+            f"Alert status {status!r} is deprecated and will be removed in a future release. "
+            f"Use {new!r} instead. "
+            "The connected backend may need to be upgraded.",
+            DeprecationWarning,
+            stacklevel=stacklevel,
+        )
+        return new
+    return status
 
 
 @public("hopsworks.alert.Alert")
@@ -46,35 +95,58 @@ class Alert:
         json_decamelized = humps.decamelize(json_dict)
         if "count" in json_decamelized:
             if "items" in json_decamelized:
-                return [cls(**receiver) for receiver in json_decamelized["items"]]
+                return [
+                    cls(
+                        **{
+                            **item,
+                            "status": _normalize_alert_status(
+                                item.get("status"), stacklevel=4
+                            ),
+                        }
+                    )
+                    for item in json_decamelized["items"]
+                ]
             return []
-        return cls(**json_decamelized)
+        return cls(
+            **{
+                **json_decamelized,
+                "status": _normalize_alert_status(
+                    json_decamelized.get("status"), stacklevel=4
+                ),
+            }
+        )
 
+    @public
     @property
     def id(self) -> int | None:
         """Return the id of the alert."""
         return self._id
 
+    @public
     @property
     def status(self) -> str | None:
         """Return the status of the alert."""
         return self._status
 
+    @public
     @property
     def alert_type(self) -> str | None:
         """Return the type of the alert."""
         return self._alert_type
 
+    @public
     @property
     def severity(self) -> str | None:
         """Return the severity of the alert."""
         return self._severity
 
+    @public
     @property
     def receiver(self) -> str | None:
         """Return the receiver of the alert."""
         return self._receiver
 
+    @public
     @property
     def created(self) -> str | None:
         """Return the creation time of the alert."""
@@ -134,16 +206,19 @@ class ProjectAlert(Alert):
         self._threshold = threshold
         self._service = service
 
+    @public
     @property
     def project_name(self) -> str | None:
         """Return the name of the project."""
         return self._project_name
 
+    @public
     @property
     def service(self) -> str | None:
         """Return the name of the service."""
         return self._service
 
+    @public
     @property
     def threshold(self) -> str | None:
         """Return the threshold of the alert."""
@@ -194,11 +269,13 @@ class JobAlert(Alert):
         self._job_name = job_name
         self._threshold = threshold
 
+    @public
     @property
     def job_name(self) -> str | None:
         """Return the name of the job."""
         return self._job_name
 
+    @public
     @property
     def threshold(self) -> str | None:
         """Return the threshold of the alert."""
@@ -250,16 +327,19 @@ class FeatureGroupAlert(Alert):
         self._feature_group_id = feature_group_id
         self._feature_group_name = feature_group_name
 
+    @public
     @property
     def feature_store_name(self) -> str | None:
         """Return the name of the feature store."""
         return self._feature_store_name
 
+    @public
     @property
     def feature_group_id(self) -> str | None:
         """Return the id of the feature group."""
         return self._feature_group_id
 
+    @public
     @property
     def feature_group_name(self) -> str | None:
         """Return the name of the feature group."""
@@ -314,21 +394,25 @@ class FeatureViewAlert(Alert):
         self._feature_view_name = feature_view_name
         self._feature_view_version = feature_view_version
 
+    @public
     @property
     def feature_store_name(self) -> str | None:
         """Return the name of the feature store."""
         return self._feature_store_name
 
+    @public
     @property
     def feature_view_id(self) -> str | None:
         """Return the id of the feature view."""
         return self._feature_view_id
 
+    @public
     @property
     def feature_view_name(self) -> str | None:
         """Return the name of the feature view."""
         return self._feature_view_name
 
+    @public
     @property
     def feature_view_version(self) -> str | None:
         """Return the version of the feature view."""

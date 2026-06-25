@@ -53,15 +53,17 @@ class TagSchemasApi:
     def _path() -> list[Any]:
         return ["tags"]
 
+    @public
     def list(self) -> dict[str, Any]:
         """List all registered tag schemas.
 
         Returns:
             The raw schema-list payload from the backend.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         return _client._send_request("GET", self._path())
 
+    @public
     def get(self, name: str) -> dict[str, Any]:
         """Fetch a single tag schema by name.
 
@@ -77,9 +79,10 @@ class TagSchemasApi:
         """
         if not name:
             raise ValueError("name must be a non-empty schema name")
-        _client = client.get_instance()
+        _client = client._get_instance()
         return _client._send_request("GET", self._path() + [name])
 
+    @public
     def create(self, name: str, schema: dict | str) -> dict[str, Any]:
         """Register a new schematized tag.
 
@@ -136,7 +139,7 @@ class TagSchemasApi:
         else:
             raise ValueError("schema must be a dict or a JSON string")
 
-        _client = client.get_instance()
+        _client = client._get_instance()
         try:
             return _client._send_request(
                 "POST",
@@ -150,6 +153,7 @@ class TagSchemasApi:
                 raise PermissionError(_ADMIN_HINT) from e
             raise
 
+    @public
     def delete(self, name: str) -> None:
         """Remove a tag schema from the registry.
 
@@ -166,7 +170,7 @@ class TagSchemasApi:
         """
         if not name:
             raise ValueError("name must be a non-empty schema name")
-        _client = client.get_instance()
+        _client = client._get_instance()
         try:
             _client._send_request("DELETE", self._path() + [name])
         except RestAPIError as e:

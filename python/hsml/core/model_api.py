@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from hsml import client, decorators, model, tag
 from hsml.core import explicit_provenance
@@ -25,7 +26,7 @@ class ModelApi:
     def __init__(self):
         pass
 
-    def put(self, model_instance: model.Model, query_params: dict) -> model.Model:
+    def _put(self, model_instance: model.Model, query_params: dict) -> model.Model:
         """Save model metadata to the model registry.
 
         Parameters:
@@ -35,7 +36,7 @@ class ModelApi:
         Returns:
             updated metadata object of the model
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -55,8 +56,8 @@ class ModelApi:
             )
         )
 
-    @decorators.catch_not_found("hsml.model.Model", fallback_return=None)
-    def get(
+    @decorators._catch_not_found("hsml.model.Model", fallback_return=None)
+    def _get(
         self,
         name: str,
         version: int,
@@ -74,7 +75,7 @@ class ModelApi:
         Returns:
             model metadata object
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -92,7 +93,7 @@ class ModelApi:
 
         return model_meta
 
-    def get_models(
+    def _get_models(
         self,
         name: str,
         model_registry_id: int,
@@ -112,7 +113,7 @@ class ModelApi:
         Returns:
             model metadata object
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -142,13 +143,13 @@ class ModelApi:
 
         return models_meta
 
-    def delete(self, model_instance: model.Model) -> None:
+    def _delete(self, model_instance: model.Model) -> None:
         """Delete the model and metadata.
 
         Parameters:
             model_instance: metadata object of model to delete
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -159,7 +160,7 @@ class ModelApi:
         ]
         _client._send_request("DELETE", path_params)
 
-    def set_tag(
+    def _set_tag(
         self, model_instance: model.Model, name: str, value: str | dict
     ) -> None:
         """Attach a name/value tag to a model.
@@ -172,7 +173,7 @@ class ModelApi:
             name: name of the tag to be added
             value: value of the tag to be added
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -187,7 +188,7 @@ class ModelApi:
         json_value = json.dumps(value)
         _client._send_request("PUT", path_params, headers=headers, data=json_value)
 
-    def delete_tag(self, model_instance: model.Model, name: str) -> None:
+    def _delete_tag(self, model_instance: model.Model, name: str) -> None:
         """Delete a tag.
 
         Tag names are unique identifiers.
@@ -196,7 +197,7 @@ class ModelApi:
             model_instance: model instance to delete tag from
             name: name of the tag to be removed
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -209,8 +210,8 @@ class ModelApi:
         ]
         _client._send_request("DELETE", path_params)
 
-    @decorators.catch_not_found("hopsworks_common.tag.Tag", fallback_return={})
-    def get_tags(self, model_instance: model.Model) -> dict:
+    @decorators._catch_not_found("hopsworks_common.tag.Tag", fallback_return={})
+    def _get_tags(self, model_instance: model.Model) -> dict:
         """Get the tags.
 
         Gets all tags if no tag name is specified.
@@ -221,7 +222,7 @@ class ModelApi:
         Returns:
             dict of tag name/values
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -231,15 +232,16 @@ class ModelApi:
             model_instance.id,
             "tags",
         ]
+        # from_response_json already returns deserialized values.
         return {
-            tag._name: json.loads(tag._value)
+            tag._name: tag._value
             for tag in tag.Tag.from_response_json(
                 _client._send_request("GET", path_params)
             )
         }
 
-    @decorators.catch_not_found("hopsworks_common.tag.Tag", fallback_return=None)
-    def get_tag(self, model_instance: model.Model, name: str) -> dict | None:
+    @decorators._catch_not_found("hopsworks_common.tag.Tag", fallback_return=None)
+    def _get_tag(self, model_instance: model.Model, name: str) -> Any | None:
         """Get the tag.
 
         Gets the tag for a specific name
@@ -249,9 +251,9 @@ class ModelApi:
             name: tag name
 
         Returns:
-            dict of tag name/value
+            The value of the tag with the specified name, or `None` if it does not exist.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -263,11 +265,16 @@ class ModelApi:
             name,
         ]
 
-        return tag.Tag.from_response_json(_client._send_request("GET", path_params))[
-            name
-        ]
+        # from_response_json returns a list of tags; look the value up by name.
+        tags = {
+            tag._name: tag._value
+            for tag in tag.Tag.from_response_json(
+                _client._send_request("GET", path_params)
+            )
+        }
+        return tags.get(name)
 
-    def get_feature_view_provenance(
+    def _get_feature_view_provenance(
         self, model_instance
     ) -> explicit_provenance.Links | None:
         """Get the parent feature view of this model, based on explicit provenance.
@@ -284,7 +291,7 @@ class ModelApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case of a server error.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,
@@ -310,7 +317,7 @@ class ModelApi:
             return links
         return None
 
-    def get_training_dataset_provenance(
+    def _get_training_dataset_provenance(
         self, model_instance
     ) -> explicit_provenance.Links | None:
         """Get the parent training dataset of this model, based on explicit provenance.
@@ -327,7 +334,7 @@ class ModelApi:
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case of a server error.
         """
-        _client = client.get_instance()
+        _client = client._get_instance()
         path_params = [
             "project",
             _client._project_id,

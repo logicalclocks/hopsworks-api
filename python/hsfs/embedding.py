@@ -67,7 +67,7 @@ class HsmlModel:
         )
 
     @classmethod
-    def from_model(cls, model):
+    def _from_model(cls, model):
         return cls(
             model_registry_id=model.model_registry_id,
             model_name=model.name,
@@ -75,7 +75,7 @@ class HsmlModel:
         )
 
     # should get from backend because of authorisation check (unshared project etc)
-    def get_model(self):
+    def _get_model(self):
         try:
             from hsml.model import Model
         except ModuleNotFoundError as err:
@@ -86,7 +86,7 @@ class HsmlModel:
 
         path_params = [
             "project",
-            client.get_instance()._project_id,
+            client._get_instance()._project_id,
             "modelregistries",
             self.model_registry_id,
             "models",
@@ -94,7 +94,7 @@ class HsmlModel:
         ]
         query_params = {"expand": "trainingdatasets"}
 
-        model_json = client.get_instance()._send_request(
+        model_json = client._get_instance()._send_request(
             "GET", path_params, query_params
         )
         return Model.from_response_json(model_json)
@@ -146,7 +146,7 @@ class EmbeddingFeature:
         json_decamelized = humps.decamelize(json_dict)
         hsml_model_json = json_decamelized.get("model")
         hsml_model = (
-            HsmlModel.from_response_json(hsml_model_json).get_model()
+            HsmlModel.from_response_json(hsml_model_json)._get_model()
             if hsml_model_json
             else None
         )
@@ -163,14 +163,6 @@ class EmbeddingFeature:
     def name(self):
         """str: The name of the embedding feature."""
         return self._name
-
-    @property
-    def dimenstion(self):
-        """The dimensionality of the embedding feature.
-
-        This one is excluded from the docs as the name is misspelled but kept to avoid breaking the API.
-        """
-        return self._dimension
 
     @public
     @property
@@ -236,7 +228,7 @@ class EmbeddingFeature:
             "similarityFunctionType": self._similarity_function_type,
         }
         if self._model:
-            d["model"] = HsmlModel.from_model(self._model)
+            d["model"] = HsmlModel._from_model(self._model)
         return d
 
     def __repr__(self):
@@ -355,7 +347,7 @@ class EmbeddingIndex:
         """
         if self._vector_db_client is None:
             self._vector_db_client = VectorDbClient(self._feature_group.select_all())
-        return self._vector_db_client.count(self.feature_group, options=options)
+        return self._vector_db_client._count(self.feature_group, options=options)
 
     @classmethod
     def from_response_json(cls, json_dict):

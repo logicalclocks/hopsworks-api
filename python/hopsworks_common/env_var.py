@@ -155,4 +155,4 @@ class EnvVar:
     @public
     def get_url(self):
         """Get url to the environment variables page in Hopsworks."""
-        return util.get_hostname_replaced_url("/account/env-variables")
+        return util._get_hostname_replaced_url("/account/env-variables")

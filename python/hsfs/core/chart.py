@@ -19,6 +19,7 @@ import json
 from typing import TYPE_CHECKING, Any
 
 import humps
+from hopsworks_apigen import public
 from hopsworks_common import util
 
 
@@ -26,6 +27,7 @@ if TYPE_CHECKING:
     from hsfs.core.job import Job
 
 
+@public
 class Chart:
     """Metadata object used to provide Chart information."""
 
@@ -79,6 +81,7 @@ class Chart:
     def json(self):
         return json.dumps(self, cls=util.Encoder)
 
+    @public
     @property
     def id(self) -> int | None:
         return self._id
@@ -87,6 +90,7 @@ class Chart:
     def id(self, id: int) -> None:
         self._id = id
 
+    @public
     @property
     def title(self) -> str | None:
         return self._title
@@ -95,6 +99,7 @@ class Chart:
     def title(self, title: str) -> None:
         self._title = title
 
+    @public
     @property
     def description(self) -> str | None:
         return self._description
@@ -103,6 +108,7 @@ class Chart:
     def description(self, description: str) -> None:
         self._description = description
 
+    @public
     @property
     def url(self) -> str | None:
         return self._url
@@ -111,6 +117,7 @@ class Chart:
     def url(self, url: str) -> None:
         self._url = url
 
+    @public
     @property
     def job(self) -> Job | None:
         return self._job
@@ -119,6 +126,7 @@ class Chart:
     def job(self, job: Job) -> None:
         self._job = job
 
+    @public
     @property
     def width(self) -> int | None:
         return self._width
@@ -127,6 +135,7 @@ class Chart:
     def width(self, width: int) -> None:
         self._width = width
 
+    @public
     @property
     def height(self) -> int | None:
         return self._height
@@ -135,6 +144,7 @@ class Chart:
     def height(self, height: int) -> None:
         self._height = height
 
+    @public
     @property
     def x(self) -> int | None:
         return self._x
@@ -143,6 +153,7 @@ class Chart:
     def x(self, x: int) -> None:
         self._x = x
 
+    @public
     @property
     def y(self) -> int | None:
         return self._y
@@ -151,6 +162,7 @@ class Chart:
     def y(self, y: int) -> None:
         self._y = y
 
+    @public
     def delete(self) -> None:
         """Delete the chart from the feature store.
 
@@ -159,8 +171,9 @@ class Chart:
         """
         from hsfs.core.chart_api import ChartApi
 
-        ChartApi().delete_chart(self.id)
+        ChartApi()._delete_chart(self.id)
 
+    @public
     def update(self) -> None:
         """Update the chart in the feature store.
 
@@ -171,4 +184,4 @@ class Chart:
         """
         from hsfs.core.chart_api import ChartApi
 
-        ChartApi().update_chart(self)
+        ChartApi()._update_chart(self)

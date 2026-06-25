@@ -74,7 +74,7 @@ class ServingKey:
             "feature_group_id": (
                 self._feature_group.id if self._feature_group is not None else None
             ),
-            "feature_group_name": (
+            "_feature_group_name": (
                 self._feature_group.name if self._feature_group is not None else None
             ),
             "feature_group_version": (

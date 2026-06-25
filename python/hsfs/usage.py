@@ -18,11 +18,11 @@ from hopsworks_common.usage import (
     HOPSWORKS_DIR,
     EnvironmentAttribute,
     MethodCounter,
-    disable,
-    enable,
-    get_env,
-    init_usage,
-    method_logger,
+    _disable,
+    _enable,
+    _get_env,
+    _init_usage,
+    _method_logger,
 )
 
 
@@ -30,9 +30,9 @@ __all__ = [
     "HOPSWORKS_DIR",
     "EnvironmentAttribute",
     "MethodCounter",
-    "disable",
-    "enable",
-    "get_env",
-    "init_usage",
-    "method_logger",
+    "_disable",
+    "_enable",
+    "_get_env",
+    "_init_usage",
+    "_method_logger",
 ]
