@@ -415,6 +415,47 @@ class TestIcebergEngine:
         # Assert
         assert "is not ICEBERG enabled." in str(e_info.value)
 
+    def test_reconcile_timestamp_tz_localizes_naive_to_zoned_target(self, mocker):
+        # Arrange: incoming naive timestamp, existing table column is timestamptz
+        import pyarrow as pa
+
+        arrow_table = pa.table(
+            {
+                "id": pa.array([1], type=pa.int64()),
+                "time": pa.array([0], type=pa.timestamp("us")),
+            }
+        )
+        table = mocker.Mock()
+        table.schema.return_value.as_arrow.return_value = pa.schema(
+            [
+                pa.field("id", pa.int64()),
+                pa.field("time", pa.timestamp("us", tz="UTC")),
+            ]
+        )
+
+        # Act
+        result = IcebergEngine._reconcile_timestamp_tz(arrow_table, table)
+
+        # Assert: time column is now zoned, id untouched
+        assert result.schema.field("time").type == pa.timestamp("us", tz="UTC")
+        assert result.schema.field("id").type == pa.int64()
+
+    def test_reconcile_timestamp_tz_leaves_matching_columns(self, mocker):
+        # Arrange: both incoming and target are naive -> no change
+        import pyarrow as pa
+
+        arrow_table = pa.table({"time": pa.array([0], type=pa.timestamp("us"))})
+        table = mocker.Mock()
+        table.schema.return_value.as_arrow.return_value = pa.schema(
+            [pa.field("time", pa.timestamp("us"))]
+        )
+
+        # Act
+        result = IcebergEngine._reconcile_timestamp_tz(arrow_table, table)
+
+        # Assert
+        assert result.schema.field("time").type == pa.timestamp("us")
+
     def test_get_last_commit_metadata_append(self, mocker):
         # Arrange
         iceberg_engine = _make_engine(mocker)
@@ -775,16 +816,19 @@ class TestIcebergCatalogWrites:
     @pytest.mark.skipif(not HAS_PYICEBERG, reason="pyiceberg not installed")
     def test_write_pyiceberg_dataset_catalog_upsert(self, mocker):
         # Arrange
+        import pyarrow as pa
+
         fg = _make_fg(primary_key=["pk"])
         iceberg_engine = _make_engine(mocker, fg=fg, spark_session=_NO_SPARK)
         catalog = mocker.MagicMock()
         catalog.table_exists.return_value = True
         table = catalog.load_table.return_value
+        table.schema.return_value.as_arrow.return_value = pa.schema([])
         table.upsert.return_value = mocker.Mock(rows_inserted=1, rows_updated=2)
         load_catalog_mock = mocker.patch(
             "pyiceberg.catalog.load_catalog", return_value=catalog
         )
-        arrow_table = mocker.Mock()
+        arrow_table = pa.table({"pk": pa.array([1], type=pa.int64())})
         mocker.patch.object(
             iceberg_engine, "_prepare_arrow_table", return_value=arrow_table
         )
@@ -1194,13 +1238,16 @@ class TestPyIcebergEngine:
 
     def test_write_pyiceberg_dataset_insert_appends(self, mocker):
         # Arrange
+        import pyarrow as pa
+
         iceberg_engine = self._pyiceberg_engine(mocker)
         table = mocker.MagicMock()
+        table.schema.return_value.as_arrow.return_value = pa.schema([])
         mocker.patch.object(iceberg_engine, "_setup_pyiceberg")
         mocker.patch.object(
             iceberg_engine, "_get_pyiceberg_location", return_value="location"
         )
-        arrow_table = mocker.Mock()
+        arrow_table = pa.table({"id": pa.array([1], type=pa.int64())})
         mocker.patch.object(
             iceberg_engine, "_prepare_arrow_table", return_value=arrow_table
         )
@@ -1222,15 +1269,18 @@ class TestPyIcebergEngine:
 
     def test_write_pyiceberg_dataset_upsert_merges(self, mocker):
         # Arrange
+        import pyarrow as pa
+
         fg = _make_fg(primary_key=["pk"], event_time="et")
         iceberg_engine = self._pyiceberg_engine(mocker, fg=fg)
         table = mocker.MagicMock()
+        table.schema.return_value.as_arrow.return_value = pa.schema([])
         table.upsert.return_value = mocker.Mock(rows_inserted=2, rows_updated=3)
         mocker.patch.object(iceberg_engine, "_setup_pyiceberg")
         mocker.patch.object(
             iceberg_engine, "_get_pyiceberg_location", return_value="location"
         )
-        arrow_table = mocker.Mock()
+        arrow_table = pa.table({"pk": pa.array([1], type=pa.int64())})
         mocker.patch.object(
             iceberg_engine, "_prepare_arrow_table", return_value=arrow_table
         )

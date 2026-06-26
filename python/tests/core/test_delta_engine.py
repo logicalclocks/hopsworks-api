@@ -2027,6 +2027,13 @@ class TestDeltaEngineGlueSync:
             storage_connector=connector, database="ralfsglue", table="fg_1"
         )
         fg.storage_connector = connector
+        fg.features = [
+            mock.MagicMock(name="id", type="bigint"),
+            mock.MagicMock(name="text", type="string"),
+        ]
+        # MagicMock's ``name`` kwarg names the mock; set the attribute explicitly.
+        fg.features[0].name = "id"
+        fg.features[1].name = "text"
         return fg
 
     def test_sync_glue_catalog_registers_table(self, mocker):
@@ -2034,9 +2041,9 @@ class TestDeltaEngineGlueSync:
         _patch_apis(mocker)
         _patch_client(mocker, is_external=False)
         spark_session = mock.MagicMock()
-        # No catalog configured yet, so the Delta catalog impl gets set.
-        spark_session.conf.get.return_value = None
         spark_context = mock.MagicMock()
+        glue_client = mock.MagicMock()
+        mocker.patch("boto3.client", return_value=glue_client)
         engine = DeltaEngine(
             feature_store_id=1,
             feature_store_name="fs",
@@ -2050,19 +2057,23 @@ class TestDeltaEngineGlueSync:
             "s3://ralfsbucket/iceberg-warehouse/ralfsglue.db/fg_1"
         )
 
-        # Assert — registers the table under the data source's database/table.
-        sql = spark_session.sql.call_args[0][0]
-        assert "CREATE TABLE IF NOT EXISTS glue_catalog.ralfsglue.fg_1" in sql
-        assert "USING DELTA LOCATION" in sql
-        # Configures a Glue-backed Delta catalog on the session.
-        conf_calls = {
-            c.args[0]: c.args[1] for c in spark_session.conf.set.call_args_list
-        }
+        # Assert — registers via the Glue API, not Spark SQL DDL (a named Delta
+        # catalog would NPE on its null delegate).
+        spark_session.sql.assert_not_called()
+        glue_client.create_table.assert_called_once()
+        _, kwargs = glue_client.create_table.call_args
+        assert kwargs["DatabaseName"] == "ralfsglue"
+        table_input = kwargs["TableInput"]
+        assert table_input["Name"] == "fg_1"
+        assert table_input["Parameters"]["table_type"] == "DELTA"
         assert (
-            conf_calls["spark.sql.catalog.glue_catalog"]
-            == DeltaEngine.DELTA_GLUE_CATALOG_IMPL
+            table_input["StorageDescriptor"]["Location"]
+            == "s3://ralfsbucket/iceberg-warehouse/ralfsglue.db/fg_1"
         )
-        assert "spark.sql.catalog.glue_catalog.warehouse" in conf_calls
+        assert table_input["StorageDescriptor"]["Columns"] == [
+            {"Name": "id", "Type": "bigint"},
+            {"Name": "text", "Type": "string"},
+        ]
 
     def test_sync_glue_catalog_noop_without_glue(self, mocker):
         # Arrange — non-Glue feature group must not touch the catalog.

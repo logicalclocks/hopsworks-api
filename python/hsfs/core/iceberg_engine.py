@@ -1257,6 +1257,41 @@ class IcebergEngine:
             )
         return dataset
 
+    @staticmethod
+    def _reconcile_timestamp_tz(arrow_table: pa.Table, table) -> pa.Table:
+        """Align timestamp columns to an existing Iceberg table's zone.
+
+        `_prepare_arrow_table` produces timezone-naive `timestamp` columns
+        (the Hopsworks offline type maps to `pa.timestamp("us")`), but an
+        Iceberg table created elsewhere — e.g. by Spark, which writes
+        `timestamptz` — declares its timestamp columns with a zone.
+        PyIceberg's append and upsert require the incoming schema to match the
+        table schema exactly and reject naive against zoned, so localize each
+        naive column whose target column carries a zone to UTC (the zone
+        PyIceberg uses for all `timestamptz` columns).
+        """
+        import pyarrow as pa
+
+        target_by_name = {field.name: field.type for field in table.schema().as_arrow()}
+        new_cols = []
+        changed = False
+        for i, field in enumerate(arrow_table.schema):
+            col = arrow_table.column(i)
+            target_type = target_by_name.get(field.name)
+            if (
+                pa.types.is_timestamp(field.type)
+                and field.type.tz is None
+                and target_type is not None
+                and pa.types.is_timestamp(target_type)
+                and target_type.tz is not None
+            ):
+                col = col.cast(pa.timestamp(field.type.unit, tz="UTC"))
+                changed = True
+            new_cols.append(col)
+        if not changed:
+            return arrow_table
+        return pa.Table.from_arrays(new_cols, names=arrow_table.column_names)
+
     def _pyiceberg_snapshots(self, table) -> list[dict[str, Any]]:
         """Return the table's snapshot log, oldest first, as plain dicts."""
         snapshots = []
@@ -1331,8 +1366,10 @@ class IcebergEngine:
             table.append(arrow_table)
         elif append_requested:
             _logger.debug(f"Append requested for {location}. Skipping merge operation.")
+            arrow_table = self._reconcile_timestamp_tz(arrow_table, table)
             table.append(arrow_table)
         else:
+            arrow_table = self._reconcile_timestamp_tz(arrow_table, table)
             upsert_result = table.upsert(arrow_table, join_cols=self._get_merge_keys())
             rows_inserted = upsert_result.rows_inserted
             rows_updated = upsert_result.rows_updated
@@ -1394,9 +1431,11 @@ class IcebergEngine:
             table.append(arrow_table)
         elif self._append_requested(operation, write_options):
             table = catalog.load_table(identifier)
+            arrow_table = self._reconcile_timestamp_tz(arrow_table, table)
             table.append(arrow_table)
         else:
             table = catalog.load_table(identifier)
+            arrow_table = self._reconcile_timestamp_tz(arrow_table, table)
             upsert_result = table.upsert(arrow_table, join_cols=self._get_merge_keys())
             rows_inserted = upsert_result.rows_inserted
             rows_updated = upsert_result.rows_updated

@@ -203,6 +203,80 @@ class GlueCatalog:
             jvm.java.lang.System.setProperty("aws.region", connector.region)
         _logger.debug("Set AWS JVM system properties for the Glue catalog client")
 
+    def _glue_client(self):
+        """Build a boto3 Glue client authenticated with the connector's credentials.
+
+        The static access/secret keys are used when present, otherwise the
+        client falls back to the AWS default credential chain (instance/role
+        credentials), mirroring the JVM-side behaviour in
+        [`_set_jvm_credentials`][hsfs.core.glue_catalog.GlueCatalog._set_jvm_credentials].
+
+        Returns:
+            A boto3 Glue client for the connector's region.
+        """
+        import boto3
+
+        connector = self._connector
+        kwargs: dict[str, Any] = {}
+        if connector.region:
+            kwargs["region_name"] = connector.region
+        if connector.access_key and connector.secret_key:
+            kwargs["aws_access_key_id"] = connector.access_key
+            kwargs["aws_secret_access_key"] = connector.secret_key
+            if connector.session_token:
+                kwargs["aws_session_token"] = connector.session_token
+        return boto3.client("glue", **kwargs)
+
+    def _register_delta_table(self, location: str) -> None:
+        """Register the feature group's Delta table in the Glue Data Catalog.
+
+        Creates (or updates) a `name -> location` entry through the AWS Glue API
+        so external engines can discover the table; the on-path Delta log stays
+        authoritative.
+        This deliberately avoids Spark SQL DDL through a named Delta catalog:
+        Delta's `DeltaCatalog` is a `DelegatingCatalogExtension` that only works
+        as the session catalog, so registering through a named catalog raises a
+        null-delegate `NullPointerException` during analysis.
+
+        The table is marked as Delta (`table_type=DELTA`,
+        `spark.sql.sources.provider=delta`) and its columns are taken from the
+        feature group schema, whose types are already offline (Hive) SQL types
+        that the Glue Data Catalog accepts verbatim.
+
+        Parameters:
+            location: The absolute S3 location of the Delta table.
+        """
+        from botocore.exceptions import ClientError
+
+        database, table = self.database_and_table
+        columns = [
+            {"Name": feature.name, "Type": feature.type}
+            for feature in self._feature_group.features
+        ]
+        table_input = {
+            "Name": table,
+            "TableType": "EXTERNAL_TABLE",
+            "Parameters": {
+                "table_type": "DELTA",
+                "spark.sql.sources.provider": "delta",
+                "EXTERNAL": "TRUE",
+            },
+            "StorageDescriptor": {
+                "Columns": columns,
+                "Location": location,
+            },
+        }
+
+        client = self._glue_client()
+        _logger.debug(f"Registering Delta table in Glue as {database}.{table}")
+        try:
+            client.create_table(DatabaseName=database, TableInput=table_input)
+        except ClientError as e:
+            if e.response.get("Error", {}).get("Code") != "AlreadyExistsException":
+                raise
+            # Keep the existing entry current (e.g. schema changes on later writes).
+            client.update_table(DatabaseName=database, TableInput=table_input)
+
     def _configure_spark_session(
         self,
         spark_session,

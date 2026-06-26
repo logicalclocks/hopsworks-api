@@ -482,9 +482,10 @@ class DeltaEngine:
         Delta keeps its current state in the on-path transaction log, so the
         catalog entry is only a `name -> location` registration that lets
         external engines find the table; the log stays authoritative.
-        The registration is created (and its schema kept current) through a
-        Glue-backed Spark catalog with `CREATE TABLE IF NOT EXISTS ... USING
-        DELTA LOCATION`, which is a no-op once the table exists.
+        The registration is created (and its schema kept current) directly
+        through the AWS Glue API rather than Spark SQL DDL, because Delta's
+        `DeltaCatalog` only works as the session catalog and registering through
+        a named catalog raises a null-delegate `NullPointerException`.
 
         Does nothing when the feature group has no Glue connector or runs under
         Spark Connect (the schema sync requires JVM bridge access for the Glue
@@ -496,22 +497,7 @@ class DeltaEngine:
         if glue is None or self._spark_context is None:
             return
 
-        # Configure a Glue-backed Delta catalog on the session (credentials +
-        # spark.sql.catalog.<name>.*), then register the table by location.
-        glue._configure_spark_session(
-            self._spark_session, self._spark_context, self.DELTA_GLUE_CATALOG_IMPL
-        )
-
-        qualified = glue.qualified_name
-        _logger.debug(f"Registering Delta table in Glue as {qualified}")
-        # CREATE TABLE ... LOCATION adopts the existing log; refreshing it picks
-        # up schema changes so the catalog entry stays current on later writes.
-        # Escape single quotes in the location so a path containing one cannot
-        # break out of the SQL string literal.
-        escaped_location = location.replace("'", "''")
-        self._spark_session.sql(
-            f"CREATE TABLE IF NOT EXISTS {qualified} USING DELTA LOCATION '{escaped_location}'"
-        )
+        glue._register_delta_table(location)
 
     def _setup_delta_rs(self):
         _logger.debug("Setting up delta-rs environment")
