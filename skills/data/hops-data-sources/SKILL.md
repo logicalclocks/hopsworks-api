@@ -118,7 +118,7 @@ class MyTransformer(HopsIngestionTransformer):
 
 ## Ingest from Google Sheets
 
-Google Sheets is a CRM-type connector authenticated by a GCP service-account JSON keyfile.
+Google Sheets is an independent top-level connector (type `GOOGLE_SHEETS`) authenticated by a GCP service-account JSON keyfile.
 Ingestion uses DLTHub under the hood; the sheet tab name maps to `range_names` and the
 spreadsheet ID maps to `spreadsheet_url_or_id` in the dlt config.
 
@@ -136,7 +136,6 @@ The spreadsheet ID is optional at connector level — you can leave it blank and
 feature group instead.
 
 ```python
-# No CLI shorthand for CRM connectors; use the UI or create via the REST API.
 # The connector only needs to be created once.
 connector = fs.get_storage_connector("my_google_sheets_connector")
 ```

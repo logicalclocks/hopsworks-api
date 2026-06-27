@@ -330,7 +330,7 @@ class DataSource:
         Parameters:
             use_cached:
                 Whether to use cached data if available.
-                Only supported for CRM and REST connectors.
+                Only supported for CRM, Google Sheets, and REST connectors.
                 Defaults to `True`.
 
         Returns:
