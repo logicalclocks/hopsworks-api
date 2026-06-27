@@ -52,6 +52,7 @@ class DataSource:
         metrics: List of metric column names for the data source.
         dimensions: List of dimension column names for the data source.
         rest_endpoint: REST endpoint configuration for the data source.
+        spreadsheet_id: Google Spreadsheet ID for Google Sheets data sources.
     """
 
     def __init__(
@@ -66,6 +67,7 @@ class DataSource:
         metrics: list[str] | None = None,
         dimensions: list[str] | None = None,
         rest_endpoint: RestEndpointConfig | dict | None = None,
+        spreadsheet_id: str | None = None,
         **kwargs,
     ):
         """Initialize a DataSource object.
@@ -81,6 +83,7 @@ class DataSource:
             metrics: List of metric column names for the data source.
             dimensions: List of dimension column names for the data source.
             rest_endpoint: REST endpoint configuration for the data source.
+            spreadsheet_id: Google Spreadsheet ID for Google Sheets data sources.
             **kwargs: Additional keyword arguments.
         """
         self._query = query
@@ -102,6 +105,7 @@ class DataSource:
             if isinstance(rest_endpoint, dict)
             else rest_endpoint
         )
+        self._spreadsheet_id = spreadsheet_id
 
     @classmethod
     def from_response_json(
@@ -152,6 +156,7 @@ class DataSource:
             "restEndpoint": (
                 self._rest_endpoint.to_dict() if self._rest_endpoint else None
             ),
+            "spreadsheetId": self._spreadsheet_id,
         }
         if self._storage_connector:
             ds_meta_dict["storageConnector"] = self._storage_connector.to_dict()
@@ -431,6 +436,16 @@ class DataSource:
     @dimensions.setter
     def dimensions(self, dimensions: list[str]) -> None:
         self._dimensions = dimensions
+
+    @public
+    @property
+    def spreadsheet_id(self) -> str | None:
+        """Get or set the Google Spreadsheet ID for Google Sheets data sources."""
+        return self._spreadsheet_id
+
+    @spreadsheet_id.setter
+    def spreadsheet_id(self, spreadsheet_id: str) -> None:
+        self._spreadsheet_id = spreadsheet_id
 
     @public
     @property
