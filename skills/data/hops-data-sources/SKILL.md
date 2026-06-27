@@ -116,6 +116,80 @@ class MyTransformer(HopsIngestionTransformer):
 
 `from dlt.destinations...` resolves only in that server environment. Importing it in the interactive venv raises `ModuleNotFoundError`, which is why the transform is referenced by path, never imported into your session.
 
+## Ingest from Google Sheets
+
+Google Sheets is a CRM-type connector authenticated by a GCP service-account JSON keyfile.
+Ingestion uses DLTHub under the hood; the sheet tab name maps to `range_names` and the
+spreadsheet ID maps to `spreadsheet_url_or_id` in the dlt config.
+
+**Prerequisites**
+
+1. Upload the service-account JSON keyfile to HopsFS (e.g. `Resources/gsheets-key.json`).
+2. Share the spreadsheet with the service account email (`... @<project>.iam.gserviceaccount.com`)
+   and enable the Google Sheets API in your GCP project.
+
+**Create the connector (UI or SDK)**
+
+In the UI: Storage Connectors → New → Google Sheets.
+Fill in the keyfile path.
+The spreadsheet ID is optional at connector level — you can leave it blank and provide it per
+feature group instead.
+
+```python
+# No CLI shorthand for CRM connectors; use the UI or create via the REST API.
+# The connector only needs to be created once.
+connector = fs.get_storage_connector("my_google_sheets_connector")
+```
+
+**Ingest a sheet into a feature group**
+
+Provide the sheet tab name via `DataSource.table`.
+If the spreadsheet ID was not set on the connector, pass it via `DataSource.spreadsheet_id`.
+
+```python
+import hopsworks
+from hsfs.core.data_source import DataSource
+
+project = hopsworks.login()
+fs = project.get_feature_store()
+
+connector = fs.get_storage_connector("my_google_sheets_connector")
+
+fg = fs.create_feature_group(
+    name="budget_actuals",
+    version=1,
+    primary_key=["id"],
+    data_source=DataSource(
+        storage_connector=connector,
+        table="Q1 Actuals",           # sheet tab name (required)
+        spreadsheet_id="1BxiMVs…",   # omit if already set on the connector
+    ),
+    sink_enabled=True,
+)
+fg.save()
+
+fg.sink_job.run()   # copies the sheet into the managed feature group
+```
+
+**Multiple sheet tabs → multiple feature groups**
+
+Each feature group targets one sheet tab.
+Reuse the same connector and vary `table` (and `spreadsheet_id` if the tabs live in different
+spreadsheets):
+
+```python
+for tab, fg_name in [("Users", "gs_users"), ("Orders", "gs_orders")]:
+    fg = fs.create_feature_group(
+        name=fg_name,
+        version=1,
+        primary_key=["id"],
+        data_source=DataSource(storage_connector=connector, table=tab),
+        sink_enabled=True,
+    )
+    fg.save()
+    fg.sink_job.run()
+```
+
 ## Next Steps
 
 - Discover connectors/tables first: **hops-data-discovery**.
