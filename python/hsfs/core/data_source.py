@@ -42,17 +42,44 @@ class DataSource:
     The DataSource class encapsulates the details of a data source that can be used for reading or writing data.
     It supports various types of sources, such as SQL queries, database tables, file paths, and storage connectors.
 
+    For **Google Sheets** connectors, construct a DataSource directly and pass it to
+    [`FeatureStore.create_feature_group`][hsfs.feature_store.FeatureStore.create_feature_group]
+    with `sink_enabled=True`:
+
+    ```python
+    from hsfs.core.data_source import DataSource
+
+    connector = fs.get_storage_connector("my_google_sheets_connector")
+
+    fg = fs.create_feature_group(
+        name="budget_actuals",
+        version=1,
+        primary_key=["id"],
+        data_source=DataSource(
+            storage_connector=connector,
+            table="Q1 Actuals",          # sheet tab name (required)
+            spreadsheet_id="1BxiMVs…",  # omit if already set on the connector
+        ),
+        sink_enabled=True,
+    )
+    fg.save()
+    fg.sink_job.run()
+    ```
+
     Parameters:
         query: SQL query string for the data source, if applicable.
         database: Name of the database containing the data source.
         group: Group or schema name for the data source.
         table: Table name for the data source.
+            For Google Sheets connectors this is the sheet tab name.
         path: File system path for the data source.
         storage_connector: Storage connector object holds configuration for accessing the data source.
         metrics: List of metric column names for the data source.
         dimensions: List of dimension column names for the data source.
         rest_endpoint: REST endpoint configuration for the data source.
         spreadsheet_id: Google Spreadsheet ID for Google Sheets data sources.
+            Only required when the spreadsheet ID was not set on the connector itself;
+            the connector-level value is used otherwise.
     """
 
     def __init__(
@@ -203,7 +230,10 @@ class DataSource:
     @public
     @property
     def table(self) -> str | None:
-        """Get or set the table name for the data source."""
+        """Get or set the table name for the data source.
+
+        For Google Sheets connectors this is the sheet tab name.
+        """
         return self._table
 
     @table.setter
@@ -440,7 +470,11 @@ class DataSource:
     @public
     @property
     def spreadsheet_id(self) -> str | None:
-        """Get or set the Google Spreadsheet ID for Google Sheets data sources."""
+        """Get or set the Google Spreadsheet ID for Google Sheets data sources.
+
+        Only required when the spreadsheet ID was not configured on the connector itself.
+        The connector-level value is used when this is not set.
+        """
         return self._spreadsheet_id
 
     @spreadsheet_id.setter
