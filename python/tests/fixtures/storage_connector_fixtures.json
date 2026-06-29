@@ -99,6 +99,59 @@
         },
         "headers": null
     },
+    "get_glue": {
+        "response": {
+            "type": "featurestoreGlueConnectorDTO",
+            "description": "Glue connector description",
+            "featurestoreId": 67,
+            "id": 2,
+            "name": "test_glue",
+            "storageConnectorType": "GLUE",
+            "access_key": "test_access_key",
+            "secret_key": "test_secret_key",
+            "session_token": "test_session_token",
+            "iam_role": "test_iam_role",
+            "region": "eu-north-1",
+            "database": "test_database",
+            "table": "test_table",
+            "arguments": [{"name": "test_name", "value": "test_value"}]
+        },
+        "method": "GET",
+        "path_params": [
+            "project",
+            "119",
+            "featurestores",
+            67,
+            "storageconnectors",
+            "test_glue"
+        ],
+        "query_params": {
+            "temporaryCredentials": true
+        },
+        "headers": null
+    },
+    "get_glue_basic_info": {
+        "response": {
+            "type": "featurestoreGlueConnectorDTO",
+            "featurestoreId": 67,
+            "id": 2,
+            "name": "test_glue",
+            "storageConnectorType": "GLUE"
+        },
+        "method": "GET",
+        "path_params": [
+            "project",
+            "119",
+            "featurestores",
+            67,
+            "storageconnectors",
+            "test_glue"
+        ],
+        "query_params": {
+            "temporaryCredentials": true
+        },
+        "headers": null
+    },
     "get_redshift": {
         "response": {
             "type": "featurestoreRedshiftConnectorDTO",

@@ -77,6 +77,7 @@ class StorageConnector(ABC):
     UNITY_CATALOG = "UNITY_CATALOG"
     SAP_HANA = "SAP_HANA"
     MONGODB = "MONGODB"
+    GLUE = "GLUE"
 
     NOT_FOUND_ERROR_CODE = 270042
 
@@ -88,6 +89,7 @@ class StorageConnector(ABC):
         SNOWFLAKE: "featurestoreSnowflakeConnectorDTO",
         SAP_HANA: "featureStoreSapHanaConnectorDTO",
         MONGODB: "featurestoreMongoConnectorDTO",
+        GLUE: "featurestoreGlueConnectorDTO",
         JDBC: "featurestoreJdbcConnectorDTO",
         KAFKA: "featurestoreKafkaConnectorDTO",
         GCS: "featureStoreGcsConnectorDTO",
@@ -134,6 +136,7 @@ class StorageConnector(ABC):
         | UnityCatalogConnector
         | SapHanaConnector
         | MongoDBConnector
+        | GlueConnector
     ):
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
@@ -164,6 +167,7 @@ class StorageConnector(ABC):
         | UnityCatalogConnector
         | SapHanaConnector
         | MongoDBConnector
+        | GlueConnector
     ):
         json_decamelized = humps.decamelize(json_dict)
         _ = json_decamelized.pop("type", None)
@@ -314,8 +318,34 @@ class StorageConnector(ABC):
             The read dataframe.
         """
         return engine._get_instance()._read(
-            self, data_format, options or {}, path, dataframe_type
+            self,
+            data_format,
+            self._with_format_defaults(data_format, options),
+            path,
+            dataframe_type,
         )
+
+    @staticmethod
+    def _with_format_defaults(
+        data_format: str | None, options: dict[str, Any] | None
+    ) -> dict[str, Any]:
+        """Add format-specific read defaults, letting caller options win.
+
+        CSV/TSV carry no schema, so without `header`/`inferSchema` Spark returns
+        positional, all-string columns (`_c0`, ...). Defaulting these lets the
+        schema be inferred automatically while any explicit option still takes
+        precedence.
+        """
+        options = options or {}
+        if data_format and data_format.lower() in ("csv", "tsv"):
+            delimiter = "\t" if data_format.lower() == "tsv" else ","
+            return {
+                "header": "true",
+                "inferSchema": "true",
+                "delimiter": delimiter,
+                **options,
+            }
+        return options
 
     def _refetch(self) -> None:
         """Refetch storage connector."""
@@ -502,6 +532,14 @@ class StorageConnector(ABC):
                     raise ValueError(
                         "Database name is required for MongoDB connectors. "
                         "Set a default database on the connector or pass an "
+                        "explicit `database` to get_tables()."
+                    )
+                database = self.database
+            elif self.type == StorageConnector.GLUE:
+                if not self.database:
+                    raise ValueError(
+                        "Database name is required for Glue connectors. "
+                        "Set a database on the connector or pass an "
                         "explicit `database` to get_tables()."
                     )
                 database = self.database
@@ -4585,3 +4623,293 @@ class RestConnector(StorageConnector):
 
     def spark_options(self) -> dict[str, Any]:
         return {}
+
+
+@public
+class GlueConnector(StorageConnector):
+    """The Glue storage connector integrates with the AWS Glue Data Catalog.
+
+    The connector points at a Glue database backed by Amazon S3.
+    Data always lives on S3, so the connector provides the same S3 credentials
+    (`access_key`, `secret_key`, `session_token`, `region`) that the
+    [`S3Connector`][hsfs.storage_connector.S3Connector] does.
+    This works for any data format — Apache Iceberg, Delta Lake, Apache Hudi, as
+    well as plain file formats such as `csv` and `parquet`.
+
+    How the Glue Data Catalog itself is used depends on the format:
+
+    - Iceberg: the catalog owns the table's current-metadata pointer, so reads
+      and writes are mediated by the catalog (the table is addressed by
+      `<database>.<table>`).
+    - Delta and Hudi: the on-path transaction log or timeline stays
+      authoritative; the catalog is a discoverability mirror that is registered
+      on create and synced on write so external engines (Athena, EMR, ...) can
+      find the table by name.
+    - Plain file formats (`csv`, `parquet`, ...): the connector is used only for
+      S3 access; nothing is registered in the catalog.
+
+    For direct Spark or PyIceberg access outside the feature group APIs, the
+    connector supplies the matching catalog properties; see
+    [`GlueConnector.catalog_options`][hsfs.storage_connector.GlueConnector.catalog_options]
+    (Spark) and
+    [`GlueConnector.pyiceberg_catalog_options`][hsfs.storage_connector.GlueConnector.pyiceberg_catalog_options]
+    (PyIceberg).
+
+    Note: Feature group path is optional when the Glue database has a location.
+        When creating a feature group from this connector and the Glue database has a location, the feature group path is generated automatically by appending the new table to that database location, so no path needs to be set.
+        Otherwise, the path must be set explicitly on the data source, for example:
+
+        ```python
+        ds = fs.get_data_source("glue")
+        ds.path = "s3://mybucket/iceberg-warehouse/myglue.db/fg_1/"
+        ```
+
+        An explicitly set path always takes precedence over the generated one.
+    """
+
+    type = StorageConnector.GLUE
+    GLUE_CATALOG_IMPL = "org.apache.iceberg.aws.glue.GlueCatalog"
+    GLUE_IO_IMPL = "org.apache.iceberg.aws.s3.S3FileIO"
+    DEFAULT_CATALOG_NAME = "glue_catalog"
+    # PyIceberg identifies the AWS Glue catalog by type rather than impl class.
+    PYICEBERG_CATALOG_TYPE = "glue"
+
+    def __init__(
+        self,
+        id: int | None,
+        name: str,
+        featurestore_id: int | None,
+        description: str | None = None,
+        # members specific to type of connector
+        access_key: str | None = None,
+        secret_key: str | None = None,
+        session_token: str | None = None,
+        iam_role: str | None = None,
+        region: str | None = None,
+        database: str | None = None,
+        table: str | None = None,
+        arguments: list[dict[str, Any]] | dict[str, Any] | None = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(id, name, description, featurestore_id)
+
+        self._access_key = access_key
+        self._secret_key = secret_key
+        self._session_token = session_token
+        self._iam_role = iam_role
+        self._region = region
+        self._database = database
+        self._table = table
+        self._arguments = (
+            {opt["name"]: opt["value"] for opt in arguments} if arguments else {}
+        )
+
+    @public
+    @property
+    def access_key(self) -> str | None:
+        """Access key."""
+        return self._access_key
+
+    @public
+    @property
+    def secret_key(self) -> str | None:
+        """Secret key."""
+        return self._secret_key
+
+    @public
+    @property
+    def session_token(self) -> str | None:
+        """Session token."""
+        return self._session_token
+
+    @public
+    @property
+    def iam_role(self) -> str | None:
+        """IAM role."""
+        return self._iam_role
+
+    @public
+    @property
+    def region(self) -> str | None:
+        """AWS region of the Glue Data Catalog and the backing S3 bucket."""
+        return self._region
+
+    @public
+    @property
+    def database(self) -> str | None:
+        """Default Glue database for the connector.
+
+        This is only a fallback: when a feature group's data source specifies a
+        database, that one takes precedence over this connector default.
+        """
+        return self._database
+
+    @public
+    @property
+    def table(self) -> str | None:
+        """Name of the table within the Glue database, if any."""
+        return self._table
+
+    @property
+    def server_encryption_algorithm(self) -> str | None:
+        """Server-side encryption algorithm, exposed for reuse of the S3 setup."""
+        return None
+
+    @property
+    def server_encryption_key(self) -> str | None:
+        """Server-side encryption key, exposed for reuse of the S3 setup."""
+        return None
+
+    @property
+    def bucket(self) -> str | None:
+        """No fixed bucket; the bucket is part of the table's S3 location."""
+        return None
+
+    @public
+    @property
+    def arguments(self) -> dict[str, Any]:
+        """Additional Spark options for the connector, passed as a dictionary.
+
+        These are forwarded to the S3 setup the same way as for the
+        [`S3Connector`][hsfs.storage_connector.S3Connector], so any
+        `fs.s3a.*` option (e.g. `{"fs.s3a.endpoint": "..."}`) applies here too.
+        """
+        return self._arguments
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        payload.update(
+            {
+                "accessKey": self._access_key,
+                "secretKey": self._secret_key,
+                "sessionToken": self._session_token,
+                "iamRole": self._iam_role,
+                "region": self._region,
+                "database": self._database,
+                "table": self._table,
+                "arguments": [
+                    {"name": k, "value": v} for k, v in self._arguments.items()
+                ],
+            }
+        )
+        return payload
+
+    def spark_options(self) -> dict[str, str]:
+        return self._arguments
+
+    def _get_path(self, sub_path: str) -> str | None:
+        # Glue tables carry their full S3 location in the data source path
+        # (there is no connector-level bucket to join against), so the path is
+        # already absolute and is returned unchanged.
+        return sub_path
+
+    @public
+    def prepare_spark(self, path: str | None = None) -> str | None:
+        """Prepare Spark to use this Storage Connector.
+
+        Sets the S3 credentials on the Spark session and rewrites the path to
+        the `s3a://` scheme, so reads and writes to the table's S3 location
+        work, mirroring the [`S3Connector`][hsfs.storage_connector.S3Connector].
+
+        Parameters:
+            path: Path to prepare for reading from cloud storage.
+
+        Returns:
+            The path rewritten to the `s3a://` scheme.
+        """
+        self._refetch()
+        return engine._get_instance()._setup_storage_connector(self, path)
+
+    @public
+    def connector_options(self) -> dict[str, Any]:
+        """Return options to be passed to an external S3 connector library."""
+        self._refetch()
+        return {
+            "access_key": self.access_key,
+            "secret_key": self.secret_key,
+            "session_token": self.session_token,
+            "region": self.region,
+        }
+
+    @public
+    def catalog_options(self, warehouse: str | None = None) -> dict[str, str]:
+        """Return Iceberg catalog properties for committing through the Glue Data Catalog.
+
+        The returned properties configure the Iceberg `GlueCatalog` and its
+        `S3FileIO`, including the connector's S3 credentials.
+        Pass these together with the `iceberg.catalog` write option (prefixed
+        with `iceberg.catalog.`) to register the table in the Glue Data Catalog
+        on write while the data stays on S3.
+
+        Hopsworks routes Glue feature groups through the Glue catalog
+        automatically, so passing these options manually is only needed for
+        direct Spark or PyIceberg access outside the feature group APIs.
+
+        Example:
+            ```python
+            connector = fs.get_data_source("glue").storage_connector
+            options = {
+                "iceberg.catalog": "glue_catalog",
+                **{
+                    f"iceberg.catalog.{k}": v
+                    for k, v in connector.catalog_options().items()
+                },
+            }
+            fg.insert(df, write_options=options)
+            ```
+
+        Parameters:
+            warehouse: S3 warehouse location for the catalog; defaults to the catalog's configured location.
+
+        Returns:
+            A dictionary of Iceberg Glue catalog properties.
+        """
+        options = {
+            "catalog-impl": self.GLUE_CATALOG_IMPL,
+            "io-impl": self.GLUE_IO_IMPL,
+        }
+        if self._region:
+            options["client.region"] = self._region
+        if warehouse:
+            options["warehouse"] = warehouse
+        if self._access_key:
+            options["s3.access-key-id"] = self._access_key
+        if self._secret_key:
+            options["s3.secret-access-key"] = self._secret_key
+        if self._session_token:
+            options["s3.session-token"] = self._session_token
+        return options
+
+    @public
+    def pyiceberg_catalog_options(self, warehouse: str | None = None) -> dict[str, str]:
+        """Return PyIceberg catalog properties for the Glue Data Catalog.
+
+        PyIceberg identifies the catalog by `type` rather than by the
+        implementation class used by the Iceberg Spark connector, and uses its
+        own credential and region property names, so the
+        [`catalog_options`][hsfs.storage_connector.GlueConnector.catalog_options]
+        Spark properties cannot be reused.
+        Use these when reading or writing a Glue table without Spark.
+
+        Parameters:
+            warehouse: S3 warehouse location for the catalog; defaults to the catalog's configured location.
+
+        Returns:
+            A dictionary of PyIceberg Glue catalog properties.
+        """
+        options = {"type": self.PYICEBERG_CATALOG_TYPE}
+        if self._region:
+            options["glue.region"] = self._region
+            options["s3.region"] = self._region
+        if warehouse:
+            options["warehouse"] = warehouse
+        if self._access_key:
+            options["s3.access-key-id"] = self._access_key
+            options["glue.access-key-id"] = self._access_key
+        if self._secret_key:
+            options["s3.secret-access-key"] = self._secret_key
+            options["glue.secret-access-key"] = self._secret_key
+        if self._session_token:
+            options["s3.session-token"] = self._session_token
+            options["glue.session-token"] = self._session_token
+        return options

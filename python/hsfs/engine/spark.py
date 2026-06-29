@@ -1753,7 +1753,9 @@ class Engine:
         ]
 
     def _setup_storage_connector(self, storage_connector, path=None):
-        if storage_connector.type == StorageConnector.S3:
+        if storage_connector.type in (StorageConnector.S3, StorageConnector.GLUE):
+            # Glue tables are backed by S3 (in any format: Iceberg, Delta, CSV,
+            # ...), so the S3 credentials setup applies to them as well.
             return self._setup_s3_hadoop_conf(storage_connector, path)
         if storage_connector.type == StorageConnector.ADLS:
             return self._setup_adls_hadoop_conf(storage_connector, path)
@@ -1819,10 +1821,13 @@ class Engine:
             self._set_s3_hadoop_conf(storage_connector, "fs.s3a")
 
         # Set credentials at bucket level as well to allow users to use multiple
-        # storage connector in the same application.
-        self._set_s3_hadoop_conf(
-            storage_connector, f"fs.s3a.bucket.{storage_connector.bucket}"
-        )
+        # storage connector in the same application. Connectors without a fixed
+        # bucket (e.g. Glue, where the bucket is part of the table location)
+        # only configure the global level.
+        if storage_connector.bucket:
+            self._set_s3_hadoop_conf(
+                storage_connector, f"fs.s3a.bucket.{storage_connector.bucket}"
+            )
         return path.replace("s3://", "s3a://", 1) if path is not None else None
 
     def _set_s3_hadoop_conf(self, storage_connector, prefix):
@@ -1944,6 +1949,20 @@ class Engine:
         )
 
     def _add_cols_to_iceberg_table(self, feature_group):
+        iceberg_engine_instance = iceberg_engine.IcebergEngine(
+            feature_group.feature_store_id,
+            feature_group.feature_store_name,
+            feature_group,
+            self._spark_session,
+            None if self._is_connect else self._spark_context,
+        )
+        glue = iceberg_engine_instance._glue_catalog()
+        if glue is not None:
+            # The table's metadata pointer lives in Glue, so the schema must be
+            # evolved through the catalog rather than the path-based API.
+            iceberg_engine_instance._add_columns_via_catalog(glue)
+            return
+
         if self._is_connect:
             raise FeatureStoreException(
                 "Updating the schema of an Iceberg feature group is not supported "
