@@ -928,3 +928,284 @@ class TestMergeDispatch:
         assert not resolve_mock.called, (
             "cap reached — must fall back before even invoking the merger"
         )
+
+
+# ---------------------------------------------------------------------------
+# Stale-stats embedding guard tests
+# ---------------------------------------------------------------------------
+
+
+def _make_scalar_fg():
+    """Create a minimal non-time-travel FeatureGroup mock that skips the merge path."""
+    fg = MagicMock(spec=feature_group.FeatureGroup)
+    fg._feature_store_id = 1
+    fg.ENTITY_TYPE = "featuregroups"
+    fg.time_travel_format = None
+    return fg
+
+
+def _embedding_fds(feature_name: str, with_block: bool):
+    """Build an embedding FDS with or without the extended_statistics.embedding block."""
+    extended = (
+        {"embedding": {"dimension": 2, "centroid": [1.0, 2.0]}} if with_block else {}
+    )
+    return FeatureDescriptiveStatistics(
+        feature_name=feature_name,
+        feature_type="Embedding",
+        count=10,
+        extended_statistics=extended,
+    )
+
+
+class TestStaleStatsEmbeddingGuard:
+    """Tests for _reused_stats_lack_embedding and its effect in _run_single_window_monitoring."""
+
+    def test_lacks_embedding_when_targeted_feature_missing_block(self):
+        """A CENTROID_DISTANCE-targeted feature without the embedding block requires recompute."""
+        engine = mwce.MonitoringWindowConfigEngine()
+        registered = MagicMock()
+        registered.feature_descriptive_statistics = [
+            _embedding_fds("emb", with_block=False)
+        ]
+
+        assert engine._reused_stats_lack_embedding(registered, {"emb"}) is True
+
+    def test_has_embedding_when_targeted_feature_has_block(self):
+        """A targeted feature that already carries the embedding block can be reused."""
+        engine = mwce.MonitoringWindowConfigEngine()
+        registered = MagicMock()
+        registered.feature_descriptive_statistics = [
+            _embedding_fds("emb", with_block=True)
+        ]
+
+        assert engine._reused_stats_lack_embedding(registered, {"emb"}) is False
+
+    def test_self_identified_embedding_without_block_requires_recompute(self):
+        """A reused FDS that is an embedding type but lacks the block requires recompute.
+
+        This covers a stale embedding feature behind an ambiguous distribution metric,
+        which is not in the explicitly targeted set.
+        """
+        engine = mwce.MonitoringWindowConfigEngine()
+        registered = MagicMock()
+        registered.feature_descriptive_statistics = [
+            _embedding_fds("emb", with_block=False)
+        ]
+
+        # No targeted names: detection still fires via the FDS feature type.
+        assert engine._reused_stats_lack_embedding(registered, None) is True
+
+    def test_scalar_feature_never_requires_embedding(self):
+        """A present scalar FDS is not forced to recompute when nothing targets embedding.
+
+        With no CENTROID_DISTANCE target and a non-embedding feature type, neither the
+        absent-target branch nor the missing-block branch fires.
+        """
+        engine = mwce.MonitoringWindowConfigEngine()
+        registered = MagicMock()
+        registered.feature_descriptive_statistics = [
+            FeatureDescriptiveStatistics(
+                feature_name="amount", feature_type="Fractional"
+            )
+        ]
+
+        assert engine._reused_stats_lack_embedding(registered, None) is False
+
+    def test_lacks_embedding_when_targeted_feature_absent(self):
+        """A CENTROID_DISTANCE-targeted feature missing entirely requires recompute.
+
+        Reused stats produced before embedding support omit the feature altogether
+        rather than carrying an embedding-less FDS for it, so the absence itself must
+        force a reprofile instead of silently bypassing the comparison.
+        """
+        engine = mwce.MonitoringWindowConfigEngine()
+        registered = MagicMock()
+        registered.feature_descriptive_statistics = [
+            FeatureDescriptiveStatistics(
+                feature_name="amount", feature_type="Fractional"
+            )
+        ]
+
+        assert engine._reused_stats_lack_embedding(registered, {"emb"}) is True
+
+    def test_lacks_embedding_when_all_stats_missing_and_targeted(self):
+        """An empty reused stats list with a CENTROID_DISTANCE target requires recompute.
+
+        Stats produced before embedding support may have skipped every column, leaving
+        the list empty. The targeted feature is then absent like any other missing
+        feature, so the absence must force a reprofile rather than be treated as
+        nothing-to-do.
+        """
+        engine = mwce.MonitoringWindowConfigEngine()
+        registered = MagicMock()
+        registered.feature_descriptive_statistics = []
+
+        assert engine._reused_stats_lack_embedding(registered, {"emb"}) is True
+
+    def test_empty_stats_without_target_does_not_recompute(self):
+        """An empty reused stats list with no CENTROID_DISTANCE target needs no recompute.
+
+        With nothing targeted and no FDS to self-identify as embedding, neither branch
+        fires.
+        """
+        engine = mwce.MonitoringWindowConfigEngine()
+        registered = MagicMock()
+        registered.feature_descriptive_statistics = []
+
+        assert engine._reused_stats_lack_embedding(registered, None) is False
+
+    def test_reused_stale_embedding_forces_recompute(self, mocker):
+        """End-to-end: reused stats lacking the embedding block trigger a window reprofile."""
+        engine = mwce.MonitoringWindowConfigEngine()
+        fg = _make_scalar_fg()
+        window_config = mwc.MonitoringWindowConfig(
+            window_config_type=mwc.WindowConfigType.ALL_TIME,
+            row_percentage=1.0,
+        )
+
+        mocker.patch.object(engine, "_init_statistics_engine")
+        mocker.patch.object(
+            engine, "_get_window_start_end_times", return_value=(None, 123)
+        )
+        stats_engine_mock = MagicMock()
+        engine._statistics_engine = stats_engine_mock
+
+        # Reused (stale) stats: embedding feature missing the block.
+        stale = MagicMock()
+        stale.feature_descriptive_statistics = [_embedding_fds("emb", with_block=False)]
+        stats_engine_mock._get_by_time_window.return_value = stale
+
+        # The recompute path returns fresh stats carrying the embedding block.
+        fresh = MagicMock()
+        fresh.feature_descriptive_statistics = [_embedding_fds("emb", with_block=True)]
+        stats_engine_mock._compute_and_save_monitoring_statistics.return_value = fresh
+        mocker.patch.object(
+            engine, "_fetch_entity_data_in_monitoring_window", return_value=MagicMock()
+        )
+
+        result = engine._run_single_window_monitoring(
+            entity=fg,
+            monitoring_window_config=window_config,
+            feature_names=["emb"],
+            embedding_feature_names={"emb"},
+        )
+
+        stats_engine_mock._compute_and_save_monitoring_statistics.assert_called_once()
+        assert result == fresh.feature_descriptive_statistics
+
+    def test_reused_fresh_embedding_is_not_recomputed(self, mocker):
+        """End-to-end: reused stats that already carry the embedding block are reused as-is."""
+        engine = mwce.MonitoringWindowConfigEngine()
+        fg = _make_scalar_fg()
+        window_config = mwc.MonitoringWindowConfig(
+            window_config_type=mwc.WindowConfigType.ALL_TIME,
+            row_percentage=1.0,
+        )
+
+        mocker.patch.object(engine, "_init_statistics_engine")
+        mocker.patch.object(
+            engine, "_get_window_start_end_times", return_value=(None, 123)
+        )
+        stats_engine_mock = MagicMock()
+        engine._statistics_engine = stats_engine_mock
+
+        reusable = MagicMock()
+        reusable.feature_descriptive_statistics = [
+            _embedding_fds("emb", with_block=True)
+        ]
+        stats_engine_mock._get_by_time_window.return_value = reusable
+        fetch_mock = mocker.patch.object(
+            engine, "_fetch_entity_data_in_monitoring_window"
+        )
+
+        result = engine._run_single_window_monitoring(
+            entity=fg,
+            monitoring_window_config=window_config,
+            feature_names=["emb"],
+            embedding_feature_names={"emb"},
+        )
+
+        stats_engine_mock._compute_and_save_monitoring_statistics.assert_not_called()
+        fetch_mock.assert_not_called()
+        assert result == reusable.feature_descriptive_statistics
+
+    def test_reused_stats_omitting_targeted_feature_forces_recompute(self, mocker):
+        """End-to-end: reused stats missing a targeted feature trigger a reprofile."""
+        engine = mwce.MonitoringWindowConfigEngine()
+        fg = _make_scalar_fg()
+        window_config = mwc.MonitoringWindowConfig(
+            window_config_type=mwc.WindowConfigType.ALL_TIME,
+            row_percentage=1.0,
+        )
+
+        mocker.patch.object(engine, "_init_statistics_engine")
+        mocker.patch.object(
+            engine, "_get_window_start_end_times", return_value=(None, 123)
+        )
+        stats_engine_mock = MagicMock()
+        engine._statistics_engine = stats_engine_mock
+
+        # Reused (stale) stats predate embedding support: the targeted feature is
+        # absent entirely, not present with an embedding-less FDS.
+        stale = MagicMock()
+        stale.feature_descriptive_statistics = [
+            FeatureDescriptiveStatistics(
+                feature_name="amount", feature_type="Fractional"
+            )
+        ]
+        stats_engine_mock._get_by_time_window.return_value = stale
+
+        fresh = MagicMock()
+        fresh.feature_descriptive_statistics = [_embedding_fds("emb", with_block=True)]
+        stats_engine_mock._compute_and_save_monitoring_statistics.return_value = fresh
+        mocker.patch.object(
+            engine, "_fetch_entity_data_in_monitoring_window", return_value=MagicMock()
+        )
+
+        result = engine._run_single_window_monitoring(
+            entity=fg,
+            monitoring_window_config=window_config,
+            feature_names=["emb"],
+            embedding_feature_names={"emb"},
+        )
+
+        stats_engine_mock._compute_and_save_monitoring_statistics.assert_called_once()
+        assert result == fresh.feature_descriptive_statistics
+
+    def test_scalar_path_unchanged_when_no_embedding_target(self, mocker):
+        """Non-embedding config reuses scalar stats without recompute (path unchanged)."""
+        engine = mwce.MonitoringWindowConfigEngine()
+        fg = _make_scalar_fg()
+        window_config = mwc.MonitoringWindowConfig(
+            window_config_type=mwc.WindowConfigType.ALL_TIME,
+            row_percentage=1.0,
+        )
+
+        mocker.patch.object(engine, "_init_statistics_engine")
+        mocker.patch.object(
+            engine, "_get_window_start_end_times", return_value=(None, 123)
+        )
+        stats_engine_mock = MagicMock()
+        engine._statistics_engine = stats_engine_mock
+
+        reusable = MagicMock()
+        reusable.feature_descriptive_statistics = [
+            FeatureDescriptiveStatistics(
+                feature_name="amount", feature_type="Fractional"
+            )
+        ]
+        stats_engine_mock._get_by_time_window.return_value = reusable
+        fetch_mock = mocker.patch.object(
+            engine, "_fetch_entity_data_in_monitoring_window"
+        )
+
+        result = engine._run_single_window_monitoring(
+            entity=fg,
+            monitoring_window_config=window_config,
+            feature_names=["amount"],
+            embedding_feature_names=None,
+        )
+
+        stats_engine_mock._compute_and_save_monitoring_statistics.assert_not_called()
+        fetch_mock.assert_not_called()
+        assert result == reusable.feature_descriptive_statistics

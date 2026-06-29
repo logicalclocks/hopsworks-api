@@ -16,6 +16,7 @@
 
 from datetime import datetime, timezone
 
+import pytest
 from hsfs.core import feature_monitoring_config as fmc
 from hsfs.core.feature_monitoring_config import FeatureMonitoringType
 from hsfs.core.job_schedule import JobSchedule
@@ -747,6 +748,69 @@ class TestFeatureMonitoringConfigDistribution:
         assert len(scalar_children) >= 1
         assert len(dist_children) >= 1
 
+    # Embedding features
+
+    def _all_sc_configs(self, cfg):
+        return [
+            sc
+            for fs_config in cfg._feature_statistics_configs
+            for sc in (fs_config.statistics_comparison_configs or [])
+        ]
+
+    def test_compare_on_distribution_accepts_embedding(self):
+        valid_features = {"user_vector": "array<float>"}
+        cfg = self._build_config(valid_features=valid_features)
+
+        cfg.compare_on_distribution(
+            metric="PSI", threshold=0.2, feature_name="user_vector"
+        )
+
+        dist_children = [
+            sc for sc in self._all_sc_configs(cfg) if sc.distribution_metric is not None
+        ]
+        assert len(dist_children) == 1
+        # Embeddings default to the numeric EQUI_FREQUENCY strategy, not CATEGORICAL.
+        assert dist_children[0].binning_strategy == "EQUI_FREQUENCY"
+
+    def test_compare_on_accepts_embedding_centroid_distance(self):
+        valid_features = {"user_vector": "array<double>"}
+        cfg = self._build_config(valid_features=valid_features)
+
+        cfg.compare_on(
+            metric="CENTROID_DISTANCE", threshold=1.0, feature_name="user_vector"
+        )
+
+        scalar_children = [
+            sc for sc in self._all_sc_configs(cfg) if sc.metric is not None
+        ]
+        assert len(scalar_children) == 1
+        assert scalar_children[0].metric == "CENTROID_DISTANCE"
+
+    def test_compare_on_rejects_scalar_mean_on_embedding(self):
+        valid_features = {"user_vector": "array<float>"}
+        cfg = self._build_config(valid_features=valid_features)
+
+        with pytest.raises(ValueError, match="not supported for embedding feature"):
+            cfg.compare_on(metric="mean", threshold=1.0, feature_name="user_vector")
+
+    def test_compare_on_rejects_categorical_metric_on_embedding(self):
+        valid_features = {"user_vector": "array<float>"}
+        cfg = self._build_config(valid_features=valid_features)
+
+        with pytest.raises(ValueError, match="not supported for embedding feature"):
+            cfg.compare_on(
+                metric="completeness", threshold=1.0, feature_name="user_vector"
+            )
+
+    def test_compare_on_rejects_centroid_distance_on_scalar(self):
+        valid_features = {"amount": "double"}
+        cfg = self._build_config(valid_features=valid_features)
+
+        with pytest.raises(ValueError, match="requires an embedding feature"):
+            cfg.compare_on(
+                metric="CENTROID_DISTANCE", threshold=1.0, feature_name="amount"
+            )
+
     def test_type_promoted_to_pdf_after_compare_on_distribution(self):
         valid_features = {"amount": "double"}
         cfg = self._build_config(valid_features=valid_features)
@@ -1203,3 +1267,241 @@ class TestFeatureViewCreateModelMonitoring:
         assert "trainingDatasetId" not in d
         assert "featureViewId" not in d
         assert "enabled" not in d
+
+
+# ---------------------------------------------------------------------------
+# FSTORE-2053 — Automated re-training fields on FeatureMonitoringConfig
+# ---------------------------------------------------------------------------
+
+
+class TestFeatureMonitoringConfigRetrainingFields:
+    """Round-trip and serialization of re-training fields on FeatureMonitoringConfig."""
+
+    def _build(self, **overrides):
+        kwargs = {
+            "feature_store_id": 67,
+            "feature_group_id": 42,
+            "feature_monitoring_type": FeatureMonitoringType.STATISTICS_COMPARISON,
+            "name": "retrain_monitoring",
+            "feature_statistics_configs": [],
+        }
+        kwargs.update(overrides)
+        return fmc.FeatureMonitoringConfig(**kwargs)
+
+    def test_default_retraining_fields_are_none(self):
+        cfg = self._build()
+        assert cfg.retrain_model_after_num_shifts is None
+        assert cfg.model_retraining_job_name is None
+        assert cfg.model_retraining_job_execution_args is None
+
+    def test_constructor_accepts_retraining_fields(self):
+        cfg = self._build(
+            retrain_model_after_num_shifts=3,
+            model_retraining_job_name="retrain_iris",
+            model_retraining_job_execution_args="--epochs 10",
+        )
+        assert cfg.retrain_model_after_num_shifts == 3
+        assert cfg.model_retraining_job_name == "retrain_iris"
+        assert cfg.model_retraining_job_execution_args == "--epochs 10"
+
+    def test_to_dict_emits_retraining_fields_when_set(self):
+        from hsfs.core.monitoring_window_config import MonitoringWindowConfig
+
+        cfg = self._build(
+            retrain_model_after_num_shifts=3,
+            model_retraining_job_name="retrain_iris",
+            model_retraining_job_execution_args="--epochs 10",
+        )
+        cfg._detection_window_config = MonitoringWindowConfig(
+            window_config_type=WindowConfigType.ALL_TIME, row_percentage=1.0
+        )
+        d = cfg.to_dict()
+        assert d["retrainModelAfterNumShifts"] == 3
+        assert d["modelRetrainingJobName"] == "retrain_iris"
+        assert d["modelRetrainingJobExecutionArgs"] == "--epochs 10"
+
+    def test_to_dict_omits_retraining_fields_when_unset(self):
+        from hsfs.core.monitoring_window_config import MonitoringWindowConfig
+
+        cfg = self._build()
+        cfg._detection_window_config = MonitoringWindowConfig(
+            window_config_type=WindowConfigType.ALL_TIME, row_percentage=1.0
+        )
+        d = cfg.to_dict()
+        assert "retrainModelAfterNumShifts" not in d
+        assert "modelRetrainingJobName" not in d
+        assert "modelRetrainingJobExecutionArgs" not in d
+
+    def test_from_response_json_round_trips_retraining_fields(self):
+
+        raw = {
+            "featureStoreId": 67,
+            "featureGroupId": 42,
+            "featureMonitoringType": "STATISTICS_COMPARISON",
+            "name": "retrain_monitoring",
+            "featureStatisticsConfigs": [],
+            "retrainModelAfterNumShifts": 5,
+            "modelRetrainingJobName": "my_retrain_job",
+            "modelRetrainingJobExecutionArgs": "--lr 0.001",
+            "detectionWindowConfig": {
+                "windowConfigType": "ALL_TIME",
+            },
+            "jobSchedule": {
+                "id": 1,
+                "startDateTime": 1676457000000,
+                "cronExpression": "0 0 * ? * * *",
+                "enabled": True,
+            },
+            "triggerType": "CRON",
+        }
+        cfg = fmc.FeatureMonitoringConfig.from_response_json(raw)
+        assert cfg.retrain_model_after_num_shifts == 5
+        assert cfg.model_retraining_job_name == "my_retrain_job"
+        assert cfg.model_retraining_job_execution_args == "--lr 0.001"
+
+
+# ---------------------------------------------------------------------------
+# FSTORE-2053 — create_model_monitoring re-training kwargs delegation + validation
+# ---------------------------------------------------------------------------
+
+
+class TestFeatureViewCreateModelMonitoringRetraining:
+    """FSTORE-2053: create_model_monitoring stamps re-training fields and validates input."""
+
+    def _setup_happy_path(self, mocker):
+        """Return a mocked FeatureView ready for create_model_monitoring."""
+        from unittest.mock import MagicMock, PropertyMock
+
+        from hsfs.feature_view import FeatureView
+
+        fv = MagicMock(spec=FeatureView)
+        fv.logging_enabled = True
+
+        mocker.patch(
+            "hopsworks_common.client._get_instance",
+            return_value=MagicMock(_project_id=119),
+        )
+        model_meta = MagicMock()
+        model_meta.training_dataset_version = 9
+        mock_model_api = MagicMock()
+        mock_model_api._get.return_value = model_meta
+        mocker.patch("hsml.core.model_api.ModelApi", return_value=mock_model_api)
+
+        inner_config = fmc.FeatureMonitoringConfig(
+            feature_store_id=67,
+            feature_group_id=42,
+            feature_monitoring_type=FeatureMonitoringType.STATISTICS_COMPARISON,
+            name="cfg",
+            feature_statistics_configs=[],
+        )
+        mock_fg = MagicMock()
+        mock_fg.create_feature_monitoring.return_value = inner_config
+        mock_logging = MagicMock()
+        mock_logging.get_feature_group.return_value = mock_fg
+        type(fv).feature_logging = PropertyMock(return_value=mock_logging)
+
+        return fv, inner_config
+
+    def test_happy_path_stamps_retraining_fields_job_object(self, mocker):
+        from unittest.mock import MagicMock
+
+        from hsfs.feature_view import FeatureView
+
+        fv, inner_config = self._setup_happy_path(mocker)
+
+        mock_job = MagicMock()
+        mock_job.name = "retrain_iris"
+
+        result = FeatureView.create_model_monitoring(
+            fv,
+            name="cfg",
+            model_name="iris",
+            model_version=3,
+            retrain_model_after_num_shifts=4,
+            model_retraining_job=mock_job,
+            model_retraining_job_execution_args="--epochs 5",
+        )
+
+        assert result._retrain_model_after_num_shifts == 4
+        assert result._model_retraining_job_name == "retrain_iris"
+        assert result._model_retraining_job_execution_args == "--epochs 5"
+
+    def test_happy_path_no_retraining_job_leaves_name_none(self, mocker):
+        from hsfs.feature_view import FeatureView
+
+        fv, inner_config = self._setup_happy_path(mocker)
+
+        result = FeatureView.create_model_monitoring(
+            fv,
+            name="cfg",
+            model_name="iris",
+            model_version=3,
+            retrain_model_after_num_shifts=2,
+        )
+
+        assert result._retrain_model_after_num_shifts == 2
+        assert result._model_retraining_job_name is None
+        assert result._model_retraining_job_execution_args is None
+
+    def test_validation_rejects_zero_num_shifts(self, mocker):
+        import pytest
+        from hopsworks_common.client.exceptions import FeatureStoreException
+        from hsfs.feature_view import FeatureView
+
+        fv, _ = self._setup_happy_path(mocker)
+
+        with pytest.raises(FeatureStoreException, match="positive integer"):
+            FeatureView.create_model_monitoring(
+                fv,
+                name="cfg",
+                model_name="iris",
+                model_version=3,
+                retrain_model_after_num_shifts=0,
+            )
+
+    def test_validation_rejects_negative_num_shifts(self, mocker):
+        import pytest
+        from hopsworks_common.client.exceptions import FeatureStoreException
+        from hsfs.feature_view import FeatureView
+
+        fv, _ = self._setup_happy_path(mocker)
+
+        with pytest.raises(FeatureStoreException, match="positive integer"):
+            FeatureView.create_model_monitoring(
+                fv,
+                name="cfg",
+                model_name="iris",
+                model_version=3,
+                retrain_model_after_num_shifts=-1,
+            )
+
+    def test_validation_rejects_non_int_num_shifts(self, mocker):
+        import pytest
+        from hopsworks_common.client.exceptions import FeatureStoreException
+        from hsfs.feature_view import FeatureView
+
+        fv, _ = self._setup_happy_path(mocker)
+
+        with pytest.raises(FeatureStoreException, match="positive integer"):
+            FeatureView.create_model_monitoring(
+                fv,
+                name="cfg",
+                model_name="iris",
+                model_version=3,
+                retrain_model_after_num_shifts=1.5,
+            )
+
+    def test_validation_accepts_none_num_shifts(self, mocker):
+        """None is allowed: it simply disables re-training (opt-in feature)."""
+        from hsfs.feature_view import FeatureView
+
+        fv, inner_config = self._setup_happy_path(mocker)
+
+        result = FeatureView.create_model_monitoring(
+            fv,
+            name="cfg",
+            model_name="iris",
+            model_version=3,
+            retrain_model_after_num_shifts=None,
+        )
+        assert result._retrain_model_after_num_shifts is None

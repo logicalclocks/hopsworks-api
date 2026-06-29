@@ -76,6 +76,8 @@ class ProfileJsonSerializer {
   private Map<String, Object> toMap(ColumnProfile profile) {
     if (profile.isNumeric()) {
       return toNumericMap(profile);
+    } else if (profile.isEmbedding()) {
+      return toEmbeddingMap(profile);
     } else {
       return toCategoricalMap(profile);
     }
@@ -132,6 +134,62 @@ class ProfileJsonSerializer {
       map.put("histogram", profile.getHistogram());
     }
     return map;
+  }
+
+  /**
+   * Builds the JSON map for an embedding (numeric-array) column.
+   *
+   * <p>Emits the standard count/completeness/null fields (computed over the array column itself)
+   * plus an {@code embedding} block:
+   * <pre>{@code
+   *   "embedding": {
+   *     "dimension": <int>,
+   *     "count": <long>,
+   *     "norm": {
+   *       "histogram": [ {value, count, ratio}, ... ],   // when histogram=true
+   *       "kll": { "kllFormat":..., "bytes":..., "buckets":[...] }   // when kll=true
+   *     },
+   *     "centroid": [ <double>, ... ]
+   *   }
+   * }</pre>
+   *
+   * <p>The {@code norm.kll} map reuses {@link #buildKllMap} so its shape matches a scalar
+   * numeric column's {@code kll} exactly.
+   */
+  private Map<String, Object> toEmbeddingMap(ColumnProfile profile) {
+    Map<String, Object> map = new LinkedHashMap<String, Object>();
+    map.put("column", profile.getColumnName());
+    map.put("dataType", profile.getDataType());
+    map.put("isDataTypeInferred", "false");
+    map.put("completeness", profile.getCompleteness());
+    map.put("numRecordsNonNull", profile.getNumRecordsNonNull());
+    map.put("numRecordsNull", profile.getNumRecordsNull());
+    map.put("distinctness", profile.getDistinctness());
+    map.put("entropy", profile.getEntropy());
+    map.put("uniqueness", profile.getUniqueness());
+    map.put("approximateNumDistinctValues", profile.getApproximateNumDistinctValues());
+    map.put("exactNumDistinctValues", profile.getExactNumDistinctValues());
+
+    ColumnProfile.EmbeddingStats stats = profile.getEmbedding();
+    Map<String, Object> embedding = new LinkedHashMap<String, Object>();
+    embedding.put("dimension", stats.getDimension());
+    embedding.put("count", stats.getValidCount());
+    embedding.put("norm", buildNormMap(stats));
+    embedding.put("centroid", toDoubleList(stats.getCentroid()));
+    map.put("embedding", embedding);
+    return map;
+  }
+
+  private Map<String, Object> buildNormMap(ColumnProfile.EmbeddingStats stats) {
+    Map<String, Object> norm = new LinkedHashMap<String, Object>();
+    if (stats.getNormHistogram() != null) {
+      norm.put("histogram", stats.getNormHistogram());
+    }
+    if (stats.getNormKllBytes() != null) {
+      norm.put("kll", buildKllMap(stats.getNormKllBytes(), stats.getNormMin(),
+          stats.getNormMax(), stats.getNormNonNull()));
+    }
+    return norm;
   }
 
   private List<Map<String, Object>> buildCorrelationsList(Map<String, Double> correlations) {

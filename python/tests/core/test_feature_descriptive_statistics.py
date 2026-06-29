@@ -383,3 +383,79 @@ class TestFeatureDescriptiveStatistics:
         assert kll.get("kllFormat") == "datasketches-native-v1"
         assert kll.get("bytes") == "AgEAAIAAAAAAAAAAAAAAAA=="
         assert "buckets" in kll
+
+    def test_from_deequ_json_embedding(self):
+        # Embedding (numeric-array) column: dataType "Embedding" plus a top-level
+        # "embedding" block carrying dimension, count, norm histogram/kll, centroid.
+        json_dict = {
+            "column": "user_vector",
+            "dataType": "Embedding",
+            "numRecordsNull": 0,
+            "numRecordsNonNull": 3,
+            "embedding": {
+                "dimension": 2,
+                "count": 3,
+                "norm": {
+                    "histogram": [
+                        {"value": "5.00 to 5.25", "count": 2, "ratio": 0.6667},
+                        {"value": "5.25 to 5.50", "count": 1, "ratio": 0.3333},
+                    ],
+                    "kll": {
+                        "kllFormat": "datasketches-native-v1",
+                        "bytes": "AgEAAIAAAAAAAAAAAAAAAA==",
+                        "buckets": [
+                            {
+                                "low_value": 5.0,
+                                "high_value": 5.5,
+                                "count": 3,
+                                "ratio": 1.0,
+                            }
+                        ],
+                    },
+                },
+                "centroid": [1.5, 2.5],
+            },
+        }
+
+        result = FeatureDescriptiveStatistics._from_deequ_json(json_dict)
+
+        assert result._feature_type == "Embedding"
+        assert result._is_embedding() is True
+        assert result._count == 3
+        embedding = result._get_embedding_statistics()
+        assert embedding["dimension"] == 2
+        assert result._get_embedding_centroid() == [1.5, 2.5]
+        # Norm view mirrors a scalar numeric column's histogram/kll layout.
+        norm_stats = result._get_embedding_norm_extended_statistics()
+        assert len(norm_stats["histogram"]) == 2
+        assert norm_stats["kll"]["kllFormat"] == "datasketches-native-v1"
+
+    def test_from_deequ_json_embedding_all_invalid(self):
+        # All rows invalid: embedding count 0, empty centroid, no norm block.
+        json_dict = {
+            "column": "user_vector",
+            "dataType": "Embedding",
+            "numRecordsNull": 0,
+            "numRecordsNonNull": 4,
+            "embedding": {"dimension": 2, "count": 0, "centroid": []},
+        }
+
+        result = FeatureDescriptiveStatistics._from_deequ_json(json_dict)
+
+        assert result._is_embedding() is True
+        assert result._get_embedding_centroid() == []
+        # No norm block: nothing to bin over.
+        assert result._get_embedding_norm_extended_statistics() is None
+
+    def test_get_embedding_accessors_non_embedding(self):
+        # Scalar features expose no embedding statistics.
+        fds = FeatureDescriptiveStatistics(
+            feature_name="amount",
+            feature_type="Fractional",
+            extended_statistics={"histogram": []},
+        )
+
+        assert fds._is_embedding() is False
+        assert fds._get_embedding_statistics() is None
+        assert fds._get_embedding_centroid() is None
+        assert fds._get_embedding_norm_extended_statistics() is None

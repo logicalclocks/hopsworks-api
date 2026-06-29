@@ -27,6 +27,10 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 
+# Feature type emitted by the Spark profiler for numeric-array (embedding) columns.
+EMBEDDING_FEATURE_TYPE = "Embedding"
+
+
 @public
 class FeatureDescriptiveStatistics:
     # TODO: Add docstring
@@ -180,6 +184,8 @@ class FeatureDescriptiveStatistics:
             extended_statistics["histogram"] = json_dict["histogram"]
         if "kll" in json_dict:
             extended_statistics["kll"] = json_dict["kll"]
+        if "embedding" in json_dict:
+            extended_statistics["embedding"] = json_dict["embedding"]
         stats_dict["extended_statistics"] = (
             extended_statistics if extended_statistics else None
         )
@@ -229,7 +235,10 @@ class FeatureDescriptiveStatistics:
     @public
     @property
     def feature_type(self) -> str:
-        """Data type of the feature. It can be one of Boolean, Fractional, Integral, or String."""
+        """Data type of the feature.
+
+        It can be one of Boolean, Fractional, Integral, String, or Embedding.
+        """
         return self._feature_type
 
     @public
@@ -361,3 +370,45 @@ class FeatureDescriptiveStatistics:
     def extended_statistics(self) -> dict | None:
         """Additional statistics computed on the feature values such as histograms and correlations."""
         return self._extended_statistics
+
+    def _is_embedding(self) -> bool:
+        """Return whether these statistics describe an embedding (numeric-array) feature."""
+        return self._feature_type == EMBEDDING_FEATURE_TYPE
+
+    def _get_embedding_statistics(self) -> dict | None:
+        """Return the embedding statistics block, or None when not an embedding feature."""
+        if not isinstance(self._extended_statistics, dict):
+            return None
+        embedding = self._extended_statistics.get("embedding")
+        return embedding if isinstance(embedding, dict) else None
+
+    def _get_embedding_centroid(self) -> list[float] | None:
+        """Return the element-wise mean vector of the embedding, or None when unavailable.
+
+        The centroid is empty when every row in the window was invalid.
+        """
+        embedding = self._get_embedding_statistics()
+        if embedding is None:
+            return None
+        centroid = embedding.get("centroid")
+        return centroid if isinstance(centroid, list) else None
+
+    def _get_embedding_norm_extended_statistics(self) -> dict | None:
+        """Return an extended-statistics view sourced from the embedding norm block.
+
+        The returned dict mirrors a scalar numeric column's ``histogram``/``kll``
+        layout so the unchanged distribution machinery can consume it directly.
+        Returns None when no embedding norm statistics are present.
+        """
+        embedding = self._get_embedding_statistics()
+        if embedding is None:
+            return None
+        norm = embedding.get("norm")
+        if not isinstance(norm, dict):
+            return None
+        norm_stats = {}
+        if "histogram" in norm:
+            norm_stats["histogram"] = norm["histogram"]
+        if "kll" in norm:
+            norm_stats["kll"] = norm["kll"]
+        return norm_stats if norm_stats else None

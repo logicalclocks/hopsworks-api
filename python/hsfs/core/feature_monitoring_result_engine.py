@@ -15,6 +15,7 @@
 #
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
@@ -38,6 +39,9 @@ from hsfs.core.statistics_comparison_result import StatisticsComparisonResult
 if TYPE_CHECKING:
     from hsfs.core.feature_statistics_config import FeatureStatisticsConfig
     from hsfs.core.statistics_comparison_config import StatisticsComparisonConfig
+
+
+logger = logging.getLogger(__name__)
 
 
 class FeatureMonitoringResultEngine:
@@ -425,6 +429,11 @@ class FeatureMonitoringResultEngine:
                 detection_statistics=detection_statistics,
                 reference_statistics=reference_statistics,
             )
+        elif sc_config.metric == "CENTROID_DISTANCE":
+            difference = self._compute_centroid_distance(
+                detection_statistics=detection_statistics,
+                reference_statistics=reference_statistics,
+            )
         else:
             difference = self._compute_difference_between_stats(
                 detection_statistics=detection_statistics,
@@ -506,6 +515,44 @@ class FeatureMonitoringResultEngine:
             metric=sc_config.distribution_metric,
             bin_centres=bin_centres,
         )
+
+    def _compute_centroid_distance(
+        self,
+        detection_statistics: FeatureDescriptiveStatistics,
+        reference_statistics: FeatureDescriptiveStatistics | None,
+    ) -> float | None:
+        """Compute the L2 distance between the detection and reference centroids.
+
+        This is the MVP centroid drift score and always uses the plain Euclidean distance.
+        Threading a configurable similarity function is a deferred follow-up.
+        Returns None when either centroid is missing, when either window is empty, or when the centroid lengths do not match.
+        """
+        import numpy as np
+
+        if reference_statistics is None:
+            return None
+        if self._is_monitoring_window_empty(detection_statistics):
+            return None
+        if self._is_monitoring_window_empty(reference_statistics):
+            return None
+
+        detection_centroid = detection_statistics._get_embedding_centroid()
+        reference_centroid = reference_statistics._get_embedding_centroid()
+        if not detection_centroid or not reference_centroid:
+            return None
+        if len(detection_centroid) != len(reference_centroid):
+            logger.warning(
+                "Centroid length mismatch for feature '%s' (detection=%d, reference=%d); "
+                "skipping CENTROID_DISTANCE.",
+                detection_statistics.feature_name,
+                len(detection_centroid),
+                len(reference_centroid),
+            )
+            return None
+
+        det = np.asarray(detection_centroid, dtype=np.float64)
+        ref = np.asarray(reference_centroid, dtype=np.float64)
+        return float(np.linalg.norm(det - ref))
 
     def _compute_difference_between_stats(
         self,
@@ -743,9 +790,12 @@ class FeatureMonitoringResultEngine:
 def _default_binning_strategy(fds: FeatureDescriptiveStatistics) -> str:
     """Return the default binning strategy for the given feature statistics.
 
-    Uses CATEGORICAL for non-numeric features (string, boolean, etc.)
-    and EQUI_FREQUENCY for numeric ones.
+    Uses CATEGORICAL for non-numeric features (string, boolean, etc.) and EQUI_FREQUENCY for numeric ones.
+    Embeddings bin over their numeric norm histogram, so they use EQUI_FREQUENCY too.
     """
+    if fds._is_embedding():
+        return "EQUI_FREQUENCY"
+
     feature_type = (fds.feature_type or "").lower()
     numeric_types = {
         "integral",

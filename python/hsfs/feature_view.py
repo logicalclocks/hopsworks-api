@@ -4158,6 +4158,9 @@ class FeatureView:
         start_date_time: int | str | datetime | date | pd.Timestamp | None = None,
         end_date_time: int | str | datetime | date | pd.Timestamp | None = None,
         cron_expression: str | None = "0 0 12 ? * * *",
+        retrain_model_after_num_shifts: int | None = None,
+        model_retraining_job: Job | None = None,
+        model_retraining_job_execution_args: str | None = None,
     ) -> fmc.FeatureMonitoringConfig:
         """Enable feature monitoring on the inference logs of a specific deployed model.
 
@@ -4181,6 +4184,7 @@ class FeatureView:
                 model_name="iris_classifier",
                 model_version=3,
                 cron_expression="0 0 12 ? * * *",
+                retrain_model_after_num_shifts=3,
             ).with_detection_window(
                 # served by this model in the last day
                 time_offset="1d",
@@ -4205,11 +4209,22 @@ class FeatureView:
             cron_expression: Cron expression to use to schedule the job. The cron
                 expression must be in UTC and follow the Quartz specification. The
                 default value means "every day at 12pm UTC".
+            retrain_model_after_num_shifts: Number of consecutive drift-detected runs
+                that trigger automated re-training. Must be a positive integer.
+                Added in version ~=3.8.1.
+            model_retraining_job: Hopsworks job to run when re-training is triggered.
+                When None and re-training is enabled, the backend resolves the job from
+                the model version's originating job or mints a default PYTHON job.
+                Added in version ~=3.8.1.
+            model_retraining_job_execution_args: Execution arguments passed to the
+                re-training job at trigger time.
+                Added in version ~=3.8.1.
 
         Raises:
             hopsworks.client.exceptions.FeatureStoreException: If feature logging is not
                 enabled, the feature view is not registered, the named model is not
-                found, or the model has no recorded training dataset version.
+                found, the model has no recorded training dataset version, or
+                ``retrain_model_after_num_shifts`` is not a positive integer.
 
         Returns:
             Configuration with minimal information about the feature monitoring.
@@ -4219,6 +4234,16 @@ class FeatureView:
             raise FeatureStoreException(
                 "Feature logging is not enabled for this feature view. "
                 "Call self.enable_logging() first."
+            )
+
+        # FSTORE-2053: validate retrain_model_after_num_shifts — must be a positive int.
+        if retrain_model_after_num_shifts is not None and (
+            not isinstance(retrain_model_after_num_shifts, int)
+            or retrain_model_after_num_shifts <= 0
+        ):
+            raise FeatureStoreException(
+                "retrain_model_after_num_shifts must be a positive integer, "
+                f"got {retrain_model_after_num_shifts!r}."
             )
 
         # Idea A — warn when a sub-hourly cron is used for model monitoring.
@@ -4277,6 +4302,14 @@ class FeatureView:
         config._model_name = model_name
         config._model_version = model_version
         config._associated_model_td_version = training_dataset_version
+        # FSTORE-2053: stamp re-training fields.
+        config._retrain_model_after_num_shifts = retrain_model_after_num_shifts
+        config._model_retraining_job_name = (
+            model_retraining_job.name if model_retraining_job is not None else None
+        )
+        config._model_retraining_job_execution_args = (
+            model_retraining_job_execution_args
+        )
         return config
 
     @public
