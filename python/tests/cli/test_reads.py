@@ -259,6 +259,7 @@ def test_datasource_infer_metadata(mock_project):
     inferred.features = [inferred_feature]
     inferred.suggested_primary_key = ["user_id"]
     inferred.suggested_event_time = None
+    inferred.suggested_description = "User events, one row per event."
     target_table.infer_metadata.return_value = inferred
 
     other_table = mock.MagicMock()
@@ -279,6 +280,7 @@ def test_datasource_infer_metadata(mock_project):
     assert "USER_ID" in result.output
     assert "bigint" in result.output
     assert "Suggested primary key" in result.output
+    assert "Suggested description: User events, one row per event." in result.output
 
 
 def test_datasource_infer_metadata_table_not_found(mock_project):

@@ -645,7 +645,7 @@ class StorageConnector(ABC):
             preview_data: Pre-fetched preview data to skip a server round-trip; if `None`, a preview is fetched via `get_data`.
 
         Returns:
-            An object containing the suggested feature renames, types, descriptions, primary key, and event time.
+            An object containing the suggested feature renames, types, descriptions, primary key, event time, and feature group description.
 
         Raises:
             hopsworks.client.exceptions.PlatformIntelligenceException: If platform intelligence is not enabled on the cluster, or the LLM call fails.

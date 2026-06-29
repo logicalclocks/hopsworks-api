@@ -1,6 +1,6 @@
 ---
 name: hops-ui-navigation
-description: Use when the user asks where something lives in the Hopsworks UI or how to reach a page (Data Sources, Feature Groups, Feature Views, Model Registry, Deployments, Apps, Agents, Jobs, Jupyter, Project Settings). Knowledge skill: the project-scoped sidebar layout and what sits under each section, so you can point users to the right place.
+description: Use when the user asks where something lives in the Hopsworks UI or how to reach a page (Data Sources, Feature Groups, Feature Views, Model Registry, Deployments, Apps, Agents, Jobs, Jupyter, Project Settings). Knowledge skill covering the project-scoped sidebar layout and what sits under each section, so you can point users to the right place.
 ---
 
 # Hopsworks UI — Navigation Map
