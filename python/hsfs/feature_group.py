@@ -3116,7 +3116,9 @@ class FeatureGroup(FeatureGroupBase):
             time_travel_format.upper() if time_travel_format is not None else None
         )
         if self._time_travel_format is None:
-            self._time_travel_format = data_source.format.upper() if data_source is not None else None
+            self._time_travel_format = (
+                data_source.format.upper() if data_source is not None else None
+            )
 
         self._stream = stream
         self._parents = parents
@@ -5264,7 +5266,9 @@ class ExternalFeatureGroup(FeatureGroupBase):
         self._creator = user.User.from_response_json(creator)
         self._data_format = data_format.upper() if data_format else None
         if self._data_format is None:
-            self._data_format = self.data_source.format.upper() if self.data_source else None
+            self._data_format = (
+                self.data_source.format.upper() if self.data_source else None
+            )
 
         self._features = [
             feature.Feature.from_response_json(feat) if isinstance(feat, dict) else feat
