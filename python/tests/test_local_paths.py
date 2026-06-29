@@ -253,6 +253,66 @@ class TestResolveServingFile:
             )
         local_engine._upload.assert_not_called()
 
+    def test_update_passes_unresolvable_reference_through(
+        self, project_name, local_engine
+    ):
+        # On update, a deployment fetched from the backend reports script_file
+        # as a backend-managed reference (a bare basename) that is neither a
+        # local file nor found via DatasetApi.exists. It must be returned
+        # unchanged instead of raising, and not uploaded.
+        out = _resolve_serving_file(
+            local_engine,
+            "my_dep",
+            "predictor.py",
+            "script_file",
+            subdir="predictor",
+            is_update=True,
+        )
+
+        assert out == "predictor.py"
+        local_engine._upload.assert_not_called()
+
+    def test_update_still_uploads_new_local_path(
+        self, tmp_path, project_name, local_engine
+    ):
+        # Reassigning script_file to a new local path on update must still
+        # upload — the passthrough only covers unresolvable references.
+        local = tmp_path / "new_predictor.py"
+        local.write_text("# noop\n")
+
+        out = _resolve_serving_file(
+            local_engine,
+            "my_dep",
+            str(local),
+            "script_file",
+            subdir="predictor",
+            is_update=True,
+        )
+
+        assert out.endswith("/Deployments/my_dep/resources/predictor/new_predictor.py")
+        local_engine._upload.assert_called_once()
+
+    @pytest.mark.parametrize(
+        "bad_path", ["./does_not_exist.py", "/Projects/p/typo.py", "subdir/x.py"]
+    )
+    def test_update_path_like_value_still_raises(
+        self, bad_path, project_name, local_engine
+    ):
+        # On update, the passthrough only covers bare basenames (backend-managed
+        # references). A path-like value (contains a separator) that resolved to
+        # nothing is a genuine mistake — a missing local path or a typoed HopsFS
+        # path — so it must still raise rather than defer to a backend failure.
+        with pytest.raises(ValueError, match="Could not find script_file"):
+            _resolve_serving_file(
+                local_engine,
+                "my_dep",
+                bad_path,
+                "script_file",
+                subdir="predictor",
+                is_update=True,
+            )
+        local_engine._upload.assert_not_called()
+
     def test_local_uploads_to_role_subdir(self, tmp_path, project_name, local_engine):
         # Predictor and transformer with the same basename land in
         # different subdirs.
