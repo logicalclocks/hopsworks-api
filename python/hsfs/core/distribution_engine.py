@@ -42,13 +42,15 @@ class DistributionEngine:
     """Resolves bin edges and builds probability distributions from feature statistics.
 
     One instance is created per monitoring run. The cache keyed by
-    (fds_id, window_id) avoids re-parsing extended_statistics for the same
-    FeatureDescriptiveStatistics object within a single run.
+    (fds_id, feature_name, window_id) avoids re-parsing extended_statistics for
+    the same FeatureDescriptiveStatistics object within a single run.
+    feature_name is part of the key because synthetic merged-reference FDS have
+    id=None and would otherwise all collide on (None, window_id).
     """
 
     def __init__(self):
-        # (fds_id, window_id) -> parsed extended_statistics dict
-        self._cache: dict[tuple[int | None, int], dict] = {}
+        # (fds_id, feature_name, window_id) -> parsed extended_statistics dict
+        self._cache: dict[tuple[int | None, str | None, int], dict] = {}
 
     def _clear_cache(self):
         """Clear the per-run cache. Call at the start of each monitoring run."""
@@ -165,6 +167,11 @@ class DistributionEngine:
         if not reference_fds_list:
             return None
 
+        if reference_fds_list[0]._is_embedding():
+            return self._resolve_merged_embedding_reference(
+                reference_fds_list, histogram_bins
+            )
+
         total = len(reference_fds_list)
 
         # Validate that every FDS carries a native KLL sidecar.
@@ -226,6 +233,99 @@ class DistributionEngine:
             extended_statistics=extended,
         )
 
+    def _resolve_merged_embedding_reference(
+        self,
+        reference_fds_list: list[FeatureDescriptiveStatistics],
+        histogram_bins: int,
+    ) -> FeatureDescriptiveStatistics | None:
+        """Merge per-batch embedding norm KLL sidecars into a synthetic reference FDS.
+
+        The norm sketches are merged the same way as scalar columns, and the
+        centroid is recomputed as the count-weighted mean across batches so both
+        norm drift and CENTROID_DISTANCE work over a rolling reference window.
+
+        Returns None when the merge is not viable, so the caller falls back to the
+        full-window re-profile path.
+        """
+        from hsfs.core.feature_descriptive_statistics import (
+            FeatureDescriptiveStatistics,
+        )
+
+        total = len(reference_fds_list)
+
+        # Validate that every batch carries a native norm KLL sidecar.
+        base64_sketches = []
+        for fds in reference_fds_list:
+            embedding = fds._get_embedding_statistics() or {}
+            norm = embedding.get("norm") if isinstance(embedding, dict) else None
+            kll_entry = norm.get("kll") if isinstance(norm, dict) else None
+            if (
+                isinstance(kll_entry, dict)
+                and kll_entry.get("kllFormat") == "datasketches-native-v1"
+                and "bytes" in kll_entry
+            ):
+                base64_sketches.append(kll_entry["bytes"])
+
+        if len(base64_sketches) < total:
+            missing = total - len(base64_sketches)
+            logger.info(
+                "%d of %d constituent batches lack native embedding norm KLL sidecars; "
+                "falling back to full-window re-profile for feature '%s'",
+                missing,
+                total,
+                reference_fds_list[0].feature_name,
+            )
+            return None
+
+        merged_json = self._call_kll_merger(base64_sketches, histogram_bins)
+        if merged_json is None:
+            return None
+
+        parsed = json.loads(merged_json)
+        if not parsed.get("percentiles"):
+            return None
+
+        norm_block = {"histogram": parsed["histogram"]}
+        if "kll" in parsed and "kllFormat" in parsed:
+            norm_block["kll"] = {
+                "kllFormat": parsed["kllFormat"],
+                "bytes": parsed["kll"],
+            }
+
+        merged_centroid = _merge_centroids(reference_fds_list)
+
+        first_fds = reference_fds_list[0]
+        merged_count = parsed.get("n")
+        # Match the profiler embedding-block shape, which always emits count and
+        # dimension alongside norm and centroid.
+        # count mirrors the merged FDS count (the norm KLL n).
+        # dimension is the centroid length when a centroid is present, otherwise it
+        # falls back to a constituent batch's embedding dimension if one is recorded.
+        embedding_block: dict = {"norm": norm_block, "count": merged_count}
+        if merged_centroid is not None:
+            embedding_block["centroid"] = merged_centroid
+            embedding_block["dimension"] = len(merged_centroid)
+        else:
+            constituent_dimension = _first_embedding_dimension(reference_fds_list)
+            if constituent_dimension is not None:
+                embedding_block["dimension"] = constituent_dimension
+
+        # Mirror the scalar merged path: surface the merged norm percentiles/min/max
+        # at the top level too. _resolve_equi_frequency_edges reads
+        # reference_fds.percentiles and _resolve_equi_width_edges falls back to
+        # reference_fds.min/max, so without these the embedding EQUI_FREQUENCY
+        # binning over a merged reference falls back to EQUI_WIDTH (or raises when
+        # the norm histogram is absent), diverging from the non-merge path.
+        return FeatureDescriptiveStatistics(
+            feature_name=first_fds.feature_name,
+            feature_type=first_fds.feature_type,
+            percentiles=parsed["percentiles"],
+            min=parsed.get("min"),
+            max=parsed.get("max"),
+            count=merged_count,
+            extended_statistics={"embedding": embedding_block},
+        )
+
     # ------------------------------------------------------------------
     # Edge resolution helpers
     # ------------------------------------------------------------------
@@ -249,10 +349,14 @@ class DistributionEngine:
         detection_fds: FeatureDescriptiveStatistics,
     ) -> list[str]:
         ref_ext = (
-            reference_fds.extended_statistics if reference_fds is not None else None
+            _extended_statistics_for(reference_fds)
+            if reference_fds is not None
+            else None
         )
         det_ext = (
-            detection_fds.extended_statistics if detection_fds is not None else None
+            _extended_statistics_for(detection_fds)
+            if detection_fds is not None
+            else None
         )
 
         ref_hist = ref_ext.get("histogram", []) if ref_ext else []
@@ -326,8 +430,9 @@ class DistributionEngine:
     ) -> list[float]:
         # Try to read edges from the Deequ equi-width histogram first.
         histogram = None
-        if reference_fds.extended_statistics:
-            histogram = reference_fds.extended_statistics.get("histogram")
+        ext_stats = _extended_statistics_for(reference_fds)
+        if ext_stats:
+            histogram = ext_stats.get("histogram")
 
         if histogram is not None:
             edges = _parse_numeric_histogram_edges(histogram)
@@ -406,9 +511,9 @@ class DistributionEngine:
         fds: FeatureDescriptiveStatistics,
         window_id: int,
     ) -> dict | None:
-        cache_key = (fds.id, window_id)
+        cache_key = (fds.id, fds.feature_name, window_id)
         if cache_key not in self._cache:
-            self._cache[cache_key] = fds.extended_statistics or {}
+            self._cache[cache_key] = _extended_statistics_for(fds)
         return self._cache[cache_key]
 
     def _build_categorical_distribution(
@@ -470,6 +575,74 @@ class DistributionEngine:
 # ------------------------------------------------------------------
 # Module-level pure helpers (no state)
 # ------------------------------------------------------------------
+
+
+def _merge_centroids(
+    reference_fds_list: list[FeatureDescriptiveStatistics],
+) -> list[float] | None:
+    """Compute the count-weighted mean centroid across batches.
+
+    Each batch contributes its embedding count as the weight. Batches without a
+    usable centroid (empty vector or zero count) are skipped. Returns None when
+    no batch carries a usable centroid or when the dimensions are inconsistent.
+    """
+    accumulator: list[float] | None = None
+    total_count = 0
+    for fds in reference_fds_list:
+        embedding = fds._get_embedding_statistics() or {}
+        centroid = embedding.get("centroid") if isinstance(embedding, dict) else None
+        count = embedding.get("count") if isinstance(embedding, dict) else None
+        if not isinstance(centroid, list) or not centroid or not count:
+            continue
+        if accumulator is None:
+            accumulator = [0.0] * len(centroid)
+        elif len(centroid) != len(accumulator):
+            return None
+        for i, value in enumerate(centroid):
+            accumulator[i] += float(value) * count
+        total_count += count
+
+    if accumulator is None or total_count == 0:
+        return None
+    return [value / total_count for value in accumulator]
+
+
+def _first_embedding_dimension(
+    reference_fds_list: list[FeatureDescriptiveStatistics],
+) -> int | None:
+    """Return the first recorded embedding dimension across the batches.
+
+    Used as a fallback for the merged block's dimension when no centroid is
+    available. Prefers an explicit ``dimension`` field and falls back to a
+    non-empty centroid length. Returns None when no batch records either.
+    """
+    for fds in reference_fds_list:
+        embedding = fds._get_embedding_statistics() or {}
+        if not isinstance(embedding, dict):
+            continue
+        dimension = embedding.get("dimension")
+        if isinstance(dimension, int) and dimension > 0:
+            return dimension
+        centroid = embedding.get("centroid")
+        if isinstance(centroid, list) and centroid:
+            return len(centroid)
+    return None
+
+
+def _extended_statistics_for(fds: FeatureDescriptiveStatistics) -> dict:
+    """Return the extended-statistics dict to bin over for the given window.
+
+    For embedding features the distribution is built from the per-row L2 norm,
+    so the norm block (histogram and KLL) is returned in place of the top-level
+    extended statistics. All other feature types use their extended statistics
+    unchanged.
+    """
+    if fds._is_embedding():
+        norm_stats = fds._get_embedding_norm_extended_statistics()
+        if norm_stats is not None:
+            return norm_stats
+        return {}
+    return fds.extended_statistics or {}
 
 
 def _parse_bin_value(value_str: str) -> tuple[float | None, float | None]:

@@ -14,6 +14,7 @@
 #   limitations under the License.
 #
 import json
+import logging
 from unittest.mock import MagicMock
 
 import pytest
@@ -576,6 +577,46 @@ class TestCache:
         engine._clear_cache()
         assert len(engine._cache) == 0
 
+    def test_synthetic_fds_with_none_id_do_not_collide(self):
+        # Regression: synthetic merged-reference FDS have id=None. Two distinct
+        # features previously collided on (None, window_id) and reused each
+        # other's parsed extended_statistics. The feature_name in the cache key
+        # must keep them separate.
+        hist_a = _make_histogram([(0.0, 1.0, 100), (1.0, 2.0, 0)])
+        hist_b = _make_histogram([(0.0, 1.0, 0), (1.0, 2.0, 100)])
+        fds_a = _make_fds(None, feature_name="feat_a", histogram=hist_a)
+        fds_b = _make_fds(None, feature_name="feat_b", histogram=hist_b)
+        engine = DistributionEngine()
+
+        stats_a = engine._get_extended_stats(fds_a, _WINDOW_REFERENCE)
+        stats_b = engine._get_extended_stats(fds_b, _WINDOW_REFERENCE)
+
+        # Distinct features must not share a cache entry.
+        assert stats_a == {"histogram": hist_a}
+        assert stats_b == {"histogram": hist_b}
+        assert stats_a is not stats_b
+        assert len(engine._cache) == 2
+
+        # The full distribution path must reflect each feature's own histogram.
+        edges = [0.0, 1.0, 2.0]
+        probs_a = engine._build_distribution(
+            fds=fds_a,
+            binning_strategy="EQUI_WIDTH",
+            bin_edges=edges,
+            epsilon=1e-6,
+            window_id=_WINDOW_REFERENCE,
+        )
+        probs_b = engine._build_distribution(
+            fds=fds_b,
+            binning_strategy="EQUI_WIDTH",
+            bin_edges=edges,
+            epsilon=1e-6,
+            window_id=_WINDOW_REFERENCE,
+        )
+        # feat_a's mass is in the first bin, feat_b's in the second.
+        assert probs_a[0] > probs_a[1]
+        assert probs_b[1] > probs_b[0]
+
 
 # ---------------------------------------------------------------------------
 # _resolve_merged_reference
@@ -702,3 +743,170 @@ class TestResolveMergedReference:
         result = engine._resolve_merged_reference(fds_list, histogram_bins=20)
 
         assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Embedding features
+# ---------------------------------------------------------------------------
+
+
+def _make_embedding_fds(
+    fid: int,
+    feature_name: str = "user_vector",
+    histogram: list[dict] | None = None,
+    kll_bytes: str | None = None,
+    centroid: list[float] | None = None,
+    count: int = 100,
+    embedding_count: int = 100,
+) -> FeatureDescriptiveStatistics:
+    """Build an embedding FDS with a norm block and optional centroid."""
+    norm: dict = {}
+    if histogram is not None:
+        norm["histogram"] = histogram
+    if kll_bytes is not None:
+        norm["kll"] = {"kllFormat": "datasketches-native-v1", "bytes": kll_bytes}
+    embedding: dict = {"dimension": 2, "count": embedding_count}
+    if norm:
+        embedding["norm"] = norm
+    if centroid is not None:
+        embedding["centroid"] = centroid
+    return FeatureDescriptiveStatistics(
+        feature_name=feature_name,
+        feature_type="Embedding",
+        id=fid,
+        count=count,
+        extended_statistics={"embedding": embedding},
+    )
+
+
+class TestEmbeddingDistributionSourcing:
+    def test_build_distribution_uses_norm_histogram(self):
+        histogram = _make_histogram([(5.0, 5.5, 80), (5.5, 6.0, 20)])
+        fds = _make_embedding_fds(1, histogram=histogram)
+        engine = DistributionEngine()
+
+        bin_edges = engine._resolve_bin_edges(
+            reference_fds=fds,
+            detection_fds=fds,
+            binning_strategy="EQUI_WIDTH",
+            bin_count=2,
+            custom_edges=None,
+        )
+        probs = engine._build_distribution(
+            fds=fds,
+            binning_strategy="EQUI_WIDTH",
+            bin_edges=bin_edges,
+            epsilon=1e-6,
+            window_id=_WINDOW_REFERENCE,
+        )
+
+        # Two bins sourced from the norm histogram; sums to 1 and skewed to the first bin.
+        assert len(probs) == 2
+        assert abs(probs.sum() - 1.0) < 1e-9
+        assert probs[0] > probs[1]
+
+    def test_build_distribution_no_norm_returns_uniform_epsilon(self):
+        # All-invalid embedding: no norm block, so counts are all zero.
+        fds = _make_embedding_fds(2, histogram=None, embedding_count=0)
+        engine = DistributionEngine()
+        probs = engine._build_distribution(
+            fds=fds,
+            binning_strategy="EQUI_WIDTH",
+            bin_edges=[0.0, 1.0, 2.0],
+            epsilon=1e-6,
+            window_id=_WINDOW_DETECTION,
+        )
+        # No histogram: zero counts smoothed to a uniform distribution.
+        assert abs(probs.sum() - 1.0) < 1e-9
+        assert abs(probs[0] - probs[1]) < 1e-12
+
+
+class TestResolveMergedEmbeddingReference:
+    def _engine_with_mock(self, jvm_merge_return):
+        engine = DistributionEngine()
+        engine._call_kll_merger = MagicMock(return_value=jvm_merge_return)
+        return engine
+
+    def test_happy_path_merges_norm_and_centroid(self):
+        fds_list = [
+            _make_embedding_fds(
+                1, kll_bytes="Ynl0ZXMx", centroid=[1.0, 2.0], embedding_count=10
+            ),
+            _make_embedding_fds(
+                2, kll_bytes="Ynl0ZXMy", centroid=[3.0, 4.0], embedding_count=30
+            ),
+        ]
+        engine = self._engine_with_mock(_MERGED_JSON)
+
+        result = engine._resolve_merged_reference(fds_list, histogram_bins=20)
+
+        assert result is not None
+        assert result._is_embedding() is True
+        norm_stats = result._get_embedding_norm_extended_statistics()
+        assert len(norm_stats["histogram"]) == 2
+        assert norm_stats["kll"]["kllFormat"] == "datasketches-native-v1"
+        # Count-weighted centroid: (10*[1,2] + 30*[3,4]) / 40 = [2.5, 3.5].
+        assert result._get_embedding_centroid() == [2.5, 3.5]
+        engine._call_kll_merger.assert_called_once_with(["Ynl0ZXMx", "Ynl0ZXMy"], 20)
+
+    def test_falls_back_when_norm_kll_missing(self):
+        fds_list = [
+            _make_embedding_fds(1, kll_bytes="Ynl0ZXMx"),
+            _make_embedding_fds(2, kll_bytes=None, histogram=[]),
+        ]
+        engine = DistributionEngine()
+
+        result = engine._resolve_merged_reference(fds_list, histogram_bins=20)
+
+        assert result is None
+
+    def test_merged_reference_carries_percentiles_min_max(self):
+        """The synthetic embedding FDS surfaces the merged norm percentiles/min/max.
+
+        The scalar merged path sets these top-level fields and the embedding path
+        must mirror it, otherwise EQUI_FREQUENCY binning over the merged reference
+        reads None percentiles and falls back to EQUI_WIDTH.
+        """
+        fds_list = [
+            _make_embedding_fds(1, kll_bytes="Ynl0ZXMx", embedding_count=10),
+            _make_embedding_fds(2, kll_bytes="Ynl0ZXMy", embedding_count=30),
+        ]
+        engine = self._engine_with_mock(_MERGED_JSON)
+
+        result = engine._resolve_merged_reference(fds_list, histogram_bins=20)
+
+        assert result is not None
+        assert result.percentiles is not None
+        assert len(result.percentiles) == 99
+        assert result.min == 0.0
+        assert result.max == 10.0
+
+    def test_merged_reference_equi_frequency_does_not_fall_back(self, caplog):
+        """EQUI_FREQUENCY over a merged embedding reference resolves from percentiles.
+
+        With the top-level percentiles populated, _resolve_equi_frequency_edges
+        produces percentile-derived edges and never logs the EQUI_WIDTH fallback
+        warning (which fires when percentiles are None).
+        """
+        fds_list = [
+            _make_embedding_fds(1, kll_bytes="Ynl0ZXMx", embedding_count=10),
+            _make_embedding_fds(2, kll_bytes="Ynl0ZXMy", embedding_count=30),
+        ]
+        engine = self._engine_with_mock(_MERGED_JSON)
+
+        result = engine._resolve_merged_reference(fds_list, histogram_bins=20)
+        assert result is not None
+
+        with caplog.at_level(logging.WARNING):
+            edges = engine._resolve_bin_edges(
+                reference_fds=result,
+                detection_fds=result,
+                binning_strategy="EQUI_FREQUENCY",
+                bin_count=10,
+                custom_edges=None,
+            )
+
+        # 10 bins -> 11 strictly increasing edges, derived from the 99 percentiles.
+        assert len(edges) == 11
+        assert edges == sorted(edges)
+        assert "Falling back to EQUI_WIDTH" not in caplog.text

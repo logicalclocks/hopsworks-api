@@ -138,6 +138,9 @@ public class FeatureDescriptiveStatistics extends RestDto<FeatureDescriptiveStat
     if (statsJson.has("unique_values")) {
       extendedStatistics.put("unique_values", statsJson.getJSONArray("unique_values"));
     }
+    if (statsJson.has("embedding")) {
+      extendedStatistics.put("embedding", statsJson.getJSONObject("embedding"));
+    }
     if (extendedStatistics.length() > 0) {
       fds.setExtendedStatistics(extendedStatistics.toString());
     }

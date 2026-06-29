@@ -23,6 +23,7 @@ import org.apache.spark.sql.Column;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.functions;
+import org.apache.spark.sql.types.ArrayType;
 import org.apache.spark.sql.types.BooleanType;
 import org.apache.spark.sql.types.ByteType;
 import org.apache.spark.sql.types.DataType;
@@ -71,6 +72,41 @@ import java.util.Map;
  *
  * <p>Uses Spark's {@code stddev_pop()} (population standard deviation, dividing by n). Deequ's
  * StandardDeviation metric also uses population stddev — verified against the baseline.
+ *
+ * <h3>Embedding (numeric-array) columns</h3>
+ *
+ * <p>Columns of type {@code array<T>} where {@code T} is numeric (Float/Double/Decimal/Integer/
+ * Long/Short/Byte) are profiled as {@code dataType="Embedding"}. Non-numeric-element arrays
+ * (e.g. {@code array<string>}) remain unsupported and are skipped with the existing warn.
+ *
+ * <p>An embedding column carries the standard count/completeness/null fields (computed over the
+ * array column itself, so a null array row counts as null exactly like a scalar null), plus an
+ * {@code embedding} block holding:
+ * <ul>
+ *   <li>{@code dimension} — the modal (most common) valid vector length;</li>
+ *   <li>{@code count} — rows with a valid vector (non-null, non-empty, length == dimension,
+ *       and free of null/NaN/infinite elements);</li>
+ *   <li>{@code norm} — the distribution of the per-row L2 norm {@code sqrt(sum(x_i^2))} over
+ *       valid rows, computed via the scalar numeric histogram + KLL path on the derived norm
+ *       series (so {@code embedding.norm.kll} matches a scalar column's {@code kll} shape);</li>
+ *   <li>{@code centroid} — the element-wise mean vector over valid rows, length == dimension.</li>
+ * </ul>
+ *
+ * <h3>Embedding row-validity rules</h3>
+ *
+ * <ul>
+ *   <li><b>null array</b>: excluded from the norm series and centroid; counted as null in the
+ *       standard null/completeness fields (consistent with scalar null handling).</li>
+ *   <li><b>empty array {@code []}</b>: skipped — contributes to neither norm, centroid, nor the
+ *       embedding {@code count}.</li>
+ *   <li><b>null, NaN or infinite element</b>: the whole row is dropped from the norm series and
+ *       centroid (we never feed NaN or an infinite norm to the KLL sketch). A vector with any
+ *       invalid element is not counted.</li>
+ *   <li><b>ragged length</b>: {@code dimension} is the modal valid length across rows; any row
+ *       whose length differs from {@code dimension} is skipped, and a single WARN is emitted.</li>
+ *   <li><b>all rows invalid</b>: the {@code embedding} block is still emitted with
+ *       {@code count=0}, an empty {@code centroid}, and no {@code norm.kll}.</li>
+ * </ul>
  */
 public class ColumnProfiler {
 
@@ -161,12 +197,8 @@ public class ColumnProfiler {
   }
 
   private String inferProfileType(DataType dt) {
-    if (dt instanceof IntegerType || dt instanceof LongType
-        || dt instanceof ShortType || dt instanceof ByteType) {
-      return "Integral";
-    }
-    if (dt instanceof FloatType || dt instanceof DoubleType || dt instanceof DecimalType) {
-      return "Fractional";
+    if (isNumericType(dt)) {
+      return isIntegralType(dt) ? "Integral" : "Fractional";
     }
     if (dt instanceof StringType) {
       return "String";
@@ -174,7 +206,20 @@ public class ColumnProfiler {
     if (dt instanceof BooleanType) {
       return "Boolean";
     }
+    if (dt instanceof ArrayType && isNumericType(((ArrayType) dt).elementType())) {
+      return "Embedding";
+    }
     return null;
+  }
+
+  private boolean isNumericType(DataType dt) {
+    return isIntegralType(dt)
+        || dt instanceof FloatType || dt instanceof DoubleType || dt instanceof DecimalType;
+  }
+
+  private boolean isIntegralType(DataType dt) {
+    return dt instanceof IntegerType || dt instanceof LongType
+        || dt instanceof ShortType || dt instanceof ByteType;
   }
 
   // ---------------------------------------------------------------------------
@@ -216,6 +261,10 @@ public class ColumnProfiler {
   private Map<String, Double> computeEntropy(Dataset<Row> df, List<ColumnInfo> columns) {
     Map<String, Double> result = new LinkedHashMap<String, Double>();
     for (ColumnInfo col : columns) {
+      // Entropy over distinct vectors is not meaningful for embedding columns; skip them.
+      if (isEmbedding(col.profileType)) {
+        continue;
+      }
       result.put(col.name, computeColumnEntropy(df, col.name));
     }
     return result;
@@ -322,6 +371,8 @@ public class ColumnProfiler {
     if (isNumeric(col.profileType)) {
       buildNumericFields(df, col, aggRow, nonNull, correlationMap, histogram, histogramBins, kll,
           builder);
+    } else if (isEmbedding(col.profileType)) {
+      builder.embedding(buildEmbeddingStats(df, nn, histogram, histogramBins, kll));
     } else {
       if (histogram) {
         List<Map<String, Object>> hist = histogramBuilder.buildCategorical(
@@ -373,6 +424,143 @@ public class ColumnProfiler {
   }
 
   // ---------------------------------------------------------------------------
+  // Embedding (numeric-array) profiling
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Builds the embedding statistics for a numeric-array column.
+   *
+   * <p>Validity, norm and length are derived with Spark SQL higher-order functions
+   * ({@code size}, {@code exists}, {@code aggregate}) rather than a UDF. A row is valid when its
+   * vector is non-null, non-empty, free of null/NaN/infinite elements, and its length equals the
+   * modal length across all such rows ({@code dimension}). The per-row L2 norm of valid rows feeds
+   * the existing scalar numeric histogram + KLL path, and the centroid is the element-wise mean
+   * over valid rows.
+   *
+   * <p>See the class Javadoc for the full row-validity rules.
+   */
+  private ColumnProfile.EmbeddingStats buildEmbeddingStats(Dataset<Row> df, String columnName,
+      boolean histogram, int histogramBins, boolean kll) {
+    String quoted = "`" + columnName.replace("`", "``") + "`";
+
+    // wellFormed: non-null, non-empty, and every element non-null, non-NaN and finite. A
+    // well-formed vector still has to match the modal dimension to be counted as valid. An
+    // infinite element would yield an infinite L2 norm and poison the norm histogram/KLL, so
+    // such rows are dropped exactly like null/NaN-element rows.
+    Column wellFormed = functions.expr(
+        "(" + quoted + " IS NOT NULL) AND (size(" + quoted + ") > 0) AND "
+            + "(NOT exists(" + quoted + ", x -> x IS NULL OR isnan(CAST(x AS DOUBLE)) "
+            + "OR abs(CAST(x AS DOUBLE)) = double('inf')))");
+    Column lenExpr = functions.expr("size(" + quoted + ")");
+    // L2 norm = sqrt(sum(x_i^2)); aggregate over the array avoids a UDF and stays in the engine.
+    Column normExpr = functions.expr(
+        "sqrt(aggregate(" + quoted + ", CAST(0.0 AS DOUBLE), "
+            + "(acc, x) -> acc + CAST(x AS DOUBLE) * CAST(x AS DOUBLE)))");
+
+    Dataset<Row> wellFormedRows = df
+        .filter(wellFormed)
+        .select(lenExpr.alias("_len"), normExpr.alias("_norm"), functions.col(columnName));
+    wellFormedRows = wellFormedRows.persist();
+
+    try {
+      // Modal dimension: most common well-formed length (ties broken by smaller length).
+      List<Row> lengthCounts = wellFormedRows.groupBy("_len").count()
+          .orderBy(functions.desc("count"), functions.asc("_len"))
+          .collectAsList();
+
+      if (lengthCounts.isEmpty()) {
+        // All rows invalid (all null/empty/with bad elements): emit an empty embedding block.
+        return new ColumnProfile.EmbeddingStats.Builder()
+            .dimension(0)
+            .validCount(0L)
+            .centroid(new double[0])
+            .build();
+      }
+
+      int dimension = lengthCounts.get(0).getInt(0);
+      long validCount = lengthCounts.get(0).getLong(1);
+      long raggedCount = 0L;
+      for (Row row : lengthCounts) {
+        if (row.getInt(0) != dimension) {
+          raggedCount += row.getLong(1);
+        }
+      }
+      if (raggedCount > 0) {
+        LOG.warn("Embedding column '{}': {} row(s) skipped due to length != modal dimension {}",
+            columnName, raggedCount, dimension);
+      }
+
+      Dataset<Row> validRows = wellFormedRows.filter(functions.col("_len").equalTo(dimension));
+
+      ColumnProfile.EmbeddingStats.Builder builder = new ColumnProfile.EmbeddingStats.Builder()
+          .dimension(dimension)
+          .validCount(validCount);
+
+      buildNormStats(validRows, validCount, histogram, histogramBins, kll, builder);
+      builder.centroid(computeCentroid(validRows, columnName, dimension));
+
+      return builder.build();
+    } finally {
+      wellFormedRows.unpersist();
+    }
+  }
+
+  /**
+   * Runs the scalar numeric histogram + KLL path on the derived {@code _norm} column so the
+   * emitted {@code embedding.norm} block matches a scalar numeric column's shape.
+   */
+  private void buildNormStats(Dataset<Row> validRows, long validCount,
+      boolean histogram, int histogramBins, boolean kll,
+      ColumnProfile.EmbeddingStats.Builder builder) {
+    if (validCount == 0) {
+      return;
+    }
+
+    Row minMax = validRows.agg(
+        functions.min("_norm").alias("_min"),
+        functions.max("_norm").alias("_max")).first();
+    Double normMin = minMax.getAs("_min");
+    Double normMax = minMax.getAs("_max");
+    if (normMin == null || normMax == null) {
+      return;
+    }
+    builder.normMin(normMin).normMax(normMax).normNonNull(validCount);
+
+    if (histogram) {
+      List<Map<String, Object>> hist = histogramBuilder.buildNumeric(
+          validRows, "_norm", normMin, normMax, histogramBins, validCount);
+      builder.normHistogram(hist);
+    }
+
+    if (kll) {
+      builder.normKllBytes(computeKll(validRows, "_norm"));
+    }
+  }
+
+  /**
+   * Computes the element-wise mean vector (centroid) over the valid rows.
+   *
+   * <p>Uses {@code posexplode} to map each vector to {@code (pos, value)} rows, averages per
+   * position, and collects ordered by position into a dense {@code double[]} of length
+   * {@code dimension}.
+   */
+  private double[] computeCentroid(Dataset<Row> validRows, String columnName, int dimension) {
+    Dataset<Row> exploded = validRows
+        .select(functions.posexplode(functions.col(columnName)))
+        .groupBy(functions.col("pos"))
+        .agg(functions.avg(functions.col("col").cast("double")).alias("_avg"));
+
+    double[] centroid = new double[dimension];
+    for (Row row : exploded.collectAsList()) {
+      int pos = row.getInt(0);
+      if (pos >= 0 && pos < dimension) {
+        centroid[pos] = row.getDouble(1);
+      }
+    }
+    return centroid;
+  }
+
+  // ---------------------------------------------------------------------------
   // KLL per-column aggregation
   // ---------------------------------------------------------------------------
 
@@ -408,6 +596,10 @@ public class ColumnProfiler {
 
   private boolean isNumeric(String profileType) {
     return "Fractional".equals(profileType) || "Integral".equals(profileType);
+  }
+
+  private boolean isEmbedding(String profileType) {
+    return "Embedding".equals(profileType);
   }
 
   static final class ColumnInfo {
