@@ -62,7 +62,8 @@ import java.util.stream.Collectors;
     @JsonSubTypes.Type(value = StorageConnector.BigqueryConnector.class, name = "BIGQUERY"),
     @JsonSubTypes.Type(value = StorageConnector.SqlConnector.class, name = "SQL"),
     @JsonSubTypes.Type(value = StorageConnector.SapHanaConnector.class, name = "SAP_HANA"),
-    @JsonSubTypes.Type(value = StorageConnector.MongoDbConnector.class, name = "MONGODB")
+    @JsonSubTypes.Type(value = StorageConnector.MongoDbConnector.class, name = "MONGODB"),
+    @JsonSubTypes.Type(value = StorageConnector.GlueConnector.class, name = "GLUE")
 })
 public abstract class StorageConnector {
 
@@ -897,6 +898,65 @@ public abstract class StorageConnector {
     @JsonIgnore
     public String getPath(String subPath) {
       return null;
+    }
+  }
+
+  public static class GlueConnector extends StorageConnector {
+
+    // Glue is a metadata catalog over data stored in S3, so the connector reuses the S3
+    // authentication surface (access/secret keys or IAM role, region) and adds the Glue
+    // catalog coordinates (catalogId, database, table). The table's physical S3 location
+    // is resolved through the catalog.
+
+    @Getter @Setter
+    protected String catalogId;
+
+    @Getter @Setter
+    protected String region;
+
+    @Getter @Setter
+    protected String database;
+
+    @Getter @Setter
+    protected String table;
+
+    @Getter @Setter
+    protected String iamRole;
+
+    @Getter @Setter
+    protected String accessKey;
+
+    @Getter @Setter
+    protected String secretKey;
+
+    @Getter @Setter
+    protected String sessionToken;
+
+    @Getter @Setter
+    protected List<Option> arguments;
+
+    @Override
+    public Map<String, String> sparkOptions(DataSource dataSource) {
+      // Mirror the S3 connector: the catalog coordinates locate the table, while any
+      // fs.s3a.* options the user configured are forwarded for reading the underlying data.
+      if (!CollectionUtils.isNullOrEmpty(arguments)) {
+        return arguments.stream().collect(Collectors.toMap(Option::getName, Option::getValue));
+      }
+      return new HashMap<>();
+    }
+
+    // No fixed bucket to prepend: the table's full S3 location is resolved from the Glue catalog
+    // at create time and stored on the data source, so the path is used as-is.
+    @JsonIgnore
+    public String getPath(String subPath) {
+      return subPath;
+    }
+
+    public void update() throws FeatureStoreException, IOException {
+      GlueConnector updatedConnector = (GlueConnector) refetch();
+      this.accessKey = updatedConnector.getAccessKey();
+      this.secretKey = updatedConnector.getSecretKey();
+      this.sessionToken = updatedConnector.getSessionToken();
     }
   }
 

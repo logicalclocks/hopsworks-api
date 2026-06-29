@@ -48,6 +48,9 @@ class HudiEngine:
     HUDI_HIVE_SYNC_DB = "hoodie.datasource.hive_sync.database"
     HUDI_HIVE_SYNC_MODE = "hoodie.datasource.hive_sync.mode"
     HUDI_HIVE_SYNC_MODE_VAL = "hms"  # Connect directly with the Hive Metastore
+    HUDI_HIVE_SYNC_MODE_GLUE_VAL = "glue"  # Sync to the AWS Glue Data Catalog
+    HUDI_META_SYNC_CLASSES = "hoodie.meta.sync.classes"
+    HUDI_GLUE_SYNC_TOOL = "org.apache.hudi.aws.sync.AwsGlueCatalogSyncTool"
     HUDI_HIVE_SYNC_PARTITION_FIELDS = "hoodie.datasource.hive_sync.partition_fields"
     HUDI_HIVE_SYNC_SUPPORT_TIMESTAMP = "hoodie.datasource.hive_sync.support_timestamp"
 
@@ -186,14 +189,34 @@ class HudiEngine:
             else self._feature_group.primary_key[0]
         )
 
-        # only enable hive sync when using a Spark engine with a metastore and no storage connector,
-        # as the storage connector means data is saved in an external storage
+        # Enable catalog sync when using a Spark engine and either:
+        #   - there is no storage connector, so the data lives on the default
+        #     HopsFS warehouse synced to the Hopsworks Hive Metastore, or
+        #   - the connector is Glue, so the external table is registered in the
+        #     AWS Glue Data Catalog for discoverability.
+        # Other connectors keep sync disabled: the data is external and there is
+        # no catalog to register it in.
+        from hsfs.core.glue_catalog import GlueCatalog
         from hsfs.engine import _get_type
 
-        hive_sync = (
+        is_spark = _get_type() == "spark"
+        glue = GlueCatalog._for_feature_group(self._feature_group)
+        hive_sync = is_spark and (
             self._feature_group.data_source.storage_connector is None
-            and _get_type() == "spark"
+            or glue is not None
         )
+
+        # Default sync target: the Hopsworks Hive Metastore with the feature
+        # store database and the versioned feature group table.
+        sync_db = self._feature_store_name
+        sync_table = table_name
+        sync_mode = self.HUDI_HIVE_SYNC_MODE_VAL
+        if glue is not None:
+            # Register in the Glue Data Catalog under the data source's database
+            # and table; the on-path Hudi timeline stays authoritative.
+            sync_db, sync_table = glue.database_and_table
+            sync_mode = self.HUDI_HIVE_SYNC_MODE_GLUE_VAL
+            glue._set_jvm_credentials(self._spark_context)
 
         hudi_options = {
             self.HUDI_KEY_GENERATOR_OPT_KEY: self.HUDI_COMPLEX_KEY_GENERATOR_OPT_VAL,
@@ -213,9 +236,9 @@ class HudiEngine:
                 else self.HIVE_NON_PARTITION_EXTRACTOR_CLASS_OPT_VAL
             ),
             self.HUDI_HIVE_SYNC_ENABLE: str(hive_sync).lower(),
-            self.HUDI_HIVE_SYNC_MODE: self.HUDI_HIVE_SYNC_MODE_VAL,
-            self.HUDI_HIVE_SYNC_DB: self._feature_store_name,
-            self.HUDI_HIVE_SYNC_TABLE: table_name,
+            self.HUDI_HIVE_SYNC_MODE: sync_mode,
+            self.HUDI_HIVE_SYNC_DB: sync_db,
+            self.HUDI_HIVE_SYNC_TABLE: sync_table,
             self.HUDI_HIVE_SYNC_PARTITION_FIELDS: partition_key,
             self.HUDI_TABLE_OPERATION: operation,
             self.HUDI_HIVE_SYNC_SUPPORT_TIMESTAMP: "true",
@@ -223,6 +246,9 @@ class HudiEngine:
             self.HUDI_HIVE_SYNC_USE_JDBC: "false",
             self.HUDI_HIVE_SYNC_AUTO_CREATE_DATABASE: "false",
         }
+        if glue is not None:
+            # The AWS Glue sync tool registers and updates the table in Glue.
+            hudi_options[self.HUDI_META_SYNC_CLASSES] = self.HUDI_GLUE_SYNC_TOOL
         hudi_options.update(HudiEngine.HUDI_DEFAULT_PARALLELISM)
 
         if partitioned_by:
