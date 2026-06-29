@@ -5269,8 +5269,8 @@ class ExternalFeatureGroup(FeatureGroupBase):
         self._data_format = data_format.upper() if data_format else None
         if self._data_format is None:
             self._data_format = (
-                data_source.format.upper()
-                if data_source is not None and data_source.format is not None
+                self.data_source.format.upper()
+                if self.data_source is not None and self.data_source.format is not None
                 else None
             )
 
