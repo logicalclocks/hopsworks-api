@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from hsml import client, decorators, model, tag
 from hsml.core import explicit_provenance
@@ -231,15 +232,16 @@ class ModelApi:
             model_instance.id,
             "tags",
         ]
+        # from_response_json already returns deserialized values.
         return {
-            tag._name: json.loads(tag._value)
+            tag._name: tag._value
             for tag in tag.Tag.from_response_json(
                 _client._send_request("GET", path_params)
             )
         }
 
     @decorators._catch_not_found("hopsworks_common.tag.Tag", fallback_return=None)
-    def _get_tag(self, model_instance: model.Model, name: str) -> dict | None:
+    def _get_tag(self, model_instance: model.Model, name: str) -> Any | None:
         """Get the tag.
 
         Gets the tag for a specific name
@@ -249,7 +251,7 @@ class ModelApi:
             name: tag name
 
         Returns:
-            dict of tag name/value
+            The value of the tag with the specified name, or `None` if it does not exist.
         """
         _client = client._get_instance()
         path_params = [
@@ -263,9 +265,14 @@ class ModelApi:
             name,
         ]
 
-        return tag.Tag.from_response_json(_client._send_request("GET", path_params))[
-            name
-        ]
+        # from_response_json returns a list of tags; look the value up by name.
+        tags = {
+            tag._name: tag._value
+            for tag in tag.Tag.from_response_json(
+                _client._send_request("GET", path_params)
+            )
+        }
+        return tags.get(name)
 
     def _get_feature_view_provenance(
         self, model_instance
