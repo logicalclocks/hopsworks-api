@@ -3117,7 +3117,9 @@ class FeatureGroup(FeatureGroupBase):
         )
         if self._time_travel_format is None:
             self._time_travel_format = (
-                data_source.format.upper() if data_source is not None else None
+                data_source.format.upper()
+                if data_source is not None and data_source.format is not None
+                else None
             )
 
         self._stream = stream
@@ -5267,7 +5269,9 @@ class ExternalFeatureGroup(FeatureGroupBase):
         self._data_format = data_format.upper() if data_format else None
         if self._data_format is None:
             self._data_format = (
-                self.data_source.format.upper() if self.data_source else None
+                data_source.format.upper()
+                if data_source is not None and data_source.format is not None
+                else None
             )
 
         self._features = [
