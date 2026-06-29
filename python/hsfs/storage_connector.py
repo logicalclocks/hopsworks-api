@@ -318,8 +318,34 @@ class StorageConnector(ABC):
             The read dataframe.
         """
         return engine._get_instance()._read(
-            self, data_format, options or {}, path, dataframe_type
+            self,
+            data_format,
+            self._with_format_defaults(data_format, options),
+            path,
+            dataframe_type,
         )
+
+    @staticmethod
+    def _with_format_defaults(
+        data_format: str | None, options: dict[str, Any] | None
+    ) -> dict[str, Any]:
+        """Add format-specific read defaults, letting caller options win.
+
+        CSV/TSV carry no schema, so without `header`/`inferSchema` Spark returns
+        positional, all-string columns (`_c0`, ...). Defaulting these lets the
+        schema be inferred automatically while any explicit option still takes
+        precedence.
+        """
+        options = options or {}
+        if data_format and data_format.lower() in ("csv", "tsv"):
+            delimiter = "\t" if data_format.lower() == "tsv" else ","
+            return {
+                "header": "true",
+                "inferSchema": "true",
+                "delimiter": delimiter,
+                **options,
+            }
+        return options
 
     def _refetch(self) -> None:
         """Refetch storage connector."""
@@ -4770,6 +4796,12 @@ class GlueConnector(StorageConnector):
 
     def spark_options(self) -> dict[str, str]:
         return self._arguments
+
+    def _get_path(self, sub_path: str) -> str | None:
+        # Glue tables carry their full S3 location in the data source path
+        # (there is no connector-level bucket to join against), so the path is
+        # already absolute and is returned unchanged.
+        return sub_path
 
     @public
     def prepare_spark(self, path: str | None = None) -> str | None:
