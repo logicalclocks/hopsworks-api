@@ -163,6 +163,114 @@ class TestFeatureStore:
         assert fg_res.feature_store == fs
         assert fg_res._feature_store == fs
 
+    def test_create_feature_group_time_travel_format_defaults_to_delta(
+        self, backend_fixtures, mocker
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
+        json = backend_fixtures["feature_store"]["get"]["response"]
+        fs = feature_store_mod.FeatureStore.from_response_json(json)
+
+        # Act
+        fg_res = fs.create_feature_group("test_feature_group_name", version=1)
+
+        # Assert: no format and no data source format falls back to DELTA.
+        assert fg_res.time_travel_format == "DELTA"
+
+    def test_create_feature_group_time_travel_format_from_data_source(
+        self, backend_fixtures, mocker
+    ):
+        # Arrange
+        from hsfs.core.data_source import DataSource
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_pyiceberg", return_value=True
+        )
+        json = backend_fixtures["feature_store"]["get"]["response"]
+        fs = feature_store_mod.FeatureStore.from_response_json(json)
+
+        # Act
+        fg_res = fs.create_feature_group(
+            "test_feature_group_name",
+            version=1,
+            data_source=DataSource(format="ICEBERG"),
+        )
+
+        # Assert: the data source format is used when no format is given.
+        assert fg_res.time_travel_format == "ICEBERG"
+
+    def test_create_feature_group_explicit_time_travel_format_wins(
+        self, backend_fixtures, mocker
+    ):
+        # Arrange
+        from hsfs.core.data_source import DataSource
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
+        json = backend_fixtures["feature_store"]["get"]["response"]
+        fs = feature_store_mod.FeatureStore.from_response_json(json)
+
+        # Act
+        fg_res = fs.create_feature_group(
+            "test_feature_group_name",
+            version=1,
+            time_travel_format="DELTA",
+            data_source=DataSource(format="ICEBERG"),
+        )
+
+        # Assert: an explicitly requested format wins over the data source.
+        assert fg_res.time_travel_format == "DELTA"
+
+    def test_create_external_feature_group_data_format_from_data_source(
+        self, backend_fixtures, mocker
+    ):
+        # Arrange
+        from hsfs.core.data_source import DataSource
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        json = backend_fixtures["feature_store"]["get"]["response"]
+        fs = feature_store_mod.FeatureStore.from_response_json(json)
+
+        # Act
+        fg_res = fs.create_external_feature_group(
+            "test_external_fg_name",
+            data_source=DataSource(format="parquet"),
+        )
+
+        # Assert: the data source format is used when no data_format is given.
+        assert fg_res.data_format == "PARQUET"
+
+    def test_create_external_feature_group_explicit_data_format_wins(
+        self, backend_fixtures, mocker
+    ):
+        # Arrange
+        from hsfs.core.data_source import DataSource
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        json = backend_fixtures["feature_store"]["get"]["response"]
+        fs = feature_store_mod.FeatureStore.from_response_json(json)
+
+        # Act
+        fg_res = fs.create_external_feature_group(
+            "test_external_fg_name",
+            data_format="csv",
+            data_source=DataSource(format="parquet"),
+        )
+
+        # Assert: an explicitly requested data_format wins over the data source.
+        assert fg_res.data_format == "CSV"
+
     def test_get_feature_view_by_name_not_found(self, backend_fixtures, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")

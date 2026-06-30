@@ -2006,3 +2006,91 @@ class TestDeltaEngineConnectMode:
             "spark.sql.catalog.spark_catalog",
             "org.apache.spark.sql.delta.catalog.DeltaCatalog",
         )
+
+
+class TestDeltaEngineGlueSync:
+    def _glue_fg(self, mocker):
+        from hsfs import storage_connector
+        from hsfs.core import data_source
+
+        connector = storage_connector.GlueConnector(
+            id=2,
+            name="glue",
+            featurestore_id=1,
+            access_key="ak",
+            secret_key="sk",
+            region="eu-north-1",
+            database="hopsworks_featurestore",
+        )
+        fg = _make_fg("s3://ralfsbucket/iceberg-warehouse/ralfsglue.db/fg_1")
+        fg.data_source = data_source.DataSource(
+            storage_connector=connector, database="ralfsglue", table="fg_1"
+        )
+        fg.storage_connector = connector
+        fg.features = [
+            mock.MagicMock(name="id", type="bigint"),
+            mock.MagicMock(name="text", type="string"),
+        ]
+        # MagicMock's ``name`` kwarg names the mock; set the attribute explicitly.
+        fg.features[0].name = "id"
+        fg.features[1].name = "text"
+        return fg
+
+    def test_sync_glue_catalog_registers_table(self, mocker):
+        # Arrange
+        _patch_apis(mocker)
+        _patch_client(mocker, is_external=False)
+        spark_session = mock.MagicMock()
+        spark_context = mock.MagicMock()
+        glue_client = mock.MagicMock()
+        mocker.patch("boto3.client", return_value=glue_client)
+        engine = DeltaEngine(
+            feature_store_id=1,
+            feature_store_name="fs",
+            feature_group=self._glue_fg(mocker),
+            spark_session=spark_session,
+            spark_context=spark_context,
+        )
+
+        # Act
+        engine._sync_glue_catalog(
+            "s3://ralfsbucket/iceberg-warehouse/ralfsglue.db/fg_1"
+        )
+
+        # Assert — registers via the Glue API, not Spark SQL DDL (a named Delta
+        # catalog would NPE on its null delegate).
+        spark_session.sql.assert_not_called()
+        glue_client.create_table.assert_called_once()
+        _, kwargs = glue_client.create_table.call_args
+        assert kwargs["DatabaseName"] == "ralfsglue"
+        table_input = kwargs["TableInput"]
+        assert table_input["Name"] == "fg_1"
+        assert table_input["Parameters"]["table_type"] == "DELTA"
+        assert (
+            table_input["StorageDescriptor"]["Location"]
+            == "s3://ralfsbucket/iceberg-warehouse/ralfsglue.db/fg_1"
+        )
+        assert table_input["StorageDescriptor"]["Columns"] == [
+            {"Name": "id", "Type": "bigint"},
+            {"Name": "text", "Type": "string"},
+        ]
+
+    def test_sync_glue_catalog_noop_without_glue(self, mocker):
+        # Arrange — non-Glue feature group must not touch the catalog.
+        _patch_apis(mocker)
+        _patch_client(mocker, is_external=False)
+        spark_session = mock.MagicMock()
+        engine = DeltaEngine(
+            feature_store_id=1,
+            feature_store_name="fs",
+            feature_group=_make_fg("hopsfs://nn:8020/p"),
+            spark_session=spark_session,
+            spark_context=mock.MagicMock(),
+        )
+        spark_session.sql.reset_mock()
+
+        # Act
+        engine._sync_glue_catalog("hopsfs://nn:8020/p")
+
+        # Assert
+        spark_session.sql.assert_not_called()

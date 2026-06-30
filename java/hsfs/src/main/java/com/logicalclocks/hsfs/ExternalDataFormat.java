@@ -23,5 +23,6 @@ public enum ExternalDataFormat {
   AVRO,
   CSV,
   HUDI,
-  DELTA
+  DELTA,
+  ICEBERG
 }
