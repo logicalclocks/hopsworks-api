@@ -16,8 +16,8 @@
     </modules>
 
     <properties>
-        <maven.compiler.source>1.8</maven.compiler.source>
-        <maven.compiler.target>1.8</maven.compiler.target>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
         <guava.version>30.1.1-jre</guava.version>
         <httpclient.version>4.5.6</httpclient.version>
         <httpcore.version>4.4.13</httpcore.version>
@@ -33,8 +33,7 @@
         <awssdk.version>2.10.40</awssdk.version>
         <scala.version>2.12.10</scala.version>
         <scala-short.version>2.12</scala-short.version>
-        <dbutils.version>0.0.5</dbutils.version>
-        <json.version>20231013</json.version>
+<json.version>20231013</json.version>
         <hoverfly.version>0.12.2</hoverfly.version>
         <junit.version>5.9.1</junit.version>
         <surefire-plugin.version>2.22.0</surefire-plugin.version>
@@ -306,6 +305,22 @@
                 <artifact.spark.version>spark3.5</artifact.spark.version>
                 <fasterxml.jackson.databind.version>2.15.2</fasterxml.jackson.databind.version>
                 <kafka.version>3.4.1</kafka.version>
+            </properties>
+        </profile>
+        <profile>
+            <id>spark-4.1</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <properties>
+                <spark.version>4.1.3-SNAPSHOT</spark.version>
+                <hudi.version>1.2.0</hudi.version>
+                <scala.version>2.13.17</scala.version>
+                <scala-short.version>2.13</scala-short.version>
+                <avro.version>1.12.1</avro.version>
+                <fasterxml.jackson.databind.version>2.21.2</fasterxml.jackson.databind.version>
+                <artifact.spark.version>spark4.1</artifact.spark.version>
+                <deequ.version>2.0.21-spark-4.1</deequ.version>
             </properties>
         </profile>
         <!-- Needs to be included when running mvn deploy or mvn install -->

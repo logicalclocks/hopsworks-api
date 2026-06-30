@@ -32,7 +32,7 @@
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
-            <version>2.15.2</version>
+            <version>${fasterxml.jackson.databind.version}</version>
         </dependency>
 
         <dependency>
@@ -114,7 +114,7 @@
         <!-- https://mvnrepository.com/artifact/org.apache.hudi/hudi-spark-bundle -->
         <dependency>
             <groupId>io.hops.hudi</groupId>
-            <artifactId>hudi-spark3.5-bundle_${scala-short.version}</artifactId>
+            <artifactId>hudi-${artifact.spark.version}-bundle_${scala-short.version}</artifactId>
             <version>${hudi.version}</version>
             <scope>provided</scope>
             <exclusions>
