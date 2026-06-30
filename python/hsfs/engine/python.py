@@ -1396,7 +1396,11 @@ class Engine:
         for i, split in enumerate(splits):
             groups += [i] * int(df_size * split.percentage)
         groups += [len(splits) - 1] * (df_size - len(groups))
-        random.shuffle(groups)
+        # Honor the user-provided seed so random splits are reproducible across
+        # runs, mirroring the Spark engine (randomSplit(..., seed)). A private
+        # generator avoids touching the process-global random module; seed=None
+        # falls back to entropy seeding, preserving the previous behaviour.
+        random.Random(training_dataset_obj.seed).shuffle(groups)
         if HAS_POLARS and (
             isinstance(df, (pl.DataFrame, pl.dataframe.frame.DataFrame))
         ):
