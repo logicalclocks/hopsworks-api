@@ -3365,6 +3365,60 @@ class TestSpark:
             sum_rows += result[column].count()
         assert sum_rows == 6
 
+    def test_random_split_is_reproducible_with_seed(self, mocker):
+        # A user-provided seed must make the random split reproducible across
+        # runs; the Spark engine forwards it to DataFrame.randomSplit.
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        spark_engine = spark.Engine()
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={"test_split1": 0.5, "test_split2": 0.5},
+            seed=1,
+        )
+
+        df = pd.DataFrame({"col_0": list(range(100))})
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+
+        # Act
+        first = spark_engine._random_split(dataset=spark_df, training_dataset=td)
+        second = spark_engine._random_split(dataset=spark_df, training_dataset=td)
+
+        # Assert
+        for name in ("test_split1", "test_split2"):
+            first_rows = sorted(r["col_0"] for r in first[name].collect())
+            second_rows = sorted(r["col_0"] for r in second[name].collect())
+            assert first_rows == second_rows
+
+    def test_random_split_depends_on_seed(self, mocker):
+        # Different seeds must yield different splits, proving the seed is
+        # actually forwarded rather than ignored or hard-coded.
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        spark_engine = spark.Engine()
+
+        df = pd.DataFrame({"col_0": list(range(100))})
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+
+        def train_rows(seed):
+            td = training_dataset.TrainingDataset(
+                name="test",
+                version=1,
+                data_format="CSV",
+                featurestore_id=99,
+                splits={"test_split1": 0.5, "test_split2": 0.5},
+                seed=seed,
+            )
+            result = spark_engine._random_split(dataset=spark_df, training_dataset=td)
+            return sorted(r["col_0"] for r in result["test_split1"].collect())
+
+        # Act / Assert
+        assert train_rows(1) != train_rows(2)
+
     def test_time_series_split(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
