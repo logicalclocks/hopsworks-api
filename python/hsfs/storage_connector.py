@@ -471,7 +471,11 @@ class StorageConnector(ABC):
         Returns:
             A list of database names available in the storage connector.
         """
-        if self.type in [StorageConnector.CRM, StorageConnector.GOOGLE_SHEETS, StorageConnector.REST]:
+        if self.type in [
+            StorageConnector.CRM,
+            StorageConnector.GOOGLE_SHEETS,
+            StorageConnector.REST,
+        ]:
             raise ValueError("This connector type does not support fetching databases.")
         return self._data_source_api._get_databases(self)
 
@@ -583,7 +587,11 @@ class StorageConnector(ABC):
         Returns:
             An object containing the data retrieved from the data source.
         """
-        if self.type in [StorageConnector.REST, StorageConnector.CRM, StorageConnector.GOOGLE_SHEETS]:
+        if self.type in [
+            StorageConnector.REST,
+            StorageConnector.CRM,
+            StorageConnector.GOOGLE_SHEETS,
+        ]:
             if not data_source.table:
                 raise ValueError(
                     f"{self.type} data sources require a table name in data_source.table."
@@ -615,7 +623,11 @@ class StorageConnector(ABC):
         Returns:
             A dictionary containing metadata about the data source.
         """
-        if self.type in [StorageConnector.REST, StorageConnector.CRM, StorageConnector.GOOGLE_SHEETS]:
+        if self.type in [
+            StorageConnector.REST,
+            StorageConnector.CRM,
+            StorageConnector.GOOGLE_SHEETS,
+        ]:
             raise ValueError("This connector type does not support fetching metadata.")
         return self._data_source_api._get_metadata(data_source)
 
