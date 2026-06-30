@@ -497,11 +497,13 @@ class StorageConnector(ABC):
             database:
                 The name of the database to list tables from.
                 If not provided, the default database is used.
+                Not required for Google Sheets connectors — sheet names are fetched from the connector's spreadsheet.
 
         Returns:
             A list of DataSource objects representing the tables.
+            For Google Sheets connectors, each entry represents a sheet name.
         """
-        if self.type in [StorageConnector.REST, StorageConnector.GOOGLE_SHEETS]:
+        if self.type == StorageConnector.REST:
             raise ValueError("This connector type does not support fetching tables.")
         if not database and self.type != StorageConnector.CRM:
             if self.type == StorageConnector.REDSHIFT:
@@ -549,7 +551,11 @@ class StorageConnector(ABC):
                         "explicit `database` to get_tables()."
                     )
                 database = self.database
-            elif self.type in [StorageConnector.S3, StorageConnector.GCS]:
+            elif self.type in [
+                StorageConnector.S3,
+                StorageConnector.GCS,
+                StorageConnector.GOOGLE_SHEETS,
+            ]:
                 pass
             else:
                 raise ValueError(
