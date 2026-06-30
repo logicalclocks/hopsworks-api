@@ -3338,9 +3338,10 @@ class FeatureGroup(FeatureGroupBase):
                 "and SQL connectors with database_type MYSQL, POSTGRESQL, or ORACLE."
             )
 
-        # CRM/REST connectors always have sink enabled.
+        # CRM/Google Sheets/REST connectors always have sink enabled.
         if self.storage_connector is not None and self.storage_connector.type in [
             sc.StorageConnector.CRM,
+            sc.StorageConnector.GOOGLE_SHEETS,
             sc.StorageConnector.REST,
         ]:
             self._sink_enabled = True
