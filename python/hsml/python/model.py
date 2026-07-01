@@ -43,6 +43,7 @@ class Model(Model):
         href=None,
         feature_view=None,
         training_dataset_version=None,
+        missing_mandatory_tags=None,
         **kwargs,
     ):
         super().__init__(
@@ -64,6 +65,7 @@ class Model(Model):
             model_registry_id=model_registry_id,
             feature_view=feature_view,
             training_dataset_version=training_dataset_version,
+            missing_mandatory_tags=missing_mandatory_tags,
         )
 
     def update_from_response_json(self, json_dict):
