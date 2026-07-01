@@ -14,7 +14,7 @@
 #   limitations under the License.
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from hopsworks_apigen import public
 from hopsworks_common import client, usage, util
@@ -50,7 +50,7 @@ class Deployment:
         name: str | None = None,
         description: str | None = None,
         project_namespace: str = None,
-        missing_mandatory_tags=None,
+        missing_mandatory_tags: list[dict[str, Any]] | None = None,
         **kwargs,
     ):
         self._predictor = predictor
@@ -166,7 +166,7 @@ class Deployment:
 
     @public
     @usage._method_logger
-    def add_tag(self, name: str, value: str | dict):
+    def add_tag(self, name: str, value: Any):
         """Attach a tag to a deployment.
 
         A tag consists of a <name,value> pair.
@@ -196,7 +196,7 @@ class Deployment:
         self._serving_engine._delete_tag(self, name)
 
     @public
-    def get_tag(self, name: str) -> str | None:
+    def get_tag(self, name: str) -> Any | None:
         """Get the value of a tag attached to a deployment.
 
         Parameters:
@@ -211,7 +211,7 @@ class Deployment:
         return self._serving_engine._get_tag(self, name)
 
     @public
-    def get_tags(self) -> dict:
+    def get_tags(self) -> dict[str, Any]:
         """Retrieve all tags attached to a deployment.
 
         Returns:
@@ -222,8 +222,9 @@ class Deployment:
         """
         return self._serving_engine._get_tags(self)
 
+    @public
     @property
-    def missing_mandatory_tags(self) -> list:
+    def missing_mandatory_tags(self) -> list[dict[str, Any]]:
         """Mandatory tags configured for deployments that this deployment is missing.
 
         Populated from the backend response.

@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import humps
 from hopsworks_apigen import public
@@ -85,7 +86,7 @@ class Predictor(DeployableComponent):
         git_url: str | None = None,
         git_provider: str | None = None,
         git_branch: str | None = None,
-        missing_mandatory_tags=None,
+        missing_mandatory_tags: list[dict[str, Any]] | None = None,
         **kwargs,
     ):
         self._missing_mandatory_tags = missing_mandatory_tags or []

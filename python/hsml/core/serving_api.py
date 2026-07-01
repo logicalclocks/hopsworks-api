@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from hsml import (
     client,
@@ -114,7 +115,7 @@ class ServingApi:
         return deployment_instances
 
     def _set_tag(
-        self, deployment_instance: deployment.Deployment, name: str, value: str | dict
+        self, deployment_instance: deployment.Deployment, name: str, value: Any
     ) -> None:
         """Attach a name/value tag to a deployment.
 
@@ -163,7 +164,7 @@ class ServingApi:
         _client._send_request("DELETE", path_params)
 
     @decorators._catch_not_found("hopsworks_common.tag.Tag", fallback_return={})
-    def _get_tags(self, deployment_instance: deployment.Deployment) -> dict:
+    def _get_tags(self, deployment_instance: deployment.Deployment) -> dict[str, Any]:
         """Get all tags attached to a deployment.
 
         Parameters:
@@ -191,7 +192,7 @@ class ServingApi:
     @decorators._catch_not_found("hopsworks_common.tag.Tag", fallback_return=None)
     def _get_tag(
         self, deployment_instance: deployment.Deployment, name: str
-    ) -> dict | None:
+    ) -> Any | None:
         """Get the tag with a specific name attached to a deployment.
 
         Parameters:
