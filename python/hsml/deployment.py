@@ -28,6 +28,7 @@ from hsml.engine import serving_engine
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from hopsworks_common.job import Job
     from hsfs.core.feature_monitoring_config import FeatureMonitoringConfig
     from hsml.client.istio.utils.infer_type import InferInput
     from hsml.deployment_tracing_config import DeploymentTracingConfig
@@ -319,6 +320,9 @@ class Deployment:
         start_date_time: int | str | None = None,
         end_date_time: int | str | None = None,
         cron_expression: str | None = "0 0 12 ? * * *",
+        retrain_model_after_num_shifts: int | None = None,
+        model_retraining_job: Job | None = None,
+        model_retraining_job_execution_args: str | None = None,
     ) -> FeatureMonitoringConfig:
         """Create a model monitoring config bound to this deployment's model.
 
@@ -337,6 +341,7 @@ class Deployment:
             my_deployment = ms.get_deployment(name="my_deployment")
             my_deployment.create_model_monitoring(
                 name="psi_drift",
+                retrain_model_after_num_shifts=3,
             ).with_detection_window(
                 time_offset="1d", window_length="1d",
             ).with_reference_training_dataset(  # defaults to model's TD version
@@ -351,10 +356,22 @@ class Deployment:
             start_date_time: Start date and time from which to start computing statistics.
             end_date_time: End date and time at which to stop computing statistics.
             cron_expression: Cron expression scheduling the FM job (UTC, Quartz).
+            retrain_model_after_num_shifts: Number of consecutive drift-detected runs
+                that trigger automated re-training. Must be a positive integer.
+                Added in version ~=3.8.1.
+            model_retraining_job: Hopsworks job to run when re-training is triggered.
+                When None and re-training is enabled, the backend resolves the job from
+                the model version's originating job or mints a default PYTHON job.
+                Added in version ~=3.8.1.
+            model_retraining_job_execution_args: Execution arguments passed to the
+                re-training job at trigger time.
+                Added in version ~=3.8.1.
 
         Raises:
             hopsworks.client.exceptions.ModelServingException: If the deployment's
                 model has no parent feature view recorded in its provenance.
+            hopsworks.client.exceptions.FeatureStoreException: If
+                ``retrain_model_after_num_shifts`` is not a positive integer.
 
         Returns:
             A ``FeatureMonitoringConfig`` builder. Call ``with_detection_window``,
@@ -377,6 +394,9 @@ class Deployment:
             start_date_time=start_date_time,
             end_date_time=end_date_time,
             cron_expression=cron_expression,
+            retrain_model_after_num_shifts=retrain_model_after_num_shifts,
+            model_retraining_job=model_retraining_job,
+            model_retraining_job_execution_args=model_retraining_job_execution_args,
         )
 
     @public

@@ -16,7 +16,10 @@
 from unittest.mock import MagicMock
 
 import pytest
-from hopsworks_common.core.opensearch import ProjectOpenSearchClient
+from hopsworks_common.core.opensearch import (
+    ProjectOpenSearchClient,
+    _handle_opensearch_exception,
+)
 from hsfs.client.exceptions import VectorDatabaseException
 from hsfs.core.opensearch import OpenSearchClientSingleton, OpensearchRequestOption
 
@@ -82,6 +85,72 @@ class TestOpenSearchClientSingleton:
         assert isinstance(exception, VectorDatabaseException)
         assert exception.reason == expected_reason
         assert exception.info == expected_info
+
+    @pytest.mark.parametrize(
+        "error_body",
+        [
+            # k-too-large reported as a top-level illegal_argument_exception (no caused_by),
+            # as this backend does.
+            {
+                "error": {
+                    "type": "illegal_argument_exception",
+                    "reason": "[knn] requires k to be in the range (0, 10000]",
+                }
+            },
+            # k-too-large nested under caused_by, as OpenSearch wraps it.
+            {
+                "error": {
+                    "type": "search_phase_execution_exception",
+                    "reason": "all shards failed",
+                    "caused_by": {
+                        "type": "illegal_argument_exception",
+                        "reason": "[knn] requires k to be in the range (0, 10000]",
+                    },
+                }
+            },
+        ],
+    )
+    def test_handle_opensearch_exception_routes_k_too_large(self, error_body):
+        # The max-k probe in find_neighbors relies on a k-too-large RequestError being
+        # classified as REQUESTED_K_TOO_LARGE regardless of whether the vector database
+        # reports it at the top level or nested under caused_by.
+        from opensearchpy.exceptions import RequestError
+
+        target = ProjectOpenSearchClient(opensearch_client=None)
+
+        @_handle_opensearch_exception
+        def _raise(_self):
+            raise RequestError(400, "illegal_argument_exception", error_body)
+
+        with pytest.raises(VectorDatabaseException) as excinfo:
+            _raise(target)
+        assert excinfo.value.reason == VectorDatabaseException.REQUESTED_K_TOO_LARGE
+        assert (
+            excinfo.value.info[VectorDatabaseException.REQUESTED_K_TOO_LARGE_INFO_K]
+            == 10000
+        )
+
+    def test_handle_opensearch_exception_preserves_info_for_generic_error(self):
+        # A top-level illegal_argument that is not a known validation message must stay
+        # OTHERS and keep the original response payload so malformed queries stay diagnosable.
+        from opensearchpy.exceptions import RequestError
+
+        target = ProjectOpenSearchClient(opensearch_client=None)
+        error_body = {
+            "error": {
+                "type": "illegal_argument_exception",
+                "reason": "Unknown field [bogus] in knn query",
+            }
+        }
+
+        @_handle_opensearch_exception
+        def _raise(_self):
+            raise RequestError(400, "illegal_argument_exception", error_body)
+
+        with pytest.raises(VectorDatabaseException) as excinfo:
+            _raise(target)
+        assert excinfo.value.reason == VectorDatabaseException.OTHERS
+        assert excinfo.value.info == error_body
 
     @pytest.fixture(autouse=True)
     def reset_singleton(self):
