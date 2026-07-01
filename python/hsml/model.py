@@ -76,7 +76,7 @@ class Model:
         href=None,
         feature_view=None,
         training_dataset_version=None,
-        missing_mandatory_tags=None,
+        missing_mandatory_tags: list[dict[str, Any]] | None = None,
         **kwargs,
     ):
         self._id = id
@@ -524,8 +524,9 @@ class Model:
         """
         return self._model_engine._get_tags(model_instance=self)
 
+    @public
     @property
-    def missing_mandatory_tags(self) -> list:
+    def missing_mandatory_tags(self) -> list[dict[str, Any]]:
         """Mandatory tags configured for models that this model is missing.
 
         Populated from the backend response.
