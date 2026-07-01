@@ -32,7 +32,7 @@ import pytest
 pytest.importorskip("fastmcp")
 
 # The command-executing tools, gated behind enable_shell_tools.
-_SHELL_TOOLS = {"start_session", "add_input", "get_output", "execute"}
+_SHELL_TOOLS = {"start_session", "add_input", "get_output"}
 
 
 def test_mcp_server_registers_tools():
@@ -51,7 +51,7 @@ def test_mcp_server_registers_tools():
 
 
 def test_shell_tools_register_when_enabled():
-    """enable_shell_tools=True adds the terminal/brewer command-execution tools."""
+    """enable_shell_tools=True adds the terminal command-execution tools."""
     from hopsworks.mcp.server import build_mcp
 
     tools = asyncio.run(build_mcp(enable_shell_tools=True).get_tools())
