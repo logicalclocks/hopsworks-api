@@ -60,18 +60,42 @@ def _handle_opensearch_exception(func):
                 client_wrapper._refresh_opensearch_connection()
             return func(*args, **kw)
         except RequestError as e:
-            caused_by = e.info.get("error") and e.info["error"].get("caused_by")
-            if caused_by and caused_by["type"] == "illegal_argument_exception":
+            error = e.info.get("error") if isinstance(e.info, dict) else None
+            caused_by = error.get("caused_by") if isinstance(error, dict) else None
+            # The illegal_argument_exception that carries the vector-database validation
+            # reason (e.g. "[knn] requires k to be in the range (0, N]") can arrive either
+            # nested under caused_by (OpenSearch wraps it in a search_phase_execution_exception)
+            # or as the top-level error (other backends report it directly). Handle both so
+            # find_neighbors' max-k probe can parse the limit instead of re-raising.
+            illegal_argument = None
+            if (
+                isinstance(caused_by, dict)
+                and caused_by.get("type") == "illegal_argument_exception"
+            ):
+                illegal_argument = caused_by
+            elif (
+                isinstance(error, dict)
+                and error.get("type") == "illegal_argument_exception"
+            ):
+                illegal_argument = error
+            if illegal_argument:
+                reason = illegal_argument.get("reason", "")
                 client_wrapper = args[0] if args else None
                 if client_wrapper and isinstance(
                     client_wrapper, ProjectOpenSearchClient
                 ):
-                    raise client_wrapper._create_vector_database_exception(
-                        caused_by["reason"]
-                    ) from e
+                    vector_db_exception = (
+                        client_wrapper._create_vector_database_exception(reason)
+                    )
+                    # Only keep the classified exception for recognized validation
+                    # messages (k / result-window too large). For any other
+                    # illegal_argument, fall through so the original response payload
+                    # (e.info) is preserved for diagnosing malformed queries.
+                    if vector_db_exception.reason != VectorDatabaseException.OTHERS:
+                        raise vector_db_exception from e
                 raise VectorDatabaseException(
                     VectorDatabaseException.OTHERS,
-                    f"Error in Opensearch request: {caused_by['reason']}",
+                    f"Error in Opensearch request: {reason or e}",
                     e.info,
                 ) from e
             raise VectorDatabaseException(
