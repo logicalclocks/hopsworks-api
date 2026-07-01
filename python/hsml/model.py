@@ -76,11 +76,13 @@ class Model:
         href=None,
         feature_view=None,
         training_dataset_version=None,
+        missing_mandatory_tags: list[dict[str, Any]] | None = None,
         **kwargs,
     ):
         self._id = id
         self._name = name
         self._version = version
+        self._missing_mandatory_tags = missing_mandatory_tags or []
 
         if description is None:
             self._description = "A collection of models for " + name
@@ -521,6 +523,16 @@ class Model:
             hopsworks.client.exceptions.RestAPIError: In case of a server error.
         """
         return self._model_engine._get_tags(model_instance=self)
+
+    @public
+    @property
+    def missing_mandatory_tags(self) -> list[dict[str, Any]]:
+        """Mandatory tags configured for models that this model is missing.
+
+        Populated from the backend response.
+        Empty when all mandatory model tags are set.
+        """
+        return self._missing_mandatory_tags
 
     @public
     def get_url(self):

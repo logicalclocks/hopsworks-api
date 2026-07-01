@@ -400,6 +400,9 @@ class TestModel:
         assert m.training_metrics == m_json["metrics"]
         assert m._user_full_name == m_json["user_full_name"]
         assert m.model_registry_id == m_json["model_registry_id"]
+        # Framework subclasses must forward missing_mandatory_tags to the base
+        # constructor; a dropped kwarg silently reverts it to [] (FSTORE-2049).
+        assert m.missing_mandatory_tags == m_json.get("missing_mandatory_tags", [])
 
         if model_framework is None:
             assert m.framework is None

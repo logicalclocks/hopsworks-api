@@ -110,6 +110,64 @@ class TestDeployment:
         # Assert
         assert "not an instance of the Predictor class" in str(e_info.value)
 
+    # tags
+
+    def test_add_tag(self, mocker, backend_fixtures):
+        # Arrange
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mock_serving_engine_set_tag = mocker.patch(
+            "hsml.engine.serving_engine.ServingEngine._set_tag"
+        )
+
+        # Act
+        d.add_tag("tag_name", "tag_value")
+
+        # Assert
+        mock_serving_engine_set_tag.assert_called_once_with(d, "tag_name", "tag_value")
+
+    def test_delete_tag(self, mocker, backend_fixtures):
+        # Arrange
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mock_serving_engine_delete_tag = mocker.patch(
+            "hsml.engine.serving_engine.ServingEngine._delete_tag"
+        )
+
+        # Act
+        d.delete_tag("tag_name")
+
+        # Assert
+        mock_serving_engine_delete_tag.assert_called_once_with(d, "tag_name")
+
+    def test_get_tag(self, mocker, backend_fixtures):
+        # Arrange
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mock_serving_engine_get_tag = mocker.patch(
+            "hsml.engine.serving_engine.ServingEngine._get_tag"
+        )
+
+        # Act
+        d.get_tag("tag_name")
+
+        # Assert
+        mock_serving_engine_get_tag.assert_called_once_with(d, "tag_name")
+
+    def test_get_tags(self, mocker, backend_fixtures):
+        # Arrange
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mock_serving_engine_get_tags = mocker.patch(
+            "hsml.engine.serving_engine.ServingEngine._get_tags"
+        )
+
+        # Act
+        d.get_tags()
+
+        # Assert
+        mock_serving_engine_get_tags.assert_called_once_with(d)
+
     def test_tracing_property_delegates_to_predictor(self, mocker):
         # Arrange
         mocker.patch(
@@ -157,6 +215,7 @@ class TestDeployment:
         class MockPredictor:
             _name = "name"
             _description = "description"
+            _missing_mandatory_tags = []
 
         p = MockPredictor()
         mock_deployment_init = mocker.patch(
@@ -168,7 +227,10 @@ class TestDeployment:
 
         # Assert
         mock_deployment_init.assert_called_once_with(
-            predictor=p, name=p._name, description=p._description
+            predictor=p,
+            name=p._name,
+            description=p._description,
+            missing_mandatory_tags=p._missing_mandatory_tags,
         )
 
     # save
