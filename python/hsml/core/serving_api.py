@@ -180,8 +180,9 @@ class ServingApi:
             str(deployment_instance.id),
             "tags",
         ]
+        # from_response_json already returns deserialized values.
         return {
-            t._name: json.loads(t._value)
+            t._name: t._value
             for t in tag.Tag.from_response_json(
                 _client._send_request("GET", path_params)
             )
@@ -209,9 +210,14 @@ class ServingApi:
             "tags",
             name,
         ]
-        return tag.Tag.from_response_json(_client._send_request("GET", path_params))[
-            name
-        ]
+        # from_response_json returns a list of tags; look the value up by name.
+        tags = {
+            t._name: t._value
+            for t in tag.Tag.from_response_json(
+                _client._send_request("GET", path_params)
+            )
+        }
+        return tags.get(name)
 
     def _get_inference_endpoints(self) -> list[inference_endpoint.InferenceEndpoint]:
         """Get inference endpoints.
