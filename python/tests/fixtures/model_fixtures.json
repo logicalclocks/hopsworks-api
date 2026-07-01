@@ -45,6 +45,7 @@
           "model_registry_id": 1,
           "tags": [],
           "framework": "PYTHON",
+          "missing_mandatory_tags": [{ "name": "owner" }],
           "href": "test_href"
         }
       ]
