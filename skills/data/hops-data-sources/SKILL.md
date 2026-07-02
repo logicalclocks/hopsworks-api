@@ -119,21 +119,18 @@ class MyTransformer(HopsIngestionTransformer):
 ## Ingest from Google Sheets
 
 Google Sheets is an independent top-level connector (type `GOOGLE_SHEETS`) authenticated by a GCP service-account JSON keyfile.
-Ingestion uses DLTHub under the hood; the sheet tab name maps to `range_names` and the
-spreadsheet ID maps to `spreadsheet_url_or_id` in the dlt config.
+Ingestion uses DLTHub under the hood; the sheet tab name maps to `range_names` and the spreadsheet ID maps to `spreadsheet_url_or_id` in the dlt config.
 
 **Prerequisites**
 
 1. Upload the service-account JSON keyfile to HopsFS (e.g. `Resources/gsheets-key.json`).
-2. Share the spreadsheet with the service account email (`... @<project>.iam.gserviceaccount.com`)
-   and enable the Google Sheets API in your GCP project.
+2. Share the spreadsheet with the service account email (`... @<project>.iam.gserviceaccount.com`) and enable the Google Sheets API in your GCP project.
 
 **Create the connector (UI or SDK)**
 
 In the UI: Storage Connectors → New → Google Sheets.
 Fill in the keyfile path.
-The spreadsheet ID is optional at connector level — you can leave it blank and provide it per
-feature group instead.
+The spreadsheet ID is optional at connector level — you can leave it blank and provide it per feature group instead.
 
 ```python
 # The connector only needs to be created once.
@@ -173,8 +170,7 @@ fg.sink_job.run()   # copies the sheet into the managed feature group
 **Multiple sheet tabs → multiple feature groups**
 
 Each feature group targets one sheet tab.
-Reuse the same connector and vary `table` (and `spreadsheet_id` if the tabs live in different
-spreadsheets):
+Reuse the same connector and vary `table` (and `spreadsheet_id` if the tabs live in different spreadsheets):
 
 ```python
 for tab, fg_name in [("Users", "gs_users"), ("Orders", "gs_orders")]:

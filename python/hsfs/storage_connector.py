@@ -4940,8 +4940,7 @@ class GoogleSheetsConnector(StorageConnector):
     """A Google Sheets storage connector authenticated by a GCP service-account keyfile.
 
     The connector stores the path to a service-account JSON key uploaded to HopsFS.
-    An optional spreadsheet ID can be set at connector level; if omitted it must be
-    provided per feature group via `DataSource.spreadsheet_id`.
+    An optional spreadsheet ID can be set at connector level; if omitted it must be provided per feature group via `DataSource.spreadsheet_id`.
     """
 
     type = StorageConnector.GOOGLE_SHEETS
@@ -4975,8 +4974,7 @@ class GoogleSheetsConnector(StorageConnector):
     def spreadsheet_id(self) -> str | None:
         """Get or set the Google Spreadsheet ID.
 
-        Optional at connector level — can be provided per feature group via
-        `DataSource.spreadsheet_id` instead.
+        Optional at connector level — can be provided per feature group via `DataSource.spreadsheet_id` instead.
         """
         return self._spreadsheet_id
 
