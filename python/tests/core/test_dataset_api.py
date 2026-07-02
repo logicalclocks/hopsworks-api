@@ -18,7 +18,6 @@ import json
 from unittest.mock import MagicMock
 
 import pytest
-from hopsworks_common.client.exceptions import RestAPIError
 from hopsworks_common.core.dataset_api import DatasetApi
 
 

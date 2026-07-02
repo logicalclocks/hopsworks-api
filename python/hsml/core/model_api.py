@@ -16,7 +16,6 @@
 from __future__ import annotations
 
 import json
-from typing import Any
 
 from hsml import client, decorators, model, tag
 from hsml.core import explicit_provenance
