@@ -159,6 +159,27 @@ class TestRonsqlCollectOverlay:
         assert vector["amount_sum"] == 812.5
         assert vector["tier"] == "gold"
 
+    def test_overlay_batch_per_entry(self):
+        # each entry gets its own RonSQL execution; results stay aligned with entries
+        statement = make_statement()
+        server = make_server()
+        server._ronsql_statements = [statement]
+        server._rest_client_engine = _StubRestEngine({1: ["user_id", "amount"]})
+        server._execute_ronsql_statement = lambda stmt, entry: [
+            {"user_id": entry["user_id"], "amount": float(entry["user_id"]) * 10}
+        ]
+        results = [
+            server._overlay_ronsql_collect(dict(result), entry)
+            for result, entry in zip(
+                [{"tier": "gold"}, {"tier": "bronze"}],
+                [{"user_id": 1}, {"user_id": 2}],
+                strict=True,
+            )
+        ]
+        assert results[0]["amount"] == [10.0]
+        assert results[1]["amount"] == [20.0]
+        assert results[0]["tier"] == "gold"
+
     def test_overlay_noop_without_ronsql_statements(self):
         server = make_server()
         server._ronsql_statements = []

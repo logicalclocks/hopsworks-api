@@ -718,6 +718,13 @@ class VectorServer:
                 drop_missing=not allow_missing,
                 return_type=self.rest_client_engine.RETURN_TYPE_FEATURE_VALUE_DICT,
             )
+            # v3 online path: collect/aggregate feature groups are served via RonSQL,
+            # one statement per entry (batching via IN is a later optimization).
+            if self._get_ronsql_statements():
+                batch_results = [
+                    self._overlay_ronsql_collect(result, entry)
+                    for result, entry in zip(batch_results, rondb_entries, strict=True)
+                ]
         elif len(rondb_entries) > 0:
             # get result row
             if _logger.isEnabledFor(logging.DEBUG):
