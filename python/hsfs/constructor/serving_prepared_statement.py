@@ -36,6 +36,7 @@ class ServingPreparedStatement:
         collect_n: int | None = None,
         query_ronsql: str | None = None,
         ronsql_database: str | None = None,
+        aggregate_window: int | None = None,
         type: str | None = None,
         items: list[dict[str, Any]] | None = None,
         count: int | None = None,
@@ -55,6 +56,9 @@ class ServingPreparedStatement:
         # (v3 online path); the client substitutes typed literals for the `?` markers.
         self._query_ronsql = query_ronsql
         self._ronsql_database = ronsql_database
+        # When set, query_ronsql is a pushdown-aggregation statement whose trailing `?`
+        # is the window bound: the client substitutes now - aggregate_window (seconds).
+        self._aggregate_window = aggregate_window
 
     @classmethod
     def from_response_json(
@@ -124,6 +128,10 @@ class ServingPreparedStatement:
     @property
     def ronsql_database(self) -> str | None:
         return self._ronsql_database
+
+    @property
+    def aggregate_window(self) -> int | None:
+        return self._aggregate_window
 
     @feature_group_id.setter
     def feature_group_id(self, feature_group_id: int | None) -> None:

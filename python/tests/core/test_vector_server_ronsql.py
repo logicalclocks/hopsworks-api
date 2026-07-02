@@ -115,13 +115,13 @@ class _StubRestEngine:
 
 
 class TestRonsqlCollectOverlay:
-    def make_collect_server(self, rows):
+    def make_ronsql_server(self, statement, rows):
         server = make_server()
-        server._ronsql_scan_statement = make_statement()
+        server._ronsql_statements = [statement]
         server._rest_client_engine = _StubRestEngine(
             {1: ["user_id", "amount", "event_time"]}
         )
-        server._scan_rows_ronsql = lambda entry, limit=None: rows
+        server._execute_ronsql_statement = lambda stmt, entry: rows
         return server
 
     def test_overlay_folds_collect_columns_aligned(self):
@@ -130,7 +130,7 @@ class TestRonsqlCollectOverlay:
             {"user_id": 7, "amount": None, "event_time": "t2"},
             {"user_id": 7, "amount": 30.0, "event_time": "t1"},
         ]
-        server = self.make_collect_server(rows)
+        server = self.make_ronsql_server(make_statement(), rows)
         vector = server._overlay_ronsql_collect(
             {"user_id": 7, "amount": None, "event_time": None, "tier": "gold"},
             {"user_id": 7},
@@ -142,8 +142,42 @@ class TestRonsqlCollectOverlay:
         # joined features untouched
         assert vector["tier"] == "gold"
 
-    def test_overlay_noop_without_collect_statement(self):
+    def test_overlay_merges_aggregate_row_scalars(self):
+        statement = make_statement(
+            collect_n=None,
+            aggregate_window=30 * 24 * 3600,
+            query_ronsql=(
+                "SELECT COUNT(`amount`) AS `amount_count`, SUM(`amount`) AS "
+                "`amount_sum` FROM `transactions_1` WHERE `user_id` = ? AND "
+                "`event_time` >= ?;"
+            ),
+        )
+        rows = [{"amount_count": 41, "amount_sum": 812.5}]
+        server = self.make_ronsql_server(statement, rows)
+        vector = server._overlay_ronsql_collect({"tier": "gold"}, {"user_id": 7})
+        assert vector["amount_count"] == 41
+        assert vector["amount_sum"] == 812.5
+        assert vector["tier"] == "gold"
+
+    def test_overlay_noop_without_ronsql_statements(self):
         server = make_server()
-        server._ronsql_scan_statement = None
+        server._ronsql_statements = []
         original = {"a": 1}
         assert server._overlay_ronsql_collect(original, {"user_id": 7}) == {"a": 1}
+
+
+class TestRonsqlAggregateWindow:
+    def test_window_bound_substituted_after_entity_keys(self):
+        statement = make_statement(
+            collect_n=None,
+            aggregate_window=3600,
+            query_ronsql=(
+                "SELECT COUNT(`amount`) AS `amount_count` FROM `transactions_1` "
+                "WHERE `user_id` = ? AND `event_time` >= ?;"
+            ),
+        )
+        query = make_server()._substitute_ronsql_template(statement, {"user_id": 7})
+        assert "`user_id` = 7 " in query
+        # the trailing ? became a quoted datetime literal (now - window)
+        assert "?" not in query
+        assert "`event_time` >= '2" in query

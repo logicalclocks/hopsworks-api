@@ -20,7 +20,7 @@ import logging
 import warnings
 from base64 import b64decode
 from copy import deepcopy
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
 from typing import (
     TYPE_CHECKING,
@@ -1356,22 +1356,24 @@ class VectorServer:
         Returns:
             The serving vector with collected columns replaced by aligned lists.
         """
-        statement = self._get_ronsql_scan_statement()
-        if statement is None:
-            return serving_vector
-        rows = self._scan_rows_ronsql(entry)
-        collect_feature_names = (
-            self.rest_client_engine._feature_names_per_fg_id.get(
-                statement.feature_group_id, []
-            )
-        )
-        entity_keys = {
-            param.name for param in statement.prepared_statement_parameters
-        }
-        for name in collect_feature_names:
-            if name in entity_keys:
-                continue
-            serving_vector[name] = [row.get(name) for row in rows]
+        for statement in self._get_ronsql_statements():
+            rows = self._execute_ronsql_statement(statement, entry)
+            if statement.collect_n is not None:
+                collect_feature_names = (
+                    self.rest_client_engine._feature_names_per_fg_id.get(
+                        statement.feature_group_id, []
+                    )
+                )
+                entity_keys = {
+                    param.name for param in statement.prepared_statement_parameters
+                }
+                for name in collect_feature_names:
+                    if name in entity_keys:
+                        continue
+                    serving_vector[name] = [row.get(name) for row in rows]
+            elif rows:
+                # pushdown aggregation: exactly one row of scalar outputs per entity
+                serving_vector.update(rows[0])
         return serving_vector
 
     def _scan_rows_ronsql(
@@ -1399,15 +1401,21 @@ class VectorServer:
                 "REST client requires a collect feature view and RonDB >= 26.04; "
                 "alternatively call scan_vectors(..., force_sql_client=True)."
             )
-        query = self._substitute_ronsql_template(statement, entry)
-        rows = online_store_rest_client_api.OnlineStoreRestClientApi()._execute_ronsql(
-            query, statement.ronsql_database
-        )
+        rows = self._execute_ronsql_statement(statement, entry)
         return rows[:limit] if limit is not None else rows
 
-    def _get_ronsql_scan_statement(self):
-        """Fetch and cache the feature view's single-entity collect statement carrying a RonSQL template."""
-        if not hasattr(self, "_ronsql_scan_statement"):
+    def _execute_ronsql_statement(
+        self, statement, entry: dict[str, Any]
+    ) -> list[dict[str, Any]]:
+        """Substitute the entity keys into a RonSQL template and execute it via /ronsql."""
+        query = self._substitute_ronsql_template(statement, entry)
+        return online_store_rest_client_api.OnlineStoreRestClientApi()._execute_ronsql(
+            query, statement.ronsql_database
+        )
+
+    def _get_ronsql_statements(self) -> list[Any]:
+        """Fetch and cache the feature view's single-entity statements carrying RonSQL templates."""
+        if not hasattr(self, "_ronsql_statements"):
             statements = feature_view_api.FeatureViewApi(
                 self._feature_store_id
             )._get_serving_prepared_statement(
@@ -1416,15 +1424,17 @@ class VectorServer:
                 batch=False,
                 inference_helper_columns=False,
             )
-            self._ronsql_scan_statement = next(
-                (
-                    s
-                    for s in statements
-                    if s.collect_n is not None and s.query_ronsql is not None
-                ),
-                None,
-            )
-        return self._ronsql_scan_statement
+            self._ronsql_statements = [
+                s for s in statements if s.query_ronsql is not None
+            ]
+        return self._ronsql_statements
+
+    def _get_ronsql_scan_statement(self):
+        """The feature view's collect statement, or None when the FV has no collect."""
+        return next(
+            (s for s in self._get_ronsql_statements() if s.collect_n is not None),
+            None,
+        )
 
     def _substitute_ronsql_template(self, statement, entry: dict[str, Any]) -> str:
         """Substitute typed entity-key literals into the RonSQL template's `?` markers.
@@ -1447,6 +1457,11 @@ class VectorServer:
                     f"Missing entity key '{param.name}' in entry for RonSQL scan."
                 )
             query = query.replace("?", self._ronsql_literal(value), 1)
+        if getattr(statement, "aggregate_window", None) is not None:
+            # pushdown aggregation: the trailing ? is the trailing-window bound,
+            # resolved client-side since RonSQL has no NOW()
+            bound = datetime.now() - timedelta(seconds=statement.aggregate_window)
+            query = query.replace("?", self._ronsql_literal(bound), 1)
         return query
 
     @staticmethod
