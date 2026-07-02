@@ -16,6 +16,7 @@
 import json
 import logging
 import warnings
+from datetime import timedelta
 
 import pytest
 from hsfs import feature, feature_group
@@ -897,6 +898,59 @@ class TestQuery:
         assert restored._collect == 25
         assert restored._collect_order_by == "ts"
         assert restored._collect_ascending is True
+
+    def test_aggregate_sets_state(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        q = TestQuery.fg1.select_all().aggregate(
+            {"label": ["count", "SUM"]}, window=timedelta(days=30)
+        )
+
+        # functions normalized to lowercase, window normalized to seconds
+        assert q._aggregate == {"label": ["count", "sum"]}
+        assert q._aggregate_window == 30 * 24 * 3600
+        assert q.aggregate({"label": ["min"]}) is q  # non-terminal
+
+    def test_aggregate_rejects_unknown_function(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        with pytest.raises(ValueError, match="unsupported function"):
+            TestQuery.fg1.select_all().aggregate({"label": ["median"]})
+
+    def test_aggregate_rejects_empty(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        with pytest.raises(ValueError):
+            TestQuery.fg1.select_all().aggregate({})
+        with pytest.raises(ValueError):
+            TestQuery.fg1.select_all().aggregate({"label": []})
+
+    def test_aggregate_rejects_group_by(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        with pytest.raises(ValueError, match="group_by"):
+            TestQuery.fg1.select_all().aggregate(
+                {"label": ["count"]}, group_by=["id"]
+            )
+
+    def test_aggregate_collect_mutually_exclusive(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            TestQuery.fg1.select_all().collect(10).aggregate({"label": ["count"]})
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            TestQuery.fg1.select_all().aggregate({"label": ["count"]}).collect(10)
+
+    def test_aggregate_round_trip(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        original = TestQuery.fg1.select_all().aggregate(
+            {"label": ["count", "avg"]}, window=3600
+        )
+        restored = query.Query.from_response_json(json.loads(original.json()))
+
+        assert restored._aggregate == {"label": ["count", "avg"]}
+        assert restored._aggregate_window == 3600
 
 
 class TestQueryRead:

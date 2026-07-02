@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import logging
 import warnings
+from datetime import timedelta
 from typing import TYPE_CHECKING, Any, TypeVar
 
 import humps
@@ -84,6 +85,8 @@ class Query:
         collect: int | None = None,
         collect_order_by: str | Feature | None = None,
         collect_ascending: bool = False,
+        aggregate: dict[str, list[str]] | None = None,
+        aggregate_window: float | None = None,
         **kwargs,
     ) -> None:
         self._feature_store_name = feature_store_name
@@ -101,6 +104,10 @@ class Query:
         self._collect = collect
         self._collect_order_by = collect_order_by
         self._collect_ascending = collect_ascending
+        # Pushdown aggregations ("per-entity COUNT/SUM/... over a time-windowed
+        # index scan"): set by aggregate(). The window is stored in seconds.
+        self._aggregate = aggregate
+        self._aggregate_window = aggregate_window
         # Lookback configuration for the feature view's joins; set only on the
         # root Query and emitted as the top-level `lookback` field on the wire.
         self._lookback: Lookback | None = None
@@ -775,9 +782,88 @@ class Query:
         """
         if n is None or n <= 0:
             raise ValueError("collect(n): n must be a positive integer")
+        if self._aggregate is not None:
+            raise ValueError(
+                "collect() and aggregate() are mutually exclusive on the same query"
+            )
         self._collect = n
         self._collect_order_by = order_by
         self._collect_ascending = ascending
+        return self
+
+    _AGGREGATE_FUNCTIONS = ("count", "sum", "min", "max", "avg")
+
+    @public
+    def aggregate(
+        self,
+        aggregations: dict[str, list[str]],
+        window: float | timedelta | None = None,
+        group_by: list[str] | None = None,
+    ) -> Query:
+        """Aggregate features per entity as pushdown aggregations.
+
+        Each (feature, function) pair becomes one scalar output feature computed
+        over the entity's rows, optionally bounded by a trailing time window on
+        the feature group's event-time column.
+        Online, the aggregation is pushed down to the RonDB data nodes; offline,
+        the same trailing window is applied per training-data row, keeping
+        train/serve consistency.
+
+        `aggregate` is not terminal: it returns the query so you can keep
+        building, for example joining in features from other feature groups.
+        It is mutually exclusive with [`Query.collect`][hsfs.constructor.query.Query.collect]
+        on the same query.
+
+        Example:
+            ```python
+            fg = fs.get_feature_group("transactions")
+            query = fg.select(["amount"]).aggregate(
+                {"amount": ["count", "sum", "avg"]},
+                window=timedelta(days=30),
+            )
+            ```
+
+        Parameters:
+            aggregations: Mapping of feature name to the aggregation functions to
+                apply; allowed functions are `count`, `sum`, `min`, `max` and `avg`.
+            window: Optional trailing time window over the feature group's
+                event-time column, as seconds or a timedelta.
+                If the feature group has a TTL, the window must not exceed it.
+            group_by: Reserved for sub-entity grouping; not yet supported.
+
+        Returns:
+            The query object with the applied aggregations.
+        """
+        if self._collect is not None:
+            raise ValueError(
+                "collect() and aggregate() are mutually exclusive on the same query"
+            )
+        if group_by is not None:
+            raise ValueError(
+                "aggregate(group_by=...) is not supported yet; aggregations group "
+                "by the entity key"
+            )
+        if not aggregations:
+            raise ValueError("aggregate(): at least one aggregation is required")
+        for feature_name, functions in aggregations.items():
+            if not functions:
+                raise ValueError(
+                    f"aggregate(): no functions given for feature '{feature_name}'"
+                )
+            for fn in functions:
+                if fn.lower() not in self._AGGREGATE_FUNCTIONS:
+                    raise ValueError(
+                        f"aggregate(): unsupported function '{fn}' for feature "
+                        f"'{feature_name}'; allowed: {', '.join(self._AGGREGATE_FUNCTIONS)}"
+                    )
+        if isinstance(window, timedelta):
+            window = window.total_seconds()
+        if window is not None and window <= 0:
+            raise ValueError("aggregate(): window must be positive")
+        self._aggregate = {
+            name: [fn.lower() for fn in fns] for name, fns in aggregations.items()
+        }
+        self._aggregate_window = window
         return self
 
     def json(self) -> str:
@@ -804,6 +890,8 @@ class Query:
             "collect": self._collect,
             "collectOrderBy": collect_order_by,
             "collectAscending": self._collect_ascending,
+            "aggregate": self._aggregate,
+            "aggregateWindow": self._aggregate_window,
             "hiveEngine": self._python_engine,
         }
         if self._lookback is not None:
@@ -850,6 +938,8 @@ class Query:
             collect=json_decamelized.get("collect", None),
             collect_order_by=json_decamelized.get("collect_order_by", None),
             collect_ascending=json_decamelized.get("collect_ascending", False),
+            aggregate=json_decamelized.get("aggregate", None),
+            aggregate_window=json_decamelized.get("aggregate_window", None),
         )
         # Restore Lookback from the wire payload so cross-process consumers
         # that reconstruct a Query from JSON keep the lookback. Local-process
