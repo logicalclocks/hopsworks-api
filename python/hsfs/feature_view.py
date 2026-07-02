@@ -2646,7 +2646,8 @@ class FeatureView:
             ```
 
         Warning: Engine Support
-            Appending (`overwrite=False`) is only supported using Spark as engine, and only for the `parquet` data format.
+            Appending (`overwrite=False`) is only supported for the `parquet` data format.
+            On the `python` engine the append is offloaded to the Hopsworks Feature Query Service (FlyingDuck) or a backend Spark job; it requires a recent enough Query Service, as older versions overwrite instead of appending.
 
         Parameters:
             training_dataset_version: Version of the training dataset to append to.
@@ -2669,7 +2670,7 @@ class FeatureView:
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
-            hopsworks.client.exceptions.FeatureStoreException: If the training dataset has a non-`parquet` data format, or if appending is attempted on the Python engine.
+            hopsworks.client.exceptions.FeatureStoreException: If the training dataset has a non-`parquet` data format.
         """
         td, td_job = self._feature_view_engine._insert_training_data(
             self,

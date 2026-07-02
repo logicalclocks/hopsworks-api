@@ -717,17 +717,13 @@ class FeatureViewEngine:
         spine=None,
         transformation_context: dict[str, Any] = None,
     ):
-        if not overwrite and not engine._get_type().startswith("spark"):
-            # Append writes an extra Hive partition next to the existing data;
-            # only the Spark engine's writer does this. The Python engine
-            # offloads to a backend job that would materialize a plain
-            # (non-appending) dataset, silently ignoring the existing data.
-            raise FeatureStoreException(
-                "Appending to a training dataset (`overwrite=False`) is only "
-                "supported using Spark as engine. Use the Spark engine, or pass "
-                "`overwrite=True` to rewrite the training dataset."
-            )
-
+        # Append (`overwrite=False`) works on both engines: the Spark engine
+        # writes the new `_hopsworks_append_id=<n>` partition directly, and the
+        # Python engine offloads to a backend that does the same — either the
+        # Hopsworks Feature Query Service (FlyingDuck) fast path, which is sent
+        # `overwrite=false`, or the fallback backend Spark job. Note this relies
+        # on a recent enough Query Service; older versions ignore the flag and
+        # overwrite instead (see `ArrowFlightClient._create_training_dataset`).
         training_dataset_obj = self._get_training_dataset_metadata(
             feature_view_obj, training_dataset_version
         )

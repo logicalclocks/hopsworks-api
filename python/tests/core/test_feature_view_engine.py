@@ -1780,12 +1780,29 @@ class TestFeatureViewEngine:
         _, kwargs = mock_fv_engine_compute_training_dataset.call_args
         assert kwargs["save_mode"] == fv_engine._OVERWRITE
 
-    def test_insert_training_data_append_python_engine_raises(self, mocker):
-        # Arrange
+    def test_insert_training_data_append_python_engine(self, mocker):
+        # Arrange: append is allowed on the python engine; it offloads to a
+        # backend (FlyingDuck / Spark job) that honors the APPEND save mode.
         feature_store_id = 99
 
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mocker.patch("hsfs.engine._get_type", return_value="python")
+        mock_fv_engine_get_training_dataset_metadata = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
+        )
+        mock_fv_engine_compute_training_dataset = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._compute_training_dataset"
+        )
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="parquet",
+            featurestore_id=99,
+            splits={},
+        )
+        mock_fv_engine_get_training_dataset_metadata.return_value = td
 
         fv = feature_view.FeatureView(
             name="fv_name",
@@ -1798,17 +1815,18 @@ class TestFeatureViewEngine:
             feature_store_id=feature_store_id
         )
 
-        # Act / Assert
-        with pytest.raises(
-            FeatureStoreException, match="only .* supported using Spark"
-        ):
-            fv_engine._insert_training_data(
-                feature_view_obj=fv,
-                training_dataset_version=1,
-                start_time="",
-                end_time="",
-                user_write_options={},
-            )
+        # Act
+        fv_engine._insert_training_data(
+            feature_view_obj=fv,
+            training_dataset_version=1,
+            start_time="",
+            end_time="",
+            user_write_options={},
+        )
+
+        # Assert
+        _, kwargs = mock_fv_engine_compute_training_dataset.call_args
+        assert kwargs["save_mode"] == fv_engine._APPEND
 
     def test_insert_training_data_random_split_appends(self, mocker):
         # Arrange: a random-split TD appends per split without warning.
