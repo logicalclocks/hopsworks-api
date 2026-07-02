@@ -77,7 +77,8 @@ class DataSource:
         metrics: List of metric column names for the data source.
         dimensions: List of dimension column names for the data source.
         rest_endpoint: REST endpoint configuration for the data source.
-        spreadsheet_id: Google Spreadsheet ID for Google Sheets data sources. Only required when the spreadsheet ID was not set on the connector itself; the connector-level value is used otherwise.
+        spreadsheet_id: Google Spreadsheet ID for Google Sheets data sources.
+            Only required when the spreadsheet ID was not set on the connector itself; the connector-level value is used otherwise.
     """
 
     def __init__(
