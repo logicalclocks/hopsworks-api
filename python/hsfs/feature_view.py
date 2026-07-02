@@ -2608,6 +2608,85 @@ class FeatureView:
 
     @public
     @usage._method_logger
+    def insert_training_data(
+        self,
+        training_dataset_version: int,
+        start_time: str | int | datetime | date | None = "",
+        end_time: str | int | datetime | date | None = "",
+        overwrite: bool = False,
+        write_options: dict[Any, Any] | None = None,
+        spine: SplineDataFrameTypes | None = None,
+        transformation_context: dict[str, Any] = None,
+    ) -> job.Job:
+        """Append a new batch of data to an existing training dataset version.
+
+        Materializes the feature view query over the `start_time`/`end_time` window and, with `overwrite=False` (the default), writes the result as a new increment of the training dataset: the batch is stored in its own Hive partition under the existing location, leaving data already materialized untouched.
+        This lets a large (multi-terabyte) training dataset grow — for example with a new daily batch — without rewriting it, while keeping the same training dataset version.
+        On [`get_training_data`][hsfs.feature_view.FeatureView.get_training_data] all increments are returned together; the partitioning is an internal storage detail and is not exposed as a feature.
+
+        With `overwrite=True` the entire training dataset version is rewritten instead, equivalent to [`recreate_training_dataset`][hsfs.feature_view.FeatureView.recreate_training_dataset] for the given window.
+
+        Statistics are not recomputed on append (that would require reading the whole dataset back); they are left as computed when the version was created.
+
+        Split training datasets are appended per split: each split receives a new partition.
+        For a random split the batch is split on its own (e.g. 80/10/10), which is sound over many appends.
+        For a time-series split the batch is bucketed by the split's fixed time boundaries, so a recent batch usually lands entirely in the last split (e.g. test) and the earlier splits do not grow — a warning is raised and `overwrite=True` is usually what you want instead.
+
+        Example:
+            ```python
+            # get feature view instance
+            feature_view = fs.get_feature_view(...)
+
+            # append yesterday's batch to training dataset version 1
+            job = feature_view.insert_training_data(
+                training_dataset_version=1,
+                start_time="2026-07-01 00:00:00",
+                end_time="2026-07-01 23:59:59",
+            )
+            ```
+
+        Warning: Engine Support
+            Appending (`overwrite=False`) is only supported using Spark as engine, and only for the `parquet` data format.
+
+        Parameters:
+            training_dataset_version: Version of the training dataset to append to.
+            start_time: Start event time for the batch query, inclusive.
+                Strings should be formatted in one of the following ways `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
+            end_time: End event time for the batch query, inclusive.
+                Strings should be formatted in one of the following ways `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
+            overwrite: Whether to overwrite the entire training dataset version instead of appending a new increment.
+            write_options: Additional options as key/value pairs to pass to the execution engine.
+                Defaults to `{}`.
+                For spark engine: Dictionary of read options for Spark.
+            spine: Spine dataframe with primary key, event time and label column to use for point in time join when fetching features.
+                Defaults to `None` and is only required when the feature view was created with a spine group in the feature query.
+            transformation_context:
+                A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+
+        Returns:
+            The Hopsworks Job that was launched to materialize the batch.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+            hopsworks.client.exceptions.FeatureStoreException: If the training dataset has a non-`parquet` data format, or if appending is attempted on the Python engine.
+        """
+        td, td_job = self._feature_view_engine._insert_training_data(
+            self,
+            training_dataset_version=training_dataset_version,
+            start_time=start_time,
+            end_time=end_time,
+            user_write_options=write_options or {},
+            overwrite=overwrite,
+            spine=spine,
+            transformation_context=transformation_context,
+        )
+        self.update_last_accessed_training_dataset(td.version)
+
+        return td_job
+
+    @public
+    @usage._method_logger
     def training_data(
         self,
         start_time: str | int | datetime | date | None = None,

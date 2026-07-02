@@ -706,6 +706,72 @@ class FeatureViewEngine:
         )
         return training_dataset_obj, td_job
 
+    def _insert_training_data(
+        self,
+        feature_view_obj,
+        training_dataset_version,
+        start_time,
+        end_time,
+        user_write_options,
+        overwrite=False,
+        spine=None,
+        transformation_context: dict[str, Any] = None,
+    ):
+        if not overwrite and not engine._get_type().startswith("spark"):
+            # Append writes an extra Hive partition next to the existing data;
+            # only the Spark engine's writer does this. The Python engine
+            # offloads to a backend job that would materialize a plain
+            # (non-appending) dataset, silently ignoring the existing data.
+            raise FeatureStoreException(
+                "Appending to a training dataset (`overwrite=False`) is only "
+                "supported using Spark as engine. Use the Spark engine, or pass "
+                "`overwrite=True` to rewrite the training dataset."
+            )
+
+        training_dataset_obj = self._get_training_dataset_metadata(
+            feature_view_obj, training_dataset_version
+        )
+
+        # Split datasets append per split: each split writes a new partition into
+        # its own subdirectory. For a random split that means the batch is split
+        # 80/10/10 (etc.) on its own, which is sound. For a time-series split the
+        # batch is bucketed by the split's fixed calendar boundaries, so a new
+        # (recent) batch typically lands entirely in the last split (e.g. test),
+        # leaving the earlier splits unchanged — warn rather than silently skew.
+        if not overwrite and any(
+            split.split_type == TrainingDatasetSplit.TIME_SERIES_SPLIT
+            for split in training_dataset_obj.splits
+        ):
+            warnings.warn(
+                "Appending to a time-series-split training dataset assigns the new "
+                "batch to splits by the split's fixed time boundaries, so a recent "
+                "batch usually lands entirely in the last split (e.g. test) and the "
+                "earlier splits do not grow. Pass `overwrite=True` to rebuild the "
+                "splits over the full data instead.",
+                stacklevel=2,
+            )
+        if training_dataset_obj.data_format != "parquet":
+            raise FeatureStoreException(
+                "Appending to a training dataset is only supported for the "
+                f"`parquet` data format, but this dataset is `{training_dataset_obj.data_format}`."
+            )
+
+        # Scope the materialization to this call's event-time window so only the
+        # new batch is read from the feature groups; the persisted create-time
+        # window is not reused for an incremental append.
+        training_dataset_obj.event_start_time = start_time
+        training_dataset_obj.event_end_time = end_time
+
+        td_job = self._compute_training_dataset(
+            feature_view_obj,
+            user_write_options,
+            training_dataset_obj=training_dataset_obj,
+            spine=spine,
+            transformation_context=transformation_context,
+            save_mode=self._OVERWRITE if overwrite else self._APPEND,
+        )
+        return training_dataset_obj, td_job
+
     def _read_from_storage_connector(
         self,
         training_data_obj,
@@ -855,7 +921,12 @@ class FeatureViewEngine:
         event_time=False,
         training_helper_columns=False,
         transformation_context: dict[str, Any] = None,
+        save_mode=None,
     ):
+        # Overwrite the whole dataset unless the caller asks to append (see
+        # `_insert_training_data`), in which case a new Hive partition is added.
+        if save_mode is None:
+            save_mode = self._OVERWRITE
         if training_dataset_obj:
             pass
         elif training_dataset_version:
@@ -892,7 +963,7 @@ class FeatureViewEngine:
             training_dataset_obj,
             batch_query,
             user_write_options,
-            self._OVERWRITE,
+            save_mode,
             feature_view_obj=feature_view_obj,
             transformation_context=transformation_context,
         )
@@ -902,6 +973,13 @@ class FeatureViewEngine:
             feature_view=feature_view_obj,
             training_dataset_version=training_dataset_obj.version,
         )
+
+        # On append the newly written partition is a small daily increment, but
+        # recomputing statistics reads the whole (potentially multi-TB) dataset
+        # back, so skip the read-and-refit; existing statistics are left as they
+        # were computed at create/recreate time.
+        if save_mode == self._APPEND:
+            return td_job
 
         if engine._get_type().startswith("spark"):
             # if spark engine, read td and compute stats
