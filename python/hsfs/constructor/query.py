@@ -792,6 +792,7 @@ class Query:
         return self
 
     _AGGREGATE_FUNCTIONS = ("count", "sum", "min", "max", "avg")
+    _AGGREGATE_NARY_FUNCTIONS = ("greatest", "least")
 
     @public
     def aggregate(
@@ -809,6 +810,13 @@ class Query:
         the same trailing window is applied per training-data row, keeping
         train/serve consistency.
 
+        Three key forms are supported, covering RonSQL's full aggregation surface:
+        a feature name with `count`, `sum`, `min`, `max` or `avg`; the special key
+        `"*"` with `count` for a row count (`COUNT(*)`, output feature `count`);
+        and a comma-separated list of two or more features with `greatest` or
+        `least`, aggregating the per-row n-ary maximum/minimum over the entity's
+        rows (output feature `<a>_<b>_greatest`).
+
         `aggregate` is not terminal: it returns the query so you can keep
         building, for example joining in features from other feature groups.
         It is mutually exclusive with [`Query.collect`][hsfs.constructor.query.Query.collect]
@@ -818,14 +826,19 @@ class Query:
             ```python
             fg = fs.get_feature_group("transactions")
             query = fg.select(["amount"]).aggregate(
-                {"amount": ["count", "sum", "avg"]},
+                {
+                    "amount": ["count", "sum", "avg"],
+                    "*": ["count"],                       # row count
+                    "amount_in,amount_out": ["greatest"],  # max of per-row GREATEST
+                },
                 window=timedelta(days=30),
             )
             ```
 
         Parameters:
-            aggregations: Mapping of feature name to the aggregation functions to
-                apply; allowed functions are `count`, `sum`, `min`, `max` and `avg`.
+            aggregations: Mapping of feature name (or `"*"`, or a comma-separated
+                feature list for `greatest`/`least`) to the aggregation functions
+                to apply.
             window: Optional trailing time window over the feature group's
                 event-time column, as seconds or a timedelta.
                 If the feature group has a TTL, the window must not exceed it.
@@ -850,18 +863,40 @@ class Query:
                 raise ValueError(
                     f"aggregate(): no functions given for feature '{feature_name}'"
                 )
-            for fn in functions:
-                if fn.lower() not in self._AGGREGATE_FUNCTIONS:
+            fns = [fn.lower() for fn in functions]
+            if feature_name == "*":
+                if any(fn != "count" for fn in fns):
                     raise ValueError(
-                        f"aggregate(): unsupported function '{fn}' for feature "
-                        f"'{feature_name}'; allowed: {', '.join(self._AGGREGATE_FUNCTIONS)}"
+                        "aggregate(): the '*' key supports only 'count' (COUNT(*))"
                     )
+            elif "," in feature_name:
+                parts = [part.strip() for part in feature_name.split(",")]
+                if len(parts) < 2 or any(not part for part in parts):
+                    raise ValueError(
+                        "aggregate(): a greatest/least key must list two or more "
+                        f"features, got '{feature_name}'"
+                    )
+                for fn in fns:
+                    if fn not in self._AGGREGATE_NARY_FUNCTIONS:
+                        raise ValueError(
+                            f"aggregate(): multi-feature keys support only "
+                            f"{', '.join(self._AGGREGATE_NARY_FUNCTIONS)}; got '{fn}'"
+                        )
+            else:
+                for fn in fns:
+                    if fn not in self._AGGREGATE_FUNCTIONS:
+                        raise ValueError(
+                            f"aggregate(): unsupported function '{fn}' for feature "
+                            f"'{feature_name}'; allowed: "
+                            f"{', '.join(self._AGGREGATE_FUNCTIONS)}"
+                        )
         if isinstance(window, timedelta):
             window = window.total_seconds()
         if window is not None and window <= 0:
             raise ValueError("aggregate(): window must be positive")
         self._aggregate = {
-            name: [fn.lower() for fn in fns] for name, fns in aggregations.items()
+            name.replace(" ", ""): [fn.lower() for fn in fns]
+            for name, fns in aggregations.items()
         }
         self._aggregate_window = window
         return self

@@ -941,6 +941,34 @@ class TestQuery:
         with pytest.raises(ValueError, match="mutually exclusive"):
             TestQuery.fg1.select_all().aggregate({"label": ["count"]}).collect(10)
 
+    def test_aggregate_count_star(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        q = TestQuery.fg1.select_all().aggregate({"*": ["count"]})
+        assert q._aggregate == {"*": ["count"]}
+
+        with pytest.raises(ValueError, match="COUNT"):
+            TestQuery.fg1.select_all().aggregate({"*": ["sum"]})
+
+    def test_aggregate_greatest_least_multi_feature(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        # spaces around the comma are normalized away
+        q = TestQuery.fg1.select_all().aggregate(
+            {"label, tf_name": ["greatest", "LEAST"]}
+        )
+        assert q._aggregate == {"label,tf_name": ["greatest", "least"]}
+
+        # greatest/least require a multi-feature key
+        with pytest.raises(ValueError, match="unsupported function"):
+            TestQuery.fg1.select_all().aggregate({"label": ["greatest"]})
+        # multi-feature keys support only greatest/least
+        with pytest.raises(ValueError, match="multi-feature"):
+            TestQuery.fg1.select_all().aggregate({"label,tf_name": ["sum"]})
+        # a trailing comma is not a valid multi-feature key
+        with pytest.raises(ValueError, match="two or more"):
+            TestQuery.fg1.select_all().aggregate({"label,": ["greatest"]})
+
     def test_aggregate_round_trip(self, mocker):
         mocker.patch("hsfs.engine._get_type", return_value="python")
 
