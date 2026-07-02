@@ -4935,7 +4935,7 @@ class GlueConnector(StorageConnector):
         return options
 
 
-@public("hsfs.storage_connector.GoogleSheetsConnector")
+@public
 class GoogleSheetsConnector(StorageConnector):
     """A Google Sheets storage connector authenticated by a GCP service-account keyfile.
 
