@@ -118,7 +118,9 @@ class EnvironmentAttribute:
 class MethodCounter:
     def __init__(self):
         self.method_counts = {}
-        random.seed(42)
+        # Use a private generator so telemetry sampling never touches the
+        # process-global random module (which belongs to the user's program).
+        self._rng = random.Random(42)
 
     def _add(self, m):
         s = self._get_method_name(m)
@@ -133,10 +135,10 @@ class MethodCounter:
         if cnt < 100:
             return True
         if cnt < 1000:
-            return random.random() < 0.1
+            return self._rng.random() < 0.1
         if cnt < 10000:
-            return random.random() < 0.01
-        return random.random() < 0.001
+            return self._rng.random() < 0.01
+        return self._rng.random() < 0.001
 
     def _get_method_name(self, m):
         return m.__module__ + m.__name__
