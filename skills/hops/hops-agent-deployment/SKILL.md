@@ -5,12 +5,12 @@ description: Use when writing and deploying an interactive agent (e.g. a LlamaIn
 
 # Hopsworks Agent Deployments
 
-An agent deployment is a **server-only KServe deployment with no model attached** — you ship an entry script (or a package) that handles requests. Use it for interactive agents and LLM workflows (LlamaIndex, custom LLM orchestration). The agent *is* the **inference pipeline** of the AI system: it usually skips the training pipeline and calls a foundation LLM, and if it needs RAG it reads context from the feature store (write the RAG features in a separate **feature pipeline** — see hops-features). For a scheduled, non-interactive coding agent, use **hops-agent-job** instead; for a model-backed predictor, use **hops-online-inference**.
+An agent deployment is a **server-only KServe deployment with no model attached** — you ship an entry script (or a package) that handles requests. Use it for interactive agents and LLM workflows (LlamaIndex, custom LLM orchestration). The agent *is* the **inference pipeline** of the AI system: it usually skips the training pipeline and calls a foundation LLM, and if it needs RAG it reads context from the feature store (write the RAG features in a separate **feature pipeline** — see hops-features). Agents can be created from HopsFS or from GitHub/Git repositories, just like apps. For a scheduled, non-interactive coding agent, use **hops-agent-job** instead; for a model-backed predictor, use **hops-online-inference**.
 
 Start with a deterministic **LLM workflow** (a fixed sequence of steps) and only graduate to an autonomous agent when the task is open-ended enough to require runtime planning over tools. Workflows are cheaper, lower-latency, and easier to make reliable.
 
 ## Contract
-- **Input:** an entry script (a `.py` file, or a directory containing a `pyproject.toml`).
+- **Input:** an entry script (a `.py` file, or a directory containing a `pyproject.toml`), either from HopsFS or from a Git repository.
 - **Output:** a served agent deployment (server-only KServe deployment, queryable endpoint).
 - **Pre-condition:** auth + serving reachable; the agent name and environment are valid (`[A-Za-z0-9_-]+`).
 
@@ -40,6 +40,10 @@ class Predict:
 
 ## Deploy — CLI (preferred)
 
+Use the CLI for local HopsFS sources. Git-backed agents are supported too, but
+they are created through the SDK example below with `git_url`,
+`git_provider`, and `git_branch`.
+
 ```bash
 hops agent create my_agent.py --name my_agent \
   --requirements requirements.txt --environment my_agent
@@ -53,7 +57,10 @@ hops agent delete my_agent --yes
 
 **Confirm before deleting.** `hops agent delete` tears down the served agent irreversibly; confirm the exact name with the user, and never tear down an agent you created as a side effect (temp or test ones included) unless they asked.
 
-`create` re-run uploads the latest code and rewrites the predictor; a running agent is left untouched (use `start`, or `restart` via the SDK, to roll onto new code).
+`create` re-run uploads the latest code and rewrites the predictor; a running
+agent is left untouched (use `start`, or `restart` via the SDK, to roll onto
+new code). For Git-backed agents, use the SDK example below so the repository
+is cloned on each start.
 
 ## Deploy — SDK
 
@@ -73,6 +80,24 @@ deployment = ms.deploy_agent(
 deployment.start(await_running=600)
 print(deployment.predict(inputs={"prompt": "hello"}))
 # After editing the code: re-create, then deployment.restart()
+```
+
+### Git-backed Agents
+
+When the agent source lives in Git, provide the repository fields instead of a HopsFS path. Git-backed agents are cloned again on each start, so a restart or redeploy picks up new commits.
+
+- Supported Git providers: `GitHub`, `GitLab`, and `BitBucket`.
+- Use the repository root or a repo-relative path for the entry script.
+
+```python
+deployment = ms.deploy_agent(
+    entry="agent.py",
+    name="my_agent",
+    git_url="https://github.com/gibchikafa/my-agent-repo.git",
+    git_provider="GitHub",
+    git_branch="main",
+    environment="my_agent",
+)
 ```
 
 ## Next Steps

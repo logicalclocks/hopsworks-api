@@ -754,7 +754,7 @@ class FeatureStore:
         version: int | None = None,
         description: str = "",
         online_enabled: bool = False,
-        time_travel_format: str | None = "DELTA",
+        time_travel_format: str | None = None,
         partition_key: list[str] | None = None,
         primary_key: list[str] | None = None,
         foreign_key: list[str] | None = None,
@@ -831,7 +831,7 @@ class FeatureStore:
             version: Version of the feature group to create, defaults to `None` and will create the feature group with incremented version from the last version in the feature store.
             description: A string describing the contents of the feature group to improve discoverability for Data Scientists.
             online_enabled: Define whether the feature group should be made available also in the online feature store for low latency access.
-            time_travel_format: Format used for time travel, either `"DELTA"`, `"HUDI"`, `"ICEBERG"`, or `None` to disable time travel, defaults to `"DELTA"`.
+            time_travel_format: Format used for time travel, either `"DELTA"`, `"HUDI"`, `"ICEBERG"`, or `None` to disable time travel; when left unset, the format of `data_source` is used if it specifies one, otherwise it falls back to `"DELTA"`.
             partition_key: A list of feature names to be used as partition key when writing the feature data to the offline storage, defaults to empty list `[]`.
             primary_key:
                 A list of feature names to be used as primary key for the feature group.
@@ -963,6 +963,10 @@ class FeatureStore:
                 DeprecationWarning,
                 stacklevel=2,
             )
+        # When the format is left unset, use the one the data source advertises
+        # if it specifies one, otherwise fall back to the default format.
+        if time_travel_format is None:
+            time_travel_format = data_source.format or "DELTA"
         feature_group_object = feature_group.FeatureGroup(
             name=name,
             version=version,
@@ -1008,7 +1012,7 @@ class FeatureStore:
         version: int,
         description: str | None = "",
         online_enabled: bool | None = False,
-        time_travel_format: str | None = "DELTA",
+        time_travel_format: str | None = None,
         partition_key: list[str] | None = None,
         primary_key: list[str] | None = None,
         foreign_key: list[str] | None = None,
@@ -1078,7 +1082,7 @@ class FeatureStore:
             version: Version of the feature group to retrieve or create.
             description: A string describing the contents of the feature group to improve discoverability for Data Scientists.
             online_enabled: Define whether the feature group should be made available also in the online feature store for low latency access.
-            time_travel_format: Format used for time travel, either `"DELTA"`, `"HUDI"`, `"ICEBERG"`, or `None` to disable time travel, defaults to `"DELTA"`.
+            time_travel_format: Format used for time travel, either `"DELTA"`, `"HUDI"`, `"ICEBERG"`, or `None` to disable time travel; when left unset, the format of `data_source` is used if it specifies one, otherwise it falls back to `"DELTA"`.
             partition_key: A list of feature names to be used as partition key when writing the feature data to the offline storage, defaults to empty list `[]`.
             primary_key:
                 A list of feature names to be used as primary key for the feature group.
@@ -1204,6 +1208,11 @@ class FeatureStore:
                     DeprecationWarning,
                     stacklevel=2,
                 )
+            # When the format is left unset, use the one the data source
+            # advertises if it specifies one, otherwise fall back to the
+            # default format.
+            if time_travel_format is None:
+                time_travel_format = data_source.format or "DELTA"
             feature_group_object = feature_group.FeatureGroup(
                 name=name,
                 version=version,
@@ -1286,7 +1295,7 @@ class FeatureStore:
             query:
                 A string containing a SQL query valid for the target data source.
                 The query will be used to pull data from the data sources when the feature group is used. **[DEPRECATED: Use `data_source` instead.]**
-            data_format: If the external feature groups refers to a directory with data, the data format to use when reading it.
+            data_format: If the external feature groups refers to a directory with data, the data format to use when reading it; when left unset, the format of `data_source` is used if it specifies one.
             path: The location within the scope of the storage connector, from where to read the data for the external feature group. **[DEPRECATED: Use `data_source` instead.]**
             options:
                 Additional options to be used by the engine when reading data from the specified storage connector.
@@ -1371,6 +1380,10 @@ class FeatureStore:
                 DeprecationWarning,
                 stacklevel=2,
             )
+        # When the format is left unset, use the one the data source advertises
+        # if it specifies one.
+        if data_format is None:
+            data_format = data_source.format
         feature_group_object = feature_group.ExternalFeatureGroup(
             name=name,
             data_format=data_format,
@@ -1482,6 +1495,7 @@ class FeatureStore:
                 The query will be used to pull data from the data sources when the feature group is used. **[DEPRECATED: Use `data_source` instead.]**
             data_format:
                 If the external feature groups refers to a directory with data, the data format to use when reading it.
+                When left unset, the format of `data_source` is used if it specifies one.
             path:
                 The location within the scope of the storage connector, from where to read the data for the external feature group. **[DEPRECATED: Use `data_source` instead.]**
             options:
@@ -1588,6 +1602,10 @@ class FeatureStore:
                 DeprecationWarning,
                 stacklevel=2,
             )
+        # When the format is left unset, use the one the data source advertises
+        # if it specifies one.
+        if data_format is None:
+            data_format = data_source.format
         feature_group_object = feature_group.ExternalFeatureGroup(
             name=name,
             data_format=data_format,
