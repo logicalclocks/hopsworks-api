@@ -45,7 +45,7 @@ def _model() -> SimpleNamespace:
 
 
 class TestModelApi:
-    def test_get_tags_decodes_values_without_double_decode(self, mocker):
+    def testget_tags_decodes_values_without_double_decode(self, mocker):
         # Arrange
         api = ModelApi()
         value = {"owner": "team-a", "score": 3}
@@ -55,7 +55,7 @@ class TestModelApi:
         )
 
         # Act
-        result = api._get_tags(_model())
+        result = api.get_tags(_model())
 
         # Assert
         assert result == {"meta": value, "count": 9}
@@ -67,7 +67,7 @@ class TestModelApi:
         _patch_client(mocker, _tags_response([("meta", json.dumps(value))]))
 
         # Act
-        result = api._get_tag(_model(), "meta")
+        result = api.get_tag(_model(), "meta")
 
         # Assert
         assert result == value
@@ -78,7 +78,7 @@ class TestModelApi:
         _patch_client(mocker, _tags_response([("version", json.dumps(7))]))
 
         # Act
-        result = api._get_tag(_model(), "version")
+        result = api.get_tag(_model(), "version")
 
         # Assert
         assert result == 7
@@ -89,19 +89,19 @@ class TestModelApi:
         _patch_client(mocker, {"count": 0, "items": []})
 
         # Act
-        result = api._get_tag(_model(), "missing")
+        result = api.get_tag(_model(), "missing")
 
         # Assert
         assert result is None
 
     @pytest.mark.parametrize("bad_value", [{"a": 1}, 7, ["x"], True])
-    def test_get_tags_does_not_double_decode(self, mocker, bad_value):
+    def testget_tags_does_not_double_decode(self, mocker, bad_value):
         # Arrange
         api = ModelApi()
         _patch_client(mocker, _tags_response([("t", json.dumps(bad_value))]))
 
         # Act
-        result = api._get_tags(_model())
+        result = api.get_tags(_model())
 
         # Assert
         assert result == {"t": bad_value}

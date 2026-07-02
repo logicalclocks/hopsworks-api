@@ -54,7 +54,7 @@ class TestTagsApi:
         _patch_client(mocker, _tags_response("meta", json.dumps(value)))
 
         # Act
-        result = api._get(_fg_metadata())
+        result = api.get(_fg_metadata())
 
         # Assert
         assert result == {"meta": value}
@@ -65,7 +65,7 @@ class TestTagsApi:
         _patch_client(mocker, _tags_response("version", json.dumps(7)))
 
         # Act
-        result = api._get(_fg_metadata())
+        result = api.get(_fg_metadata())
 
         # Assert
         assert result == {"version": 7}
@@ -76,7 +76,7 @@ class TestTagsApi:
         _patch_client(mocker, _tags_response("note", "just a plain string"))
 
         # Act
-        result = api._get(_fg_metadata())
+        result = api.get(_fg_metadata())
 
         # Assert
         assert result == {"note": "just a plain string"}
@@ -89,7 +89,7 @@ class TestTagsApi:
         )
 
         # Act
-        result = api._get(_fg_metadata(), name="meta")
+        result = api.get(_fg_metadata(), name="meta")
 
         # Assert
         assert result == {"meta": {"k": "v"}}
@@ -102,7 +102,7 @@ class TestTagsApi:
         _patch_client(mocker, {"count": 0, "items": []})
 
         # Act
-        result = api._get(_fg_metadata())
+        result = api.get(_fg_metadata())
 
         # Assert
         assert result == {}
@@ -119,7 +119,7 @@ class TestTagsApi:
         )
 
         # Act
-        result = api._get(fv_metadata)
+        result = api.get(fv_metadata)
 
         # Assert
         assert result == {"meta": {"k": "v"}}
@@ -133,7 +133,7 @@ class TestTagsApi:
         _patch_client(mocker, _tags_response("t", json.dumps(bad_value)))
 
         # Act
-        result = api._get(_fg_metadata())
+        result = api.get(_fg_metadata())
 
         # Assert
         assert result == {"t": bad_value}
