@@ -113,10 +113,9 @@
 | python/hopsworks/mcp/resources/\_\_init\_\_.py                                   |        0 |        0 |    100% |           |
 | python/hopsworks/mcp/resources/project.py                                        |       28 |       14 |     50% |59-64, 86-90, 108-113 |
 | python/hopsworks/mcp/run\_server.py                                              |       69 |       29 |     58% |41-45, 53-55, 174, 179, 193-234 |
-| python/hopsworks/mcp/server.py                                                   |       32 |        2 |     94% |   70, 110 |
-| python/hopsworks/mcp/tools/\_\_init\_\_.py                                       |        7 |        0 |    100% |           |
+| python/hopsworks/mcp/server.py                                                   |       31 |        2 |     94% |   69, 107 |
+| python/hopsworks/mcp/tools/\_\_init\_\_.py                                       |        6 |        0 |    100% |           |
 | python/hopsworks/mcp/tools/auth.py                                               |       15 |        4 |     73% |     78-95 |
-| python/hopsworks/mcp/tools/brewer.py                                             |       91 |       68 |     25% |64-110, 117-137, 142-146, 155-157, 161-198 |
 | python/hopsworks/mcp/tools/dataset.py                                            |       72 |       49 |     32% |75-89, 122-137, 170-184, 222-239, 267-273, 288-297 |
 | python/hopsworks/mcp/tools/feature\_group.py                                     |       67 |       45 |     33% |60-67, 72-81, 87-95, 108-111, 120-125, 150-179, 190-195 |
 | python/hopsworks/mcp/tools/jobs.py                                               |       25 |       11 |     56% |59-66, 81-89 |
@@ -124,7 +123,7 @@
 | python/hopsworks/mcp/tools/terminal.py                                           |       59 |       36 |     39% |36-38, 62-65, 81-111, 123-127, 141-147, 162-168 |
 | python/hopsworks/mcp/utils/\_\_init\_\_.py                                       |        0 |        0 |    100% |           |
 | python/hopsworks/mcp/utils/auth.py                                               |       11 |        6 |     45% |     57-76 |
-| python/hopsworks/mcp/utils/tags.py                                               |       16 |        0 |    100% |           |
+| python/hopsworks/mcp/utils/tags.py                                               |       15 |        0 |    100% |           |
 | python/hopsworks/project/\_\_init\_\_.py                                         |        2 |        0 |    100% |           |
 | python/hopsworks/secret/\_\_init\_\_.py                                          |        2 |        2 |      0% |       5-6 |
 | python/hopsworks/spark.py                                                        |       17 |       17 |      0% |     18-95 |
@@ -465,7 +464,7 @@
 | python/hsml/utils/schema/tensor.py                                               |        8 |        0 |    100% |           |
 | python/hsml/utils/schema/tensor\_schema.py                                       |       34 |        0 |    100% |           |
 | python/hsml/version.py                                                           |        2 |        2 |      0% |     17-22 |
-| **TOTAL**                                                                        | **39527** | **12558** | **68%** |           |
+| **TOTAL**                                                                        | **39433** | **12490** | **68%** |           |
 
 
 ## Setup coverage badge
