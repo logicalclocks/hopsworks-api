@@ -27,7 +27,7 @@ class TestDatasetApiTags:
         client_instance._project_id = 1
         client_instance._send_request.return_value = send_request_return
         mocker.patch(
-            "hopsworks_common.core.dataset_api.client._get_instance",
+            "hopsworks_common.core.dataset_api.client.get_instance",
             return_value=client_instance,
         )
         return client_instance

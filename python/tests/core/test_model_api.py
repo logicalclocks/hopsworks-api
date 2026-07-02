@@ -34,7 +34,7 @@ def _patch_client(mocker, send_request_return) -> MagicMock:
     client_instance._project_id = 1
     client_instance._send_request.return_value = send_request_return
     mocker.patch(
-        "hsml.core.model_api.client._get_instance",
+        "hsml.core.model_api.client.get_instance",
         return_value=client_instance,
     )
     return client_instance
