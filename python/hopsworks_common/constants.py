@@ -39,6 +39,8 @@ class JOBS:
         "FRAMEWORK_FAILURE",
         "APP_MASTER_START_FAILED",
         "INITIALIZATION_FAILED",
+        "SUBMISSION_FAILED",
+        "QUEUE_TIMEOUT",
     ]
 
 
