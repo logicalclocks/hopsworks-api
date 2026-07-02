@@ -107,3 +107,43 @@ class TestRonsqlTemplateSubstitution:
         )
         # quote-doubled, so the payload stays inside one string literal
         assert "'a''; DROP TABLE x; --'" in query
+
+
+class _StubRestEngine:
+    def __init__(self, feature_names_per_fg_id):
+        self._feature_names_per_fg_id = feature_names_per_fg_id
+
+
+class TestRonsqlCollectOverlay:
+    def make_collect_server(self, rows):
+        server = make_server()
+        server._ronsql_scan_statement = make_statement()
+        server._rest_client_engine = _StubRestEngine(
+            {1: ["user_id", "amount", "event_time"]}
+        )
+        server._scan_rows_ronsql = lambda entry, limit=None: rows
+        return server
+
+    def test_overlay_folds_collect_columns_aligned(self):
+        rows = [
+            {"user_id": 7, "amount": 10.0, "event_time": "t3"},
+            {"user_id": 7, "amount": None, "event_time": "t2"},
+            {"user_id": 7, "amount": 30.0, "event_time": "t1"},
+        ]
+        server = self.make_collect_server(rows)
+        vector = server._overlay_ronsql_collect(
+            {"user_id": 7, "amount": None, "event_time": None, "tier": "gold"},
+            {"user_id": 7},
+        )
+        # nulls preserved so columns stay row-aligned; entity key stays scalar
+        assert vector["amount"] == [10.0, None, 30.0]
+        assert vector["event_time"] == ["t3", "t2", "t1"]
+        assert vector["user_id"] == 7
+        # joined features untouched
+        assert vector["tier"] == "gold"
+
+    def test_overlay_noop_without_collect_statement(self):
+        server = make_server()
+        server._ronsql_scan_statement = None
+        original = {"a": 1}
+        assert server._overlay_ronsql_collect(original, {"user_id": 7}) == {"a": 1}

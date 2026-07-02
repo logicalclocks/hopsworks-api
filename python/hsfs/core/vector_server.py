@@ -534,6 +534,11 @@ class VectorServer:
                 drop_missing=not allow_missing,
                 return_type=self.rest_client_engine.RETURN_TYPE_FEATURE_VALUE_DICT,
             )
+            # v3 online path: for a collect feature view, the /feature_store point read
+            # cannot serve the collect feature group (its full PK includes the order
+            # column, which is not a serving key) — fetch those rows via RonSQL and
+            # overlay them as folded lists.
+            serving_vector = self._overlay_ronsql_collect(serving_vector, rondb_entry)
         else:
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug("_get_feature_vector Online SQL client")
@@ -1329,6 +1334,45 @@ class VectorServer:
                 )
             return pl.DataFrame(rows)
         return rows
+
+    def _overlay_ronsql_collect(
+        self, serving_vector: dict[str, Any], entry: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Overlay the collect feature group's features with folded lists fetched via RonSQL.
+
+        For a collect feature view served by the REST client, the /feature_store point
+        read returns nothing usable for the collect feature group (its full primary key
+        includes the order column, which is not a serving key).
+        This fetches the entity's most-recent rows through /ronsql and folds each
+        collected column into a list, newest-first, with nulls preserved so the columns
+        stay row-aligned.
+        Entity-key columns keep their scalar values.
+        No-op for feature views without a collect RonSQL statement.
+
+        Parameters:
+            serving_vector: The feature-name-to-value dict from the point read.
+            entry: Entity-key values used to look up the collect rows.
+
+        Returns:
+            The serving vector with collected columns replaced by aligned lists.
+        """
+        statement = self._get_ronsql_scan_statement()
+        if statement is None:
+            return serving_vector
+        rows = self._scan_rows_ronsql(entry)
+        collect_feature_names = (
+            self.rest_client_engine._feature_names_per_fg_id.get(
+                statement.feature_group_id, []
+            )
+        )
+        entity_keys = {
+            param.name for param in statement.prepared_statement_parameters
+        }
+        for name in collect_feature_names:
+            if name in entity_keys:
+                continue
+            serving_vector[name] = [row.get(name) for row in rows]
+        return serving_vector
 
     def _scan_rows_ronsql(
         self, entry: dict[str, Any], limit: int | None = None
