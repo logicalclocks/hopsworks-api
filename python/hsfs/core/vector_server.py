@@ -1345,15 +1345,17 @@ class VectorServer:
     def _overlay_ronsql_collect(
         self, serving_vector: dict[str, Any], entry: dict[str, Any]
     ) -> dict[str, Any]:
-        """Overlay the collect feature group's features with folded lists fetched via RonSQL.
+        """Overlay the collect feature group's features with folded rows fetched via RonSQL.
 
         For a collect feature view served by the REST client, the /feature_store point
         read returns nothing usable for the collect feature group (its full primary key
         includes the order column, which is not a serving key).
-        This fetches the entity's most-recent rows through /ronsql and folds each
-        collected column into a list, newest-first, with nulls preserved so the columns
-        stay row-aligned.
-        Entity-key columns keep their scalar values.
+        This fetches the entity's most-recent rows through /ronsql and folds them,
+        newest-first, into the single array<struct<...>> feature of the collect feature
+        group (v2 Design Contract C1): a list of per-row dicts, entity-key columns
+        excluded (they keep their scalar values in the vector).
+        Statements from a backend predating the collapsed schema fold each column into
+        its own list instead, with nulls preserved so the lists stay row-aligned.
         No-op for feature views without a collect RonSQL statement.
 
         Parameters:
@@ -1361,23 +1363,32 @@ class VectorServer:
             entry: Entity-key values used to look up the collect rows.
 
         Returns:
-            The serving vector with collected columns replaced by aligned lists.
+            The serving vector with the collect feature filled in.
         """
         for statement in self._get_ronsql_statements():
             rows = self._execute_ronsql_statement(statement, entry)
             if statement.collect_n is not None:
-                collect_feature_names = (
-                    self.rest_client_engine._feature_names_per_fg_id.get(
-                        statement.feature_group_id, []
-                    )
-                )
                 entity_keys = {
                     param.name for param in statement.prepared_statement_parameters
                 }
-                for name in collect_feature_names:
-                    if name in entity_keys:
-                        continue
-                    serving_vector[name] = [row.get(name) for row in rows]
+                if statement.collect_feature_name is not None:
+                    collect_name = (
+                        statement.prefix or ""
+                    ) + statement.collect_feature_name
+                    serving_vector[collect_name] = [
+                        {col: val for col, val in row.items() if col not in entity_keys}
+                        for row in rows
+                    ]
+                else:
+                    collect_feature_names = (
+                        self.rest_client_engine._feature_names_per_fg_id.get(
+                            statement.feature_group_id, []
+                        )
+                    )
+                    for name in collect_feature_names:
+                        if name in entity_keys:
+                            continue
+                        serving_vector[name] = [row.get(name) for row in rows]
             elif rows:
                 # pushdown aggregation: exactly one row of scalar outputs per entity
                 serving_vector.update(rows[0])
@@ -1456,7 +1467,10 @@ class VectorServer:
             if value is None:
                 # fall back to the serving-key alias for this feature (prefix handling)
                 for sk in self._serving_keys:
-                    if sk.feature_name == param.name and sk.required_serving_key in entry:
+                    if (
+                        sk.feature_name == param.name
+                        and sk.required_serving_key in entry
+                    ):
                         value = entry[sk.required_serving_key]
                         break
             if value is None:

@@ -34,6 +34,7 @@ class ServingPreparedStatement:
         query_online: str | None = None,
         prefix: str | None = None,
         collect_n: int | None = None,
+        collect_feature_name: str | None = None,
         query_ronsql: str | None = None,
         ronsql_database: str | None = None,
         aggregate_window: int | None = None,
@@ -52,6 +53,9 @@ class ServingPreparedStatement:
         # collect ("most recent N rows per entity"): when set, this statement returns up to
         # collect_n rows per entity to fold into list-typed features (see online_store_sql_engine).
         self._collect_n = collect_n
+        # Name of the feature-view feature the client folds the collect rows into
+        # (v2 C1: <fg_name>_collect, typed array<struct<...>>).
+        self._collect_feature_name = collect_feature_name
         # RonSQL template + target database for serving this statement via RDRS /ronsql
         # (v3 online path); the client substitutes typed literals for the `?` markers.
         self._query_ronsql = query_ronsql
@@ -120,6 +124,10 @@ class ServingPreparedStatement:
     @property
     def collect_n(self) -> int | None:
         return self._collect_n
+
+    @property
+    def collect_feature_name(self) -> str | None:
+        return self._collect_feature_name
 
     @property
     def query_ronsql(self) -> str | None:

@@ -37,6 +37,7 @@ def make_statement(**overrides):
         "query_ronsql": TEMPLATE,
         "ronsql_database": "proj_featurestore",
         "collect_n": 100,
+        "collect_feature_name": "transactions_collect",
     }
     kwargs.update(overrides)
     return ServingPreparedStatement(**kwargs)
@@ -124,7 +125,7 @@ class TestRonsqlCollectOverlay:
         server._execute_ronsql_statement = lambda stmt, entry: rows
         return server
 
-    def test_overlay_folds_collect_columns_aligned(self):
+    def test_overlay_folds_rows_into_struct_array(self):
         rows = [
             {"user_id": 7, "amount": 10.0, "event_time": "t3"},
             {"user_id": 7, "amount": None, "event_time": "t2"},
@@ -132,15 +133,43 @@ class TestRonsqlCollectOverlay:
         ]
         server = self.make_ronsql_server(make_statement(), rows)
         vector = server._overlay_ronsql_collect(
-            {"user_id": 7, "amount": None, "event_time": None, "tier": "gold"},
+            {"user_id": 7, "transactions_collect": None, "tier": "gold"},
             {"user_id": 7},
         )
-        # nulls preserved so columns stay row-aligned; entity key stays scalar
-        assert vector["amount"] == [10.0, None, 30.0]
-        assert vector["event_time"] == ["t3", "t2", "t1"]
+        # one array<struct> feature (v2 C1), newest-first, entity key stripped from rows
+        assert vector["transactions_collect"] == [
+            {"amount": 10.0, "event_time": "t3"},
+            {"amount": None, "event_time": "t2"},
+            {"amount": 30.0, "event_time": "t1"},
+        ]
+        # entity key stays scalar; joined features untouched
         assert vector["user_id"] == 7
-        # joined features untouched
         assert vector["tier"] == "gold"
+
+    def test_overlay_applies_statement_prefix_to_collect_feature(self):
+        rows = [{"user_id": 7, "amount": 10.0, "event_time": "t1"}]
+        server = self.make_ronsql_server(make_statement(prefix="txn_"), rows)
+        vector = server._overlay_ronsql_collect({}, {"user_id": 7})
+        assert vector["txn_transactions_collect"] == [
+            {"amount": 10.0, "event_time": "t1"}
+        ]
+
+    def test_overlay_legacy_backend_folds_per_column(self):
+        # statements from a backend predating the collapsed schema carry no
+        # collect_feature_name; each column folds into its own row-aligned list
+        rows = [
+            {"user_id": 7, "amount": 10.0, "event_time": "t2"},
+            {"user_id": 7, "amount": None, "event_time": "t1"},
+        ]
+        server = self.make_ronsql_server(
+            make_statement(collect_feature_name=None), rows
+        )
+        vector = server._overlay_ronsql_collect(
+            {"user_id": 7, "amount": None, "event_time": None}, {"user_id": 7}
+        )
+        assert vector["amount"] == [10.0, None]
+        assert vector["event_time"] == ["t2", "t1"]
+        assert vector["user_id"] == 7
 
     def test_overlay_merges_aggregate_row_scalars(self):
         statement = make_statement(
@@ -176,8 +205,8 @@ class TestRonsqlCollectOverlay:
                 strict=True,
             )
         ]
-        assert results[0]["amount"] == [10.0]
-        assert results[1]["amount"] == [20.0]
+        assert results[0]["transactions_collect"] == [{"amount": 10.0}]
+        assert results[1]["transactions_collect"] == [{"amount": 20.0}]
         assert results[0]["tier"] == "gold"
 
     def test_overlay_noop_without_ronsql_statements(self):

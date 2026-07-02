@@ -90,6 +90,7 @@ class OnlineStoreSqlClient:
         self._pkname_by_serving_index = None
         # prepared_statement_index -> collect N (None when the statement is a regular point read)
         self._collect_n_by_serving_index: dict[int, int] = {}
+        self._collect_name_by_serving_index: dict[int, str] = {}
         self._serving_key_by_serving_index: dict[str, ServingKey] = {}
         self._serving_keys: set[ServingKey] = set(serving_keys or [])
 
@@ -240,6 +241,15 @@ class OnlineStoreSqlClient:
             statement.prepared_statement_index: statement.collect_n
             for statement in prepared_statements
             if statement.collect_n is not None
+        }
+        # v2 C1: the feature-view feature name (prefix applied, like every other column
+        # alias in the statement) that the collect rows fold into as a list of structs.
+        self._collect_name_by_serving_index = {
+            statement.prepared_statement_index: (statement.prefix or "")
+            + statement.collect_feature_name
+            for statement in prepared_statements
+            if statement.collect_n is not None
+            and statement.collect_feature_name is not None
         }
         self._feature_name_order_by_psp = {
             statement.prepared_statement_index: {
@@ -535,7 +545,11 @@ class OnlineStoreSqlClient:
                     for sk in self.serving_key_by_serving_index.get(key, [])
                 }
                 serving_vector.update(
-                    self._fold_collect_rows(results_dict[key], pk_names)
+                    self._fold_collect_rows(
+                        results_dict[key],
+                        pk_names,
+                        self._collect_name_by_serving_index.get(key),
+                    )
                 )
                 continue
             for row in results_dict[key]:
@@ -546,29 +560,41 @@ class OnlineStoreSqlClient:
 
         return serving_vector
 
-    def _fold_collect_rows(self, rows: list[Any], pk_names: set[str]) -> dict[str, Any]:
+    def _fold_collect_rows(
+        self,
+        rows: list[Any],
+        pk_names: set[str],
+        collect_feature_name: str | None,
+    ) -> dict[str, Any]:
         """Fold the up-to-N rows of a collect feature group into one feature dict.
 
-        Entity-key columns stay scalar (the entity id, identical across rows); every other
-        column becomes a list, ordered most-recent-first as returned by the query, with the
-        hopsworks_collect_rank helper column dropped.
+        Entity-key columns stay scalar (the entity id, identical across rows); the remaining
+        columns of each row become one struct (dict), and the structs form a list ordered
+        most-recent-first as returned by the query, assigned to the single
+        array<struct<...>> feature named `collect_feature_name` (v2 Design Contract C1).
+        The hopsworks_collect_rank helper column is dropped.
 
-        Nulls are PRESERVED so that all collected columns stay row-aligned: element i of every
-        list refers to the same collected event (v2 Design Contract C1, fixing the prior
-        per-column null-skip that desynced columns). The v2 target shape is a single
-        array<struct> feature per collect feature group; that requires the backend collected-
-        feature schema and is the remaining reimplementation. Until then, columns are kept
-        aligned here so no consumer sees mismatched-length lists.
+        When `collect_feature_name` is None (statement from a backend predating the
+        collapsed schema), each column folds into its own list instead, with nulls
+        preserved so the lists stay row-aligned.
         """
         folded: dict[str, Any] = {}
+        structs: list[dict[str, Any]] = []
         for row in rows:
+            struct_row: dict[str, Any] = {}
             for col, val in dict(row).items():
                 if col == self.COLLECT_RANK_ALIAS:
                     continue
                 if col in pk_names:
                     folded[col] = val
-                else:
+                elif collect_feature_name is None:
                     folded.setdefault(col, []).append(val)
+                else:
+                    struct_row[col] = val
+            if collect_feature_name is not None:
+                structs.append(struct_row)
+        if collect_feature_name is not None:
+            folded[collect_feature_name] = structs
         return folded
 
     def _batch_vector_results(
@@ -669,7 +695,11 @@ class OnlineStoreSqlClient:
                 pk_names = set(prefix_features)
                 for result_key, group_rows in grouped.items():
                     statement_results[result_key] = self._fold_collect_rows(
-                        group_rows, pk_names
+                        group_rows,
+                        pk_names,
+                        self._collect_name_by_serving_index.get(
+                            prepared_statement_index
+                        ),
                     )
             else:
                 for row in parallel_results[prepared_statement_index]:
