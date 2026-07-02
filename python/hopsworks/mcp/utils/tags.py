@@ -11,7 +11,6 @@ class TAGS:
     JOB = "job"
     SYSTEM = "system"
     TERMINAL = "terminal"
-    BREWER = "brewer"
 
     STATEFUL = "stateful"
     STATELESS = "stateless"
