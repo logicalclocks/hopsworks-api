@@ -34,6 +34,8 @@ class ServingPreparedStatement:
         query_online: str | None = None,
         prefix: str | None = None,
         collect_n: int | None = None,
+        query_ronsql: str | None = None,
+        ronsql_database: str | None = None,
         type: str | None = None,
         items: list[dict[str, Any]] | None = None,
         count: int | None = None,
@@ -49,6 +51,10 @@ class ServingPreparedStatement:
         # collect ("most recent N rows per entity"): when set, this statement returns up to
         # collect_n rows per entity to fold into list-typed features (see online_store_sql_engine).
         self._collect_n = collect_n
+        # RonSQL template + target database for serving this statement via RDRS /ronsql
+        # (v3 online path); the client substitutes typed literals for the `?` markers.
+        self._query_ronsql = query_ronsql
+        self._ronsql_database = ronsql_database
 
     @classmethod
     def from_response_json(
@@ -110,6 +116,14 @@ class ServingPreparedStatement:
     @property
     def collect_n(self) -> int | None:
         return self._collect_n
+
+    @property
+    def query_ronsql(self) -> str | None:
+        return self._query_ronsql
+
+    @property
+    def ronsql_database(self) -> str | None:
+        return self._ronsql_database
 
     @feature_group_id.setter
     def feature_group_id(self, feature_group_id: int | None) -> None:

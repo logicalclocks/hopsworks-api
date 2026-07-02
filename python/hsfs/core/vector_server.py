@@ -20,7 +20,7 @@ import logging
 import warnings
 from base64 import b64decode
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from io import BytesIO
 from typing import (
     TYPE_CHECKING,
@@ -42,6 +42,8 @@ from hopsworks_common.core.constants import (
 from hopsworks_common.core.type_systems import _create_extended_type
 from hsfs.client import exceptions, online_store_rest_client
 from hsfs.core import (
+    feature_view_api,
+    online_store_rest_client_api,
     online_store_rest_client_engine,
     online_store_sql_engine,
 )
@@ -1314,11 +1316,10 @@ class VectorServer:
             force_rest_client=force_rest_client, force_sql_client=force_sql_client
         )
         if online_client_choice == self.DEFAULT_REST_CLIENT:
-            raise exceptions.FeatureStoreException(
-                "scan_vectors is currently served by the SQL online client. Call it with "
-                "force_sql_client=True or set the feature view's default online client to 'sql'."
-            )
-        rows = self.sql_client._get_scan_rows(entry, limit=limit)
+            # v3 online path: serve the scan via RonSQL against RDRS /ronsql.
+            rows = self._scan_rows_ronsql(entry, limit=limit)
+        else:
+            rows = self.sql_client._get_scan_rows(entry, limit=limit)
         if return_type == "pandas":
             return pd.DataFrame(rows)
         if return_type == "polars":
@@ -1328,6 +1329,108 @@ class VectorServer:
                 )
             return pl.DataFrame(rows)
         return rows
+
+    def _scan_rows_ronsql(
+        self, entry: dict[str, Any], limit: int | None = None
+    ) -> list[dict[str, Any]]:
+        """Serve a collect scan through RonSQL against the RDRS /ronsql endpoint.
+
+        The backend generates a RonSQL statement template per collect feature view
+        (a CTE with `ORDER BY <order_col> DESC LIMIT N`, executed as a pushdown query
+        on the RonDB data nodes).
+        This substitutes the entity-key values into the template and executes it.
+        Requires RonDB >= 26.04 (RonSQL CTE support).
+
+        Parameters:
+            entry: Entity-key values, e.g. {"user_id": 123}.
+            limit: Optional client-side narrowing cap; never widens beyond the collect N.
+
+        Returns:
+            The collected rows, newest-first, as a list of row dictionaries.
+        """
+        statement = self._get_ronsql_scan_statement()
+        if statement is None:
+            raise exceptions.FeatureStoreException(
+                "This feature view has no RonSQL collect statement. scan_vectors via the "
+                "REST client requires a collect feature view and RonDB >= 26.04; "
+                "alternatively call scan_vectors(..., force_sql_client=True)."
+            )
+        query = self._substitute_ronsql_template(statement, entry)
+        rows = online_store_rest_client_api.OnlineStoreRestClientApi()._execute_ronsql(
+            query, statement.ronsql_database
+        )
+        return rows[:limit] if limit is not None else rows
+
+    def _get_ronsql_scan_statement(self):
+        """Fetch and cache the feature view's single-entity collect statement carrying a RonSQL template."""
+        if not hasattr(self, "_ronsql_scan_statement"):
+            statements = feature_view_api.FeatureViewApi(
+                self._feature_store_id
+            )._get_serving_prepared_statement(
+                self._feature_view_name,
+                self._feature_view_version,
+                batch=False,
+                inference_helper_columns=False,
+            )
+            self._ronsql_scan_statement = next(
+                (
+                    s
+                    for s in statements
+                    if s.collect_n is not None and s.query_ronsql is not None
+                ),
+                None,
+            )
+        return self._ronsql_scan_statement
+
+    def _substitute_ronsql_template(self, statement, entry: dict[str, Any]) -> str:
+        """Substitute typed entity-key literals into the RonSQL template's `?` markers.
+
+        RonSQL has no parameter binding, so values are inlined as literals.
+        Values are strictly typed: numbers inline bare, strings are quote-escaped and
+        control-character-rejected, anything else is rejected.
+        """
+        query = statement.query_ronsql
+        for param in statement.prepared_statement_parameters:
+            value = entry.get(param.name)
+            if value is None:
+                # fall back to the serving-key alias for this feature (prefix handling)
+                for sk in self._serving_keys:
+                    if sk.feature_name == param.name and sk.required_serving_key in entry:
+                        value = entry[sk.required_serving_key]
+                        break
+            if value is None:
+                raise exceptions.FeatureStoreException(
+                    f"Missing entity key '{param.name}' in entry for RonSQL scan."
+                )
+            query = query.replace("?", self._ronsql_literal(value), 1)
+        return query
+
+    @staticmethod
+    def _ronsql_literal(value: Any) -> str:
+        """Render a python value as a safe RonSQL literal."""
+        # bool is an int subclass; check it first
+        if isinstance(value, bool):
+            return "1" if value else "0"
+        if isinstance(value, int):
+            return str(value)
+        if isinstance(value, float):
+            if value != value or value in (float("inf"), float("-inf")):
+                raise exceptions.FeatureStoreException(
+                    "NaN/Inf entity-key values cannot be used in a RonSQL statement."
+                )
+            return repr(value)
+        if isinstance(value, (datetime, date)):
+            return "'" + value.strftime("%Y-%m-%d %H:%M:%S") + "'"
+        if isinstance(value, str):
+            if any(ord(c) < 0x20 for c in value) or "\\" in value:
+                raise exceptions.FeatureStoreException(
+                    "Entity-key strings with control characters or backslashes are not "
+                    "allowed in a RonSQL statement."
+                )
+            return "'" + value.replace("'", "''") + "'"
+        raise exceptions.FeatureStoreException(
+            f"Unsupported entity-key type for RonSQL: {type(value).__name__}."
+        )
 
     def _get_inference_helper(
         self,

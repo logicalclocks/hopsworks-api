@@ -56,7 +56,45 @@ else:
 class OnlineStoreRestClientApi:
     SINGLE_VECTOR_ENDPOINT = "feature_store"
     BATCH_VECTOR_ENDPOINT = "batch_feature_store"
+    RONSQL_ENDPOINT = "ronsql"
     PING_ENDPOINT = "ping"
+
+    def _execute_ronsql(self, query: str, database: str) -> list[dict[str, Any]]:
+        """Execute a RonSQL statement against the RonDB Rest Server /ronsql endpoint.
+
+        RonSQL statements are read-only SELECTs (optionally with CTEs and joins) executed
+        as pushdown queries on the RonDB data nodes.
+        Requires RonDB >= 26.04 for CTE/join support.
+
+        Parameters:
+            query: The complete RonSQL statement, with all literal values already substituted
+                (RonSQL has no parameter binding).
+            database: The single online database the statement is resolved and authorized against.
+
+        Returns:
+            The result set as a list of row dictionaries keyed by output column name.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the response status code is not 200.
+                RonSQL errors (parse errors, unsupported constructs, missing indexes) surface
+                as status 500 with a plain-text error body.
+        """
+        payload = {
+            "query": query,
+            "database": database,
+            "explainMode": "REMOVE",
+            "outputFormat": "JSON",
+        }
+        if _logger.isEnabledFor(logging.DEBUG):
+            _logger.debug(f"Sending RonSQL request: {json.dumps(payload, indent=2)}")
+        response = online_store_rest_client._get_instance()._send_request(
+            method="POST",
+            path_params=[self.RONSQL_ENDPOINT],
+            headers={"Content-Type": "application/json"},
+            data=json.dumps(payload),
+        )
+        body = self._handle_rdrs_feature_store_response(response)
+        return body.get("data", [])
 
     def _get_single_raw_feature_vector(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Get a single feature vector from the feature store.
