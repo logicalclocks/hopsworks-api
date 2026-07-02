@@ -108,6 +108,9 @@ class TestArrowFlightClient:
         mocker.patch("hsfs.storage_connector.StorageConnector._refetch")
         inode_path = mocker.MagicMock()
         inode_path.path = "/path/test.parquet"
+        # A file, not a directory: `_read_hopsfs_files` recurses into `dir`
+        # inodes, so leaving this as a truthy MagicMock recurses forever.
+        inode_path.dir = False
         mocker.patch(
             "hsfs.core.dataset_api.DatasetApi._list_dataset_path",
             return_value=(1, [inode_path]),
