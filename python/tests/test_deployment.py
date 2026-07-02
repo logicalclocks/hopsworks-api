@@ -14,6 +14,9 @@
 #   limitations under the License.
 #
 
+import copy
+
+import humps
 import pytest
 from hsml import deployment, deployment_tracing_config, predictor, resources
 from hsml.client.exceptions import ModelServingException
@@ -63,6 +66,73 @@ class TestDeployment:
         assert depl == pred
         mock_pred_from_response_json.assert_called_once_with(pred)
         mock_from_predictor.assert_called_once_with(pred)
+
+    def test_from_response_json_surfaces_missing_mandatory_tags(
+        self, mocker, backend_fixtures
+    ):
+        # Arrange
+        mocker.patch(
+            "hopsworks_common.client._get_serving_num_instances_limits",
+            return_value=[-1],
+        )
+        mocker.patch(
+            "hopsworks_common.client._is_scale_to_zero_required", return_value=False
+        )
+        mocker.patch("hopsworks_common.client._is_saas_connection", return_value=False)
+        mocker.patch("hopsworks_common.client._is_kserve_installed", return_value=True)
+        serving_json = humps.camelize(
+            copy.deepcopy(
+                backend_fixtures["predictor"]["get_deployments_singleton"]["response"][
+                    "items"
+                ][0]
+            )
+        )
+        serving_json["missingMandatoryTags"] = [
+            {"name": "owner", "deploymentSpecific": True}
+        ]
+
+        # Act
+        d = deployment.Deployment.from_response_json(serving_json)
+
+        # Assert
+        assert isinstance(d, deployment.Deployment)
+        assert d.missing_mandatory_tags == [
+            {"name": "owner", "deployment_specific": True}
+        ]
+
+    def test_update_from_response_json_refreshes_missing_mandatory_tags(
+        self, mocker, backend_fixtures
+    ):
+        # Arrange
+        mocker.patch(
+            "hopsworks_common.client._get_serving_num_instances_limits",
+            return_value=[-1],
+        )
+        mocker.patch(
+            "hopsworks_common.client._is_scale_to_zero_required", return_value=False
+        )
+        mocker.patch("hopsworks_common.client._is_saas_connection", return_value=False)
+        mocker.patch("hopsworks_common.client._is_kserve_installed", return_value=True)
+        p_json = copy.deepcopy(
+            backend_fixtures["predictor"]["get_deployments_singleton"]["response"][
+                "items"
+            ][0]
+        )
+        d = deployment.Deployment.from_response_json(humps.camelize(p_json))
+        assert d.missing_mandatory_tags == []
+
+        updated_serving_json = humps.camelize(p_json)
+        updated_serving_json["missingMandatoryTags"] = [
+            {"name": "owner", "deploymentSpecific": True}
+        ]
+
+        # Act
+        d.update_from_response_json(updated_serving_json)
+
+        # Assert
+        assert d.missing_mandatory_tags == [
+            {"name": "owner", "deployment_specific": True}
+        ]
 
     # constructor
 
@@ -215,7 +285,6 @@ class TestDeployment:
         class MockPredictor:
             _name = "name"
             _description = "description"
-            _missing_mandatory_tags = []
 
         p = MockPredictor()
         mock_deployment_init = mocker.patch(
@@ -230,7 +299,6 @@ class TestDeployment:
             predictor=p,
             name=p._name,
             description=p._description,
-            missing_mandatory_tags=p._missing_mandatory_tags,
         )
 
     # save

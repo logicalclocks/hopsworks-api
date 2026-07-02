@@ -38,7 +38,7 @@ from hsml.schema import Schema
 if TYPE_CHECKING:
     from hsfs import feature_view
     from hsfs.core.feature_monitoring_config import FeatureMonitoringConfig
-    from hsml import deployment, tag
+    from hsml import deployment
     from hsml.inference_batcher import InferenceBatcher
     from hsml.inference_logger import InferenceLogger
     from hsml.resources import PredictorResources
@@ -453,7 +453,7 @@ class Model:
 
     @public
     @usage._method_logger
-    def add_tag(self, name: str, value: str | dict):
+    def add_tag(self, name: str, value: Any):
         """Attach a tag to a model.
 
         A tag consists of a <name,value> pair. Tag names are unique identifiers across the whole cluster.
@@ -470,7 +470,7 @@ class Model:
 
     @public
     @usage._method_logger
-    def set_tag(self, name: str, value: str | dict):
+    def set_tag(self, name: str, value: Any):
         """Deprecated: Use add_tag instead.
 
         Parameters:
@@ -498,14 +498,14 @@ class Model:
         self._model_engine._delete_tag(model_instance=self, name=name)
 
     @public
-    def get_tag(self, name: str) -> str | None:
-        """Get the tags of a model.
+    def get_tag(self, name: str) -> Any | None:
+        """Get the value of a tag attached to a model.
 
         Parameters:
             name: Name of the tag to get.
 
         Returns:
-            tag value or `None` if it does not exist.
+            tag value, or `None` if it does not exist.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the tag.
@@ -513,11 +513,11 @@ class Model:
         return self._model_engine._get_tag(model_instance=self, name=name)
 
     @public
-    def get_tags(self) -> dict[str, tag.Tag]:
-        """Retrieves all tags attached to a model.
+    def get_tags(self) -> dict[str, Any]:
+        """Retrieve all tags attached to a model.
 
         Returns:
-            Dictionary of tags.
+            Dictionary of tag name/values.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case of a server error.

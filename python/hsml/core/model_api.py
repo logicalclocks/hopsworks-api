@@ -160,9 +160,7 @@ class ModelApi:
         ]
         _client._send_request("DELETE", path_params)
 
-    def _set_tag(
-        self, model_instance: model.Model, name: str, value: str | dict
-    ) -> None:
+    def _set_tag(self, model_instance: model.Model, name: str, value: Any) -> None:
         """Attach a name/value tag to a model.
 
         A tag consists of a name/value pair. Tag names are unique identifiers.
@@ -211,7 +209,7 @@ class ModelApi:
         _client._send_request("DELETE", path_params)
 
     @decorators._catch_not_found("hopsworks_common.tag.Tag", fallback_return={})
-    def _get_tags(self, model_instance: model.Model) -> dict:
+    def _get_tags(self, model_instance: model.Model) -> dict[str, Any]:
         """Get the tags.
 
         Gets all tags if no tag name is specified.

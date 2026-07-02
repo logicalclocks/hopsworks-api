@@ -75,6 +75,34 @@ class TestModel:
             m_json = json["items"][i]
             self.assert_model(mocker, m, m_json, MODEL.FRAMEWORK_PYTHON)
 
+    @pytest.mark.parametrize(
+        "fixture_key, framework",
+        [
+            ("get_python", MODEL.FRAMEWORK_PYTHON),
+            ("get_sklearn", MODEL.FRAMEWORK_SKLEARN),
+            ("get_tensorflow", MODEL.FRAMEWORK_TENSORFLOW),
+            ("get_torch", MODEL.FRAMEWORK_TORCH),
+            ("get_llm", MODEL.FRAMEWORK_LLM),
+        ],
+    )
+    def test_from_response_json_framework_subclass(
+        self, mocker, backend_fixtures, fixture_key, framework
+    ):
+        # from_response_json dispatches to the framework subclass, so this
+        # catches a subclass dropping a base-Model kwarg such as
+        # missing_mandatory_tags (FSTORE-2049).
+        # Arrange
+        json = backend_fixtures["model"][fixture_key]["response"]
+        json_camelized = humps.camelize(json)  # as returned by the backend
+
+        # Act
+        m_lst = model.Model.from_response_json(copy.deepcopy(json_camelized))
+
+        # Assert
+        assert isinstance(m_lst, list)
+        assert len(m_lst) == 1
+        self.assert_model(mocker, m_lst[0], json["items"][0], framework)
+
     # constructor
 
     def test_constructor_base(self, mocker, backend_fixtures):

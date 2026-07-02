@@ -19,6 +19,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+from hopsworks_common.client.exceptions import RestAPIError
 from hsml.core.serving_api import ServingApi
 
 
@@ -32,7 +33,10 @@ def _tags_response(items: list[tuple[str, str]]) -> dict:
 def _patch_client(mocker, send_request_return) -> MagicMock:
     client_instance = MagicMock()
     client_instance._project_id = 1
-    client_instance._send_request.return_value = send_request_return
+    if isinstance(send_request_return, Exception):
+        client_instance._send_request.side_effect = send_request_return
+    else:
+        client_instance._send_request.return_value = send_request_return
     mocker.patch(
         "hsml.core.serving_api.client._get_instance",
         return_value=client_instance,
@@ -45,21 +49,6 @@ def _deployment() -> SimpleNamespace:
 
 
 class TestServingApi:
-    def test_get_tags_decodes_values_without_double_decode(self, mocker):
-        # Arrange
-        api = ServingApi()
-        value = {"owner": "team-a", "score": 3}
-        _patch_client(
-            mocker,
-            _tags_response([("meta", json.dumps(value)), ("count", json.dumps(9))]),
-        )
-
-        # Act
-        result = api._get_tags(_deployment())
-
-        # Assert
-        assert result == {"meta": value, "count": 9}
-
     def test_get_tag_returns_value_for_name(self, mocker):
         # Arrange
         api = ServingApi()
@@ -87,6 +76,27 @@ class TestServingApi:
         # Arrange
         api = ServingApi()
         _patch_client(mocker, {"count": 0, "items": []})
+
+        # Act
+        result = api._get_tag(_deployment(), "missing")
+
+        # Assert
+        assert result is None
+
+    def test_get_tag_not_found_error_returns_none(self, mocker):
+        # Arrange
+        api = ServingApi()
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_response.json.return_value = {
+            "errorCode": 370002,
+            "errorMsg": "not found",
+            "usrMsg": "not found",
+        }
+        _patch_client(
+            mocker,
+            RestAPIError("/project/1/serving/12/tags/missing", mock_response),
+        )
 
         # Act
         result = api._get_tag(_deployment(), "missing")

@@ -50,13 +50,11 @@ class Deployment:
         name: str | None = None,
         description: str | None = None,
         project_namespace: str = None,
-        missing_mandatory_tags: list[dict[str, Any]] | None = None,
         **kwargs,
     ):
         self._predictor = predictor
         self._description = description
         self._project_namespace = project_namespace
-        self._missing_mandatory_tags = missing_mandatory_tags or []
 
         if self._predictor is None:
             raise ModelServingException("A predictor is required")
@@ -230,7 +228,7 @@ class Deployment:
         Populated from the backend response.
         Empty when all mandatory deployment tags are set.
         """
-        return self._missing_mandatory_tags
+        return self._predictor._missing_mandatory_tags
 
     @public
     def get_state(self) -> PredictorState:
@@ -698,9 +696,6 @@ class Deployment:
             predictor=predictor_instance,
             name=predictor_instance._name,
             description=predictor_instance._description,
-            missing_mandatory_tags=getattr(
-                predictor_instance, "_missing_mandatory_tags", []
-            ),
         )
 
     def update_from_response_json(self, json_dict):
