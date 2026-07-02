@@ -968,6 +968,15 @@ class FeatureViewEngine:
         # we return training dataset base classes with metadata only
         return [super(td.__class__, td) for td in tds]
 
+    def _get_training_dataset(self, feature_view_obj, training_dataset_version):
+        td = self._get_training_dataset_metadata(
+            feature_view_obj, training_dataset_version
+        )
+        # schema needs to be set for writing training data or feature serving
+        td.schema = self._get_training_dataset_schema(feature_view_obj, td.version)
+        # expose metadata only, as with `_get_training_datasets`
+        return super(td.__class__, td)
+
     def _create_training_data_metadata(self, feature_view_obj, training_dataset_obj):
         return self._feature_view_api._create_training_dataset(
             feature_view_obj.name, feature_view_obj.version, training_dataset_obj

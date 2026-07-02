@@ -807,6 +807,52 @@ class TestFeatureViewEngine:
             assert td_feature.type == expected_td_feature.type
             assert td_feature.label == expected_td_feature.label
 
+    def test_get_training_dataset(self, mocker):
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mock_get_metadata = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
+        )
+        mock_get_schema = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_schema"
+        )
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=3,
+            data_format="CSV",
+            featurestore_id=feature_store_id,
+            splits={},
+        )
+        mock_get_metadata.return_value = td
+        mock_get_schema.return_value = [
+            TrainingDatasetFeature(name="id", type="bigint", label=False),
+        ]
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            query=query,
+            featurestore_id=feature_store_id,
+            labels=[],
+        )
+
+        # Act
+        result = fv_engine._get_training_dataset(fv, training_dataset_version=3)
+
+        # Assert: fetched by the requested version and schema set on the object.
+        mock_get_metadata.assert_called_once_with(fv, 3)
+        assert td.schema == mock_get_schema.return_value
+        # Metadata-only view: same downcast-to-base proxy as `_get_training_datasets`.
+        assert result.__self__ is td
+        assert result.__thisclass__ is training_dataset.TrainingDataset
+
     def test_get_training_data_transformations(self, mocker):
         # Arrange
         feature_store_id = 99

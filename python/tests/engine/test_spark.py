@@ -3775,10 +3775,22 @@ class TestSpark:
             to_df=False,
         )
 
-        # Assert
+        # Assert: overwrite writes into partition 0, partitioned by the append
+        # column, so the layout stays uniform with appends.
         assert mock_spark_engine_setup_storage_connector.call_count == 1
-        assert feature_dataframe.write.format.call_args[0][0] == "csv"
-        assert feature_dataframe.unpersist.call_count == 1
+        assert (
+            feature_dataframe.withColumn.call_args[0][0]
+            == spark_engine.APPEND_PARTITION_COLUMN
+        )
+        partitioned_df = feature_dataframe.withColumn.return_value
+        assert partitioned_df.write.format.call_args[0][0] == "csv"
+        assert (
+            partitioned_df.write.format.return_value.options.return_value.mode.return_value.partitionBy.call_args[
+                0
+            ][0]
+            == spark_engine.APPEND_PARTITION_COLUMN
+        )
+        assert partitioned_df.unpersist.call_count == 1
 
     def test_write_training_dataset_single_tsv(self, mocker):
         # Arrange
@@ -3801,9 +3813,129 @@ class TestSpark:
             to_df=False,
         )
 
+        # Assert: tsv is written as csv, on the partitioned writer.
+        assert mock_spark_engine_setup_storage_connector.call_count == 1
+        partitioned_df = feature_dataframe.withColumn.return_value
+        assert partitioned_df.write.format.call_args[0][0] == "csv"
+
+    def test_write_training_dataset_single_append(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        mock_spark_engine_setup_storage_connector = mocker.patch(
+            "hsfs.engine.spark.Engine._setup_storage_connector",
+            return_value="path",
+        )
+        mock_next_id = mocker.patch(
+            "hsfs.engine.spark.Engine._next_append_partition_id",
+            return_value=3,
+        )
+
+        spark_engine = spark.Engine()
+        feature_dataframe = mocker.Mock()
+
+        # Act
+        spark_engine._write_training_dataset_single(
+            feature_dataframe=feature_dataframe,
+            storage_connector=None,
+            data_format="parquet",
+            write_options={},
+            save_mode=spark_engine.APPEND,
+            path="path",
+            to_df=False,
+        )
+
         # Assert
         assert mock_spark_engine_setup_storage_connector.call_count == 1
-        assert feature_dataframe.write.format.call_args[0][0] == "csv"
+        assert mock_next_id.call_count == 1
+        # A partition column carrying the next incremental id is added...
+        assert feature_dataframe.withColumn.call_args[0][0] == (
+            spark_engine.APPEND_PARTITION_COLUMN
+        )
+        # ...and the write partitions by it in append mode.
+        partitioned_df = feature_dataframe.withColumn.return_value
+        assert (
+            partitioned_df.write.format.return_value.options.return_value.mode.return_value.partitionBy.call_args[
+                0
+            ][0]
+            == spark_engine.APPEND_PARTITION_COLUMN
+        )
+
+    def test_next_append_partition_id(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        spark_engine = spark.Engine()
+
+        def _status(name, is_dir=True):
+            status = mocker.Mock()
+            status.isDirectory.return_value = is_dir
+            status.getPath.return_value.getName.return_value = name
+            return status
+
+        col = spark_engine.APPEND_PARTITION_COLUMN
+        fs = mocker.Mock()
+        fs.exists.return_value = True
+        fs.listStatus.return_value = [
+            _status(f"{col}=0"),
+            _status(f"{col}=2"),
+            _status(f"{col}=1"),
+            _status("_SUCCESS", is_dir=False),
+            _status("some_other_dir"),
+        ]
+        mocker.patch.object(
+            spark_engine, "_jvm"
+        ).org.apache.hadoop.fs.Path.return_value.getFileSystem.return_value = fs
+
+        # Act
+        next_id = spark_engine._next_append_partition_id("path")
+
+        # Assert: max existing id (2) + 1
+        assert next_id == 3
+
+    def test_next_append_partition_id_empty(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        spark_engine = spark.Engine()
+
+        fs = mocker.Mock()
+        fs.exists.return_value = False
+        mocker.patch.object(
+            spark_engine, "_jvm"
+        ).org.apache.hadoop.fs.Path.return_value.getFileSystem.return_value = fs
+
+        # Act
+        next_id = spark_engine._next_append_partition_id("path")
+
+        # Assert: first append starts at 0
+        assert next_id == 0
+
+    def test_next_append_partition_id_legacy_flat_data(self, mocker):
+        # A dataset created before incremental append has flat data files
+        # directly under the location; appending must refuse rather than
+        # corrupt it by mixing layouts.
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        spark_engine = spark.Engine()
+
+        def _status(name, is_dir=True):
+            status = mocker.Mock()
+            status.isDirectory.return_value = is_dir
+            status.getPath.return_value.getName.return_value = name
+            return status
+
+        fs = mocker.Mock()
+        fs.exists.return_value = True
+        fs.listStatus.return_value = [
+            _status("part-00000.parquet", is_dir=False),
+            _status("_SUCCESS", is_dir=False),
+        ]
+        mocker.patch.object(
+            spark_engine, "_jvm"
+        ).org.apache.hadoop.fs.Path.return_value.getFileSystem.return_value = fs
+
+        # Act / Assert
+        with pytest.raises(exceptions.FeatureStoreException) as e_info:
+            spark_engine._next_append_partition_id("path")
+        assert "not partitioned" in str(e_info.value)
 
     def test_write_training_dataset_single_to_df(self, mocker):
         # Arrange

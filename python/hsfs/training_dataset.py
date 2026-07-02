@@ -709,28 +709,27 @@ class TrainingDataset(TrainingDatasetBase):
     @public
     def insert(
         self,
-        features: query_module.Query
-        | pd.DataFrame
-        | TypeVar("pyspark.sql.DataFrame")
-        | TypeVar("pyspark.RDD")
-        | np.ndarray
-        | list[list],
-        overwrite: bool,
+        features: query_module.Query,
+        overwrite: bool = False,
         write_options: dict[Any, Any] | None = None,
     ) -> Job:
         """Insert additional feature data into the training dataset.
 
-        Warning: Deprecated
-            `insert` method is deprecated.
+        With `overwrite=False` (the default) this appends data to the training dataset as a new increment: the data is written into its own Hive partition under the existing location, leaving the data already materialized untouched.
+        This lets a large (multi-terabyte) training dataset grow — for example with a new daily batch — without rewriting it, while keeping the same training dataset version.
+        On [`read`][hsfs.training_dataset.TrainingDataset.read] all increments are returned together; the partitioning is an internal storage detail and is not exposed as a feature.
 
-        This method appends data to the training dataset either from a Feature Store `Query`, a Spark or Pandas `DataFrame`, a Spark RDD, two-dimensional Python lists or Numpy ndarrays.
-        The schemas must match for this operation.
+        With `overwrite=True` the entire training dataset is rewritten instead.
 
-        This can also be used to overwrite all data in an existing training dataset.
+        The features must come from a Feature Store `Query`; unlike [`save`][hsfs.training_dataset.TrainingDataset.save], `insert` does not accept in-memory `DataFrame`, RDD, list or Numpy inputs.
+        The schema of `features` must match the training dataset.
+
+        Warning: Engine Support
+            Appending to a training dataset (`overwrite=False`) is only supported using Spark as engine, and only for the `parquet` data format.
 
         Parameters:
-            features: Feature data to be materialized.
-            overwrite: Whether to overwrite the entire data in the training dataset.
+            features: Query producing the feature data to be materialized.
+            overwrite: Whether to overwrite the entire data in the training dataset instead of appending a new increment.
             write_options:
                 Additional write options as key-value pairs, defaults to `{}`.
                 When using the `python` engine, write_options can contain the following entries:
@@ -749,7 +748,8 @@ class TrainingDataset(TrainingDatasetBase):
             self, features, write_options or {}, overwrite
         )
 
-        self.compute_statistics()
+        if self.statistics_config.enabled:
+            self.compute_statistics()
 
         return td_job
 

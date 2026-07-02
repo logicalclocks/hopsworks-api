@@ -101,8 +101,11 @@ def create_td(job_conf: dict[Any, Any]) -> None:
     feature_store = job_conf.pop("feature_store")
     fs = get_feature_store_handle(feature_store)
 
-    # Extract the query object
-    q = query.Query._hopsworks_json(job_conf.pop("query"))
+    # Extract the query object. Use the full deserializer (not _hopsworks_json)
+    # because this job reads the query locally to build the dataframe, which
+    # needs a fully-hydrated left_feature_group / joins, not the partial form
+    # that _hopsworks_json produces for send-straight-back-to-Hopsworks use.
+    q = query.Query.from_response_json(job_conf.pop("query"))
 
     td = fs.get_training_dataset(name=job_conf["name"], version=job_conf["version"])
     td.insert(

@@ -818,6 +818,42 @@ class TestPython:
         assert mock_dataset_api.return_value._list_dataset_path.call_count == 1
         assert mock_python_engine_read_pandas.call_count == 3
 
+    def test_read_hopsfs_remote_partitioned(self, mocker):
+        # Hive-partitioned training datasets nest parquet files under
+        # `_hopsworks_append_id=<n>/` subdirs; the reader must recurse into them.
+        # Arrange
+        mock_dataset_api = mocker.patch("hsfs.core.dataset_api.DatasetApi")
+        mock_python_engine_read_pandas = mocker.patch(
+            "hsfs.engine.python.Engine._read_pandas"
+        )
+
+        python_engine = python.Engine()
+
+        # Top level reports the location is a directory holding one partition dir.
+        mock_dataset_api.return_value._get.return_value = {"attributes": {"dir": True}}
+        partition_dir = inode.Inode(
+            attributes={"path": "td/_hopsworks_append_id=0", "dir": True}
+        )
+        parquet_file = inode.Inode(
+            attributes={"path": "td/_hopsworks_append_id=0/part-00000.parquet"}
+        )
+
+        # First listing (the location) -> the partition dir; second listing
+        # (the partition dir) -> the parquet file. Each returns total_count 0 so
+        # the paging loop stops after one page.
+        mock_dataset_api.return_value._list_dataset_path.side_effect = [
+            (0, [partition_dir]),
+            (0, [parquet_file]),
+        ]
+        mock_dataset_api.return_value.read_content.return_value.content = b""
+
+        # Act
+        python_engine._read_hopsfs_remote(location="td", data_format=None)
+
+        # Assert: recursed into the partition dir and read the single file.
+        assert mock_dataset_api.return_value._list_dataset_path.call_count == 2
+        assert mock_python_engine_read_pandas.call_count == 1
+
     def test_read_s3(self, mocker):
         # Arrange
         mock_boto3_client = mocker.patch("boto3.client")

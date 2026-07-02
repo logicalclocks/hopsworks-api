@@ -142,6 +142,13 @@ class Engine:
     APPEND = "append"
     OVERWRITE = "overwrite"
 
+    # Hive-partition column added to a training dataset when data is appended
+    # incrementally. Each `append()` writes a new partition value
+    # (0, 1, 2, ...), so a multi-TB training dataset can grow without
+    # rewriting the data already materialized. The column is stripped on read
+    # so it never surfaces as a feature.
+    APPEND_PARTITION_COLUMN = "_hopsworks_append_id"
+
     def _create_spark_session(self):
         """Create and return a SparkSession.
 
@@ -1342,12 +1349,73 @@ class Engine:
 
         path = self._setup_storage_connector(storage_connector, path)
 
+        # Both overwrite and append write into `_hopsworks_append_id=<n>` Hive
+        # partitions so the layout is uniform: a training dataset is always
+        # partitioned and can always be appended to. The partition column is
+        # discovered by the parquet reader on read and stripped before the data
+        # is returned, so it never surfaces as a feature.
+        if save_mode == self.APPEND:
+            # Append: add the next partition, leaving existing ones in place.
+            next_id = self._next_append_partition_id(path)
+        else:
+            # Overwrite: `.mode("overwrite")` replaces the whole location, so
+            # the dataset restarts at partition 0.
+            next_id = 0
+        feature_dataframe = feature_dataframe.withColumn(
+            self.APPEND_PARTITION_COLUMN, lit(next_id)
+        )
         feature_dataframe.write.format(data_format).options(**write_options).mode(
             save_mode
-        ).save(path)
+        ).partitionBy(self.APPEND_PARTITION_COLUMN).save(path)
 
         feature_dataframe.unpersist()
         return None
+
+    def _next_append_partition_id(self, path):
+        """Return the next incremental partition id for an appendable dataset.
+
+        Lists the existing `_hopsworks_append_id=<n>` partition directories
+        under `path` and returns `max(n) + 1`, or `0` when the location is
+        empty or does not yet exist.
+        The path's storage connector must already be configured on the Hadoop
+        configuration (via `_setup_storage_connector`).
+
+        Raises:
+            FeatureStoreException: If `path` holds a dataset written before
+                incremental append existed (data files directly under the
+                location, not in `_hopsworks_append_id=<n>` partitions).
+                Appending partitioned data next to flat files produces a
+                layout the reader cannot interpret, so the dataset must be
+                recreated (or overwritten) before it can be appended to.
+        """
+        prefix = self.APPEND_PARTITION_COLUMN + "="
+        hadoop_path = self._jvm.org.apache.hadoop.fs.Path(path)
+        fs = hadoop_path.getFileSystem(self._spark_context._jsc.hadoopConfiguration())
+        if not fs.exists(hadoop_path):
+            return 0
+        ids = []
+        has_flat_data = False
+        for status in fs.listStatus(hadoop_path):
+            name = status.getPath().getName()
+            if status.isDirectory() and name.startswith(prefix):
+                suffix = name[len(prefix) :]
+                if suffix.isdigit():
+                    ids.append(int(suffix))
+            elif not status.isDirectory() and not name.startswith("_"):
+                # A data file (not a Spark marker like `_SUCCESS`) sitting
+                # directly under the location means this dataset was
+                # materialized before incremental append and is not
+                # partitioned.
+                has_flat_data = True
+        if has_flat_data:
+            raise FeatureStoreException(
+                "This training dataset was materialized before incremental "
+                "append was supported and is not partitioned, so new data "
+                "cannot be appended to it without corrupting it. Recreate the "
+                "training dataset, or use `overwrite=True` to rewrite it, "
+                "before appending."
+            )
+        return max(ids) + 1 if ids else 0
 
     def _read(
         self, storage_connector, data_format, read_options, location, dataframe_type
@@ -1383,12 +1451,19 @@ class Engine:
 
         path = self._setup_storage_connector(storage_connector, path)
 
-        return self._return_dataframe_type(
+        df = (
             self._spark_session.read.format(data_format)
             .options(**(read_options if read_options else {}))
-            .load(path),
-            dataframe_type=dataframe_type,
+            .load(path)
         )
+
+        # Drop the incremental-append partition column (see
+        # `_write_training_dataset_single`) if the reader surfaced it, so it
+        # never leaks into the returned data as a feature.
+        if self.APPEND_PARTITION_COLUMN in df.columns:
+            df = df.drop(self.APPEND_PARTITION_COLUMN)
+
+        return self._return_dataframe_type(df, dataframe_type=dataframe_type)
 
     def _read_jdbc_on_driver(self, options, dataframe_type):
         # Wallet files exist on the driver only — read via JVM DriverManager

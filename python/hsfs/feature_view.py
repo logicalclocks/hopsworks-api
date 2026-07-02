@@ -3470,6 +3470,43 @@ class FeatureView:
 
     @public
     @usage._method_logger
+    def get_training_dataset(
+        self, training_dataset_version: int
+    ) -> training_dataset.TrainingDatasetBase:
+        """Returns the metadata of a single training dataset created with this feature view.
+
+        Example:
+            ```python
+            # get feature store instance
+            fs = ...
+
+            # get feature view instance
+            feature_view = fs.get_feature_view(...)
+
+            # get metadata of a specific training dataset version
+            td_meta = feature_view.get_training_dataset(training_dataset_version=1)
+            ```
+
+        Parameters:
+            training_dataset_version: Version of the training dataset to retrieve.
+
+        Returns:
+            Training dataset metadata.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+        """
+        td = self._feature_view_engine._get_training_dataset(
+            self, training_dataset_version
+        )
+        util._check_missing_mandatory_tags(
+            td.missing_mandatory_tags,
+            message=f"Training dataset '{td.name}' version {td.version} has missing mandatory tags",
+        )
+        return td
+
+    @public
+    @usage._method_logger
     def get_training_datasets(self) -> list[training_dataset.TrainingDatasetBase]:
         """Returns the metadata of all training datasets created with this feature view.
 

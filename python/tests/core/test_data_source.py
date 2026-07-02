@@ -141,6 +141,30 @@ class TestDataSource:
         # Assert
         assert ds.format == "delta"
 
+    def test_from_response_json_items_null_is_single(self):
+        # A DTO can carry `items: null` (e.g. the data source embedded in a
+        # feature group inside a QueryDTO) — that is a single data source, not a
+        # list, and must not be iterated.
+        payload = {"items": None, "count": None, "path": "s3://bucket/path"}
+
+        # Act
+        ds = data_source.DataSource.from_response_json(payload)
+
+        # Assert
+        assert isinstance(ds, data_source.DataSource)
+        assert ds.path == "s3://bucket/path"
+
+    def test_from_response_json_items_list(self):
+        # A populated `items` collection still deserializes into a list.
+        payload = {"items": [{"path": "a"}, {"path": "b"}]}
+
+        # Act
+        result = data_source.DataSource.from_response_json(payload)
+
+        # Assert
+        assert isinstance(result, list)
+        assert [d.path for d in result] == ["a", "b"]
+
     def test_format_emitted_in_to_dict(self):
         # Arrange
         ds = data_source.DataSource(path="s3://bucket/path", format="hudi")

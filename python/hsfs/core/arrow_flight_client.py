@@ -550,13 +550,22 @@ class ArrowFlightClient:
         ),
     )
     def _create_training_dataset(
-        self, feature_view_obj, training_dataset_obj, query_obj, arrow_flight_config
+        self,
+        feature_view_obj,
+        training_dataset_obj,
+        query_obj,
+        arrow_flight_config,
+        overwrite=True,
     ):
         training_dataset = {}
         training_dataset["project_name"] = self._client._project_name
         training_dataset["fv_name"] = feature_view_obj.name
         training_dataset["fv_version"] = feature_view_obj.version
         training_dataset["tds_version"] = training_dataset_obj.version
+        # `overwrite=False` appends the query result as a new incremental
+        # partition instead of rewriting the dataset. Older Query Service
+        # versions ignore this flag and always overwrite.
+        training_dataset["overwrite"] = overwrite
         training_dataset["query"] = json.loads(query_obj.hqs_payload)
         _logger.debug(f"Creating training dataset: {training_dataset}")
         try:

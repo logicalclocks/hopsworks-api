@@ -444,7 +444,6 @@ class Engine:
         read_options: dict[str, Any] | None = None,
         dataframe_type: str = "default",
     ) -> list[pd.DataFrame | pl.DataFrame]:
-        df_list = []
         if read_options is None:
             read_options = {}
 
@@ -453,28 +452,57 @@ class Engine:
         is_dir = path_metadata.get("attributes", {}).get("dir", False)
 
         if is_dir:
-            # Location is a directory, list all files
-            total_count = 10000
-            offset = 0
-            while offset < total_count:
-                total_count, inode_list = self._dataset_api._list_dataset_path(
-                    location, inode.Inode, offset=offset, limit=100
-                )
+            return self._read_hopsfs_dir(
+                location, data_format, read_options, dataframe_type
+            )
 
-                for inode_entry in inode_list:
-                    if not self._is_metadata_file(inode_entry.path):
-                        df = self._read_single_hopsfs_file(
-                            inode_entry.path, data_format, read_options, dataframe_type
+        # Location is a single file, read it directly
+        if self._is_metadata_file(location):
+            return []
+        return [
+            self._read_single_hopsfs_file(
+                location, data_format, read_options, dataframe_type
+            )
+        ]
+
+    def _read_hopsfs_dir(
+        self,
+        location: str,
+        data_format: str,
+        read_options: dict[str, Any],
+        dataframe_type: str = "default",
+    ) -> list[pd.DataFrame | pl.DataFrame]:
+        # Recurse into subdirectories so Hive-partitioned training datasets
+        # (e.g. `_hopsworks_append_id=<n>/`) are read too, not just flat files
+        # directly under the location.
+        df_list = []
+        total_count = 10000
+        offset = 0
+        while offset < total_count:
+            total_count, inode_list = self._dataset_api._list_dataset_path(
+                location, inode.Inode, offset=offset, limit=100
+            )
+
+            for inode_entry in inode_list:
+                if inode_entry.dir:
+                    df_list.extend(
+                        self._read_hopsfs_dir(
+                            inode_entry.path,
+                            data_format,
+                            read_options,
+                            dataframe_type,
                         )
-                        df_list.append(df)
-                offset += len(inode_list)
-        else:
-            # Location is a single file, read it directly
-            if not self._is_metadata_file(location):
-                df = self._read_single_hopsfs_file(
-                    location, data_format, read_options, dataframe_type
-                )
-                df_list.append(df)
+                    )
+                elif not self._is_metadata_file(inode_entry.path):
+                    df_list.append(
+                        self._read_single_hopsfs_file(
+                            inode_entry.path,
+                            data_format,
+                            read_options,
+                            dataframe_type,
+                        )
+                    )
+            offset += len(inode_list)
 
         return df_list
 
@@ -1530,6 +1558,7 @@ class Engine:
                 training_dataset,
                 query_obj,
                 user_write_options.get("arrow_flight_config", {}),
+                overwrite=(save_mode == "overwrite"),
             )
 
         # As for creating a feature group, users have the possibility of passing
