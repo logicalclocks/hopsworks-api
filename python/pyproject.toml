@@ -84,7 +84,8 @@ dev-no-opt = [
     "moto[s3]==5.0.0",
     "pandas>=2.2.0",
     "typeguard==4.2.1",
-    "delta-spark==3.3.1"
+    "delta-spark==3.3.1",
+    "setuptools; python_version >= '3.12'",
 ]
 dev-pandas1 = [
     "hopsworks[python]",
