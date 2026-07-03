@@ -40,6 +40,7 @@ def make_statement(**overrides):
         "collect_feature_name": "transactions_collect",
         "collect_order_by": "event_time",
         "collect_ascending": False,
+        "collect_filter_applied": False,
     }
     kwargs.update(overrides)
     return ServingPreparedStatement(**kwargs)
@@ -494,6 +495,75 @@ class TestComplexDecoderSkipsSchemalessFeatures:
         server._features = [_StubComplexFeature()]
         server._skip_feature_decoding_fg_ids = set()
         assert server._build_complex_feature_decoders() == {}
+
+
+class _ScanFeatureGroup:
+    id = 1
+    name = "transactions"
+    version = 1
+
+
+class _ScanFeature:
+    feature_group = _ScanFeatureGroup()
+
+
+class TestScanFallback:
+    def make_scan_server(self, monkeypatch, rows):
+        from hsfs.core import online_store_rest_client_api
+
+        server = make_server()
+        server._features = [_ScanFeature()]
+        calls = []
+
+        def fake_scan(api_self, database, table, body):
+            calls.append({"database": database, "table": table, "body": body})
+            return rows
+
+        monkeypatch.setattr(
+            online_store_rest_client_api.OnlineStoreRestClientApi,
+            "_execute_scan",
+            fake_scan,
+        )
+        return server, calls
+
+    def test_scan_request_shape(self, monkeypatch):
+        server, calls = self.make_scan_server(monkeypatch, [])
+        server._scan_rows_rest_scan(make_statement(), {"user_id": 7})
+        assert calls[0]["database"] == "proj_featurestore"
+        assert calls[0]["table"] == "transactions_1"
+        body = calls[0]["body"]
+        assert body["limit"] == 100
+        index = body["index"]
+        assert index["name"] == "PRIMARY"
+        assert index["key_columns"] == ["user_id", "event_time"]
+        assert index["order"] == "desc"
+        assert index["ranges"] == [
+            {
+                "lower": {"values": [7], "inclusive": True},
+                "upper": {"values": [7], "inclusive": True},
+            }
+        ]
+
+    def test_rejected_unfiltered_collect_falls_back_to_scan(self, monkeypatch):
+        rows = [
+            {"amount": 1.0, "event_time": "t1"},
+            {"amount": 3.0, "event_time": "t3"},
+        ]
+        server, calls = self.make_scan_server(monkeypatch, rows)
+        server._ronsql_statements = []
+        server._ronsql_rejected = [make_statement()]
+        result = server._scan_rows_ronsql({"user_id": 7})
+        assert len(calls) == 1
+        # sorted newest-first by the caller even though /scan returned unsorted
+        assert [r["event_time"] for r in result] == ["t3", "t1"]
+
+    def test_filtered_collect_refuses_scan_fallback(self, monkeypatch):
+        server, calls = self.make_scan_server(monkeypatch, [])
+        server._ronsql_statements = []
+        server._ronsql_rejected = [make_statement(collect_filter_applied=True)]
+        with pytest.raises(FeatureStoreException, match="filters"):
+            server._scan_rows_ronsql({"user_id": 7})
+        assert calls == []
 
 
 class TestBatchOverlayConcurrency:

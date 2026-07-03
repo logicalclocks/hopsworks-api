@@ -37,6 +37,7 @@ class ServingPreparedStatement:
         collect_feature_name: str | None = None,
         collect_order_by: str | None = None,
         collect_ascending: bool | None = None,
+        collect_filter_applied: bool | None = None,
         query_ronsql: str | None = None,
         ronsql_database: str | None = None,
         aggregate_window: int | None = None,
@@ -67,6 +68,9 @@ class ServingPreparedStatement:
         # newest-first by default, oldest-first when collect_ascending.
         self._collect_order_by = collect_order_by
         self._collect_ascending = collect_ascending
+        # True when the feature view's filters apply to this collect statement: the /scan
+        # fallback cannot express them, so it must not serve filtered collects.
+        self._collect_filter_applied = collect_filter_applied
         # RonSQL template + target database for serving this statement via RDRS /ronsql
         # (v3 online path); the client substitutes typed literals for the `?` markers.
         self._query_ronsql = query_ronsql
@@ -147,6 +151,10 @@ class ServingPreparedStatement:
     @property
     def collect_ascending(self) -> bool | None:
         return self._collect_ascending
+
+    @property
+    def collect_filter_applied(self) -> bool | None:
+        return self._collect_filter_applied
 
     @property
     def query_ronsql(self) -> str | None:

@@ -57,6 +57,7 @@ class OnlineStoreRestClientApi:
     SINGLE_VECTOR_ENDPOINT = "feature_store"
     BATCH_VECTOR_ENDPOINT = "batch_feature_store"
     RONSQL_ENDPOINT = "ronsql"
+    SCAN_ENDPOINT = "scan"
     PING_ENDPOINT = "ping"
 
     def _execute_ronsql(
@@ -106,6 +107,45 @@ class OnlineStoreRestClientApi:
         )
         body = self._handle_rdrs_feature_store_response(response)
         return body.get("data", [])
+
+    def _execute_scan(
+        self, database: str, table: str, body: dict[str, Any]
+    ) -> list[dict[str, Any]]:
+        """Execute an ordered index scan against the RonDB Rest Server /scan endpoint.
+
+        The scan is RDRS's native row-returning LIMIT primitive: an index scan bounded by
+        key ranges, ordered per the index, capped by `limit`.
+        It serves collect rows on the REST client, since RonSQL has no row-returning reads.
+
+        Parameters:
+            database: The online database the table lives in.
+            table: The online table name (`<feature_group>_<version>`).
+            body: The scan request: `limit`, optional `readColumns`, optional `filters`,
+                and `index` with `name`, `key_columns`, `ranges`, `order`.
+
+        Returns:
+            The scanned rows as a list of row dictionaries keyed by column name.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the response status code is not 200.
+        """
+        if _logger.isEnabledFor(logging.DEBUG):
+            # key values are inlined in the ranges and can be sensitive: log metadata only
+            _logger.debug(
+                "Sending /scan request: database=%s, table=%s, limit=%s, order=%s",
+                database,
+                table,
+                body.get("limit"),
+                (body.get("index") or {}).get("order"),
+            )
+        response = online_store_rest_client._get_instance()._send_request(
+            method="POST",
+            path_params=[database, table, self.SCAN_ENDPOINT],
+            headers={"Content-Type": "application/json"},
+            data=json.dumps(body, cls=NpDatetimeEncoder),
+        )
+        response_body = self._handle_rdrs_feature_store_response(response)
+        return response_body.get("data", [])
 
     def _get_single_raw_feature_vector(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Get a single feature vector from the feature store.

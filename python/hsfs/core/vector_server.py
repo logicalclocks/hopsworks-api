@@ -1414,16 +1414,103 @@ class VectorServer:
             The collected rows, newest-first, as a list of row dictionaries.
         """
         statement = self._get_ronsql_scan_statement()
-        if statement is None:
-            raise exceptions.FeatureStoreException(
-                "This feature view has no RonSQL collect statement. scan_vectors via the "
-                "REST client requires a collect feature view and RonDB >= 26.04; "
-                "alternatively call scan_vectors(..., force_sql_client=True)."
+        if statement is not None:
+            rows = self._sort_collect_rows(
+                self._execute_ronsql_statement(statement, entry), statement
             )
-        rows = self._sort_collect_rows(
-            self._execute_ronsql_statement(statement, entry), statement
+            return rows[:limit] if limit is not None else rows
+        # RonSQL has no row-returning reads (its CTE bodies must aggregate), so a collect
+        # template that failed its conformance check falls back to RDRS /scan — the native
+        # ordered-index-scan + limit primitive. Feature-view filters cannot be expressed
+        # on /scan, so filtered collects stay on the MySQL client.
+        fallback = next(
+            (
+                s
+                for s in getattr(self, "_ronsql_rejected", [])
+                if s.collect_n is not None
+            ),
+            None,
         )
-        return rows[:limit] if limit is not None else rows
+        if fallback is not None and not fallback.collect_filter_applied:
+            rows = self._sort_collect_rows(
+                self._scan_rows_rest_scan(fallback, entry), fallback
+            )
+            return rows[:limit] if limit is not None else rows
+        raise exceptions.FeatureStoreException(
+            "This feature view's collect cannot be served by the REST client: RonSQL has "
+            "no row-returning reads, and the /scan fallback cannot apply the feature "
+            "view's filters. Call scan_vectors(..., force_sql_client=True)."
+            if fallback is not None
+            else "This feature view has no RonSQL collect statement. scan_vectors via "
+            "the REST client requires a collect feature view and RonDB >= 26.04; "
+            "alternatively call scan_vectors(..., force_sql_client=True)."
+        )
+
+    def _scan_rows_rest_scan(
+        self, statement, entry: dict[str, Any]
+    ) -> list[dict[str, Any]]:
+        """Serve collect rows through the RDRS /scan ordered-index-scan endpoint.
+
+        The scan is bounded by the entity-key values on the primary index and ordered by
+        the trailing order column (v2 C0 requires the primary key `(entity..., order_col)`),
+        capped at the collect N — RDRS's native row-returning LIMIT operation.
+        Selection is always newest-first (v2 C2); the caller applies the output order.
+        Feature-view filters cannot be expressed here, so callers must not route filtered
+        collect statements to this path.
+        """
+        key_columns = []
+        entity_values = []
+        for param in statement.prepared_statement_parameters:
+            value = entry.get(param.name)
+            if value is None:
+                # fall back to the serving-key alias for this feature (prefix handling)
+                for sk in self._serving_keys:
+                    if (
+                        sk.feature_name == param.name
+                        and sk.required_serving_key in entry
+                    ):
+                        value = entry[sk.required_serving_key]
+                        break
+            if value is None:
+                raise exceptions.FeatureStoreException(
+                    f"Missing entity key '{param.name}' in entry for the collect scan."
+                )
+            key_columns.append(param.name)
+            entity_values.append(value)
+        key_columns.append(statement.collect_order_by)
+        body = {
+            "limit": statement.collect_n,
+            "index": {
+                "name": "PRIMARY",
+                "key_columns": key_columns,
+                "ranges": [
+                    {
+                        "lower": {"values": entity_values, "inclusive": True},
+                        "upper": {"values": entity_values, "inclusive": True},
+                    }
+                ],
+                "order": "desc",
+            },
+        }
+        return online_store_rest_client_api.OnlineStoreRestClientApi()._execute_scan(
+            statement.ronsql_database,
+            self._statement_feature_group_table(statement),
+            body,
+        )
+
+    def _statement_feature_group_table(self, statement) -> str:
+        """The online table name (`<feature_group>_<version>`) of a statement's feature group."""
+        for feature in getattr(self, "_features", None) or []:
+            feature_group = feature.feature_group
+            if (
+                feature_group is not None
+                and feature_group.id == statement.feature_group_id
+            ):
+                return f"{feature_group.name}_{feature_group.version}"
+        raise exceptions.FeatureStoreException(
+            "Cannot resolve the online table for the collect statement of feature group "
+            f"{statement.feature_group_id}."
+        )
 
     def _execute_ronsql_statement(
         self, statement, entry: dict[str, Any]
@@ -1487,6 +1574,7 @@ class VectorServer:
         conformance.
         """
         valid = []
+        self._ronsql_rejected = []
         for statement in statements:
             kind = "collect" if statement.collect_n is not None else "aggregation"
             try:
@@ -1505,9 +1593,11 @@ class VectorServer:
                     f"{statement.feature_group_id} failed its EXPLAIN conformance check "
                     f"and will not be served through /ronsql (requires RonDB >= 26.04): "
                     f"{err} Vectors are served without this feature group's {kind} "
-                    "feature; use force_sql_client=True for the MySQL path.",
+                    "feature; scan_vectors falls back to the /scan index read for "
+                    "unfiltered collects, or use force_sql_client=True for MySQL.",
                     stacklevel=2,
                 )
+                self._ronsql_rejected.append(statement)
                 continue
             except Exception as err:  # noqa: BLE001 - transport errors prove nothing
                 _logger.warning(
