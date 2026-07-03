@@ -954,6 +954,21 @@ class FeatureViewEngine:
         user_write_options["training_helper_columns"] = training_helper_columns
         user_write_options["primary_keys"] = primary_keys
         user_write_options["event_time"] = event_time
+        # The per-call event-time window set by `_insert_training_data` lives
+        # only on this client-side object; the `create_fv_td` job re-fetches
+        # the training dataset from backend metadata, whose window is the
+        # create-time one. Ride the window along in the write options so the
+        # job materializes the requested batch, not the create-time window.
+        event_start_time = util._convert_event_time_to_timestamp(
+            training_dataset_obj.event_start_time
+        )
+        if event_start_time is not None:
+            user_write_options["event_start_time"] = event_start_time
+        event_end_time = util._convert_event_time_to_timestamp(
+            training_dataset_obj.event_end_time
+        )
+        if event_end_time is not None:
+            user_write_options["event_end_time"] = event_end_time
 
         td_job = engine._get_instance()._write_training_dataset(
             training_dataset_obj,

@@ -128,13 +128,39 @@ def create_fv_td(job_conf: dict[Any, Any]) -> None:
     training_helper_columns = user_write_options.get("training_helper_columns")
     primary_keys = user_write_options.get("primary_keys")
     event_time = user_write_options.get("event_time")
+
+    # `overwrite=False` means this job materializes an `insert_training_data`
+    # append: the batch becomes a new partition of the existing training
+    # dataset instead of replacing it. Absent (old backend) means overwrite.
+    overwrite = job_conf.pop("overwrite", True)
+    save_mode = fv_engine._APPEND if overwrite is False else fv_engine._OVERWRITE
+
+    # The per-call event-time window is not part of the persisted training
+    # dataset metadata (which carries the create-time window); the client
+    # sends it in the write options. Apply it to the fetched metadata so the
+    # job materializes the requested batch. Values crossed the backend's
+    # Map<String, String> job config, so they arrive as strings.
+    training_dataset_obj = None
+    event_start_time = user_write_options.get("event_start_time")
+    event_end_time = user_write_options.get("event_end_time")
+    if event_start_time is not None or event_end_time is not None:
+        training_dataset_obj = fv_engine._get_training_dataset_metadata(
+            fv, job_conf["td_version"]
+        )
+        if event_start_time is not None:
+            training_dataset_obj.event_start_time = int(event_start_time)
+        if event_end_time is not None:
+            training_dataset_obj.event_end_time = int(event_end_time)
+
     fv_engine._compute_training_dataset(
         feature_view_obj=fv,
         user_write_options=user_write_options,
         primary_keys=primary_keys,
         event_time=event_time,
         training_helper_columns=training_helper_columns,
+        training_dataset_obj=training_dataset_obj,
         training_dataset_version=job_conf["td_version"],
+        save_mode=save_mode,
     )
 
 

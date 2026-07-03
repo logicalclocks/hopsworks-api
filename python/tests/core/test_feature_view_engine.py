@@ -2332,6 +2332,107 @@ class TestFeatureViewEngine:
             assert td_feature.type == expected_td_feature.type
             assert td_feature.label == expected_td_feature.label
 
+    def test_compute_training_dataset_event_time_window_in_write_options(
+        self, mocker
+    ):
+        # The per-call window set by `_insert_training_data` exists only on the
+        # client-side TD object; the create_fv_td job re-fetches the TD from the
+        # backend (create-time window), so `_compute_training_dataset` must ship
+        # the window to the job through the write options, as epoch millis.
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_schema"
+        )
+        mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine._get_batch_query")
+        mocker.patch("hsfs.engine._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=query,
+        )
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="parquet",
+            featurestore_id=99,
+            splits={},
+        )
+        # raw values, as `_insert_training_data` assigns them
+        td.event_start_time = "2026-07-01 00:00:00"
+        td.event_end_time = "2026-07-01 23:59:59"
+
+        user_write_options = {}
+
+        # Act
+        fv_engine._compute_training_dataset(
+            feature_view_obj=fv,
+            user_write_options=user_write_options,
+            training_dataset_obj=td,
+        )
+
+        # Assert: 2026-07-01 00:00:00 / 23:59:59 UTC in epoch millis
+        assert user_write_options["event_start_time"] == 1782864000000
+        assert user_write_options["event_end_time"] == 1782950399000
+
+    def test_compute_training_dataset_no_event_time_window(self, mocker):
+        # Without a per-call window (plain create/recreate) no window keys are
+        # added, so create_fv_td keeps rebuilding from the persisted metadata.
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_schema"
+        )
+        mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine._get_batch_query")
+        mocker.patch("hsfs.engine._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=query,
+        )
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="parquet",
+            featurestore_id=99,
+            splits={},
+        )
+
+        user_write_options = {}
+
+        # Act
+        fv_engine._compute_training_dataset(
+            feature_view_obj=fv,
+            user_write_options=user_write_options,
+            training_dataset_obj=td,
+        )
+
+        # Assert
+        assert "event_start_time" not in user_write_options
+        assert "event_end_time" not in user_write_options
+
     def test_compute_training_dataset_td_transformations(self, mocker):
         # Arrange
         feature_store_id = 99
