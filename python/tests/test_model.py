@@ -271,6 +271,7 @@ class TestModel:
             env_vars=None,
             vllm_variant=None,
             vllm_image_tag=None,
+            tags=None,
         )
         mock_predictor.deploy.assert_called_once()
 
@@ -290,6 +291,104 @@ class TestModel:
         # Assert
         assert mock_predictor_for_model.call_args.kwargs["env_vars"] == env_vars
         mock_predictor.deploy.assert_called_once()
+
+    def test_deploy_forwards_tags(self, mocker, backend_fixtures):
+        # Arrange
+        m_json = backend_fixtures["model"]["get_python"]["response"]["items"][0]
+        mock_predictor = mocker.Mock()
+        mock_predictor_for_model = mocker.patch(
+            "hsml.predictor.Predictor.for_model", return_value=mock_predictor
+        )
+        tags = {"owner": "team-a"}
+
+        # Act
+        m = model.Model.from_response_json(m_json)
+        m.deploy(name="test", tags=tags)
+
+        # Assert
+        assert mock_predictor_for_model.call_args.kwargs["tags"] == tags
+        mock_predictor.deploy.assert_called_once()
+
+    # get-time missing mandatory tag warning
+
+    def test_get_model_warns_on_missing_mandatory_tags(self, mocker, backend_fixtures):
+        # Arrange
+        from hsml import model_registry
+
+        m_json = backend_fixtures["model"]["get_python"]["response"]["items"][0]
+        m = model.Model.from_response_json(m_json)
+        m._missing_mandatory_tags = [{"name": "owner"}]
+        mocker.patch("hsml.core.model_api.ModelApi._get", return_value=m)
+        mr = model_registry.ModelRegistry(
+            project_name="p", project_id=1, model_registry_id=1
+        )
+
+        # Act / Assert
+        with pytest.warns(UserWarning, match="Missing mandatory tags"):
+            mr.get_model("my_model", version=1)
+
+    def test_get_model_no_warning_when_tags_present(self, mocker, backend_fixtures):
+        # Arrange
+        import warnings
+
+        from hsml import model_registry
+
+        m_json = backend_fixtures["model"]["get_python"]["response"]["items"][0]
+        m = model.Model.from_response_json(m_json)
+        m._missing_mandatory_tags = []
+        mocker.patch("hsml.core.model_api.ModelApi._get", return_value=m)
+        mr = model_registry.ModelRegistry(
+            project_name="p", project_id=1, model_registry_id=1
+        )
+
+        # Act
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            mr.get_model("my_model", version=1)
+
+        # Assert
+        assert not [w for w in caught if "Missing mandatory tags" in str(w.message)]
+
+    # to_dict tags
+
+    def test_to_dict_omits_tags_when_absent(self, mocker, backend_fixtures):
+        # Arrange
+        m_json = backend_fixtures["model"]["get_python"]["response"]["items"][0]
+
+        # Act
+        m = model.Model.from_response_json(m_json)
+
+        # Assert
+        assert "tags" not in m.to_dict()
+
+    def test_to_dict_serializes_tags_at_creation(self, mocker):
+        # create_model builds the model with a tags dict; to_dict must emit the
+        # TagsDTO shape with json-encoded values so the tags ride the create PUT
+        # (FSTORE-2049 mandatory-tag enforcement at creation).
+        # Arrange
+        mocker.patch("hsml.model_registry.ModelRegistry.from_response_json")
+        mr = mocker.MagicMock()
+        mr.shared_registry_project_name = None
+        mr.model_registry_id = 1
+        from hsml.python import signature
+
+        signature._mr = mr
+
+        # Act
+        m = signature.create_model(
+            name="my_model",
+            version=1,
+            tags={"owner": "team-a", "cost_center": 42},
+        )
+        model_dict = m.to_dict()
+
+        # Assert
+        assert model_dict["tags"] == {
+            "items": [
+                {"name": "owner", "value": '"team-a"'},
+                {"name": "cost_center", "value": "42"},
+            ]
+        }
 
     # delete
 

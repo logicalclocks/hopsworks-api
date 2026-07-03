@@ -66,6 +66,7 @@ class Model(Model):
             feature_view=feature_view,
             training_dataset_version=training_dataset_version,
             missing_mandatory_tags=missing_mandatory_tags,
+            tags=tags,
         )
 
     def update_from_response_json(self, json_dict):

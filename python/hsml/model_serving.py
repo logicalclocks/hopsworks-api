@@ -20,7 +20,7 @@ import posixpath
 import re
 import tempfile
 import zipfile
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from hopsworks_apigen import public
 from hopsworks_common import usage, util
@@ -129,7 +129,12 @@ class ModelServing:
         """
         if name is None and ("DEPLOYMENT_NAME" in os.environ):
             name = os.environ["DEPLOYMENT_NAME"]
-        return self._serving_api._get(name)
+        deployment_instance = self._serving_api._get(name)
+        if deployment_instance is not None:
+            util._check_missing_mandatory_tags(
+                deployment_instance.missing_mandatory_tags
+            )
+        return deployment_instance
 
     @public
     @usage._method_logger
@@ -215,6 +220,7 @@ class ModelServing:
         vllm_variant: str | None = None,
         vllm_image_tag: str | None = None,
         tracing: DeploymentTracingConfig | dict | None = None,
+        tags: dict[str, Any] | None = None,
     ) -> Predictor:
         """Create a Predictor metadata object.
 
@@ -260,6 +266,8 @@ class ModelServing:
             vllm_variant: vLLM image variant for vLLM deployments. One of `'VLLM'` or `'VLLM_OMNI'`. Ignored for non-vLLM model servers.
             vllm_image_tag: vLLM image tag override. `None` uses the cluster default; if set, it should match one of the tags made available by a cluster administrator. Ignored for non-vLLM model servers.
             tracing: Tracing configuration for the predictor.
+            tags: Optionally a dictionary of tag name/value pairs to attach to the deployment when it is created.
+                The tags ride the create request, so any mandatory deployment tags missing from this dictionary cause the backend to reject the creation.
 
         Returns:
             The predictor metadata object.
@@ -284,6 +292,7 @@ class ModelServing:
             vllm_variant=vllm_variant,
             vllm_image_tag=vllm_image_tag,
             tracing=tracing,
+            tags=tags,
         )
 
     @public
@@ -627,6 +636,7 @@ class ModelServing:
         predictor: Predictor,
         name: str | None = None,
         environment: str | None = None,
+        tags: dict[str, Any] | None = None,
     ) -> Deployment:
         """Create a Deployment metadata object.
 
@@ -691,10 +701,14 @@ class ModelServing:
             predictor: predictor to be used in the deployment
             name: name of the deployment
             environment: (**Deprecated**) The project Python environment to use. This argument will be ignored, use the argument `environment` in the `create_predictor()` or `create_endpoint()` methods instead.
+            tags: Optionally a dictionary of tag name/value pairs to attach to the deployment when it is created.
+                The tags ride the create request, so any mandatory deployment tags missing from this dictionary cause the backend to reject the creation.
 
         Returns:
             The deployment metadata object.
         """
+        if tags:
+            predictor._tags = tags
         return Deployment(predictor=predictor, name=name)
 
     @public

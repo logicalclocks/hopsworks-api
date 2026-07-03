@@ -180,6 +180,33 @@ class TestDeployment:
         # Assert
         assert "not an instance of the Predictor class" in str(e_info.value)
 
+    # tags at creation
+
+    def test_to_dict_omits_tags_when_absent(self, mocker, backend_fixtures):
+        # Arrange
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+
+        # Assert
+        assert "tags" not in d.to_dict()
+
+    def test_to_dict_serializes_tags_at_creation(self, mocker, backend_fixtures):
+        # The serving-create body is Predictor.to_dict(); tags must land as the
+        # top-level TagsDTO shape with json-encoded values so mandatory-tag
+        # enforcement applies at deployment creation (FSTORE-2049).
+        # Arrange
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        p._tags = {"owner": "team-a", "cost_center": 42}
+        d = deployment.Deployment(predictor=p)
+
+        # Assert
+        assert d.to_dict()["tags"] == {
+            "items": [
+                {"name": "owner", "value": '"team-a"'},
+                {"name": "cost_center", "value": "42"},
+            ]
+        }
+
     # tags
 
     def test_add_tag(self, mocker, backend_fixtures):

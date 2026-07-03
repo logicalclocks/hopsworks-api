@@ -71,8 +71,7 @@ class Model:
         input_example=None,
         framework=None,
         model_registry_id=None,
-        # unused, but needed since they come in the backend response
-        tags=None,
+        tags: dict[str, Any] | None = None,
         href=None,
         feature_view=None,
         training_dataset_version=None,
@@ -83,6 +82,10 @@ class Model:
         self._name = name
         self._version = version
         self._missing_mandatory_tags = missing_mandatory_tags or []
+        # Tags provided at creation ride the create request; the backend
+        # returns tags as a list (attached tags), which is falsy-normalized to
+        # {} here so it never leaks into the create body on a round-trip.
+        self._tags = tags if isinstance(tags, dict) else {}
 
         if description is None:
             self._description = "A collection of models for " + name
@@ -382,6 +385,7 @@ class Model:
         env_vars: dict | None = None,
         vllm_variant: str | None = None,
         vllm_image_tag: str | None = None,
+        tags: dict[str, Any] | None = None,
     ) -> deployment.Deployment:
         """Deploy the model.
 
@@ -420,6 +424,8 @@ class Model:
             env_vars: Environment variables to set on the predictor.
             vllm_variant: vLLM image variant for vLLM deployments. One of `'VLLM'` or `'VLLM_OMNI'`. Ignored for non-vLLM model servers.
             vllm_image_tag: vLLM image tag override. `None` uses the cluster default; if set, it should match one of the tags made available by a cluster administrator. Ignored for non-vLLM model servers.
+            tags: Optionally a dictionary of tag name/value pairs to attach to the deployment when it is created.
+                The tags ride the create request, so any mandatory deployment tags missing from this dictionary cause the backend to reject the creation.
 
         Returns:
             The deployment metadata object of a new or existing deployment.
@@ -447,6 +453,7 @@ class Model:
             env_vars=env_vars,
             vllm_variant=vllm_variant,
             vllm_image_tag=vllm_image_tag,
+            tags=tags,
         )
 
         return predictor.deploy()
@@ -748,7 +755,7 @@ class Model:
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
-        return {
+        model_dict = {
             "id": self._name + "_" + str(self._version),
             "projectName": self._project_name,
             "name": self._name,
@@ -763,6 +770,14 @@ class Model:
             "featureView": util._feature_view_to_json(self._feature_view),
             "trainingDatasetVersion": self._training_dataset_version,
         }
+        if self._tags:
+            model_dict["tags"] = {
+                "items": [
+                    {"name": name, "value": json.dumps(value)}
+                    for name, value in self._tags.items()
+                ]
+            }
+        return model_dict
 
     @public
     @property

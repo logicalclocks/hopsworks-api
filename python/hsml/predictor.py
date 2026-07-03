@@ -14,7 +14,7 @@
 #   limitations under the License.
 from __future__ import annotations
 
-import json
+import json as _json
 from typing import Any
 
 import humps
@@ -87,9 +87,14 @@ class Predictor(DeployableComponent):
         git_provider: str | None = None,
         git_branch: str | None = None,
         missing_mandatory_tags: list[dict[str, Any]] | None = None,
+        tags: dict[str, Any] | None = None,
         **kwargs,
     ):
         self._missing_mandatory_tags = missing_mandatory_tags or []
+        # Tags provided at creation ride the serving-create request; the backend
+        # returns attached tags separately, so this stays isolated from the
+        # missing_mandatory_tags surfaced on retrieval.
+        self._tags = tags if isinstance(tags, dict) else {}
         serving_tool = (
             self._validate_serving_tool(serving_tool)
             or self._get_default_serving_tool()
@@ -378,7 +383,7 @@ class Predictor(DeployableComponent):
         return self
 
     def json(self):
-        return json.dumps(self, cls=util.Encoder)
+        return _json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
         json = {
@@ -434,6 +439,16 @@ class Predictor(DeployableComponent):
             json = {**json, "gitBranch": self._git_branch}
         if self._scaling_configuration is not None:
             json = {**json, **self._scaling_configuration.to_dict()}
+        if self._tags:
+            json = {
+                **json,
+                "tags": {
+                    "items": [
+                        {"name": name, "value": _json.dumps(value)}
+                        for name, value in self._tags.items()
+                    ]
+                },
+            }
         return json
 
     @public

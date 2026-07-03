@@ -894,6 +894,25 @@ def _generate_fully_qualified_feature_name(
     return f"{feature_group._get_project_name()}_{feature_group.name}_{feature_group.version}_{feature_name}"
 
 
+def _check_missing_mandatory_tags(
+    missing_mandatory_tags: list[dict[str, Any]] | None,
+    message: str = "Missing mandatory tags",
+) -> None:
+    """Warn about mandatory tags that a fetched entity has not set.
+
+    Shared across feature store, model registry, and model serving so every
+    artifact type surfaces missing mandatory tags the same way on retrieval.
+    No-op when the list is empty, so callers can invoke it unconditionally.
+
+    Parameters:
+        missing_mandatory_tags: Backend-reported tags that are mandatory for the entity but not set.
+        message: Prefix for the emitted warning.
+    """
+    if missing_mandatory_tags:
+        tag_names = [tag.get("name", str(tag)) for tag in missing_mandatory_tags]
+        warnings.warn(f"{message}: {tag_names}", stacklevel=2)
+
+
 class AsyncTask:
     """Generic class to represent an async task."""
 
