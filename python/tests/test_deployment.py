@@ -191,21 +191,79 @@ class TestDeployment:
         assert "tags" not in d.to_dict()
 
     def test_to_dict_serializes_tags_at_creation(self, mocker, backend_fixtures):
-        # The serving-create body is Predictor.to_dict(); tags must land as the
-        # top-level TagsDTO shape with json-encoded values so mandatory-tag
-        # enforcement applies at deployment creation (FSTORE-2049).
+        # The serving-create body is Predictor.to_dict(); tags flow through the
+        # shared Tag normalizer and land as the same TagsDTO shape as feature
+        # groups: count plus items with string values raw and dict values
+        # json-encoded, so mandatory-tag enforcement applies at deployment
+        # creation (FSTORE-2049).
         # Arrange
+        from hopsworks_common.tag import Tag
+
         p = self._get_dummy_predictor(mocker, backend_fixtures)
-        p._tags = {"owner": "team-a", "cost_center": 42}
+        p._tags = Tag._normalize(
+            [
+                {"name": "owner", "value": "team-a"},
+                {"name": "cost_center", "value": {"id": 42}},
+            ]
+        )
         d = deployment.Deployment(predictor=p)
 
         # Assert
         assert d.to_dict()["tags"] == {
+            "count": 2,
             "items": [
-                {"name": "owner", "value": '"team-a"'},
-                {"name": "cost_center", "value": "42"},
-            ]
+                {"name": "owner", "value": "team-a"},
+                {"name": "cost_center", "value": '{"id": 42}'},
+            ],
         }
+
+    def test_to_dict_serializes_tags_from_list_and_tag_forms(
+        self, mocker, backend_fixtures
+    ):
+        # tags accepts the feature-group shapes: a single name/value dict, a list
+        # of such dicts, and a Tag object. Each serializes to the identical item.
+        # Arrange
+        from hopsworks_common.tag import Tag
+
+        expected = {"count": 1, "items": [{"name": "a", "value": "1"}]}
+
+        # Act / Assert
+        for tags in (
+            [{"name": "a", "value": "1"}],
+            {"name": "a", "value": "1"},
+            Tag(name="a", value="1"),
+        ):
+            p = self._get_dummy_predictor(mocker, backend_fixtures)
+            p._tags = Tag._normalize(tags)
+            d = deployment.Deployment(predictor=p)
+            assert d.to_dict()["tags"] == expected
+
+    def test_to_dict_omits_response_tags_on_round_trip(self, mocker, backend_fixtures):
+        # The serving GET response never carries create-time tags; a predictor
+        # rebuilt from a response must therefore emit no tags key on re-save.
+        # Arrange
+        mocker.patch(
+            "hopsworks_common.client._get_serving_num_instances_limits",
+            return_value=[-1],
+        )
+        mocker.patch(
+            "hopsworks_common.client._is_scale_to_zero_required", return_value=False
+        )
+        mocker.patch("hopsworks_common.client._is_saas_connection", return_value=False)
+        mocker.patch("hopsworks_common.client._is_kserve_installed", return_value=True)
+        serving_json = humps.camelize(
+            copy.deepcopy(
+                backend_fixtures["predictor"]["get_deployments_singleton"]["response"][
+                    "items"
+                ][0]
+            )
+        )
+
+        # Act
+        d = deployment.Deployment.from_response_json(serving_json)
+
+        # Assert
+        assert "tags" not in d.to_dict()
 
     # tags
 

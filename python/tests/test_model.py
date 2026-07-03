@@ -362,9 +362,10 @@ class TestModel:
         assert "tags" not in m.to_dict()
 
     def test_to_dict_serializes_tags_at_creation(self, mocker):
-        # create_model builds the model with a tags dict; to_dict must emit the
-        # TagsDTO shape with json-encoded values so the tags ride the create PUT
-        # (FSTORE-2049 mandatory-tag enforcement at creation).
+        # create_model builds the model with tags via the shared Tag normalizer;
+        # to_dict must emit the same TagsDTO shape as feature groups: count plus
+        # items with string values raw and dict values json-encoded, so the tags
+        # ride the create PUT (FSTORE-2049 mandatory-tag enforcement at creation).
         # Arrange
         mocker.patch("hsml.model_registry.ModelRegistry.from_response_json")
         mr = mocker.MagicMock()
@@ -378,17 +379,62 @@ class TestModel:
         m = signature.create_model(
             name="my_model",
             version=1,
-            tags={"owner": "team-a", "cost_center": 42},
+            tags=[
+                {"name": "owner", "value": "team-a"},
+                {"name": "cost_center", "value": {"id": 42}},
+            ],
         )
         model_dict = m.to_dict()
 
         # Assert
         assert model_dict["tags"] == {
+            "count": 2,
             "items": [
-                {"name": "owner", "value": '"team-a"'},
-                {"name": "cost_center", "value": "42"},
-            ]
+                {"name": "owner", "value": "team-a"},
+                {"name": "cost_center", "value": '{"id": 42}'},
+            ],
         }
+
+    def test_to_dict_serializes_tags_from_list_and_tag_forms(self, mocker):
+        # The tags argument accepts the same shapes as feature groups: a single
+        # name/value dict, a list of such dicts, and a Tag object. Each must
+        # serialize to the identical TagsDTO item.
+        # Arrange
+        from hopsworks_common.tag import Tag
+        from hsml.python import signature
+
+        mocker.patch("hsml.model_registry.ModelRegistry.from_response_json")
+        mr = mocker.MagicMock()
+        mr.shared_registry_project_name = None
+        mr.model_registry_id = 1
+        signature._mr = mr
+        expected = {"count": 1, "items": [{"name": "a", "value": "1"}]}
+
+        # Act / Assert
+        for tags in (
+            [{"name": "a", "value": "1"}],
+            {"name": "a", "value": "1"},
+            Tag(name="a", value="1"),
+        ):
+            m = signature.create_model(name="my_model", version=1, tags=tags)
+            assert m.to_dict()["tags"] == expected
+
+    def test_to_dict_omits_response_tags_on_round_trip(self, mocker, backend_fixtures):
+        # A model built from a GET response carries a backend-populated tags
+        # field; re-saving must not resend them, so to_dict emits no tags key.
+        # Arrange
+        m_json = backend_fixtures["model"]["get_python"]["response"]["items"][0]
+        m_json = {
+            **m_json,
+            "tags": {"count": 1, "items": [{"name": "x", "value": "y"}]},
+        }
+
+        # Act
+        m = model.Model.from_response_json(m_json)
+        m.update_from_response_json(m_json)
+
+        # Assert
+        assert "tags" not in m.to_dict()
 
     # delete
 

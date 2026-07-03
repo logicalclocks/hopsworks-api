@@ -19,7 +19,7 @@ from typing import Any
 
 import humps
 from hopsworks_apigen import public
-from hopsworks_common import client, util
+from hopsworks_common import client, tag, util
 from hopsworks_common.constants import (
     INFERENCE_ENDPOINTS,
     MODEL,
@@ -87,14 +87,15 @@ class Predictor(DeployableComponent):
         git_provider: str | None = None,
         git_branch: str | None = None,
         missing_mandatory_tags: list[dict[str, Any]] | None = None,
-        tags: dict[str, Any] | None = None,
+        tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         **kwargs,
     ):
         self._missing_mandatory_tags = missing_mandatory_tags or []
-        # Tags provided at creation ride the serving-create request; the backend
-        # returns attached tags separately, so this stays isolated from the
-        # missing_mandatory_tags surfaced on retrieval.
-        self._tags = tags if isinstance(tags, dict) else {}
+        # Tags provided at creation ride the serving-create request as a list of
+        # Tag objects, serialized identically to feature groups. The serving GET
+        # response never carries tags (they surface via missing_mandatory_tags),
+        # so nothing response-derived reaches this list on a round-trip.
+        self._tags = tag.Tag._normalize(tags)
         serving_tool = (
             self._validate_serving_tool(serving_tool)
             or self._get_default_serving_tool()
@@ -439,16 +440,9 @@ class Predictor(DeployableComponent):
             json = {**json, "gitBranch": self._git_branch}
         if self._scaling_configuration is not None:
             json = {**json, **self._scaling_configuration.to_dict()}
-        if self._tags:
-            json = {
-                **json,
-                "tags": {
-                    "items": [
-                        {"name": name, "value": _json.dumps(value)}
-                        for name, value in self._tags.items()
-                    ]
-                },
-            }
+        tags_dict = tag.Tag._tags_to_dict(self._tags)
+        if tags_dict:
+            json = {**json, "tags": tags_dict}
         return json
 
     @public

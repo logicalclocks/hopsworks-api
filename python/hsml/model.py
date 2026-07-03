@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Any
 
 import humps
 from hopsworks_apigen import public
-from hopsworks_common import client, usage, util
+from hopsworks_common import client, tag, usage, util
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
 from hopsworks_common.constants import MODEL_REGISTRY
 from hsml.core import explicit_provenance
@@ -71,7 +71,7 @@ class Model:
         input_example=None,
         framework=None,
         model_registry_id=None,
-        tags: dict[str, Any] | None = None,
+        tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         href=None,
         feature_view=None,
         training_dataset_version=None,
@@ -82,10 +82,11 @@ class Model:
         self._name = name
         self._version = version
         self._missing_mandatory_tags = missing_mandatory_tags or []
-        # Tags provided at creation ride the create request; the backend
-        # returns tags as a list (attached tags), which is falsy-normalized to
-        # {} here so it never leaks into the create body on a round-trip.
-        self._tags = tags if isinstance(tags, dict) else {}
+        # Tags provided at creation ride the create request as a list of Tag
+        # objects, serialized identically to feature groups. Response-derived
+        # tags are stripped upstream (_set_model_class, update_from_response_json)
+        # so they never leak back into the create body on a round-trip.
+        self._tags = tag.Tag._normalize(tags)
 
         if description is None:
             self._description = "A collection of models for " + name
@@ -385,7 +386,7 @@ class Model:
         env_vars: dict | None = None,
         vllm_variant: str | None = None,
         vllm_image_tag: str | None = None,
-        tags: dict[str, Any] | None = None,
+        tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
     ) -> deployment.Deployment:
         """Deploy the model.
 
@@ -424,8 +425,9 @@ class Model:
             env_vars: Environment variables to set on the predictor.
             vllm_variant: vLLM image variant for vLLM deployments. One of `'VLLM'` or `'VLLM_OMNI'`. Ignored for non-vLLM model servers.
             vllm_image_tag: vLLM image tag override. `None` uses the cluster default; if set, it should match one of the tags made available by a cluster administrator. Ignored for non-vLLM model servers.
-            tags: Optionally a dictionary of tag name/value pairs to attach to the deployment when it is created.
-                The tags ride the create request, so any mandatory deployment tags missing from this dictionary cause the backend to reject the creation.
+            tags: Optionally the tags to attach to the deployment when it is created, in the same shapes accepted by feature groups.
+                A single [`Tag`][hopsworks.tag.Tag], a `{"name": "owner", "value": "team-a"}` dict, or a list of either, for example `[{"name": "owner", "value": "team-a"}]`.
+                The tags ride the create request, so any mandatory deployment tags missing from them cause the backend to reject the creation.
 
         Returns:
             The deployment metadata object of a new or existing deployment.
@@ -748,6 +750,10 @@ class Model:
         json_decamelized = humps.decamelize(json_dict)
         if "type" in json_decamelized:  # backwards compatibility
             _ = json_decamelized.pop("type")
+        if "tags" in json_decamelized:
+            # Tags are always retrieved from the backend separately; dropping the
+            # response tags keeps them out of the create body on a re-save.
+            _ = json_decamelized.pop("tags")
         self.__init__(**json_decamelized)
         return self
 
@@ -770,13 +776,9 @@ class Model:
             "featureView": util._feature_view_to_json(self._feature_view),
             "trainingDatasetVersion": self._training_dataset_version,
         }
-        if self._tags:
-            model_dict["tags"] = {
-                "items": [
-                    {"name": name, "value": json.dumps(value)}
-                    for name, value in self._tags.items()
-                ]
-            }
+        tags_dict = tag.Tag._tags_to_dict(self._tags)
+        if tags_dict:
+            model_dict["tags"] = tags_dict
         return model_dict
 
     @public

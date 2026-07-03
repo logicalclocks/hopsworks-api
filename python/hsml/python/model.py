@@ -74,5 +74,7 @@ class Model(Model):
         json_decamelized.pop("framework")
         if "type" in json_decamelized:  # backwards compatibility
             _ = json_decamelized.pop("type")
+        if "tags" in json_decamelized:
+            _ = json_decamelized.pop("tags")
         self.__init__(**json_decamelized)
         return self
