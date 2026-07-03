@@ -2083,18 +2083,24 @@ class VectorServer:
         if not HAS_AVRO:
             raise ModuleNotFoundError(avro_not_installed_message)
 
-        complex_feature_schemas = {
-            f.name: avro.io.DatumReader(
-                avro.schema.parse(
-                    f._feature_group._get_feature_avro_schema(
-                        f.feature_group_feature_name
-                    )
-                )
+        complex_feature_schemas = {}
+        for f in self._features:
+            if (
+                not f.is_complex()
+                or f.feature_group.id in self._skip_feature_decoding_fg_ids
+            ):
+                continue
+            avro_schema = f._feature_group._get_feature_avro_schema(
+                f.feature_group_feature_name
             )
-            for f in self._features
-            if f.is_complex()
-            and f.feature_group.id not in self._skip_feature_decoding_fg_ids
-        }
+            if avro_schema is None:
+                # A synthesized feature (the collect array<struct> fold) has no column
+                # on the feature group, hence no avro schema; its value is assembled
+                # client-side from result rows and never arrives avro-encoded.
+                continue
+            complex_feature_schemas[f.name] = avro.io.DatumReader(
+                avro.schema.parse(avro_schema)
+            )
 
         if len(complex_feature_schemas) == 0:
             return {}

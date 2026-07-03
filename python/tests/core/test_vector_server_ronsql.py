@@ -437,6 +437,34 @@ class TestRonsqlTemplateValidation:
         assert entry == {"user_id": "0"}
 
 
+class _StubFeatureGroup:
+    id = 1
+
+    def _get_feature_avro_schema(self, name):
+        return None
+
+
+class _StubComplexFeature:
+    """A synthesized complex feature (the collect fold) with no avro schema."""
+
+    name = "transactions_collect"
+    feature_group_feature_name = "transactions_collect"
+    feature_group = _StubFeatureGroup()
+    _feature_group = feature_group
+
+    @staticmethod
+    def is_complex():
+        return True
+
+
+class TestComplexDecoderSkipsSchemalessFeatures:
+    def test_collect_feature_without_avro_schema_is_skipped(self):
+        server = make_server()
+        server._features = [_StubComplexFeature()]
+        server._skip_feature_decoding_fg_ids = set()
+        assert server._build_complex_feature_decoders() == {}
+
+
 class TestBatchOverlayConcurrency:
     def test_batch_overlay_preserves_entry_alignment(self):
         server = make_server()
