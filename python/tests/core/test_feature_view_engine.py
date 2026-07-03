@@ -2332,9 +2332,7 @@ class TestFeatureViewEngine:
             assert td_feature.type == expected_td_feature.type
             assert td_feature.label == expected_td_feature.label
 
-    def test_compute_training_dataset_event_time_window_in_write_options(
-        self, mocker
-    ):
+    def test_compute_training_dataset_event_time_window_in_write_options(self, mocker):
         # The per-call window set by `_insert_training_data` exists only on the
         # client-side TD object; the create_fv_td job re-fetches the TD from the
         # backend (create-time window), so `_compute_training_dataset` must ship
