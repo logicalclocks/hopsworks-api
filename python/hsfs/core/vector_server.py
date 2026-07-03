@@ -15,6 +15,7 @@
 #
 from __future__ import annotations
 
+import concurrent.futures
 import itertools
 import logging
 import warnings
@@ -721,10 +722,9 @@ class VectorServer:
             # v3 online path: collect/aggregate feature groups are served via RonSQL,
             # one statement per entry (batching via IN is a later optimization).
             if self._get_ronsql_statements():
-                batch_results = [
-                    self._overlay_ronsql_collect(result, entry)
-                    for result, entry in zip(batch_results, rondb_entries, strict=True)
-                ]
+                batch_results = self._overlay_ronsql_collect_batch(
+                    batch_results, rondb_entries
+                )
         elif len(rondb_entries) > 0:
             # get result row
             if _logger.isEnabledFor(logging.DEBUG):
@@ -1368,6 +1368,7 @@ class VectorServer:
         for statement in self._get_ronsql_statements():
             rows = self._execute_ronsql_statement(statement, entry)
             if statement.collect_n is not None:
+                rows = self._sort_collect_rows(rows, statement)
                 entity_keys = {
                     param.name for param in statement.prepared_statement_parameters
                 }
@@ -1419,7 +1420,9 @@ class VectorServer:
                 "REST client requires a collect feature view and RonDB >= 26.04; "
                 "alternatively call scan_vectors(..., force_sql_client=True)."
             )
-        rows = self._execute_ronsql_statement(statement, entry)
+        rows = self._sort_collect_rows(
+            self._execute_ronsql_statement(statement, entry), statement
+        )
         return rows[:limit] if limit is not None else rows
 
     def _execute_ronsql_statement(
@@ -1431,8 +1434,32 @@ class VectorServer:
             query, statement.ronsql_database
         )
 
+    def _overlay_ronsql_collect_batch(
+        self, results: list[dict[str, Any]], entries: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Overlay collect/aggregate features onto a batch of point-read results.
+
+        Each entry needs one RonSQL round trip per collect/aggregate statement, so the
+        per-entry overlays run on a bounded thread pool instead of serially.
+        Grouping entries into one multi-entity statement is a later optimization.
+        """
+        if len(entries) <= 1:
+            return [
+                self._overlay_ronsql_collect(result, entry)
+                for result, entry in zip(results, entries, strict=True)
+            ]
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=min(8, len(entries))
+        ) as pool:
+            return list(pool.map(self._overlay_ronsql_collect, results, entries))
+
     def _get_ronsql_statements(self) -> list[Any]:
-        """Fetch and cache the feature view's single-entity statements carrying RonSQL templates."""
+        """Fetch and cache the feature view's single-entity statements carrying RonSQL templates.
+
+        On the first fetch every template is conformance-checked against the server with
+        an EXPLAIN round trip, so an unservable template surfaces here instead of as an
+        opaque error on the read path.
+        """
         if not hasattr(self, "_ronsql_statements"):
             statements = feature_view_api.FeatureViewApi(
                 self._feature_store_id
@@ -1442,10 +1469,107 @@ class VectorServer:
                 batch=False,
                 inference_helper_columns=False,
             )
-            self._ronsql_statements = [
-                s for s in statements if s.query_ronsql is not None
-            ]
+            self._ronsql_statements = self._validate_ronsql_templates(
+                [s for s in statements if s.query_ronsql is not None]
+            )
         return self._ronsql_statements
+
+    def _validate_ronsql_templates(self, statements: list[Any]) -> list[Any]:
+        """Conformance-check generated RonSQL templates with an EXPLAIN round trip (v3).
+
+        Each template is substituted with type-appropriate placeholder values and planned
+        via explainMode=FORCE, which validates it against the server's RonSQL subset and
+        index requirements without executing it.
+        A template the server rejects (unsupported construct, missing index, RonDB < 26.04)
+        is dropped with a warning: point reads then serve without the collect/aggregate
+        overlay, and `scan_vectors` raises its force_sql_client guidance.
+        A transport-level failure keeps the template, since it proves nothing about
+        conformance.
+        """
+        valid = []
+        for statement in statements:
+            kind = "collect" if statement.collect_n is not None else "aggregation"
+            try:
+                query = self._substitute_ronsql_template(
+                    statement, self._ronsql_placeholder_entry(statement)
+                )
+                online_store_rest_client_api.OnlineStoreRestClientApi()._execute_ronsql(
+                    query, statement.ronsql_database, explain_mode="FORCE"
+                )
+            except (
+                exceptions.RestAPIError,
+                exceptions.FeatureStoreException,
+            ) as err:
+                warnings.warn(
+                    f"The RonSQL {kind} statement for feature group "
+                    f"{statement.feature_group_id} failed its EXPLAIN conformance check "
+                    f"and will not be served through /ronsql (requires RonDB >= 26.04): "
+                    f"{err} Vectors are served without this feature group's {kind} "
+                    "feature; use force_sql_client=True for the MySQL path.",
+                    stacklevel=2,
+                )
+                continue
+            except Exception as err:  # noqa: BLE001 - transport errors prove nothing
+                _logger.warning(
+                    "Could not conformance-check the RonSQL %s statement for feature "
+                    "group %s (%s); keeping it unvalidated.",
+                    kind,
+                    statement.feature_group_id,
+                    err,
+                )
+            valid.append(statement)
+        return valid
+
+    def _ronsql_placeholder_entry(self, statement) -> dict[str, Any]:
+        """Type-appropriate placeholder entity-key values for template validation."""
+        return {
+            param.name: self._ronsql_placeholder_value(
+                self._ronsql_feature_type(statement, param.name)
+            )
+            for param in statement.prepared_statement_parameters
+        }
+
+    @staticmethod
+    def _ronsql_placeholder_value(feature_type: str | None) -> Any:
+        """A dummy value of the right kind for a serving-key column type."""
+        base_type = (feature_type or "").split("(")[0].strip().lower()
+        if base_type in ("float", "double", "decimal"):
+            return 0.0
+        if base_type in ("timestamp", "date", "datetime"):
+            return datetime(2026, 1, 1)
+        if base_type in ("string", "varchar", "char", "text"):
+            return "0"
+        if base_type == "boolean":
+            return False
+        return 0
+
+    def _ronsql_feature_type(self, statement, feature_name: str) -> str | None:
+        """The feature-view schema type of a serving-key column, if known."""
+        prefixed = (getattr(statement, "prefix", None) or "") + feature_name
+        for feature in getattr(self, "_features", None) or []:
+            if feature.name in (feature_name, prefixed):
+                return feature.type
+        return None
+
+    @staticmethod
+    def _sort_collect_rows(
+        rows: list[dict[str, Any]], statement
+    ) -> list[dict[str, Any]]:
+        """Order collect rows deterministically by the statement's order column.
+
+        Neither a MySQL subquery nor a RonSQL CTE scan guarantees output order, so the
+        array ordering contract (newest-first, oldest-first when ascending) is
+        established here before folding.
+        Statements from a backend predating collect_order_by are returned unchanged.
+        """
+        order_by = getattr(statement, "collect_order_by", None)
+        if not order_by or not rows or order_by not in rows[0]:
+            return rows
+        return sorted(
+            rows,
+            key=lambda row: row[order_by],
+            reverse=not getattr(statement, "collect_ascending", False),
+        )
 
     def _get_ronsql_scan_statement(self):
         """The feature view's collect statement, or None when the FV has no collect."""
@@ -1458,10 +1582,25 @@ class VectorServer:
         """Substitute typed entity-key literals into the RonSQL template's `?` markers.
 
         RonSQL has no parameter binding, so values are inlined as literals.
-        Values are strictly typed: numbers inline bare, strings are quote-escaped and
-        control-character-rejected, anything else is rejected.
+        Placeholders are located with a quote-aware scan up front, so a `?` inside the
+        template's own string literals (for example a feature-view LIKE filter) or inside
+        an already-substituted value is never treated as a marker.
+        Values are strictly typed: numbers inline bare, strings are quote-escaped,
+        length-capped, and control-character-rejected, anything else is rejected.
+        When the feature-view schema types the key, the literal follows the schema type
+        rather than the Python runtime type (see `_ronsql_literal`).
         """
-        query = statement.query_ronsql
+        parts = self._split_ronsql_placeholders(statement.query_ronsql)
+        expected = len(statement.prepared_statement_parameters) + (
+            1 if getattr(statement, "aggregate_window", None) is not None else 0
+        )
+        if len(parts) - 1 != expected:
+            raise exceptions.FeatureStoreException(
+                f"The RonSQL template for feature group {statement.feature_group_id} "
+                f"carries {len(parts) - 1} placeholders where {expected} were expected; "
+                "refusing to substitute into a mismatched template."
+            )
+        literals = []
         for param in statement.prepared_statement_parameters:
             value = entry.get(param.name)
             if value is None:
@@ -1477,17 +1616,67 @@ class VectorServer:
                 raise exceptions.FeatureStoreException(
                     f"Missing entity key '{param.name}' in entry for RonSQL scan."
                 )
-            query = query.replace("?", self._ronsql_literal(value), 1)
+            literals.append(
+                self._ronsql_literal(
+                    value, self._ronsql_feature_type(statement, param.name)
+                )
+            )
         if getattr(statement, "aggregate_window", None) is not None:
             # pushdown aggregation: the trailing ? is the trailing-window bound,
             # resolved client-side since RonSQL has no NOW()
             bound = datetime.now() - timedelta(seconds=statement.aggregate_window)
-            query = query.replace("?", self._ronsql_literal(bound), 1)
-        return query
+            literals.append(self._ronsql_literal(bound))
+        pieces = [parts[0]]
+        for literal, part in zip(literals, parts[1:], strict=True):
+            pieces.append(literal)
+            pieces.append(part)
+        return "".join(pieces)
 
     @staticmethod
-    def _ronsql_literal(value: Any) -> str:
-        """Render a python value as a safe RonSQL literal."""
+    def _split_ronsql_placeholders(template: str) -> list[str]:
+        """Split a RonSQL template on its `?` placeholder markers.
+
+        Tracks single-quoted string literals (with `''` escapes) and backtick-quoted
+        identifiers, so only a bare `?` outside any quoting splits the template.
+        """
+        parts = []
+        current = []
+        quote = None
+        i = 0
+        while i < len(template):
+            char = template[i]
+            if quote is None and char == "?":
+                parts.append("".join(current))
+                current = []
+            else:
+                current.append(char)
+                if quote is None and char in ("'", "`"):
+                    quote = char
+                elif quote == char:
+                    if char == "'" and template[i + 1 : i + 2] == "'":
+                        # '' inside a string literal is an escaped quote, not a terminator
+                        current.append("'")
+                        i += 1
+                    else:
+                        quote = None
+            i += 1
+        parts.append("".join(current))
+        return parts
+
+    # Entity-key string literals above this length indicate misuse (or an attempt to
+    # inflate the statement towards RDRS's 4 MiB request cap) and are rejected.
+    _RONSQL_MAX_STRING_LITERAL = 1024
+
+    @staticmethod
+    def _ronsql_literal(value: Any, feature_type: str | None = None) -> str:
+        """Render a python value as a safe RonSQL literal.
+
+        When the feature-view schema types the target column, the value is first coerced
+        to that type (a numeric column only accepts numeric values, a string column
+        renders any scalar quoted), so RonSQL sees the same literal kind the MySQL
+        prepared statement would bind.
+        """
+        value = VectorServer._coerce_for_feature_type(value, feature_type)
         # bool is an int subclass; check it first
         if isinstance(value, bool):
             return "1" if value else "0"
@@ -1502,6 +1691,12 @@ class VectorServer:
         if isinstance(value, (datetime, date)):
             return "'" + value.strftime("%Y-%m-%d %H:%M:%S") + "'"
         if isinstance(value, str):
+            if len(value) > VectorServer._RONSQL_MAX_STRING_LITERAL:
+                raise exceptions.FeatureStoreException(
+                    "Entity-key strings longer than "
+                    f"{VectorServer._RONSQL_MAX_STRING_LITERAL} characters are not "
+                    "allowed in a RonSQL statement."
+                )
             if any(ord(c) < 0x20 for c in value) or "\\" in value:
                 raise exceptions.FeatureStoreException(
                     "Entity-key strings with control characters or backslashes are not "
@@ -1511,6 +1706,62 @@ class VectorServer:
         raise exceptions.FeatureStoreException(
             f"Unsupported entity-key type for RonSQL: {type(value).__name__}."
         )
+
+    @staticmethod
+    def _coerce_for_feature_type(value: Any, feature_type: str | None) -> Any:
+        """Coerce an entity-key value to its schema type before literal rendering.
+
+        Rejects values that do not fit the typed column instead of letting RonSQL and
+        MySQL apply diverging implicit conversions.
+        Values with no known schema type pass through to runtime-type rendering.
+        """
+        base_type = (feature_type or "").split("(")[0].strip().lower()
+        if not base_type:
+            return value
+        if base_type in ("int", "integer", "bigint", "smallint", "tinyint", "long"):
+            if isinstance(value, (bool, int)):
+                return int(value)
+            if isinstance(value, str):
+                try:
+                    return int(value)
+                except ValueError:
+                    pass
+            raise exceptions.FeatureStoreException(
+                f"Entity-key value {value!r} is not valid for a {feature_type} "
+                "serving key."
+            )
+        if base_type in ("float", "double", "decimal"):
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                return float(value)
+            if isinstance(value, str):
+                try:
+                    return float(value)
+                except ValueError:
+                    pass
+            raise exceptions.FeatureStoreException(
+                f"Entity-key value {value!r} is not valid for a {feature_type} "
+                "serving key."
+            )
+        if base_type in ("string", "varchar", "char", "text"):
+            if isinstance(value, (datetime, date)):
+                return value.strftime("%Y-%m-%d %H:%M:%S")
+            return value if isinstance(value, str) else str(value)
+        if base_type in ("timestamp", "date", "datetime"):
+            if isinstance(value, (datetime, date, str)):
+                return value
+            raise exceptions.FeatureStoreException(
+                f"Entity-key value {value!r} is not valid for a {feature_type} serving "
+                "key; pass a datetime, date, or preformatted string."
+            )
+        if base_type == "boolean":
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, int) and value in (0, 1):
+                return bool(value)
+            raise exceptions.FeatureStoreException(
+                f"Entity-key value {value!r} is not valid for a boolean serving key."
+            )
+        return value
 
     def _get_inference_helper(
         self,

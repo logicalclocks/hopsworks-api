@@ -59,7 +59,9 @@ class OnlineStoreRestClientApi:
     RONSQL_ENDPOINT = "ronsql"
     PING_ENDPOINT = "ping"
 
-    def _execute_ronsql(self, query: str, database: str) -> list[dict[str, Any]]:
+    def _execute_ronsql(
+        self, query: str, database: str, explain_mode: str = "REMOVE"
+    ) -> list[dict[str, Any]]:
         """Execute a RonSQL statement against the RonDB Rest Server /ronsql endpoint.
 
         RonSQL statements are read-only SELECTs (optionally with CTEs and joins) executed
@@ -70,6 +72,8 @@ class OnlineStoreRestClientApi:
             query: The complete RonSQL statement, with all literal values already substituted
                 (RonSQL has no parameter binding).
             database: The single online database the statement is resolved and authorized against.
+            explain_mode: "REMOVE" executes the statement; "FORCE" plans it as an EXPLAIN
+                without executing, which is used to conformance-check generated templates.
 
         Returns:
             The result set as a list of row dictionaries keyed by output column name.
@@ -82,11 +86,18 @@ class OnlineStoreRestClientApi:
         payload = {
             "query": query,
             "database": database,
-            "explainMode": "REMOVE",
+            "explainMode": explain_mode,
             "outputFormat": "JSON",
         }
         if _logger.isEnabledFor(logging.DEBUG):
-            _logger.debug(f"Sending RonSQL request: {json.dumps(payload, indent=2)}")
+            # Entity keys and filter values are inlined in the statement and can be
+            # sensitive, so log only operation metadata, never the interpolated SQL.
+            _logger.debug(
+                "Sending RonSQL request: database=%s, explainMode=%s, statement_length=%d",
+                database,
+                explain_mode,
+                len(query),
+            )
         response = online_store_rest_client._get_instance()._send_request(
             method="POST",
             path_params=[self.RONSQL_ENDPOINT],

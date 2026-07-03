@@ -35,6 +35,8 @@ class ServingPreparedStatement:
         prefix: str | None = None,
         collect_n: int | None = None,
         collect_feature_name: str | None = None,
+        collect_order_by: str | None = None,
+        collect_ascending: bool | None = None,
         query_ronsql: str | None = None,
         ronsql_database: str | None = None,
         aggregate_window: int | None = None,
@@ -56,6 +58,11 @@ class ServingPreparedStatement:
         # Name of the feature-view feature the client folds the collect rows into
         # (v2 C1: <fg_name>_collect, typed array<struct<...>>).
         self._collect_feature_name = collect_feature_name
+        # Order column and direction of the collect: the client sorts the returned rows by
+        # this column before folding (SQL subquery/CTE-scan output order is not guaranteed),
+        # newest-first by default, oldest-first when collect_ascending.
+        self._collect_order_by = collect_order_by
+        self._collect_ascending = collect_ascending
         # RonSQL template + target database for serving this statement via RDRS /ronsql
         # (v3 online path); the client substitutes typed literals for the `?` markers.
         self._query_ronsql = query_ronsql
@@ -128,6 +135,14 @@ class ServingPreparedStatement:
     @property
     def collect_feature_name(self) -> str | None:
         return self._collect_feature_name
+
+    @property
+    def collect_order_by(self) -> str | None:
+        return self._collect_order_by
+
+    @property
+    def collect_ascending(self) -> bool | None:
+        return self._collect_ascending
 
     @property
     def query_ronsql(self) -> str | None:
