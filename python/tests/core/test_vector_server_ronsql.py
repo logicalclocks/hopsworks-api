@@ -437,6 +437,37 @@ class TestRonsqlTemplateValidation:
         assert entry == {"user_id": "0"}
 
 
+class TestServingPreparedStatementWireParsing:
+    def test_camelized_wire_payload_round_trips(self):
+        # The REAL wire shape: humps decamelizes "collectN" to "collectn" (trailing
+        # single capitals do not split), which must still land on collect_n.
+        payload = {
+            "count": 1,
+            "items": [
+                {
+                    "featureGroupId": 1,
+                    "preparedStatementIndex": 0,
+                    "preparedStatementParameters": [{"name": "user_id", "index": 1}],
+                    "queryOnline": "SELECT ...",
+                    "queryRonsql": TEMPLATE,
+                    "ronsqlDatabase": "proj",
+                    "collectN": 100,
+                    "collectFeatureName": "transactions_collect",
+                    "collectOrderBy": "event_time",
+                    "collectAscending": True,
+                    "aggregateWindow": 3600,
+                }
+            ],
+        }
+        statement = ServingPreparedStatement.from_response_json(payload)[0]
+        assert statement.collect_n == 100
+        assert statement.collect_feature_name == "transactions_collect"
+        assert statement.collect_order_by == "event_time"
+        assert statement.collect_ascending is True
+        assert statement.aggregate_window == 3600
+        assert statement.query_ronsql == TEMPLATE
+
+
 class _StubFeatureGroup:
     id = 1
 

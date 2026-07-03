@@ -54,6 +54,10 @@ class ServingPreparedStatement:
         self._prefix = prefix
         # collect ("most recent N rows per entity"): when set, this statement returns up to
         # collect_n rows per entity to fold into list-typed features (see online_store_sql_engine).
+        # pyhumps decamelizes the wire key "collectN" to "collectn" (a trailing single
+        # capital does not split), so absorb that form when the canonical kwarg is absent.
+        if collect_n is None:
+            collect_n = kwargs.get("collectn")
         self._collect_n = collect_n
         # Name of the feature-view feature the client folds the collect rows into
         # (v2 C1: <fg_name>_collect, typed array<struct<...>>).
