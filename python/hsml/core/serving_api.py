@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from hopsworks_common import tag
 from hsml import (
     client,
     decorators,
@@ -25,7 +26,6 @@ from hsml import (
     deployment,
     inference_endpoint,
     predictor_state,
-    tag,
 )
 from hsml.client.istio.utils.infer_type import (
     InferInput,

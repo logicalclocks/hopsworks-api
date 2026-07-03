@@ -18,7 +18,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from hsml import client, decorators, model, tag
+from hopsworks_common import tag
+from hsml import client, decorators, model
 from hsml.core import explicit_provenance
 
 
