@@ -13,6 +13,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+import json
 from datetime import datetime
 
 import pytest
@@ -421,7 +422,7 @@ class TestRonsqlTemplateValidation:
 
     def test_valid_template_kept_and_planned_with_force(self, monkeypatch):
         server, calls = self.make_validating_server(monkeypatch, [])
-        statements = server._validate_ronsql_templates([make_statement()])
+        statements = server._validate_ronsql_templates([make_statement()], [])
         assert len(statements) == 1
         assert len(calls) == 1
         assert calls[0]["explain_mode"] == "FORCE"
@@ -432,10 +433,11 @@ class TestRonsqlTemplateValidation:
     def test_rejected_template_dropped_with_warning(self, monkeypatch):
         # a definitive planner refusal (4xx) rejects the template
         server, _ = self.make_validating_server(monkeypatch, _rest_error(400))
+        rejected = []
         with pytest.warns(UserWarning, match="conformance check"):
-            statements = server._validate_ronsql_templates([make_statement()])
+            statements = server._validate_ronsql_templates([make_statement()], rejected)
         assert statements == []
-        assert len(server._ronsql_rejected) == 1
+        assert len(rejected) == 1
 
     def test_auth_error_raises_instead_of_rejecting(self, monkeypatch):
         from hsfs.client.exceptions import RestAPIError
@@ -443,26 +445,27 @@ class TestRonsqlTemplateValidation:
         for status in (401, 403):
             server, _ = self.make_validating_server(monkeypatch, _rest_error(status))
             with pytest.raises(RestAPIError):
-                server._validate_ronsql_templates([make_statement()])
+                server._validate_ronsql_templates([make_statement()], [])
 
     def test_server_error_keeps_template_unvalidated(self, monkeypatch):
         # a 5xx proves nothing about conformance: the template stays servable
         server, _ = self.make_validating_server(monkeypatch, _rest_error(503))
-        statements = server._validate_ronsql_templates([make_statement()])
+        rejected = []
+        statements = server._validate_ronsql_templates([make_statement()], rejected)
         assert len(statements) == 1
-        assert server._ronsql_rejected == []
+        assert rejected == []
 
     def test_statusless_rest_error_keeps_template(self, monkeypatch):
         from hsfs.client.exceptions import RestAPIError
 
         error = RestAPIError.__new__(RestAPIError)
         server, _ = self.make_validating_server(monkeypatch, error)
-        statements = server._validate_ronsql_templates([make_statement()])
+        statements = server._validate_ronsql_templates([make_statement()], [])
         assert len(statements) == 1
 
     def test_transport_error_keeps_template(self, monkeypatch):
         server, _ = self.make_validating_server(monkeypatch, ConnectionError("down"))
-        statements = server._validate_ronsql_templates([make_statement()])
+        statements = server._validate_ronsql_templates([make_statement()], [])
         assert len(statements) == 1
 
     def test_planner_refusal_wrapped_as_500_rejects_template(self, monkeypatch):
@@ -475,16 +478,46 @@ class TestRonsqlTemplateValidation:
             "Caught exception: CTE without aggregate function.\n"
         )
         server, _ = self.make_validating_server(monkeypatch, error)
+        rejected = []
         with pytest.warns(UserWarning, match="conformance check"):
-            statements = server._validate_ronsql_templates([make_statement()])
+            statements = server._validate_ronsql_templates([make_statement()], rejected)
         assert statements == []
-        assert len(server._ronsql_rejected) == 1
+        assert len(rejected) == 1
 
     def test_placeholder_values_follow_schema_types(self):
         server = make_server()
         server._features = [_Feature("user_id", "string")]
         entry = server._ronsql_placeholder_entry(make_statement())
         assert entry == {"user_id": "0"}
+
+    def test_explain_requests_text_output_and_skips_json_parsing(self, monkeypatch):
+        # the server refuses JSON output for EXPLAIN plans; sending JSON turned every
+        # valid template into a false planner refusal
+        from hsfs.client import online_store_rest_client
+        from hsfs.core import online_store_rest_client_api
+
+        sent = []
+
+        class _Client:
+            def _send_request(self, method, path_params, headers, data):
+                sent.append(json.loads(data))
+
+                class _Resp:
+                    status_code = 200
+
+                    @staticmethod
+                    def json():
+                        raise AssertionError("EXPLAIN plan body must not be parsed")
+
+                return _Resp()
+
+        monkeypatch.setattr(
+            online_store_rest_client, "_get_instance", lambda: _Client()
+        )
+        api = online_store_rest_client_api.OnlineStoreRestClientApi()
+        assert api._execute_ronsql("SELECT 1;", "db", explain_mode="FORCE") == []
+        assert sent[0]["outputFormat"] == "TEXT"
+        assert sent[0]["explainMode"] == "FORCE"
 
 
 class TestServingPreparedStatementWireParsing:
@@ -505,8 +538,15 @@ class TestServingPreparedStatementWireParsing:
                     "collectFeatureName": "transactions_collect",
                     "collectOrderBy": "event_time",
                     "collectAscending": True,
-                    "collectFilterApplied": False,
+                    "collectFilterApplied": True,
                     "collectSourceFeatures": ["user_id", "event_time", "amount"],
+                    "collectFilters": [
+                        {
+                            "feature": "amount",
+                            "condition": "GREATER_THAN",
+                            "value": "0",
+                        }
+                    ],
                     "aggregateWindow": 3600,
                 }
             ],
@@ -516,8 +556,11 @@ class TestServingPreparedStatementWireParsing:
         assert statement.collect_feature_name == "transactions_collect"
         assert statement.collect_order_by == "event_time"
         assert statement.collect_ascending is True
-        assert statement.collect_filter_applied is False
+        assert statement.collect_filter_applied is True
         assert statement.collect_source_features == ["user_id", "event_time", "amount"]
+        assert statement.collect_filters == [
+            {"feature": "amount", "condition": "GREATER_THAN", "value": "0"}
+        ]
         assert statement.aggregate_window == 3600
         assert statement.query_ronsql == TEMPLATE
 
@@ -558,6 +601,8 @@ class _ScanFeatureGroup:
 
 class _ScanFeature:
     feature_group = _ScanFeatureGroup()
+    name = "user_id"
+    type = "bigint"
 
 
 class TestScanFallback:
@@ -769,6 +814,7 @@ class TestBatchOverlayConcurrency:
     def test_batch_overlay_preserves_entry_alignment(self):
         server = make_server()
         server._ronsql_statements = [make_statement()]
+        server._ronsql_batch_statements = []
         server._rest_client_engine = _StubRestEngine({1: ["user_id", "amount"]})
         server._execute_ronsql_statement = lambda stmt, entry: [
             {"user_id": entry["user_id"], "amount": float(entry["user_id"]) * 10}
@@ -780,3 +826,293 @@ class TestBatchOverlayConcurrency:
         for i, result in enumerate(results, start=1):
             assert result["tier"] == str(i)
             assert result["transactions_collect"] == [{"amount": float(i) * 10}]
+
+
+def make_batch_aggregate_statement(**overrides):
+    kwargs = {
+        "collect_n": None,
+        "collect_feature_name": None,
+        "collect_order_by": None,
+        "aggregate_window": None,
+        "query_ronsql": (
+            "SELECT `user_id`, SUM(`amount`) AS `amount_sum` FROM `transactions_1` "
+            "WHERE `user_id` IN (?) GROUP BY `user_id`;"
+        ),
+    }
+    kwargs.update(overrides)
+    return make_statement(**kwargs)
+
+
+class TestBatchAggregateGrouping:
+    def make_grouping_server(self, monkeypatch, rows, batch_statement=None):
+        from hsfs.core import online_store_rest_client_api
+
+        server = make_server()
+        server._features = [_Feature("user_id", "bigint")]
+        server._ronsql_statements = []
+        server._ronsql_rejected = []
+        server._ronsql_batch_statements = [
+            batch_statement
+            if batch_statement is not None
+            else make_batch_aggregate_statement()
+        ]
+        calls = []
+
+        def fake_execute(api_self, query, database, explain_mode="REMOVE"):
+            calls.append(query)
+            if isinstance(rows, Exception):
+                raise rows
+            return rows
+
+        monkeypatch.setattr(
+            online_store_rest_client_api.OnlineStoreRestClientApi,
+            "_execute_ronsql",
+            fake_execute,
+        )
+        return server, calls
+
+    def test_one_grouped_statement_serves_the_batch(self, monkeypatch):
+        rows = [
+            {"user_id": 1, "amount_sum": 10.0},
+            {"user_id": 2, "amount_sum": 20.0},
+        ]
+        server, calls = self.make_grouping_server(monkeypatch, rows)
+        results = [{"tier": "a"}, {"tier": "b"}]
+        entries = [{"user_id": 1}, {"user_id": 2}]
+        served = server._overlay_batch_aggregates(results, entries)
+        assert len(calls) == 1
+        assert "IN (1, 2)" in calls[0]
+        assert results[0]["amount_sum"] == 10.0
+        assert results[1]["amount_sum"] == 20.0
+        # the key column itself is not overlaid; served statements are skipped per-entry
+        assert "user_id" not in results[0]
+        assert served == {(1, None)}
+
+    def test_grouped_outputs_carry_the_statement_prefix(self, monkeypatch):
+        rows = [{"user_id": 1, "amount_sum": 10.0}]
+        server, _ = self.make_grouping_server(
+            monkeypatch, rows, make_batch_aggregate_statement(prefix="txn_")
+        )
+        results = [{}]
+        server._overlay_batch_aggregates(results, [{"user_id": 1}])
+        assert results[0] == {"txn_amount_sum": 10.0}
+
+    def test_missing_entity_defers_to_per_entry_pass(self, monkeypatch):
+        # GROUP BY omits entities with no rows: the statement is NOT marked served, so
+        # the per-entry pass computes the empty-window aggregates for them
+        rows = [{"user_id": 1, "amount_sum": 10.0}]
+        server, _ = self.make_grouping_server(monkeypatch, rows)
+        results = [{}, {}]
+        served = server._overlay_batch_aggregates(
+            results, [{"user_id": 1}, {"user_id": 2}]
+        )
+        assert results[0]["amount_sum"] == 10.0
+        assert served == set()
+
+    def test_planner_refusal_falls_back_to_per_entry(self, monkeypatch):
+        error = _rest_error(500)
+        error.response.text = "Error handling: RPE\nCaught exception: nope\n"
+        server, _ = self.make_grouping_server(monkeypatch, error)
+        served = server._overlay_batch_aggregates([{}], [{"user_id": 1}])
+        assert served == set()
+
+    def test_composite_key_statement_stays_per_entry(self, monkeypatch):
+        statement = make_batch_aggregate_statement(
+            prepared_statement_parameters=[
+                {"name": "user_id", "index": 1},
+                {"name": "region", "index": 2},
+            ]
+        )
+        server, calls = self.make_grouping_server(monkeypatch, [], statement)
+        served = server._overlay_batch_aggregates([{}], [{"user_id": 1, "region": 2}])
+        assert served == set()
+        assert calls == []
+
+
+class TestRejectedAggregatePrefix:
+    def test_single_entity_aggregate_outputs_carry_prefix(self):
+        statement = make_statement(
+            collect_n=None,
+            collect_feature_name=None,
+            collect_order_by=None,
+            prefix="txn_",
+            query_ronsql=(
+                "SELECT SUM(`amount`) AS `amount_sum` FROM `transactions_1` "
+                "WHERE `user_id` = ?;"
+            ),
+        )
+        server = make_server()
+        server._ronsql_statements = [statement]
+        server._ronsql_rejected = []
+        server._execute_ronsql_statement = lambda stmt, entry: [{"amount_sum": 5.0}]
+        vector = server._overlay_ronsql_collect({"tier": "gold"}, {"user_id": 7})
+        assert vector["txn_amount_sum"] == 5.0
+        assert "amount_sum" not in vector
+
+
+class TestScanFilterTree:
+    def test_single_condition_is_a_bare_cmp_node(self):
+        # the statement carries the column type (struct sources are not FV features)
+        statement = make_statement(
+            collect_filter_applied=True,
+            collect_filters=[
+                {
+                    "feature": "amount",
+                    "condition": "GREATER_THAN",
+                    "value": "0",
+                    "feature_type": "double",
+                }
+            ],
+        )
+        server = make_server()
+        server._features = []
+        tree = server._scan_filter_tree(statement)
+        assert tree == {"op": "CMP", "column": "amount", "cond": "GT", "value": 0.0}
+
+    def test_untyped_condition_falls_back_to_fv_schema(self):
+        # older backends omit feature_type; the FV schema types what it can
+        statement = make_statement(
+            collect_filter_applied=True,
+            collect_filters=[
+                {"feature": "amount", "condition": "GREATER_THAN", "value": "0"}
+            ],
+        )
+        server = make_server()
+        server._features = [_Feature("amount", "double")]
+        tree = server._scan_filter_tree(statement)
+        assert tree["value"] == 0.0
+
+    def test_multiple_conditions_fold_into_binary_and_tree(self):
+        statement = make_statement(
+            collect_filter_applied=True,
+            collect_filters=[
+                {
+                    "feature": "amount",
+                    "condition": "GREATER_THAN",
+                    "value": "0",
+                    "feature_type": "bigint",
+                },
+                {"feature": "category", "condition": "EQUALS", "value": "atm"},
+                {
+                    "feature": "amount",
+                    "condition": "LESS_THAN_OR_EQUAL",
+                    "value": "10",
+                    "feature_type": "bigint",
+                },
+            ],
+        )
+        server = make_server()
+        server._features = []
+        tree = server._scan_filter_tree(statement)
+        assert tree["op"] == "AND"
+        assert tree["args"][1] == {
+            "op": "CMP",
+            "column": "amount",
+            "cond": "LE",
+            "value": 10,
+        }
+        inner = tree["args"][0]
+        assert inner["op"] == "AND"
+        assert inner["args"][0]["cond"] == "GT"
+        assert inner["args"][0]["value"] == 0
+        # untyped (non-numeric) columns keep the string literal
+        assert inner["args"][1]["value"] == "atm"
+
+    def test_scan_request_carries_the_filter_tree(self, monkeypatch):
+        from hsfs.core import online_store_rest_client_api
+
+        server = make_server()
+        server._features = [_ScanFeature()]
+        calls = []
+
+        def fake_scan(api_self, database, table, body):
+            calls.append(body)
+            return []
+
+        monkeypatch.setattr(
+            online_store_rest_client_api.OnlineStoreRestClientApi,
+            "_execute_scan",
+            fake_scan,
+        )
+        statement = make_statement(
+            collect_filter_applied=True,
+            collect_filters=[
+                {"feature": "amount", "condition": "GREATER_THAN", "value": "0"}
+            ],
+        )
+        server._scan_rows_rest_scan(statement, {"user_id": 7})
+        assert calls[0]["filters"]["op"] == "CMP"
+
+    def test_filtered_collect_with_structured_filters_is_scan_servable(self):
+        with_filters = make_statement(
+            collect_filter_applied=True,
+            collect_filters=[
+                {"feature": "amount", "condition": "GREATER_THAN", "value": "0"}
+            ],
+        )
+        without = make_statement(collect_filter_applied=True)
+        assert VectorServer._scan_can_serve(with_filters) is True
+        assert VectorServer._scan_can_serve(without) is False
+        assert VectorServer._scan_can_serve(make_statement()) is True
+
+
+class TestReadTimeReclassification:
+    def test_planner_refusal_at_read_time_reroutes_to_scan(self, monkeypatch):
+        from hsfs.core import online_store_rest_client_api
+
+        server = make_server()
+        server._features = [_ScanFeature()]
+        statement = make_statement()
+        server._ronsql_statements = [statement]
+        server._ronsql_rejected = []
+        scan_rows = [{"amount": 1.0, "event_time": "t1"}]
+        scan_calls = []
+
+        error = _rest_error(500)
+        error.response.text = "Error handling: RPE\nCaught exception: nope\n"
+
+        def fake_ronsql(api_self, query, database, explain_mode="REMOVE"):
+            raise error
+
+        def fake_scan(api_self, database, table, body):
+            scan_calls.append(body)
+            return scan_rows
+
+        monkeypatch.setattr(
+            online_store_rest_client_api.OnlineStoreRestClientApi,
+            "_execute_ronsql",
+            fake_ronsql,
+        )
+        monkeypatch.setattr(
+            online_store_rest_client_api.OnlineStoreRestClientApi,
+            "_execute_scan",
+            fake_scan,
+        )
+        with pytest.warns(UserWarning, match="reclassified"):
+            vector = server._overlay_ronsql_collect({}, {"user_id": 7})
+        assert vector["transactions_collect"] == [{"amount": 1.0, "event_time": "t1"}]
+        assert server._ronsql_statements == []
+        assert server._ronsql_rejected == [statement]
+        assert len(scan_calls) == 1
+
+    def test_non_planner_read_error_propagates(self, monkeypatch):
+        from hsfs.client.exceptions import RestAPIError
+        from hsfs.core import online_store_rest_client_api
+
+        server = make_server()
+        statement = make_statement()
+        server._ronsql_statements = [statement]
+        server._ronsql_rejected = []
+        error = _rest_error(503)
+
+        def fake_ronsql(api_self, query, database, explain_mode="REMOVE"):
+            raise error
+
+        monkeypatch.setattr(
+            online_store_rest_client_api.OnlineStoreRestClientApi,
+            "_execute_ronsql",
+            fake_ronsql,
+        )
+        with pytest.raises(RestAPIError):
+            server._overlay_ronsql_collect({}, {"user_id": 7})
+        assert server._ronsql_statements == [statement]

@@ -39,6 +39,7 @@ class ServingPreparedStatement:
         collect_ascending: bool | None = None,
         collect_filter_applied: bool | None = None,
         collect_source_features: list[str] | None = None,
+        collect_filters: list[dict[str, Any]] | None = None,
         query_ronsql: str | None = None,
         ronsql_database: str | None = None,
         aggregate_window: int | None = None,
@@ -76,6 +77,10 @@ class ServingPreparedStatement:
         # first): the /scan fallback projects exactly these so it never reads columns the
         # feature view did not select.
         self._collect_source_features = collect_source_features
+        # The feature view's filters in structured form ({feature, condition, value}),
+        # present only when every condition is expressible as an RDRS /scan filter; the
+        # /scan fallback applies them so filtered collects stay correct on REST.
+        self._collect_filters = collect_filters
         # RonSQL template + target database for serving this statement via RDRS /ronsql
         # (v3 online path); the client substitutes typed literals for the `?` markers.
         self._query_ronsql = query_ronsql
@@ -164,6 +169,10 @@ class ServingPreparedStatement:
     @property
     def collect_source_features(self) -> list[str] | None:
         return self._collect_source_features
+
+    @property
+    def collect_filters(self) -> list[dict[str, Any]] | None:
+        return self._collect_filters
 
     @property
     def query_ronsql(self) -> str | None:

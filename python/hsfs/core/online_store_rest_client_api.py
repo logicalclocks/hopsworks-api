@@ -84,11 +84,14 @@ class OnlineStoreRestClientApi:
                 RonSQL errors (parse errors, unsupported constructs, missing indexes) surface
                 as status 500 with a plain-text error body.
         """
+        explain = explain_mode != "REMOVE"
         payload = {
             "query": query,
             "database": database,
             "explainMode": explain_mode,
-            "outputFormat": "JSON",
+            # the server refuses JSON output for EXPLAIN plans; the plan text itself
+            # is not consumed, a 200 is the conformance verdict
+            "outputFormat": "TEXT" if explain else "JSON",
         }
         if _logger.isEnabledFor(logging.DEBUG):
             # Entity keys and filter values are inlined in the statement and can be
@@ -105,6 +108,8 @@ class OnlineStoreRestClientApi:
             headers={"Content-Type": "application/json"},
             data=json.dumps(payload),
         )
+        if explain and response.status_code == 200:
+            return []
         body = self._handle_rdrs_feature_store_response(response)
         return body.get("data", [])
 
