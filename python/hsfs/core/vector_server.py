@@ -530,11 +530,15 @@ class VectorServer:
         elif online_client_choice == self.DEFAULT_REST_CLIENT:
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug("_get_feature_vector Online REST client")
-            serving_vector = self.rest_client_engine._get_single_feature_vector(
-                rondb_entry,
-                drop_missing=not allow_missing,
-                return_type=self.rest_client_engine.RETURN_TYPE_FEATURE_VALUE_DICT,
-            )
+            try:
+                serving_vector = self.rest_client_engine._get_single_feature_vector(
+                    rondb_entry,
+                    drop_missing=not allow_missing,
+                    return_type=self.rest_client_engine.RETURN_TYPE_FEATURE_VALUE_DICT,
+                )
+            except exceptions.RestAPIError as err:
+                self._raise_if_collect_unservable_metadata(err)
+                raise
             # v3 online path: for a collect feature view, the /feature_store point read
             # cannot serve the collect feature group (its full PK includes the order
             # column, which is not a serving key) — fetch those rows via RonSQL and
@@ -714,14 +718,20 @@ class VectorServer:
         if online_client_choice == self.DEFAULT_REST_CLIENT and len(rondb_entries) > 0:
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug("get_batch_feature_vector Online REST client")
-            batch_results = self.rest_client_engine._get_batch_feature_vectors(
-                entries=rondb_entries,
-                drop_missing=not allow_missing,
-                return_type=self.rest_client_engine.RETURN_TYPE_FEATURE_VALUE_DICT,
-            )
+            try:
+                batch_results = self.rest_client_engine._get_batch_feature_vectors(
+                    entries=rondb_entries,
+                    drop_missing=not allow_missing,
+                    return_type=self.rest_client_engine.RETURN_TYPE_FEATURE_VALUE_DICT,
+                )
+            except exceptions.RestAPIError as err:
+                self._raise_if_collect_unservable_metadata(err)
+                raise
             # v3 online path: collect/aggregate feature groups are served via RonSQL,
             # one statement per entry (batching via IN is a later optimization).
-            if self._get_ronsql_statements():
+            # Rejected statements count too: the overlay serves them via /scan or
+            # fails loudly instead of silently omitting their features.
+            if self._get_ronsql_statements() or getattr(self, "_ronsql_rejected", []):
                 batch_results = self._overlay_ronsql_collect_batch(
                     batch_results, rondb_entries
                 )
@@ -1324,6 +1334,12 @@ class VectorServer:
         Returns:
             The collected rows in the requested format.
         """
+        if limit is not None and (
+            isinstance(limit, bool) or not isinstance(limit, int) or limit < 1
+        ):
+            raise ValueError(
+                f"limit must be a positive integer or None, got {limit!r}."
+            )
         online_client_choice = self._which_client_and_ensure_initialised(
             force_rest_client=force_rest_client, force_sql_client=force_sql_client
         )
@@ -1368,32 +1384,95 @@ class VectorServer:
         for statement in self._get_ronsql_statements():
             rows = self._execute_ronsql_statement(statement, entry)
             if statement.collect_n is not None:
-                rows = self._sort_collect_rows(rows, statement)
-                entity_keys = {
-                    param.name for param in statement.prepared_statement_parameters
-                }
-                if statement.collect_feature_name is not None:
-                    collect_name = (
-                        statement.prefix or ""
-                    ) + statement.collect_feature_name
-                    serving_vector[collect_name] = [
-                        {col: val for col, val in row.items() if col not in entity_keys}
-                        for row in rows
-                    ]
-                else:
-                    collect_feature_names = (
-                        self.rest_client_engine._feature_names_per_fg_id.get(
-                            statement.feature_group_id, []
-                        )
-                    )
-                    for name in collect_feature_names:
-                        if name in entity_keys:
-                            continue
-                        serving_vector[name] = [row.get(name) for row in rows]
+                self._fold_collect_feature(
+                    serving_vector, statement, self._sort_collect_rows(rows, statement)
+                )
             elif rows:
                 # pushdown aggregation: exactly one row of scalar outputs per entity
                 serving_vector.update(rows[0])
+        # Statements rejected by the EXPLAIN conformance check must not silently omit
+        # their features: unfiltered collects are served through the /scan index read
+        # instead; anything else (filtered collects, aggregations) has no equivalent
+        # REST primitive and fails loudly with SQL-client guidance.
+        for statement in getattr(self, "_ronsql_rejected", []):
+            if statement.collect_n is not None and not statement.collect_filter_applied:
+                self._fold_collect_feature(
+                    serving_vector,
+                    statement,
+                    self._sort_collect_rows(
+                        self._scan_rows_rest_scan(statement, entry), statement
+                    ),
+                )
+            elif statement.collect_n is not None:
+                raise exceptions.FeatureStoreException(
+                    "The collect feature of feature group "
+                    f"{statement.feature_group_id} cannot be served by the REST "
+                    "client on this RonDB version: its RonSQL statement failed the "
+                    "EXPLAIN conformance check and the /scan fallback cannot apply "
+                    "the feature view's filters. Use the SQL client "
+                    "(init_serving(default_client='sql') or force_sql_client=True)."
+                )
+            else:
+                raise exceptions.FeatureStoreException(
+                    "The aggregation features of feature group "
+                    f"{statement.feature_group_id} cannot be served by the REST "
+                    "client on this RonDB version: their RonSQL statement failed "
+                    "the EXPLAIN conformance check and aggregations have no /scan "
+                    "fallback. Use the SQL client "
+                    "(init_serving(default_client='sql') or force_sql_client=True)."
+                )
         return serving_vector
+
+    def _raise_if_collect_unservable_metadata(
+        self, err: exceptions.RestAPIError
+    ) -> None:
+        """Translate the RDRS refusal of synthesized collect features into guidance.
+
+        The typed /feature_store endpoint builds metadata for every feature of the
+        view; a synthesized collect feature has no schema there, so the REST server
+        refuses the whole read ("Cannot find schema for feature <fg>_collect").
+        Feature vectors of collect feature views therefore need the SQL client until
+        the REST server tolerates synthesized features; `scan_vectors` and pushdown
+        aggregations stay on the REST client (they use /ronsql and /scan directly).
+        """
+        body = getattr(getattr(err, "response", None), "text", "") or ""
+        if "Cannot find schema for feature" in body and "_collect" in body:
+            raise exceptions.FeatureStoreException(
+                "This RonDB REST server cannot serve feature vectors for a collect "
+                "feature view: its feature-store metadata has no schema for the "
+                "synthesized collect feature. Use the SQL client for vectors "
+                "(init_serving(default_client='sql') or force_sql_client=True); "
+                "scan_vectors and pushdown aggregations remain served by the REST "
+                "client."
+            ) from err
+
+    def _fold_collect_feature(
+        self, serving_vector: dict[str, Any], statement, rows: list[dict[str, Any]]
+    ) -> None:
+        """Fold sorted collect rows into the statement's array-of-structs feature (v2 C1).
+
+        Entity-key columns are excluded from the per-row structs (they keep their scalar
+        values in the vector).
+        Statements from a backend predating the collapsed schema fold each column into
+        its own list instead, with nulls preserved so the lists stay row-aligned.
+        """
+        entity_keys = {param.name for param in statement.prepared_statement_parameters}
+        if statement.collect_feature_name is not None:
+            collect_name = (statement.prefix or "") + statement.collect_feature_name
+            serving_vector[collect_name] = [
+                {col: val for col, val in row.items() if col not in entity_keys}
+                for row in rows
+            ]
+        else:
+            collect_feature_names = (
+                self.rest_client_engine._feature_names_per_fg_id.get(
+                    statement.feature_group_id, []
+                )
+            )
+            for name in collect_feature_names:
+                if name in entity_keys:
+                    continue
+                serving_vector[name] = [row.get(name) for row in rows]
 
     def _scan_rows_ronsql(
         self, entry: dict[str, Any], limit: int | None = None
@@ -1492,6 +1571,16 @@ class VectorServer:
                 "order": "desc",
             },
         }
+        # Project exactly the statement's source columns (PKs + struct fields) so the
+        # scan never reads columns the feature view did not select (RDRS wants the
+        # pk-read element shape, one {"column": name} per column). A statement from a
+        # backend predating the field scans all columns, as before.
+        read_columns = list(statement.collect_source_features or [])
+        for name in key_columns:
+            if name not in read_columns:
+                read_columns.append(name)
+        if statement.collect_source_features:
+            body["readColumns"] = [{"column": name} for name in read_columns]
         return online_store_rest_client_api.OnlineStoreRestClientApi()._execute_scan(
             statement.ronsql_database,
             self._statement_feature_group_table(statement),
@@ -1568,15 +1657,21 @@ class VectorServer:
         via explainMode=FORCE, which validates it against the server's RonSQL subset and
         index requirements without executing it.
         A template the server rejects (unsupported construct, missing index, RonDB < 26.04)
-        is dropped with a warning: point reads then serve without the collect/aggregate
-        overlay, and `scan_vectors` raises its force_sql_client guidance.
-        A transport-level failure keeps the template, since it proves nothing about
-        conformance.
+        is dropped with a warning: point reads and `scan_vectors` then serve unfiltered
+        collects through the /scan index read, and everything else fails loudly with
+        SQL-client guidance.
+        Only a definitive planner refusal rejects a template: an authentication or
+        authorization failure raises (it would otherwise silently disable RonSQL), and a
+        transient failure (timeout, transport, a server error without a planner
+        signature) keeps the template, since it proves nothing about conformance.
+        The RonDB REST server wraps planner refusals as 500s, so 5xx bodies are
+        classified by their RonSQL error signature, not by status alone.
         """
         valid = []
         self._ronsql_rejected = []
         for statement in statements:
             kind = "collect" if statement.collect_n is not None else "aggregation"
+            rejected_by = None
             try:
                 query = self._substitute_ronsql_template(
                     statement, self._ronsql_placeholder_entry(statement)
@@ -1584,21 +1679,30 @@ class VectorServer:
                 online_store_rest_client_api.OnlineStoreRestClientApi()._execute_ronsql(
                     query, statement.ronsql_database, explain_mode="FORCE"
                 )
-            except (
-                exceptions.RestAPIError,
-                exceptions.FeatureStoreException,
-            ) as err:
-                warnings.warn(
-                    f"The RonSQL {kind} statement for feature group "
-                    f"{statement.feature_group_id} failed its EXPLAIN conformance check "
-                    f"and will not be served through /ronsql (requires RonDB >= 26.04): "
-                    f"{err} Vectors are served without this feature group's {kind} "
-                    "feature; scan_vectors falls back to the /scan index read for "
-                    "unfiltered collects, or use force_sql_client=True for MySQL.",
-                    stacklevel=2,
-                )
-                self._ronsql_rejected.append(statement)
-                continue
+            except exceptions.RestAPIError as err:
+                status = getattr(getattr(err, "response", None), "status_code", None)
+                if status in (401, 403):
+                    # not a conformance verdict: surface instead of degrading silently
+                    raise
+                if (
+                    status is not None
+                    and 400 <= status < 500
+                    and status not in (408, 429)
+                    or self._is_ronsql_planner_error(err)
+                ):
+                    rejected_by = err
+                else:
+                    _logger.warning(
+                        "Could not conformance-check the RonSQL %s statement for "
+                        "feature group %s (%s); keeping it unvalidated.",
+                        kind,
+                        statement.feature_group_id,
+                        err,
+                    )
+            except exceptions.FeatureStoreException as err:
+                # template-level problem (e.g. literal substitution): a planner-equivalent
+                # refusal, so the statement is unservable via /ronsql
+                rejected_by = err
             except Exception as err:  # noqa: BLE001 - transport errors prove nothing
                 _logger.warning(
                     "Could not conformance-check the RonSQL %s statement for feature "
@@ -1607,8 +1711,36 @@ class VectorServer:
                     statement.feature_group_id,
                     err,
                 )
+            if rejected_by is not None:
+                warnings.warn(
+                    f"The RonSQL {kind} statement for feature group "
+                    f"{statement.feature_group_id} failed its EXPLAIN conformance check "
+                    f"and will not be served through /ronsql (requires RonDB >= 26.04): "
+                    f"{rejected_by} Unfiltered collects fall back to the /scan index "
+                    "read; filtered collects and aggregations require the SQL client "
+                    "(force_sql_client=True).",
+                    stacklevel=2,
+                )
+                self._ronsql_rejected.append(statement)
+                continue
             valid.append(statement)
         return valid
+
+    @staticmethod
+    def _is_ronsql_planner_error(err: exceptions.RestAPIError) -> bool:
+        """Whether a /ronsql error body carries the RonSQL planner's refusal signature.
+
+        The RonDB REST server reports planner refusals as 500s whose body is the
+        planner's own message (e.g. "CTE 't' must contain at least one aggregate
+        function." followed by "Error handling: RPE" and "Caught exception: ...").
+        These are definitive conformance verdicts; a 5xx without the signature is
+        treated as transient.
+        """
+        response = getattr(err, "response", None)
+        body = getattr(response, "text", "") or ""
+        if isinstance(body, bytes):
+            body = body.decode("utf-8", errors="replace")
+        return "Error handling:" in body or "Caught exception:" in body
 
     def _ronsql_placeholder_entry(self, statement) -> dict[str, Any]:
         """Type-appropriate placeholder entity-key values for template validation."""

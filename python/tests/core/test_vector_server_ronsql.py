@@ -52,6 +52,18 @@ def make_server():
     return server
 
 
+def _rest_error(status_code):
+    from hsfs.client.exceptions import RestAPIError
+
+    class _Response:
+        pass
+
+    error = RestAPIError.__new__(RestAPIError)
+    error.response = _Response()
+    error.response.status_code = status_code
+    return error
+
+
 class TestRonsqlLiteral:
     def test_int_inlines_bare(self):
         assert VectorServer._ronsql_literal(7) == "7"
@@ -354,9 +366,7 @@ class TestSortCollectRows:
 
     def test_order_column_missing_from_rows_keeps_arrival_order(self):
         rows = [{"amount": 1.0}, {"amount": 3.0}]
-        assert (
-            VectorServer._sort_collect_rows(list(rows), make_statement()) == rows
-        )
+        assert VectorServer._sort_collect_rows(list(rows), make_statement()) == rows
 
     def test_scan_rows_are_sorted(self):
         server = make_server()
@@ -391,11 +401,13 @@ class TestRonsqlTemplateValidation:
         calls = []
 
         def fake_execute(api_self, query, database, explain_mode="REMOVE"):
-            calls.append({
-                "query": query,
-                "database": database,
-                "explain_mode": explain_mode,
-            })
+            calls.append(
+                {
+                    "query": query,
+                    "database": database,
+                    "explain_mode": explain_mode,
+                }
+            )
             if isinstance(outcome, Exception):
                 raise outcome
             return outcome
@@ -418,18 +430,55 @@ class TestRonsqlTemplateValidation:
         assert "`user_id` = 0 " in calls[0]["query"]
 
     def test_rejected_template_dropped_with_warning(self, monkeypatch):
+        # a definitive planner refusal (4xx) rejects the template
+        server, _ = self.make_validating_server(monkeypatch, _rest_error(400))
+        with pytest.warns(UserWarning, match="conformance check"):
+            statements = server._validate_ronsql_templates([make_statement()])
+        assert statements == []
+        assert len(server._ronsql_rejected) == 1
+
+    def test_auth_error_raises_instead_of_rejecting(self, monkeypatch):
+        from hsfs.client.exceptions import RestAPIError
+
+        for status in (401, 403):
+            server, _ = self.make_validating_server(monkeypatch, _rest_error(status))
+            with pytest.raises(RestAPIError):
+                server._validate_ronsql_templates([make_statement()])
+
+    def test_server_error_keeps_template_unvalidated(self, monkeypatch):
+        # a 5xx proves nothing about conformance: the template stays servable
+        server, _ = self.make_validating_server(monkeypatch, _rest_error(503))
+        statements = server._validate_ronsql_templates([make_statement()])
+        assert len(statements) == 1
+        assert server._ronsql_rejected == []
+
+    def test_statusless_rest_error_keeps_template(self, monkeypatch):
         from hsfs.client.exceptions import RestAPIError
 
         error = RestAPIError.__new__(RestAPIError)
         server, _ = self.make_validating_server(monkeypatch, error)
-        with pytest.warns(UserWarning, match="conformance check"):
-            statements = server._validate_ronsql_templates([make_statement()])
-        assert statements == []
+        statements = server._validate_ronsql_templates([make_statement()])
+        assert len(statements) == 1
 
     def test_transport_error_keeps_template(self, monkeypatch):
         server, _ = self.make_validating_server(monkeypatch, ConnectionError("down"))
         statements = server._validate_ronsql_templates([make_statement()])
         assert len(statements) == 1
+
+    def test_planner_refusal_wrapped_as_500_rejects_template(self, monkeypatch):
+        # the live RDRS wraps RonSQL planner refusals as 500s; the body signature
+        # makes them definitive conformance verdicts, unlike a plain 5xx
+        error = _rest_error(500)
+        error.response.text = (
+            "CTE 't' must contain at least one aggregate function.\n"
+            "Error handling: RPE\n"
+            "Caught exception: CTE without aggregate function.\n"
+        )
+        server, _ = self.make_validating_server(monkeypatch, error)
+        with pytest.warns(UserWarning, match="conformance check"):
+            statements = server._validate_ronsql_templates([make_statement()])
+        assert statements == []
+        assert len(server._ronsql_rejected) == 1
 
     def test_placeholder_values_follow_schema_types(self):
         server = make_server()
@@ -456,6 +505,8 @@ class TestServingPreparedStatementWireParsing:
                     "collectFeatureName": "transactions_collect",
                     "collectOrderBy": "event_time",
                     "collectAscending": True,
+                    "collectFilterApplied": False,
+                    "collectSourceFeatures": ["user_id", "event_time", "amount"],
                     "aggregateWindow": 3600,
                 }
             ],
@@ -465,6 +516,8 @@ class TestServingPreparedStatementWireParsing:
         assert statement.collect_feature_name == "transactions_collect"
         assert statement.collect_order_by == "event_time"
         assert statement.collect_ascending is True
+        assert statement.collect_filter_applied is False
+        assert statement.collect_source_features == ["user_id", "event_time", "amount"]
         assert statement.aggregate_window == 3600
         assert statement.query_ronsql == TEMPLATE
 
@@ -543,6 +596,31 @@ class TestScanFallback:
                 "upper": {"values": [7], "inclusive": True},
             }
         ]
+        # no collect_source_features on the statement: scan all columns, as before
+        assert "readColumns" not in body
+
+    def test_scan_projects_only_source_columns(self, monkeypatch):
+        server, calls = self.make_scan_server(monkeypatch, [])
+        statement = make_statement(
+            collect_source_features=["user_id", "event_time", "amount", "category"]
+        )
+        server._scan_rows_rest_scan(statement, {"user_id": 7})
+        assert calls[0]["body"]["readColumns"] == [
+            {"column": "user_id"},
+            {"column": "event_time"},
+            {"column": "amount"},
+            {"column": "category"},
+        ]
+
+    def test_scan_projection_always_includes_key_columns(self, monkeypatch):
+        server, calls = self.make_scan_server(monkeypatch, [])
+        statement = make_statement(collect_source_features=["amount"])
+        server._scan_rows_rest_scan(statement, {"user_id": 7})
+        assert calls[0]["body"]["readColumns"] == [
+            {"column": "amount"},
+            {"column": "user_id"},
+            {"column": "event_time"},
+        ]
 
     def test_rejected_unfiltered_collect_falls_back_to_scan(self, monkeypatch):
         rows = [
@@ -564,6 +642,127 @@ class TestScanFallback:
         with pytest.raises(FeatureStoreException, match="filters"):
             server._scan_rows_ronsql({"user_id": 7})
         assert calls == []
+
+
+class TestRejectedStatementVectorOverlay:
+    """Vectors must never silently omit features after a RonSQL rejection.
+
+    Unfiltered collects fold via /scan; everything else fails loudly.
+    """
+
+    def make_rejected_server(self, monkeypatch, rows, rejected):
+        from hsfs.core import online_store_rest_client_api
+
+        server = make_server()
+        server._features = [_ScanFeature()]
+        server._ronsql_statements = []
+        server._ronsql_rejected = rejected
+        server._rest_client_engine = _StubRestEngine({1: ["user_id", "amount"]})
+        calls = []
+
+        def fake_scan(api_self, database, table, body):
+            calls.append({"database": database, "table": table, "body": body})
+            return rows
+
+        monkeypatch.setattr(
+            online_store_rest_client_api.OnlineStoreRestClientApi,
+            "_execute_scan",
+            fake_scan,
+        )
+        return server, calls
+
+    def test_rejected_unfiltered_collect_folds_via_scan(self, monkeypatch):
+        rows = [
+            {"user_id": 7, "amount": 1.0, "event_time": "t1"},
+            {"user_id": 7, "amount": 3.0, "event_time": "t3"},
+        ]
+        server, calls = self.make_rejected_server(monkeypatch, rows, [make_statement()])
+        vector = server._overlay_ronsql_collect({"tier": "gold"}, {"user_id": 7})
+        assert len(calls) == 1
+        # folded newest-first, entity keys excluded from the structs
+        assert vector["transactions_collect"] == [
+            {"amount": 3.0, "event_time": "t3"},
+            {"amount": 1.0, "event_time": "t1"},
+        ]
+        assert vector["tier"] == "gold"
+
+    def test_rejected_filtered_collect_raises(self, monkeypatch):
+        server, calls = self.make_rejected_server(
+            monkeypatch, [], [make_statement(collect_filter_applied=True)]
+        )
+        with pytest.raises(FeatureStoreException, match="filters"):
+            server._overlay_ronsql_collect({}, {"user_id": 7})
+        assert calls == []
+
+    def test_rejected_aggregate_raises(self, monkeypatch):
+        aggregate = make_statement(
+            collect_n=None,
+            collect_feature_name=None,
+            collect_order_by=None,
+            aggregate_window=3600,
+        )
+        server, calls = self.make_rejected_server(monkeypatch, [], [aggregate])
+        with pytest.raises(FeatureStoreException, match="aggregation"):
+            server._overlay_ronsql_collect({}, {"user_id": 7})
+        assert calls == []
+
+
+class TestCollectUnservableMetadataGuidance:
+    """The RDRS refusal of synthesized collect features must raise guidance.
+
+    Feature vectors of collect feature views point users at the SQL client instead
+    of surfacing an opaque 400 from /feature_store.
+    """
+
+    def _error_with_body(self, body):
+        error = _rest_error(400)
+        error.response.text = body
+        return error
+
+    def test_schema_refusal_for_collect_feature_raises_guidance(self):
+        server = make_server()
+        err = self._error_with_body(
+            '{"code": 6, "reason": "Reading feature view failed.", '
+            '"message": "Cannot find schema for feature transactions_collect"}'
+        )
+        with pytest.raises(FeatureStoreException, match="SQL client"):
+            server._raise_if_collect_unservable_metadata(err)
+
+    def test_other_rest_errors_pass_through(self):
+        server = make_server()
+        for body in (
+            '{"message": "Cannot find schema for feature user_embedding"}',
+            '{"message": "table not found"}',
+            "",
+        ):
+            server._raise_if_collect_unservable_metadata(self._error_with_body(body))
+
+
+class TestScanVectorsLimitValidation:
+    def make_limit_server(self):
+        server = make_server()
+        server._which_client_and_ensure_initialised = lambda **kwargs: "sql"
+
+        class _SqlClient:
+            def _get_scan_rows(self, entry, limit=None):
+                return []
+
+        server._sql_client = _SqlClient()
+        return server
+
+    @pytest.mark.parametrize("bad_limit", [0, -1, True, "5", 2.5])
+    def test_invalid_limits_rejected(self, bad_limit):
+        server = self.make_limit_server()
+        with pytest.raises(ValueError, match="positive integer"):
+            server._scan_vectors({"user_id": 7}, limit=bad_limit, return_type="list")
+
+    @pytest.mark.parametrize("good_limit", [None, 1, 100])
+    def test_valid_limits_accepted(self, good_limit):
+        server = self.make_limit_server()
+        assert (
+            server._scan_vectors({"user_id": 7}, limit=good_limit, return_type="list")
+            == []
+        )
 
 
 class TestBatchOverlayConcurrency:
