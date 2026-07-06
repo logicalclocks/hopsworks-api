@@ -1250,6 +1250,68 @@ class TestGcsConnector:
         assert mock_engine_read.call_args[0][3] == "gs://test-bucket"
 
 
+class TestGoogleSheetsConnector:
+    def test_from_response_json(self, backend_fixtures):
+        # Arrange
+        json = backend_fixtures["storage_connector"]["get_google_sheets"]["response"]
+
+        # Act
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        # Assert
+        assert isinstance(sc, storage_connector.GoogleSheetsConnector)
+        assert sc.id == 1
+        assert sc.name == "test_google_sheets"
+        assert sc._featurestore_id == 67
+        assert sc.description == "Google Sheets connector description"
+        assert sc.key_path == "test_key_path"
+        assert sc.spreadsheet_id == "test_spreadsheet_id"
+
+    def test_from_response_json_basic_info(self, backend_fixtures):
+        # Arrange
+        json = backend_fixtures["storage_connector"]["get_google_sheets_basic_info"][
+            "response"
+        ]
+
+        # Act
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        # Assert
+        assert isinstance(sc, storage_connector.GoogleSheetsConnector)
+        assert sc.id == 1
+        assert sc.name == "test_google_sheets"
+        assert sc._featurestore_id == 67
+        assert sc.description is None
+        assert sc.key_path is None
+        assert sc.spreadsheet_id is None
+
+    def test_to_dict(self, backend_fixtures):
+        # Arrange
+        json = backend_fixtures["storage_connector"]["get_google_sheets"]["response"]
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        # Act
+        payload = sc.to_dict()
+
+        # Assert
+        assert payload["id"] == 1
+        assert payload["name"] == "test_google_sheets"
+        assert payload["featurestoreId"] == 67
+        assert payload["storageConnectorType"] == "GOOGLE_SHEETS"
+        assert payload["type"] == "featurestoreGoogleSheetsConnectorDTO"
+        assert payload["keyPath"] == "test_key_path"
+        assert payload["spreadsheetId"] == "test_spreadsheet_id"
+
+    def test_spark_options_empty(self):
+        # Arrange
+        sc = storage_connector.GoogleSheetsConnector(
+            id=1, name="test_google_sheets", featurestore_id=67
+        )
+
+        # Act / Assert
+        assert sc.spark_options() == {}
+
+
 class TestBigQueryConnector:
     def test_from_response_json(self, backend_fixtures):
         # Arrange
