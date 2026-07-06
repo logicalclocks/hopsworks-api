@@ -138,7 +138,7 @@ class TestRonsqlCollectOverlay:
         server._rest_client_engine = _StubRestEngine(
             {1: ["user_id", "amount", "event_time"]}
         )
-        server._execute_ronsql_statement = lambda stmt, entry, template=None: rows
+        server._execute_ronsql_statement = lambda stmt, entry, template=None, now=None: rows
         return server
 
     def test_overlay_folds_rows_into_struct_array(self):
@@ -210,7 +210,7 @@ class TestRonsqlCollectOverlay:
         server = make_server()
         server._ronsql_statements = [statement]
         server._rest_client_engine = _StubRestEngine({1: ["user_id", "amount"]})
-        server._execute_ronsql_statement = lambda stmt, entry, template=None: [
+        server._execute_ronsql_statement = lambda stmt, entry, template=None, now=None: [
             {"user_id": entry["user_id"], "amount": float(entry["user_id"]) * 10}
         ]
         results = [
@@ -233,20 +233,57 @@ class TestRonsqlCollectOverlay:
 
 
 class TestRonsqlAggregateWindow:
-    def test_window_bound_substituted_after_entity_keys(self):
-        statement = make_statement(
-            collect_n=None,
-            aggregate_window=3600,
-            query_ronsql=(
+    @staticmethod
+    def window_statement(**overrides):
+        kwargs = {
+            "collect_n": None,
+            "aggregate_window": 3600,
+            "query_ronsql": (
                 "SELECT COUNT(`amount`) AS `amount_count` FROM `transactions_1` "
                 "WHERE `user_id` = ? AND `event_time` >= ?;"
             ),
+        }
+        kwargs.update(overrides)
+        return make_statement(**kwargs)
+
+    def test_window_bound_substituted_after_entity_keys(self):
+        query = make_server()._substitute_ronsql_template(
+            self.window_statement(), {"user_id": 7}
         )
-        query = make_server()._substitute_ronsql_template(statement, {"user_id": 7})
         assert "`user_id` = 7 " in query
         # the trailing ? became a quoted datetime literal (now - window)
         assert "?" not in query
         assert "`event_time` >= '2" in query
+
+    def test_window_bound_resolves_from_the_shared_utc_reference(self):
+        # every statement of one read shares a single UTC reference, so all
+        # windows (and the SQL client's MySQL binds) agree on one clock
+        from datetime import timezone
+
+        reference = datetime(2026, 7, 6, 12, 0, 0, tzinfo=timezone.utc)
+        query = make_server()._substitute_ronsql_template(
+            self.window_statement(), {"user_id": 7}, now=reference
+        )
+        assert "`event_time` >= '2026-07-06 11:00:00'" in query
+
+    def test_batch_window_bound_resolves_from_the_shared_utc_reference(self):
+        from datetime import timezone
+
+        statement = self.window_statement(
+            query_ronsql=(
+                "SELECT `user_id`, COUNT(`amount`) AS `amount_count` FROM "
+                "`transactions_1` WHERE `user_id` IN (?) AND `event_time` >= ? "
+                "GROUP BY `user_id`;"
+            ),
+        )
+        server = make_server()
+        server._features = [_Feature("user_id", "bigint")]
+        reference = datetime(2026, 7, 6, 12, 0, 0, tzinfo=timezone.utc)
+        query = server._substitute_ronsql_batch_template(
+            statement, [{"user_id": 1}, {"user_id": 2}], now=reference
+        )
+        assert "IN (1, 2)" in query
+        assert "`event_time` >= '2026-07-06 11:00:00'" in query
 
 
 class TestRonsqlPlaceholderAwareness:
@@ -372,7 +409,7 @@ class TestSortCollectRows:
     def test_scan_rows_are_sorted(self):
         server = make_server()
         server._ronsql_statements = [make_statement()]
-        server._execute_ronsql_statement = lambda stmt, entry, template=None: list(
+        server._execute_ronsql_statement = lambda stmt, entry, template=None, now=None: list(
             self.ROWS
         )
         rows = server._scan_rows_ronsql({"user_id": 7})
@@ -384,7 +421,7 @@ class TestSortCollectRows:
         server._rest_client_engine = _StubRestEngine(
             {1: ["user_id", "amount", "event_time"]}
         )
-        server._execute_ronsql_statement = lambda stmt, entry, template=None: [
+        server._execute_ronsql_statement = lambda stmt, entry, template=None, now=None: [
             {"user_id": 7, "amount": 1.0, "event_time": "t1"},
             {"user_id": 7, "amount": 3.0, "event_time": "t3"},
         ]
@@ -396,6 +433,14 @@ class TestSortCollectRows:
 
 
 class TestRonsqlTemplateValidation:
+    """EXPLAIN classification, exercised on statements that still need a probe.
+
+    A collect whose filters are /scan-expressible skips the EXPLAIN entirely
+    (designed /scan routing, see the dedicated tests below), so these use a
+    filtered collect without structured filters: /scan cannot serve it, and the
+    EXPLAIN is its last chance at /ronsql.
+    """
+
     def make_validating_server(self, monkeypatch, outcome):
         from hsfs.core import online_store_rest_client_api
 
@@ -422,9 +467,13 @@ class TestRonsqlTemplateValidation:
         )
         return server, calls
 
+    @staticmethod
+    def probed_statement(**overrides):
+        return make_statement(collect_filter_applied=True, **overrides)
+
     def test_valid_template_kept_and_planned_with_force(self, monkeypatch):
         server, calls = self.make_validating_server(monkeypatch, [])
-        statements = server._validate_ronsql_templates([make_statement()], [])
+        statements = server._validate_ronsql_templates([self.probed_statement()], [])
         assert len(statements) == 1
         assert len(calls) == 1
         assert calls[0]["explain_mode"] == "FORCE"
@@ -432,12 +481,41 @@ class TestRonsqlTemplateValidation:
         assert "?" not in calls[0]["query"]
         assert "`user_id` = 0 " in calls[0]["query"]
 
+    def test_scan_servable_collect_skips_explain(self, monkeypatch):
+        # an unfiltered (or structured-filter) collect routes straight to the /scan
+        # index read: this RonDB generation refuses row-returning CTEs, so the
+        # EXPLAIN round trip is dead weight — and the routing is designed, not a
+        # degradation, so there is no warning
+        import warnings as warnings_module
+
+        server, calls = self.make_validating_server(monkeypatch, [])
+        rejected = []
+        with warnings_module.catch_warnings():
+            warnings_module.simplefilter("error")
+            statements = server._validate_ronsql_templates(
+                [make_statement()], rejected
+            )
+        assert statements == []
+        assert len(rejected) == 1
+        assert calls == []
+
+    def test_identical_probes_explained_once(self, monkeypatch):
+        # the verdict cache dedups identical (database, statement) probes across
+        # validations — e.g. the single and batch statement sets
+        server, calls = self.make_validating_server(monkeypatch, [])
+        first = server._validate_ronsql_templates([self.probed_statement()], [])
+        second = server._validate_ronsql_templates([self.probed_statement()], [])
+        assert len(first) == len(second) == 1
+        assert len(calls) == 1
+
     def test_rejected_template_dropped_with_warning(self, monkeypatch):
         # a definitive planner refusal (4xx) rejects the template
         server, _ = self.make_validating_server(monkeypatch, _rest_error(400))
         rejected = []
         with pytest.warns(UserWarning, match="conformance check"):
-            statements = server._validate_ronsql_templates([make_statement()], rejected)
+            statements = server._validate_ronsql_templates(
+                [self.probed_statement()], rejected
+            )
         assert statements == []
         assert len(rejected) == 1
 
@@ -447,27 +525,36 @@ class TestRonsqlTemplateValidation:
         for status in (401, 403):
             server, _ = self.make_validating_server(monkeypatch, _rest_error(status))
             with pytest.raises(RestAPIError):
-                server._validate_ronsql_templates([make_statement()], [])
+                server._validate_ronsql_templates([self.probed_statement()], [])
 
     def test_server_error_keeps_template_unvalidated(self, monkeypatch):
         # a 5xx proves nothing about conformance: the template stays servable
         server, _ = self.make_validating_server(monkeypatch, _rest_error(503))
         rejected = []
-        statements = server._validate_ronsql_templates([make_statement()], rejected)
+        statements = server._validate_ronsql_templates(
+            [self.probed_statement()], rejected
+        )
         assert len(statements) == 1
         assert rejected == []
+
+    def test_transient_verdicts_are_not_cached(self, monkeypatch):
+        # a transient failure proves nothing, so the next validation re-probes
+        server, calls = self.make_validating_server(monkeypatch, _rest_error(503))
+        server._validate_ronsql_templates([self.probed_statement()], [])
+        server._validate_ronsql_templates([self.probed_statement()], [])
+        assert len(calls) == 2
 
     def test_statusless_rest_error_keeps_template(self, monkeypatch):
         from hsfs.client.exceptions import RestAPIError
 
         error = RestAPIError.__new__(RestAPIError)
         server, _ = self.make_validating_server(monkeypatch, error)
-        statements = server._validate_ronsql_templates([make_statement()], [])
+        statements = server._validate_ronsql_templates([self.probed_statement()], [])
         assert len(statements) == 1
 
     def test_transport_error_keeps_template(self, monkeypatch):
         server, _ = self.make_validating_server(monkeypatch, ConnectionError("down"))
-        statements = server._validate_ronsql_templates([make_statement()], [])
+        statements = server._validate_ronsql_templates([self.probed_statement()], [])
         assert len(statements) == 1
 
     def test_planner_refusal_wrapped_as_500_rejects_template(self, monkeypatch):
@@ -482,7 +569,9 @@ class TestRonsqlTemplateValidation:
         server, _ = self.make_validating_server(monkeypatch, error)
         rejected = []
         with pytest.warns(UserWarning, match="conformance check"):
-            statements = server._validate_ronsql_templates([make_statement()], rejected)
+            statements = server._validate_ronsql_templates(
+                [self.probed_statement()], rejected
+            )
         assert statements == []
         assert len(rejected) == 1
 
@@ -674,17 +763,51 @@ class TestScanFallback:
         ]
 
     def test_rejected_unfiltered_collect_falls_back_to_scan(self, monkeypatch):
+        # the ordered index scan returns newest-first; the client trusts that
+        # order instead of re-sorting
         rows = [
-            {"amount": 1.0, "event_time": "t1"},
             {"amount": 3.0, "event_time": "t3"},
+            {"amount": 1.0, "event_time": "t1"},
         ]
         server, calls = self.make_scan_server(monkeypatch, rows)
         server._ronsql_statements = []
         server._ronsql_rejected = [make_statement()]
         result = server._scan_rows_ronsql({"user_id": 7})
         assert len(calls) == 1
-        # sorted newest-first by the caller even though /scan returned unsorted
         assert [r["event_time"] for r in result] == ["t3", "t1"]
+
+    def test_scan_limit_narrows_the_request(self, monkeypatch):
+        # scan_vectors(limit=k) pushes min(k, collect_n) into the scan body instead
+        # of reading collect_n rows and slicing client-side
+        server, calls = self.make_scan_server(monkeypatch, [])
+        server._ronsql_statements = []
+        server._ronsql_rejected = [make_statement()]
+        server._scan_rows_ronsql({"user_id": 7}, limit=5)
+        assert calls[0]["body"]["limit"] == 5
+
+    def test_scan_limit_never_widens_beyond_collect_n(self, monkeypatch):
+        server, calls = self.make_scan_server(monkeypatch, [])
+        server._scan_rows_rest_scan(make_statement(), {"user_id": 7}, limit=500)
+        assert calls[0]["body"]["limit"] == 100
+
+    def test_ascending_scan_rows_reverse_without_sorting(self):
+        # ascending output is a single reversal of the desc-ordered scan
+        rows = [
+            {"amount": 3.0, "event_time": "t3"},
+            {"amount": 1.0, "event_time": "t1"},
+        ]
+        ordered = VectorServer._order_scan_rows(
+            rows, make_statement(collect_ascending=True)
+        )
+        assert [r["event_time"] for r in ordered] == ["t1", "t3"]
+
+    def test_scan_rows_without_order_column_fall_back_to_sort(self):
+        # a backend predating collect_order_by: no order column, arrival order kept
+        rows = [{"amount": 1.0}, {"amount": 3.0}]
+        ordered = VectorServer._order_scan_rows(
+            rows, make_statement(collect_order_by=None)
+        )
+        assert ordered == rows
 
     def test_filtered_collect_refuses_scan_fallback(self, monkeypatch):
         server, calls = self.make_scan_server(monkeypatch, [])
@@ -723,9 +846,10 @@ class TestRejectedStatementVectorOverlay:
         return server, calls
 
     def test_rejected_unfiltered_collect_folds_via_scan(self, monkeypatch):
+        # the ordered index scan returns newest-first; the fold trusts that order
         rows = [
-            {"user_id": 7, "amount": 1.0, "event_time": "t1"},
             {"user_id": 7, "amount": 3.0, "event_time": "t3"},
+            {"user_id": 7, "amount": 1.0, "event_time": "t1"},
         ]
         server, calls = self.make_rejected_server(monkeypatch, rows, [make_statement()])
         vector = server._overlay_ronsql_collect({"tier": "gold"}, {"user_id": 7})
@@ -824,7 +948,7 @@ class TestSnowflakeOverlay:
             make_snowflake_statement(snowflake_templates=list(rows_by_template.keys()))
         ]
         server._ronsql_rejected = []
-        server._execute_ronsql_statement = lambda stmt, entry, template=None: (
+        server._execute_ronsql_statement = lambda stmt, entry, template=None, now=None: (
             rows_by_template[template]
         )
         return server
@@ -868,7 +992,7 @@ class TestSnowflakeOverlay:
             )
         ]
         server._ronsql_rejected = []
-        server._execute_ronsql_statement = lambda stmt, entry, template=None: [
+        server._execute_ronsql_statement = lambda stmt, entry, template=None, now=None: [
             {"r_region_name": "emea"}
         ]
         vector = server._overlay_ronsql_collect({}, {"user_id": 1})
@@ -918,8 +1042,8 @@ class TestSnowflakeOverlay:
         )
         assert results[0] == {"r_region_name": "emea"}
         assert results[1] == {"r_region_name": "apac"}
-        # snowflake misses are legitimate (hop miss): the statement counts as served
-        assert served == {(1, "r_")}
+        # snowflake misses are legitimate (hop miss): every entry counts as served
+        assert served == {0: {(1, "r_")}, 1: {(1, "r_")}}
 
     def test_batch_in_list_is_chunked(self, monkeypatch):
         from hsfs.core import online_store_rest_client_api
@@ -950,12 +1074,52 @@ class TestSnowflakeOverlay:
         served = server._overlay_batch_aggregates(
             results, [{"user_id": 1}, {"user_id": 2}, {"user_id": 3}]
         )
+        # chunks run concurrently, so assert membership rather than arrival order
         assert len(queries) == 2
-        assert "IN (1, 2)" in queries[0]
-        assert "IN (3)" in queries[1]
+        assert any("IN (1, 2)" in q for q in queries)
+        assert any("IN (3)" in q for q in queries)
         assert results[0]["amount_sum"] == 10.0
         assert results[2]["amount_sum"] == 30.0
-        assert served == {(1, None)}
+        assert served == {0: {(1, None)}, 1: {(1, None)}, 2: {(1, None)}}
+
+    def test_batch_in_list_dedups_repeated_keys(self, monkeypatch):
+        # one IN literal serves every entry sharing the key value; the grouped row
+        # still lands on all of them
+        from hsfs.core import online_store_rest_client_api
+
+        server = make_server()
+        server._features = [_Feature("user_id", "bigint")]
+        server._ronsql_statements = []
+        server._ronsql_rejected = []
+        server._ronsql_batch_statements = [make_batch_aggregate_statement()]
+        queries = []
+
+        def fake_execute(api_self, query, database, explain_mode="REMOVE"):
+            queries.append(query)
+            return [{"user_id": 1, "amount_sum": 10.0}]
+
+        monkeypatch.setattr(
+            online_store_rest_client_api.OnlineStoreRestClientApi,
+            "_execute_ronsql",
+            fake_execute,
+        )
+        results = [{}, {}]
+        served = server._overlay_batch_aggregates(
+            results, [{"user_id": 1}, {"user_id": 1}]
+        )
+        assert queries == [
+            "SELECT `user_id`, SUM(`amount`) AS `amount_sum` FROM `transactions_1` "
+            "WHERE `user_id` IN (1) GROUP BY `user_id`;"
+        ]
+        assert results[0]["amount_sum"] == 10.0
+        assert results[1]["amount_sum"] == 10.0
+        assert served == {0: {(1, None)}, 1: {(1, None)}}
+
+    def test_chunking_is_byte_aware(self):
+        # long literals split a chunk before the count cap is reached
+        literals = ["'" + "a" * 40000 + "'", "'" + "b" * 40000 + "'"]
+        chunks = VectorServer._chunk_ronsql_literals(literals)
+        assert chunks == [[literals[0]], [literals[1]]]
 
 
 class TestScanVectorsLimitValidation:
@@ -991,7 +1155,7 @@ class TestBatchOverlayConcurrency:
         server._ronsql_statements = [make_statement()]
         server._ronsql_batch_statements = []
         server._rest_client_engine = _StubRestEngine({1: ["user_id", "amount"]})
-        server._execute_ronsql_statement = lambda stmt, entry, template=None: [
+        server._execute_ronsql_statement = lambda stmt, entry, template=None, now=None: [
             {"user_id": entry["user_id"], "amount": float(entry["user_id"]) * 10}
         ]
         entries = [{"user_id": i} for i in range(1, 21)]
@@ -1061,7 +1225,7 @@ class TestBatchAggregateGrouping:
         assert results[1]["amount_sum"] == 20.0
         # the key column itself is not overlaid; served statements are skipped per-entry
         assert "user_id" not in results[0]
-        assert served == {(1, None)}
+        assert served == {0: {(1, None)}, 1: {(1, None)}}
 
     def test_grouped_outputs_carry_the_statement_prefix(self, monkeypatch):
         rows = [{"user_id": 1, "amount_sum": 10.0}]
@@ -1073,8 +1237,9 @@ class TestBatchAggregateGrouping:
         assert results[0] == {"txn_amount_sum": 10.0}
 
     def test_missing_entity_defers_to_per_entry_pass(self, monkeypatch):
-        # GROUP BY omits entities with no rows: the statement is NOT marked served, so
-        # the per-entry pass computes the empty-window aggregates for them
+        # GROUP BY omits entities with no rows: ONLY those entries stay uncovered,
+        # so the per-entry pass computes their empty-window aggregates without
+        # re-fetching the entries the grouped read already served
         rows = [{"user_id": 1, "amount_sum": 10.0}]
         server, _ = self.make_grouping_server(monkeypatch, rows)
         results = [{}, {}]
@@ -1082,14 +1247,14 @@ class TestBatchAggregateGrouping:
             results, [{"user_id": 1}, {"user_id": 2}]
         )
         assert results[0]["amount_sum"] == 10.0
-        assert served == set()
+        assert served == {0: {(1, None)}}
 
     def test_planner_refusal_falls_back_to_per_entry(self, monkeypatch):
         error = _rest_error(500)
         error.response.text = "Error handling: RPE\nCaught exception: nope\n"
         server, _ = self.make_grouping_server(monkeypatch, error)
         served = server._overlay_batch_aggregates([{}], [{"user_id": 1}])
-        assert served == set()
+        assert served == {}
 
     def test_composite_key_statement_stays_per_entry(self, monkeypatch):
         statement = make_batch_aggregate_statement(
@@ -1100,7 +1265,7 @@ class TestBatchAggregateGrouping:
         )
         server, calls = self.make_grouping_server(monkeypatch, [], statement)
         served = server._overlay_batch_aggregates([{}], [{"user_id": 1, "region": 2}])
-        assert served == set()
+        assert served == {}
         assert calls == []
 
 
@@ -1119,7 +1284,7 @@ class TestRejectedAggregatePrefix:
         server = make_server()
         server._ronsql_statements = [statement]
         server._ronsql_rejected = []
-        server._execute_ronsql_statement = lambda stmt, entry, template=None: [
+        server._execute_ronsql_statement = lambda stmt, entry, template=None, now=None: [
             {"amount_sum": 5.0}
         ]
         vector = server._overlay_ronsql_collect({"tier": "gold"}, {"user_id": 7})
@@ -1158,6 +1323,18 @@ class TestScanFilterTree:
         server._features = [_Feature("amount", "double")]
         tree = server._scan_filter_tree(statement)
         assert tree["value"] == 0.0
+
+    def test_decimal_literal_stays_an_exact_string(self):
+        # a decimal filter must not lose precision through a binary float; it is
+        # validated and sent as a decimal string
+        value = VectorServer._scan_filter_value(
+            "1234567890.123456789", "decimal(19,9)"
+        )
+        assert value == "1234567890.123456789"
+
+    def test_invalid_decimal_literal_refused(self):
+        with pytest.raises(FeatureStoreException, match="decimal"):
+            VectorServer._scan_filter_value("not-a-number", "decimal(10,2)")
 
     def test_multiple_conditions_fold_into_binary_and_tree(self):
         statement = make_statement(
@@ -1293,3 +1470,68 @@ class TestReadTimeReclassification:
         with pytest.raises(RestAPIError):
             server._overlay_ronsql_collect({}, {"user_id": 7})
         assert server._ronsql_statements == [statement]
+
+
+class TestUnservableSnowflakeInitGate:
+    """A snowflake subtree without servable templates must fail REST init.
+
+    The backend marks every nested-subtree statement with snowflake_template; one
+    carrying no templates (mixed INNER/LEFT joins, partial-key hops, ...) cannot be
+    served correctly by the typed REST read, so continuing would silently return
+    wrong nested features.
+    """
+
+    def test_marked_statement_without_templates_raises_guidance(self):
+        unservable = make_statement(
+            collect_n=None,
+            collect_feature_name=None,
+            collect_order_by=None,
+            query_ronsql=None,
+            snowflake_template=True,
+            snowflake_templates=None,
+        )
+        with pytest.raises(FeatureStoreException, match="SQL client"):
+            VectorServer._raise_if_unservable_snowflake([unservable])
+
+    def test_statement_with_templates_passes(self):
+        VectorServer._raise_if_unservable_snowflake([make_snowflake_statement()])
+
+    def test_old_backend_statement_without_marker_passes(self):
+        # an old backend never sets the marker without templates: no false failures
+        VectorServer._raise_if_unservable_snowflake(
+            [make_statement(query_ronsql=None)]
+        )
+
+
+class TestSharedRonsqlPool:
+    def test_task_results_preserve_item_order(self):
+        import time
+
+        def slow_first(item):
+            if item == 0:
+                time.sleep(0.05)
+            return item * 10
+
+        results = make_server()._run_ronsql_tasks(slow_first, [0, 1, 2, 3])
+        assert results == [0, 10, 20, 30]
+
+    def test_single_item_runs_inline(self):
+        import threading as threading_module
+
+        caller = threading_module.current_thread().name
+        seen = []
+        make_server()._run_ronsql_tasks(
+            lambda item: seen.append(threading_module.current_thread().name), [1]
+        )
+        assert seen == [caller]
+
+    def test_exceptions_surface_in_item_order(self):
+        def fail_on_two(item):
+            if item == 2:
+                raise ValueError("two")
+            if item == 1:
+                raise KeyError("one")
+            return item
+
+        with pytest.raises(KeyError):
+            make_server()._run_ronsql_tasks(fail_on_two, [0, 1, 2])

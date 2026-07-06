@@ -19,6 +19,7 @@ import asyncio
 import json
 import logging
 import re
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
 from hopsworks_common.core import variable_api
@@ -57,6 +58,8 @@ class OnlineStoreSqlClient:
     # Alias of the ROW_NUMBER column the backend adds to a collect (most recent N rows per
     # entity) prepared statement. It is dropped when folding the N rows into list features.
     COLLECT_RANK_ALIAS = "hopsworks_collect_rank"
+    # Bind-parameter name of an aggregation statement's trailing window bound.
+    WINDOW_BOUND_PARAM = "hw_window_bound"
 
     BATCH_HELPER_KEY = "batch_helper_column"
     SINGLE_HELPER_KEY = "single_helper_column"
@@ -91,6 +94,9 @@ class OnlineStoreSqlClient:
         # prepared_statement_index -> collect N (None when the statement is a regular point read)
         self._collect_n_by_serving_index: dict[int, int] = {}
         self._collect_name_by_serving_index: dict[int, str] = {}
+        # prepared_statement_index -> aggregation window seconds, for statements whose
+        # trailing ? is the window's lower bound (bound at read time from client UTC)
+        self._aggregate_window_by_serving_index: dict[int, int] = {}
         self._serving_key_by_serving_index: dict[str, ServingKey] = {}
         self._serving_keys: set[ServingKey] = set(serving_keys or [])
 
@@ -295,10 +301,25 @@ class OnlineStoreSqlClient:
             if not batch:
                 for param in prepared_statement.prepared_statement_parameters:
                     query_online = self._parametrize_query(param.name, query_online)
-                query_online = sql.text(query_online)
             else:
                 query_online = self._parametrize_query("batch_ids", query_online)
-                query_online = sql.text(query_online)
+            if (
+                getattr(prepared_statement, "aggregate_window", None) is not None
+                and "?" in query_online
+            ):
+                # pushdown aggregation (FSTORE-2059): the trailing ? is the window's
+                # lower bound, bound at read time as now - window from the client's
+                # UTC clock — the same reference the RonSQL path substitutes, so the
+                # two serving paths share one clock. A backend predating the
+                # parameter inlines NOW(6) and leaves no marker here.
+                query_online = self._parametrize_query(
+                    self.WINDOW_BOUND_PARAM, query_online
+                )
+                self._aggregate_window_by_serving_index[
+                    prepared_statement.prepared_statement_index
+                ] = prepared_statement.aggregate_window
+            query_online = sql.text(query_online)
+            if batch:
                 query_online = query_online.bindparams(
                     batch_ids=bindparam("batch_ids", expanding=True)
                 )
@@ -478,6 +499,13 @@ class OnlineStoreSqlClient:
         serving_vector = {}
         bind_entries = {}
         prepared_statement_execution = {}
+        # one UTC reference for every aggregation window in this read, shared with
+        # what the RonSQL path would substitute (naive UTC, whole seconds)
+        window_reference = (
+            datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
+            if self._aggregate_window_by_serving_index
+            else None
+        )
         for prepared_statement_index in prepared_statement_objects:
             pk_entry = {}
             next_statement = False
@@ -496,6 +524,13 @@ class OnlineStoreSqlClient:
                     pk_entry[sk.feature_name] = entry[sk.required_serving_key]
             if next_statement:
                 continue
+            window = self._aggregate_window_by_serving_index.get(
+                prepared_statement_index
+            )
+            if window is not None:
+                pk_entry[self.WINDOW_BOUND_PARAM] = window_reference - timedelta(
+                    seconds=window
+                )
             bind_entries[prepared_statement_index] = pk_entry
             prepared_statement_execution[prepared_statement_index] = (
                 prepared_statement_objects[prepared_statement_index]
@@ -614,6 +649,13 @@ class OnlineStoreSqlClient:
         entry_values = {}
         serving_keys_all_fg = []
         prepared_stmts_to_execute = {}
+        # one UTC reference for every aggregation window in this read, shared with
+        # what the RonSQL path would substitute (naive UTC, whole seconds)
+        window_reference = (
+            datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
+            if self._aggregate_window_by_serving_index
+            else None
+        )
         # construct the list of entry values for binding to query
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
@@ -651,6 +693,13 @@ class OnlineStoreSqlClient:
                     f"Prepared statement {prepared_statement_index} with entries: {entry_values_tuples}"
                 )
             entry_values[prepared_statement_index] = {"batch_ids": entry_values_tuples}
+            window = self._aggregate_window_by_serving_index.get(
+                prepared_statement_index
+            )
+            if window is not None:
+                entry_values[prepared_statement_index][self.WINDOW_BOUND_PARAM] = (
+                    window_reference - timedelta(seconds=window)
+                )
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
                 f"Executing prepared statements for batch vector with entries: {entry_values}"

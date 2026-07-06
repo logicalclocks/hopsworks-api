@@ -16,9 +16,10 @@
 from __future__ import annotations
 
 import concurrent.futures
-import functools
+import decimal
 import itertools
 import logging
+import threading
 import warnings
 from base64 import b64decode
 from copy import deepcopy
@@ -253,10 +254,16 @@ class VectorServer:
                 reset_rest_client=reset_rest_client,
             )
             # Eager RonSQL conformance check: surface configuration problems (auth
-            # failures raise, unservable templates warn) at init instead of on the
-            # first read. A transient fetch failure retries lazily on the first read.
+            # failures and unservable snowflake subtrees raise, unservable templates
+            # warn) at init instead of on the first read. The batch shapes validate
+            # here too when relevant: their probes share the EXPLAIN verdict cache
+            # and run concurrently, so a batch read never pays a validation pause.
+            # A transient fetch failure retries lazily on the first read.
             try:
-                self._get_ronsql_statements()
+                if self._get_ronsql_statements() or getattr(
+                    self, "_ronsql_rejected", []
+                ):
+                    self._get_ronsql_batch_statements()
             except exceptions.RestAPIError as err:
                 status = getattr(getattr(err, "response", None), "status_code", None)
                 if status in (401, 403):
@@ -545,6 +552,12 @@ class VectorServer:
         elif online_client_choice == self.DEFAULT_REST_CLIENT:
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug("_get_feature_vector Online REST client")
+            # v3 online path: for a collect feature view, the /feature_store point read
+            # cannot serve the collect feature group (its full PK includes the order
+            # column, which is not a serving key) — those rows come from RonSQL/scan
+            # overlays. Their fetches are submitted BEFORE the point read so they run
+            # concurrently with it instead of after it.
+            overlay_pairs = self._begin_ronsql_overlay(rondb_entry)
             try:
                 serving_vector = self.rest_client_engine._get_single_feature_vector(
                     rondb_entry,
@@ -554,11 +567,9 @@ class VectorServer:
             except exceptions.RestAPIError as err:
                 self._raise_if_collect_unservable_metadata(err)
                 raise
-            # v3 online path: for a collect feature view, the /feature_store point read
-            # cannot serve the collect feature group (its full PK includes the order
-            # column, which is not a serving key) — fetch those rows via RonSQL and
-            # overlay them as folded lists.
-            serving_vector = self._overlay_ronsql_collect(serving_vector, rondb_entry)
+            serving_vector = self._finish_ronsql_overlay(
+                serving_vector, rondb_entry, overlay_pairs
+            )
         else:
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug("_get_feature_vector Online SQL client")
@@ -1391,6 +1402,8 @@ class VectorServer:
         Statements from a backend predating the collapsed schema fold each column into
         its own list instead, with nulls preserved so the lists stay row-aligned.
         No-op for feature views without a collect RonSQL statement.
+        All fetches run concurrently on the shared pool: the vector's overlay latency
+        is the slowest single round trip, not their sum.
 
         Parameters:
             serving_vector: The feature-name-to-value dict from the point read.
@@ -1399,11 +1412,22 @@ class VectorServer:
         Returns:
             The serving vector with the collect feature filled in.
         """
-        # Statements rejected by the EXPLAIN conformance check (or reclassified by a
-        # read-time planner refusal below) must not silently omit their features:
-        # collects whose filters are /scan-expressible are served through the /scan
-        # index read; anything else fails loudly with SQL-client guidance.
-        rejected_before = list(getattr(self, "_ronsql_rejected", []))
+        return self._finish_ronsql_overlay(
+            serving_vector, entry, self._begin_ronsql_overlay(entry, skip=skip)
+        )
+
+    def _overlay_specs(
+        self, skip: frozenset[tuple[int, str | None]] = frozenset()
+    ) -> list[tuple[str, Any, str | None]]:
+        """The (kind, statement, template) fetches serving one entry's overlays.
+
+        One spec per (statement, template): a snowflake statement contributes one
+        spec per chain template, everything else one spec. Statements rejected by
+        the EXPLAIN conformance check (or routed to /scan) must not silently omit
+        their features, so they contribute a "rejected" spec that reads /scan or
+        fails with SQL-client guidance.
+        """
+        specs: list[tuple[str, Any, str | None]] = []
         for statement in list(self._get_ronsql_statements()):
             if (statement.feature_group_id, statement.prefix) in skip:
                 continue
@@ -1414,19 +1438,89 @@ class VectorServer:
                 # aliased to the prefixed feature-view names. Zero rows = a hop
                 # miss, that chain's features stay missing while other chains'
                 # features are unaffected (LEFT reachability).
-                for template in self._snowflake_statement_templates(statement):
-                    rows = self._rows_or_reclassify(statement, entry, template=template)
-                    if rows is None:
-                        # a read-time planner refusal reclassified the statement
-                        self._serve_rejected_statement(serving_vector, statement, entry)
-                        break
-                    if rows:
-                        serving_vector.update(rows[0])
+                specs.extend(
+                    ("snowflake", statement, template)
+                    for template in self._snowflake_statement_templates(statement)
+                )
+            else:
+                specs.append(("live", statement, None))
+        for statement in getattr(self, "_ronsql_rejected", []):
+            if (statement.feature_group_id, statement.prefix) in skip:
                 continue
-            rows = self._rows_or_reclassify(statement, entry)
-            if rows is None:
-                # a read-time planner refusal reclassified the statement
-                self._serve_rejected_statement(serving_vector, statement, entry)
+            specs.append(("rejected", statement, None))
+        return specs
+
+    def _begin_ronsql_overlay(
+        self,
+        entry: dict[str, Any],
+        skip: frozenset[tuple[int, str | None]] = frozenset(),
+    ) -> list[tuple[tuple, concurrent.futures.Future]]:
+        """Submit one entry's overlay fetches to the shared pool.
+
+        Returns (spec, future) pairs in deterministic apply order. The caller can
+        run the base point read while these are in flight and then apply them with
+        `_finish_ronsql_overlay`.
+        """
+        specs = self._overlay_specs(skip)
+        if not specs:
+            return []
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        pool = self._ronsql_pool()
+        return [
+            (spec, pool.submit(self._run_overlay_fetch, spec, entry, now))
+            for spec in specs
+        ]
+
+    def _finish_ronsql_overlay(
+        self,
+        serving_vector: dict[str, Any],
+        entry: dict[str, Any],
+        pairs: list[tuple[tuple, concurrent.futures.Future]],
+    ) -> dict[str, Any]:
+        """Await the submitted overlay fetches and apply them in spec order."""
+        if not pairs:
+            return serving_vector
+        outcomes = [(spec, future.result()) for spec, future in pairs]
+        return self._apply_overlay_outcomes(serving_vector, entry, outcomes)
+
+    def _run_overlay_fetch(
+        self, spec: tuple[str, Any, str | None], entry: dict[str, Any], now: datetime
+    ) -> list[dict[str, Any]] | None:
+        """One overlay fetch: rows for a (statement, template), or None if reclassified."""
+        kind, statement, template = spec
+        if kind == "rejected":
+            return self._fetch_rejected_rows(statement, entry)
+        return self._rows_or_reclassify(statement, entry, template=template, now=now)
+
+    def _apply_overlay_outcomes(
+        self,
+        serving_vector: dict[str, Any],
+        entry: dict[str, Any],
+        outcomes: list[tuple[tuple, list[dict[str, Any]] | None]],
+    ) -> dict[str, Any]:
+        """Apply fetched overlay rows to the vector.
+
+        A None result means a read-time planner refusal reclassified the statement
+        while its fetches were in flight: the whole statement is then served once
+        through the rejected paths (/scan or guidance) instead, regardless of what
+        its other templates returned.
+        """
+        reclassified = {
+            id(spec[1]) for spec, rows in outcomes if rows is None and spec[0] != "rejected"
+        }
+        served_rejected: set[int] = set()
+        for spec, rows in outcomes:
+            kind, statement, _ = spec
+            if id(statement) in reclassified:
+                if id(statement) not in served_rejected:
+                    served_rejected.add(id(statement))
+                    self._serve_rejected_statement(serving_vector, statement, entry)
+                continue
+            if kind == "snowflake":
+                if rows:
+                    serving_vector.update(rows[0])
+            elif kind == "rejected":
+                self._fold_collect_feature(serving_vector, statement, rows)
             elif statement.collect_n is not None:
                 self._fold_collect_feature(
                     serving_vector, statement, self._sort_collect_rows(rows, statement)
@@ -1438,28 +1532,31 @@ class VectorServer:
                 serving_vector.update(
                     {prefix + name: value for name, value in rows[0].items()}
                 )
-        for statement in rejected_before:
-            self._serve_rejected_statement(serving_vector, statement, entry)
         return serving_vector
 
     def _serve_rejected_statement(
         self, serving_vector: dict[str, Any], statement, entry: dict[str, Any]
     ) -> None:
-        """Serve a RonSQL-rejected statement via /scan, or fail with guidance.
+        """Serve a RonSQL-rejected statement via /scan, or fail with guidance."""
+        self._fold_collect_feature(
+            serving_vector, statement, self._fetch_rejected_rows(statement, entry)
+        )
+
+    def _fetch_rejected_rows(
+        self, statement, entry: dict[str, Any]
+    ) -> list[dict[str, Any]]:
+        """Rows for a statement served outside /ronsql: the /scan index read, or guidance.
 
         Collects whose feature-view filters are /scan-expressible (carried structured on
-        the statement) fold through the /scan index read; collects with inexpressible
-        filters and aggregations have no REST equivalent and raise.
+        the statement) read through the /scan ordered index scan, returned already in
+        output order; collects with inexpressible filters, snowflake subtrees, and
+        aggregations have no REST equivalent and raise with SQL-client guidance.
         """
         if statement.collect_n is not None and self._scan_can_serve(statement):
-            self._fold_collect_feature(
-                serving_vector,
-                statement,
-                self._sort_collect_rows(
-                    self._scan_rows_rest_scan(statement, entry), statement
-                ),
+            return self._order_scan_rows(
+                self._scan_rows_rest_scan(statement, entry), statement
             )
-        elif statement.collect_n is not None:
+        if statement.collect_n is not None:
             raise exceptions.FeatureStoreException(
                 "The collect feature of feature group "
                 f"{statement.feature_group_id} cannot be served by the REST "
@@ -1468,7 +1565,7 @@ class VectorServer:
                 "expressible as /scan filters. Use the SQL client "
                 "(init_serving(default_client='sql') or force_sql_client=True)."
             )
-        elif getattr(statement, "snowflake_template", None):
+        if getattr(statement, "snowflake_template", None):
             raise exceptions.FeatureStoreException(
                 "The nested (snowflake) features of the subtree rooted at feature "
                 f"group {statement.feature_group_id} cannot be served by the REST "
@@ -1476,15 +1573,14 @@ class VectorServer:
                 "EXPLAIN conformance check. Use the SQL client "
                 "(init_serving(default_client='sql') or force_sql_client=True)."
             )
-        else:
-            raise exceptions.FeatureStoreException(
-                "The aggregation features of feature group "
-                f"{statement.feature_group_id} cannot be served by the REST "
-                "client on this RonDB version: their RonSQL statement failed "
-                "the EXPLAIN conformance check and aggregations have no /scan "
-                "fallback. Use the SQL client "
-                "(init_serving(default_client='sql') or force_sql_client=True)."
-            )
+        raise exceptions.FeatureStoreException(
+            "The aggregation features of feature group "
+            f"{statement.feature_group_id} cannot be served by the REST "
+            "client on this RonDB version: their RonSQL statement failed "
+            "the EXPLAIN conformance check and aggregations have no /scan "
+            "fallback. Use the SQL client "
+            "(init_serving(default_client='sql') or force_sql_client=True)."
+        )
 
     @staticmethod
     def _snowflake_statement_templates(statement) -> list[str]:
@@ -1507,7 +1603,11 @@ class VectorServer:
         )
 
     def _rows_or_reclassify(
-        self, statement, entry: dict[str, Any], template: str | None = None
+        self,
+        statement,
+        entry: dict[str, Any],
+        template: str | None = None,
+        now: datetime | None = None,
     ) -> list[dict[str, Any]] | None:
         """Execute a statement via /ronsql; reclassify it as rejected on a planner refusal.
 
@@ -1517,7 +1617,9 @@ class VectorServer:
         caller serves it through the rejected paths instead of failing the read.
         """
         try:
-            return self._execute_ronsql_statement(statement, entry, template=template)
+            return self._execute_ronsql_statement(
+                statement, entry, template=template, now=now
+            )
         except exceptions.RestAPIError as err:
             if not self._is_ronsql_planner_error(err):
                 raise
@@ -1531,10 +1633,11 @@ class VectorServer:
                 self._ronsql_statements = [
                     s for s in self._ronsql_statements if s is not statement
                 ]
-            self._ronsql_rejected = [
-                *getattr(self, "_ronsql_rejected", []),
-                statement,
-            ]
+            # concurrent chain fetches of one statement may reclassify it together;
+            # register it once
+            rejected = getattr(self, "_ronsql_rejected", [])
+            if not any(s is statement for s in rejected):
+                self._ronsql_rejected = [*rejected, statement]
             return None
 
     def _raise_if_collect_unservable_metadata(
@@ -1625,8 +1728,8 @@ class VectorServer:
             None,
         )
         if fallback is not None and self._scan_can_serve(fallback):
-            rows = self._sort_collect_rows(
-                self._scan_rows_rest_scan(fallback, entry), fallback
+            rows = self._order_scan_rows(
+                self._scan_rows_rest_scan(fallback, entry, limit=limit), fallback
             )
             return rows[:limit] if limit is not None else rows
         raise exceptions.FeatureStoreException(
@@ -1640,14 +1743,16 @@ class VectorServer:
         )
 
     def _scan_rows_rest_scan(
-        self, statement, entry: dict[str, Any]
+        self, statement, entry: dict[str, Any], limit: int | None = None
     ) -> list[dict[str, Any]]:
         """Serve collect rows through the RDRS /scan ordered-index-scan endpoint.
 
         The scan is bounded by the entity-key values on the primary index and ordered by
         the trailing order column (v2 C0 requires the primary key `(entity..., order_col)`),
-        capped at the collect N — RDRS's native row-returning LIMIT operation.
-        Selection is always newest-first (v2 C2); the caller applies the output order.
+        capped at the collect N — RDRS's native row-returning LIMIT operation — or at
+        `limit` when the caller needs fewer rows (selection is always newest-first, v2
+        C2, so a narrower limit selects the same newest rows; the caller applies the
+        output order).
         The feature view's filters ride along as the scan's CMP filter tree when the
         backend carried them structured on the statement; callers must not route other
         filtered collect statements to this path (see `_scan_can_serve`).
@@ -1664,7 +1769,9 @@ class VectorServer:
             entity_values.append(value)
         key_columns.append(statement.collect_order_by)
         body = {
-            "limit": statement.collect_n,
+            "limit": statement.collect_n
+            if limit is None
+            else min(statement.collect_n, limit),
             "index": {
                 "name": "PRIMARY",
                 "key_columns": key_columns,
@@ -1753,6 +1860,8 @@ class VectorServer:
         The scan filter value is a raw JSON scalar, so numeric columns need numbers and
         everything else stays a string. Non-numeric literals on numeric columns are
         refused rather than sent as strings (RDRS would reject or, worse, coerce them).
+        DECIMAL literals stay exact: they are validated and sent as decimal strings
+        instead of being squeezed through a binary float.
         """
         base_type = (feature_type or "").split("(")[0].strip().lower()
         if base_type in ("tinyint", "smallint", "int", "bigint"):
@@ -1762,7 +1871,14 @@ class VectorServer:
                 raise exceptions.FeatureStoreException(
                     f"Filter literal {value!r} is not valid for the {base_type} column."
                 ) from err
-        if base_type in ("float", "double", "decimal"):
+        if base_type == "decimal":
+            try:
+                return str(decimal.Decimal(value))
+            except (TypeError, ValueError, decimal.InvalidOperation) as err:
+                raise exceptions.FeatureStoreException(
+                    f"Filter literal {value!r} is not valid for the {base_type} column."
+                ) from err
+        if base_type in ("float", "double"):
             try:
                 return float(value)
             except (TypeError, ValueError) as err:
@@ -1786,14 +1902,21 @@ class VectorServer:
         )
 
     def _execute_ronsql_statement(
-        self, statement, entry: dict[str, Any], template: str | None = None
+        self,
+        statement,
+        entry: dict[str, Any],
+        template: str | None = None,
+        now: datetime | None = None,
     ) -> list[dict[str, Any]]:
         """Substitute the entity keys into a RonSQL template and execute it via /ronsql.
 
         The template defaults to the statement's query_ronsql; snowflake statements
-        pass each of their chain templates explicitly.
+        pass each of their chain templates explicitly. `now` is the read's shared UTC
+        reference for window bounds.
         """
-        query = self._substitute_ronsql_template(statement, entry, template=template)
+        query = self._substitute_ronsql_template(
+            statement, entry, template=template, now=now
+        )
         return online_store_rest_client_api.OnlineStoreRestClientApi()._execute_ronsql(
             query, statement.ronsql_database
         )
@@ -1803,105 +1926,196 @@ class VectorServer:
     ) -> list[dict[str, Any]]:
         """Overlay collect/aggregate features onto a batch of point-read results.
 
-        Aggregations with a single entity key go as ONE grouped `IN (...) GROUP BY`
-        statement for the whole batch; collect rows (per-entity /scan or /ronsql limit
-        semantics) and statements without a servable batch template run per entry on a
-        bounded thread pool.
+        Two waves on the shared pool. First the grouped `IN (...) GROUP BY`
+        statements (aggregations and snowflake subtrees): their chunks all run
+        concurrently. Then one flat wave of per-entry fetches for whatever the
+        grouped wave did not cover — every (entry, statement, template) round trip
+        overlaps instead of multiplying into entries x statements sequential calls.
         """
         if len(entries) <= 1:
             return [
                 self._overlay_ronsql_collect(result, entry)
                 for result, entry in zip(results, entries, strict=True)
             ]
-        served_batch = self._overlay_batch_aggregates(results, entries)
-        overlay = functools.partial(self._overlay_ronsql_collect, skip=served_batch)
-        with concurrent.futures.ThreadPoolExecutor(
-            max_workers=min(8, len(entries))
-        ) as pool:
-            return list(pool.map(overlay, results, entries))
+        covered = self._overlay_batch_aggregates(results, entries)
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        tasks: list[tuple[int, tuple[str, Any, str | None]]] = []
+        for idx in range(len(entries)):
+            for spec in self._overlay_specs(covered.get(idx, frozenset())):
+                tasks.append((idx, spec))
+        if not tasks:
+            return results
+        raw = self._run_ronsql_tasks(
+            lambda task: self._run_overlay_fetch(task[1], entries[task[0]], now),
+            tasks,
+        )
+        outcomes_by_entry: dict[int, list] = {}
+        for (idx, spec), rows in zip(tasks, raw, strict=True):
+            outcomes_by_entry.setdefault(idx, []).append((spec, rows))
+        for idx, outcomes in outcomes_by_entry.items():
+            self._apply_overlay_outcomes(results[idx], entries[idx], outcomes)
+        return results
 
     def _overlay_batch_aggregates(
         self, results: list[dict[str, Any]], entries: list[dict[str, Any]]
-    ) -> set[tuple[int, str | None]]:
+    ) -> dict[int, frozenset[tuple[int, str | None]]]:
         """Serve batchable grouped statements: aggregations and snowflake subtrees.
 
-        The batch template is keyed `... WHERE key IN (...) GROUP BY key`; the returned
-        rows are mapped back to entries by the entity-key value, with the statement's
-        prefix applied to aggregation output names (snowflake outputs arrive already
-        aliased to their prefixed feature-view names).
-        Returns the (feature_group_id, prefix) pairs fully served, which the per-entry
-        pass then skips. A statement is not fully served when the grouped result misses
-        an entity (no rows in its window: GROUP BY omits it); the per-entry single
-        statement computes the empty-window row for those, so it reruns for that
-        feature group.
-        A read-time planner refusal quietly drops the batch template for the call; the
-        per-entry singles cover the feature group.
+        The batch template is keyed `... WHERE key IN (...) GROUP BY key`. The IN
+        list is deduplicated (one literal serves every entry sharing the key value)
+        and chunked by count and by literal bytes; all (statement, template, chunk)
+        round trips run concurrently on the shared pool. Returned rows are mapped
+        back to entries by the entity-key value, with the statement's prefix applied
+        to aggregation output names (snowflake outputs arrive already aliased to
+        their prefixed feature-view names).
+        Returns per-entry coverage: the (feature_group_id, prefix) pairs served for
+        each entry index, which the per-entry pass then skips. An aggregation entry
+        missing from the grouped result is NOT covered (no rows in its window: GROUP
+        BY omits it); only that entry reruns through the per-entry single statement,
+        which computes the correct empty-window row. Snowflake misses are legitimate
+        hop misses (the per-entry chain would miss identically), so snowflake
+        statements cover every entry.
+        A read-time planner refusal quietly drops the statement's grouped templates
+        for the call; the per-entry singles cover its feature group.
         """
-        served: set[tuple[int, str | None]] = set()
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        contexts: list[dict[str, Any]] = []
+        tasks: list[tuple[dict[str, Any], str, list[str]]] = []
         for statement in self._get_ronsql_batch_statements():
             if len(statement.prepared_statement_parameters) != 1:
                 continue
             key_name = statement.prepared_statement_parameters[0].name
+            feature_type = self._ronsql_feature_type(statement, key_name)
+            indices_by_value: dict[Any, list[int]] = {}
+            literals: list[str] = []
+            seen_literals: set[str] = set()
+            for idx, entry in enumerate(entries):
+                value = self._entry_value(entry, key_name)
+                if value is None:
+                    raise exceptions.FeatureStoreException(
+                        f"Missing entity key '{key_name}' in a batch entry for RonSQL."
+                    )
+                indices_by_value.setdefault(value, []).append(idx)
+                literal = self._ronsql_literal(value, feature_type)
+                if literal not in seen_literals:
+                    seen_literals.add(literal)
+                    literals.append(literal)
             snowflake = bool(getattr(statement, "snowflake_template", None))
-            if snowflake:
-                templates = self._snowflake_statement_templates(statement)
-                # snowflake outputs are pre-aliased to feature-view names, and a
-                # missing row is a legitimate hop miss: the per-entry rerun would
-                # miss identically, so it is not triggered
-                prefix = ""
-            else:
-                templates = [statement.query_ronsql]
-                prefix = statement.prefix or ""
-            complete = True
-            refused = False
+            context = {
+                "statement": statement,
+                "key_name": key_name,
+                "snowflake": snowflake,
+                "prefix": "" if snowflake else (statement.prefix or ""),
+                "indices_by_value": indices_by_value,
+                "rows": [],
+                "refused": False,
+            }
+            contexts.append(context)
+            templates = (
+                self._snowflake_statement_templates(statement)
+                if snowflake
+                else [statement.query_ronsql]
+            )
             for template in templates:
-                # chunk the IN list: a statement's literal list must stay bounded
-                for start in range(0, len(entries), self._RONSQL_IN_CHUNK):
-                    chunk = entries[start : start + self._RONSQL_IN_CHUNK]
-                    try:
-                        query = self._substitute_ronsql_batch_template(
-                            statement, chunk, template=template
-                        )
-                        rows = online_store_rest_client_api.OnlineStoreRestClientApi()._execute_ronsql(
-                            query, statement.ronsql_database
-                        )
-                    except exceptions.RestAPIError as err:
-                        if not self._is_ronsql_planner_error(err):
-                            raise
-                        _logger.warning(
-                            "The grouped batch RonSQL statement for feature group "
-                            "%s was refused by the planner (%s); serving it per "
-                            "entry instead.",
-                            statement.feature_group_id,
-                            err,
-                        )
-                        refused = True
-                        break
-                    rows_by_key: dict[Any, dict[str, Any]] = {}
-                    for row in rows:
-                        rows_by_key[row.get(key_name)] = row
-                    for offset, entry in enumerate(chunk):
-                        value = self._entry_value(entry, key_name)
-                        row = rows_by_key.get(value, rows_by_key.get(str(value)))
-                        if row is None:
-                            if not snowflake:
-                                complete = False
-                            continue
-                        results[start + offset].update(
-                            {
-                                prefix + name: val
-                                for name, val in row.items()
-                                if name != key_name
-                            }
-                        )
-                if refused:
-                    break
-            if complete and not refused:
-                served.add((statement.feature_group_id, statement.prefix))
-        return served
+                for chunk in self._chunk_ronsql_literals(literals):
+                    tasks.append((context, template, chunk))
+        if not contexts:
+            return {}
+        raw = self._run_ronsql_tasks(
+            lambda task: self._run_batch_chunk(task, now), tasks
+        )
+        for (context, _, _), rows in zip(tasks, raw, strict=True):
+            if rows is None:
+                context["refused"] = True
+            else:
+                context["rows"].extend(rows)
+        covered: dict[int, frozenset[tuple[int, str | None]]] = {}
+        covered_sets: dict[int, set[tuple[int, str | None]]] = {}
+        for context in contexts:
+            if context["refused"]:
+                continue
+            statement = context["statement"]
+            key_name = context["key_name"]
+            prefix = context["prefix"]
+            indices_by_value = context["indices_by_value"]
+            row_hits: set[int] = set()
+            for row in context["rows"]:
+                row_value = row.get(key_name)
+                indices = indices_by_value.get(row_value)
+                if indices is None:
+                    indices = indices_by_value.get(str(row_value), [])
+                for idx in indices:
+                    row_hits.add(idx)
+                    results[idx].update(
+                        {
+                            prefix + name: val
+                            for name, val in row.items()
+                            if name != key_name
+                        }
+                    )
+            key = (statement.feature_group_id, statement.prefix)
+            for idx in range(len(entries)):
+                if context["snowflake"] or idx in row_hits:
+                    covered_sets.setdefault(idx, set()).add(key)
+        for idx, keys in covered_sets.items():
+            covered[idx] = frozenset(keys)
+        return covered
+
+    def _run_batch_chunk(
+        self, task: tuple[dict[str, Any], str, list[str]], now: datetime
+    ) -> list[dict[str, Any]] | None:
+        """Execute one grouped chunk; None on a definitive planner refusal."""
+        context, template, chunk = task
+        statement = context["statement"]
+        query = self._substitute_ronsql_batch_literals(
+            statement, template, ", ".join(chunk), now=now
+        )
+        try:
+            return online_store_rest_client_api.OnlineStoreRestClientApi()._execute_ronsql(
+                query, statement.ronsql_database
+            )
+        except exceptions.RestAPIError as err:
+            if not self._is_ronsql_planner_error(err):
+                raise
+            _logger.warning(
+                "The grouped batch RonSQL statement for feature group "
+                "%s was refused by the planner (%s); serving it per "
+                "entry instead.",
+                statement.feature_group_id,
+                err,
+            )
+            return None
+
+    @classmethod
+    def _chunk_ronsql_literals(cls, literals: list[str]) -> list[list[str]]:
+        """Chunk IN-list literals by count and by accumulated bytes.
+
+        The count cap keeps result sets and data-node work bounded; the byte cap
+        keeps statement size predictable when keys are long strings.
+        """
+        chunks: list[list[str]] = []
+        current: list[str] = []
+        size = 0
+        for literal in literals:
+            if current and (
+                len(current) >= cls._RONSQL_IN_CHUNK
+                or size + len(literal) > cls._RONSQL_IN_MAX_BYTES
+            ):
+                chunks.append(current)
+                current = []
+                size = 0
+            current.append(literal)
+            size += len(literal) + 2
+        if current:
+            chunks.append(current)
+        return chunks
 
     def _substitute_ronsql_batch_template(
-        self, statement, entries: list[dict[str, Any]], template: str | None = None
+        self,
+        statement,
+        entries: list[dict[str, Any]],
+        template: str | None = None,
+        now: datetime | None = None,
     ) -> str:
         """Substitute a batch's entity-key values into a grouped `IN (?)` template.
 
@@ -1909,16 +2123,6 @@ class VectorServer:
         optional trailing window `?` resolves client-side as now - window, matching the
         single-entity substitution.
         """
-        parts = self._split_ronsql_placeholders(template or statement.query_ronsql)
-        expected = 1 + (
-            1 if getattr(statement, "aggregate_window", None) is not None else 0
-        )
-        if len(parts) - 1 != expected:
-            raise exceptions.FeatureStoreException(
-                f"The batch RonSQL template for feature group "
-                f"{statement.feature_group_id} carries {len(parts) - 1} placeholders "
-                f"where {expected} were expected; refusing to substitute."
-            )
         key_name = statement.prepared_statement_parameters[0].name
         feature_type = self._ronsql_feature_type(statement, key_name)
         literals = []
@@ -1929,15 +2133,48 @@ class VectorServer:
                     f"Missing entity key '{key_name}' in a batch entry for RonSQL."
                 )
             literals.append(self._ronsql_literal(value, feature_type))
-        substitutions = [", ".join(literals)]
+        return self._substitute_ronsql_batch_literals(
+            statement,
+            template or statement.query_ronsql,
+            ", ".join(literals),
+            now=now,
+        )
+
+    def _substitute_ronsql_batch_literals(
+        self, statement, template: str, in_literals: str, now: datetime | None = None
+    ) -> str:
+        """Substitute pre-rendered IN literals (and the window bound) into a template."""
+        parts = self._split_ronsql_placeholders(template)
+        expected = 1 + (
+            1 if getattr(statement, "aggregate_window", None) is not None else 0
+        )
+        if len(parts) - 1 != expected:
+            raise exceptions.FeatureStoreException(
+                f"The batch RonSQL template for feature group "
+                f"{statement.feature_group_id} carries {len(parts) - 1} placeholders "
+                f"where {expected} were expected; refusing to substitute."
+            )
+        substitutions = [in_literals]
         if getattr(statement, "aggregate_window", None) is not None:
-            bound = datetime.now() - timedelta(seconds=statement.aggregate_window)
-            substitutions.append(self._ronsql_literal(bound))
+            substitutions.append(
+                self._ronsql_literal(self._ronsql_window_bound(statement, now))
+            )
         pieces = [parts[0]]
         for literal, part in zip(substitutions, parts[1:], strict=True):
             pieces.append(literal)
             pieces.append(part)
         return "".join(pieces)
+
+    @staticmethod
+    def _ronsql_window_bound(statement, now: datetime | None) -> datetime:
+        """The aggregation window's lower bound from the read's shared UTC reference.
+
+        Both the RonSQL substitution and the SQL client's MySQL bind resolve the
+        window from a client-computed UTC now truncated to whole seconds, so the two
+        serving paths share one clock.
+        """
+        reference = now or datetime.now(timezone.utc).replace(microsecond=0)
+        return reference - timedelta(seconds=statement.aggregate_window)
 
     def _entry_value(self, entry: dict[str, Any], name: str) -> Any:
         """An entity-key value from an entry, falling back to its serving-key alias."""
@@ -1953,7 +2190,9 @@ class VectorServer:
 
         On the first fetch every template is conformance-checked against the server with
         an EXPLAIN round trip, so an unservable template surfaces here instead of as an
-        opaque error on the read path.
+        opaque error on the read path. A snowflake subtree without servable templates
+        fails here with SQL-client guidance: the typed REST read cannot serve its nested
+        features, and silently returning wrong vectors is worse than failing init.
         """
         if not hasattr(self, "_ronsql_statements"):
             statements = feature_view_api.FeatureViewApi(
@@ -1964,6 +2203,7 @@ class VectorServer:
                 batch=False,
                 inference_helper_columns=False,
             )
+            self._raise_if_unservable_snowflake(statements)
             rejected: list[Any] = []
             self._ronsql_statements = self._validate_ronsql_templates(
                 [
@@ -1993,6 +2233,7 @@ class VectorServer:
                 batch=True,
                 inference_helper_columns=False,
             )
+            self._raise_if_unservable_snowflake(statements)
             self._ronsql_batch_statements = self._validate_ronsql_templates(
                 [
                     s
@@ -2007,14 +2248,47 @@ class VectorServer:
             )
         return self._ronsql_batch_statements
 
+    @staticmethod
+    def _raise_if_unservable_snowflake(statements: list[Any]) -> None:
+        """Fail REST init when a snowflake subtree has no servable templates.
+
+        The backend marks every nested-subtree statement with snowflake_template; one
+        without templates (mixed INNER/LEFT join types, a partial-key hop, a
+        cross-feature-store join, ...) cannot be served correctly by the typed REST
+        read, so continuing would silently return wrong nested features.
+        """
+        for statement in statements:
+            if (
+                getattr(statement, "snowflake_template", None)
+                and not getattr(statement, "snowflake_templates", None)
+                and not statement.query_ronsql
+            ):
+                raise exceptions.FeatureStoreException(
+                    "The nested (snowflake) subtree rooted at feature group "
+                    f"{statement.feature_group_id} has no servable RonSQL "
+                    "templates (mixed INNER/LEFT join types, a partial-key hop, "
+                    "or a cross-feature-store join), so the REST client cannot "
+                    "serve this feature view's nested features. Use the SQL "
+                    "client (init_serving(default_client='sql') or "
+                    "force_sql_client=True)."
+                )
+
     def _validate_ronsql_templates(
         self, statements: list[Any], rejected: list[Any]
     ) -> list[Any]:
-        """Conformance-check generated RonSQL templates with an EXPLAIN round trip (v3).
+        """Conformance-check generated RonSQL templates with EXPLAIN round trips (v3).
 
         Each template is substituted with type-appropriate placeholder values and planned
         via explainMode=FORCE, which validates it against the server's RonSQL subset and
         index requirements without executing it.
+        Collect statements whose filters are /scan-expressible skip the EXPLAIN
+        entirely: this RonDB generation refuses row-returning CTEs (a CTE body must
+        aggregate), so they route straight to the /scan index read without paying a
+        per-statement probe; a collect that /scan cannot serve still gets its EXPLAIN
+        chance. The remaining probes run CONCURRENTLY on the shared pool, and
+        identical probes (same database and statement text) are planned once per
+        server (verdicts are cached on the instance, shared between the single and
+        batch validations).
         A template the server rejects (unsupported construct, missing index, RonDB < 26.04)
         is dropped with a warning into the caller's `rejected` sink: point reads and
         `scan_vectors` then serve /scan-servable collects through the /scan index read,
@@ -2026,7 +2300,10 @@ class VectorServer:
         The RonDB REST server wraps planner refusals as 500s, so 5xx bodies are
         classified by their RonSQL error signature, not by status alone.
         """
-        valid = []
+        cache = getattr(self, "_ronsql_explain_cache", None)
+        if cache is None:
+            cache = self._ronsql_explain_cache = {}
+        specs: list[tuple[Any, str, list[str] | None, Exception | None]] = []
         for statement in statements:
             if statement.collect_n is not None:
                 kind = "collect"
@@ -2034,54 +2311,66 @@ class VectorServer:
                 kind = "snowflake"
             else:
                 kind = "aggregation"
-            rejected_by = None
+            if kind == "collect" and self._scan_can_serve(statement):
+                # designed routing, not a degradation: served via /scan, no probe
+                rejected.append(statement)
+                continue
+            # snowflake statements carry one template per chain; all must conform
+            templates = (
+                self._snowflake_statement_templates(statement)
+                if kind == "snowflake"
+                else [statement.query_ronsql]
+            )
             try:
-                # snowflake statements carry one template per chain; all must conform
-                if kind == "snowflake":
-                    templates = self._snowflake_statement_templates(statement)
-                else:
-                    templates = [statement.query_ronsql]
-                for template in templates:
-                    query = self._substitute_ronsql_template(
+                probes = [
+                    self._substitute_ronsql_template(
                         statement,
                         self._ronsql_placeholder_entry(statement),
                         template=template,
                     )
-                    online_store_rest_client_api.OnlineStoreRestClientApi()._execute_ronsql(
-                        query, statement.ronsql_database, explain_mode="FORCE"
-                    )
-            except exceptions.RestAPIError as err:
-                status = getattr(getattr(err, "response", None), "status_code", None)
-                if status in (401, 403):
-                    # not a conformance verdict: surface instead of degrading silently
-                    raise
-                if (
-                    status is not None
-                    and 400 <= status < 500
-                    and status not in (408, 429)
-                    or self._is_ronsql_planner_error(err)
-                ):
-                    rejected_by = err
-                else:
-                    _logger.warning(
-                        "Could not conformance-check the RonSQL %s statement for "
-                        "feature group %s (%s); keeping it unvalidated.",
-                        kind,
-                        statement.feature_group_id,
-                        err,
-                    )
+                    for template in templates
+                ]
             except exceptions.FeatureStoreException as err:
-                # template-level problem (e.g. literal substitution): a planner-equivalent
-                # refusal, so the statement is unservable via /ronsql
-                rejected_by = err
-            except Exception as err:  # noqa: BLE001 - transport errors prove nothing
-                _logger.warning(
-                    "Could not conformance-check the RonSQL %s statement for feature "
-                    "group %s (%s); keeping it unvalidated.",
-                    kind,
-                    statement.feature_group_id,
-                    err,
-                )
+                # template-level problem (e.g. literal substitution): a
+                # planner-equivalent refusal, unservable via /ronsql
+                specs.append((statement, kind, None, err))
+                continue
+            specs.append((statement, kind, probes, None))
+        to_probe: list[tuple[str, str]] = []
+        seen: set[tuple[str, str]] = set()
+        for statement, _, probes, _ in specs:
+            for probe in probes or []:
+                key = (statement.ronsql_database, probe)
+                if key not in cache and key not in seen:
+                    seen.add(key)
+                    to_probe.append(key)
+        fresh = dict(
+            zip(
+                to_probe,
+                self._run_ronsql_tasks(self._explain_probe, to_probe),
+                strict=True,
+            )
+        )
+        for key, verdict in fresh.items():
+            status = getattr(getattr(verdict, "response", None), "status_code", None)
+            if status in (401, 403):
+                # not a conformance verdict: surface instead of degrading silently
+                raise verdict
+            if verdict is None or self._is_definitive_ronsql_refusal(verdict):
+                # only proofs are cached; transient failures retry next validation
+                cache[key] = verdict
+        valid = []
+        for statement, kind, probes, rejected_by in specs:
+            transient = None
+            for probe in probes or []:
+                key = (statement.ronsql_database, probe)
+                verdict = cache.get(key, fresh.get(key))
+                if verdict is None:
+                    continue
+                if self._is_definitive_ronsql_refusal(verdict):
+                    rejected_by = verdict
+                    break
+                transient = verdict
             if rejected_by is not None:
                 warnings.warn(
                     f"The RonSQL {kind} statement for feature group "
@@ -2094,8 +2383,46 @@ class VectorServer:
                 )
                 rejected.append(statement)
                 continue
+            if transient is not None:
+                _logger.warning(
+                    "Could not conformance-check the RonSQL %s statement for "
+                    "feature group %s (%s); keeping it unvalidated.",
+                    kind,
+                    statement.feature_group_id,
+                    transient,
+                )
             valid.append(statement)
         return valid
+
+    @staticmethod
+    def _explain_probe(key: tuple[str, str]) -> Exception | None:
+        """Plan one probe via explainMode=FORCE; the raised error is the verdict."""
+        database, probe = key
+        try:
+            online_store_rest_client_api.OnlineStoreRestClientApi()._execute_ronsql(
+                probe, database, explain_mode="FORCE"
+            )
+            return None
+        except Exception as err:  # noqa: BLE001 - classified by the caller
+            return err
+
+    @classmethod
+    def _is_definitive_ronsql_refusal(cls, err: Exception) -> bool:
+        """Whether an EXPLAIN error proves the template unservable via /ronsql.
+
+        Definitive: a 4xx that is not a timeout/throttle, or any response carrying
+        the planner's refusal signature (the REST server wraps planner refusals as
+        500s). Everything else is transient and proves nothing.
+        """
+        if not isinstance(err, exceptions.RestAPIError):
+            return False
+        status = getattr(getattr(err, "response", None), "status_code", None)
+        return (
+            status is not None
+            and 400 <= status < 500
+            and status not in (408, 429)
+            or cls._is_ronsql_planner_error(err)
+        )
 
     @staticmethod
     def _is_ronsql_planner_error(err: exceptions.RestAPIError) -> bool:
@@ -2164,6 +2491,24 @@ class VectorServer:
             reverse=not getattr(statement, "collect_ascending", False),
         )
 
+    @staticmethod
+    def _order_scan_rows(
+        rows: list[dict[str, Any]], statement
+    ) -> list[dict[str, Any]]:
+        """Establish the output order of /scan rows without re-sorting them.
+
+        The scan reads the primary index descending with the entity keys fixed, so
+        rows already arrive newest-first; ascending output is a single reversal.
+        Sorting remains only as a fallback for rows missing the order column (a
+        backend predating collect_order_by).
+        """
+        order_by = getattr(statement, "collect_order_by", None)
+        if not order_by or not rows or order_by not in rows[0]:
+            return VectorServer._sort_collect_rows(rows, statement)
+        if getattr(statement, "collect_ascending", False):
+            return list(reversed(rows))
+        return rows
+
     def _get_ronsql_scan_statement(self):
         """The feature view's collect statement, or None when the FV has no collect."""
         return next(
@@ -2172,7 +2517,11 @@ class VectorServer:
         )
 
     def _substitute_ronsql_template(
-        self, statement, entry: dict[str, Any], template: str | None = None
+        self,
+        statement,
+        entry: dict[str, Any],
+        template: str | None = None,
+        now: datetime | None = None,
     ) -> str:
         """Substitute typed entity-key literals into the RonSQL template's `?` markers.
 
@@ -2210,8 +2559,9 @@ class VectorServer:
         if getattr(statement, "aggregate_window", None) is not None:
             # pushdown aggregation: the trailing ? is the trailing-window bound,
             # resolved client-side since RonSQL has no NOW()
-            bound = datetime.now() - timedelta(seconds=statement.aggregate_window)
-            literals.append(self._ronsql_literal(bound))
+            literals.append(
+                self._ronsql_literal(self._ronsql_window_bound(statement, now))
+            )
         pieces = [parts[0]]
         for literal, part in zip(literals, parts[1:], strict=True):
             pieces.append(literal)
@@ -2255,6 +2605,40 @@ class VectorServer:
     # grouped batch statements inline one literal per entity; chunk the IN list so
     # statement size stays bounded regardless of batch size
     _RONSQL_IN_CHUNK = 256
+    # and by bytes, so long string keys cannot inflate a single statement
+    _RONSQL_IN_MAX_BYTES = 65536
+    # One process-wide pool serves every RonSQL/scan fan-out (overlay statements,
+    # snowflake chains, batch chunks, EXPLAIN probes): a bounded worker count is the
+    # admission control that caps concurrent REST calls no matter how many feature
+    # views or batch entries are in flight. Tasks are always submitted FLAT from
+    # caller threads — a pool task never blocks on another pool task — which is what
+    # makes a single bounded pool deadlock-free.
+    _RONSQL_MAX_PARALLEL = 16
+    _RONSQL_POOL: concurrent.futures.ThreadPoolExecutor | None = None
+    _RONSQL_POOL_LOCK = threading.Lock()
+
+    @classmethod
+    def _ronsql_pool(cls) -> concurrent.futures.ThreadPoolExecutor:
+        """The shared bounded executor, created on first use."""
+        with cls._RONSQL_POOL_LOCK:
+            if cls._RONSQL_POOL is None:
+                cls._RONSQL_POOL = concurrent.futures.ThreadPoolExecutor(
+                    max_workers=cls._RONSQL_MAX_PARALLEL,
+                    thread_name_prefix="hsfs-ronsql",
+                )
+            return cls._RONSQL_POOL
+
+    def _run_ronsql_tasks(self, fn: Callable, items: list) -> list:
+        """Run `fn` over items on the shared pool, preserving item order.
+
+        A single item runs inline (no thread hop); exceptions surface in item order
+        regardless of completion order.
+        """
+        if len(items) <= 1:
+            return [fn(item) for item in items]
+        pool = self._ronsql_pool()
+        futures = [pool.submit(fn, item) for item in items]
+        return [future.result() for future in futures]
 
     @staticmethod
     def _ronsql_literal(value: Any, feature_type: str | None = None) -> str:
