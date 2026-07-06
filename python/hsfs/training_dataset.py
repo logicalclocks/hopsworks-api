@@ -721,6 +721,8 @@ class TrainingDataset(TrainingDatasetBase):
 
         With `overwrite=True` the entire training dataset is rewritten instead.
 
+        Statistics are only recomputed when overwriting; on append the existing statistics are kept, since recomputing them would require reading the entire dataset back.
+
         The features must come from a Feature Store `Query`; unlike [`save`][hsfs.training_dataset.TrainingDataset.save], `insert` does not accept in-memory `DataFrame`, RDD, list or Numpy inputs.
         The schema of `features` must match the training dataset.
 
@@ -748,7 +750,11 @@ class TrainingDataset(TrainingDatasetBase):
             self, features, write_options or {}, overwrite
         )
 
-        if self.statistics_config.enabled:
+        # On append the newly written partition is a small increment, but
+        # recomputing statistics reads the whole (potentially multi-TB) dataset
+        # back, so skip the read-and-refit; existing statistics are left as
+        # they were computed at save/overwrite time.
+        if overwrite and self.statistics_config.enabled:
             self.compute_statistics()
 
         return td_job

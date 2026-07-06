@@ -153,18 +153,18 @@ class DataSource:
 
         json_decamelized: dict = humps.decamelize(json_dict)
 
-        # `items` present but null means a single data source (e.g. the one
-        # embedded in a feature group inside a QueryDTO), not a list — only take
-        # the list branch when `items` actually holds a collection.
-        if not json_decamelized.get("items"):
+        # `items` absent or null means a single data source (e.g. the one
+        # embedded in a feature group inside a QueryDTO), not a list — take the
+        # list branch whenever `items` holds a collection, even an empty one.
+        items = json_decamelized.get("items")
+        if items is None:
             data_source = cls(**json_decamelized)
             if storage_connector is not None:
                 data_source.storage_connector = storage_connector
             return data_source
 
         return [
-            DataSource.from_response_json(item, storage_connector)
-            for item in json_decamelized["items"]
+            DataSource.from_response_json(item, storage_connector) for item in items
         ]
 
     def to_dict(self) -> dict:

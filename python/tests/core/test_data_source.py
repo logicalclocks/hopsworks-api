@@ -165,6 +165,18 @@ class TestDataSource:
         assert isinstance(result, list)
         assert [d.path for d in result] == ["a", "b"]
 
+    def test_from_response_json_items_empty_list(self):
+        # An empty `items` collection (e.g. a list endpoint with `count: 0`) is
+        # still a list payload and must deserialize to an empty list, not a
+        # single data source.
+        payload = {"items": [], "count": 0}
+
+        # Act
+        result = data_source.DataSource.from_response_json(payload)
+
+        # Assert
+        assert result == []
+
     def test_format_emitted_in_to_dict(self):
         # Arrange
         ds = data_source.DataSource(path="s3://bucket/path", format="hudi")

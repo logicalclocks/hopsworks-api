@@ -2616,7 +2616,7 @@ class FeatureView:
         overwrite: bool = False,
         write_options: dict[Any, Any] | None = None,
         spine: SplineDataFrameTypes | None = None,
-        transformation_context: dict[str, Any] = None,
+        transformation_context: dict[str, Any] | None = None,
     ) -> job.Job:
         """Append a new batch of data to an existing training dataset version.
 
