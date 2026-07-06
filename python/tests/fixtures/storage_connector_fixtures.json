@@ -712,6 +712,53 @@
         },
         "headers": null
     },
+    "get_google_sheets": {
+        "response": {
+            "type": "featurestoreGoogleSheetsConnectorDTO",
+            "description": "Google Sheets connector description",
+            "featurestoreId": 67,
+            "id": 1,
+            "name": "test_google_sheets",
+            "storageConnectorType": "GOOGLE_SHEETS",
+            "keyPath": "test_key_path",
+            "spreadsheetId": "test_spreadsheet_id"
+        },
+        "method": "GET",
+        "path_params": [
+            "project",
+            "119",
+            "featurestores",
+            67,
+            "storageconnectors",
+            "test_google_sheets"
+        ],
+        "query_params": {
+            "temporaryCredentials": true
+        },
+        "headers": null
+    },
+    "get_google_sheets_basic_info": {
+        "response": {
+            "type": "featurestoreGoogleSheetsConnectorDTO",
+            "featurestoreId": 67,
+            "id": 1,
+            "name": "test_google_sheets",
+            "storageConnectorType": "GOOGLE_SHEETS"
+        },
+        "method": "GET",
+        "path_params": [
+            "project",
+            "119",
+            "featurestores",
+            67,
+            "storageconnectors",
+            "test_google_sheets"
+        ],
+        "query_params": {
+            "temporaryCredentials": true
+        },
+        "headers": null
+    },
     "get_big_query_table": {
         "response": {
             "type": "featurestoreBigQueryConnectorDTO",

@@ -89,7 +89,7 @@ def handle_shutdown(signum, frame):
     "enable_shell_tools",
     is_flag=True,
     default=False,
-    help="Register the terminal/brewer tools. These execute arbitrary commands "
+    help="Register the terminal tools. These execute arbitrary commands "
     "as the server process; off by default. Never combine with an "
     "unauthenticated network bind.",
 )
@@ -158,7 +158,7 @@ def run_server(
         auth_token: Bearer token required on the HTTP transport (or via the
             environment variable). Required for a non-loopback bind.
         insecure_no_auth: Permit a non-loopback bind with no auth token.
-        enable_shell_tools: Register the command-executing terminal/brewer tools
+        enable_shell_tools: Register the command-executing terminal tools
             (off by default).
         create_session: Whether to create a Hopsworks session for the MCP server.
         hopsworks_host: Hopsworks host URL.

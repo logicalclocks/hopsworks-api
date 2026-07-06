@@ -42,16 +42,43 @@ class DataSource:
     The DataSource class encapsulates the details of a data source that can be used for reading or writing data.
     It supports various types of sources, such as SQL queries, database tables, file paths, and storage connectors.
 
+    For **Google Sheets** connectors, construct a DataSource directly and pass it to
+    [`FeatureStore.create_feature_group`][hsfs.feature_store.FeatureStore.create_feature_group]
+    with `sink_enabled=True`:
+
+    ```python
+    from hsfs.core.data_source import DataSource
+
+    connector = fs.get_storage_connector("my_google_sheets_connector")
+
+    fg = fs.create_feature_group(
+        name="budget_actuals",
+        version=1,
+        primary_key=["id"],
+        data_source=DataSource(
+            storage_connector=connector,
+            table="Q1 Actuals",          # sheet tab name (required)
+            spreadsheet_id="1BxiMVs…",  # omit if already set on the connector
+        ),
+        sink_enabled=True,
+    )
+    fg.save()
+    fg.sink_job.run()
+    ```
+
     Parameters:
         query: SQL query string for the data source, if applicable.
         database: Name of the database containing the data source.
         group: Group or schema name for the data source.
         table: Table name for the data source.
+            For Google Sheets connectors this is the sheet tab name.
         path: File system path for the data source.
         storage_connector: Storage connector object holds configuration for accessing the data source.
         metrics: List of metric column names for the data source.
         dimensions: List of dimension column names for the data source.
         rest_endpoint: REST endpoint configuration for the data source.
+        spreadsheet_id: Google Spreadsheet ID for Google Sheets data sources.
+            Only required when the spreadsheet ID was not set on the connector itself; the connector-level value is used otherwise.
     """
 
     def __init__(
@@ -66,6 +93,7 @@ class DataSource:
         metrics: list[str] | None = None,
         dimensions: list[str] | None = None,
         rest_endpoint: RestEndpointConfig | dict | None = None,
+        spreadsheet_id: str | None = None,
         **kwargs,
     ):
         """Initialize a DataSource object.
@@ -81,6 +109,7 @@ class DataSource:
             metrics: List of metric column names for the data source.
             dimensions: List of dimension column names for the data source.
             rest_endpoint: REST endpoint configuration for the data source.
+            spreadsheet_id: Google Spreadsheet ID for Google Sheets data sources.
             **kwargs: Additional keyword arguments.
         """
         self._query = query
@@ -102,6 +131,7 @@ class DataSource:
             if isinstance(rest_endpoint, dict)
             else rest_endpoint
         )
+        self._spreadsheet_id = spreadsheet_id
 
     @classmethod
     def from_response_json(
@@ -152,6 +182,7 @@ class DataSource:
             "restEndpoint": (
                 self._rest_endpoint.to_dict() if self._rest_endpoint else None
             ),
+            "spreadsheetId": self._spreadsheet_id,
         }
         if self._storage_connector:
             ds_meta_dict["storageConnector"] = self._storage_connector.to_dict()
@@ -198,7 +229,10 @@ class DataSource:
     @public
     @property
     def table(self) -> str | None:
-        """Get or set the table name for the data source."""
+        """Get or set the table name for the data source.
+
+        For Google Sheets connectors this is the sheet tab name.
+        """
         return self._table
 
     @table.setter
@@ -295,7 +329,7 @@ class DataSource:
         Parameters:
             use_cached:
                 Whether to use cached data if available.
-                Only supported for CRM and REST connectors.
+                Only supported for CRM, Google Sheets, and REST connectors.
                 Defaults to `True`.
 
         Returns:
@@ -431,6 +465,20 @@ class DataSource:
     @dimensions.setter
     def dimensions(self, dimensions: list[str]) -> None:
         self._dimensions = dimensions
+
+    @public
+    @property
+    def spreadsheet_id(self) -> str | None:
+        """Get or set the Google Spreadsheet ID for Google Sheets data sources.
+
+        Only required when the spreadsheet ID was not configured on the connector itself.
+        The connector-level value is used when this is not set.
+        """
+        return self._spreadsheet_id
+
+    @spreadsheet_id.setter
+    def spreadsheet_id(self, spreadsheet_id: str) -> None:
+        self._spreadsheet_id = spreadsheet_id
 
     @public
     @property
