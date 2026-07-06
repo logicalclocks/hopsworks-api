@@ -85,7 +85,7 @@ class ModelApi:
             "models",
             name + "_" + str(version),
         ]
-        query_params = {"expand": "trainingdatasets"}
+        query_params = {"expand": ["trainingdatasets", "mandatorytags"]}
 
         model_json = _client._send_request("GET", path_params, query_params)
         model_meta = model.Model.from_response_json(model_json)

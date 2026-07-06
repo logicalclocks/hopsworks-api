@@ -56,8 +56,9 @@ class ServingApi:
             "serving",
             str(id),
         ]
+        query_params = {"expand": ["mandatorytags"]}
 
-        deployment_json = _client._send_request("GET", path_params)
+        deployment_json = _client._send_request("GET", path_params, query_params=query_params)
         deployment_instance = deployment.Deployment.from_response_json(deployment_json)
         deployment_instance.model_registry_id = _client._project_id
         deployment_instance.project_name = _client._project_name
@@ -75,7 +76,7 @@ class ServingApi:
         """
         _client = client._get_instance()
         path_params = ["project", _client._project_id, "serving"]
-        query_params = {"name": name}
+        query_params = {"name": name, "expand": ["mandatorytags"]}
 
         deployment_json = _client._send_request(
             "GET", path_params, query_params=query_params
