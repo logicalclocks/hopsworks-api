@@ -138,7 +138,7 @@ class TestRonsqlCollectOverlay:
         server._rest_client_engine = _StubRestEngine(
             {1: ["user_id", "amount", "event_time"]}
         )
-        server._execute_ronsql_statement = lambda stmt, entry: rows
+        server._execute_ronsql_statement = lambda stmt, entry, template=None: rows
         return server
 
     def test_overlay_folds_rows_into_struct_array(self):
@@ -210,7 +210,7 @@ class TestRonsqlCollectOverlay:
         server = make_server()
         server._ronsql_statements = [statement]
         server._rest_client_engine = _StubRestEngine({1: ["user_id", "amount"]})
-        server._execute_ronsql_statement = lambda stmt, entry: [
+        server._execute_ronsql_statement = lambda stmt, entry, template=None: [
             {"user_id": entry["user_id"], "amount": float(entry["user_id"]) * 10}
         ]
         results = [
@@ -372,7 +372,9 @@ class TestSortCollectRows:
     def test_scan_rows_are_sorted(self):
         server = make_server()
         server._ronsql_statements = [make_statement()]
-        server._execute_ronsql_statement = lambda stmt, entry: list(self.ROWS)
+        server._execute_ronsql_statement = lambda stmt, entry, template=None: list(
+            self.ROWS
+        )
         rows = server._scan_rows_ronsql({"user_id": 7})
         assert [r["event_time"] for r in rows] == ["t3", "t2", "t1"]
 
@@ -382,7 +384,7 @@ class TestSortCollectRows:
         server._rest_client_engine = _StubRestEngine(
             {1: ["user_id", "amount", "event_time"]}
         )
-        server._execute_ronsql_statement = lambda stmt, entry: [
+        server._execute_ronsql_statement = lambda stmt, entry, template=None: [
             {"user_id": 7, "amount": 1.0, "event_time": "t1"},
             {"user_id": 7, "amount": 3.0, "event_time": "t3"},
         ]
@@ -552,8 +554,10 @@ class TestServingPreparedStatementWireParsing:
             ],
         }
         payload["items"][0]["snowflakeTemplate"] = False
+        payload["items"][0]["snowflakeTemplates"] = ["WITH `b` AS (...) SELECT ...;"]
         statement = ServingPreparedStatement.from_response_json(payload)[0]
         assert statement.snowflake_template is False
+        assert statement.snowflake_templates == ["WITH `b` AS (...) SELECT ...;"]
         assert statement.collect_n == 100
         assert statement.collect_feature_name == "transactions_collect"
         assert statement.collect_order_by == "event_time"
@@ -785,6 +789,14 @@ class TestCollectUnservableMetadataGuidance:
             server._raise_if_collect_unservable_metadata(self._error_with_body(body))
 
 
+SNOWFLAKE_TEMPLATE = (
+    "WITH `b` AS (SELECT `region_id`, COUNT(*) AS `hw_cnt` FROM `profiles_1` "
+    "WHERE `user_id` = ? GROUP BY `region_id`) "
+    "SELECT `j2`.`region_name` AS `r_region_name` "
+    "FROM `b` JOIN `regions_1` AS `j2` ON `j2`.`region_id` = `b`.`region_id`;"
+)
+
+
 def make_snowflake_statement(**overrides):
     kwargs = {
         "collect_n": None,
@@ -793,12 +805,8 @@ def make_snowflake_statement(**overrides):
         "collect_filter_applied": None,
         "snowflake_template": True,
         "prefix": "r_",
-        "query_ronsql": (
-            "WITH `b` AS (SELECT `region_id`, COUNT(*) AS `hw_cnt` FROM `profiles_1` "
-            "WHERE `user_id` = ? GROUP BY `region_id`) "
-            "SELECT `j2`.`region_name` AS `r_region_name` "
-            "FROM `b` JOIN `regions_1` AS `j2` ON `j2`.`region_id` = `b`.`region_id`;"
-        ),
+        "query_ronsql": None,
+        "snowflake_templates": [SNOWFLAKE_TEMPLATE],
     }
     kwargs.update(overrides)
     return make_statement(**kwargs)
@@ -810,15 +818,21 @@ class TestSnowflakeOverlay:
     Outputs arrive already aliased to the prefixed feature-view names (FSTORE-2060).
     """
 
-    def make_snowflake_server(self, rows):
+    def make_snowflake_server(self, rows_by_template):
         server = make_server()
-        server._ronsql_statements = [make_snowflake_statement()]
+        server._ronsql_statements = [
+            make_snowflake_statement(snowflake_templates=list(rows_by_template.keys()))
+        ]
         server._ronsql_rejected = []
-        server._execute_ronsql_statement = lambda stmt, entry: rows
+        server._execute_ronsql_statement = lambda stmt, entry, template=None: (
+            rows_by_template[template]
+        )
         return server
 
     def test_joined_row_overlays_verbatim(self):
-        server = self.make_snowflake_server([{"r_region_name": "emea"}])
+        server = self.make_snowflake_server(
+            {SNOWFLAKE_TEMPLATE: [{"r_region_name": "emea"}]}
+        )
         vector = server._overlay_ronsql_collect(
             {"tier": "gold", "r_region_name": None}, {"user_id": 1}
         )
@@ -827,9 +841,38 @@ class TestSnowflakeOverlay:
         assert vector["tier"] == "gold"
 
     def test_hop_miss_leaves_features_missing(self):
-        server = self.make_snowflake_server([])
+        server = self.make_snowflake_server({SNOWFLAKE_TEMPLATE: []})
         vector = server._overlay_ronsql_collect({"r_region_name": None}, {"user_id": 1})
         assert vector["r_region_name"] is None
+
+    def test_left_chains_serve_independently(self):
+        # per-chain templates: a miss on the deep chain must NOT lose the features
+        # that the shallow chain already matched
+        server = self.make_snowflake_server(
+            {
+                "chain-regions": [{"r_region_name": "emea"}],
+                "chain-countries": [],
+            }
+        )
+        vector = server._overlay_ronsql_collect(
+            {"r_region_name": None, "c_country_name": None}, {"user_id": 1}
+        )
+        assert vector["r_region_name"] == "emea"
+        assert vector["c_country_name"] is None
+
+    def test_old_backend_single_template_field_still_serves(self):
+        server = make_server()
+        server._ronsql_statements = [
+            make_snowflake_statement(
+                snowflake_templates=None, query_ronsql=SNOWFLAKE_TEMPLATE
+            )
+        ]
+        server._ronsql_rejected = []
+        server._execute_ronsql_statement = lambda stmt, entry, template=None: [
+            {"r_region_name": "emea"}
+        ]
+        vector = server._overlay_ronsql_collect({}, {"user_id": 1})
+        assert vector["r_region_name"] == "emea"
 
     def test_rejected_snowflake_statement_raises_guidance(self):
         server = make_server()
@@ -847,12 +890,12 @@ class TestSnowflakeOverlay:
         server._ronsql_rejected = []
         server._ronsql_batch_statements = [
             make_snowflake_statement(
-                query_ronsql=(
+                snowflake_templates=[
                     "WITH `b` AS (SELECT `user_id`, `region_id`, COUNT(*) AS `hw_cnt` "
                     "FROM `profiles_1` WHERE `user_id` IN (?) GROUP BY `user_id`, `region_id`) "
                     "SELECT `j2`.`region_name` AS `r_region_name`, `b`.`user_id` AS `user_id` "
                     "FROM `b` JOIN `regions_1` AS `j2` ON `j2`.`region_id` = `b`.`region_id`;"
-                )
+                ]
             )
         ]
         rows = [
@@ -875,7 +918,44 @@ class TestSnowflakeOverlay:
         )
         assert results[0] == {"r_region_name": "emea"}
         assert results[1] == {"r_region_name": "apac"}
+        # snowflake misses are legitimate (hop miss): the statement counts as served
         assert served == {(1, "r_")}
+
+    def test_batch_in_list_is_chunked(self, monkeypatch):
+        from hsfs.core import online_store_rest_client_api
+
+        server = make_server()
+        server._features = [_Feature("user_id", "bigint")]
+        server._ronsql_statements = []
+        server._ronsql_rejected = []
+        server._ronsql_batch_statements = [make_batch_aggregate_statement()]
+        monkeypatch.setattr(VectorServer, "_RONSQL_IN_CHUNK", 2)
+        queries = []
+
+        def fake_execute(api_self, query, database, explain_mode="REMOVE"):
+            queries.append(query)
+            if "IN (1, 2)" in query:
+                return [
+                    {"user_id": 1, "amount_sum": 10.0},
+                    {"user_id": 2, "amount_sum": 20.0},
+                ]
+            return [{"user_id": 3, "amount_sum": 30.0}]
+
+        monkeypatch.setattr(
+            online_store_rest_client_api.OnlineStoreRestClientApi,
+            "_execute_ronsql",
+            fake_execute,
+        )
+        results = [{}, {}, {}]
+        served = server._overlay_batch_aggregates(
+            results, [{"user_id": 1}, {"user_id": 2}, {"user_id": 3}]
+        )
+        assert len(queries) == 2
+        assert "IN (1, 2)" in queries[0]
+        assert "IN (3)" in queries[1]
+        assert results[0]["amount_sum"] == 10.0
+        assert results[2]["amount_sum"] == 30.0
+        assert served == {(1, None)}
 
 
 class TestScanVectorsLimitValidation:
@@ -911,7 +991,7 @@ class TestBatchOverlayConcurrency:
         server._ronsql_statements = [make_statement()]
         server._ronsql_batch_statements = []
         server._rest_client_engine = _StubRestEngine({1: ["user_id", "amount"]})
-        server._execute_ronsql_statement = lambda stmt, entry: [
+        server._execute_ronsql_statement = lambda stmt, entry, template=None: [
             {"user_id": entry["user_id"], "amount": float(entry["user_id"]) * 10}
         ]
         entries = [{"user_id": i} for i in range(1, 21)]
@@ -1039,7 +1119,9 @@ class TestRejectedAggregatePrefix:
         server = make_server()
         server._ronsql_statements = [statement]
         server._ronsql_rejected = []
-        server._execute_ronsql_statement = lambda stmt, entry: [{"amount_sum": 5.0}]
+        server._execute_ronsql_statement = lambda stmt, entry, template=None: [
+            {"amount_sum": 5.0}
+        ]
         vector = server._overlay_ronsql_collect({"tier": "gold"}, {"user_id": 7})
         assert vector["txn_amount_sum"] == 5.0
         assert "amount_sum" not in vector

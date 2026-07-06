@@ -1407,6 +1407,22 @@ class VectorServer:
         for statement in list(self._get_ronsql_statements()):
             if (statement.feature_group_id, statement.prefix) in skip:
                 continue
+            if getattr(statement, "snowflake_template", None):
+                # snowflake nested subtree (FSTORE-2060): one chain template per
+                # nested join (or one combined statement for all-INNER subtrees);
+                # each returns at most one joined row whose columns are already
+                # aliased to the prefixed feature-view names. Zero rows = a hop
+                # miss, that chain's features stay missing while other chains'
+                # features are unaffected (LEFT reachability).
+                for template in self._snowflake_statement_templates(statement):
+                    rows = self._rows_or_reclassify(statement, entry, template=template)
+                    if rows is None:
+                        # a read-time planner refusal reclassified the statement
+                        self._serve_rejected_statement(serving_vector, statement, entry)
+                        break
+                    if rows:
+                        serving_vector.update(rows[0])
+                continue
             rows = self._rows_or_reclassify(statement, entry)
             if rows is None:
                 # a read-time planner refusal reclassified the statement
@@ -1415,13 +1431,6 @@ class VectorServer:
                 self._fold_collect_feature(
                     serving_vector, statement, self._sort_collect_rows(rows, statement)
                 )
-            elif getattr(statement, "snowflake_template", None):
-                # snowflake nested subtree (FSTORE-2060): one joined row whose columns
-                # are already aliased to the prefixed feature-view names; zero rows =
-                # a hop miss, the nested features stay missing (inner-join parity
-                # with the SQL statement)
-                if rows:
-                    serving_vector.update(rows[0])
             elif rows:
                 # pushdown aggregation: one row of scalar outputs per entity, feature
                 # names carry the statement's feature-group prefix like any feature
@@ -1478,6 +1487,14 @@ class VectorServer:
             )
 
     @staticmethod
+    def _snowflake_statement_templates(statement) -> list[str]:
+        """The statement's snowflake templates, tolerating older single-field backends."""
+        templates = getattr(statement, "snowflake_templates", None)
+        if templates:
+            return templates
+        return [statement.query_ronsql] if statement.query_ronsql else []
+
+    @staticmethod
     def _scan_can_serve(statement) -> bool:
         """Whether the /scan fallback preserves the statement's filter semantics.
 
@@ -1490,7 +1507,7 @@ class VectorServer:
         )
 
     def _rows_or_reclassify(
-        self, statement, entry: dict[str, Any]
+        self, statement, entry: dict[str, Any], template: str | None = None
     ) -> list[dict[str, Any]] | None:
         """Execute a statement via /ronsql; reclassify it as rejected on a planner refusal.
 
@@ -1500,7 +1517,7 @@ class VectorServer:
         caller serves it through the rejected paths instead of failing the read.
         """
         try:
-            return self._execute_ronsql_statement(statement, entry)
+            return self._execute_ronsql_statement(statement, entry, template=template)
         except exceptions.RestAPIError as err:
             if not self._is_ronsql_planner_error(err):
                 raise
@@ -1769,10 +1786,14 @@ class VectorServer:
         )
 
     def _execute_ronsql_statement(
-        self, statement, entry: dict[str, Any]
+        self, statement, entry: dict[str, Any], template: str | None = None
     ) -> list[dict[str, Any]]:
-        """Substitute the entity keys into a RonSQL template and execute it via /ronsql."""
-        query = self._substitute_ronsql_template(statement, entry)
+        """Substitute the entity keys into a RonSQL template and execute it via /ronsql.
+
+        The template defaults to the statement's query_ronsql; snowflake statements
+        pass each of their chain templates explicitly.
+        """
+        query = self._substitute_ronsql_template(statement, entry, template=template)
         return online_store_rest_client_api.OnlineStoreRestClientApi()._execute_ronsql(
             query, statement.ronsql_database
         )
@@ -1821,49 +1842,66 @@ class VectorServer:
             if len(statement.prepared_statement_parameters) != 1:
                 continue
             key_name = statement.prepared_statement_parameters[0].name
-            try:
-                query = self._substitute_ronsql_batch_template(statement, entries)
-                rows = online_store_rest_client_api.OnlineStoreRestClientApi()._execute_ronsql(
-                    query, statement.ronsql_database
-                )
-            except exceptions.RestAPIError as err:
-                if not self._is_ronsql_planner_error(err):
-                    raise
-                _logger.warning(
-                    "The grouped batch RonSQL statement for feature group %s was "
-                    "refused by the planner (%s); serving it per entry instead.",
-                    statement.feature_group_id,
-                    err,
-                )
-                continue
-            # snowflake outputs are pre-aliased to feature-view names by the backend
-            if getattr(statement, "snowflake_template", None):
+            snowflake = bool(getattr(statement, "snowflake_template", None))
+            if snowflake:
+                templates = self._snowflake_statement_templates(statement)
+                # snowflake outputs are pre-aliased to feature-view names, and a
+                # missing row is a legitimate hop miss: the per-entry rerun would
+                # miss identically, so it is not triggered
                 prefix = ""
             else:
+                templates = [statement.query_ronsql]
                 prefix = statement.prefix or ""
-            rows_by_key: dict[Any, dict[str, Any]] = {}
-            for row in rows:
-                rows_by_key[row.get(key_name)] = row
             complete = True
-            for result, entry in zip(results, entries, strict=True):
-                value = self._entry_value(entry, key_name)
-                row = rows_by_key.get(value, rows_by_key.get(str(value)))
-                if row is None:
-                    complete = False
-                    continue
-                result.update(
-                    {
-                        prefix + name: val
-                        for name, val in row.items()
-                        if name != key_name
-                    }
-                )
-            if complete:
+            refused = False
+            for template in templates:
+                # chunk the IN list: a statement's literal list must stay bounded
+                for start in range(0, len(entries), self._RONSQL_IN_CHUNK):
+                    chunk = entries[start : start + self._RONSQL_IN_CHUNK]
+                    try:
+                        query = self._substitute_ronsql_batch_template(
+                            statement, chunk, template=template
+                        )
+                        rows = online_store_rest_client_api.OnlineStoreRestClientApi()._execute_ronsql(
+                            query, statement.ronsql_database
+                        )
+                    except exceptions.RestAPIError as err:
+                        if not self._is_ronsql_planner_error(err):
+                            raise
+                        _logger.warning(
+                            "The grouped batch RonSQL statement for feature group "
+                            "%s was refused by the planner (%s); serving it per "
+                            "entry instead.",
+                            statement.feature_group_id,
+                            err,
+                        )
+                        refused = True
+                        break
+                    rows_by_key: dict[Any, dict[str, Any]] = {}
+                    for row in rows:
+                        rows_by_key[row.get(key_name)] = row
+                    for offset, entry in enumerate(chunk):
+                        value = self._entry_value(entry, key_name)
+                        row = rows_by_key.get(value, rows_by_key.get(str(value)))
+                        if row is None:
+                            if not snowflake:
+                                complete = False
+                            continue
+                        results[start + offset].update(
+                            {
+                                prefix + name: val
+                                for name, val in row.items()
+                                if name != key_name
+                            }
+                        )
+                if refused:
+                    break
+            if complete and not refused:
                 served.add((statement.feature_group_id, statement.prefix))
         return served
 
     def _substitute_ronsql_batch_template(
-        self, statement, entries: list[dict[str, Any]]
+        self, statement, entries: list[dict[str, Any]], template: str | None = None
     ) -> str:
         """Substitute a batch's entity-key values into a grouped `IN (?)` template.
 
@@ -1871,7 +1909,7 @@ class VectorServer:
         optional trailing window `?` resolves client-side as now - window, matching the
         single-entity substitution.
         """
-        parts = self._split_ronsql_placeholders(statement.query_ronsql)
+        parts = self._split_ronsql_placeholders(template or statement.query_ronsql)
         expected = 1 + (
             1 if getattr(statement, "aggregate_window", None) is not None else 0
         )
@@ -1928,7 +1966,13 @@ class VectorServer:
             )
             rejected: list[Any] = []
             self._ronsql_statements = self._validate_ronsql_templates(
-                [s for s in statements if s.query_ronsql is not None], rejected
+                [
+                    s
+                    for s in statements
+                    if s.query_ronsql is not None
+                    or getattr(s, "snowflake_templates", None)
+                ],
+                rejected,
             )
             self._ronsql_rejected = rejected
         return self._ronsql_statements
@@ -1953,7 +1997,11 @@ class VectorServer:
                 [
                     s
                     for s in statements
-                    if s.query_ronsql is not None and s.collect_n is None
+                    if s.collect_n is None
+                    and (
+                        s.query_ronsql is not None
+                        or getattr(s, "snowflake_templates", None)
+                    )
                 ],
                 [],
             )
@@ -1980,15 +2028,28 @@ class VectorServer:
         """
         valid = []
         for statement in statements:
-            kind = "collect" if statement.collect_n is not None else "aggregation"
+            if statement.collect_n is not None:
+                kind = "collect"
+            elif getattr(statement, "snowflake_template", None):
+                kind = "snowflake"
+            else:
+                kind = "aggregation"
             rejected_by = None
             try:
-                query = self._substitute_ronsql_template(
-                    statement, self._ronsql_placeholder_entry(statement)
-                )
-                online_store_rest_client_api.OnlineStoreRestClientApi()._execute_ronsql(
-                    query, statement.ronsql_database, explain_mode="FORCE"
-                )
+                # snowflake statements carry one template per chain; all must conform
+                if kind == "snowflake":
+                    templates = self._snowflake_statement_templates(statement)
+                else:
+                    templates = [statement.query_ronsql]
+                for template in templates:
+                    query = self._substitute_ronsql_template(
+                        statement,
+                        self._ronsql_placeholder_entry(statement),
+                        template=template,
+                    )
+                    online_store_rest_client_api.OnlineStoreRestClientApi()._execute_ronsql(
+                        query, statement.ronsql_database, explain_mode="FORCE"
+                    )
             except exceptions.RestAPIError as err:
                 status = getattr(getattr(err, "response", None), "status_code", None)
                 if status in (401, 403):
@@ -2110,7 +2171,9 @@ class VectorServer:
             None,
         )
 
-    def _substitute_ronsql_template(self, statement, entry: dict[str, Any]) -> str:
+    def _substitute_ronsql_template(
+        self, statement, entry: dict[str, Any], template: str | None = None
+    ) -> str:
         """Substitute typed entity-key literals into the RonSQL template's `?` markers.
 
         RonSQL has no parameter binding, so values are inlined as literals.
@@ -2122,7 +2185,7 @@ class VectorServer:
         When the feature-view schema types the key, the literal follows the schema type
         rather than the Python runtime type (see `_ronsql_literal`).
         """
-        parts = self._split_ronsql_placeholders(statement.query_ronsql)
+        parts = self._split_ronsql_placeholders(template or statement.query_ronsql)
         expected = len(statement.prepared_statement_parameters) + (
             1 if getattr(statement, "aggregate_window", None) is not None else 0
         )
@@ -2189,6 +2252,9 @@ class VectorServer:
     # Entity-key string literals above this length indicate misuse (or an attempt to
     # inflate the statement towards RDRS's 4 MiB request cap) and are rejected.
     _RONSQL_MAX_STRING_LITERAL = 1024
+    # grouped batch statements inline one literal per entity; chunk the IN list so
+    # statement size stays bounded regardless of batch size
+    _RONSQL_IN_CHUNK = 256
 
     @staticmethod
     def _ronsql_literal(value: Any, feature_type: str | None = None) -> str:
