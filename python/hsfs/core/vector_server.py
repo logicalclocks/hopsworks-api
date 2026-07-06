@@ -1415,6 +1415,13 @@ class VectorServer:
                 self._fold_collect_feature(
                     serving_vector, statement, self._sort_collect_rows(rows, statement)
                 )
+            elif getattr(statement, "snowflake_template", None):
+                # snowflake nested subtree (FSTORE-2060): one joined row whose columns
+                # are already aliased to the prefixed feature-view names; zero rows =
+                # a hop miss, the nested features stay missing (inner-join parity
+                # with the SQL statement)
+                if rows:
+                    serving_vector.update(rows[0])
             elif rows:
                 # pushdown aggregation: one row of scalar outputs per entity, feature
                 # names carry the statement's feature-group prefix like any feature
@@ -1450,6 +1457,14 @@ class VectorServer:
                 "client on this RonDB version: its RonSQL statement failed the "
                 "EXPLAIN conformance check and the feature view's filters are not "
                 "expressible as /scan filters. Use the SQL client "
+                "(init_serving(default_client='sql') or force_sql_client=True)."
+            )
+        elif getattr(statement, "snowflake_template", None):
+            raise exceptions.FeatureStoreException(
+                "The nested (snowflake) features of the subtree rooted at feature "
+                f"group {statement.feature_group_id} cannot be served by the REST "
+                "client on this RonDB version: their RonSQL statement failed the "
+                "EXPLAIN conformance check. Use the SQL client "
                 "(init_serving(default_client='sql') or force_sql_client=True)."
             )
         else:
@@ -1787,11 +1802,12 @@ class VectorServer:
     def _overlay_batch_aggregates(
         self, results: list[dict[str, Any]], entries: list[dict[str, Any]]
     ) -> set[tuple[int, str | None]]:
-        """Serve batchable aggregations with one grouped RonSQL statement per statement.
+        """Serve batchable grouped statements: aggregations and snowflake subtrees.
 
-        The batch template is `SELECT key, outputs ... WHERE key IN (...) GROUP BY key`;
-        the returned rows are mapped back to entries by the entity-key value, with the
-        statement's prefix applied to the output names.
+        The batch template is keyed `... WHERE key IN (...) GROUP BY key`; the returned
+        rows are mapped back to entries by the entity-key value, with the statement's
+        prefix applied to aggregation output names (snowflake outputs arrive already
+        aliased to their prefixed feature-view names).
         Returns the (feature_group_id, prefix) pairs fully served, which the per-entry
         pass then skips. A statement is not fully served when the grouped result misses
         an entity (no rows in its window: GROUP BY omits it); the per-entry single
@@ -1820,7 +1836,11 @@ class VectorServer:
                     err,
                 )
                 continue
-            prefix = statement.prefix or ""
+            # snowflake outputs are pre-aliased to feature-view names by the backend
+            if getattr(statement, "snowflake_template", None):
+                prefix = ""
+            else:
+                prefix = statement.prefix or ""
             rows_by_key: dict[Any, dict[str, Any]] = {}
             for row in rows:
                 rows_by_key[row.get(key_name)] = row

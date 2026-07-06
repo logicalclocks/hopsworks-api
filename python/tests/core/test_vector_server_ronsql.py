@@ -551,7 +551,9 @@ class TestServingPreparedStatementWireParsing:
                 }
             ],
         }
+        payload["items"][0]["snowflakeTemplate"] = False
         statement = ServingPreparedStatement.from_response_json(payload)[0]
+        assert statement.snowflake_template is False
         assert statement.collect_n == 100
         assert statement.collect_feature_name == "transactions_collect"
         assert statement.collect_order_by == "event_time"
@@ -781,6 +783,99 @@ class TestCollectUnservableMetadataGuidance:
             "",
         ):
             server._raise_if_collect_unservable_metadata(self._error_with_body(body))
+
+
+def make_snowflake_statement(**overrides):
+    kwargs = {
+        "collect_n": None,
+        "collect_feature_name": None,
+        "collect_order_by": None,
+        "collect_filter_applied": None,
+        "snowflake_template": True,
+        "prefix": "r_",
+        "query_ronsql": (
+            "WITH `b` AS (SELECT `region_id`, COUNT(*) AS `hw_cnt` FROM `profiles_1` "
+            "WHERE `user_id` = ? GROUP BY `region_id`) "
+            "SELECT `j2`.`region_name` AS `r_region_name` "
+            "FROM `b` JOIN `regions_1` AS `j2` ON `j2`.`region_id` = `b`.`region_id`;"
+        ),
+    }
+    kwargs.update(overrides)
+    return make_statement(**kwargs)
+
+
+class TestSnowflakeOverlay:
+    """Snowflake nested-subtree statements overlay their joined row verbatim.
+
+    Outputs arrive already aliased to the prefixed feature-view names (FSTORE-2060).
+    """
+
+    def make_snowflake_server(self, rows):
+        server = make_server()
+        server._ronsql_statements = [make_snowflake_statement()]
+        server._ronsql_rejected = []
+        server._execute_ronsql_statement = lambda stmt, entry: rows
+        return server
+
+    def test_joined_row_overlays_verbatim(self):
+        server = self.make_snowflake_server([{"r_region_name": "emea"}])
+        vector = server._overlay_ronsql_collect(
+            {"tier": "gold", "r_region_name": None}, {"user_id": 1}
+        )
+        # the statement prefix is NOT re-applied: names arrive pre-aliased
+        assert vector["r_region_name"] == "emea"
+        assert vector["tier"] == "gold"
+
+    def test_hop_miss_leaves_features_missing(self):
+        server = self.make_snowflake_server([])
+        vector = server._overlay_ronsql_collect({"r_region_name": None}, {"user_id": 1})
+        assert vector["r_region_name"] is None
+
+    def test_rejected_snowflake_statement_raises_guidance(self):
+        server = make_server()
+        server._ronsql_statements = []
+        server._ronsql_rejected = [make_snowflake_statement()]
+        with pytest.raises(FeatureStoreException, match="snowflake"):
+            server._overlay_ronsql_collect({}, {"user_id": 1})
+
+    def test_batch_snowflake_rows_map_without_prefixing(self, monkeypatch):
+        from hsfs.core import online_store_rest_client_api
+
+        server = make_server()
+        server._features = [_Feature("user_id", "bigint")]
+        server._ronsql_statements = []
+        server._ronsql_rejected = []
+        server._ronsql_batch_statements = [
+            make_snowflake_statement(
+                query_ronsql=(
+                    "WITH `b` AS (SELECT `user_id`, `region_id`, COUNT(*) AS `hw_cnt` "
+                    "FROM `profiles_1` WHERE `user_id` IN (?) GROUP BY `user_id`, `region_id`) "
+                    "SELECT `j2`.`region_name` AS `r_region_name`, `b`.`user_id` AS `user_id` "
+                    "FROM `b` JOIN `regions_1` AS `j2` ON `j2`.`region_id` = `b`.`region_id`;"
+                )
+            )
+        ]
+        rows = [
+            {"user_id": 1, "r_region_name": "emea"},
+            {"user_id": 2, "r_region_name": "apac"},
+        ]
+
+        def fake_execute(api_self, query, database, explain_mode="REMOVE"):
+            assert "IN (1, 2)" in query
+            return rows
+
+        monkeypatch.setattr(
+            online_store_rest_client_api.OnlineStoreRestClientApi,
+            "_execute_ronsql",
+            fake_execute,
+        )
+        results = [{}, {}]
+        served = server._overlay_batch_aggregates(
+            results, [{"user_id": 1}, {"user_id": 2}]
+        )
+        assert results[0] == {"r_region_name": "emea"}
+        assert results[1] == {"r_region_name": "apac"}
+        assert served == {(1, "r_")}
 
 
 class TestScanVectorsLimitValidation:

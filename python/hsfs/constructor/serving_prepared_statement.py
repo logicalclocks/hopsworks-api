@@ -40,6 +40,7 @@ class ServingPreparedStatement:
         collect_filter_applied: bool | None = None,
         collect_source_features: list[str] | None = None,
         collect_filters: list[dict[str, Any]] | None = None,
+        snowflake_template: bool | None = None,
         query_ronsql: str | None = None,
         ronsql_database: str | None = None,
         aggregate_window: int | None = None,
@@ -81,6 +82,10 @@ class ServingPreparedStatement:
         # present only when every condition is expressible as an RDRS /scan filter; the
         # /scan fallback applies them so filtered collects stay correct on REST.
         self._collect_filters = collect_filters
+        # True when query_ronsql serves a snowflake nested subtree (FSTORE-2060): the
+        # statement's outputs are already aliased to the prefixed feature-view names
+        # and overlay verbatim into the vector.
+        self._snowflake_template = snowflake_template
         # RonSQL template + target database for serving this statement via RDRS /ronsql
         # (v3 online path); the client substitutes typed literals for the `?` markers.
         self._query_ronsql = query_ronsql
@@ -173,6 +178,10 @@ class ServingPreparedStatement:
     @property
     def collect_filters(self) -> list[dict[str, Any]] | None:
         return self._collect_filters
+
+    @property
+    def snowflake_template(self) -> bool | None:
+        return self._snowflake_template
 
     @property
     def query_ronsql(self) -> str | None:
