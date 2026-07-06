@@ -183,6 +183,41 @@ class TestDataSource:
         assert ds.format is None
         assert ds.to_dict()["format"] is None
 
+    def test_spreadsheet_id_preserved_in_constructor(self):
+        # Arrange / Act
+        ds = data_source.DataSource(table="Sheet1", spreadsheet_id="test_spreadsheet")
+
+        # Assert
+        assert ds.spreadsheet_id == "test_spreadsheet"
+
+    def test_spreadsheet_id_round_trips_via_from_response_json(self):
+        # Arrange
+        payload = {"table": "Sheet1", "spreadsheetId": "test_spreadsheet"}
+
+        # Act
+        ds = data_source.DataSource.from_response_json(payload)
+
+        # Assert
+        assert ds.spreadsheet_id == "test_spreadsheet"
+
+    def test_spreadsheet_id_emitted_in_to_dict(self):
+        # Arrange
+        ds = data_source.DataSource(table="Sheet1", spreadsheet_id="test_spreadsheet")
+
+        # Act
+        result = ds.to_dict()
+
+        # Assert
+        assert result["spreadsheetId"] == "test_spreadsheet"
+
+    def test_spreadsheet_id_none_by_default(self):
+        # Arrange / Act
+        ds = data_source.DataSource()
+
+        # Assert
+        assert ds.spreadsheet_id is None
+        assert ds.to_dict()["spreadsheetId"] is None
+
 
 class TestInferredMetadata:
     def test_from_response_json_decamelizes(self):
