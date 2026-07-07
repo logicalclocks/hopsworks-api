@@ -3277,7 +3277,9 @@ class SqlConnector(StorageConnector):
 
         Avoids setting oracle.net.tns_admin to a driver-local path, which
         would fail on executor pods that don't share the driver filesystem.
-        Prefers the _tp alias (general-purpose); falls back to the first alias.
+        Prefers the alias matching the configured database (TNS aliases are
+        case-insensitive); falls back to the _tp alias (general-purpose),
+        then the first alias.
         """
         tnsnames_path = os.path.join(wallet_dir, "tnsnames.ora")
         aliases: dict[str, str] = {}
@@ -3289,17 +3291,22 @@ class SqlConnector(StorageConnector):
                     if current_alias:
                         aliases[current_alias] = "".join(current_desc).strip()
                     current_alias, _, rest = line.partition("=")
-                    current_alias = current_alias.strip()
+                    current_alias = current_alias.strip().lower()
                     current_desc = [rest]
                 elif current_alias:
                     current_desc.append(line)
         if current_alias:
             aliases[current_alias] = "".join(current_desc).strip()
-        alias = next(
-            (a for a in aliases if a.endswith("_tp")),
-            next(iter(aliases), None),
+        database = (self._database or "").lower()
+        alias = (
+            database
+            if database in aliases
+            else next(
+                (a for a in aliases if a.endswith("_tp")),
+                next(iter(aliases), None),
+            )
         )
-        if alias and self._database not in aliases:
+        if alias:
             return f"jdbc:{self._JDBC_SCHEMES[self.ORACLE]}:@{aliases[alias]}"
         return self.spark_options()["url"]
 
