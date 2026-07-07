@@ -1430,9 +1430,7 @@ class Engine:
             )
             conn = driver.connect(url, props)
             if conn is None:
-                raise ValueError(
-                    f"JDBC driver {driver_class} did not accept url {url}"
-                )
+                raise ValueError(f"JDBC driver {driver_class} did not accept url {url}")
         else:
             conn = jvm.java.sql.DriverManager.getConnection(url, props)
         try:
