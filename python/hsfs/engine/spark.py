@@ -1420,19 +1420,14 @@ class Engine:
             # JDBC driver jars arrive via spark.jars, which live in Spark's
             # mutable classloader. java.sql.DriverManager only hands out
             # drivers visible to the caller's classloader, so it cannot see
-            # them ("No suitable driver found"). Load the driver from Spark's
-            # classloader and connect through it directly instead.
-            loader = jvm.org.apache.spark.util.Utils.getContextOrSparkClassLoader()
-            driver = (
-                jvm.java.lang.Class.forName(driver_class, True, loader)
-                .getDeclaredConstructor()
-                .newInstance()
+            # them ("No suitable driver found"). Spark's DriverRegistry loads
+            # the driver from its classloader and registers a DriverWrapper
+            # (which lives on the system classpath) with DriverManager,
+            # making the driver reachable through the regular lookup.
+            jvm.org.apache.spark.sql.execution.datasources.jdbc.DriverRegistry.register(
+                driver_class
             )
-            conn = driver.connect(url, props)
-            if conn is None:
-                raise ValueError(f"JDBC driver {driver_class} did not accept url {url}")
-        else:
-            conn = jvm.java.sql.DriverManager.getConnection(url, props)
+        conn = jvm.java.sql.DriverManager.getConnection(url, props)
         try:
             stmt = conn.createStatement()
             rs = stmt.executeQuery(sql)
