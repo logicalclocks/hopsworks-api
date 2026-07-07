@@ -817,6 +817,19 @@ class TestScanFallback:
             server._scan_rows_ronsql({"user_id": 7})
         assert calls == []
 
+    def test_multiple_collect_sources_refused(self, monkeypatch):
+        # a flat row list over several collect sources is ambiguous and a global
+        # limit would silently drop later sources
+        server, calls = self.make_scan_server(monkeypatch, [])
+        server._ronsql_statements = []
+        server._ronsql_rejected = [
+            make_statement(),
+            make_statement(feature_group_id=2, prepared_statement_index=1),
+        ]
+        with pytest.raises(FeatureStoreException, match="multiple"):
+            server._scan_rows_ronsql({"user_id": 7}, limit=5)
+        assert calls == []
+
 
 class TestRejectedStatementVectorOverlay:
     """Vectors must never silently omit features after a RonSQL rejection.

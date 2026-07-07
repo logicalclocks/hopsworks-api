@@ -207,6 +207,18 @@ class TestCollectRankCapParameter:
         engine._init_parametrize_and_serving_utils(statements)
         assert len(engine.serving_key_by_serving_index[0]) == 1
 
+    def test_scan_rows_refuse_multiple_collect_sources(self):
+        import pytest
+        from hopsworks_common.client.exceptions import FeatureStoreException
+
+        engine = make_engine()
+        engine._collect_n_by_serving_index = {0: 100, 1: 50}
+        engine._parametrised_prepared_statements = {
+            OnlineStoreSqlClient.SINGLE_VECTOR_KEY: {0: "collect-a", 1: "collect-b"}
+        }
+        with pytest.raises(FeatureStoreException, match="multiple"):
+            engine._get_scan_rows({"user_id": 7}, limit=5)
+
     def test_scan_rows_execute_only_collect_statements(self):
         engine = make_engine()
         engine._collect_n_by_serving_index = {0: 100}

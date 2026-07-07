@@ -21,6 +21,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core import variable_api
 from hopsworks_common.util import AsyncTask, AsyncTaskThread
 from hsfs import util
@@ -510,6 +511,14 @@ class OnlineStoreSqlClient:
             ].items()
             if self._collect_n_by_serving_index.get(index) is not None
         }
+        if len(collect_statements) > 1:
+            # a flat row list over several collect sources is ambiguous, and a
+            # global limit would silently drop later sources
+            raise FeatureStoreException(
+                "scan_vectors is ambiguous for a feature view with multiple "
+                "collect feature groups; read each feature group's rows "
+                "directly, or use get_feature_vector for the folded features."
+            )
         rows = self._single_vector_result(
             entry,
             collect_statements,

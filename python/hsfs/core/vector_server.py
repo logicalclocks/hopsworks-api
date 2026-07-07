@@ -1778,6 +1778,23 @@ class VectorServer:
         Returns:
             The collected rows, newest-first, as a list of row dictionaries.
         """
+        collect_statements = [
+            s
+            for s in [
+                *self._get_ronsql_statements(),
+                *getattr(self, "_ronsql_rejected", []),
+            ]
+            if s.collect_n is not None
+        ]
+        if len(collect_statements) > 1:
+            # a flat row list over several collect sources is ambiguous, and a
+            # global limit would silently drop later sources; the SQL client
+            # refuses identically
+            raise exceptions.FeatureStoreException(
+                "scan_vectors is ambiguous for a feature view with multiple "
+                "collect feature groups; read each feature group's rows "
+                "directly, or use get_feature_vector for the folded features."
+            )
         statement = self._get_ronsql_scan_statement()
         if statement is not None:
             rows = self._rows_or_reclassify(statement, entry)
