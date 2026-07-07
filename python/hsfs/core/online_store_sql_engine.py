@@ -18,7 +18,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import re
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
@@ -60,6 +59,8 @@ class OnlineStoreSqlClient:
     COLLECT_RANK_ALIAS = "hopsworks_collect_rank"
     # Bind-parameter name of an aggregation statement's trailing window bound.
     WINDOW_BOUND_PARAM = "hw_window_bound"
+    # Bind-parameter name of a collect statement's rank cap (<= collect N; scans narrow it).
+    RANK_CAP_PARAM = "hw_rank_cap"
 
     BATCH_HELPER_KEY = "batch_helper_column"
     SINGLE_HELPER_KEY = "single_helper_column"
@@ -97,6 +98,9 @@ class OnlineStoreSqlClient:
         # prepared_statement_index -> aggregation window seconds, for statements whose
         # trailing ? is the window's lower bound (bound at read time from client UTC)
         self._aggregate_window_by_serving_index: dict[int, int] = {}
+        # prepared_statement_index -> collect N, for statements whose trailing ? caps
+        # the rank filter (folds bind N; scans narrow to min(limit, N))
+        self._rank_cap_by_serving_index: dict[int, int] = {}
         self._serving_key_by_serving_index: dict[str, ServingKey] = {}
         self._serving_keys: set[ServingKey] = set(serving_keys or [])
 
@@ -118,8 +122,9 @@ class OnlineStoreSqlClient:
     def __del__(self):
         # Safely stop the async task thread.
         # The connection pool will be closed during garbage collection by aiomysql.
-        if self._async_task_thread.is_alive():
-            self._async_task_thread._stop()
+        task_thread = getattr(self, "_async_task_thread", None)
+        if task_thread is not None and task_thread.is_alive():
+            task_thread._stop()
 
     def _fetch_prepared_statements(
         self,
@@ -206,6 +211,12 @@ class OnlineStoreSqlClient:
             _logger.debug(
                 "Fetch and reset prepared statements and external as user may be re-initialising with different parameters"
             )
+        # derived bind/statement state is rebuilt below; a re-initialization must
+        # not inherit entries from the previous statement set (a stale window or
+        # rank-cap index would mis-bind the new statements)
+        self._aggregate_window_by_serving_index = {}
+        self._rank_cap_by_serving_index = {}
+        self._parametrised_prepared_statements = {}
         self._fetch_prepared_statements(
             entity,
             inference_helper_columns,
@@ -266,6 +277,9 @@ class OnlineStoreSqlClient:
         }
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug("Build serving keys by PreparedStatementParameter.index")
+        # rebuild from scratch: the additive loop below would otherwise duplicate
+        # every serving key on re-initialization
+        self._serving_key_by_serving_index = {}
         for sk in self._serving_keys:
             self.serving_key_by_serving_index[sk.join_index] = (
                 self.serving_key_by_serving_index.get(sk.join_index, []) + [sk]
@@ -305,7 +319,7 @@ class OnlineStoreSqlClient:
                 query_online = self._parametrize_query("batch_ids", query_online)
             if (
                 getattr(prepared_statement, "aggregate_window", None) is not None
-                and "?" in query_online
+                and self._has_unquoted_placeholder(query_online)
             ):
                 # pushdown aggregation (FSTORE-2059): the trailing ? is the window's
                 # lower bound, bound at read time as now - window from the client's
@@ -318,6 +332,21 @@ class OnlineStoreSqlClient:
                 self._aggregate_window_by_serving_index[
                     prepared_statement.prepared_statement_index
                 ] = prepared_statement.aggregate_window
+            if (
+                getattr(prepared_statement, "collect_n", None) is not None
+                and self._has_unquoted_placeholder(query_online)
+            ):
+                # collect (most recent N rows per entity): the trailing ? caps the
+                # rank filter. Vector folds bind the full collect N; scan_vectors
+                # narrows it to min(limit, N) so MySQL stops returning rows the
+                # caller would discard. A backend predating the parameter inlines
+                # the N literal and leaves no marker here.
+                query_online = self._parametrize_query(
+                    self.RANK_CAP_PARAM, query_online
+                )
+                self._rank_cap_by_serving_index[
+                    prepared_statement.prepared_statement_index
+                ] = prepared_statement.collect_n
             query_online = sql.text(query_online)
             if batch:
                 query_online = query_online.bindparams(
@@ -461,18 +490,31 @@ class OnlineStoreSqlClient:
         `FeatureView.scan_vectors`: the online query already orders by the collect order
         column and caps at the feature view's collect N, so this returns up to N rows per
         collect feature group, newest-first, with the internal rank column dropped.
+        Only the collect statements execute (the point-read and aggregate statements
+        contribute nothing to scan output), and `limit` narrows the statement's rank
+        cap to min(limit, N) so MySQL stops returning rows the caller would discard
+        (statements from a backend predating the rank-cap parameter return N rows and
+        are sliced here instead).
 
         Parameters:
             entry: Entity-key values (e.g. {"user_id": 123}).
-            limit: Optional client-side cap on the number of rows returned (<= the FV collect N).
+            limit: Optional cap on the number of rows returned (<= the FV collect N).
 
         Returns:
             A list of row dicts (feature name -> value), newest-first.
         """
+        collect_statements = {
+            index: statement
+            for index, statement in self.parametrised_prepared_statements[
+                self.SINGLE_VECTOR_KEY
+            ].items()
+            if self._collect_n_by_serving_index.get(index) is not None
+        }
         rows = self._single_vector_result(
             entry,
-            self.parametrised_prepared_statements[self.SINGLE_VECTOR_KEY],
+            collect_statements,
             raw_rows=True,
+            scan_limit=limit,
         )
         return rows[:limit] if limit is not None else rows
 
@@ -481,11 +523,13 @@ class OnlineStoreSqlClient:
         entry: dict[str, Any],
         prepared_statement_objects: dict[int, sql.text],
         raw_rows: bool = False,
+        scan_limit: int | None = None,
     ) -> dict[str, Any] | list[dict[str, Any]]:
         """Retrieve single vector with parallel queries using aiomysql engine.
 
         When `raw_rows` is True, return the collect feature group's rows as a list of dicts
         (the un-folded scan result) instead of the assembled single feature vector.
+        `scan_limit` narrows the collect statements' rank-cap bind to min(scan_limit, N).
         """
         if all(isinstance(val, list) for val in entry.values()):
             raise ValueError(
@@ -530,6 +574,11 @@ class OnlineStoreSqlClient:
             if window is not None:
                 pk_entry[self.WINDOW_BOUND_PARAM] = window_reference - timedelta(
                     seconds=window
+                )
+            rank_cap = self._rank_cap_by_serving_index.get(prepared_statement_index)
+            if rank_cap is not None:
+                pk_entry[self.RANK_CAP_PARAM] = (
+                    rank_cap if scan_limit is None else min(scan_limit, rank_cap)
                 )
             bind_entries[prepared_statement_index] = pk_entry
             prepared_statement_execution[prepared_statement_index] = (
@@ -700,6 +749,10 @@ class OnlineStoreSqlClient:
                 entry_values[prepared_statement_index][self.WINDOW_BOUND_PARAM] = (
                     window_reference - timedelta(seconds=window)
                 )
+            rank_cap = self._rank_cap_by_serving_index.get(prepared_statement_index)
+            if rank_cap is not None:
+                # batch folds always need the full collect N per entity
+                entry_values[prepared_statement_index][self.RANK_CAP_PARAM] = rank_cap
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
                 f"Executing prepared statements for batch vector with entries: {entry_values}"
@@ -818,23 +871,51 @@ class OnlineStoreSqlClient:
         )
 
     @staticmethod
-    def _parametrize_query(name: str, query_online: str) -> str:
-        # Now we have ordered pk_names, iterate over it and replace `?` with `:feature_name` one by one.
-        # Regex `"^(.*?)\?"` will identify 1st occurrence of `?` in the sql string and replace it with provided
-        # feature name, e.g. `:feature_name`:. As we iteratively update `query_online` we are always aiming to
-        # replace 1st occurrence of `?`. This approach can only work if primary key names are sorted properly.
-        # Regex `"^(.*?)\?"`:
-        # `^` - asserts position at start of a line
-        # `.*?` - matches any character (except for line terminators). `*?` Quantifier —
-        # Matches between zero and unlimited times, expanding until needed, i.e 1st occurrence of `\?`
-        # character.
+    def _first_unquoted_placeholder(query_online: str) -> int:
+        """Index of the first `?` bind marker outside any SQL quoting, or -1.
+
+        Tracks single-quoted string literals (with `''` escapes) and
+        backtick-quoted identifiers, so a `?` inside a filter literal (for
+        example `LIKE 'vip?%'`) is never treated as a marker.
+        """
+        quote = None
+        i = 0
+        while i < len(query_online):
+            char = query_online[i]
+            if quote is None:
+                if char == "?":
+                    return i
+                if char in ("'", "`"):
+                    quote = char
+            elif quote == char:
+                if char == "'" and query_online[i + 1 : i + 2] == "'":
+                    # '' inside a string literal is an escaped quote
+                    i += 1
+                else:
+                    quote = None
+            i += 1
+        return -1
+
+    @classmethod
+    def _has_unquoted_placeholder(cls, query_online: str) -> bool:
+        return cls._first_unquoted_placeholder(query_online) != -1
+
+    @classmethod
+    def _parametrize_query(cls, name: str, query_online: str) -> str:
+        """Replace the next `?` bind marker with `:name`.
+
+        Iterating in parameter order consumes markers left to right, so this only
+        works if the parameter names are sorted by their statement position. The
+        scan is quote-aware: a `?` inside a string literal or a backtick-quoted
+        identifier is never replaced (a filter literal containing `?` would
+        otherwise be corrupted and the real marker left unbound).
+        """
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(f"Parametrizing name {name} in query {query_online}")
-        return re.sub(
-            r"^(.*?)\?",
-            r"\1:" + name,
-            query_online,
-        )
+        index = cls._first_unquoted_placeholder(query_online)
+        if index == -1:
+            return query_online
+        return query_online[:index] + ":" + name + query_online[index + 1 :]
 
     @staticmethod
     def _get_result_key(

@@ -911,6 +911,55 @@ class TestCollectUnservableMetadataGuidance:
             "",
         ):
             server._raise_if_collect_unservable_metadata(self._error_with_body(body))
+        # nothing definitive was proven: later calls do not fail fast
+        server._raise_if_collect_metadata_known_unservable()
+
+    def test_verdict_is_remembered_and_fails_fast(self):
+        # a loop of vector calls on stock RonDB must not keep submitting overlay
+        # work whose results are discarded when /feature_store fails first
+        server = make_server()
+        err = self._error_with_body(
+            '{"message": "Cannot find schema for feature transactions_collect"}'
+        )
+        with pytest.raises(FeatureStoreException, match="SQL client"):
+            server._raise_if_collect_unservable_metadata(err)
+        with pytest.raises(FeatureStoreException, match="SQL client"):
+            server._raise_if_collect_metadata_known_unservable()
+
+    def test_cancel_overlay_cancels_pending_futures(self):
+        import concurrent.futures
+
+        futures = [concurrent.futures.Future() for _ in range(3)]
+        VectorServer._cancel_ronsql_overlay(
+            [(("live", None, None), future) for future in futures]
+        )
+        assert all(future.cancelled() for future in futures)
+
+    def test_collect_views_defer_overlays_until_one_base_read_succeeds(self):
+        # the first point read is the capability probe on stock RonDB: overlay
+        # work submitted before it would be wasted on the guidance path
+        server = make_server()
+        server._ronsql_statements = []
+        server._ronsql_rejected = [make_statement()]
+        assert server._defer_overlays_until_base_proven() is True
+        server._collect_base_read_proven = True
+        assert server._defer_overlays_until_base_proven() is False
+
+    def test_views_without_collect_never_defer_overlays(self):
+        server = make_server()
+        server._ronsql_statements = [make_snowflake_statement()]
+        server._ronsql_rejected = []
+        assert server._defer_overlays_until_base_proven() is False
+
+
+class TestZeroParameterStatementParsing:
+    def test_empty_and_missing_parameter_lists_parse(self):
+        # a backend edge case with no serving key must fail as a typed serving
+        # error downstream, not as a parse crash in the DTO setter
+        empty = make_statement(prepared_statement_parameters=[])
+        assert empty.prepared_statement_parameters == []
+        missing = make_statement(prepared_statement_parameters=None)
+        assert missing.prepared_statement_parameters == []
 
 
 SNOWFLAKE_TEMPLATE = (

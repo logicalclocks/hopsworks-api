@@ -218,8 +218,14 @@ class ServingPreparedStatement:
         prepared_statement_parameters: list[
             prepared_statement_parameter.PreparedStatementParameter
         ]
-        | list[dict[str, Any]],
+        | list[dict[str, Any]]
+        | None,
     ) -> None:
+        # a statement can carry no parameters (backend edge cases must fail as a
+        # typed serving error downstream, not as a parse crash here)
+        if not prepared_statement_parameters:
+            self._prepared_statement_parameters = []
+            return
         if isinstance(prepared_statement_parameters[0], dict):
             prepared_statement_parameters = [
                 prepared_statement_parameter.PreparedStatementParameter.from_response_json(

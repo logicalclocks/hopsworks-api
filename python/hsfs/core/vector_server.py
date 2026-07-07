@@ -557,7 +557,11 @@ class VectorServer:
             # column, which is not a serving key) — those rows come from RonSQL/scan
             # overlays. Their fetches are submitted BEFORE the point read so they run
             # concurrently with it instead of after it.
-            overlay_pairs = self._begin_ronsql_overlay(rondb_entry)
+            self._raise_if_collect_metadata_known_unservable()
+            defer_overlays = self._defer_overlays_until_base_proven()
+            overlay_pairs = (
+                [] if defer_overlays else self._begin_ronsql_overlay(rondb_entry)
+            )
             try:
                 serving_vector = self.rest_client_engine._get_single_feature_vector(
                     rondb_entry,
@@ -565,8 +569,13 @@ class VectorServer:
                     return_type=self.rest_client_engine.RETURN_TYPE_FEATURE_VALUE_DICT,
                 )
             except exceptions.RestAPIError as err:
+                # the overlay results will never be applied: stop the queued work
+                self._cancel_ronsql_overlay(overlay_pairs)
                 self._raise_if_collect_unservable_metadata(err)
                 raise
+            self._collect_base_read_proven = True
+            if defer_overlays:
+                overlay_pairs = self._begin_ronsql_overlay(rondb_entry)
             serving_vector = self._finish_ronsql_overlay(
                 serving_vector, rondb_entry, overlay_pairs
             )
@@ -744,6 +753,7 @@ class VectorServer:
         if online_client_choice == self.DEFAULT_REST_CLIENT and len(rondb_entries) > 0:
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug("get_batch_feature_vector Online REST client")
+            self._raise_if_collect_metadata_known_unservable()
             try:
                 batch_results = self.rest_client_engine._get_batch_feature_vectors(
                     entries=rondb_entries,
@@ -1404,6 +1414,10 @@ class VectorServer:
         No-op for feature views without a collect RonSQL statement.
         All fetches run concurrently on the shared pool: the vector's overlay latency
         is the slowest single round trip, not their sum.
+        Consistency contract: each request is its own committed read, so a vector
+        assembled from several statements (or snowflake chains) can observe the
+        stores at slightly different moments; there is no cross-request snapshot,
+        unlike the SQL client's single-statement subtree reads.
 
         Parameters:
             serving_vector: The feature-name-to-value dict from the point read.
@@ -1640,6 +1654,17 @@ class VectorServer:
                 self._ronsql_rejected = [*rejected, statement]
             return None
 
+    # Guidance raised once the REST server has proven it cannot serve collect
+    # vectors; remembered so later calls fail fast without re-submitting work.
+    _COLLECT_METADATA_GUIDANCE = (
+        "This RonDB REST server cannot serve feature vectors for a collect "
+        "feature view: its feature-store metadata has no schema for the "
+        "synthesized collect feature. Use the SQL client for vectors "
+        "(init_serving(default_client='sql') or force_sql_client=True); "
+        "scan_vectors and pushdown aggregations remain served by the REST "
+        "client."
+    )
+
     def _raise_if_collect_unservable_metadata(
         self, err: exceptions.RestAPIError
     ) -> None:
@@ -1651,17 +1676,61 @@ class VectorServer:
         Feature vectors of collect feature views therefore need the SQL client until
         the REST server tolerates synthesized features; `scan_vectors` and pushdown
         aggregations stay on the REST client (they use /ronsql and /scan directly).
+        The verdict is remembered: later vector calls raise the guidance before
+        submitting any overlay work.
         """
         body = getattr(getattr(err, "response", None), "text", "") or ""
         if "Cannot find schema for feature" in body and "_collect" in body:
+            self._collect_metadata_unservable = True
             raise exceptions.FeatureStoreException(
-                "This RonDB REST server cannot serve feature vectors for a collect "
-                "feature view: its feature-store metadata has no schema for the "
-                "synthesized collect feature. Use the SQL client for vectors "
-                "(init_serving(default_client='sql') or force_sql_client=True); "
-                "scan_vectors and pushdown aggregations remain served by the REST "
-                "client."
+                self._COLLECT_METADATA_GUIDANCE
             ) from err
+
+    def _raise_if_collect_metadata_known_unservable(self) -> None:
+        """Fail fast when a previous read proved collect vectors unservable here.
+
+        Raising before overlay futures are submitted (single) or the base batch
+        read executes keeps a failing call loop from sending background /ronsql
+        and /scan requests whose results would be discarded.
+        """
+        if getattr(self, "_collect_metadata_unservable", False):
+            raise exceptions.FeatureStoreException(self._COLLECT_METADATA_GUIDANCE)
+
+    def _defer_overlays_until_base_proven(self) -> bool:
+        """Whether overlay submission waits for this call's base point read.
+
+        A collect feature view's FIRST point read doubles as the capability
+        probe: stock RonDB refuses the typed read over synthesized collect
+        metadata, and overlay work submitted beforehand would be wasted on a
+        path that only raises guidance. Once one base read succeeds, later
+        calls overlap overlays with the base read again. Views without collect
+        statements have no synthesized metadata and never defer.
+        """
+        if getattr(self, "_collect_base_read_proven", False):
+            return False
+        has_collect = any(
+            statement.collect_n is not None
+            for statement in [
+                *self._get_ronsql_statements(),
+                *getattr(self, "_ronsql_rejected", []),
+            ]
+        )
+        if not has_collect:
+            self._collect_base_read_proven = True
+            return False
+        return True
+
+    @staticmethod
+    def _cancel_ronsql_overlay(
+        pairs: list[tuple[tuple, concurrent.futures.Future]],
+    ) -> None:
+        """Best-effort cancellation of submitted overlay fetches.
+
+        Queued tasks are cancelled outright; already-running ones finish on the
+        pool and their results are discarded.
+        """
+        for _, future in pairs:
+            future.cancel()
 
     def _fold_collect_feature(
         self, serving_vector: dict[str, Any], statement, rows: list[dict[str, Any]]
@@ -1977,6 +2046,10 @@ class VectorServer:
         statements cover every entry.
         A read-time planner refusal quietly drops the statement's grouped templates
         for the call; the per-entry singles cover its feature group.
+        Consistency contract: every chunk is a separate committed read; a large
+        batch can observe different versions of the same tables across chunks (no
+        cross-chunk snapshot), which matches online-serving expectations but
+        differs from a single SQL batch statement.
         """
         now = datetime.now(timezone.utc).replace(microsecond=0)
         contexts: list[dict[str, Any]] = []
