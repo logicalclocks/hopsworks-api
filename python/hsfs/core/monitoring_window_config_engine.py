@@ -295,6 +295,7 @@ class MonitoringWindowConfigEngine:
         profile_flags: dict | None = None,
         end_commit_time_override: int | None = None,
         model_filter: tuple[str, int] | None = None,
+        embedding_feature_names: set[str] | None = None,
     ) -> list[FeatureDescriptiveStatistics]:
         """Fetch the entity data based on monitoring window configuration and compute statistics.
 
@@ -311,6 +312,16 @@ class MonitoringWindowConfigEngine:
                 read path filters rows by ``model_name = X AND model_version = str(Y)``
                 and the precomputed-stats lookup is skipped (registered stats are
                 aggregated over the whole entity and are not model-aware).
+            embedding_feature_names: optional names of features whose monitoring config
+                unambiguously targets an embedding metric, i.e. CENTROID_DISTANCE.
+                Distribution metrics are excluded because they apply to both numeric and
+                embedding features, so a distribution-metric embedding is caught instead
+                via its reused statistics self-identifying as ``feature_type ==
+                "Embedding"``.
+                When registered statistics are reused for the window, any such feature
+                whose reused statistics predate embedding support (no
+                ``extended_statistics.embedding`` block) forces a recompute of the whole
+                window so the embedding statistics are present.
 
         Returns:
             List of Descriptive statistics.
@@ -393,6 +404,21 @@ class MonitoringWindowConfigEngine:
                 feature_names=feature_names,
                 row_percentage=monitoring_window_config.row_percentage,
             )
+
+        # Stale-stats guard: registered statistics may predate embedding support and so
+        # lack the ``extended_statistics.embedding`` block.
+        # Reusing them for an embedding feature would silently drop the configured
+        # embedding metric or trip the detection/reference subset assertion downstream.
+        # Drop the reused stats in that case so the recompute path below reprofiles the
+        # window with embedding support.
+        if registered_stats is not None and self._reused_stats_lack_embedding(
+            registered_stats, embedding_feature_names
+        ):
+            logger.info(
+                "Reusing registered statistics that lack embedding statistics for an "
+                "embedding-targeted feature; reprofiling the window instead."
+            )
+            registered_stats = None
 
         if registered_stats is None:  # if statistics don't exist
             # TODO: What happens if window is TRAINING_DATASET and the TD statistics were not computed???
@@ -619,6 +645,49 @@ class MonitoringWindowConfigEngine:
             datetime: Rounded and converted event time.
         """
         return util._convert_event_time_to_timestamp(event_time)
+
+    def _reused_stats_lack_embedding(
+        self,
+        registered_stats,
+        embedding_feature_names: set[str] | None,
+    ) -> bool:
+        """Return True when reused statistics miss the embedding block where it is required.
+
+        Reused (registered) statistics computed before embedding support do not carry the
+        ``extended_statistics.embedding`` block.
+        The block is required when any of the following holds:
+
+        - a reused feature self-identifies as embedding (``feature_type == "Embedding"``)
+          yet lacks the block, which catches a stale embedding feature behind an ambiguous
+          distribution metric;
+        - a CENTROID_DISTANCE-targeted feature (``embedding_feature_names``) is present in
+          the reused statistics but lacks the block;
+        - a CENTROID_DISTANCE-targeted feature is absent from the reused statistics
+          altogether, the common case when the feature was skipped by the profiler before
+          embedding support and would otherwise let stale stats silently bypass the
+          CENTROID_DISTANCE comparison.
+
+        Parameters:
+            registered_stats: The reused statistics object holding feature descriptive statistics.
+            embedding_feature_names: Names of features whose config targets CENTROID_DISTANCE.
+
+        Returns:
+            True if any reused feature requires the embedding block but lacks it.
+        """
+        fds_list = registered_stats.feature_descriptive_statistics or []
+        targeted = embedding_feature_names or set()
+        present_names = {fds.feature_name for fds in fds_list}
+        # A targeted feature missing entirely from the reused stats predates embedding
+        # support; force a reprofile so its CENTROID_DISTANCE comparison is not skipped.
+        # This also covers an entirely empty stats list (the profiler skipped every
+        # column), which would otherwise let stale empty stats bypass the comparison.
+        if targeted - present_names:
+            return True
+        for fds in fds_list:
+            requires_embedding = fds.feature_name in targeted or fds._is_embedding()
+            if requires_embedding and fds._get_embedding_statistics() is None:
+                return True
+        return False
 
     def _should_use_merge_path(
         self,

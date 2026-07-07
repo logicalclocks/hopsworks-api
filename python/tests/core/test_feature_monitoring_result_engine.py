@@ -15,6 +15,7 @@
 #
 
 from datetime import date, datetime, timedelta
+from unittest.mock import MagicMock
 
 import dateutil
 import pytest
@@ -153,6 +154,42 @@ class TestFeatureMonitoringResultEngine:
         assert result._feature_statistics_results is None
         assert result._raised_exception is True
         assert after_time >= result._monitoring_time >= before_time
+
+    def test_run_and_save_statistics_comparison_empty_detection_statistics(
+        self, mocker
+    ):
+        """Zero detection FDS must still flag the detection window as empty.
+
+        An all-features config combined with an empty window can yield an empty FDS
+        list; the per-FDS loop cannot flip the empty flags in that case.
+        """
+        # Arrange
+        mocker.patch(HSFS_CLIENT_GET_INSTANCE)
+        mocker.patch(LAST_EXECUTION_API)
+        mocker.patch(GET_JOB_API)
+        result_engine_save_mock = mocker.patch(
+            "hsfs.core.feature_monitoring_result_engine.FeatureMonitoringResultEngine._save",
+        )
+        result_engine = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+        fm_config = MagicMock()
+        fm_config.id = DEFAULT_CONFIG_ID
+        fm_config.feature_statistics_configs = None
+
+        # Act
+        result_engine._run_and_save_statistics_comparison(
+            fm_config=fm_config,
+            detection_statistics=[],
+            reference_statistics=[],
+        )
+
+        # Assert
+        result = result_engine_save_mock.call_args[0][0]
+        assert result._empty_detection_window is True
+        assert result._empty_reference_window is True
+        assert result._feature_statistics_results == []
 
     # Build result
 
@@ -325,6 +362,111 @@ class TestFeatureMonitoringResultEngine:
         assert no_shift is False
         assert diff_with_shift == 5.0
         assert with_shift is True
+
+    def test_default_binning_strategy_embedding(self):
+        # Embeddings bin over their numeric norm histogram, so EQUI_FREQUENCY.
+        fds = FeatureDescriptiveStatistics(
+            feature_name="user_vector", feature_type="Embedding", count=10
+        )
+        assert (
+            feature_monitoring_result_engine._default_binning_strategy(fds)
+            == "EQUI_FREQUENCY"
+        )
+
+    def test_default_binning_strategy_non_numeric(self):
+        fds = FeatureDescriptiveStatistics(
+            feature_name="city", feature_type="String", count=10
+        )
+        assert (
+            feature_monitoring_result_engine._default_binning_strategy(fds)
+            == "CATEGORICAL"
+        )
+
+    def _embedding_fds(self, centroid, count=10):
+        return FeatureDescriptiveStatistics(
+            feature_name="user_vector",
+            feature_type="Embedding",
+            count=count,
+            extended_statistics={"embedding": {"dimension": 2, "centroid": centroid}},
+        )
+
+    def test_compute_centroid_distance_l2(self):
+        result_engine = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+        det = self._embedding_fds([0.0, 0.0])
+        ref = self._embedding_fds([3.0, 4.0])
+
+        distance = result_engine._compute_centroid_distance(
+            detection_statistics=det, reference_statistics=ref
+        )
+
+        assert distance == 5.0
+
+    def test_compute_centroid_distance_via_dispatch(self):
+        from hsfs.core.statistics_comparison_config import StatisticsComparisonConfig
+
+        result_engine = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+        det = self._embedding_fds([0.0, 0.0])
+        ref = self._embedding_fds([3.0, 4.0])
+        sc_config = StatisticsComparisonConfig(
+            metric="CENTROID_DISTANCE", threshold=4.0, strict=False, id=1
+        )
+
+        difference, shift = result_engine._compute_difference_and_shift(
+            sc_config=sc_config,
+            detection_statistics=det,
+            reference_statistics=ref,
+        )
+
+        assert difference == 5.0
+        assert shift is True
+
+    def test_compute_centroid_distance_length_mismatch(self):
+        result_engine = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+        det = self._embedding_fds([1.0, 2.0, 3.0])
+        ref = self._embedding_fds([3.0, 4.0])
+
+        distance = result_engine._compute_centroid_distance(
+            detection_statistics=det, reference_statistics=ref
+        )
+
+        assert distance is None
+
+    def test_compute_centroid_distance_missing_centroid(self):
+        result_engine = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+        det = self._embedding_fds([])  # all-invalid window
+        ref = self._embedding_fds([3.0, 4.0])
+
+        distance = result_engine._compute_centroid_distance(
+            detection_statistics=det, reference_statistics=ref
+        )
+
+        assert distance is None
+
+    def test_compute_centroid_distance_empty_window(self):
+        result_engine = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+        det = self._embedding_fds([1.0, 2.0], count=0)
+        ref = self._embedding_fds([3.0, 4.0])
+
+        distance = result_engine._compute_centroid_distance(
+            detection_statistics=det, reference_statistics=ref
+        )
+
+        assert distance is None
 
     # Helper methods
 

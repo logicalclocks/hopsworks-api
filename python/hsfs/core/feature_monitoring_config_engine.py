@@ -68,6 +68,11 @@ NUMERIC_ONLY_SCALAR_METRICS = set(VALID_FRACTIONAL_METRICS) - set(
     VALID_CATEGORICAL_METRICS
 )
 
+# Scalar metrics that apply only to embedding features. CENTROID_DISTANCE is the
+# L2 distance between the detection and reference centroids, scored against the
+# threshold through the existing scalar specific-value path.
+EMBEDDING_ONLY_SCALAR_METRICS = {"centroid_distance"}
+
 # Distribution metrics restricted to numeric features only
 NUMERIC_ONLY_DISTRIBUTION_METRICS = {"WASSERSTEIN", "KOLMOGOROV_SMIRNOV"}
 
@@ -86,6 +91,17 @@ NUMERIC_HIVE_TYPES = {"int", "bigint", "tinyint", "smallint", "float", "double"}
 
 # Phase-2 types: skip silently in fan-out but reject explicitly if named
 PHASE2_TYPES = {"timestamp", "date", "binary"}
+
+
+def _is_embedding_type(feature_type: str) -> bool:
+    """Return whether the lowercased Hive type denotes a numeric-array embedding.
+
+    Embeddings are profiled from ``array<T>`` columns whose element type is numeric.
+    """
+    if not feature_type.startswith("array<") or not feature_type.endswith(">"):
+        return False
+    element_type = feature_type[len("array<") : -1].strip()
+    return element_type in NUMERIC_HIVE_TYPES or element_type.startswith("decimal")
 
 
 if TYPE_CHECKING:
@@ -270,10 +286,13 @@ class FeatureMonitoringConfigEngine:
         if (
             metric_lower not in VALID_CATEGORICAL_METRICS
             and metric_lower not in VALID_FRACTIONAL_METRICS
+            and metric_lower not in EMBEDDING_ONLY_SCALAR_METRICS
         ):
             raise ValueError(
                 f"Invalid metric {metric_lower}. Supported metrics are {{}}.".format(
-                    set(VALID_FRACTIONAL_METRICS).union(set(VALID_CATEGORICAL_METRICS))
+                    set(VALID_FRACTIONAL_METRICS)
+                    .union(set(VALID_CATEGORICAL_METRICS))
+                    .union(set(EMBEDDING_ONLY_SCALAR_METRICS))
                 )
             )
 
@@ -523,6 +542,12 @@ class FeatureMonitoringConfigEngine:
 
         assert config is not None, "Feature monitoring config not found."
         feature_names = config.get_feature_names()
+        if not feature_names:
+            # All-features mode: the config has no feature_statistics_configs children,
+            # so resolve the monitored features from the entity schema.
+            # Empty/unmaterialized windows fabricate count=0 FDS from this list, and the
+            # backend rejects results whose featureStatisticsResults list is empty.
+            feature_names = [feature.name for feature in entity.features]
 
         if config.trigger_type == fmc.TriggerType.INGESTION:
             # Ingestion-triggered configs: read flags from the FG's statistics_config
@@ -561,6 +586,18 @@ class FeatureMonitoringConfigEngine:
                 if has_distribution_child
                 else None
             )
+
+        # Features whose comparison config unambiguously targets an embedding metric,
+        # i.e. the CENTROID_DISTANCE scalar metric.
+        # Distribution metrics are deliberately excluded here because they are valid on
+        # both numeric and embedding features, so they cannot be attributed to an
+        # embedding from the config alone.
+        # Reused registered statistics for these features must carry the embedding block;
+        # otherwise the window is reprofiled (see
+        # MonitoringWindowConfigEngine._run_single_window_monitoring).
+        # A distribution-metric embedding is still caught downstream via the reused FDS
+        # self-identifying as feature_type == "Embedding".
+        embedding_feature_names = self._get_embedding_targeted_feature_names(config)
 
         # FSTORE-2050: model monitoring — when both fields are set, the detection window
         # is the FV's logging FG and we must filter to inference rows produced by this
@@ -672,6 +709,7 @@ class FeatureMonitoringConfigEngine:
                         profile_flags=profile_flags,
                         end_commit_time_override=end_commit_time,
                         model_filter=model_filter,
+                        embedding_feature_names=embedding_feature_names,
                     )
                 )
             except RestAPIError as e:
@@ -726,6 +764,7 @@ class FeatureMonitoringConfigEngine:
                         profile_flags=profile_flags,
                         end_commit_time_override=ref_commit_time_override,
                         model_filter=ref_model_filter,
+                        embedding_feature_names=embedding_feature_names,
                     )
                 )
             except RestAPIError as e:
@@ -752,6 +791,46 @@ class FeatureMonitoringConfigEngine:
             detection_window_commit_time=detection_window_commit_time,
         )
 
+    def _get_embedding_targeted_feature_names(
+        self, config: fmc.FeatureMonitoringConfig
+    ) -> set[str]:
+        """Return the names of features whose comparison config unambiguously targets embedding.
+
+        A feature unambiguously targets an embedding metric when any of its comparison
+        children uses an embedding-only scalar metric (CENTROID_DISTANCE).
+        These features require the ``extended_statistics.embedding`` block, so reused
+        registered statistics that lack it must not be reused for them (the window is
+        reprofiled instead, see
+        [`MonitoringWindowConfigEngine._run_single_window_monitoring`][hsfs.core.monitoring_window_config_engine.MonitoringWindowConfigEngine._run_single_window_monitoring]).
+
+        Limitation: distribution metrics (PSI, KL, etc.) are deliberately excluded.
+        A distribution metric is valid on both numeric and embedding features, so at this
+        point we cannot tell whether a distribution-targeted feature is an embedding whose
+        reused statistics are stale or a numeric feature that legitimately has no embedding
+        block.
+        Forcing a recompute on every distribution-targeted feature would needlessly
+        reprofile numeric features.
+        A stale embedding feature behind a distribution metric still self-identifies via
+        its reused statistics' feature type, which the window engine's guard also honours.
+
+        Parameters:
+            config: The feature monitoring configuration to inspect.
+
+        Returns:
+            The names of features whose comparison config uses CENTROID_DISTANCE.
+        """
+        embedding_metrics = {m.upper() for m in EMBEDDING_ONLY_SCALAR_METRICS}
+        targeted = set()
+        for fs_config in config.feature_statistics_configs or []:
+            for sc_config in fs_config.statistics_comparison_configs or []:
+                if (
+                    sc_config.metric is not None
+                    and sc_config.metric.upper() in embedding_metrics
+                ):
+                    targeted.add(fs_config.feature_name)
+                    break
+        return targeted
+
     # feature-type compatibility helpers
 
     def _is_type_compatible(self, metric: str, feature_type: str) -> bool:
@@ -764,7 +843,11 @@ class FeatureMonitoringConfigEngine:
         For distribution metrics, WASSERSTEIN and KOLMOGOROV_SMIRNOV require numeric types.
         PSI, KL_DIVERGENCE, JS_DIVERGENCE, and HELLINGER are compatible with any primitive.
 
-        Complex types (MAP, ARRAY, STRUCT, UNIONTYPE) are never compatible.
+        Embedding (numeric-array) features are compatible with every distribution metric
+        (norm drift over the embedding norm histogram is numeric) and with the
+        CENTROID_DISTANCE scalar metric, and incompatible with ordinary scalar metrics.
+
+        Other complex types (MAP, STRUCT, UNIONTYPE) are never compatible.
         Phase-2 types (timestamp, date, binary) are out of scope and not compatible.
 
         Parameters:
@@ -778,7 +861,21 @@ class FeatureMonitoringConfigEngine:
 
         type_lower = feature_type.lower() if feature_type else ""
 
-        # Complex types have no distribution/stats support.
+        metric_upper = metric.upper()
+        metric_lower = metric.lower()
+
+        # Embedding (numeric array) features: norm drift via any distribution metric
+        # plus the CENTROID_DISTANCE scalar metric.
+        if _is_embedding_type(type_lower):
+            if metric_upper in ALL_DISTRIBUTION_METRICS:
+                return True
+            return metric_lower in EMBEDDING_ONLY_SCALAR_METRICS
+
+        # CENTROID_DISTANCE only applies to embedding features.
+        if metric_lower in EMBEDDING_ONLY_SCALAR_METRICS:
+            return False
+
+        # Other complex types have no distribution/stats support.
         for complex_prefix in Feature.COMPLEX_TYPES:
             if type_lower.startswith(complex_prefix.lower()):
                 return False
@@ -791,8 +888,6 @@ class FeatureMonitoringConfigEngine:
             "decimal"
         )
 
-        metric_upper = metric.upper()
-
         if metric_upper in ALL_DISTRIBUTION_METRICS:
             if metric_upper in NUMERIC_ONLY_DISTRIBUTION_METRICS:
                 return is_numeric
@@ -800,7 +895,6 @@ class FeatureMonitoringConfigEngine:
             return True
 
         # Scalar metric path
-        metric_lower = metric.lower()
         if metric_lower in NUMERIC_ONLY_SCALAR_METRICS:
             return is_numeric
         # Type-agnostic scalar metrics (VALID_CATEGORICAL_METRICS)
@@ -828,7 +922,9 @@ class FeatureMonitoringConfigEngine:
         if not compatible:
             from hsfs.feature import Feature
 
-            if metric.upper() in ALL_DISTRIBUTION_METRICS:
+            if metric.lower() in EMBEDDING_ONLY_SCALAR_METRICS:
+                compatible_types = "numeric arrays (e.g. array<float>, array<double>)"
+            elif metric.upper() in ALL_DISTRIBUTION_METRICS:
                 if metric.upper() in NUMERIC_ONLY_DISTRIBUTION_METRICS:
                     compatible_types = list(NUMERIC_HIVE_TYPES) + ["decimal"]
                 else:

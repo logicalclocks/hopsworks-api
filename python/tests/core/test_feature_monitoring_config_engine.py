@@ -584,6 +584,72 @@ class TestFeatureMonitoringConfigEngine:
         assert result.empty_detection_window is False
         assert result.shift_detected is False
 
+    def test_run_feature_monitoring_all_features_mode_uses_schema_feature_names(
+        self, mocker
+    ):
+        """All-features configs must resolve feature names from the entity schema.
+
+        A config without feature_statistics_configs children returns [] from
+        get_feature_names().
+        Passing [] downstream fabricates zero count=0 FDS on empty windows, which the
+        backend rejects with 'Feature statistics results not provided' (270287).
+        """
+        # Arrange
+        config_engine = feature_monitoring_config_engine.FeatureMonitoringConfigEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+
+        mock_config = MagicMock()
+        mock_config.id = 42
+        mock_config.get_feature_names.return_value = []
+        mock_config.feature_statistics_configs = None
+        mock_config.detection_window_config = MagicMock()
+        mock_config.reference_window_config = None
+        mock_config.model_name = None
+        mock_config.model_version = None
+        mocker.patch.object(
+            config_engine._feature_monitoring_config_api,
+            "_get_by_name",
+            return_value=mock_config,
+        )
+
+        run_window_mock = mocker.patch.object(
+            config_engine._monitoring_window_config_engine,
+            "_run_single_window_monitoring",
+            return_value=[
+                FeatureDescriptiveStatistics(feature_name="amount", count=0),
+                FeatureDescriptiveStatistics(feature_name="embedding", count=0),
+            ],
+        )
+        save_mock = mocker.patch.object(
+            config_engine._result_engine,
+            "_run_and_save_statistics_comparison",
+            return_value=MagicMock(),
+        )
+
+        entity = MagicMock()
+        feat_amount, feat_embedding = MagicMock(), MagicMock()
+        feat_amount.name = "amount"
+        feat_embedding.name = "embedding"
+        entity.features = [feat_amount, feat_embedding]
+
+        # Act
+        config_engine._run_feature_monitoring(
+            entity=entity,
+            config_name="all_features_config",
+        )
+
+        # Assert: the window read received the schema-derived names, not []
+        assert run_window_mock.call_args.kwargs["feature_names"] == [
+            "amount",
+            "embedding",
+        ]
+        assert (
+            save_mock.call_args.kwargs["detection_statistics"]
+            is run_window_mock.return_value
+        )
+
     # ------------------------------------------------------------------
     # H4 — profile_flags gate & XOR validator
     # ------------------------------------------------------------------
@@ -710,6 +776,98 @@ class TestFeatureMonitoringConfigEngine:
                 "profile_flags must be None for scalar-only config"
             )
 
+    def _build_mock_fm_config_with_centroid_child(self, feature_names):
+        """Build a mock FeatureMonitoringConfig with one CENTROID_DISTANCE child."""
+        sc_centroid = StatisticsComparisonConfig(
+            metric="CENTROID_DISTANCE",
+            threshold=0.2,
+            strict=False,
+        )
+        fs_configs = [
+            MagicMock(
+                feature_name=f,
+                statistics_comparison_configs=[sc_centroid],
+            )
+            for f in feature_names
+        ]
+        config = MagicMock()
+        config.id = 42
+        config.get_feature_names.return_value = feature_names
+        config.feature_statistics_configs = fs_configs
+        config.detection_window_config = MagicMock()
+        config.reference_window_config = MagicMock()
+        return config
+
+    def test_get_embedding_targeted_feature_names_includes_centroid_distance(self):
+        """CENTROID_DISTANCE features are returned; distribution-only features are not."""
+        config_engine = feature_monitoring_config_engine.FeatureMonitoringConfigEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+        centroid = StatisticsComparisonConfig(
+            metric="CENTROID_DISTANCE", threshold=0.2, strict=False
+        )
+        distribution = StatisticsComparisonConfig(
+            distribution_metric="PSI",
+            threshold=0.2,
+            strict=False,
+            binning_strategy="EQUI_WIDTH",
+            bin_count=10,
+            smoothing_epsilon=1e-6,
+        )
+        config = MagicMock()
+        config.feature_statistics_configs = [
+            MagicMock(feature_name="emb", statistics_comparison_configs=[centroid]),
+            MagicMock(
+                feature_name="amount", statistics_comparison_configs=[distribution]
+            ),
+        ]
+
+        targeted = config_engine._get_embedding_targeted_feature_names(config)
+
+        assert targeted == {"emb"}
+
+    def test_run_feature_monitoring_passes_embedding_feature_names(self, mocker):
+        """A CENTROID_DISTANCE config forwards the embedding-targeted feature set downstream."""
+        feature_names = ["emb"]
+        non_empty_fds = [FeatureDescriptiveStatistics(feature_name="emb", count=100)]
+
+        config_engine = feature_monitoring_config_engine.FeatureMonitoringConfigEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+
+        mock_config = self._build_mock_fm_config_with_centroid_child(feature_names)
+        mocker.patch.object(
+            config_engine._feature_monitoring_config_api,
+            "_get_by_name",
+            return_value=mock_config,
+        )
+
+        run_single_mock = mocker.patch.object(
+            config_engine._monitoring_window_config_engine,
+            "_run_single_window_monitoring",
+            return_value=non_empty_fds,
+        )
+
+        saved_result = MagicMock()
+        saved_result.empty_reference_window = False
+        saved_result.empty_detection_window = False
+        saved_result.shift_detected = False
+        mocker.patch.object(
+            config_engine._result_engine,
+            "_run_and_save_statistics_comparison",
+            return_value=saved_result,
+        )
+
+        entity = MagicMock()
+        config_engine._run_feature_monitoring(
+            entity=entity, config_name="centroid_config"
+        )
+
+        for call in run_single_mock.call_args_list:
+            assert call.kwargs.get("embedding_feature_names") == {"emb"}
+
     def test_distribution_child_rejects_specific_value(self):
         """validate_statistics_comparison_config raises when distribution child has specific_value."""
         config_engine = feature_monitoring_config_engine.FeatureMonitoringConfigEngine(
@@ -726,3 +884,57 @@ class TestFeatureMonitoringConfigEngine:
             ValueError, match="specific_value is not allowed for distribution"
         ):
             config_engine._validate_statistics_comparison_config(mock_sc)
+
+
+class TestEmbeddingTypeCompatibility:
+    def _engine(self):
+        return feature_monitoring_config_engine.FeatureMonitoringConfigEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+
+    def test_is_embedding_type(self):
+        assert feature_monitoring_config_engine._is_embedding_type("array<float>")
+        assert feature_monitoring_config_engine._is_embedding_type("array<double>")
+        assert feature_monitoring_config_engine._is_embedding_type("array<int>")
+        assert feature_monitoring_config_engine._is_embedding_type(
+            "array<decimal(10,2)>"
+        )
+        # Non-numeric arrays and primitives are not embeddings.
+        assert not feature_monitoring_config_engine._is_embedding_type("array<string>")
+        assert not feature_monitoring_config_engine._is_embedding_type("double")
+        assert not feature_monitoring_config_engine._is_embedding_type(
+            "map<string,int>"
+        )
+
+    def test_embedding_valid_for_distribution_metric(self):
+        engine = self._engine()
+        # Norm drift via any distribution metric is allowed for embeddings.
+        assert engine._is_type_compatible("PSI", "array<float>") is True
+        assert engine._is_type_compatible("WASSERSTEIN", "array<double>") is True
+        assert engine._is_type_compatible("KOLMOGOROV_SMIRNOV", "array<float>") is True
+
+    def test_embedding_valid_for_centroid_distance(self):
+        engine = self._engine()
+        assert engine._is_type_compatible("CENTROID_DISTANCE", "array<float>") is True
+
+    def test_embedding_invalid_for_scalar_metrics(self):
+        engine = self._engine()
+        for metric in ("mean", "std_dev", "min", "max", "sum", "completeness"):
+            assert engine._is_type_compatible(metric, "array<float>") is False
+
+    def test_centroid_distance_invalid_for_non_embedding(self):
+        engine = self._engine()
+        assert engine._is_type_compatible("CENTROID_DISTANCE", "double") is False
+        assert engine._is_type_compatible("CENTROID_DISTANCE", "string") is False
+
+    def test_validate_statistics_metric_accepts_centroid_distance(self):
+        engine = self._engine()
+        # Does not raise.
+        engine._validate_statistics_metric("CENTROID_DISTANCE")
+        engine._validate_statistics_metric("centroid_distance")
+
+    def test_validate_statistics_metric_rejects_unknown(self):
+        engine = self._engine()
+        with pytest.raises(ValueError, match="Invalid metric"):
+            engine._validate_statistics_metric("not_a_metric")
