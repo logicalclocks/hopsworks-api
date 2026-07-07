@@ -503,8 +503,7 @@ class Model:
         self._model_engine._delete_tag(model_instance=self, name=name)
 
     def _update_framework(self, framework: str) -> Model:
-        """Update the model's framework.
-        """
+        """Update the model's framework."""
         self._model_engine._update_framework(self, framework)
         return self
 
