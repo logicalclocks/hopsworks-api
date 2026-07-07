@@ -91,10 +91,6 @@ class Predictor(DeployableComponent):
         **kwargs,
     ):
         self._missing_mandatory_tags = missing_mandatory_tags or []
-        # Tags provided at creation ride the serving-create request as a list of
-        # Tag objects, serialized identically to feature groups. The serving GET
-        # response never carries tags (they surface via missing_mandatory_tags),
-        # so nothing response-derived reaches this list on a round-trip.
         self._tags = tag.Tag._normalize(tags)
         serving_tool = (
             self._validate_serving_tool(serving_tool)

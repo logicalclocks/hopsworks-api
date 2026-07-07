@@ -184,7 +184,6 @@ class ServingApi:
             str(deployment_instance.id),
             "tags",
         ]
-        # from_response_json already returns deserialized values.
         return {
             t._name: t._value
             for t in tag.Tag.from_response_json(
@@ -214,7 +213,6 @@ class ServingApi:
             "tags",
             name,
         ]
-        # from_response_json returns a list of tags; look the value up by name.
         tags = {
             t._name: t._value
             for t in tag.Tag.from_response_json(

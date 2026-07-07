@@ -82,10 +82,6 @@ class Model:
         self._name = name
         self._version = version
         self._missing_mandatory_tags = missing_mandatory_tags or []
-        # Tags provided at creation ride the create request as a list of Tag
-        # objects, serialized identically to feature groups. Response-derived
-        # tags are stripped upstream (_set_model_class, update_from_response_json)
-        # so they never leak back into the create body on a round-trip.
         self._tags = tag.Tag._normalize(tags)
 
         if description is None:
@@ -751,8 +747,6 @@ class Model:
         if "type" in json_decamelized:  # backwards compatibility
             _ = json_decamelized.pop("type")
         if "tags" in json_decamelized:
-            # Tags are always retrieved from the backend separately; dropping the
-            # response tags keeps them out of the create body on a re-save.
             _ = json_decamelized.pop("tags")
         self.__init__(**json_decamelized)
         return self
