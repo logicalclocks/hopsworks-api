@@ -57,6 +57,35 @@ class ModelApi:
             )
         )
 
+    def _patch(self, model_instance: model.Model, body: dict) -> model.Model:
+        """Update mutable fields (currently framework) of a model version.
+
+        Parameters:
+            model_instance: metadata object of the model to update
+            body: mutable fields to update, e.g. ``{"framework": ...}``
+
+        Returns:
+            updated metadata object of the model
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "modelregistries",
+            str(model_instance.model_registry_id),
+            "models",
+            model_instance.name + "_" + str(model_instance.version),
+        ]
+        headers = {"content-type": "application/json"}
+        return model_instance.update_from_response_json(
+            _client._send_request(
+                "PATCH",
+                path_params,
+                headers=headers,
+                data=json.dumps(body),
+            )
+        )
+
     @decorators._catch_not_found("hsml.model.Model", fallback_return=None)
     def _get(
         self,
