@@ -15,6 +15,7 @@
 #
 
 from datetime import date, datetime, timedelta
+from unittest.mock import MagicMock
 
 import dateutil
 import pytest
@@ -153,6 +154,42 @@ class TestFeatureMonitoringResultEngine:
         assert result._feature_statistics_results is None
         assert result._raised_exception is True
         assert after_time >= result._monitoring_time >= before_time
+
+    def test_run_and_save_statistics_comparison_empty_detection_statistics(
+        self, mocker
+    ):
+        """Zero detection FDS must still flag the detection window as empty.
+
+        An all-features config combined with an empty window can yield an empty FDS
+        list; the per-FDS loop cannot flip the empty flags in that case.
+        """
+        # Arrange
+        mocker.patch(HSFS_CLIENT_GET_INSTANCE)
+        mocker.patch(LAST_EXECUTION_API)
+        mocker.patch(GET_JOB_API)
+        result_engine_save_mock = mocker.patch(
+            "hsfs.core.feature_monitoring_result_engine.FeatureMonitoringResultEngine._save",
+        )
+        result_engine = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+        fm_config = MagicMock()
+        fm_config.id = DEFAULT_CONFIG_ID
+        fm_config.feature_statistics_configs = None
+
+        # Act
+        result_engine._run_and_save_statistics_comparison(
+            fm_config=fm_config,
+            detection_statistics=[],
+            reference_statistics=[],
+        )
+
+        # Assert
+        result = result_engine_save_mock.call_args[0][0]
+        assert result._empty_detection_window is True
+        assert result._empty_reference_window is True
+        assert result._feature_statistics_results == []
 
     # Build result
 

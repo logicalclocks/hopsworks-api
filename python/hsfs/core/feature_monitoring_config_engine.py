@@ -542,6 +542,12 @@ class FeatureMonitoringConfigEngine:
 
         assert config is not None, "Feature monitoring config not found."
         feature_names = config.get_feature_names()
+        if not feature_names:
+            # All-features mode: the config has no feature_statistics_configs children,
+            # so resolve the monitored features from the entity schema.
+            # Empty/unmaterialized windows fabricate count=0 FDS from this list, and the
+            # backend rejects results whose featureStatisticsResults list is empty.
+            feature_names = [feature.name for feature in entity.features]
 
         if config.trigger_type == fmc.TriggerType.INGESTION:
             # Ingestion-triggered configs: read flags from the FG's statistics_config

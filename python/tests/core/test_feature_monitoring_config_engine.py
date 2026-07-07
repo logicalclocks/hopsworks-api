@@ -584,6 +584,72 @@ class TestFeatureMonitoringConfigEngine:
         assert result.empty_detection_window is False
         assert result.shift_detected is False
 
+    def test_run_feature_monitoring_all_features_mode_uses_schema_feature_names(
+        self, mocker
+    ):
+        """All-features configs must resolve feature names from the entity schema.
+
+        A config without feature_statistics_configs children returns [] from
+        get_feature_names().
+        Passing [] downstream fabricates zero count=0 FDS on empty windows, which the
+        backend rejects with 'Feature statistics results not provided' (270287).
+        """
+        # Arrange
+        config_engine = feature_monitoring_config_engine.FeatureMonitoringConfigEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+
+        mock_config = MagicMock()
+        mock_config.id = 42
+        mock_config.get_feature_names.return_value = []
+        mock_config.feature_statistics_configs = None
+        mock_config.detection_window_config = MagicMock()
+        mock_config.reference_window_config = None
+        mock_config.model_name = None
+        mock_config.model_version = None
+        mocker.patch.object(
+            config_engine._feature_monitoring_config_api,
+            "_get_by_name",
+            return_value=mock_config,
+        )
+
+        run_window_mock = mocker.patch.object(
+            config_engine._monitoring_window_config_engine,
+            "_run_single_window_monitoring",
+            return_value=[
+                FeatureDescriptiveStatistics(feature_name="amount", count=0),
+                FeatureDescriptiveStatistics(feature_name="embedding", count=0),
+            ],
+        )
+        save_mock = mocker.patch.object(
+            config_engine._result_engine,
+            "_run_and_save_statistics_comparison",
+            return_value=MagicMock(),
+        )
+
+        entity = MagicMock()
+        feat_amount, feat_embedding = MagicMock(), MagicMock()
+        feat_amount.name = "amount"
+        feat_embedding.name = "embedding"
+        entity.features = [feat_amount, feat_embedding]
+
+        # Act
+        config_engine._run_feature_monitoring(
+            entity=entity,
+            config_name="all_features_config",
+        )
+
+        # Assert: the window read received the schema-derived names, not []
+        assert run_window_mock.call_args.kwargs["feature_names"] == [
+            "amount",
+            "embedding",
+        ]
+        assert (
+            save_mock.call_args.kwargs["detection_statistics"]
+            is run_window_mock.return_value
+        )
+
     # ------------------------------------------------------------------
     # H4 — profile_flags gate & XOR validator
     # ------------------------------------------------------------------

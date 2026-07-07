@@ -262,14 +262,18 @@ class FeatureMonitoringResultEngine:
         )
 
         # create fds dicts
-        detection_stats_dict, empty_detection_window = {}, False
+        # An empty FDS list means nothing was profiled for the window, so the per-FDS
+        # loop below cannot flip the empty flag — initialize it from the list itself.
+        detection_stats_dict = {}
+        empty_detection_window = len(detection_statistics) == 0
         reference_stats_dict, empty_reference_window = None, None
         for det_fds in detection_statistics:
             detection_stats_dict[det_fds.feature_name] = det_fds
             if self._is_monitoring_window_empty(det_fds):
                 empty_detection_window = True
         if reference_statistics is not None:
-            reference_stats_dict, empty_reference_window = {}, False
+            reference_stats_dict = {}
+            empty_reference_window = len(reference_statistics) == 0
             for ref_fds in reference_statistics:
                 reference_stats_dict[ref_fds.feature_name] = ref_fds
                 if self._is_monitoring_window_empty(ref_fds):
