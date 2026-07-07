@@ -1511,6 +1511,47 @@ class TestOracleConnector:
         opts = sc.spark_options()
         assert opts["url"] == "jdbc:oracle:thin:@mydb_high"
 
+    def test_inline_tns_url_prefers_configured_database_alias(self, tmp_path):
+        """The database alias wins over _tp and its descriptor is inlined.
+
+        Matching is case-insensitive; a bare alias URL is not a hostname.
+        """
+        (tmp_path / "tnsnames.ora").write_text(
+            "mydb_low = (description=(address=(host=low.example.com)))\n"
+            "mydb_tp = (description=(address=(host=tp.example.com)))\n"
+        )
+        sc = storage_connector.SqlConnector(
+            id=1,
+            name="test",
+            featurestore_id=1,
+            database_type="ORACLE",
+            database="MYDB_low",  # TNS alias, different case than tnsnames.ora
+            user="scott",
+            password="tiger",
+            wallet_path="/Projects/myproj/Resources/wallet.zip",
+        )
+        url = sc._inline_tns_url(str(tmp_path))
+        assert url == "jdbc:oracle:thin:@(description=(address=(host=low.example.com)))"
+
+    def test_inline_tns_url_falls_back_to_tp_alias(self, tmp_path):
+        """When the database is not an alias, prefer the _tp alias."""
+        (tmp_path / "tnsnames.ora").write_text(
+            "mydb_low = (description=(address=(host=low.example.com)))\n"
+            "mydb_tp = (description=(address=(host=tp.example.com)))\n"
+        )
+        sc = storage_connector.SqlConnector(
+            id=1,
+            name="test",
+            featurestore_id=1,
+            database_type="ORACLE",
+            database="not_an_alias",
+            user="scott",
+            password="tiger",
+            wallet_path="/Projects/myproj/Resources/wallet.zip",
+        )
+        url = sc._inline_tns_url(str(tmp_path))
+        assert url == "jdbc:oracle:thin:@(description=(address=(host=tp.example.com)))"
+
     def test_spark_options_no_host_no_wallet_raises(self):
         """Oracle connector without host/port AND without wallet is invalid."""
         from hopsworks_common.client.exceptions import DataSourceException
