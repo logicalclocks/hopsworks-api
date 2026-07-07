@@ -1355,6 +1355,13 @@ class Engine:
         if not data_format:
             raise FeatureStoreException("data_format is not specified")
 
+        # Apply format-specific read defaults (e.g. header/inferSchema for
+        # CSV/TSV, recordType for tfrecord), letting caller options win.
+        # Without these, schemaless formats come back as positional all-string
+        # columns (`_c0`, ...) and reads of external feature groups fail to
+        # resolve their feature names.
+        read_options = self._read_options(data_format, read_options)
+
         if isinstance(location, str):
             if data_format.lower() in [
                 "delta",
@@ -1408,7 +1415,26 @@ class Engine:
 
         from pyspark.sql.types import StringType, StructField, StructType
 
-        conn = jvm.java.sql.DriverManager.getConnection(url, props)
+        driver_class = options.get("driver")
+        if driver_class:
+            # JDBC driver jars arrive via spark.jars, which live in Spark's
+            # mutable classloader. java.sql.DriverManager only hands out
+            # drivers visible to the caller's classloader, so it cannot see
+            # them ("No suitable driver found"). Load the driver from Spark's
+            # classloader and connect through it directly instead.
+            loader = jvm.org.apache.spark.util.Utils.getContextOrSparkClassLoader()
+            driver = (
+                jvm.java.lang.Class.forName(driver_class, True, loader)
+                .getDeclaredConstructor()
+                .newInstance()
+            )
+            conn = driver.connect(url, props)
+            if conn is None:
+                raise ValueError(
+                    f"JDBC driver {driver_class} did not accept url {url}"
+                )
+        else:
+            conn = jvm.java.sql.DriverManager.getConnection(url, props)
         try:
             stmt = conn.createStatement()
             rs = stmt.executeQuery(sql)
