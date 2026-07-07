@@ -22,15 +22,20 @@ def make_engine():
     engine._skip_fg_ids = set()
     engine._aggregate_window_by_serving_index = {}
     engine._rank_cap_by_serving_index = {}
+    engine._scan_prepared_statements = {}
+    engine._collect_ascending_by_serving_index = {}
     return engine
 
 
-def make_statement(query_online, aggregate_window=None, collect_n=None):
+def make_statement(
+    query_online, aggregate_window=None, collect_n=None, query_online_scan=None
+):
     return ServingPreparedStatement(
         feature_group_id=1,
         prepared_statement_index=0,
         prepared_statement_parameters=[{"name": "user_id", "index": 1}],
         query_online=query_online,
+        query_online_scan=query_online_scan,
         aggregate_window=aggregate_window,
         collect_n=collect_n,
     )
@@ -206,6 +211,65 @@ class TestCollectRankCapParameter:
         engine._init_parametrize_and_serving_utils(statements)
         engine._init_parametrize_and_serving_utils(statements)
         assert len(engine.serving_key_by_serving_index[0]) == 1
+
+    SCAN_SQL = (
+        "SELECT `amount`, `ts` FROM `db`.`t_1` WHERE `user_id` = ? "
+        "ORDER BY `ts` DESC LIMIT ?"
+    )
+
+    def test_direct_scan_statement_is_parametrized(self):
+        engine = make_engine()
+        engine._parametrize_prepared_statements(
+            [
+                make_statement(
+                    self.COLLECT_SQL, collect_n=100, query_online_scan=self.SCAN_SQL
+                )
+            ],
+            batch=False,
+        )
+        rendered = str(engine._scan_prepared_statements[0])
+        assert ":user_id" in rendered
+        assert rendered.endswith("LIMIT :hw_rank_cap")
+        assert engine._first_unquoted_placeholder(rendered) == -1
+        assert engine._rank_cap_by_serving_index == {0: 100}
+
+    def test_scan_rows_prefer_the_direct_statement(self):
+        engine = make_engine()
+        engine._collect_n_by_serving_index = {0: 100}
+        engine._collect_ascending_by_serving_index = {0: False}
+        engine._parametrised_prepared_statements = {
+            OnlineStoreSqlClient.SINGLE_VECTOR_KEY: {0: "windowed-statement"}
+        }
+        engine._scan_prepared_statements = {0: "direct-statement"}
+        seen = {}
+
+        def fake_single_vector_result(entry, statements, raw_rows=False,
+                                      scan_limit=None):
+            seen["statements"] = statements
+            return [{"ts": 3}, {"ts": 2}, {"ts": 1}]
+
+        engine._single_vector_result = fake_single_vector_result
+        rows = engine._get_scan_rows({"user_id": 7}, limit=3)
+        assert seen["statements"] == {0: "direct-statement"}
+        assert [r["ts"] for r in rows] == [3, 2, 1]
+
+    def test_direct_scan_reverses_for_ascending_views(self):
+        engine = make_engine()
+        engine._collect_n_by_serving_index = {0: 100}
+        engine._collect_ascending_by_serving_index = {0: True}
+        engine._parametrised_prepared_statements = {
+            OnlineStoreSqlClient.SINGLE_VECTOR_KEY: {0: "windowed-statement"}
+        }
+        engine._scan_prepared_statements = {0: "direct-statement"}
+        engine._single_vector_result = (
+            lambda entry, statements, raw_rows=False, scan_limit=None: [
+                {"ts": 3},
+                {"ts": 2},
+                {"ts": 1},
+            ]
+        )
+        rows = engine._get_scan_rows({"user_id": 7})
+        assert [r["ts"] for r in rows] == [1, 2, 3]
 
     def test_scan_rows_refuse_multiple_collect_sources(self):
         import pytest

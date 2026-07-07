@@ -32,6 +32,7 @@ class ServingPreparedStatement:
         ]
         | None = None,
         query_online: str | None = None,
+        query_online_scan: str | None = None,
         prefix: str | None = None,
         collect_n: int | None = None,
         collect_feature_name: str | None = None,
@@ -56,6 +57,11 @@ class ServingPreparedStatement:
         # use setter to ensure that the parameters are sorted by index
         self.prepared_statement_parameters = prepared_statement_parameters
         self._query_online = query_online
+        # Direct single-entity scan for collect statements (scan_vectors on the SQL
+        # client): reads the ordered index backward and stops at the bound row cap,
+        # unlike query_online's windowed ROW_NUMBER plan. The trailing ? binds
+        # min(limit, collect_n). None from backends predating the field.
+        self._query_online_scan = query_online_scan
         self._prefix = prefix
         # collect ("most recent N rows per entity"): when set, this statement returns up to
         # collect_n rows per entity to fold into list-typed features (see online_store_sql_engine).
@@ -151,6 +157,10 @@ class ServingPreparedStatement:
     @property
     def query_online(self) -> str | None:
         return self._query_online
+
+    @property
+    def query_online_scan(self) -> str | None:
+        return self._query_online_scan
 
     @property
     def prefix(self) -> str | None:

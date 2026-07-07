@@ -102,6 +102,12 @@ class OnlineStoreSqlClient:
         # prepared_statement_index -> collect N, for statements whose trailing ? caps
         # the rank filter (folds bind N; scans narrow to min(limit, N))
         self._rank_cap_by_serving_index: dict[int, int] = {}
+        # prepared_statement_index -> direct single-entity scan statement
+        # (ORDER BY order_col DESC LIMIT ?), preferred by _get_scan_rows over the
+        # windowed collect statement; empty for backends predating the field
+        self._scan_prepared_statements: dict[int, Any] = {}
+        # prepared_statement_index -> collect_ascending, to order direct-scan output
+        self._collect_ascending_by_serving_index: dict[int, bool] = {}
         self._serving_key_by_serving_index: dict[str, ServingKey] = {}
         self._serving_keys: set[ServingKey] = set(serving_keys or [])
 
@@ -218,6 +224,7 @@ class OnlineStoreSqlClient:
         self._aggregate_window_by_serving_index = {}
         self._rank_cap_by_serving_index = {}
         self._parametrised_prepared_statements = {}
+        self._scan_prepared_statements = {}
         self._fetch_prepared_statements(
             entity,
             inference_helper_columns,
@@ -268,6 +275,13 @@ class OnlineStoreSqlClient:
             for statement in prepared_statements
             if statement.collect_n is not None
             and statement.collect_feature_name is not None
+        }
+        self._collect_ascending_by_serving_index = {
+            statement.prepared_statement_index: bool(
+                getattr(statement, "collect_ascending", False)
+            )
+            for statement in prepared_statements
+            if statement.collect_n is not None
         }
         self._feature_name_order_by_psp = {
             statement.prepared_statement_index: {
@@ -348,6 +362,21 @@ class OnlineStoreSqlClient:
                 self._rank_cap_by_serving_index[
                     prepared_statement.prepared_statement_index
                 ] = prepared_statement.collect_n
+            scan_query = getattr(prepared_statement, "query_online_scan", None)
+            if not batch and scan_query:
+                # direct single-entity scan for scan_vectors: same pk markers, then
+                # the trailing LIMIT ? binds through the same rank-cap parameter
+                scan_query = str(scan_query).replace("\n", " ")
+                for param in prepared_statement.prepared_statement_parameters:
+                    scan_query = self._parametrize_query(param.name, scan_query)
+                scan_query = self._parametrize_query(self.RANK_CAP_PARAM, scan_query)
+                self._scan_prepared_statements[
+                    prepared_statement.prepared_statement_index
+                ] = sql.text(scan_query)
+                self._rank_cap_by_serving_index.setdefault(
+                    prepared_statement.prepared_statement_index,
+                    prepared_statement.collect_n,
+                )
             query_online = sql.text(query_online)
             if batch:
                 query_online = query_online.bindparams(
@@ -519,12 +548,25 @@ class OnlineStoreSqlClient:
                 "collect feature groups; read each feature group's rows "
                 "directly, or use get_feature_vector for the folded features."
             )
+        # prefer the direct scan statements (backward ordered-index read stopping
+        # at the cap) over the windowed plan, which ranks the whole entity history
+        direct = {
+            index: self._scan_prepared_statements[index]
+            for index in collect_statements
+            if index in self._scan_prepared_statements
+        }
         rows = self._single_vector_result(
             entry,
-            collect_statements,
+            direct or collect_statements,
             raw_rows=True,
             scan_limit=limit,
         )
+        if direct:
+            # the direct statement returns newest-first; the windowed one already
+            # carries the feature view's output order
+            for index in direct:
+                if self._collect_ascending_by_serving_index.get(index):
+                    rows = list(reversed(rows))
         return rows[:limit] if limit is not None else rows
 
     def _single_vector_result(
