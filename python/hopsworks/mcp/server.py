@@ -16,9 +16,9 @@
 
 """MCP server for Hopsworks.
 
-`build_mcp()` is the factory. Shell-capable tools (`TerminalTools`,
-`BrewerTools`) execute arbitrary commands as the server process, so they are
-**opt-in** (`enable_shell_tools=True`) rather than always registered. Transport
+`build_mcp()` is the factory. The shell-capable `TerminalTools` executes arbitrary
+commands as the server process, so it is **opt-in** (`enable_shell_tools=True`)
+rather than always registered. Transport
 authentication is also opt-in via an `auth` provider; `run_server` refuses to
 expose a non-loopback HTTP transport without one.
 
@@ -40,7 +40,6 @@ from .prompts import ProjectPrompts, SystemPrompts
 from .resources.project import ProjectResources
 from .tools import (
     AuthTools,
-    BrewerTools,
     DatasetTools,
     FeatureGroupTools,
     JobTools,
@@ -80,10 +79,9 @@ def build_mcp(
     """Construct a Hopsworks MCP server.
 
     Parameters:
-        enable_shell_tools: Register the command-executing tools
-            (``TerminalTools``, ``BrewerTools``). Off by default — these grant
-            arbitrary code execution as the server process and must be turned on
-            deliberately.
+        enable_shell_tools: Register the command-executing ``TerminalTools``.
+            Off by default — it grants arbitrary code execution as the server
+            process and must be turned on deliberately.
         auth: Optional transport auth provider. When set, the HTTP transport
             rejects unauthenticated requests.
 
@@ -103,7 +101,6 @@ def build_mcp(
 
     if enable_shell_tools:
         TerminalTools(server)
-        BrewerTools(server)
 
     @server.custom_route("/health", methods=["GET"])
     async def health(_):

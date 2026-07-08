@@ -754,7 +754,7 @@ class FeatureStore:
         version: int | None = None,
         description: str = "",
         online_enabled: bool = False,
-        time_travel_format: str | None = "DELTA",
+        time_travel_format: str | None = None,
         partition_key: list[str] | None = None,
         primary_key: list[str] | None = None,
         foreign_key: list[str] | None = None,
@@ -831,7 +831,7 @@ class FeatureStore:
             version: Version of the feature group to create, defaults to `None` and will create the feature group with incremented version from the last version in the feature store.
             description: A string describing the contents of the feature group to improve discoverability for Data Scientists.
             online_enabled: Define whether the feature group should be made available also in the online feature store for low latency access.
-            time_travel_format: Format used for time travel, either `"DELTA"`, `"HUDI"`, `"ICEBERG"`, or `None` to disable time travel, defaults to `"DELTA"`.
+            time_travel_format: Format used for time travel, either `"DELTA"`, `"HUDI"`, `"ICEBERG"`, or `None` to disable time travel; when left unset, the format of `data_source` is used if it specifies one, otherwise it falls back to `"DELTA"`.
             partition_key: A list of feature names to be used as partition key when writing the feature data to the offline storage, defaults to empty list `[]`.
             primary_key:
                 A list of feature names to be used as primary key for the feature group.
@@ -963,6 +963,10 @@ class FeatureStore:
                 DeprecationWarning,
                 stacklevel=2,
             )
+        # When the format is left unset, use the one the data source advertises
+        # if it specifies one, otherwise fall back to the default format.
+        if time_travel_format is None:
+            time_travel_format = data_source.format or "DELTA"
         feature_group_object = feature_group.FeatureGroup(
             name=name,
             version=version,
@@ -1008,7 +1012,7 @@ class FeatureStore:
         version: int,
         description: str | None = "",
         online_enabled: bool | None = False,
-        time_travel_format: str | None = "DELTA",
+        time_travel_format: str | None = None,
         partition_key: list[str] | None = None,
         primary_key: list[str] | None = None,
         foreign_key: list[str] | None = None,
@@ -1039,6 +1043,7 @@ class FeatureStore:
         online_disk: bool | None = None,
         sink_enabled: bool | None = False,
         sink_job_conf: dict[str, Any] | None = None,
+        tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         partitioned_by: list[str] | None = None,
         online_partition_columns: bool = False,
     ) -> (
@@ -1078,7 +1083,7 @@ class FeatureStore:
             version: Version of the feature group to retrieve or create.
             description: A string describing the contents of the feature group to improve discoverability for Data Scientists.
             online_enabled: Define whether the feature group should be made available also in the online feature store for low latency access.
-            time_travel_format: Format used for time travel, either `"DELTA"`, `"HUDI"`, `"ICEBERG"`, or `None` to disable time travel, defaults to `"DELTA"`.
+            time_travel_format: Format used for time travel, either `"DELTA"`, `"HUDI"`, `"ICEBERG"`, or `None` to disable time travel; when left unset, the format of `data_source` is used if it specifies one, otherwise it falls back to `"DELTA"`.
             partition_key: A list of feature names to be used as partition key when writing the feature data to the offline storage, defaults to empty list `[]`.
             primary_key:
                 A list of feature names to be used as primary key for the feature group.
@@ -1179,6 +1184,13 @@ class FeatureStore:
                 Enable copying data from the configured data source to the feature group.
             sink_job_conf:
                 Optional configuration describing the sink job to create when `sink_enabled` is True.
+            tags:
+                Optionally, define tags for the feature group. Tags can be provided as:
+                - A single Tag object
+                - A dictionary with 'name' and 'value' keys (e.g., {"name": "tag1", "value": "value1"})
+                - A list of Tag objects
+                - A list of dictionaries with 'name' and 'value' keys
+                Tags will be attached to the feature group after it is saved.
             partitioned_by:
                 A list of time grains derived from `event_time` to partition the offline data by, e.g. `["year", "month", "day"]`.
                 Supported grains are `year`, `month`, `week`, `day`, and `hour`.
@@ -1193,6 +1205,7 @@ class FeatureStore:
         """
         feature_group_object = self._feature_group_api._get(self.id, name, version)
         if not feature_group_object:
+            normalized_tags = self._normalize_tags(tags)
             if not data_source:
                 data_source = ds.DataSource(
                     storage_connector=storage_connector, path=path
@@ -1204,6 +1217,11 @@ class FeatureStore:
                     DeprecationWarning,
                     stacklevel=2,
                 )
+            # When the format is left unset, use the one the data source
+            # advertises if it specifies one, otherwise fall back to the
+            # default format.
+            if time_travel_format is None:
+                time_travel_format = data_source.format or "DELTA"
             feature_group_object = feature_group.FeatureGroup(
                 name=name,
                 version=version,
@@ -1234,6 +1252,7 @@ class FeatureStore:
                 online_disk=online_disk,
                 sink_enabled=sink_enabled,
                 sink_job_conf=sink_job_conf,
+                tags=normalized_tags,
                 partitioned_by=partitioned_by,
                 online_partition_columns=online_partition_columns,
             )
@@ -1286,7 +1305,7 @@ class FeatureStore:
             query:
                 A string containing a SQL query valid for the target data source.
                 The query will be used to pull data from the data sources when the feature group is used. **[DEPRECATED: Use `data_source` instead.]**
-            data_format: If the external feature groups refers to a directory with data, the data format to use when reading it.
+            data_format: If the external feature groups refers to a directory with data, the data format to use when reading it; when left unset, the format of `data_source` is used if it specifies one.
             path: The location within the scope of the storage connector, from where to read the data for the external feature group. **[DEPRECATED: Use `data_source` instead.]**
             options:
                 Additional options to be used by the engine when reading data from the specified storage connector.
@@ -1371,6 +1390,10 @@ class FeatureStore:
                 DeprecationWarning,
                 stacklevel=2,
             )
+        # When the format is left unset, use the one the data source advertises
+        # if it specifies one.
+        if data_format is None:
+            data_format = data_source.format
         feature_group_object = feature_group.ExternalFeatureGroup(
             name=name,
             data_format=data_format,
@@ -1482,6 +1505,7 @@ class FeatureStore:
                 The query will be used to pull data from the data sources when the feature group is used. **[DEPRECATED: Use `data_source` instead.]**
             data_format:
                 If the external feature groups refers to a directory with data, the data format to use when reading it.
+                When left unset, the format of `data_source` is used if it specifies one.
             path:
                 The location within the scope of the storage connector, from where to read the data for the external feature group. **[DEPRECATED: Use `data_source` instead.]**
             options:
@@ -1588,6 +1612,10 @@ class FeatureStore:
                 DeprecationWarning,
                 stacklevel=2,
             )
+        # When the format is left unset, use the one the data source advertises
+        # if it specifies one.
+        if data_format is None:
+            data_format = data_source.format
         feature_group_object = feature_group.ExternalFeatureGroup(
             name=name,
             data_format=data_format,
@@ -2178,6 +2206,7 @@ class FeatureStore:
         transformation_functions: dict[str, TransformationFunction] | None = None,
         logging_enabled: bool | None = False,
         extra_log_columns: list[feature.Feature] | list[dict[str, str]] | None = None,
+        tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
     ) -> feature_view.FeatureView:
         """Get feature view metadata object or create a new one if it doesn't exist.
 
@@ -2232,6 +2261,13 @@ class FeatureStore:
                 It can be a list of Feature objects or list a dictionaries that contains the the name and type of the columns as keys.
                 Defaults to `None`, no extra log columns.
                 Setting this argument implicitly enables feature logging.
+            tags:
+                Optionally, define tags for the feature view. Tags can be provided as:
+                - A single Tag object
+                - A dictionary with 'name' and 'value' keys (e.g., {"name": "tag1", "value": "value1"})
+                - A list of Tag objects
+                - A list of dictionaries with 'name' and 'value' keys
+                Tags will be attached to the feature view after it is saved.
 
         Returns:
             The feature view metadata object.
@@ -2249,6 +2285,7 @@ class FeatureStore:
                 transformation_functions=transformation_functions or [],
                 logging_enabled=logging_enabled,
                 extra_log_columns=extra_log_columns,
+                tags=tags,
             )
         return fv_object
 

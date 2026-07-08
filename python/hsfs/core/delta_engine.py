@@ -105,6 +105,7 @@ class DeltaEngine:
     DELTA_QUERY_TIME_TRAVEL_AS_OF_VERSION = "versionAsOf"
     DELTA_ENABLE_CHANGE_DATA_FEED = "delta.enableChangeDataFeed"
     DELTA_DOT_PREFIX = "delta."
+    DELTA_GLUE_CATALOG_IMPL = "org.apache.spark.sql.delta.catalog.DeltaCatalog"
     APPEND = "append"
 
     def __init__(
@@ -126,7 +127,7 @@ class DeltaEngine:
                 # Classic Spark: catalog config is mutable at runtime.
                 self._spark_session.conf.set(
                     "spark.sql.catalog.spark_catalog",
-                    "org.apache.spark.sql.delta.catalog.DeltaCatalog",
+                    self.DELTA_GLUE_CATALOG_IMPL,
                 )
             else:
                 # Spark Connect: static config — must be set at builder time.
@@ -472,7 +473,31 @@ class DeltaEngine:
                 dataset.alias(updates_alias), merge_query_str
             ).whenMatchedUpdateAll().whenNotMatchedInsertAll().execute()
 
+        self._sync_glue_catalog(location)
         return self._get_last_commit_metadata(self._spark_session, location)
+
+    def _sync_glue_catalog(self, location: str) -> None:
+        """Register the Delta table in the AWS Glue Data Catalog for discoverability.
+
+        Delta keeps its current state in the on-path transaction log, so the
+        catalog entry is only a `name -> location` registration that lets
+        external engines find the table; the log stays authoritative.
+        The registration is created (and its schema kept current) directly
+        through the AWS Glue API rather than Spark SQL DDL, because Delta's
+        `DeltaCatalog` only works as the session catalog and registering through
+        a named catalog raises a null-delegate `NullPointerException`.
+
+        Does nothing when the feature group has no Glue connector or runs under
+        Spark Connect (the schema sync requires JVM bridge access for the Glue
+        client credentials).
+        """
+        from hsfs.core.glue_catalog import GlueCatalog
+
+        glue = GlueCatalog._for_feature_group(self._feature_group)
+        if glue is None or self._spark_context is None:
+            return
+
+        glue._register_delta_table(location)
 
     def _setup_delta_rs(self):
         _logger.debug("Setting up delta-rs environment")

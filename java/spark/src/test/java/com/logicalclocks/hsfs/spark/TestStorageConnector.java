@@ -628,4 +628,81 @@ public class TestStorageConnector {
       SparkEngine.setInstance(null);
     }
   }
+
+  @Nested
+  class Glue {
+    StorageConnector.GlueConnector glueConnector = new StorageConnector.GlueConnector();
+
+    @BeforeEach
+    public void setup() {
+      glueConnector.setName("testGlue");
+      glueConnector.setStorageConnectorType(StorageConnectorType.GLUE);
+      glueConnector.setCatalogId("123456789012");
+      glueConnector.setRegion("eu-north-1");
+      glueConnector.setDatabase("test_db");
+      glueConnector.setTable("test_table");
+      glueConnector.setAccessKey("testAccessKey");
+      glueConnector.setSecretKey("testSecretKey");
+      glueConnector.setSessionToken("testSessionToken");
+      List<Option> arguments = new java.util.ArrayList<>();
+      arguments.add(new Option("fs.s3a.endpoint", "testEndpoint"));
+      glueConnector.setArguments(arguments);
+    }
+
+    @Test
+    void test_read() throws Exception {
+      // Arrange
+      StorageConnector.GlueConnector spyConnector = spy(glueConnector);
+      doNothing().when(spyConnector).update();
+
+      SparkEngine sparkEngine = Mockito.mock(SparkEngine.class);
+      SparkEngine.setInstance(sparkEngine);
+
+      StorageConnectorUtils storageConnectorUtils = new StorageConnectorUtils();
+      ArgumentCaptor<String> formatArg = ArgumentCaptor.forClass(String.class);
+      ArgumentCaptor<Map> mapArg = ArgumentCaptor.forClass(Map.class);
+      ArgumentCaptor<String> pathArg = ArgumentCaptor.forClass(String.class);
+
+      DataSource dataSource = new DataSource();
+      dataSource.setPath("s3://bucket/warehouse/test_db.db/test_table");
+
+      // The connector's fs.s3a.* arguments are forwarded as spark options.
+      Map<String, String> expectedOptions = new HashMap<>();
+      expectedOptions.put("fs.s3a.endpoint", "testEndpoint");
+
+      // Act
+      storageConnectorUtils.read(spyConnector, dataSource, "iceberg", new HashMap<String, String>());
+
+      // Assert
+      Mockito.verify(sparkEngine).read(Mockito.any(), formatArg.capture(), mapArg.capture(), pathArg.capture());
+      Assertions.assertEquals("iceberg", formatArg.getValue());
+      Assertions.assertEquals(expectedOptions, mapArg.getValue());
+      // Glue forwards the data source S3 location unchanged (no bucket to prepend).
+      Assertions.assertEquals("s3://bucket/warehouse/test_db.db/test_table", pathArg.getValue());
+      // reset
+      SparkEngine.setInstance(null);
+    }
+
+    @Test
+    void testGlueHadoopConf() throws IOException, FeatureStoreException {
+      // Act: Glue reuses the S3 hadoop credentials setup.
+      SparkEngine.getInstance().setupConnectorHadoopConf(glueConnector);
+      SparkContext sc = SparkEngine.getInstance().getSparkSession().sparkContext();
+      // Assert
+      Assertions.assertEquals("testAccessKey", sc.hadoopConfiguration().get(Constants.S3_ACCESS_KEY_ENV));
+      Assertions.assertEquals("testSecretKey", sc.hadoopConfiguration().get(Constants.S3_SECRET_KEY_ENV));
+      Assertions.assertEquals("testSessionToken", sc.hadoopConfiguration().get(Constants.S3_SESSION_KEY_ENV));
+      Assertions.assertEquals(Constants.S3_TEMPORARY_CREDENTIAL_PROVIDER,
+        sc.hadoopConfiguration().get(Constants.S3_CREDENTIAL_PROVIDER_ENV));
+      Assertions.assertEquals("testEndpoint", sc.hadoopConfiguration().get(Constants.S3_ENDPOINT));
+    }
+
+    @Test
+    void testGetPath() throws FeatureStoreException, IOException {
+      // Glue has no fixed bucket: the table's full S3 location comes from the catalog, so the
+      // path is returned unchanged.
+      Assertions.assertEquals("s3://bucket/warehouse/test_db.db/test_table",
+        glueConnector.getPath("s3://bucket/warehouse/test_db.db/test_table"));
+    }
+  }
 }

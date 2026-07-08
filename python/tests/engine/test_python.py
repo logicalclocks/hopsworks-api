@@ -2469,6 +2469,56 @@ class TestPython:
         assert result is transformed_splits
         assert mock_fit_and_transform.call_args[0][2] is raw_splits
 
+    def test_random_split_is_reproducible_with_seed(self, mocker):
+        # A user-provided seed must make the random split reproducible across
+        # runs (the documented `seed` contract that the Spark engine honors).
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        python_engine = python.Engine()
+        df = pd.DataFrame({"col": range(1000)})
+        td = training_dataset.TrainingDataset(
+            name="test",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={"train": 0.8, "test": 0.2},
+            train_split="train",
+            seed=123,
+            id=10,
+        )
+
+        # Act
+        first = python_engine._random_split(df.copy(), td)
+        second = python_engine._random_split(df.copy(), td)
+
+        # Assert
+        for name in ("train", "test"):
+            assert first[name]["col"].tolist() == second[name]["col"].tolist()
+
+    def test_random_split_depends_on_seed(self, mocker):
+        # Different seeds must yield different splits, proving the seed is
+        # actually honored rather than ignored or hard-coded.
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        python_engine = python.Engine()
+        df = pd.DataFrame({"col": range(1000)})
+
+        def train_rows(seed):
+            td = training_dataset.TrainingDataset(
+                name="test",
+                version=1,
+                data_format="CSV",
+                featurestore_id=99,
+                splits={"train": 0.8, "test": 0.2},
+                train_split="train",
+                seed=seed,
+                id=10,
+            )
+            return python_engine._random_split(df.copy(), td)["train"]["col"].tolist()
+
+        # Act / Assert
+        assert train_rows(1) != train_rows(2)
+
     def test_split_labels(self):
         # Arrange
         python_engine = python.Engine()

@@ -57,7 +57,12 @@ class FeatureGroupApi:
             "featuregroups",
         ]
         query_params = {
-            "expand": ["features", "expectationsuite", "transformationfunctions"]
+            "expand": [
+                "features",
+                "expectationsuite",
+                "transformationfunctions",
+                "mandatorytags",
+            ]
         }
         headers = {"content-type": "application/json"}
         return feature_group_instance.update_from_response_json(
@@ -84,7 +89,12 @@ class FeatureGroupApi:
             name,
         ]
         query_params = {
-            "expand": ["features", "expectationsuite", "transformationfunctions"]
+            "expand": [
+                "features",
+                "expectationsuite",
+                "transformationfunctions",
+                "mandatorytags",
+            ]
         }
         return _client._send_request("GET", path_params, query_params)
 
@@ -104,7 +114,12 @@ class FeatureGroupApi:
             name,
         ]
         query_params = {
-            "expand": ["features", "expectationsuite", "transformationfunctions"],
+            "expand": [
+                "features",
+                "expectationsuite",
+                "transformationfunctions",
+                "mandatorytags",
+            ],
             "version": version,
         }
         return _client._send_request("GET", path_params, query_params)
@@ -199,7 +214,12 @@ class FeatureGroupApi:
             feature_group_id,
         ]
         query_params = {
-            "expand": ["features", "expectationsuite", "transformationfunctions"]
+            "expand": [
+                "features",
+                "expectationsuite",
+                "transformationfunctions",
+                "mandatorytags",
+            ]
         }
         fg_json = _client._send_request("GET", path_params, query_params)
         if (

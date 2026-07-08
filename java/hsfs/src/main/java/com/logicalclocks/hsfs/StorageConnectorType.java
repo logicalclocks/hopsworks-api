@@ -29,5 +29,6 @@ public enum StorageConnectorType {
   BIGQUERY,
   SQL,
   SAP_HANA,
-  MONGODB
+  MONGODB,
+  GLUE
 }

@@ -2624,6 +2624,7 @@ class FeatureView:
         transformation_context: dict[str, Any] = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
         n_processes: int | None = None,
+        tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         **kwargs,
     ) -> tuple[
         TrainingDatasetDataFrameTypes,
@@ -2734,10 +2735,13 @@ class FeatureView:
                 Independent transformations run concurrently; a chained sequence runs in order.
                 Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
                 Ignored by the Spark engine, which pushes transformations down to Spark.
+            tags: Tags to attach to the training dataset for better discoverability.
 
         Returns:
             (X, y): Tuple of dataframe of features and labels. If there are no labels, y returns `None`.
         """
+        normalized_tags = tag.Tag._normalize(tags)
+
         td = training_dataset.TrainingDataset(
             name=self.name,
             version=None,
@@ -2752,6 +2756,7 @@ class FeatureView:
             training_dataset_type=training_dataset.TrainingDataset.IN_MEMORY,
             extra_filter=extra_filter,
             lookback=Lookback.from_user_input(lookback),
+            tags=normalized_tags,
         )
         td, df = self._feature_view_engine._get_training_data(
             self,
@@ -2794,6 +2799,7 @@ class FeatureView:
         transformation_context: dict[str, Any] = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
         n_processes: int | None = None,
+        tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         **kwargs,
     ) -> tuple[
         TrainingDatasetDataFrameTypes,
@@ -2916,6 +2922,7 @@ class FeatureView:
                 Independent transformations run concurrently; a chained sequence runs in order.
                 Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
                 Ignored by the Spark engine, which pushes transformations down to Spark.
+            tags: Tags to attach to the training dataset for better discoverability.
 
         Returns:
             (X_train, X_test, y_train, y_test):
@@ -2924,6 +2931,8 @@ class FeatureView:
         self._validate_train_test_split(
             test_size=test_size, train_end=train_end, test_start=test_start
         )
+        normalized_tags = tag.Tag._normalize(tags)
+
         td = training_dataset.TrainingDataset(
             name=self.name,
             version=None,
@@ -2942,6 +2951,7 @@ class FeatureView:
             training_dataset_type=training_dataset.TrainingDataset.IN_MEMORY,
             extra_filter=extra_filter,
             lookback=Lookback.from_user_input(lookback),
+            tags=normalized_tags,
         )
         td, df = self._feature_view_engine._get_training_data(
             self,
@@ -3001,6 +3011,7 @@ class FeatureView:
         transformation_context: dict[str, Any] = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
         n_processes: int | None = None,
+        tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         **kwargs,
     ) -> tuple[
         TrainingDatasetDataFrameTypes,
@@ -3138,6 +3149,7 @@ class FeatureView:
                 Independent transformations run concurrently; a chained sequence runs in order.
                 Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
                 Ignored by the Spark engine, which pushes transformations down to Spark.
+            tags: Tags to attach to the training dataset for better discoverability.
 
         Returns:
             (X_train, X_val, X_test, y_train, y_val, y_test):
@@ -3151,6 +3163,8 @@ class FeatureView:
             validation_end=validation_end,
             test_start=test_start,
         )
+        normalized_tags = tag.Tag._normalize(tags)
+
         td = training_dataset.TrainingDataset(
             name=self.name,
             version=None,
@@ -3172,6 +3186,7 @@ class FeatureView:
             training_dataset_type=training_dataset.TrainingDataset.IN_MEMORY,
             extra_filter=extra_filter,
             lookback=Lookback.from_user_input(lookback),
+            tags=normalized_tags,
         )
         td, df = self._feature_view_engine._get_training_data(
             self,

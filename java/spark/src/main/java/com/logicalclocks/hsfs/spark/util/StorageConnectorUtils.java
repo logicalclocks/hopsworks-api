@@ -243,6 +243,35 @@ public class StorageConnectorUtils {
   }
 
   /**
+   * Reads a Glue catalog table into a spark dataframe using the GlueConnector.
+   *
+   * <p>Glue is a metadata catalog over data stored in S3, so reading mirrors the S3 connector: the
+   * underlying data lives at an S3 location (the data source path) and is read directly with the
+   * table's data format (e.g. `iceberg`, `delta`, `parquet`). The connector's AWS credentials are
+   * pushed into the Hadoop configuration the same way as for S3.</p>
+   *
+   * @param connector GlueConnector object.
+   * @param dataSource Data source object.
+   * @param dataFormat specify the table format to be read, e.g. `iceberg`, `delta`, `parquet`.
+   * @param options Any additional key/value options to be passed to the connector.
+   * @return Spark dataframe.
+   * @throws FeatureStoreException If unable to retrieve StorageConnector from the feature store.
+   * @throws IOException Generic IO exception.
+   */
+  public Dataset<Row> read(StorageConnector.GlueConnector connector, DataSource dataSource, String dataFormat,
+                           Map<String, String> options) throws FeatureStoreException, IOException {
+    connector.update();
+    Map<String, String> readOptions = connector.sparkOptions(dataSource);
+    // merge user spark options on top of default spark options
+    if (options != null && !options.isEmpty()) {
+      readOptions.putAll(options);
+    }
+    // The data source path is the table's physical S3 location, resolved from the Glue catalog at
+    // create time. SparkEngine.read rewrites the s3:// scheme to s3a:// before loading.
+    return SparkEngine.getInstance().read(connector, dataFormat, readOptions, dataSource.getPath());
+  }
+
+  /**
    * Reads a query into a spark dataframe using the SqlConnector.
    *
    * @param connector SqlConnector object.
@@ -299,6 +328,8 @@ public class StorageConnectorUtils {
       return read((StorageConnector.BigqueryConnector) connector, dataSource, options);
     } else if (connector instanceof StorageConnector.SqlConnector) {
       return read((StorageConnector.SqlConnector) connector, dataSource, options);
+    } else if (connector instanceof StorageConnector.GlueConnector) {
+      return read((StorageConnector.GlueConnector) connector, dataSource, dataFormat, options);
     } else if (connector instanceof StorageConnector.KafkaConnector) {
       throw new UnsupportedOperationException("Reading a Kafka Stream into a static Spark Dataframe is not supported.");
     } else {

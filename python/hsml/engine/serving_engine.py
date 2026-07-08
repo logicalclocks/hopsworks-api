@@ -71,6 +71,42 @@ class ServingEngine:
 
         self._engine = local_engine.LocalEngine()
 
+    def _set_tag(self, deployment_instance, name: str, value):
+        """Attach a name/value tag to a deployment.
+
+        Parameters:
+            deployment_instance: the deployment to tag
+            name: tag name
+            value: tag value
+        """
+        self._serving_api._set_tag(deployment_instance, name, value)
+
+    def _delete_tag(self, deployment_instance, name: str):
+        """Remove a tag from a deployment.
+
+        Parameters:
+            deployment_instance: the deployment to remove the tag from
+            name: tag name to remove
+        """
+        self._serving_api._delete_tag(deployment_instance, name)
+
+    def _get_tag(self, deployment_instance, name: str):
+        """Get tag with a certain name.
+
+        Parameters:
+            deployment_instance: the deployment to get the tag from
+            name: tag name
+        """
+        return self._serving_api._get_tag(deployment_instance, name)
+
+    def _get_tags(self, deployment_instance):
+        """Get all tags for a deployment.
+
+        Parameters:
+            deployment_instance: the deployment to get tags from
+        """
+        return self._serving_api._get_tags(deployment_instance)
+
     def _poll_deployment_status(
         self, deployment_instance, status: str, await_status: int, update_progress=None
     ):
@@ -522,8 +558,10 @@ class ServingEngine:
     def _save(self, deployment_instance, await_update: int):
         # Local paths on script_file / config_file are auto-uploaded under
         # /Projects/<p>/Deployments/<name>/resources/ and rewritten to
-        # HopsFS paths in-memory. The fields then hold HopsFS paths, so
-        # re-saving without reassigning the field is a no-op for uploads.
+        # HopsFS paths in-memory. On update of a deployment fetched from the
+        # backend, these fields hold backend-managed references (e.g. a bare
+        # basename), which are left untouched; only newly-assigned local
+        # paths are re-uploaded.
         self._upload_local_serving_files(deployment_instance)
 
         if deployment_instance.id is None:
@@ -536,10 +574,13 @@ class ServingEngine:
 
         Rewrites the in-memory fields to HopsFS paths. HopsFS / ``None`` are
         left untouched. Each role uploads to its own subdirectory to avoid
-        basename collisions.
+        basename collisions. On update of a persisted deployment, fields that
+        are not new local paths (e.g. backend-managed references returned by
+        ``get_deployment``) are passed through unchanged.
         """
         predictor = deployment_instance._predictor
         deployment_name = deployment_instance.name
+        is_update = deployment_instance.id is not None
 
         targets = [
             (predictor, "script_file", "predictor", "script_file"),
@@ -562,6 +603,7 @@ class ServingEngine:
                 getattr(obj, field),
                 field_name=field_label,
                 subdir=subdir,
+                is_update=is_update,
             )
             setattr(obj, field, resolved)
 
