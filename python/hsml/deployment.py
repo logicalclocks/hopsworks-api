@@ -14,7 +14,7 @@
 #   limitations under the License.
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from hopsworks_apigen import public
 from hopsworks_common import client, usage, util
@@ -161,6 +161,74 @@ class Deployment:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
         self._serving_engine._delete(self, force)
+
+    @public
+    @usage._method_logger
+    def add_tag(self, name: str, value: Any):
+        """Attach a tag to a deployment.
+
+        A tag consists of a <name,value> pair.
+        Tag names are unique identifiers across the whole cluster.
+        The value of a tag can be any valid json - primitives, arrays or json objects.
+
+        Parameters:
+            name: Name of the tag to be added.
+            value: Value of the tag to be added.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to add the tag.
+        """
+        self._serving_engine._set_tag(self, name, value)
+
+    @public
+    @usage._method_logger
+    def delete_tag(self, name: str):
+        """Delete a tag attached to a deployment.
+
+        Parameters:
+            name: Name of the tag to be removed.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to delete the tag.
+        """
+        self._serving_engine._delete_tag(self, name)
+
+    @public
+    def get_tag(self, name: str) -> Any | None:
+        """Get the value of a tag attached to a deployment.
+
+        Parameters:
+            name: Name of the tag to get.
+
+        Returns:
+            tag value, or `None` if it does not exist.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the tag.
+        """
+        return self._serving_engine._get_tag(self, name)
+
+    @public
+    def get_tags(self) -> dict[str, Any]:
+        """Retrieve all tags attached to a deployment.
+
+        Returns:
+            Dictionary of tag name/values.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the tags.
+        """
+        return self._serving_engine._get_tags(self)
+
+    @public
+    @property
+    def missing_mandatory_tags(self) -> list[dict[str, Any]]:
+        """Mandatory tags configured for deployments that this deployment is missing.
+
+        Populated from the backend response.
+        Empty when all mandatory deployment tags are set.
+        """
+        return self._predictor._missing_mandatory_tags
 
     @public
     def get_state(self) -> PredictorState:

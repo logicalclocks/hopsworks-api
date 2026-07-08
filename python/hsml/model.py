@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Any
 
 import humps
 from hopsworks_apigen import public
-from hopsworks_common import client, usage, util
+from hopsworks_common import client, tag, usage, util
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
 from hopsworks_common.constants import MODEL_REGISTRY
 from hsml.core import explicit_provenance
@@ -38,7 +38,7 @@ from hsml.schema import Schema
 if TYPE_CHECKING:
     from hsfs import feature_view
     from hsfs.core.feature_monitoring_config import FeatureMonitoringConfig
-    from hsml import deployment, tag
+    from hsml import deployment
     from hsml.inference_batcher import InferenceBatcher
     from hsml.inference_logger import InferenceLogger
     from hsml.resources import PredictorResources
@@ -71,16 +71,18 @@ class Model:
         input_example=None,
         framework=None,
         model_registry_id=None,
-        # unused, but needed since they come in the backend response
-        tags=None,
+        tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         href=None,
         feature_view=None,
         training_dataset_version=None,
+        missing_mandatory_tags: list[dict[str, Any]] | None = None,
         **kwargs,
     ):
         self._id = id
         self._name = name
         self._version = version
+        self._missing_mandatory_tags = missing_mandatory_tags or []
+        self._tags = tag.Tag._normalize(tags)
 
         if description is None:
             self._description = "A collection of models for " + name
@@ -380,6 +382,7 @@ class Model:
         env_vars: dict | None = None,
         vllm_variant: str | None = None,
         vllm_image_tag: str | None = None,
+        tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
     ) -> deployment.Deployment:
         """Deploy the model.
 
@@ -418,6 +421,9 @@ class Model:
             env_vars: Environment variables to set on the predictor.
             vllm_variant: vLLM image variant for vLLM deployments. One of `'VLLM'` or `'VLLM_OMNI'`. Ignored for non-vLLM model servers.
             vllm_image_tag: vLLM image tag override. `None` uses the cluster default; if set, it should match one of the tags made available by a cluster administrator. Ignored for non-vLLM model servers.
+            tags: Optionally the tags to attach to the deployment when it is created, in the same shapes accepted by feature groups.
+                A single [`Tag`][hopsworks.tag.Tag], a `{"name": "owner", "value": "team-a"}` dict, or a list of either, for example `[{"name": "owner", "value": "team-a"}]`.
+                The tags ride the create request, so any mandatory deployment tags missing from them cause the backend to reject the creation.
 
         Returns:
             The deployment metadata object of a new or existing deployment.
@@ -445,13 +451,14 @@ class Model:
             env_vars=env_vars,
             vllm_variant=vllm_variant,
             vllm_image_tag=vllm_image_tag,
+            tags=tags,
         )
 
         return predictor.deploy()
 
     @public
     @usage._method_logger
-    def add_tag(self, name: str, value: str | dict):
+    def add_tag(self, name: str, value: Any):
         """Attach a tag to a model.
 
         A tag consists of a <name,value> pair. Tag names are unique identifiers across the whole cluster.
@@ -468,7 +475,7 @@ class Model:
 
     @public
     @usage._method_logger
-    def set_tag(self, name: str, value: str | dict):
+    def set_tag(self, name: str, value: Any):
         """Deprecated: Use add_tag instead.
 
         Parameters:
@@ -495,15 +502,20 @@ class Model:
         """
         self._model_engine._delete_tag(model_instance=self, name=name)
 
+    def _update_framework(self, framework: str) -> Model:
+        """Update the model's framework."""
+        self._model_engine._update_framework(self, framework)
+        return self
+
     @public
-    def get_tag(self, name: str) -> str | None:
-        """Get the tags of a model.
+    def get_tag(self, name: str) -> Any | None:
+        """Get the value of a tag attached to a model.
 
         Parameters:
             name: Name of the tag to get.
 
         Returns:
-            tag value or `None` if it does not exist.
+            tag value, or `None` if it does not exist.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the tag.
@@ -511,16 +523,26 @@ class Model:
         return self._model_engine._get_tag(model_instance=self, name=name)
 
     @public
-    def get_tags(self) -> dict[str, tag.Tag]:
-        """Retrieves all tags attached to a model.
+    def get_tags(self) -> dict[str, Any]:
+        """Retrieve all tags attached to a model.
 
         Returns:
-            Dictionary of tags.
+            Dictionary of tag name/values.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case of a server error.
         """
         return self._model_engine._get_tags(model_instance=self)
+
+    @public
+    @property
+    def missing_mandatory_tags(self) -> list[dict[str, Any]]:
+        """Mandatory tags configured for models that this model is missing.
+
+        Populated from the backend response.
+        Empty when all mandatory model tags are set.
+        """
+        return self._missing_mandatory_tags
 
     @public
     def get_url(self):
@@ -729,6 +751,8 @@ class Model:
         json_decamelized = humps.decamelize(json_dict)
         if "type" in json_decamelized:  # backwards compatibility
             _ = json_decamelized.pop("type")
+        if "tags" in json_decamelized:
+            _ = json_decamelized.pop("tags")
         self.__init__(**json_decamelized)
         return self
 
@@ -736,7 +760,7 @@ class Model:
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
-        return {
+        model_dict = {
             "id": self._name + "_" + str(self._version),
             "projectName": self._project_name,
             "name": self._name,
@@ -751,6 +775,10 @@ class Model:
             "featureView": util._feature_view_to_json(self._feature_view),
             "trainingDatasetVersion": self._training_dataset_version,
         }
+        tags_dict = tag.Tag._tags_to_dict(self._tags)
+        if tags_dict:
+            model_dict["tags"] = tags_dict
+        return model_dict
 
     @public
     @property

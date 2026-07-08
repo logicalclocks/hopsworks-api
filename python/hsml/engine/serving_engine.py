@@ -70,6 +70,42 @@ class ServingEngine:
 
         self._engine = local_engine.LocalEngine()
 
+    def _set_tag(self, deployment_instance, name: str, value):
+        """Attach a name/value tag to a deployment.
+
+        Parameters:
+            deployment_instance: the deployment to tag
+            name: tag name
+            value: tag value
+        """
+        self._serving_api._set_tag(deployment_instance, name, value)
+
+    def _delete_tag(self, deployment_instance, name: str):
+        """Remove a tag from a deployment.
+
+        Parameters:
+            deployment_instance: the deployment to remove the tag from
+            name: tag name to remove
+        """
+        self._serving_api._delete_tag(deployment_instance, name)
+
+    def _get_tag(self, deployment_instance, name: str):
+        """Get tag with a certain name.
+
+        Parameters:
+            deployment_instance: the deployment to get the tag from
+            name: tag name
+        """
+        return self._serving_api._get_tag(deployment_instance, name)
+
+    def _get_tags(self, deployment_instance):
+        """Get all tags for a deployment.
+
+        Parameters:
+            deployment_instance: the deployment to get tags from
+        """
+        return self._serving_api._get_tags(deployment_instance)
+
     def _poll_deployment_status(
         self, deployment_instance, status: str, await_status: int, update_progress=None
     ):

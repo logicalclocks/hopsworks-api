@@ -1027,6 +1027,7 @@ class FeatureStore:
         online_disk: bool | None = None,
         sink_enabled: bool | None = False,
         sink_job_conf: dict[str, Any] | None = None,
+        tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
     ) -> (
         feature_group.FeatureGroup
         | feature_group.ExternalFeatureGroup
@@ -1165,12 +1166,20 @@ class FeatureStore:
                 Enable copying data from the configured data source to the feature group.
             sink_job_conf:
                 Optional configuration describing the sink job to create when `sink_enabled` is True.
+            tags:
+                Optionally, define tags for the feature group. Tags can be provided as:
+                - A single Tag object
+                - A dictionary with 'name' and 'value' keys (e.g., {"name": "tag1", "value": "value1"})
+                - A list of Tag objects
+                - A list of dictionaries with 'name' and 'value' keys
+                Tags will be attached to the feature group after it is saved.
 
         Returns:
             The feature group metadata object.
         """
         feature_group_object = self._feature_group_api._get(self.id, name, version)
         if not feature_group_object:
+            normalized_tags = self._normalize_tags(tags)
             if not data_source:
                 data_source = ds.DataSource(
                     storage_connector=storage_connector, path=path
@@ -1212,6 +1221,7 @@ class FeatureStore:
                 online_disk=online_disk,
                 sink_enabled=sink_enabled,
                 sink_job_conf=sink_job_conf,
+                tags=normalized_tags,
             )
         feature_group_object.feature_store = self
         return feature_group_object
@@ -2154,6 +2164,7 @@ class FeatureStore:
         transformation_functions: dict[str, TransformationFunction] | None = None,
         logging_enabled: bool | None = False,
         extra_log_columns: list[feature.Feature] | list[dict[str, str]] | None = None,
+        tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
     ) -> feature_view.FeatureView:
         """Get feature view metadata object or create a new one if it doesn't exist.
 
@@ -2208,6 +2219,13 @@ class FeatureStore:
                 It can be a list of Feature objects or list a dictionaries that contains the the name and type of the columns as keys.
                 Defaults to `None`, no extra log columns.
                 Setting this argument implicitly enables feature logging.
+            tags:
+                Optionally, define tags for the feature view. Tags can be provided as:
+                - A single Tag object
+                - A dictionary with 'name' and 'value' keys (e.g., {"name": "tag1", "value": "value1"})
+                - A list of Tag objects
+                - A list of dictionaries with 'name' and 'value' keys
+                Tags will be attached to the feature view after it is saved.
 
         Returns:
             The feature view metadata object.
@@ -2225,6 +2243,7 @@ class FeatureStore:
                 transformation_functions=transformation_functions or [],
                 logging_enabled=logging_enabled,
                 extra_log_columns=extra_log_columns,
+                tags=tags,
             )
         return fv_object
 
