@@ -1106,14 +1106,20 @@ class Engine:
             else:
                 raise ValueError("Dataset should be a query.")
 
-            # Statistics are always refit (training_dataset_version not
-            # passed): an unsplit in-memory training dataset retrieved by
-            # version is not consistent.
+            # On append, bind the transformation statistics saved when the
+            # version was created instead of refitting on the batch, so every
+            # increment is transformed identically to the data already
+            # materialized. Otherwise statistics are always refit
+            # (training_dataset_version not passed): an unsplit in-memory
+            # training dataset retrieved by version is not consistent.
             dataset = transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
                 training_dataset,
                 feature_view_obj,
                 dataset,
                 transformation_context=transformation_context,
+                training_dataset_version=(
+                    training_dataset.version if save_mode == self.APPEND else None
+                ),
             )
 
             if training_dataset.coalesce:
@@ -1138,12 +1144,18 @@ class Engine:
 
             split_dataset[key] = split_dataset[key].cache()
 
+        # On append, bind the transformation statistics saved when the version
+        # was created (see the unsplit branch above for the rationale).
         split_dataset = transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
             training_dataset,
             feature_view_obj,
             split_dataset,
             transformation_context=transformation_context,
-            training_dataset_version=training_dataset_version,
+            training_dataset_version=(
+                training_dataset.version
+                if save_mode == self.APPEND
+                else training_dataset_version
+            ),
         )
 
         return self._write_training_dataset_splits(

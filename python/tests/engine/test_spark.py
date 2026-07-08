@@ -2548,6 +2548,55 @@ class TestSpark:
         assert mock_spark_engine_write_training_dataset_single.call_count == 0
         assert mock_spark_engine_write_training_dataset_splits.call_count == 0
 
+    def test_write_training_dataset_append_binds_created_statistics(self, mocker):
+        # Appended batches must be transformed with the statistics saved when
+        # the version was created (training_dataset_version passed to
+        # _fit_and_transform), not refit on the batch — refitting would
+        # transform the increment inconsistently with the data already
+        # materialized. A create/overwrite still refits (version not passed).
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine.spark.Engine._write_options")
+        mocker.patch("hsfs.engine.spark.Engine._convert_to_default_dataframe")
+        mocker.patch("hsfs.engine.spark.Engine._write_training_dataset_single")
+        mock_fit_and_transform = mocker.patch(
+            "hsfs.core.transformation_function_engine.TransformationFunctionEngine._fit_and_transform"
+        )
+
+        spark_engine = spark.Engine()
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=7,
+            data_format="parquet",
+            featurestore_id=99,
+            splits={},
+        )
+        mock_query = mocker.Mock(spec=query.Query)
+
+        # Act: append
+        spark_engine._write_training_dataset(
+            training_dataset=td,
+            query_obj=mock_query,
+            user_write_options={},
+            save_mode=spark_engine.APPEND,
+        )
+
+        # Assert
+        assert mock_fit_and_transform.call_args[1]["training_dataset_version"] == 7
+
+        # Act: overwrite refits
+        spark_engine._write_training_dataset(
+            training_dataset=td,
+            query_obj=mock_query,
+            user_write_options={},
+            save_mode=spark_engine.OVERWRITE,
+        )
+
+        # Assert
+        assert mock_fit_and_transform.call_args[1]["training_dataset_version"] is None
+
     def test_get_training_data_accepts_feature_view_engine_call_shape(self, mocker):
         # FeatureViewEngine._get_training_data forwards the same arguments to
         # whichever engine is active, so the Spark engine must accept every

@@ -2617,6 +2617,7 @@ class FeatureView:
         write_options: dict[Any, Any] | None = None,
         spine: SplineDataFrameTypes | None = None,
         transformation_context: dict[str, Any] | None = None,
+        compute_statistics: bool = False,
     ) -> job.Job:
         """Append a new batch of data to an existing training dataset version.
 
@@ -2630,7 +2631,9 @@ class FeatureView:
 
         With `overwrite=True` the entire training dataset version is rewritten instead, equivalent to [`recreate_training_dataset`][hsfs.feature_view.FeatureView.recreate_training_dataset] for the given window.
 
-        Statistics are not recomputed on append (that would require reading the whole dataset back); they are left as computed when the version was created.
+        Statistics are not recomputed on append by default, since that reads the whole (potentially multi-terabyte) dataset back on every append.
+        Pass `compute_statistics=True` to refresh the descriptive statistics over all increments after the batch is written, or call [`compute_training_dataset_statistics`][hsfs.feature_view.FeatureView.compute_training_dataset_statistics] explicitly when needed, e.g. periodically or right before retraining.
+        Model-dependent transformation functions transform each appended batch with the statistics computed when the version was created, so all increments and serving stay consistent with each other; to refit those statistics, rebuild the version with `overwrite=True` or create a new version.
 
         Randomly split training datasets are appended per split: each split receives a share of the batch (e.g. 80/10/10), which is sound over many appends.
         Appending to a time-series-split training dataset is not supported and raises an error: the batch would land entirely in the last split (e.g. test) while the earlier splits stay frozen, skewing the dataset with every append.
@@ -2681,6 +2684,9 @@ class FeatureView:
             transformation_context:
                 A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+            compute_statistics: Whether to recompute the descriptive statistics over all increments after the batch is written, at the cost of reading the whole dataset back.
+                Only applies when appending; an overwrite recomputes statistics as part of the materialization itself.
+                When appending through a materialization job, only use it together with the default `wait_for_job=True`, so the statistics include the new batch.
 
         Returns:
             The Hopsworks Job that was launched to materialize the batch.
@@ -2698,10 +2704,57 @@ class FeatureView:
             overwrite=overwrite,
             spine=spine,
             transformation_context=transformation_context,
+            compute_statistics=compute_statistics,
         )
         self.update_last_accessed_training_dataset(td.version)
 
         return td_job
+
+    @public
+    @usage._method_logger
+    def compute_training_dataset_statistics(
+        self, training_dataset_version: int
+    ) -> Statistics:
+        """Recompute the descriptive statistics of a materialized training dataset version.
+
+        Reads the materialized data back — all increments of a training dataset grown with [`insert_training_data`][hsfs.feature_view.FeatureView.insert_training_data] — computes the descriptive statistics on it, and saves them as the statistics of this version.
+        Appends do not recompute statistics automatically (that would read the whole, potentially multi-terabyte, dataset back on every append), so call this after growing a training dataset when fresh statistics are needed, e.g. for data exploration or as a drift baseline.
+
+        The statistics used by model-dependent transformation functions are not refit by this method.
+        They are deliberately pinned to the ones computed when the version was created: the materialized data (including every appended increment) was transformed with them, so refitting them would make serving and future appends inconsistent with the data already written.
+        To refit the transformation statistics, rebuild the version with `insert_training_data(..., overwrite=True)` or create a new training dataset version.
+
+        Example:
+            ```python
+            # get feature view instance
+            feature_view = fs.get_feature_view(...)
+
+            # grow the training dataset with a new batch
+            feature_view.insert_training_data(
+                training_dataset_version=1,
+                start_time="2026-07-01 00:00:00",
+                end_time="2026-07-01 23:59:59",
+            )
+
+            # refresh the descriptive statistics over all increments
+            statistics = feature_view.compute_training_dataset_statistics(
+                training_dataset_version=1
+            )
+            ```
+
+        Parameters:
+            training_dataset_version: Version of the training dataset to recompute the statistics for.
+
+        Returns:
+            The recomputed statistics.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+            hopsworks.client.exceptions.FeatureStoreException: If the training dataset is in-memory, or if statistics are disabled for it.
+        """
+        return self._feature_view_engine._recompute_training_dataset_statistics(
+            self, training_dataset_version
+        )
 
     @public
     @usage._method_logger

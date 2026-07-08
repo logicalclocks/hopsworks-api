@@ -734,6 +734,7 @@ class FeatureViewEngine:
         overwrite=False,
         spine=None,
         transformation_context: dict[str, Any] = None,
+        compute_statistics=False,
     ):
         # Append (`overwrite=False`) works on both engines: the Spark engine
         # writes the new `_hopsworks_event_start=<v>` partition directly, and the
@@ -789,6 +790,15 @@ class FeatureViewEngine:
             transformation_context=transformation_context,
             save_mode=self._OVERWRITE if overwrite else self._APPEND,
         )
+
+        # Appends skip the automatic statistics refit (see
+        # `_compute_training_dataset`); the caller opts into paying the
+        # full-dataset read here. On overwrite the statistics were already
+        # recomputed by the materialization itself.
+        if compute_statistics and not overwrite:
+            self._recompute_training_dataset_statistics(
+                feature_view_obj, training_dataset_version
+            )
         return training_dataset_obj, td_job
 
     def _read_from_storage_connector(
@@ -1023,7 +1033,9 @@ class FeatureViewEngine:
         # On append the newly written partition is a small daily increment, but
         # recomputing statistics reads the whole (potentially multi-TB) dataset
         # back, so skip the read-and-refit; existing statistics are left as they
-        # were computed at create/recreate time.
+        # were computed at create/recreate time. Users refresh them explicitly
+        # with `FeatureView.compute_training_dataset_statistics` (which calls
+        # `_recompute_training_dataset_statistics`).
         if save_mode == self._APPEND:
             return td_job
 
@@ -1067,6 +1079,43 @@ class FeatureViewEngine:
                 feature_view_obj=feature_view_obj,
             )
         return None
+
+    def _recompute_training_dataset_statistics(
+        self, feature_view_obj, training_dataset_version
+    ):
+        training_dataset_obj = self._get_training_dataset_metadata(
+            feature_view_obj, training_dataset_version
+        )
+        if training_dataset_obj.training_dataset_type == training_dataset_obj.IN_MEMORY:
+            raise FeatureStoreException(
+                "Statistics can only be recomputed for a materialized training "
+                "dataset; an in-memory training dataset has no materialized "
+                "data to compute them on."
+            )
+        if not training_dataset_obj.statistics_config.enabled:
+            raise FeatureStoreException(
+                "Statistics are disabled for this training dataset version, so "
+                "there is nothing to recompute."
+            )
+        # Read the materialized data back (all increments of an incremental
+        # dataset) and recompute the descriptive statistics on it. The
+        # transformation-function statistics are deliberately not refit: the
+        # materialized data was transformed with the statistics saved at
+        # creation, so refitting them would make serving and future appends
+        # inconsistent with the data already written — to refit them, rebuild
+        # the version with `overwrite=True` or create a new version.
+        if training_dataset_obj.splits:
+            td_df = {
+                split.name: self._training_dataset_engine._read(
+                    training_dataset_obj, split.name, {}
+                )
+                for split in training_dataset_obj.splits
+            }
+        else:
+            td_df = self._training_dataset_engine._read(training_dataset_obj, None, {})
+        return self._compute_training_dataset_statistics(
+            feature_view_obj, training_dataset_obj, td_df
+        )
 
     def _get_training_dataset_metadata(
         self, feature_view_obj: feature_view.FeatureView, training_dataset_version

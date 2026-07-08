@@ -2144,6 +2144,206 @@ class TestFeatureViewEngine:
                 user_write_options={},
             )
 
+    def _arrange_insert_training_data(self, mocker):
+        # Shared arrangement for the compute_statistics opt-in tests: a plain
+        # parquet training dataset with the materialization mocked out.
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        mock_metadata = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
+        )
+        mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._compute_training_dataset"
+        )
+        mock_recompute = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._recompute_training_dataset_statistics"
+        )
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="parquet",
+            featurestore_id=99,
+            splits={},
+        )
+        mock_metadata.return_value = td
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=query,
+        )
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+        return fv_engine, fv, mock_recompute
+
+    def test_insert_training_data_compute_statistics(self, mocker):
+        # Arrange
+        fv_engine, fv, mock_recompute = self._arrange_insert_training_data(mocker)
+
+        # Act: default append leaves statistics untouched
+        fv_engine._insert_training_data(
+            feature_view_obj=fv,
+            training_dataset_version=1,
+            start_time="",
+            end_time="",
+            user_write_options={},
+        )
+
+        # Assert
+        mock_recompute.assert_not_called()
+
+        # Act: opting in refreshes the statistics after the append
+        fv_engine._insert_training_data(
+            feature_view_obj=fv,
+            training_dataset_version=1,
+            start_time="",
+            end_time="",
+            user_write_options={},
+            compute_statistics=True,
+        )
+
+        # Assert
+        mock_recompute.assert_called_once_with(fv, 1)
+
+    def test_insert_training_data_compute_statistics_overwrite_skipped(self, mocker):
+        # An overwrite recomputes statistics as part of the materialization
+        # itself, so the opt-in refresh must not read the dataset back again.
+        # Arrange
+        fv_engine, fv, mock_recompute = self._arrange_insert_training_data(mocker)
+
+        # Act
+        fv_engine._insert_training_data(
+            feature_view_obj=fv,
+            training_dataset_version=1,
+            start_time="",
+            end_time="",
+            user_write_options={},
+            overwrite=True,
+            compute_statistics=True,
+        )
+
+        # Assert
+        mock_recompute.assert_not_called()
+
+    def test_recompute_training_dataset_statistics(self, mocker):
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mock_metadata = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
+        )
+        mock_td_engine_read = mocker.patch(
+            "hsfs.core.training_dataset_engine.TrainingDatasetEngine._read"
+        )
+        mock_compute_statistics = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._compute_training_dataset_statistics"
+        )
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="parquet",
+            featurestore_id=99,
+            splits={},
+        )
+        mock_metadata.return_value = td
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=query,
+        )
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        # Act
+        fv_engine._recompute_training_dataset_statistics(fv, 1)
+
+        # Assert: the materialized data is read back and the statistics are
+        # computed and saved on it
+        mock_td_engine_read.assert_called_once_with(td, None, {})
+        mock_compute_statistics.assert_called_once_with(
+            fv, td, mock_td_engine_read.return_value
+        )
+
+    def test_recompute_training_dataset_statistics_in_memory_raises(self, mocker):
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mock_metadata = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
+        )
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="parquet",
+            featurestore_id=99,
+            splits={},
+            training_dataset_type=training_dataset.TrainingDataset.IN_MEMORY,
+        )
+        mock_metadata.return_value = td
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=query,
+        )
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        # Act / Assert
+        with pytest.raises(FeatureStoreException, match="in-memory"):
+            fv_engine._recompute_training_dataset_statistics(fv, 1)
+
+    def test_recompute_training_dataset_statistics_disabled_raises(self, mocker):
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mock_metadata = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
+        )
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="parquet",
+            featurestore_id=99,
+            splits={},
+        )
+        td.statistics_config.enabled = False
+        mock_metadata.return_value = td
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=query,
+        )
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        # Act / Assert
+        with pytest.raises(FeatureStoreException, match="disabled"):
+            fv_engine._recompute_training_dataset_statistics(fv, 1)
+
     def test_read_from_storage_connector(self, mocker):
         # Arrange
         feature_store_id = 99
