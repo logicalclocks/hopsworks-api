@@ -26,6 +26,8 @@ if TYPE_CHECKING:
     from hsfs.feature_group import FeatureGroup
     from hsfs.feature_view import FeatureView
     from hsfs.training_dataset import TrainingDataset
+    from hsml.deployment import Deployment
+    from hsml.model import Model
 
 
 @public("hopsworks.core.search_api.Project")
@@ -336,6 +338,63 @@ class FeatureSearchResult(SearchResultItem):
     """Search result for a Feature."""
 
 
+@public("hopsworks.core.search_api.ModelSearchResult")
+class ModelSearchResult(SearchResultItem):
+    """Search result for a Model."""
+
+    @public
+    @property
+    def tags(self) -> list:
+        """Tags attached to the model as a list of `{"key", "value"}` dictionaries."""
+        return self._raw_data.get("tags", [])
+
+    @public
+    def get(self) -> Model | None:
+        """Retrieve the full Model object.
+
+        This uses the project associated with this search result to obtain a
+        connection to the model registry and then fetches the Model with the
+        given name and version.
+
+        Returns:
+            The full Model object corresponding to this search result.
+
+        Raises:
+            Exception: If the connection to the model registry fails or the
+                Model cannot be retrieved.
+        """
+        mr = client._get_connection()._get_model_registry(self.project.name)
+        return mr.get_model(self.name, version=self.version)
+
+
+@public("hopsworks.core.search_api.DeploymentSearchResult")
+class DeploymentSearchResult(SearchResultItem):
+    """Search result for a Deployment."""
+
+    @public
+    @property
+    def tags(self) -> list:
+        """Tags attached to the deployment as a list of `{"key", "value"}` dictionaries."""
+        return self._raw_data.get("tags", [])
+
+    @public
+    def get(self) -> Deployment | None:
+        """Retrieve the full Deployment object.
+
+        This obtains a connection to model serving and then fetches the
+        Deployment with the given name.
+
+        Returns:
+            The full Deployment object corresponding to this search result.
+
+        Raises:
+            Exception: If the connection to model serving fails or the
+                Deployment cannot be retrieved.
+        """
+        ms = client._get_connection()._get_model_serving()
+        return ms.get_deployment(self.name)
+
+
 @public("hopsworks.core.search_api.FeaturestoreSearchResult")
 class FeaturestoreSearchResult:
     """Container for all featurestore search results."""
@@ -467,4 +526,80 @@ class FeaturestoreSearchResult:
             f"feature_views={len(self._feature_views)}/{self._feature_views_total}, "
             f"training_datasets={len(self._training_datasets)}/{self._training_datasets_total}, "
             f"features={len(self._features)}/{self._features_total})"
+        )
+
+
+@public("hopsworks.core.search_api.ModelRegistrySearchResult")
+class ModelRegistrySearchResult:
+    """Container for all model registry search results."""
+
+    def __init__(self, response_data: dict):
+        self._log = logging.getLogger(__name__)
+        self._models = [ModelSearchResult(m) for m in response_data.get("models", [])]
+        self._deployments = [
+            DeploymentSearchResult(d) for d in response_data.get("deployments", [])
+        ]
+
+        # Store metadata about result counts
+        self._models_offset = response_data.get("modelsFrom", 0)
+        self._models_total = response_data.get("modelsTotal", 0)
+        self._deployments_offset = response_data.get("deploymentsFrom", 0)
+        self._deployments_total = response_data.get("deploymentsTotal", 0)
+
+    @public
+    @property
+    def models(self) -> list[ModelSearchResult]:
+        """List of Model search results."""
+        return self._models
+
+    @public
+    @property
+    def deployments(self) -> list[DeploymentSearchResult]:
+        """List of Deployment search results."""
+        return self._deployments
+
+    @public
+    @property
+    def models_offset(self) -> int:
+        """Total offset for the returned list of models within the whole result."""
+        return self._models_offset
+
+    @public
+    @property
+    def deployments_offset(self) -> int:
+        """Total offset for the returned list of deployments within the whole result."""
+        return self._deployments_offset
+
+    @public
+    @property
+    def models_total(self) -> int:
+        """Total number of Models matching the search."""
+        return self._models_total
+
+    @public
+    @property
+    def deployments_total(self) -> int:
+        """Total number of Deployments matching the search."""
+        return self._deployments_total
+
+    def json(self) -> dict:
+        """Convert to JSON-serializable dictionary.
+
+        Returns:
+            JSONDictionary representation of the object.
+        """
+        return {
+            "models": [m.json() for m in self._models],
+            "modelsFrom": self._models_offset,
+            "modelsTotal": self._models_total,
+            "deployments": [d.json() for d in self._deployments],
+            "deploymentsFrom": self._deployments_offset,
+            "deploymentsTotal": self._deployments_total,
+        }
+
+    def __repr__(self):
+        return (
+            f"ModelRegistrySearchResult("
+            f"models={len(self._models)}/{self._models_total}, "
+            f"deployments={len(self._deployments)}/{self._deployments_total})"
         )
