@@ -109,7 +109,14 @@ class FeatureViewApi:
                 for fv in self._client._send_request(
                     self._GET,
                     path,
-                    {"expand": ["query", "features", "transformationfunctions"]},
+                    {
+                        "expand": [
+                            "query",
+                            "features",
+                            "transformationfunctions",
+                            "mandatorytags",
+                        ]
+                    },
                 )["items"]
             ]
         except RestAPIError as e:
@@ -142,7 +149,14 @@ class FeatureViewApi:
                 self._client._send_request(
                     self._GET,
                     path,
-                    {"expand": ["query", "features", "transformationfunctions"]},
+                    {
+                        "expand": [
+                            "query",
+                            "features",
+                            "transformationfunctions",
+                            "mandatorytags",
+                        ]
+                    },
                 )
             )
         except RestAPIError as e:
