@@ -16,8 +16,10 @@
 
 from hopsworks_common.connection import Connection
 from hopsworks_common.search_results import (
+    DeploymentSearchResult,
     FeatureGroupSearchResult,
     FeatureViewSearchResult,
+    ModelSearchResult,
     TrainingDatasetSearchResult,
 )
 
@@ -74,3 +76,29 @@ class TestSearchResults:
         assert result == "TD"
         conn._get_feature_store.assert_called_once_with("proj")
         fs.get_training_dataset.assert_called_once_with("entity", version=1)
+
+    def test_model_search_result_get(self, mocker):
+        conn = mocker.MagicMock(spec=Connection)
+        mr = mocker.MagicMock()
+        conn._get_model_registry.return_value = mr
+        mr.get_model.return_value = "MODEL"
+        mocker.patch("hopsworks_common.client._get_connection", return_value=conn)
+
+        result = ModelSearchResult(_DATA).get()
+
+        assert result == "MODEL"
+        conn._get_model_registry.assert_called_once_with("proj")
+        mr.get_model.assert_called_once_with("entity", version=1)
+
+    def test_deployment_search_result_get(self, mocker):
+        conn = mocker.MagicMock(spec=Connection)
+        ms = mocker.MagicMock()
+        conn._get_model_serving.return_value = ms
+        ms.get_deployment.return_value = "DEPLOYMENT"
+        mocker.patch("hopsworks_common.client._get_connection", return_value=conn)
+
+        result = DeploymentSearchResult(_DATA).get()
+
+        assert result == "DEPLOYMENT"
+        conn._get_model_serving.assert_called_once_with()
+        ms.get_deployment.assert_called_once_with("entity")
