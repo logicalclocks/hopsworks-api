@@ -45,6 +45,7 @@
           "model_registry_id": 1,
           "tags": [],
           "framework": "PYTHON",
+          "missing_mandatory_tags": [{ "name": "owner" }],
           "href": "test_href"
         }
       ]
@@ -71,6 +72,7 @@
           "model_registry_id": 1,
           "tags": [],
           "framework": "SKLEARN",
+          "missing_mandatory_tags": [{ "name": "owner" }],
           "href": "test_href"
         }
       ]
@@ -97,6 +99,7 @@
           "model_registry_id": 1,
           "tags": [],
           "framework": "TENSORFLOW",
+          "missing_mandatory_tags": [{ "name": "owner" }],
           "href": "test_href"
         }
       ]
@@ -123,6 +126,7 @@
           "model_registry_id": 1,
           "tags": [],
           "framework": "TORCH",
+          "missing_mandatory_tags": [{ "name": "owner" }],
           "href": "test_href"
         }
       ]
@@ -149,6 +153,7 @@
           "model_registry_id": 1,
           "tags": [],
           "framework": "LLM",
+          "missing_mandatory_tags": [{ "name": "owner" }],
           "href": "test_href"
         }
       ]

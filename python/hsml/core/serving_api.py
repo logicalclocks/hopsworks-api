@@ -16,7 +16,9 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
+from hopsworks_common import tag
 from hsml import (
     client,
     decorators,
@@ -54,8 +56,11 @@ class ServingApi:
             "serving",
             str(id),
         ]
+        query_params = {"expand": ["mandatorytags"]}
 
-        deployment_json = _client._send_request("GET", path_params)
+        deployment_json = _client._send_request(
+            "GET", path_params, query_params=query_params
+        )
         deployment_instance = deployment.Deployment.from_response_json(deployment_json)
         deployment_instance.model_registry_id = _client._project_id
         deployment_instance.project_name = _client._project_name
@@ -73,7 +78,7 @@ class ServingApi:
         """
         _client = client._get_instance()
         path_params = ["project", _client._project_id, "serving"]
-        query_params = {"name": name}
+        query_params = {"name": name, "expand": ["mandatorytags"]}
 
         deployment_json = _client._send_request(
             "GET", path_params, query_params=query_params
@@ -111,6 +116,110 @@ class ServingApi:
             deployment_instance.model_registry_id = _client._project_id
             deployment_instance.project_name = _client._project_name
         return deployment_instances
+
+    def _set_tag(
+        self, deployment_instance: deployment.Deployment, name: str, value: Any
+    ) -> None:
+        """Attach a name/value tag to a deployment.
+
+        A tag consists of a name/value pair.
+        Tag names are unique identifiers.
+        The value of a tag can be any valid json - primitives, arrays or json objects.
+
+        Parameters:
+            deployment_instance: deployment instance to attach the tag to
+            name: name of the tag to be added
+            value: value of the tag to be added
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "serving",
+            str(deployment_instance.id),
+            "tags",
+            name,
+        ]
+        headers = {"content-type": "application/json"}
+        json_value = json.dumps(value)
+        _client._send_request("PUT", path_params, headers=headers, data=json_value)
+
+    def _delete_tag(
+        self, deployment_instance: deployment.Deployment, name: str
+    ) -> None:
+        """Delete a tag attached to a deployment.
+
+        Tag names are unique identifiers.
+
+        Parameters:
+            deployment_instance: deployment instance to delete the tag from
+            name: name of the tag to be removed
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "serving",
+            str(deployment_instance.id),
+            "tags",
+            name,
+        ]
+        _client._send_request("DELETE", path_params)
+
+    @decorators._catch_not_found("hopsworks_common.tag.Tag", fallback_return={})
+    def _get_tags(self, deployment_instance: deployment.Deployment) -> dict[str, Any]:
+        """Get all tags attached to a deployment.
+
+        Parameters:
+            deployment_instance: deployment instance to get the tags from
+
+        Returns:
+            dict of tag name/values
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "serving",
+            str(deployment_instance.id),
+            "tags",
+        ]
+        return {
+            t._name: t._value
+            for t in tag.Tag.from_response_json(
+                _client._send_request("GET", path_params)
+            )
+        }
+
+    @decorators._catch_not_found("hopsworks_common.tag.Tag", fallback_return=None)
+    def _get_tag(
+        self, deployment_instance: deployment.Deployment, name: str
+    ) -> Any | None:
+        """Get the tag with a specific name attached to a deployment.
+
+        Parameters:
+            deployment_instance: deployment instance to get the tag from
+            name: tag name
+
+        Returns:
+            the tag value, or `None` if it does not exist
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "serving",
+            str(deployment_instance.id),
+            "tags",
+            name,
+        ]
+        tags = {
+            t._name: t._value
+            for t in tag.Tag.from_response_json(
+                _client._send_request("GET", path_params)
+            )
+        }
+        return tags.get(name)
 
     def _get_inference_endpoints(self) -> list[inference_endpoint.InferenceEndpoint]:
         """Get inference endpoints.
