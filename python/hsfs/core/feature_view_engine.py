@@ -512,6 +512,8 @@ class FeatureViewEngine:
         dataframe_type="default",
         transformation_context: dict[str, Any] = None,
         n_processes: int | None = None,
+        event_start_time=None,
+        event_end_time=None,
     ):
         # check if provided td version has already existed.
         if training_dataset_version:
@@ -541,11 +543,27 @@ class FeatureViewEngine:
             td_updated.data_format, read_options
         )
 
+        # A time-range read prunes the materialized increments by their
+        # event-window partition key (see `Engine.APPEND_PARTITION_COLUMN`);
+        # an in-memory training dataset has no materialized layout to prune.
+        event_start_time = util._convert_event_time_to_timestamp(event_start_time)
+        event_end_time = util._convert_event_time_to_timestamp(event_end_time)
+        if (event_start_time is not None or event_end_time is not None) and (
+            td_updated.training_dataset_type == td_updated.IN_MEMORY
+        ):
+            raise FeatureStoreException(
+                "`start_time`/`end_time` prune the materialized increments of "
+                "a training dataset and cannot be used with an in-memory "
+                "training dataset, which is recomputed on read."
+            )
+
         if td_updated.training_dataset_type != td_updated.IN_MEMORY:
             split_df = self._read_from_storage_connector(
                 td_updated,
                 td_updated.splits,
                 read_options,
+                event_start_time=event_start_time,
+                event_end_time=event_end_time,
                 with_primary_keys=primary_keys,
                 # at this stage training dataset was already written and if there was any name clash it should have
                 # already failed in creation phase, so we don't need to check it here. This is to make
@@ -718,7 +736,7 @@ class FeatureViewEngine:
         transformation_context: dict[str, Any] = None,
     ):
         # Append (`overwrite=False`) works on both engines: the Spark engine
-        # writes the new `_hopsworks_append_id=<n>` partition directly, and the
+        # writes the new `_hopsworks_event_start=<v>` partition directly, and the
         # Python engine offloads to a backend that does the same — either the
         # Hopsworks Feature Query Service (FlyingDuck) fast path, which is sent
         # `overwrite=false`, or the fallback backend Spark job. Note this relies
@@ -732,19 +750,24 @@ class FeatureViewEngine:
         # its own subdirectory. For a random split that means the batch is split
         # 80/10/10 (etc.) on its own, which is sound. For a time-series split the
         # batch is bucketed by the split's fixed calendar boundaries, so a new
-        # (recent) batch typically lands entirely in the last split (e.g. test),
-        # leaving the earlier splits unchanged — warn rather than silently skew.
+        # (recent) batch lands entirely in the last split (e.g. test) while the
+        # earlier splits stay frozen — the dataset silently skews with every
+        # append, so refuse rather than warn. The supported way to grow a
+        # time-series dataset is an unsplit one read with a time range.
         if not overwrite and any(
             split.split_type == TrainingDatasetSplit.TIME_SERIES_SPLIT
             for split in training_dataset_obj.splits
         ):
-            warnings.warn(
-                "Appending to a time-series-split training dataset assigns the new "
-                "batch to splits by the split's fixed time boundaries, so a recent "
-                "batch usually lands entirely in the last split (e.g. test) and the "
-                "earlier splits do not grow. Pass `overwrite=True` to rebuild the "
-                "splits over the full data instead.",
-                stacklevel=2,
+            raise FeatureStoreException(
+                "Appending to a time-series-split training dataset is not "
+                "supported: the new batch would land entirely in the last "
+                "split (e.g. test) while the earlier splits stay unchanged, "
+                "skewing the dataset. For a growing time-series training "
+                "dataset, create it without splits, append batches with "
+                "`insert_training_data`, and read the train and test sets as "
+                "time ranges with `get_training_data(start_time=..., "
+                "end_time=...)`. Alternatively pass `overwrite=True` to "
+                "rebuild the splits over the full window."
             )
         if training_dataset_obj.data_format != "parquet":
             raise FeatureStoreException(
@@ -781,7 +804,16 @@ class FeatureViewEngine:
         training_helper_columns,
         feature_view_features,
         dataframe_type,
+        event_start_time=None,
+        event_end_time=None,
     ):
+        # A time-range read ships the window to the engine as internal read
+        # options; the engine prunes the increments by their event-window
+        # partition key and strips the keys before they reach the reader.
+        if event_start_time is not None:
+            read_options = {**read_options, "event_start_time": event_start_time}
+        if event_end_time is not None:
+            read_options = {**read_options, "event_end_time": event_end_time}
         if splits:
             result = {}
             for split in splits:
@@ -977,6 +1009,9 @@ class FeatureViewEngine:
             save_mode,
             feature_view_obj=feature_view_obj,
             transformation_context=transformation_context,
+            # The window start doubles as the increment's Hive-partition
+            # value, keying the materialized layout by event time.
+            event_start_time=event_start_time,
         )
 
         # Set training dataset schema after training dataset has been generated

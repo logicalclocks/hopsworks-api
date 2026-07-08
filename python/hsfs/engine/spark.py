@@ -143,11 +143,16 @@ class Engine:
     OVERWRITE = "overwrite"
 
     # Hive-partition column added to a training dataset when data is appended
-    # incrementally. Each `append()` writes a new partition value
-    # (0, 1, 2, ...), so a multi-TB training dataset can grow without
-    # rewriting the data already materialized. The column is stripped on read
-    # so it never surfaces as a feature.
-    APPEND_PARTITION_COLUMN = "_hopsworks_append_id"
+    # incrementally, so a multi-TB training dataset can grow without rewriting
+    # the data already materialized. The partition value is the increment's
+    # event-time window start as an epoch-millisecond timestamp, which makes
+    # the layout time-addressable: a time-range read prunes to the partitions
+    # whose value falls inside the requested window. When an increment has no
+    # event-time window (e.g. the legacy `TrainingDataset.insert` path) a
+    # small counter (0, 1, 2, ...) is used instead, keeping the layout
+    # appendable but not time-addressable. The column is stripped on read so
+    # it never surfaces as a feature.
+    APPEND_PARTITION_COLUMN = "_hopsworks_event_start"
 
     def _create_spark_session(self):
         """Create and return a SparkSession.
@@ -1064,6 +1069,7 @@ class Engine:
         to_df: bool = False,
         training_dataset_version: int | None = None,
         transformation_context: dict[str, Any] = None,
+        event_start_time: int | None = None,
     ):
         """Function that creates or retrieves already created the training dataset.
 
@@ -1079,6 +1085,9 @@ class Engine:
             transformation_context:
                 A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+            event_start_time:
+                Event-time window start of the materialized batch as an epoch-millisecond timestamp, used as the increment's Hive-partition value (see `APPEND_PARTITION_COLUMN`).
+                `None` falls back to a counter partition value, keeping the dataset appendable but not time-addressable.
 
         Raises:
             ValueError: If the training dataset statistics could not be retrieved.
@@ -1118,6 +1127,7 @@ class Engine:
                 save_mode,
                 path,
                 to_df=to_df,
+                event_start_time=event_start_time,
             )
         split_dataset = self._split_df(
             query_obj, training_dataset, read_options=read_options
@@ -1142,6 +1152,7 @@ class Engine:
             write_options,
             save_mode,
             to_df=to_df,
+            event_start_time=event_start_time,
         )
 
     def _split_df(self, query_obj, training_dataset, read_options=None):
@@ -1311,6 +1322,7 @@ class Engine:
         write_options,
         save_mode,
         to_df=False,
+        event_start_time=None,
     ):
         for split_name, feature_dataframe in feature_dataframes.items():
             split_path = training_dataset.location + "/" + str(split_name)
@@ -1322,6 +1334,7 @@ class Engine:
                 save_mode,
                 split_path,
                 to_df=to_df,
+                event_start_time=event_start_time,
             )
 
         if to_df:
@@ -1337,6 +1350,7 @@ class Engine:
         save_mode,
         path,
         to_df=False,
+        event_start_time=None,
     ):
         # The dataframe arrives fully transformed (see
         # TransformationFunctionEngine._fit_and_transform); this method only
@@ -1349,20 +1363,23 @@ class Engine:
 
         path = self._setup_storage_connector(storage_connector, path)
 
-        # Both overwrite and append write into `_hopsworks_append_id=<n>` Hive
-        # partitions so the layout is uniform: a training dataset is always
-        # partitioned and can always be appended to. The partition column is
-        # discovered by the parquet reader on read and stripped before the data
-        # is returned, so it never surfaces as a feature.
+        # Both overwrite and append write into `_hopsworks_event_start=<v>`
+        # Hive partitions so the layout is uniform: a training dataset is
+        # always partitioned and can always be appended to. The partition
+        # value is the batch's event-window start (epoch ms), making the
+        # dataset time-addressable on read; without a window a counter is
+        # used instead. The partition column is discovered by the parquet
+        # reader on read and stripped before the data is returned, so it
+        # never surfaces as a feature.
         if save_mode == self.APPEND:
             # Append: add the next partition, leaving existing ones in place.
-            next_id = self._next_append_partition_id(path)
+            partition_value = self._next_append_partition_value(path, event_start_time)
         else:
             # Overwrite: `.mode("overwrite")` replaces the whole location, so
-            # the dataset restarts at partition 0.
-            next_id = 0
+            # the dataset restarts at its window start (or 0 without one).
+            partition_value = event_start_time if event_start_time is not None else 0
         feature_dataframe = feature_dataframe.withColumn(
-            self.APPEND_PARTITION_COLUMN, lit(next_id)
+            self.APPEND_PARTITION_COLUMN, lit(partition_value)
         )
         feature_dataframe.write.format(data_format).options(**write_options).mode(
             save_mode
@@ -1371,42 +1388,50 @@ class Engine:
         feature_dataframe.unpersist()
         return None
 
-    def _next_append_partition_id(self, path):
-        """Return the next incremental partition id for an appendable dataset.
+    def _next_append_partition_value(self, path, event_start_time=None):
+        """Return the partition value for a new increment of an appendable dataset.
 
-        Lists the existing `_hopsworks_append_id=<n>` partition directories
-        under `path` and returns `max(n) + 1`, or `0` when the location is
-        empty or does not yet exist.
+        Lists the existing `_hopsworks_event_start=<v>` partition directories
+        under `path`.
+        With an `event_start_time` (epoch ms), that timestamp becomes the
+        partition value, after validating that it is later than every
+        increment already materialized so the layout stays ordered by event
+        time and time-range reads stay sound.
+        Without one, falls back to `max(v) + 1` (or `0` when the location is
+        empty or does not yet exist), keeping the dataset appendable but not
+        time-addressable.
         The path's storage connector must already be configured on the Hadoop
         configuration (via `_setup_storage_connector`).
 
         Raises:
-            FeatureStoreException: If `path` holds a dataset written before
-                incremental append existed (data files directly under the
-                location, not in `_hopsworks_append_id=<n>` partitions).
-                Appending partitioned data next to flat files produces a
-                layout the reader cannot interpret, so the dataset must be
-                recreated (or overwritten) before it can be appended to.
+            FeatureStoreException: If `event_start_time` is not later than the
+                newest increment already materialized (increments must be
+                appended in event-time order), or if `path` holds a dataset
+                written before incremental append existed (data files directly
+                under the location, not in `_hopsworks_event_start=<v>`
+                partitions) — appending partitioned data next to flat files
+                produces a layout the reader cannot interpret, so the dataset
+                must be recreated (or overwritten) before it can be appended
+                to.
         """
         prefix = self.APPEND_PARTITION_COLUMN + "="
         hadoop_path = self._jvm.org.apache.hadoop.fs.Path(path)
         fs = hadoop_path.getFileSystem(self._spark_context._jsc.hadoopConfiguration())
-        if not fs.exists(hadoop_path):
-            return 0
-        ids = []
+        existing = []
         has_flat_data = False
-        for status in fs.listStatus(hadoop_path):
-            name = status.getPath().getName()
-            if status.isDirectory() and name.startswith(prefix):
-                suffix = name[len(prefix) :]
-                if suffix.isdigit():
-                    ids.append(int(suffix))
-            elif not status.isDirectory() and not name.startswith("_"):
-                # A data file (not a Spark marker like `_SUCCESS`) sitting
-                # directly under the location means this dataset was
-                # materialized before incremental append and is not
-                # partitioned.
-                has_flat_data = True
+        if fs.exists(hadoop_path):
+            for status in fs.listStatus(hadoop_path):
+                name = status.getPath().getName()
+                if status.isDirectory() and name.startswith(prefix):
+                    suffix = name[len(prefix) :]
+                    if suffix.isdigit():
+                        existing.append(int(suffix))
+                elif not status.isDirectory() and not name.startswith("_"):
+                    # A data file (not a Spark marker like `_SUCCESS`) sitting
+                    # directly under the location means this dataset was
+                    # materialized before incremental append and is not
+                    # partitioned.
+                    has_flat_data = True
         if has_flat_data:
             raise FeatureStoreException(
                 "This training dataset was materialized before incremental "
@@ -1415,13 +1440,30 @@ class Engine:
                 "training dataset, or use `overwrite=True` to rewrite it, "
                 "before appending."
             )
-        return max(ids) + 1 if ids else 0
+        if event_start_time is None:
+            return max(existing) + 1 if existing else 0
+        if existing and event_start_time <= max(existing):
+            raise FeatureStoreException(
+                f"The batch start time ({event_start_time}) is not later than "
+                f"the newest increment already materialized ({max(existing)}). "
+                "Increments must be appended in event-time order for "
+                "time-range reads to stay sound; pass a later `start_time`, "
+                "or `overwrite=True` to rebuild the training dataset."
+            )
+        return event_start_time
 
     def _read(
         self, storage_connector, data_format, read_options, location, dataframe_type
     ):
         if not data_format:
             raise FeatureStoreException("data_format is not specified")
+
+        # Internal keys carrying a time-range read of an incremental training
+        # dataset (see `FeatureViewEngine._read_from_storage_connector`);
+        # popped so they never reach the Spark reader as reader options.
+        read_options = dict(read_options) if read_options else {}
+        event_start_time = read_options.pop("event_start_time", None)
+        event_end_time = read_options.pop("event_end_time", None)
 
         # Apply format-specific read defaults (e.g. header/inferSchema for
         # CSV/TSV, recordType for tfrecord), letting caller options win.
@@ -1463,6 +1505,23 @@ class Engine:
             .options(**(read_options if read_options else {}))
             .load(path)
         )
+
+        if event_start_time is not None or event_end_time is not None:
+            if self.APPEND_PARTITION_COLUMN not in df.columns:
+                raise FeatureStoreException(
+                    "A time-range read requires an incremental training "
+                    "dataset whose increments were materialized with an "
+                    "event-time window (`start_time`), but this dataset is "
+                    "not partitioned by event time. Read it without "
+                    "`start_time`/`end_time` instead."
+                )
+            # Filter on the partition column so Spark prunes to the increments
+            # whose event-window start falls inside the requested range; only
+            # those partition directories are scanned.
+            if event_start_time is not None:
+                df = df.filter(col(self.APPEND_PARTITION_COLUMN) >= event_start_time)
+            if event_end_time is not None:
+                df = df.filter(col(self.APPEND_PARTITION_COLUMN) <= event_end_time)
 
         # Drop the incremental-append partition column (see
         # `_write_training_dataset_single`) if the reader surfaced it, so it

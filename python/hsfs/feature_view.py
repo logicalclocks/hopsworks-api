@@ -2622,26 +2622,43 @@ class FeatureView:
 
         Materializes the feature view query over the `start_time`/`end_time` window and, with `overwrite=False` (the default), writes the result as a new increment of the training dataset: the batch is stored in its own Hive partition under the existing location, leaving data already materialized untouched.
         This lets a large (multi-terabyte) training dataset grow — for example with a new daily batch — without rewriting it, while keeping the same training dataset version.
-        On [`get_training_data`][hsfs.feature_view.FeatureView.get_training_data] all increments are returned together; the partitioning is an internal storage detail and is not exposed as a feature.
+
+        The batch `start_time` doubles as the increment's partition key, making the dataset time-addressable: [`get_training_data`][hsfs.feature_view.FeatureView.get_training_data] returns all increments together by default, or only a time range of them via its `start_time`/`end_time` parameters (e.g. a sliding training window over a growing time-series dataset).
+        For the layout to stay ordered by event time, each appended batch must start after the previous one; appending a batch whose `start_time` is not later than the newest increment raises an error.
+        The partition column itself is an internal storage detail and never surfaces as a feature.
+        Appending without a `start_time` keeps the dataset appendable but the increment cannot be matched by time-range reads.
 
         With `overwrite=True` the entire training dataset version is rewritten instead, equivalent to [`recreate_training_dataset`][hsfs.feature_view.FeatureView.recreate_training_dataset] for the given window.
 
         Statistics are not recomputed on append (that would require reading the whole dataset back); they are left as computed when the version was created.
 
-        Split training datasets are appended per split: each split receives a new partition.
-        For a random split the batch is split on its own (e.g. 80/10/10), which is sound over many appends.
-        For a time-series split the batch is bucketed by the split's fixed time boundaries, so a recent batch usually lands entirely in the last split (e.g. test) and the earlier splits do not grow — a warning is raised and `overwrite=True` is usually what you want instead.
+        Randomly split training datasets are appended per split: each split receives a share of the batch (e.g. 80/10/10), which is sound over many appends.
+        Appending to a time-series-split training dataset is not supported and raises an error: the batch would land entirely in the last split (e.g. test) while the earlier splits stay frozen, skewing the dataset with every append.
+        For time-series data, grow an unsplit training dataset instead and derive the train and test sets at read time, as shown below.
 
         Example:
             ```python
             # get feature view instance
             feature_view = fs.get_feature_view(...)
 
-            # append yesterday's batch to training dataset version 1
+            # create an unsplit training dataset once, then grow it with a
+            # daily batch (the batch start_time keys the new increment)
             job = feature_view.insert_training_data(
                 training_dataset_version=1,
                 start_time="2026-07-01 00:00:00",
                 end_time="2026-07-01 23:59:59",
+            )
+
+            # at (re)training time, derive sliding train and test sets by
+            # time range instead of materialized splits: train on everything
+            # up to 30 days ago, test on the most recent 30 days
+            X_train, y_train = feature_view.get_training_data(
+                training_dataset_version=1,
+                end_time="2026-06-01",
+            )
+            X_test, y_test = feature_view.get_training_data(
+                training_dataset_version=1,
+                start_time="2026-06-02",
             )
             ```
 
@@ -2670,7 +2687,7 @@ class FeatureView:
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
-            hopsworks.client.exceptions.FeatureStoreException: If the training dataset has a non-`parquet` data format.
+            hopsworks.client.exceptions.FeatureStoreException: If the training dataset has a non-`parquet` data format, or if appending to a time-series-split training dataset.
         """
         td, td_job = self._feature_view_engine._insert_training_data(
             self,
@@ -3326,12 +3343,18 @@ class FeatureView:
         dataframe_type: str | None = "default",
         transformation_context: dict[str, Any] = None,
         n_processes: int | None = None,
+        start_time: str | int | datetime | date | None = None,
+        end_time: str | int | datetime | date | None = None,
         **kwargs,
     ) -> tuple[
         TrainingDatasetDataFrameTypes,
         TrainingDatasetDataFrameTypes | None,
     ]:
         """Get training data created by `feature_view.create_training_data` or `feature_view.training_data`.
+
+        For a training dataset grown incrementally with [`insert_training_data`][hsfs.feature_view.FeatureView.insert_training_data], `start_time`/`end_time` read only the increments whose batch start time falls inside the given range, instead of the whole dataset.
+        Each increment is stored as a Hive partition keyed by its batch `start_time`, so a time-range read prunes to the matching partitions and never scans the rest of the data — for example, one growing time-series training dataset can serve `[t0, t1]` as the training set and `(t1, t2]` as the test set with two calls.
+        The range selects whole increments by their batch start time (both bounds inclusive); it does not filter individual rows, so align the range with the appended batch boundaries.
 
         Example:
             ```python
@@ -3343,6 +3366,14 @@ class FeatureView:
 
             # get training data
             features_df, labels_df = feature_view.get_training_data(training_dataset_version=1)
+
+            # read only the increments of June 2026 from an incrementally
+            # grown time-series training dataset
+            features_df, labels_df = feature_view.get_training_data(
+                training_dataset_version=1,
+                start_time="2026-06-01",
+                end_time="2026-06-30 23:59:59",
+            )
             ```
 
         Warning: External Storage Support
@@ -3378,9 +3409,17 @@ class FeatureView:
                 Independent transformations run concurrently; a chained sequence runs in order.
                 Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
                 Ignored by the Spark engine, which pushes transformations down to Spark.
+            start_time: Read only the increments whose batch start time is at or after this event time, inclusive.
+                Requires a materialized training dataset whose increments were appended with a `start_time`; increments appended without one are never matched.
+                Strings should be formatted in one of the following ways `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
+            end_time: Read only the increments whose batch start time is at or before this event time, inclusive.
+                Strings should be formatted in one of the following ways `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
 
         Returns:
             (X, y): Tuple of dataframe of features and labels
+
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException: If `start_time`/`end_time` is used with an in-memory training dataset or one that is not partitioned by event time.
         """
         td, df = self._feature_view_engine._get_training_data(
             self,
@@ -3392,6 +3431,8 @@ class FeatureView:
             dataframe_type=dataframe_type,
             transformation_context=transformation_context,
             n_processes=n_processes,
+            event_start_time=start_time,
+            event_end_time=end_time,
         )
         self.update_last_accessed_training_dataset(td.version)
         util._check_missing_mandatory_tags(td.missing_mandatory_tags)
