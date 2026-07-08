@@ -233,6 +233,29 @@ class TestCollectRankCapParameter:
         assert engine._first_unquoted_placeholder(rendered) == -1
         assert engine._rank_cap_by_serving_index == {0: 100}
 
+    def test_direct_scan_literal_placeholder_is_not_consumed(self):
+        # a filter literal containing ? inside the scan statement must survive
+        # both the pk and the LIMIT parametrization
+        engine = make_engine()
+        engine._parametrize_prepared_statements(
+            [
+                make_statement(
+                    self.COLLECT_SQL,
+                    collect_n=100,
+                    query_online_scan=(
+                        "SELECT `amount`, `ts` FROM `db`.`t_1` WHERE `user_id` = ? "
+                        "AND `category` LIKE 'vip?%' ORDER BY `ts` DESC LIMIT ?"
+                    ),
+                )
+            ],
+            batch=False,
+        )
+        rendered = str(engine._scan_prepared_statements[0])
+        assert "LIKE 'vip?%'" in rendered
+        assert "`user_id` = :user_id" in rendered
+        assert rendered.endswith("LIMIT :hw_rank_cap")
+        assert engine._first_unquoted_placeholder(rendered) == -1
+
     def test_scan_rows_prefer_the_direct_statement(self):
         engine = make_engine()
         engine._collect_n_by_serving_index = {0: 100}

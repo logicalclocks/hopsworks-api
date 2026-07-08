@@ -639,7 +639,8 @@ class OnlineStoreSqlClient:
         # run all the prepared statements in parallel using aiomysql engine
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
-                f"Executing prepared statements for serving vector with entries: {bind_entries}"
+                f"Executing prepared statements {sorted(prepared_statement_execution)} "
+                f"binding {[sorted(binds) for binds in bind_entries.values()]}"
             )
         results_dict = self._async_task_thread._submit(
             AsyncTask(
@@ -652,7 +653,10 @@ class OnlineStoreSqlClient:
             )
         )
         if _logger.isEnabledFor(logging.DEBUG):
-            _logger.debug(f"Retrieved feature vectors: {results_dict}")
+            _logger.debug(
+                "Retrieved rows per statement: %s",
+                {key: len(rows) for key, rows in results_dict.items()},
+            )
             _logger.debug("Constructing serving vector from results")
         if raw_rows:
             # Return the un-folded rows of the collect statement(s) for this entity,
@@ -759,7 +763,7 @@ class OnlineStoreSqlClient:
         # construct the list of entry values for binding to query
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
-                f"Parametrize prepared statements with entry values: {entries}"
+                f"Parametrize prepared statements for {len(entries)} entries"
             )
         for prepared_statement_index in prepared_statement_objects:
             # prepared_statement_index include fg with label only
@@ -790,7 +794,8 @@ class OnlineStoreSqlClient:
             )
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug(
-                    f"Prepared statement {prepared_statement_index} with entries: {entry_values_tuples}"
+                    f"Prepared statement {prepared_statement_index} with "
+                    f"{len(entry_values_tuples)} entry tuples"
                 )
             entry_values[prepared_statement_index] = {"batch_ids": entry_values_tuples}
             window = self._aggregate_window_by_serving_index.get(
@@ -806,7 +811,7 @@ class OnlineStoreSqlClient:
                 entry_values[prepared_statement_index][self.RANK_CAP_PARAM] = rank_cap
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
-                f"Executing prepared statements for batch vector with entries: {entry_values}"
+                f"Executing batch prepared statements {sorted(entry_values)}"
             )
         # run all the prepared statements in parallel using aiomysql engine
         parallel_results = self._async_task_thread._submit(
@@ -818,7 +823,8 @@ class OnlineStoreSqlClient:
         )
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
-                f"Retrieved feature vectors: {parallel_results}, stitching them."
+                "Retrieved rows per statement: %s; stitching.",
+                {key: len(rows) for key, rows in parallel_results.items()},
             )
         # construct the results
         for prepared_statement_index in prepared_stmts_to_execute:
@@ -974,7 +980,7 @@ class OnlineStoreSqlClient:
     ) -> tuple[str]:
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
-                f"Get result key {primary_keys} from result dict {result_dict}"
+                f"Get result key for primary keys {primary_keys}"
             )
         result_key = []
         for pk in primary_keys:
@@ -987,7 +993,7 @@ class OnlineStoreSqlClient:
     ) -> tuple[str]:
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
-                f"Get result key serving key {serving_keys} from result dict {result_dict}"
+                "Get result key for serving keys"
             )
         result_key = []
         for sk in serving_keys:
@@ -1000,7 +1006,7 @@ class OnlineStoreSqlClient:
                 or result_dict.get(sk.feature_name)
             )
         if _logger.isEnabledFor(logging.DEBUG):
-            _logger.debug(f"Result key: {result_key}")
+            _logger.debug("Built result key of length %d", len(result_key))
         return tuple(result_key)
 
     @staticmethod
@@ -1073,7 +1079,7 @@ class OnlineStoreSqlClient:
                 _logger.debug("Waiting for resultset.")
             resultset = await cursor.fetchall()
             if _logger.isEnabledFor(logging.DEBUG):
-                _logger.debug(f"Retrieved resultset: {resultset}. Closing cursor.")
+                _logger.debug("Retrieved %d rows. Closing cursor.", len(resultset))
             await cursor.close()
 
         return resultset
