@@ -19,6 +19,9 @@ jobs:
         with:
           java-version: "17"
           distribution: "temurin"
+          server-id: HopsEE
+          server-username: NEXUS_USER
+          server-password: NEXUS_PASSWORD
 
       - name: Cache local Maven repository
         uses: actions/cache@v4
@@ -29,7 +32,10 @@ jobs:
             ${{ runner.os }}-maven-
       - name: Test
         working-directory: ./java
-        run: mvn clean test -Pspark-4.1 -Dspark.version=4.1.2 -Dhudi.version=1.2.0
+        run: mvn clean test -Pspark-4.1,with-hops-ee -Dspark.version=4.1.3.0 -Dhudi.version=1.2.0
+        env:
+          NEXUS_USER: ${{ secrets.NEXUS_USER }}
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
 
   unit_tests_local_tz:
     name: Unit Tests (Local TZ)
@@ -47,6 +53,9 @@ jobs:
         with:
           java-version: "17"
           distribution: "temurin"
+          server-id: HopsEE
+          server-username: NEXUS_USER
+          server-password: NEXUS_PASSWORD
 
       - name: Cache local Maven repository
         uses: actions/cache@v4
@@ -58,7 +67,10 @@ jobs:
 
       - name: Test
         working-directory: ./java
-        run: mvn clean test -Pspark-4.1 -Dspark.version=4.1.2 -Dhudi.version=1.2.0
+        run: mvn clean test -Pspark-4.1,with-hops-ee -Dspark.version=4.1.3.0 -Dhudi.version=1.2.0
+        env:
+          NEXUS_USER: ${{ secrets.NEXUS_USER }}
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
 
   unit_tests_spark41:
     name: Unit Tests
@@ -76,6 +88,9 @@ jobs:
         with:
           java-version: "17"
           distribution: "temurin"
+          server-id: HopsEE
+          server-username: NEXUS_USER
+          server-password: NEXUS_PASSWORD
 
       - name: Cache local Maven repository
         uses: actions/cache@v4
@@ -88,4 +103,7 @@ jobs:
 
       - name: Test
         working-directory: ./java
-        run: mvn clean test -Pspark-4.1 -Dspark.version=4.1.2 -Dhudi.version=1.2.0
+        run: mvn clean test -Pspark-4.1,with-hops-ee -Dspark.version=4.1.3.0 -Dhudi.version=1.2.0
+        env:
+          NEXUS_USER: ${{ secrets.NEXUS_USER }}
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}

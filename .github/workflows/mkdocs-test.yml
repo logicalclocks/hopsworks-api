@@ -57,10 +57,16 @@ jobs:
         with:
           java-version: "17"
           distribution: "temurin"
+          server-id: HopsEE
+          server-username: NEXUS_USER
+          server-password: NEXUS_PASSWORD
 
       - name: Build javadoc documentation
         working-directory: java
-        run: mvn clean install javadoc:javadoc javadoc:aggregate -Pspark-4.1 -DskipTests -Dspark.version=4.1.2 -Dhudi.version=1.2.0 && cp -r target/site/apidocs ../logicalclocks.github.io/docs/javadoc
+        run: mvn clean install javadoc:javadoc javadoc:aggregate -Pspark-4.1,with-hops-ee -DskipTests -Dspark.version=4.1.3.0 -Dhudi.version=1.2.0 && cp -r target/site/apidocs ../logicalclocks.github.io/docs/javadoc
+        env:
+          NEXUS_USER: ${{ secrets.NEXUS_USER }}
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
 
       - name: Check for broken links
         working-directory: logicalclocks.github.io
