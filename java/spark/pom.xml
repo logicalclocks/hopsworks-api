@@ -113,7 +113,7 @@
 
         <!-- https://mvnrepository.com/artifact/org.apache.hudi/hudi-spark-bundle -->
         <dependency>
-            <groupId>io.hops.hudi</groupId>
+            <groupId>${hudi.groupId}</groupId>
             <artifactId>hudi-${artifact.spark.version}-bundle_${scala-short.version}</artifactId>
             <version>${hudi.version}</version>
             <scope>provided</scope>
@@ -130,7 +130,7 @@
         </dependency>
 
         <dependency>
-            <groupId>io.hops.hudi</groupId>
+            <groupId>${hudi.groupId}</groupId>
             <artifactId>hudi-utilities-slim-bundle_${scala-short.version}</artifactId>
             <version>${hudi.version}</version>
             <scope>provided</scope>

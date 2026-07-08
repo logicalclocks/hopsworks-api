@@ -29,6 +29,7 @@
         <fasterxml.jackson.databind.version>2.10.0</fasterxml.jackson.databind.version>
         <datasketches.version>6.2.0</datasketches.version>
         <spark.version>4.1.3.0</spark.version>
+        <hudi.groupId>io.hops.hudi</hudi.groupId>
         <hudi.version>1.0.2.1</hudi.version>
         <awssdk.version>2.10.40</awssdk.version>
         <scala.version>2.12.10</scala.version>
@@ -314,6 +315,7 @@
             </activation>
             <properties>
                 <spark.version>4.1.3.0</spark.version>
+                <hudi.groupId>org.apache.hudi</hudi.groupId>
                 <hudi.version>1.2.0</hudi.version>
                 <scala.version>2.13.17</scala.version>
                 <scala-short.version>2.13</scala-short.version>
