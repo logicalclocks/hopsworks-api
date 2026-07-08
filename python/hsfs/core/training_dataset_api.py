@@ -59,8 +59,9 @@ class TrainingDatasetApi:
             "trainingdatasets",
             name,
         ]
+        query_params = {"expand": ["mandatorytags"]}
         return training_dataset.TrainingDataset.from_response_json(
-            _client._send_request("GET", path_params),
+            _client._send_request("GET", path_params, query_params),
         )
 
     @decorators._catch_not_found(
@@ -76,7 +77,7 @@ class TrainingDatasetApi:
             "trainingdatasets",
             name,
         ]
-        query_params = {"version": version}
+        query_params = {"version": version, "expand": ["mandatorytags"]}
         return training_dataset.TrainingDataset.from_response_json(
             _client._send_request("GET", path_params, query_params),
         )

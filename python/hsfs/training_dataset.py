@@ -893,6 +893,15 @@ class TrainingDataset(TrainingDatasetBase):
         self._training_dataset_engine._update_statistics_config(self)
         return self
 
+    def _update_metadata(self) -> TrainingDataset:
+        """Persist a metadata (description) update of the training dataset.
+
+        Private helper that exercises the ``updateMetadata`` REST path, which the
+        public SDK does not otherwise expose for training datasets.
+        """
+        self._training_dataset_engine._update_metadata(self)
+        return self
+
     @public
     def delete(self):
         """Delete training dataset and all associated metadata.

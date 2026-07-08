@@ -904,6 +904,15 @@ class ModelEngine:
     def _delete(self, model_instance):
         self._engine._delete(model_instance)
 
+    def _update_framework(self, model_instance, framework):
+        """Update the framework of a model version via the model registry API.
+
+        Parameters:
+            model_instance: the model whose framework to update
+            framework: the new framework value
+        """
+        return self._model_api._patch(model_instance, {"framework": framework})
+
     def _set_tag(self, model_instance, name, value):
         """Attach a name/value tag to a model.
 

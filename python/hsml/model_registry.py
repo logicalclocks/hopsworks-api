@@ -104,12 +104,15 @@ class ModelRegistry:
             )
             version = self.DEFAULT_VERSION
 
-        return self._model_api._get(
+        model_instance = self._model_api._get(
             name,
             version,
             self.model_registry_id,
             shared_registry_project_name=self.shared_registry_project_name,
         )
+        if model_instance is not None:
+            util._check_missing_mandatory_tags(model_instance.missing_mandatory_tags)
+        return model_instance
 
     @public
     @usage._method_logger

@@ -163,6 +163,89 @@ class TestFeatureStore:
         assert fg_res.feature_store == fs
         assert fg_res._feature_store == fs
 
+    def test_create_feature_group_normalizes_tags(self, backend_fixtures, mocker):
+        # Arrange
+        from hopsworks_common.tag import Tag
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
+        json = backend_fixtures["feature_store"]["get"]["response"]
+        fs = feature_store_mod.FeatureStore.from_response_json(json)
+
+        # Act: a dict tag is accepted and normalized to a Tag object.
+        fg_res = fs.create_feature_group(
+            "test_feature_group_name",
+            version=1,
+            tags={"name": "team", "value": "fraud"},
+        )
+
+        # Assert
+        assert len(fg_res._tags) == 1
+        assert isinstance(fg_res._tags[0], Tag)
+        assert fg_res._tags[0].name == "team"
+        assert fg_res._tags[0].value == "fraud"
+
+    def test_get_or_create_feature_group_forwards_tags_when_missing(
+        self, backend_fixtures, mocker
+    ):
+        # Arrange
+        from hopsworks_common.tag import Tag
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
+        json = backend_fixtures["feature_store"]["get"]["response"]
+        fs = feature_store_mod.FeatureStore.from_response_json(json)
+        # The feature group does not exist yet, so it is constructed with tags.
+        mocker.patch.object(fs._feature_group_api, "_get", return_value=None)
+
+        # Act
+        fg_res = fs.get_or_create_feature_group(
+            "test_feature_group_name",
+            version=1,
+            tags=[Tag(name="team", value="fraud"), {"name": "tier", "value": "gold"}],
+        )
+
+        # Assert: mixed Tag/dict input is normalized onto the constructed group.
+        assert [(t.name, t.value) for t in fg_res._tags] == [
+            ("team", "fraud"),
+            ("tier", "gold"),
+        ]
+
+    def test_get_or_create_feature_view_forwards_tags_when_missing(
+        self, backend_fixtures, mocker
+    ):
+        # Arrange
+        from hopsworks_common.tag import Tag
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        json = backend_fixtures["feature_store"]["get"]["response"]
+        fs = feature_store_mod.FeatureStore.from_response_json(json)
+        # The feature view does not exist yet, so create_feature_view is invoked.
+        mocker.patch.object(fs._feature_view_engine, "_get", return_value=None)
+        create_feature_view = mocker.patch.object(
+            fs, "create_feature_view", return_value="created_fv"
+        )
+        tags = [Tag(name="team", value="fraud")]
+
+        # Act
+        fv_res = fs.get_or_create_feature_view(
+            name="test_feature_view_name",
+            query=mocker.Mock(),
+            version=1,
+            tags=tags,
+        )
+
+        # Assert: tags are forwarded verbatim to create_feature_view.
+        assert fv_res == "created_fv"
+        assert create_feature_view.call_args.kwargs["tags"] == tags
+
     def test_create_feature_group_time_travel_format_defaults_to_delta(
         self, backend_fixtures, mocker
     ):

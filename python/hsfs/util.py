@@ -17,7 +17,6 @@
 from __future__ import annotations
 
 import logging
-import warnings
 from typing import TYPE_CHECKING, Any
 
 from hopsworks_common.util import (
@@ -32,6 +31,7 @@ from hopsworks_common.util import (
     VersionWarning,
     _append_feature_store_suffix,
     _autofix_feature_name,
+    _check_missing_mandatory_tags,
     _check_timestamp_format_from_date_string,
     _contains_uppercase,
     _contains_whitespace,
@@ -101,15 +101,6 @@ def _is_sub_hour_cron(cron_expression: str | None) -> bool:
         return True
     # Range with step "0-59/15", or single value (fires once per hour at most).
     return "/" in minute_field
-
-
-def _check_missing_mandatory_tags(
-    missing_mandatory_tags: list[dict[str, Any]] | None,
-    message: str = "Missing mandatory tags",
-) -> None:
-    if missing_mandatory_tags:
-        tag_names = [tag.get("name", str(tag)) for tag in missing_mandatory_tags]
-        warnings.warn(f"{message}: {tag_names}", stacklevel=2)
 
 
 def _validate_feature(
@@ -278,6 +269,7 @@ __all__ = [
     "_loading_animation",
     "_append_feature_store_suffix",
     "_autofix_feature_name",
+    "_check_missing_mandatory_tags",
     "_check_timestamp_format_from_date_string",
     "_contains_uppercase",
     "_contains_whitespace",
