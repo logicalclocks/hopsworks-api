@@ -165,3 +165,13 @@ class TrainingDatasetEngine:
         self._training_dataset_api._update_metadata(
             training_dataset, training_dataset, "updateStatsConfig"
         )
+
+    def _update_metadata(self, training_dataset):
+        """Update the metadata (e.g. description) of a training dataset.
+
+        Parameters:
+            training_dataset: The training dataset whose metadata to update.
+        """
+        self._training_dataset_api._update_metadata(
+            training_dataset, training_dataset, "updateMetadata"
+        )

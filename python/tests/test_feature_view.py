@@ -1056,6 +1056,91 @@ class TestFeatureView:
         assert call_args_list[0][0][2] is False  # (name, version, force)
         assert call_args_list[1][0][2] is True
 
+    def test_training_data_passes_normalized_tags(self, mocker):
+        # Arrange
+        from hopsworks_common.tag import Tag
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        fv = feature_view.FeatureView(
+            name="test_fv", featurestore_id=99, query=fg1.select_all(), version=1
+        )
+        get_training_data = mocker.patch.object(
+            fv._feature_view_engine,
+            "_get_training_data",
+            side_effect=lambda self, read_options, training_dataset_obj, **kwargs: (
+                training_dataset_obj,
+                "df",
+            ),
+        )
+        mocker.patch.object(fv, "update_last_accessed_training_dataset")
+
+        # Act: a dict tag is normalized before reaching the training dataset.
+        fv.training_data(tags={"name": "team", "value": "fraud"})
+
+        # Assert
+        td = get_training_data.call_args.kwargs["training_dataset_obj"]
+        assert len(td._tags) == 1
+        assert isinstance(td._tags[0], Tag)
+        assert (td._tags[0].name, td._tags[0].value) == ("team", "fraud")
+
+    def test_train_test_split_passes_normalized_tags(self, mocker):
+        # Arrange
+        from hopsworks_common.tag import Tag
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        fv = feature_view.FeatureView(
+            name="test_fv", featurestore_id=99, query=fg1.select_all(), version=1
+        )
+        get_training_data = mocker.patch.object(
+            fv._feature_view_engine,
+            "_get_training_data",
+            side_effect=lambda self, read_options, training_dataset_obj, **kwargs: (
+                training_dataset_obj,
+                "df",
+            ),
+        )
+        mocker.patch.object(fv, "update_last_accessed_training_dataset")
+
+        # Act
+        fv.train_test_split(test_size=0.2, tags=[Tag(name="team", value="fraud")])
+
+        # Assert
+        td = get_training_data.call_args.kwargs["training_dataset_obj"]
+        assert [(t.name, t.value) for t in td._tags] == [("team", "fraud")]
+
+    def test_train_validation_test_split_passes_normalized_tags(self, mocker):
+        # Arrange
+        from hopsworks_common.tag import Tag
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        fv = feature_view.FeatureView(
+            name="test_fv", featurestore_id=99, query=fg1.select_all(), version=1
+        )
+        get_training_data = mocker.patch.object(
+            fv._feature_view_engine,
+            "_get_training_data",
+            side_effect=lambda self, read_options, training_dataset_obj, **kwargs: (
+                training_dataset_obj,
+                "df",
+            ),
+        )
+        mocker.patch.object(fv, "update_last_accessed_training_dataset")
+
+        # Act
+        fv.train_validation_test_split(
+            validation_size=0.2,
+            test_size=0.2,
+            tags=[{"name": "team", "value": "fraud"}],
+        )
+
+        # Assert
+        td = get_training_data.call_args.kwargs["training_dataset_obj"]
+        assert isinstance(td._tags[0], Tag)
+        assert [(t.name, t.value) for t in td._tags] == [("team", "fraud")]
+
 
 class TestFeatureViewExecuteOdts:
     def test_execute_odts_with_transformations(self, mocker):
