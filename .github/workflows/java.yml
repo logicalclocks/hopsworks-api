@@ -14,11 +14,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 8
+      - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
-          java-version: "8"
-          distribution: "adopt"
+          java-version: "17"
+          distribution: "temurin"
 
       - name: Cache local Maven repository
         uses: actions/cache@v4
@@ -42,11 +42,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 8
+      - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
-          java-version: "8"
-          distribution: "adopt"
+          java-version: "17"
+          distribution: "temurin"
 
       - name: Cache local Maven repository
         uses: actions/cache@v4
@@ -71,11 +71,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 8
+      - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
-          java-version: "8"
-          distribution: "adopt"
+          java-version: "17"
+          distribution: "temurin"
 
       - name: Cache local Maven repository
         uses: actions/cache@v4

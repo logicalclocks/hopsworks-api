@@ -52,11 +52,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
 
-      - name: Set up JDK 8
+      - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
-          java-version: "8"
-          distribution: "adopt"
+          java-version: "17"
+          distribution: "temurin"
 
       - name: Build javadoc documentation
         working-directory: java
