@@ -89,11 +89,11 @@ dev-no-opt = [
     "pytest-cov>=4.0",
     "ruff==0.15.6",
     "docsig==0.79.0",
-    "pyspark==3.5.5",
+    "pyspark==4.1.1",
     "moto[s3]==5.0.0",
     "pandas>=2.2.0",
     "typeguard==4.2.1",
-    "delta-spark==3.3.1",
+    "delta-spark==4.3.0",
     "setuptools; python_version >= '3.12'",
 ]
 dev-pandas1 = [
@@ -103,12 +103,12 @@ dev-pandas1 = [
     "pytest-cov>=4.0",
     "ruff==0.15.6",
     "docsig==0.79.0",
-    "pyspark==3.5.5",
+    "pyspark==4.1.1",
     "moto[s3]==5.0.0",
     "pandas<=1.5.3; python_version < '3.12'",
     "numpy<2; python_version < '3.12'",
     "sqlalchemy<=1.4.48",
-    "delta-spark==3.3.1",
+    "delta-spark==4.3.0",
 ]
 dev = ["hopsworks[dev-no-opt,great-expectations,polars,python,mcp,trino]"]
 polars = [
