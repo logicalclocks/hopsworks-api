@@ -117,6 +117,46 @@ class TestMultiTableIngestionJob:
         job._attach_feature_group(_feature_group(5), None)
         assert job.targets[0].to_dict() == {"featuregroupId": 5, "enabled": True}
 
+    def test_set_table_enabled_toggles_target(self):
+        job = _builder()
+        job.add_target(feature_group_id=1)
+        job.set_table_enabled(feature_group_id=1, enabled=False)
+        assert job.targets[0].to_dict()["enabled"] is False
+
+    def test_set_table_enabled_resaves_when_already_saved(self):
+        job = _builder()
+        job.add_target(feature_group_id=1)
+
+        with patch("hopsworks_common.core.job_api.JobApi") as MockJobApi:
+            api = MockJobApi.return_value
+            api.create.return_value = MagicMock()
+            job.save()
+            api.create.reset_mock()
+
+            job.set_table_enabled(feature_group_id=1, enabled=False)
+
+            api.create.assert_called_once()
+
+    def test_set_table_enabled_preserves_column_mappings(self):
+        job = _builder()
+        # attach with generated column mappings, as the engine does
+        conf = SinkJobConfiguration(
+            column_mappings=[{"sourceColumn": "Total Amount", "featureName": "total"}]
+        )
+        job._attach_feature_group(_feature_group(1), conf)
+        job.set_table_enabled(feature_group_id=1, enabled=False)
+        target = job.targets[0].to_dict()
+        assert target["enabled"] is False
+        assert target["columnMappings"] == [
+            {"sourceColumn": "Total Amount", "featureName": "total"}
+        ]
+
+    def test_set_table_enabled_unknown_feature_group_raises(self):
+        job = _builder()
+        job.add_target(feature_group_id=1)
+        with pytest.raises(ValueError, match="No target"):
+            job.set_table_enabled(feature_group_id=99)
+
 
 class TestScheduleConfigNormalization:
     def test_create_or_update_schedule_accepts_job_schedule_object(self, mocker):

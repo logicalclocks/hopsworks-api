@@ -185,6 +185,46 @@ class MultiTableIngestionJob:
         )
         return self
 
+    @public
+    def set_table_enabled(
+        self,
+        feature_group: fg.FeatureGroup | None = None,
+        *,
+        feature_group_id: int | None = None,
+        enabled: bool = True,
+    ) -> MultiTableIngestionJob:
+        """Enable or disable one table of this ingestion job.
+
+        A disabled table stays part of the job but is skipped on runs.
+        This takes effect on the next run; if the job has already been saved it is re-saved
+        with the change, keeping the table's existing column mappings and overrides intact.
+        To stop a table that is currently running, use
+        [`Execution.stop_table`][hopsworks.execution.Execution.stop_table] instead.
+
+        Parameters:
+            feature_group: The target feature group to toggle.
+            feature_group_id: The id of the target feature group, as an alternative to passing the object.
+            enabled: Whether the table is ingested on runs.
+
+        Returns:
+            This ingestion job, so calls can be chained.
+
+        Raises:
+            ValueError: If no target has been added for the given feature group.
+        """
+        resolved_id = feature_group_id
+        if resolved_id is None and feature_group is not None:
+            resolved_id = feature_group.id
+        if resolved_id is None or resolved_id not in self._target_index:
+            raise ValueError(
+                "No target for that feature group; add it with add_target(...) "
+                "or by creating a feature group with sink_job set to this job."
+            )
+        self._targets[self._target_index[resolved_id]]._enabled = enabled
+        if self._job is not None:
+            self.save()
+        return self
+
     def _add_target_object(self, target: TableIngestionTarget) -> None:
         key = target._feature_group_id
         if key in self._target_index:

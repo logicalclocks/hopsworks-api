@@ -159,6 +159,31 @@ A feature group's own `sink_job_conf` supplies that target's overrides; only the
 
 Passing `sink_job=` to `get_or_create_feature_group` registers the feature group whether it is newly created or already exists, so re-running the same script rebuilds the full job. To add a feature group object you already hold (not via `get_or_create`), call `job.add_target(fg)` before `job.save()`.
 
+### Control and monitor individual tables
+
+A multi-table job runs one worker pod per table, and you can act on a single table by its index in the target list (the order you added them):
+
+```python
+execution = job.run()          # or job.job.get_executions()[0] for a running one
+
+# Stream one table's live pod log (progress while it is still running), rather
+# than the whole job's archived stdout/stderr from execution.download_logs().
+podlog = execution.get_pod_logs(table_index=1, lines=200)
+print(podlog.status, podlog.log)   # status: AVAILABLE / WAITING_FOR_POD / ...
+
+execution.stop_table(1)        # stop just that table; the others keep running
+execution.stop()               # stop the whole execution
+```
+
+To exclude a table from *future* runs (rather than stopping the current one), disable it on the job and re-run:
+
+```python
+job.set_table_enabled(fs.get_feature_group("contacts", 1), enabled=False)
+job.run()                      # "contacts" is skipped; its config and mappings are kept
+```
+
+`set_table_enabled` works on a job object you hold; it re-saves the job when it has already been created. `enabled=False` at creation time (via a target or `sink_job_conf`) does the same up front.
+
 ### Size resources before ingesting
 
 Rather than guessing the memory and CPU an ingestion needs, ask the backend with `data_source.estimate_ingestion_resources`. It derives a recommendation from the target feature group's schema and the runtime knobs you pass (the same `write_mode`, `batch_size`, worker counts you intend to run with — a bigger batch or more workers raises the estimate). Use it to set a target's `resource_config`, or a single sink job's worker resources, deliberately.
