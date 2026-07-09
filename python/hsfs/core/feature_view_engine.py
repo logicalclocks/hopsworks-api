@@ -543,11 +543,16 @@ class FeatureViewEngine:
             td_updated.data_format, read_options
         )
 
-        # A time-range read prunes the materialized increments by their
-        # event-time-day partition key (see `Engine.APPEND_PARTITION_COLUMN`);
-        # an in-memory training dataset has no materialized layout to prune.
-        event_start_time = util._convert_event_time_to_timestamp(event_start_time)
-        event_end_time = util._convert_event_time_to_timestamp(event_end_time)
+        # A time-range read prunes the materialized data by its event-date
+        # partition key (see `Engine.DATE_PARTITION_COLUMN`); an in-memory
+        # training dataset has no materialized layout to prune. The bounds are
+        # converted to the keys' `YYYYMMDD` UTC date encoding.
+        event_start_time = self._event_date_int(
+            util._convert_event_time_to_timestamp(event_start_time)
+        )
+        event_end_time = self._event_date_int(
+            util._convert_event_time_to_timestamp(event_end_time)
+        )
         if (event_start_time is not None or event_end_time is not None) and (
             td_updated.training_dataset_type == td_updated.IN_MEMORY
         ):
@@ -735,9 +740,10 @@ class FeatureViewEngine:
         spine=None,
         transformation_context: dict[str, Any] = None,
         compute_statistics=False,
+        partition_precision="day",
     ):
         # Append (`overwrite=False`) works on both engines: the Spark engine
-        # writes the new `_hopsworks_event_start=<v>` partition directly, and the
+        # writes the new `_hopsworks_event_date=<v>` partition directly, and the
         # Python engine offloads to a backend that does the same — either the
         # Hopsworks Feature Query Service (FlyingDuck) fast path, which is sent
         # `overwrite=false`, or the fallback backend Spark job. Note this relies
@@ -782,6 +788,20 @@ class FeatureViewEngine:
         training_dataset_obj.event_start_time = start_time
         training_dataset_obj.event_end_time = end_time
 
+        if partition_precision not in ("day", "month", "year"):
+            raise FeatureStoreException(
+                f"Invalid partition precision `{partition_precision}`; "
+                "supported values are ['day', 'month', 'year']."
+            )
+        # Ride the precision along in the write options so it reaches the
+        # engine (and the backend materialization job) with the rest of the
+        # write configuration. All materializations of a version must use the
+        # same precision for time-range reads to stay sound.
+        user_write_options = {
+            **user_write_options,
+            "partition_precision": partition_precision,
+        }
+
         td_job = self._compute_training_dataset(
             feature_view_obj,
             user_write_options,
@@ -800,6 +820,17 @@ class FeatureViewEngine:
                 feature_view_obj, training_dataset_version
             )
         return training_dataset_obj, td_job
+
+    @staticmethod
+    def _event_date_int(timestamp_ms):
+        """Convert an epoch-millisecond timestamp to the partition keys' `YYYYMMDD` UTC date integer."""
+        if timestamp_ms is None:
+            return None
+        return int(
+            datetime.datetime.fromtimestamp(
+                timestamp_ms / 1000, tz=datetime.timezone.utc
+            ).strftime("%Y%m%d")
+        )
 
     def _read_from_storage_connector(
         self,

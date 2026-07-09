@@ -558,6 +558,7 @@ class ArrowFlightClient:
         overwrite=True,
         event_time_column=None,
         drop_event_time=False,
+        partition_precision="day",
     ):
         training_dataset = {}
         training_dataset["project_name"] = self._client._project_name
@@ -575,6 +576,9 @@ class ArrowFlightClient:
         # partitioning, to be dropped again after the keys are derived.
         training_dataset["event_time_column"] = event_time_column
         training_dataset["drop_event_time"] = drop_event_time
+        # Truncation of the event date keying the partitions (`day`, `month`
+        # or `year`).
+        training_dataset["partition_precision"] = partition_precision
         training_dataset["query"] = json.loads(query_obj.hqs_payload)
         _logger.debug(f"Creating training dataset: {training_dataset}")
         try:

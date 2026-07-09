@@ -122,10 +122,15 @@ if HAS_POLARS:
 _logger = logging.getLogger(__name__)
 
 # Hive-partition column keying the rows of an incremental training dataset by
-# their event-time day (epoch ms), or each increment by a counter when the
-# data has no event time. Must match `Engine.APPEND_PARTITION_COLUMN` in the
+# their UTC event date as a `YYYYMMDD` integer (truncated to the dataset's
+# partition precision). Must match `Engine.DATE_PARTITION_COLUMN` in the
 # Spark engine, which owns the write path.
-APPEND_PARTITION_COLUMN = "_hopsworks_event_start"
+DATE_PARTITION_COLUMN = "_hopsworks_event_date"
+
+# Hive-partition column keying each increment by a counter when the data has
+# no event time; such datasets are appendable but not time-addressable. Must
+# match `Engine.COUNTER_PARTITION_COLUMN` in the Spark engine.
+COUNTER_PARTITION_COLUMN = "_hopsworks_append_id"
 
 
 class Engine:
@@ -447,17 +452,21 @@ class Engine:
     def _is_metadata_file(self, path):
         return Path(path).stem.startswith("_")
 
-    def _append_partition_value(self, name: str) -> int | None:
-        """Parse an incremental-append Hive partition name into its value.
+    def _date_partition_value(self, name: str) -> int | None:
+        """Parse an event-date Hive partition name into its `YYYYMMDD` value.
 
-        Returns the integer value of a `_hopsworks_event_start=<v>` directory
-        name (see `APPEND_PARTITION_COLUMN` in the Spark engine), or `None`
-        when `name` is not an append partition.
+        Returns the integer value of a `_hopsworks_event_date=<v>` directory
+        name (see `DATE_PARTITION_COLUMN` in the Spark engine), or `None`
+        when `name` is not a date partition.
         """
-        prefix = APPEND_PARTITION_COLUMN + "="
+        prefix = DATE_PARTITION_COLUMN + "="
         if name.startswith(prefix) and name[len(prefix) :].isdigit():
             return int(name[len(prefix) :])
         return None
+
+    def _is_counter_partition(self, name: str) -> bool:
+        """Whether `name` is a counter-keyed Hive partition (data without an event time)."""
+        return name.startswith(COUNTER_PARTITION_COLUMN + "=")
 
     def _raise_not_time_addressable(self) -> None:
         raise FeatureStoreException(
@@ -536,11 +545,13 @@ class Engine:
         event_end_time: int | None = None,
     ) -> list[pd.DataFrame | pl.DataFrame]:
         # Recurse into subdirectories so Hive-partitioned training datasets
-        # (e.g. `_hopsworks_event_start=<v>/`) are read too, not just flat
+        # (e.g. `_hopsworks_event_date=<v>/`) are read too, not just flat
         # files directly under the location. A time-range read prunes the
-        # append partitions by their event-time-day value at this level; the
+        # append partitions by their event-date value at this level; the
         # content of a matching partition is then read in full, so the range
         # is not propagated into the recursion.
+        range_requested = event_start_time is not None or event_end_time is not None
+        saw_date_partition = False
         df_list = []
         total_count = 10000
         offset = 0
@@ -551,20 +562,23 @@ class Engine:
 
             for inode_entry in inode_list:
                 if inode_entry.dir:
-                    partition_value = self._append_partition_value(
-                        Path(inode_entry.path).name
-                    )
-                    if partition_value is not None and (
-                        (
+                    name = Path(inode_entry.path).name
+                    if range_requested and self._is_counter_partition(name):
+                        # A counter-keyed increment (materialized without an
+                        # event time) never matches a time range, whatever
+                        # the bounds.
+                        continue
+                    partition_value = self._date_partition_value(name)
+                    if range_requested and partition_value is not None:
+                        saw_date_partition = True
+                        if (
                             event_start_time is not None
                             and partition_value < event_start_time
-                        )
-                        or (
+                        ) or (
                             event_end_time is not None
                             and partition_value > event_end_time
-                        )
-                    ):
-                        continue
+                        ):
+                            continue
                     df_list.extend(
                         self._read_hopsfs_dir(
                             inode_entry.path,
@@ -574,7 +588,7 @@ class Engine:
                         )
                     )
                 elif not self._is_metadata_file(inode_entry.path):
-                    if event_start_time is not None or event_end_time is not None:
+                    if range_requested:
                         # A data file directly under the location means the
                         # dataset is not partitioned by event time.
                         self._raise_not_time_addressable()
@@ -588,6 +602,10 @@ class Engine:
                     )
             offset += len(inode_list)
 
+        if range_requested and not saw_date_partition:
+            # Nothing here is keyed by an event date — the dataset was
+            # materialized without an event time (counter partitions only).
+            self._raise_not_time_addressable()
         return df_list
 
     def _read_single_hopsfs_file(
@@ -647,6 +665,8 @@ class Engine:
                 region_name=storage_connector.region,
             )
 
+        range_requested = event_start_time is not None or event_end_time is not None
+        saw_date_partition = False
         df_list = []
         object_list = {"is_truncated": True}
         while object_list.get("is_truncated", False):
@@ -666,23 +686,31 @@ class Engine:
 
             for obj in object_list["Contents"]:
                 if not self._is_metadata_file(obj["Key"]) and obj["Size"] > 0:
-                    if event_start_time is not None or event_end_time is not None:
-                        # S3 lists objects flat; the append partition appears
-                        # as a key segment. Prune the increments outside the
-                        # requested event-time range by that segment.
+                    if range_requested:
+                        # S3 lists objects flat; the partition appears as a
+                        # key segment. Prune the rows outside the requested
+                        # event-date range by that segment; counter-keyed
+                        # increments (data without an event time) never match
+                        # a time range, whatever the bounds.
+                        segments = obj["Key"].split("/")
+                        if any(
+                            self._is_counter_partition(segment) for segment in segments
+                        ):
+                            continue
                         partition_values = [
                             value
                             for value in (
-                                self._append_partition_value(segment)
-                                for segment in obj["Key"].split("/")
+                                self._date_partition_value(segment)
+                                for segment in segments
                             )
                             if value is not None
                         ]
                         if not partition_values:
-                            # A data object without an append partition segment
+                            # A data object without a date partition segment
                             # means the dataset is not partitioned by event
                             # time.
                             self._raise_not_time_addressable()
+                        saw_date_partition = True
                         if (
                             event_start_time is not None
                             and partition_values[0] < event_start_time
@@ -699,6 +727,10 @@ class Engine:
                         df_list.append(self._read_polars(data_format, obj["Body"]))
                     else:
                         df_list.append(self._read_pandas(data_format, obj["Body"]))
+        if range_requested and not saw_date_partition:
+            # Nothing here is keyed by an event date — the dataset was
+            # materialized without an event time (counter partitions only).
+            self._raise_not_time_addressable()
         return df_list
 
     def _read_options(
@@ -1677,6 +1709,9 @@ class Engine:
                 overwrite=(save_mode == "overwrite"),
                 event_time_column=event_time_column,
                 drop_event_time=drop_event_time,
+                partition_precision=user_write_options.get(
+                    "partition_precision", "day"
+                ),
             )
 
         # As for creating a feature group, users have the possibility of passing

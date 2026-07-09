@@ -2618,13 +2618,15 @@ class FeatureView:
         spine: SplineDataFrameTypes | None = None,
         transformation_context: dict[str, Any] | None = None,
         compute_statistics: bool = False,
+        partition_precision: str = "day",
     ) -> job.Job:
         """Append a new batch of data to an existing training dataset version.
 
         Materializes the feature view query over the `start_time`/`end_time` window and, with `overwrite=False` (the default), writes the result as a new increment of the training dataset: the batch is stored in its own Hive partition under the existing location, leaving data already materialized untouched.
         This lets a large (multi-terabyte) training dataset grow — for example with a new daily batch — without rewriting it, while keeping the same training dataset version.
 
-        The materialized data is stored in Hive partitions keyed by each row's event time, at day granularity, making the dataset time-addressable: [`get_training_data`][hsfs.feature_view.FeatureView.get_training_data] returns everything by default, or only a time range via its `start_time`/`end_time` parameters (e.g. a sliding training window over a growing time-series dataset).
+        The materialized data is stored in Hive partitions keyed by each row's UTC event date (a human-readable `YYYYMMDD` value), truncated to `partition_precision` — `day` by default, or `month`/`year` for coarser layouts with fewer partitions.
+        This makes the dataset time-addressable: [`get_training_data`][hsfs.feature_view.FeatureView.get_training_data] returns everything by default, or only a time range via its `start_time`/`end_time` parameters (e.g. a sliding training window over a growing time-series dataset).
         Because rows land in the day partitions they belong to, batches may arrive in any order: backfills and late-arriving events are supported.
         Re-appending a batch that was already materialized adds its rows again — appends are not deduplicated, as with feature group inserts.
         The partition column itself is an internal storage detail and never surfaces as a feature.
@@ -2688,6 +2690,9 @@ class FeatureView:
             compute_statistics: Whether to recompute the descriptive statistics over all increments after the batch is written, at the cost of reading the whole dataset back.
                 Only applies when appending; an overwrite recomputes statistics as part of the materialization itself.
                 When appending through a materialization job, only use it together with the default `wait_for_job=True`, so the statistics include the new batch.
+            partition_precision: Truncation of the event date keying the materialized partitions: `day` (the default), `month` or `year`.
+                Coarser precisions produce fewer partitions for long histories, at the cost of coarser time-range reads.
+                All materializations of a training dataset version must use the same precision.
 
         Returns:
             The Hopsworks Job that was launched to materialize the batch.
@@ -2706,6 +2711,7 @@ class FeatureView:
             spine=spine,
             transformation_context=transformation_context,
             compute_statistics=compute_statistics,
+            partition_precision=partition_precision,
         )
         self.update_last_accessed_training_dataset(td.version)
 
@@ -3407,8 +3413,8 @@ class FeatureView:
         """Get training data created by `feature_view.create_training_data` or `feature_view.training_data`.
 
         For a training dataset grown incrementally with [`insert_training_data`][hsfs.feature_view.FeatureView.insert_training_data], `start_time`/`end_time` read only the rows whose event time falls inside the given range, instead of the whole dataset.
-        The materialized data is stored in Hive partitions keyed by each row's event time at day granularity, so a time-range read prunes to the matching day partitions and never scans the rest of the data — for example, one growing time-series training dataset can serve `[t0, t1]` as the training set and `(t1, t2]` as the test set with two calls.
-        The range selects whole day partitions (both bounds inclusive, at day resolution), so align the bounds with day boundaries; sub-day bounds do not filter rows within a day.
+        The materialized data is stored in Hive partitions keyed by each row's UTC event date, truncated to the dataset's partition precision (day by default, or month/year), so a time-range read prunes to the matching partitions and never scans the rest of the data — for example, one growing time-series training dataset can serve `[t0, t1]` as the training set and `(t1, t2]` as the test set with two calls.
+        The range selects whole partitions (both bounds inclusive, converted to UTC dates), so align the bounds with the dataset's partition precision; finer bounds do not filter rows within a partition.
 
         Example:
             ```python
@@ -3463,10 +3469,10 @@ class FeatureView:
                 Independent transformations run concurrently; a chained sequence runs in order.
                 Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
                 Ignored by the Spark engine, which pushes transformations down to Spark.
-            start_time: Read only the rows whose event-time day is at or after this event time, inclusive.
+            start_time: Read only the rows whose event date is at or after this event time, inclusive (converted to a UTC date).
                 Requires a materialized training dataset partitioned by event time; data materialized without an event-time column is never matched.
                 Strings should be formatted in one of the following ways `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
-            end_time: Read only the rows whose event-time day is at or before this event time, inclusive.
+            end_time: Read only the rows whose event date is at or before this event time, inclusive (converted to a UTC date).
                 Strings should be formatted in one of the following ways `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
 
         Returns:

@@ -1116,10 +1116,11 @@ class TestFeatureViewEngine:
             event_end_time="2026-07-01 23:59:59",
         )
 
-        # Assert: the window reached the directory read as epoch millis
+        # Assert: the window reached the directory read as the partition
+        # keys' `YYYYMMDD` UTC date encoding
         read_options = mock_fv_engine_read_dir.call_args[0][2]
-        assert read_options["event_start_time"] == 1782864000000
-        assert read_options["event_end_time"] == 1782950399000
+        assert read_options["event_start_time"] == 20260701
+        assert read_options["event_end_time"] == 20260701
 
     def test_get_training_data_time_range_in_memory_raises(self, mocker):
         # An in-memory training dataset has no materialized increments to
@@ -2230,6 +2231,42 @@ class TestFeatureViewEngine:
 
         # Assert
         mock_recompute.assert_not_called()
+
+    def test_insert_training_data_partition_precision(self, mocker):
+        # The precision rides in the write options so it reaches the engine
+        # and the backend materialization job.
+        # Arrange
+        fv_engine, fv, _ = self._arrange_insert_training_data(mocker)
+        mock_compute = mocker.patch.object(fv_engine, "_compute_training_dataset")
+
+        # Act
+        fv_engine._insert_training_data(
+            feature_view_obj=fv,
+            training_dataset_version=1,
+            start_time="",
+            end_time="",
+            user_write_options={},
+            partition_precision="month",
+        )
+
+        # Assert
+        write_options = mock_compute.call_args[0][1]
+        assert write_options["partition_precision"] == "month"
+
+    def test_insert_training_data_invalid_partition_precision(self, mocker):
+        # Arrange
+        fv_engine, fv, _ = self._arrange_insert_training_data(mocker)
+
+        # Act / Assert
+        with pytest.raises(FeatureStoreException, match="partition precision"):
+            fv_engine._insert_training_data(
+                feature_view_obj=fv,
+                training_dataset_version=1,
+                start_time="",
+                end_time="",
+                user_write_options={},
+                partition_precision="hour",
+            )
 
     def test_recompute_training_dataset_statistics(self, mocker):
         # Arrange
