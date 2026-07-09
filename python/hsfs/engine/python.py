@@ -121,10 +121,10 @@ if HAS_POLARS:
 
 _logger = logging.getLogger(__name__)
 
-# Hive-partition column keying the increments of an incremental training
-# dataset by their event-window start (epoch ms), or by a counter when
-# materialized without a window. Must match `Engine.APPEND_PARTITION_COLUMN`
-# in the Spark engine, which owns the write path.
+# Hive-partition column keying the rows of an incremental training dataset by
+# their event-time day (epoch ms), or each increment by a counter when the
+# data has no event time. Must match `Engine.APPEND_PARTITION_COLUMN` in the
+# Spark engine, which owns the write path.
 APPEND_PARTITION_COLUMN = "_hopsworks_event_start"
 
 
@@ -461,10 +461,10 @@ class Engine:
 
     def _raise_not_time_addressable(self) -> None:
         raise FeatureStoreException(
-            "A time-range read requires an incremental training dataset "
-            "whose increments were materialized with an event-time window "
-            "(`start_time`), but this dataset is not partitioned by event "
-            "time. Read it without `start_time`/`end_time` instead."
+            "A time-range read requires a training dataset partitioned by "
+            "event time, but this dataset is not (its data has no event-time "
+            "column, or it was materialized before event-time partitioning "
+            "was supported). Read it without `start_time`/`end_time` instead."
         )
 
     def _read_hopsfs(
@@ -538,7 +538,7 @@ class Engine:
         # Recurse into subdirectories so Hive-partitioned training datasets
         # (e.g. `_hopsworks_event_start=<v>/`) are read too, not just flat
         # files directly under the location. A time-range read prunes the
-        # append partitions by their event-window value at this level; the
+        # append partitions by their event-time-day value at this level; the
         # content of a matching partition is then read in full, so the range
         # is not propagated into the recursion.
         df_list = []
@@ -1639,7 +1639,6 @@ class Engine:
         feature_view_obj: feature_view.FeatureView | None = None,
         to_df: bool = False,
         transformation_context: dict[str, Any] = None,
-        event_start_time: int | None = None,
     ) -> job.Job | Any:
         if not feature_view_obj and not isinstance(dataset, query.Query):
             raise Exception(
@@ -1662,6 +1661,11 @@ class Engine:
             and training_dataset.data_format == "parquet"
             and not transformation_context
         ):
+            # The materialized layout is Hive-partitioned by each row's
+            # event-time day; force the event-time column through the query
+            # when the user did not select it, and tell the Query Service to
+            # drop it again after deriving the partition keys.
+            event_time_column, drop_event_time = dataset._include_left_event_time()
             query_obj, _ = dataset._prep_read(False, user_write_options)
             return util._run_with_loading_animation(
                 "Materializing data to Hopsworks, using Hopsworks Feature Query Service",
@@ -1671,7 +1675,8 @@ class Engine:
                 query_obj,
                 user_write_options.get("arrow_flight_config", {}),
                 overwrite=(save_mode == "overwrite"),
-                event_start_time=event_start_time,
+                event_time_column=event_time_column,
+                drop_event_time=drop_event_time,
             )
 
         # As for creating a feature group, users have the possibility of passing

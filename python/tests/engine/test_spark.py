@@ -2574,6 +2574,7 @@ class TestSpark:
             splits={},
         )
         mock_query = mocker.Mock(spec=query.Query)
+        mock_query._include_left_event_time.return_value = (None, False)
 
         # Act: append
         spark_engine._write_training_dataset(
@@ -2596,6 +2597,47 @@ class TestSpark:
 
         # Assert
         assert mock_fit_and_transform.call_args[1]["training_dataset_version"] is None
+
+    def test_write_training_dataset_threads_event_time_partitioning(self, mocker):
+        # The event-time column resolved from the query (forced through it
+        # when the user did not select it) reaches the writer, together with
+        # the flag to drop it again after the partition keys are derived.
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine.spark.Engine._write_options")
+        mocker.patch("hsfs.engine.spark.Engine._convert_to_default_dataframe")
+        mock_write_single = mocker.patch(
+            "hsfs.engine.spark.Engine._write_training_dataset_single"
+        )
+        mocker.patch(
+            "hsfs.core.transformation_function_engine.TransformationFunctionEngine._fit_and_transform"
+        )
+
+        spark_engine = spark.Engine()
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="parquet",
+            featurestore_id=99,
+            splits={},
+        )
+        mock_query = mocker.Mock(spec=query.Query)
+        mock_query._include_left_event_time.return_value = ("fg1_event_time", True)
+
+        # Act
+        spark_engine._write_training_dataset(
+            training_dataset=td,
+            query_obj=mock_query,
+            user_write_options={},
+            save_mode=spark_engine.APPEND,
+        )
+
+        # Assert
+        mock_query._include_left_event_time.assert_called_once_with()
+        assert mock_write_single.call_args[1]["event_time_column"] == "fg1_event_time"
+        assert mock_write_single.call_args[1]["drop_event_time"] is True
 
     def test_get_training_data_accepts_feature_view_engine_call_shape(self, mocker):
         # FeatureViewEngine._get_training_data forwards the same arguments to
@@ -3948,7 +3990,7 @@ class TestSpark:
         # Act
         next_value = spark_engine._next_append_partition_value("path")
 
-        # Assert: without an event window, max existing value (2) + 1
+        # Assert: without an event time, max existing value (2) + 1
         assert next_value == 3
 
     def test_next_append_partition_value_empty(self, mocker):
@@ -3961,60 +4003,9 @@ class TestSpark:
         # Assert: first append starts at 0
         assert next_value == 0
 
-    def test_next_append_partition_value_event_start_time(self, mocker):
-        # The batch's event-window start becomes the partition value, keying
-        # the increment by event time.
-        # Arrange
-        col = spark.Engine.APPEND_PARTITION_COLUMN
-        spark_engine = self._partition_listing_engine(
-            mocker,
-            [(f"{col}=1751241600000", True), ("_SUCCESS", False)],
-        )
-
-        # Act
-        next_value = spark_engine._next_append_partition_value(
-            "path", event_start_time=1751328000000
-        )
-
-        # Assert
-        assert next_value == 1751328000000
-
-    def test_next_append_partition_value_out_of_order(self, mocker):
-        # Increments must be appended in event-time order, otherwise
-        # time-range reads (which prune by partition value) would return
-        # wrong data.
-        # Arrange
-        col = spark.Engine.APPEND_PARTITION_COLUMN
-        spark_engine = self._partition_listing_engine(
-            mocker, [(f"{col}=1751328000000", True)]
-        )
-
-        # Act / Assert
-        with pytest.raises(exceptions.FeatureStoreException) as e_info:
-            spark_engine._next_append_partition_value(
-                "path", event_start_time=1751241600000
-            )
-        assert "event-time order" in str(e_info.value)
-
-    def test_next_append_partition_value_duplicate(self, mocker):
-        # Re-appending the same window would merge two batches into one
-        # partition and silently duplicate rows.
-        # Arrange
-        col = spark.Engine.APPEND_PARTITION_COLUMN
-        spark_engine = self._partition_listing_engine(
-            mocker, [(f"{col}=1751328000000", True)]
-        )
-
-        # Act / Assert
-        with pytest.raises(exceptions.FeatureStoreException) as e_info:
-            spark_engine._next_append_partition_value(
-                "path", event_start_time=1751328000000
-            )
-        assert "event-time order" in str(e_info.value)
-
     def test_next_append_partition_value_counter_after_timed(self, mocker):
-        # An append without an event window stays monotonic even after
-        # time-keyed increments.
+        # A counter append (data without an event time) stays monotonic even
+        # after event-time-keyed day partitions.
         # Arrange
         col = spark.Engine.APPEND_PARTITION_COLUMN
         spark_engine = self._partition_listing_engine(
@@ -4042,22 +4033,28 @@ class TestSpark:
             spark_engine._next_append_partition_value("path")
         assert "not partitioned" in str(e_info.value)
 
-    def test_write_training_dataset_single_append_event_start_time(self, mocker):
-        # The batch's event-window start is handed to the partition-value
-        # resolution, keying the increment by event time.
+    def test_write_training_dataset_single_event_time_partitioning(self, mocker):
+        # With an event-time column present, each row's partition key is
+        # derived from it (no counter listing), the layout is only validated
+        # on append, and a column forced through the query for partitioning is
+        # dropped again before the write.
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch(
             "hsfs.engine.spark.Engine._setup_storage_connector",
             return_value="path",
         )
-        mock_next_value = mocker.patch(
-            "hsfs.engine.spark.Engine._next_append_partition_value",
-            return_value=1751328000000,
+        mock_list_values = mocker.patch(
+            "hsfs.engine.spark.Engine._list_append_partition_values"
         )
+        mock_next_value = mocker.patch(
+            "hsfs.engine.spark.Engine._next_append_partition_value"
+        )
+        mock_event_day_ms = mocker.patch("hsfs.engine.spark.Engine._event_day_ms")
 
         spark_engine = spark.Engine()
         feature_dataframe = mocker.Mock()
+        feature_dataframe.columns = ["feature", "et"]
 
         # Act
         spark_engine._write_training_dataset_single(
@@ -4068,22 +4065,30 @@ class TestSpark:
             save_mode=spark_engine.APPEND,
             path="path",
             to_df=False,
-            event_start_time=1751328000000,
+            event_time_column="et",
+            drop_event_time=True,
         )
 
         # Assert
-        mock_next_value.assert_called_once_with("path", 1751328000000)
+        mock_list_values.assert_called_once_with("path")
+        mock_next_value.assert_not_called()
+        mock_event_day_ms.assert_called_once_with(feature_dataframe, "et")
+        assert feature_dataframe.withColumn.call_args[0][0] == (
+            spark_engine.APPEND_PARTITION_COLUMN
+        )
+        partitioned_df = feature_dataframe.withColumn.return_value
+        partitioned_df.drop.assert_called_once_with("et")
 
-    def test_write_training_dataset_single_overwrite_event_start_time(self, mocker):
-        # Overwrite with an event window restarts the dataset at the window
-        # start, so it is time-addressable from its first materialization.
+    def test_write_training_dataset_single_event_time_kept(self, mocker):
+        # An event-time column the user selected stays in the written data.
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.spark.Engine._setup_storage_connector")
-        mock_lit = mocker.patch("hsfs.engine.spark.lit")
+        mocker.patch("hsfs.engine.spark.Engine._event_day_ms")
 
         spark_engine = spark.Engine()
         feature_dataframe = mocker.Mock()
+        feature_dataframe.columns = ["feature", "et"]
 
         # Act
         spark_engine._write_training_dataset_single(
@@ -4094,11 +4099,47 @@ class TestSpark:
             save_mode=spark_engine.OVERWRITE,
             path="path",
             to_df=False,
-            event_start_time=1751328000000,
+            event_time_column="et",
+            drop_event_time=False,
         )
 
         # Assert
-        mock_lit.assert_called_once_with(1751328000000)
+        partitioned_df = feature_dataframe.withColumn.return_value
+        partitioned_df.drop.assert_not_called()
+
+    def test_event_day_ms(self, mocker):
+        # The partition key is the row's event time floored to the UTC day in
+        # epoch millis, whatever the column type.
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        spark_engine = spark.Engine()
+
+        # 2026-07-01 13:45:30 UTC in epoch ms; the expected key is
+        # 2026-07-01 00:00:00 UTC in epoch ms.
+        ts_ms = 1782567930000
+        day_ms = 1782518400000
+
+        df = spark_engine._spark_session.createDataFrame(
+            pd.DataFrame(
+                {
+                    "ts": pd.to_datetime([ts_ms], unit="ms"),
+                    "ms": pd.Series([ts_ms], dtype="int64"),
+                }
+            )
+        )
+        # Spark ingests the naive timestamp as session-local time, so assert
+        # the timestamp flooring against Spark's own epoch view of the value
+        # rather than a fixed instant.
+        df = df.withColumn("ts_ms", (df["ts"].cast("double") * 1000).cast("long"))
+        df = df.withColumn("ts_day", spark_engine._event_day_ms(df, "ts"))
+        df = df.withColumn("ms_day", spark_engine._event_day_ms(df, "ms"))
+
+        # Act
+        row = df.collect()[0]
+
+        # Assert
+        assert row["ms_day"] == day_ms
+        assert row["ts_day"] == row["ts_ms"] - row["ts_ms"] % 86400000
 
     def test_write_training_dataset_single_to_df(self, mocker):
         # Arrange
@@ -4270,7 +4311,7 @@ class TestSpark:
                 location="test_location",
                 dataframe_type="default",
             )
-        assert "not partitioned by event time" in str(e_info.value)
+        assert "partitioned by event time" in str(e_info.value)
 
     def test_read_location_format_delta(self, mocker):
         # Arrange

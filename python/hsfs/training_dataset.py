@@ -715,7 +715,7 @@ class TrainingDataset(TrainingDatasetBase):
     ) -> Job:
         """Insert additional feature data into the training dataset.
 
-        With `overwrite=False` (the default) this appends data to the training dataset as a new increment: the data is written into its own Hive partition under the existing location, leaving the data already materialized untouched.
+        With `overwrite=False` (the default) this appends data to the training dataset as a new increment, leaving the data already materialized untouched: the rows are written into Hive partitions keyed by their event time at day granularity (or into a per-increment counter partition when the query's left feature group defines no event time).
         This lets a large (multi-terabyte) training dataset grow — for example with a new daily batch — without rewriting it, while keeping the same training dataset version.
         On [`read`][hsfs.training_dataset.TrainingDataset.read] all increments are returned together; the partitioning is an internal storage detail and is not exposed as a feature.
 

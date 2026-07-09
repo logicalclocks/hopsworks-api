@@ -544,7 +544,7 @@ class FeatureViewEngine:
         )
 
         # A time-range read prunes the materialized increments by their
-        # event-window partition key (see `Engine.APPEND_PARTITION_COLUMN`);
+        # event-time-day partition key (see `Engine.APPEND_PARTITION_COLUMN`);
         # an in-memory training dataset has no materialized layout to prune.
         event_start_time = util._convert_event_time_to_timestamp(event_start_time)
         event_end_time = util._convert_event_time_to_timestamp(event_end_time)
@@ -818,8 +818,8 @@ class FeatureViewEngine:
         event_end_time=None,
     ):
         # A time-range read ships the window to the engine as internal read
-        # options; the engine prunes the increments by their event-window
-        # partition key and strips the keys before they reach the reader.
+        # options; the engine prunes the day partitions by their event-time key
+        # and strips the keys before they reach the reader.
         if event_start_time is not None:
             read_options = {**read_options, "event_start_time": event_start_time}
         if event_end_time is not None:
@@ -1019,9 +1019,6 @@ class FeatureViewEngine:
             save_mode,
             feature_view_obj=feature_view_obj,
             transformation_context=transformation_context,
-            # The window start doubles as the increment's Hive-partition
-            # value, keying the materialized layout by event time.
-            event_start_time=event_start_time,
         )
 
         # Set training dataset schema after training dataset has been generated

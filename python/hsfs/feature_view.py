@@ -2624,10 +2624,11 @@ class FeatureView:
         Materializes the feature view query over the `start_time`/`end_time` window and, with `overwrite=False` (the default), writes the result as a new increment of the training dataset: the batch is stored in its own Hive partition under the existing location, leaving data already materialized untouched.
         This lets a large (multi-terabyte) training dataset grow — for example with a new daily batch — without rewriting it, while keeping the same training dataset version.
 
-        The batch `start_time` doubles as the increment's partition key, making the dataset time-addressable: [`get_training_data`][hsfs.feature_view.FeatureView.get_training_data] returns all increments together by default, or only a time range of them via its `start_time`/`end_time` parameters (e.g. a sliding training window over a growing time-series dataset).
-        For the layout to stay ordered by event time, each appended batch must start after the previous one; appending a batch whose `start_time` is not later than the newest increment raises an error.
+        The materialized data is stored in Hive partitions keyed by each row's event time, at day granularity, making the dataset time-addressable: [`get_training_data`][hsfs.feature_view.FeatureView.get_training_data] returns everything by default, or only a time range via its `start_time`/`end_time` parameters (e.g. a sliding training window over a growing time-series dataset).
+        Because rows land in the day partitions they belong to, batches may arrive in any order: backfills and late-arriving events are supported.
+        Re-appending a batch that was already materialized adds its rows again — appends are not deduplicated, as with feature group inserts.
         The partition column itself is an internal storage detail and never surfaces as a feature.
-        Appending without a `start_time` keeps the dataset appendable but the increment cannot be matched by time-range reads.
+        If the feature view's query has no event-time column to derive the partitions from (the left feature group defines none), each increment is keyed by a counter instead — the dataset stays appendable but cannot be read by time range.
 
         With `overwrite=True` the entire training dataset version is rewritten instead, equivalent to [`recreate_training_dataset`][hsfs.feature_view.FeatureView.recreate_training_dataset] for the given window.
 
@@ -2645,7 +2646,7 @@ class FeatureView:
             feature_view = fs.get_feature_view(...)
 
             # create an unsplit training dataset once, then grow it with a
-            # daily batch (the batch start_time keys the new increment)
+            # daily batch (rows are partitioned by their event-time day)
             job = feature_view.insert_training_data(
                 training_dataset_version=1,
                 start_time="2026-07-01 00:00:00",
@@ -3405,9 +3406,9 @@ class FeatureView:
     ]:
         """Get training data created by `feature_view.create_training_data` or `feature_view.training_data`.
 
-        For a training dataset grown incrementally with [`insert_training_data`][hsfs.feature_view.FeatureView.insert_training_data], `start_time`/`end_time` read only the increments whose batch start time falls inside the given range, instead of the whole dataset.
-        Each increment is stored as a Hive partition keyed by its batch `start_time`, so a time-range read prunes to the matching partitions and never scans the rest of the data — for example, one growing time-series training dataset can serve `[t0, t1]` as the training set and `(t1, t2]` as the test set with two calls.
-        The range selects whole increments by their batch start time (both bounds inclusive); it does not filter individual rows, so align the range with the appended batch boundaries.
+        For a training dataset grown incrementally with [`insert_training_data`][hsfs.feature_view.FeatureView.insert_training_data], `start_time`/`end_time` read only the rows whose event time falls inside the given range, instead of the whole dataset.
+        The materialized data is stored in Hive partitions keyed by each row's event time at day granularity, so a time-range read prunes to the matching day partitions and never scans the rest of the data — for example, one growing time-series training dataset can serve `[t0, t1]` as the training set and `(t1, t2]` as the test set with two calls.
+        The range selects whole day partitions (both bounds inclusive, at day resolution), so align the bounds with day boundaries; sub-day bounds do not filter rows within a day.
 
         Example:
             ```python
@@ -3462,10 +3463,10 @@ class FeatureView:
                 Independent transformations run concurrently; a chained sequence runs in order.
                 Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
                 Ignored by the Spark engine, which pushes transformations down to Spark.
-            start_time: Read only the increments whose batch start time is at or after this event time, inclusive.
-                Requires a materialized training dataset whose increments were appended with a `start_time`; increments appended without one are never matched.
+            start_time: Read only the rows whose event-time day is at or after this event time, inclusive.
+                Requires a materialized training dataset partitioned by event time; data materialized without an event-time column is never matched.
                 Strings should be formatted in one of the following ways `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
-            end_time: Read only the increments whose batch start time is at or before this event time, inclusive.
+            end_time: Read only the rows whose event-time day is at or before this event time, inclusive.
                 Strings should be formatted in one of the following ways `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
 
         Returns:

@@ -2684,14 +2684,7 @@ class TestFeatureViewEngine:
         # Assert: 2026-07-01 00:00:00 / 23:59:59 UTC in epoch millis
         assert user_write_options["event_start_time"] == 1782864000000
         assert user_write_options["event_end_time"] == 1782950399000
-        # The window start is also handed to the engine as the increment's
-        # partition key, making the materialized layout time-addressable.
-        assert (
-            mock_engine.return_value._write_training_dataset.call_args[1][
-                "event_start_time"
-            ]
-            == 1782864000000
-        )
+        assert mock_engine.return_value._write_training_dataset.call_count == 1
 
     def test_compute_training_dataset_no_event_time_window(self, mocker):
         # Without a per-call window (plain create/recreate) no window keys are
@@ -2739,12 +2732,7 @@ class TestFeatureViewEngine:
         # Assert
         assert "event_start_time" not in user_write_options
         assert "event_end_time" not in user_write_options
-        assert (
-            mock_engine.return_value._write_training_dataset.call_args[1][
-                "event_start_time"
-            ]
-            is None
-        )
+        assert mock_engine.return_value._write_training_dataset.call_count == 1
 
     def test_compute_training_dataset_td_transformations(self, mocker):
         # Arrange

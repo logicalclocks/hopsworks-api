@@ -930,7 +930,7 @@ class TestPython:
                 data_format=None,
                 event_start_time=1751241600000,
             )
-        assert "not partitioned by event time" in str(e_info.value)
+        assert "partitioned by event time" in str(e_info.value)
 
     def test_read_s3(self, mocker):
         # Arrange
@@ -1042,7 +1042,7 @@ class TestPython:
                 data_format=None,
                 event_start_time=1751241600000,
             )
-        assert "not partitioned by event time" in str(e_info.value)
+        assert "partitioned by event time" in str(e_info.value)
 
     def test_read_s3_session_token(self, mocker):
         # Arrange
