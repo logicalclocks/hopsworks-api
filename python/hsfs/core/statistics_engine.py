@@ -541,45 +541,83 @@ class StatisticsEngine:
     def _profile_transformation_fn_statistics(
         self, feature_dataframe, columns, label_encoder_features
     ) -> str:
-        if (
-            engine._get_type() == "spark"
-            and len(feature_dataframe.select(*columns).head(1)) == 0
-        ) or (engine._get_type() == "python" and len(feature_dataframe.head()) == 0):
+        if engine._get_type() == "python" and len(feature_dataframe.head()) == 0:
             raise exceptions.FeatureStoreException(
                 "There is no data in the entity that you are trying to compute "
                 "statistics for. A possible cause might be that you inserted only data "
                 "to the online storage of a feature group."
             )
 
-        # compute statistics for all features with transformation fn
+        # Compute statistics for all features with a transformation fn. Fitting consumes
+        # min/max/mean/stddev/percentiles plus the encoder vocabularies added below;
+        # histograms are not part of the transformation-statistics contract, so they are
+        # not requested (the profiler emits percentiles regardless of the histogram flag).
         all_columns = (columns or []) + (label_encoder_features or [])
         stats_str = engine._get_instance()._profile(
-            feature_dataframe, all_columns, False, True, False
+            feature_dataframe, all_columns, False, False, False
         )
-
-        # add unique values profile to column stats
-        return self._profile_unique_values(
-            feature_dataframe, label_encoder_features, stats_str
-        )
-
-    def _profile_unique_values(
-        self, feature_dataframe, label_encoder_features, stats_str
-    ) -> str:
         stats = json.loads(stats_str)
         if not stats:
             stats = {"columns": []}
+
+        # The profile already scanned the data, so emptiness is read off its counts
+        # instead of a separate pre-action on the dataframe (matches the previous
+        # head(1) guard: zero rows means zero records in every profiled column).
+        if engine._get_type() == "spark" and stats["columns"]:
+            total_records = sum(
+                col_stats.get("numRecordsNonNull", 0)
+                + col_stats.get("numRecordsNull", 0)
+                for col_stats in stats["columns"]
+            )
+            if total_records == 0:
+                raise exceptions.FeatureStoreException(
+                    "There is no data in the entity that you are trying to compute "
+                    "statistics for. A possible cause might be that you inserted only "
+                    "data to the online storage of a feature group."
+                )
+
+        # add unique values profile to column stats
+        return self._profile_unique_values(
+            feature_dataframe, label_encoder_features, stats
+        )
+
+    # Encoder vocabularies are collected onto the driver to fit label/one-hot encoders.
+    # Above this cardinality the collect is a driver-memory hazard and the encoding is a
+    # modeling error, so the fit fails loudly instead.
+    _MAX_ENCODER_VOCABULARY_SIZE = 1_000_000
+
+    def _profile_unique_values(
+        self, feature_dataframe, label_encoder_features, stats
+    ) -> str:
         stats_dict = {col_stats["column"]: col_stats for col_stats in stats["columns"]}
-        for column in label_encoder_features:
-            col_stats_unique_values = {
-                "column": column,
-                "unique_values": list(
-                    engine._get_instance()._get_unique_values(feature_dataframe, column)
-                ),
-            }
-            if column in stats_dict:
-                stats_dict[column].update(col_stats_unique_values)
-            else:
-                stats_dict[column] = col_stats_unique_values
+        if label_encoder_features:
+            for column in label_encoder_features:
+                approx_distinct = stats_dict.get(column, {}).get(
+                    "approximateNumDistinctValues"
+                )
+                if (
+                    approx_distinct is not None
+                    and approx_distinct > self._MAX_ENCODER_VOCABULARY_SIZE
+                ):
+                    raise exceptions.FeatureStoreException(
+                        f"Feature '{column}' has approximately {approx_distinct} distinct "
+                        "values, above the maximum encoder vocabulary size of "
+                        f"{self._MAX_ENCODER_VOCABULARY_SIZE}. Encoding a feature of this "
+                        "cardinality would collect its full vocabulary onto the driver; "
+                        "drop the encoder on this feature or reduce its cardinality."
+                    )
+            unique_values = engine._get_instance()._get_unique_values(
+                feature_dataframe, label_encoder_features
+            )
+            for column, values in unique_values.items():
+                col_stats_unique_values = {
+                    "column": column,
+                    "unique_values": list(values),
+                }
+                if column in stats_dict:
+                    stats_dict[column].update(col_stats_unique_values)
+                else:
+                    stats_dict[column] = col_stats_unique_values
 
         stats["columns"] = list(stats_dict.values())
         return json.dumps(stats)  # the result is a JSON string

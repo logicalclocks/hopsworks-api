@@ -17,10 +17,12 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import os
 import re
 import uuid
 import warnings
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING, Any, TypeVar
 
@@ -55,6 +57,7 @@ try:
     from pyspark.sql.functions import (
         array,
         col,
+        collect_set,
         concat,
         current_timestamp,
         from_json,
@@ -64,7 +67,9 @@ try:
         row_number,
         struct,
         udf,
+        when,
     )
+    from pyspark.sql.functions import sum as spark_sum
     from pyspark.sql.types import (
         ArrayType,
         BinaryType,
@@ -1082,6 +1087,25 @@ class Engine:
         if read_options is None:
             read_options = {}
 
+        # The source plan is executed once per consumer: every split write is one
+        # consumer, and fitting transformation statistics (needed when the feature view
+        # has statistics-dependent transformations and no existing version supplies
+        # them) is one more. With more than one consumer the source is materialized
+        # once and shared; with exactly one, writing straight from the lazy plan is
+        # strictly cheaper than populating a cache it would never read again.
+        statistics_fit_consumers = (
+            1
+            if (
+                training_dataset_version is None
+                and feature_view_obj is not None
+                and any(
+                    tf.hopsworks_udf.statistics_features
+                    for tf in feature_view_obj.transformation_functions
+                )
+            )
+            else 0
+        )
+
         if len(training_dataset.splits) == 0:
             if isinstance(query_obj, query.Query):
                 dataset = self._convert_to_default_dataframe(
@@ -1090,54 +1114,113 @@ class Engine:
             else:
                 raise ValueError("Dataset should be a query.")
 
-            # Statistics are always refit (training_dataset_version not
-            # passed): an unsplit in-memory training dataset retrieved by
-            # version is not consistent.
-            dataset = transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
+            dataset, cached_source = self._materialize_for_reuse(
+                dataset, 1 + statistics_fit_consumers
+            )
+            try:
+                # Statistics are always refit (training_dataset_version not
+                # passed): an unsplit in-memory training dataset retrieved by
+                # version is not consistent.
+                transformed = transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
+                    training_dataset,
+                    feature_view_obj,
+                    dataset,
+                    transformation_context=transformation_context,
+                )
+
+                if training_dataset.coalesce:
+                    transformed = transformed.coalesce(1)
+                path = training_dataset.location + "/" + training_dataset.name
+                return self._write_training_dataset_single(
+                    transformed,
+                    training_dataset.data_source.storage_connector,
+                    training_dataset.data_format,
+                    write_options,
+                    save_mode,
+                    path,
+                    to_df=to_df,
+                )
+            finally:
+                if cached_source:
+                    dataset.unpersist()
+
+        split_dataset, cached_parent = self._split_df(
+            query_obj,
+            training_dataset,
+            read_options=read_options,
+            consumers=len(training_dataset.splits) + statistics_fit_consumers,
+        )
+        try:
+            if training_dataset.coalesce:
+                for key in split_dataset:
+                    split_dataset[key] = split_dataset[key].coalesce(1)
+
+            split_dataset = transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
                 training_dataset,
                 feature_view_obj,
-                dataset,
+                split_dataset,
                 transformation_context=transformation_context,
+                training_dataset_version=training_dataset_version,
             )
 
-            if training_dataset.coalesce:
-                dataset = dataset.coalesce(1)
-            path = training_dataset.location + "/" + training_dataset.name
-            return self._write_training_dataset_single(
-                dataset,
-                training_dataset.data_source.storage_connector,
-                training_dataset.data_format,
+            return self._write_training_dataset_splits(
+                training_dataset,
+                split_dataset,
                 write_options,
                 save_mode,
-                path,
                 to_df=to_df,
+                source_size_bytes=self._plan_size_bytes(cached_parent),
             )
-        split_dataset = self._split_df(
-            query_obj, training_dataset, read_options=read_options
-        )
-        for key in split_dataset:
-            if training_dataset.coalesce:
-                split_dataset[key] = split_dataset[key].coalesce(1)
+        finally:
+            if cached_parent is not None:
+                cached_parent.unpersist()
 
-            split_dataset[key] = split_dataset[key].cache()
+    def _materialize_for_reuse(self, dataset, consumers: int):
+        """Persist and materialize a dataframe that more than one action will consume.
 
-        split_dataset = transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
-            training_dataset,
-            feature_view_obj,
-            split_dataset,
-            transformation_context=transformation_context,
-            training_dataset_version=training_dataset_version,
-        )
+        Returns the (possibly persisted) dataframe and whether it was persisted.
+        The cache is populated immediately with
+        `spark.sql.optimizer.canChangeCachedPlanOutputPartitioning` enabled: by default
+        that flag is off and a cached plan keeps the static pre-AQE shuffle partitioning
+        (`spark.sql.shuffle.partitions`), which re-inflates a small AQE-coalesced result
+        into hundreds of near-empty partitions and taxes every downstream action with
+        task scheduling, tiny output files, and per-task Python-worker round-trips.
+        The flag is restored right after materialization so plans compiled outside this
+        window (including user caches in interactive sessions) keep default behavior.
+        """
+        if consumers <= 1:
+            return dataset, False
+        partitioning_key = "spark.sql.optimizer.canChangeCachedPlanOutputPartitioning"
+        previous = self._spark_session.conf.get(partitioning_key, "false")
+        self._spark_session.conf.set(partitioning_key, "true")
+        try:
+            dataset = dataset.persist()
+            dataset.count()
+        finally:
+            self._spark_session.conf.set(partitioning_key, previous)
+        return dataset, True
 
-        return self._write_training_dataset_splits(
-            training_dataset,
-            split_dataset,
-            write_options,
-            save_mode,
-            to_df=to_df,
-        )
+    @staticmethod
+    def _plan_size_bytes(dataset):
+        """Best-effort size of a materialized dataframe from its plan statistics."""
+        if dataset is None:
+            return None
+        try:
+            return int(
+                dataset._jdf.queryExecution().optimizedPlan().stats().sizeInBytes()
+            )
+        except Exception:
+            return None
 
-    def _split_df(self, query_obj, training_dataset, read_options=None):
+    def _split_df(self, query_obj, training_dataset, read_options=None, consumers=1):
+        """Read the source query and split it, sharing one materialization.
+
+        Returns the split dataframes and the persisted source dataframe (None when the
+        source was not persisted). Splits are children of the source plan: every action
+        on a split re-executes the source unless it is persisted, so the source is
+        materialized once (`_materialize_for_reuse`) and the caller unpersists it after
+        the split writes.
+        """
         if read_options is None:
             read_options = {}
         if (
@@ -1165,24 +1248,33 @@ class Engine:
                     feature_group=query_obj._left_feature_group
                 )
 
+                dataset, cached = self._materialize_for_reuse(
+                    query_obj.read(read_options=read_options), consumers
+                )
                 return self._time_series_split(
                     training_dataset,
-                    query_obj.read(read_options=read_options),
+                    dataset,
                     event_time,
                     drop_event_time=True,
-                )
+                ), (dataset if cached else None)
             # Use the fully qualified name of the event time feature if required
             event_time = event_time_feature[0]._get_fully_qualified_feature_name(
                 feature_group=query_obj._left_feature_group
             )
 
+            dataset, cached = self._materialize_for_reuse(
+                query_obj.read(read_options=read_options), consumers
+            )
             return self._time_series_split(
                 training_dataset,
-                query_obj.read(read_options=read_options),
+                dataset,
                 event_time,
-            )
-        return self._random_split(
-            query_obj.read(read_options=read_options), training_dataset
+            ), (dataset if cached else None)
+        dataset, cached = self._materialize_for_reuse(
+            query_obj.read(read_options=read_options), consumers
+        )
+        return self._random_split(dataset, training_dataset), (
+            dataset if cached else None
         )
 
     def _random_split(self, dataset, training_dataset):
@@ -1297,6 +1389,11 @@ class Engine:
             result_dfs[split.name] = result_df
         return result_dfs
 
+    # Target size per written training-dataset file; splits are coalesced to
+    # ceil(estimated split bytes / this) output files instead of inheriting the
+    # source plan's partition count.
+    _TRAINING_DATASET_TARGET_FILE_BYTES = 128 * 1024 * 1024
+
     def _write_training_dataset_splits(
         self,
         training_dataset,
@@ -1304,22 +1401,60 @@ class Engine:
         write_options,
         save_mode,
         to_df=False,
+        source_size_bytes=None,
     ):
-        for split_name, feature_dataframe in feature_dataframes.items():
-            split_path = training_dataset.location + "/" + str(split_name)
-            feature_dataframes[split_name] = self._write_training_dataset_single(
-                feature_dataframe,
-                training_dataset.data_source.storage_connector,
-                training_dataset.data_format,
-                write_options,
-                save_mode,
-                split_path,
-                to_df=to_df,
-            )
-
         if to_df:
-            return feature_dataframes
+            return {
+                split_name: self._write_training_dataset_single(
+                    feature_dataframe,
+                    training_dataset.data_source.storage_connector,
+                    training_dataset.data_format,
+                    write_options,
+                    save_mode,
+                    training_dataset.location + "/" + str(split_name),
+                    to_df=True,
+                )
+                for split_name, feature_dataframe in feature_dataframes.items()
+            }
+
+        split_fractions = {
+            split.name: split.percentage for split in training_dataset.splits
+        }
+        # The split writes are independent output jobs over the shared, already
+        # materialized source, so they are submitted concurrently instead of
+        # serially. Storage-connector setup inside each write is idempotent here:
+        # every split uses the same connector, so concurrent setup writes the same
+        # configuration values.
+        with ThreadPoolExecutor(max_workers=len(feature_dataframes)) as executor:
+            writes = {}
+            for split_name, feature_dataframe in feature_dataframes.items():
+                target_files = self._target_file_count(
+                    source_size_bytes,
+                    split_fractions.get(split_name),
+                    len(feature_dataframes),
+                )
+                if target_files is not None and not training_dataset.coalesce:
+                    feature_dataframe = feature_dataframe.coalesce(target_files)
+                writes[split_name] = executor.submit(
+                    self._write_training_dataset_single,
+                    feature_dataframe,
+                    training_dataset.data_source.storage_connector,
+                    training_dataset.data_format,
+                    write_options,
+                    save_mode,
+                    training_dataset.location + "/" + str(split_name),
+                )
+            for write in writes.values():
+                write.result()
         return None
+
+    def _target_file_count(self, source_size_bytes, split_fraction, n_splits):
+        """Output file count for one split from the estimated source size, or None."""
+        if source_size_bytes is None or source_size_bytes <= 0:
+            return None
+        fraction = split_fraction if split_fraction else 1.0 / max(n_splits, 1)
+        split_bytes = source_size_bytes * fraction
+        return max(1, math.ceil(split_bytes / self._TRAINING_DATASET_TARGET_FILE_BYTES))
 
     def _write_training_dataset_single(
         self,
@@ -1345,8 +1480,6 @@ class Engine:
         feature_dataframe.write.format(data_format).options(**write_options).mode(
             save_mode
         ).save(path)
-
-        feature_dataframe.unpersist()
         return None
 
     def _read(
@@ -2329,9 +2462,29 @@ class Engine:
         return self._spark_session.createDataFrame([], streaming_df.schema)
 
     @staticmethod
-    def _get_unique_values(feature_dataframe, feature_name):
-        unique_values = feature_dataframe.select(feature_name).distinct().collect()
-        return [field[feature_name] for field in unique_values]
+    def _get_unique_values(feature_dataframe, feature_names):
+        """Collect the distinct values of every named column in one aggregation job.
+
+        `collect_set` drops NULL, unlike the per-column `distinct().collect()` this
+        replaces, so NULL is re-added per column when the column contains null records
+        (an encoder fitted on a column with missing values keeps its NULL category).
+        """
+        agg_row = feature_dataframe.agg(
+            *[collect_set(col(name)).alias(name) for name in feature_names],
+            *[
+                spark_sum(when(col(name).isNull(), 1).otherwise(0)).alias(
+                    name + "__nullcount"
+                )
+                for name in feature_names
+            ],
+        ).first()
+        unique_values = {}
+        for name in feature_names:
+            values = list(agg_row[name])
+            if agg_row[name + "__nullcount"] > 0:
+                values.append(None)
+            unique_values[name] = values
+        return unique_values
 
     @staticmethod
     def _convert_spark_type_to_offline_type(spark_type, using_hudi):
