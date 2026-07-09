@@ -13,6 +13,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from datetime import datetime
 from unittest import mock
 from unittest.mock import MagicMock
 
@@ -516,3 +517,14 @@ class TestVectorDbClient:
                 ]
             }
         }
+
+    def test_convert_to_pandas_type_timestamp_keeps_milliseconds(self):
+        # OpenSearch stores timestamps as epoch ms; sub-second precision must
+        # survive the conversion, e.g. for timestamp(3) online types (FSTORE-2061)
+        epoch_ms = _convert_event_time_to_timestamp("2024-04-18 12:00:25.789")
+
+        result = self.target._convert_to_pandas_type(
+            self.fg.columns, {"f1": 4, "f_ts": epoch_ms}
+        )
+
+        assert result["f_ts"] == datetime(2024, 4, 18, 12, 0, 25, 789000)

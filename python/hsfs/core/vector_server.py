@@ -1719,8 +1719,12 @@ class VectorServer:
                 timestamp_value / 1000, tz=timezone.utc
             ).replace(tzinfo=None)
         if isinstance(timestamp_value, str):
-            # rest client returns timestamp as string
-            return datetime.strptime(timestamp_value, self.SQL_TIMESTAMP_STRING_FORMAT)
+            # rest client returns timestamp as string, with fractional seconds
+            # when the online type has sub-second precision, e.g. timestamp(3)
+            fmt = self.SQL_TIMESTAMP_STRING_FORMAT + (
+                ".%f" if "." in timestamp_value else ""
+            )
+            return datetime.strptime(timestamp_value, fmt)
         if isinstance(timestamp_value, datetime):
             # sql client returns already datetime object
             return timestamp_value

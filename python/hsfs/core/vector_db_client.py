@@ -224,9 +224,9 @@ class VectorDbClient:
                     feature_value // 10**3, tz=timezone.utc
                 ).date()
             elif feature_type == "timestamp":
-                # convert timestamp in ms to datetime in s
+                # true division so sub-second precision survives, e.g. timestamp(3)
                 result[feature_name] = datetime.fromtimestamp(
-                    feature_value // 10**3, tz=timezone.utc
+                    feature_value / 10**3, tz=timezone.utc
                 ).replace(tzinfo=None)
             elif feature_type == "binary" or (
                 feature.is_complex() and feature not in self._embedding_features
