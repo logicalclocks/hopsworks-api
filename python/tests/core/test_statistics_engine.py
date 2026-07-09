@@ -530,19 +530,28 @@ class TestStatisticsEngine:
         s_engine = statistics_engine.StatisticsEngine(feature_store_id, "featuregroup")
 
         feature_dataframe = mocker.Mock()
-        feature_dataframe.select.return_value.head.return_value = []
         mock_engine_get_type.return_value = "spark"
+        # emptiness is read off the profile's record counts: the profile already
+        # scanned the data, so no separate pre-action runs on the dataframe
+        mock_engine_get_instance.return_value._profile.return_value = json.dumps(
+            {
+                "columns": [
+                    {"column": "col_0", "numRecordsNonNull": 0, "numRecordsNull": 0}
+                ]
+            }
+        )
 
         # Act
         with pytest.raises(exceptions.FeatureStoreException) as e_info:
             s_engine._profile_transformation_fn_statistics(
                 feature_dataframe=feature_dataframe,
-                columns=[],
+                columns=["col_0"],
                 label_encoder_features=None,
             )
 
         # Assert
-        assert mock_engine_get_instance.return_value._profile.call_count == 0
+        assert mock_engine_get_instance.return_value._profile.call_count == 1
+        assert feature_dataframe.select.call_count == 0
         assert mock_statistics_engine_profile_unique_values.call_count == 0
         assert (
             str(e_info.value)
@@ -550,6 +559,67 @@ class TestStatisticsEngine:
             "statistics for. A possible cause might be that you inserted only data "
             "to the online storage of a feature group."
         )
+
+    def test_profile_transformation_fn_statistics_requests_no_histograms(self, mocker):
+        # Fitting consumes min/max/mean/stddev/percentiles and encoder vocabularies;
+        # histograms are not requested from the profiler.
+        # Arrange
+        feature_store_id = 99
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
+        mock_engine_get_instance.return_value._profile.return_value = json.dumps(
+            {
+                "columns": [
+                    {"column": "col_0", "numRecordsNonNull": 5, "numRecordsNull": 0}
+                ]
+            }
+        )
+
+        s_engine = statistics_engine.StatisticsEngine(feature_store_id, "featuregroup")
+
+        # Act
+        result = s_engine._profile_transformation_fn_statistics(
+            feature_dataframe=mocker.Mock(),
+            columns=["col_0"],
+            label_encoder_features=[],
+        )
+
+        # Assert
+        profile_args = mock_engine_get_instance.return_value._profile.call_args[0]
+        assert profile_args[1] == ["col_0"]
+        assert profile_args[2:] == (False, False, False)
+        assert json.loads(result)["columns"][0]["column"] == "col_0"
+
+    def test_profile_unique_values_rejects_high_cardinality_encoder(self, mocker):
+        # Collecting an encoder vocabulary above the cap onto the driver fails loudly
+        # instead of risking a driver OOM.
+        # Arrange
+        feature_store_id = 99
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
+
+        s_engine = statistics_engine.StatisticsEngine(feature_store_id, "featuregroup")
+
+        stats = {
+            "columns": [
+                {
+                    "column": "column_1",
+                    "approximateNumDistinctValues": s_engine._MAX_ENCODER_VOCABULARY_SIZE
+                    + 1,
+                }
+            ]
+        }
+
+        # Act
+        with pytest.raises(exceptions.FeatureStoreException) as e_info:
+            s_engine._profile_unique_values(
+                feature_dataframe=None,
+                label_encoder_features=["column_1"],
+                stats=stats,
+            )
+
+        # Assert
+        assert "maximum encoder vocabulary size" in str(e_info.value)
+        assert mock_engine_get_instance.return_value._get_unique_values.call_count == 0
 
     def test_compute_and_save_split_statistics(self, mocker):
         # Arrange
@@ -832,17 +902,16 @@ class TestStatisticsEngine:
 
         s_engine = statistics_engine.StatisticsEngine(feature_store_id, "featuregroup")
 
-        mock_engine_get_instance.return_value._get_unique_values.return_value = [
-            "value_1",
-            "value_2",
-            "value_3",
-        ]
+        mock_engine_get_instance.return_value._get_unique_values.return_value = {
+            "column_1": ["value_1", "value_2", "value_3"],
+            "column_2": ["value_1", "value_2", "value_3"],
+        }
 
         # Act
         result = s_engine._profile_unique_values(
             feature_dataframe=None,
             label_encoder_features=["column_1", "column_2"],
-            stats_str="{}",
+            stats={"columns": []},
         )
 
         # Assert
@@ -861,17 +930,16 @@ class TestStatisticsEngine:
 
         s_engine = statistics_engine.StatisticsEngine(feature_store_id, "featuregroup")
 
-        mock_engine_get_instance.return_value._get_unique_values.return_value = [
-            "value_1",
-            "value_2",
-            "value_3",
-        ]
+        mock_engine_get_instance.return_value._get_unique_values.return_value = {
+            "column_1": ["value_1", "value_2", "value_3"],
+            "column_2": ["value_1", "value_2", "value_3"],
+        }
 
         # Act
         result = s_engine._profile_unique_values(
             feature_dataframe=None,
             label_encoder_features=["column_1", "column_2"],
-            stats_str='{"columns": [], "test_name": "test_value"}',
+            stats={"columns": [], "test_name": "test_value"},
         )
 
         # Assert

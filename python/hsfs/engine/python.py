@@ -1867,9 +1867,9 @@ class Engine:
 
     @staticmethod
     def _get_unique_values(
-        feature_dataframe: pd.DataFrame | pl.DataFrame, feature_name: str
-    ) -> np.ndarray:
-        return feature_dataframe[feature_name].unique()
+        feature_dataframe: pd.DataFrame | pl.DataFrame, feature_names: list[str]
+    ) -> dict[str, np.ndarray]:
+        return {name: feature_dataframe[name].unique() for name in feature_names}
 
     def _write_dataframe_kafka(
         self,

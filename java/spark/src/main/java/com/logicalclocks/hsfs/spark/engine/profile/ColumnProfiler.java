@@ -78,6 +78,8 @@ public class ColumnProfiler {
 
   // Quantile fractions for approxPercentiles: 0.01, 0.02, ..., 0.99 (99 elements).
   private static final double[] PERCENTILE_FRACTIONS;
+  // Accuracy for percentile_approx on the kll=false path; matches the previous per-column call.
+  private static final int PERCENTILE_ACCURACY = 10000;
 
   static {
     PERCENTILE_FRACTIONS = new double[99];
@@ -116,6 +118,14 @@ public class ColumnProfiler {
       }
 
       Row aggRow = computeScalars(df, columns, exactUniqueness);
+      // kll=false percentiles come from one batched percentile_approx aggregation over
+      // every numeric column (one job total instead of one per column). They stay out of
+      // computeScalars deliberately: percentile_approx is an object-hash aggregate, and
+      // mixing it into the scalar agg changes the physical aggregation and reorders
+      // float accumulation, moving stdDev off the Deequ baseline by one ULP.
+      Map<String, double[]> percentilesMap = kll
+          ? new LinkedHashMap<String, double[]>()
+          : computePercentiles(df, columns);
       Map<String, Double> entropyMap = computeEntropy(df, columns);
 
       Map<String, Map<String, Double>> correlationMap =
@@ -126,8 +136,8 @@ public class ColumnProfiler {
 
       List<ColumnProfile> profiles = new ArrayList<ColumnProfile>(columns.size());
       for (ColumnInfo col : columns) {
-        ColumnProfile cp = buildProfile(df, col, aggRow, entropyMap, correlationMap,
-            histogram, histogramBins, kll, exactUniqueness);
+        ColumnProfile cp = buildProfile(df, col, aggRow, percentilesMap, entropyMap,
+            correlationMap, histogram, histogramBins, kll, exactUniqueness);
         profiles.add(cp);
       }
 
@@ -210,6 +220,51 @@ public class ColumnProfiler {
   }
 
   // ---------------------------------------------------------------------------
+  // Batched approximate percentiles (kll=false path): one aggregation for every
+  // numeric column instead of one job per column
+  // ---------------------------------------------------------------------------
+
+  private Map<String, double[]> computePercentiles(Dataset<Row> df, List<ColumnInfo> columns) {
+    Map<String, double[]> result = new LinkedHashMap<String, double[]>();
+    List<Column> exprs = new ArrayList<Column>();
+    List<String> numericNames = new ArrayList<String>();
+    for (ColumnInfo col : columns) {
+      if (isNumeric(col.profileType)) {
+        numericNames.add(col.name);
+        exprs.add(functions.percentile_approx(functions.col(col.name).cast("double"),
+            percentileFractionsArray(), functions.lit(PERCENTILE_ACCURACY))
+            .alias(col.name + "__percentiles"));
+      }
+    }
+    if (exprs.isEmpty()) {
+      return result;
+    }
+    Column first = exprs.get(0);
+    Column[] rest = exprs.subList(1, exprs.size()).toArray(new Column[0]);
+    Row row = df.agg(first, rest).first();
+    for (String name : numericNames) {
+      List<Double> values = row.getList(row.fieldIndex(name + "__percentiles"));
+      if (values == null) {
+        continue;
+      }
+      double[] percentiles = new double[values.size()];
+      for (int ii = 0; ii < values.size(); ii++) {
+        percentiles[ii] = values.get(ii);
+      }
+      result.put(name, percentiles);
+    }
+    return result;
+  }
+
+  private Column percentileFractionsArray() {
+    Column[] fractionLiterals = new Column[PERCENTILE_FRACTIONS.length];
+    for (int ii = 0; ii < PERCENTILE_FRACTIONS.length; ii++) {
+      fractionLiterals[ii] = functions.lit(PERCENTILE_FRACTIONS[ii]);
+    }
+    return functions.array(fractionLiterals);
+  }
+
+  // ---------------------------------------------------------------------------
   // Pass 2: entropy — one groupBy per column
   // ---------------------------------------------------------------------------
 
@@ -282,6 +337,7 @@ public class ColumnProfiler {
   // ---------------------------------------------------------------------------
 
   private ColumnProfile buildProfile(Dataset<Row> df, ColumnInfo col, Row aggRow,
+      Map<String, double[]> percentilesMap,
       Map<String, Double> entropyMap,
       Map<String, Map<String, Double>> correlationMap,
       boolean histogram, int histogramBins, boolean kll, boolean exactUniqueness) {
@@ -320,8 +376,8 @@ public class ColumnProfiler {
         .exactNumDistinctValues(exactDistinct);
 
     if (isNumeric(col.profileType)) {
-      buildNumericFields(df, col, aggRow, nonNull, correlationMap, histogram, histogramBins, kll,
-          builder);
+      buildNumericFields(df, col, aggRow, percentilesMap, nonNull, correlationMap, histogram,
+          histogramBins, kll, builder);
     } else {
       if (histogram) {
         List<Map<String, Object>> hist = histogramBuilder.buildCategorical(
@@ -333,7 +389,8 @@ public class ColumnProfiler {
     return builder.build();
   }
 
-  private void buildNumericFields(Dataset<Row> df, ColumnInfo col, Row aggRow, long nonNullVal,
+  private void buildNumericFields(Dataset<Row> df, ColumnInfo col, Row aggRow,
+      Map<String, double[]> percentilesMap, long nonNullVal,
       Map<String, Map<String, Double>> correlationMap,
       boolean histogram, int histogramBins, boolean kll,
       ColumnProfile.Builder builder) {
@@ -366,9 +423,8 @@ public class ColumnProfiler {
       KllDoublesSketch sketch = KllAggregator.heapify(kllBytes);
       double[] percentiles = sketch.getQuantiles(PERCENTILE_FRACTIONS);
       builder.approxPercentiles(percentiles);
-    } else if (!kll && nonNullVal > 0) {
-      double[] percentiles = computeApproxPercentiles(df, nn);
-      builder.approxPercentiles(percentiles);
+    } else if (!kll && nonNullVal > 0 && percentilesMap.containsKey(nn)) {
+      builder.approxPercentiles(percentilesMap.get(nn));
     }
   }
 
@@ -378,28 +434,6 @@ public class ColumnProfiler {
 
   private byte[] computeKll(Dataset<Row> df, String columnName) {
     return new KllAggregator().computeSketch(df, columnName);
-  }
-
-  // ---------------------------------------------------------------------------
-  // Approximate percentiles (kll=false path)
-  // ---------------------------------------------------------------------------
-
-  private double[] computeApproxPercentiles(Dataset<Row> df, String columnName) {
-    Column col = functions.col(columnName).cast("double");
-    Column[] fractionLiterals = new Column[PERCENTILE_FRACTIONS.length];
-    for (int ii = 0; ii < PERCENTILE_FRACTIONS.length; ii++) {
-      fractionLiterals[ii] = functions.lit(PERCENTILE_FRACTIONS[ii]);
-    }
-    Column fractionsArray = functions.array(fractionLiterals);
-    Row result = df.agg(
-        functions.percentile_approx(col, fractionsArray, functions.lit(10000))).first();
-
-    List<Double> resultList = result.getList(0);
-    double[] percentiles = new double[resultList.size()];
-    for (int ii = 0; ii < resultList.size(); ii++) {
-      percentiles[ii] = resultList.get(ii);
-    }
-    return percentiles;
   }
 
   // ---------------------------------------------------------------------------

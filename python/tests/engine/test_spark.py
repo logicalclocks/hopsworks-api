@@ -2638,9 +2638,10 @@ class TestSpark:
     def test_write_training_dataset_splits_writes_fit_and_transform_result(
         self, mocker
     ):
-        # The cached raw splits are handed to _fit_and_transform as one
-        # dictionary (with the training dataset version, so backend statistics
-        # can be used); the writer receives the transformed frames.
+        # The raw splits are handed to _fit_and_transform as one dictionary
+        # (with the training dataset version, so backend statistics can be
+        # used); the writer receives the transformed frames. The shared source
+        # is persisted inside _split_df, not per split.
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine.spark.Engine._write_options")
@@ -2651,7 +2652,7 @@ class TestSpark:
         test_split_df = mocker.Mock()
         mocker.patch(
             "hsfs.engine.spark.Engine._split_df",
-            return_value={"train": train_split_df, "test": test_split_df},
+            return_value=({"train": train_split_df, "test": test_split_df}, None),
         )
         transformed_splits = {"train": mocker.Mock(), "test": mocker.Mock()}
         mock_fit_and_transform = mocker.patch(
@@ -2686,8 +2687,8 @@ class TestSpark:
 
         # Assert
         raw_splits = mock_fit_and_transform.call_args[0][2]
-        assert raw_splits["train"] is train_split_df.cache.return_value
-        assert raw_splits["test"] is test_split_df.cache.return_value
+        assert raw_splits["train"] is train_split_df
+        assert raw_splits["test"] is test_split_df
         assert mock_fit_and_transform.call_args.kwargs["training_dataset_version"] == 7
         split_frames = mock_spark_engine_write_training_dataset_splits.call_args[0][1]
         assert split_frames is transformed_splits
@@ -3025,7 +3026,7 @@ class TestSpark:
 
         m = mocker.Mock()
 
-        mock_spark_engine_split_df.return_value = {"temp": m}
+        mock_spark_engine_split_df.return_value = ({"temp": m}, None)
 
         # Act
         spark_engine._write_training_dataset(
@@ -3097,7 +3098,7 @@ class TestSpark:
 
         m = mocker.Mock()
 
-        mock_spark_engine_split_df.return_value = {"temp": m}
+        mock_spark_engine_split_df.return_value = ({"temp": m}, None)
 
         # Act
         spark_engine._write_training_dataset(
@@ -3118,6 +3119,102 @@ class TestSpark:
         assert mock_spark_engine_write_training_dataset_single.call_count == 0
         assert m.coalesce.call_count == 1
         assert mock_spark_engine_write_training_dataset_splits.call_count == 1
+
+    def test_materialize_for_reuse_single_consumer(self, mocker):
+        # One consumer: writing straight from the lazy plan beats populating a
+        # cache that is never read again, so nothing is persisted.
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        spark_engine = spark.Engine()
+        dataset = mocker.Mock()
+
+        # Act
+        result, cached = spark_engine._materialize_for_reuse(dataset, consumers=1)
+
+        # Assert
+        assert result is dataset
+        assert cached is False
+        assert dataset.persist.call_count == 0
+
+    def test_materialize_for_reuse_persists_at_native_partitioning(self, mocker):
+        # More than one consumer: the source is persisted and materialized once.
+        # The cached plan keeps its native shuffle partitioning (many small blocks
+        # bound per-task memory); the session's cached-plan-partitioning conf is
+        # never touched, since AQE-coalescing the cache packs whole deserialized
+        # partitions into single tasks and OOMs executors on real data volumes.
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        spark_engine = spark.Engine()
+        spark_engine._spark_session = mocker.Mock()
+        dataset = mocker.Mock()
+        persisted = dataset.persist.return_value
+
+        # Act
+        result, cached = spark_engine._materialize_for_reuse(dataset, consumers=2)
+
+        # Assert
+        assert result is persisted
+        assert cached is True
+        assert persisted.count.call_count == 1
+        assert spark_engine._spark_session.conf.set.call_count == 0
+
+    def test_target_file_count(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        spark_engine = spark.Engine()
+        file_bytes = spark.Engine._TRAINING_DATASET_TARGET_FILE_BYTES
+
+        # Assert: no estimate -> no coalesce target; small split -> one file;
+        # fraction defaults to an equal share when the split has no percentage
+        assert spark_engine._target_file_count(None, 0.8, 2) is None
+        assert spark_engine._target_file_count(0, 0.8, 2) is None
+        assert spark_engine._target_file_count(10 * file_bytes, 0.8, 2) == 8
+        assert spark_engine._target_file_count(file_bytes, 0.2, 2) == 1
+        assert spark_engine._target_file_count(4 * file_bytes, None, 2) == 2
+
+    def test_write_training_dataset_splits_coalesces_and_writes_all(self, mocker):
+        # Splits are coalesced to a byte-derived file target and every split is
+        # written; the writes are submitted concurrently on the shared source.
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        mock_write_single = mocker.patch(
+            "hsfs.engine.spark.Engine._write_training_dataset_single"
+        )
+        spark_engine = spark.Engine()
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={"train": 0.8, "test": 0.2},
+            train_split="train",
+            location="",
+        )
+        train_df = mocker.Mock()
+        test_df = mocker.Mock()
+        source_size = 10 * spark.Engine._TRAINING_DATASET_TARGET_FILE_BYTES
+
+        # Act
+        result = spark_engine._write_training_dataset_splits(
+            td,
+            {"train": train_df, "test": test_df},
+            {},
+            "overwrite",
+            to_df=False,
+            source_size_bytes=source_size,
+        )
+
+        # Assert
+        assert result is None
+        assert train_df.coalesce.call_args[0][0] == 8
+        assert test_df.coalesce.call_args[0][0] == 2
+        assert mock_write_single.call_count == 2
+        written = {call.args[0] for call in mock_write_single.call_args_list}
+        assert written == {
+            train_df.coalesce.return_value,
+            test_df.coalesce.return_value,
+        }
 
     def test_split_df(self, mocker):
         # Arrange
@@ -3778,7 +3875,8 @@ class TestSpark:
         # Assert
         assert mock_spark_engine_setup_storage_connector.call_count == 1
         assert feature_dataframe.write.format.call_args[0][0] == "csv"
-        assert feature_dataframe.unpersist.call_count == 1
+        # the persisted source is unpersisted by _write_training_dataset, not per write
+        assert feature_dataframe.unpersist.call_count == 0
 
     def test_write_training_dataset_single_tsv(self, mocker):
         # Arrange
@@ -6945,7 +7043,7 @@ class TestSpark:
         # Arrange
         spark_engine = spark.Engine()
 
-        d = {"col_0": [1, 2, 2], "col_1": ["test_1", "test_2", "test_3"]}
+        d = {"col_0": [1, 2, 2], "col_1": ["test_1", "test_2", None]}
         df = pd.DataFrame(data=d)
 
         spark_df = spark_engine._spark_session.createDataFrame(df)
@@ -6953,11 +7051,13 @@ class TestSpark:
         # Act
         result = spark_engine._get_unique_values(
             feature_dataframe=spark_df,
-            feature_name="col_0",
+            feature_names=["col_0", "col_1"],
         )
 
-        # Assert
-        assert result == [1, 2]
+        # Assert: one aggregation serves all columns; NULL stays in the vocabulary
+        # of a column that contains missing values (collect_set alone drops it)
+        assert sorted(result["col_0"]) == [1, 2]
+        assert set(result["col_1"]) == {"test_1", "test_2", None}
 
     def test_create_empty_df(self):
         # Arrange

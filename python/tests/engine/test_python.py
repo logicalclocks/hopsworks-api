@@ -3645,18 +3645,19 @@ class TestPython:
         # Arrange
         python_engine = python.Engine()
 
-        df = pd.DataFrame(data={"col1": [1, 2, 2, 3]})
+        df = pd.DataFrame(data={"col1": [1, 2, 2, 3], "col2": ["a", "a", "b", "b"]})
 
         # Act
         result = python_engine._get_unique_values(
-            feature_dataframe=df, feature_name="col1"
+            feature_dataframe=df, feature_names=["col1", "col2"]
         )
 
         # Assert
-        assert len(result) == 3
-        assert 1 in result
-        assert 2 in result
-        assert 3 in result
+        assert len(result["col1"]) == 3
+        assert 1 in result["col1"]
+        assert 2 in result["col1"]
+        assert 3 in result["col1"]
+        assert sorted(result["col2"]) == ["a", "b"]
 
     def test_materialization_kafka(self, mocker):
         # Arrange
