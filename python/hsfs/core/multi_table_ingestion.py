@@ -170,7 +170,6 @@ class MultiTableIngestionJob:
         Parameters:
             feature_group: The feature group to ingest into.
             feature_group_id: The id of the feature group, as an alternative to passing the object.
-            **overrides: Per-target overrides such as `write_mode`, `batch_size`, or `resource_config`.
 
         Returns:
             This ingestion job, so calls can be chained.
