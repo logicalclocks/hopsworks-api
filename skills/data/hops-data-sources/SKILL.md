@@ -116,6 +116,40 @@ class MyTransformer(HopsIngestionTransformer):
 
 `from dlt.destinations...` resolves only in that server environment. Importing it in the interactive venv raises `ModuleNotFoundError`, which is why the transform is referenced by path, never imported into your session.
 
+## Ingest many tables with one job
+
+The per-feature-group `sink_job` above creates one ingestion job per feature group. To copy several source tables from the same connector under a single job, use `data_source.create_ingestion_job`. It builds one job that copies each target table into its feature group, running at most `table_parallelism` tables at a time (one worker pod per table). Prefer this over a loop of per-FG sink jobs when the sources share a connector: it is one job to schedule, run, and monitor instead of N.
+
+Each target is a `TableIngestionTarget` naming a feature group that already exists. Job-level arguments (`write_mode`, `batch_size`, tuning) are the defaults; any field set on a target overrides the default for that table only.
+
+```python
+import hopsworks
+from hopsworks.core import TableIngestionTarget
+
+project = hopsworks.login()
+fs = project.get_feature_store()
+
+ds = fs.get_data_source("my_connector")   # the source all targets pull from
+
+job = ds.create_ingestion_job(
+    name="crm_nightly_ingest",
+    table_parallelism=3,                  # copy at most 3 tables concurrently
+    write_mode="APPEND",                  # job-level default for every target
+    targets=[
+        TableIngestionTarget(feature_group=fs.get_feature_group("accounts", 1)),
+        TableIngestionTarget(
+            feature_group=fs.get_feature_group("contacts", 1),
+            write_mode="MERGE",           # override just for this table
+        ),
+        TableIngestionTarget(feature_group_id=42),   # or reference a FG by id
+    ],
+)
+
+job.run()   # runs the multi-table job server-side (see hops-job to monitor)
+```
+
+Reference a target's feature group either by object (`feature_group=`) or by id (`feature_group_id=`); one of the two is required. To pause a table without removing it from the config, set `enabled=False` on its target. Attach a schedule with `schedule_config=` to run the whole set on a cadence.
+
 ## Ingest from Google Sheets
 
 Google Sheets is an independent top-level connector (type `GOOGLE_SHEETS`) authenticated by a GCP service-account JSON keyfile.
