@@ -196,9 +196,10 @@ est = ds.estimate_ingestion_resources(
 )
 print(est["recommendedMemoryMb"], est["recommendedCpuCores"], est["confidence"])
 
-# Feed the recommendation straight into a target:
-target = TableIngestionTarget(
-    feature_group=fs.get_feature_group("contacts", 1),
+# Feed the recommendation into a target's worker resources when you build the job:
+job = ds.new_ingestion_job(name="crm_nightly_ingest")
+job.add_target(
+    fs.get_feature_group("contacts", 1),
     resource_config={"memory": est["recommendedMemoryMb"], "cores": est["recommendedCpuCores"]},
 )
 ```

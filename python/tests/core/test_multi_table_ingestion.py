@@ -189,3 +189,23 @@ class TestScheduleConfigNormalization:
         body = client._send_request.call_args.kwargs["data"]
         assert method == "PUT"  # id is set
         assert '"id": 99' in body
+
+    def test_create_or_update_schedule_dict_without_id_posts(self, mocker):
+        from hopsworks_common.core.job_api import JobApi
+
+        client = mocker.patch(
+            "hopsworks_common.core.job_api.client._get_instance"
+        ).return_value
+        client._project_id = 1
+        client._send_request.return_value = {}
+        mocker.patch(
+            "hopsworks_common.core.job_api.job_schedule.JobSchedule.from_response_json"
+        )
+
+        # A "create" schedule dict has no "id" yet; it must not raise KeyError.
+        JobApi().create_or_update_schedule_job(
+            "crm_ingestion", {"cronExpression": "0 0 * * *", "enabled": True}
+        )
+
+        method = client._send_request.call_args[0][0]
+        assert method == "POST"

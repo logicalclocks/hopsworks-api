@@ -228,7 +228,7 @@ class JobApi:
         _client = client._get_instance()
         path_params = ["project", _client._project_id, "jobs", name, "schedule", "v2"]
         headers = {"content-type": "application/json"}
-        method = "PUT" if schedule_config["id"] else "POST"
+        method = "PUT" if schedule_config.get("id") else "POST"
 
         return job_schedule.JobSchedule.from_response_json(
             _client._send_request(
@@ -315,7 +315,7 @@ class JobApi:
             schedule_config = schedule_config.to_dict()
         path_params = ["project", _client._project_id, "jobs", name, "schedule", "v2"]
         headers = {"content-type": "application/json"}
-        method = "PUT" if schedule_config["id"] else "POST"
+        method = "PUT" if schedule_config.get("id") else "POST"
 
         return job_schedule.JobSchedule.from_response_json(
             _client._send_request(

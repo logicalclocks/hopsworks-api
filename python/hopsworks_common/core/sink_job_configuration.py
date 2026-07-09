@@ -795,4 +795,5 @@ class TableIngestionTarget:
             source_read_workers=json_decamelized.get("source_read_workers"),
             data_processing_workers=json_decamelized.get("data_processing_workers"),
             resource_config=json_decamelized.get("resource_config"),
+            endpoint_config=json_decamelized.get("endpoint_config"),
         )

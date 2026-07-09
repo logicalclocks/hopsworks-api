@@ -339,3 +339,17 @@ class TestSinkJobConfigurationMultiTable:
         d = config.to_dict()
         assert "targets" not in d
         assert "featuregroupId" in d
+
+
+class TestTableIngestionTargetRoundTrip:
+    def test_from_response_json_keeps_endpoint_config(self):
+        from hopsworks_common.core.rest_endpoint import RestEndpointConfig
+
+        target = sink_job_configuration.TableIngestionTarget(
+            feature_group_id=1,
+            endpoint_config=RestEndpointConfig(relative_url="v1/events"),
+        )
+        restored = sink_job_configuration.TableIngestionTarget.from_response_json(
+            target.to_dict()
+        )
+        assert restored.to_dict()["endpointConfig"] == {"relativeUrl": "v1/events"}
