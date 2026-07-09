@@ -155,7 +155,7 @@ job.save()   # ONE atomic create with both feature groups as targets
 job.run()    # runs the multi-table job server-side (see hops-job to monitor)
 ```
 
-A feature group's own `sink_job_conf` supplies that target's overrides; only the fields it changes from the defaults are applied, so a feature group with a bare config (or none) inherits the job-level defaults. Attach a schedule with `schedule_config=` on `new_ingestion_job` to run the whole set on a cadence. To include a feature group that already exists (one `get_or_create` returns without re-saving), call `job.add_target(fg)` before `job.save()`.
+A feature group's own `sink_job_conf` supplies that target's overrides; only the fields it changes from the defaults are applied, so a feature group with a bare config (or none) inherits the job-level defaults. Each target's column mappings are generated automatically from its feature group's schema — where the SDK sanitized a source column name (e.g. `"Total Amount"` -> `total_amount`), the mapping back to the original source column is added for you, just like a single-table sink job. Attach a schedule with `schedule_config=` on `new_ingestion_job` to run the whole set on a cadence. To include a feature group that already exists (one `get_or_create` returns without re-saving), call `job.add_target(fg)` before `job.save()`.
 
 ### Size resources before ingesting
 

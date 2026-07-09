@@ -730,10 +730,20 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         ):
             new_fg.data_source.rest_endpoint = pre_save_rest_endpoint
         requested_sink_job = feature_group.sink_job
-        if feature_group.sink_enabled and isinstance(requested_sink_job, MultiTableIngestionJob):
+        if feature_group.sink_enabled and isinstance(
+            requested_sink_job, MultiTableIngestionJob
+        ):
             # Shared multi-table job: register this feature group as a target
             # locally; the job itself is created when the user saves the job.
-            requested_sink_job._attach_feature_group(new_fg, requested_sink_job_conf)
+            # Generate the same default column mappings a single-table sink job
+            # gets, so the SDK's sanitized feature names map back to the source
+            # columns for this target too.
+            target_conf = requested_sink_job_conf or SinkJobConfiguration()
+            target_conf = self._merge_default_sink_column_mappings(
+                pre_save_features or new_fg.columns,
+                target_conf,
+            )
+            requested_sink_job._attach_feature_group(new_fg, target_conf)
             feature_group._sink_job = requested_sink_job
         else:
             self._create_sink_job_if_needed(
