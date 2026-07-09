@@ -118,61 +118,44 @@ class MyTransformer(HopsIngestionTransformer):
 
 ## Ingest many tables with one job
 
-The per-feature-group `sink_job` above creates one ingestion job per feature group. To copy several source tables from the same connector under a single job, use `data_source.create_ingestion_job`. It builds one job that copies each target table into its feature group, running at most `table_parallelism` tables at a time (one worker pod per table). Prefer this over a loop of per-FG sink jobs when the sources share a connector: it is one job to schedule, run, and monitor instead of N.
+The per-feature-group `sink_job` above creates one ingestion job per feature group. To copy several source tables from the same connector under a **single** job — one worker pod per table, at most `table_parallelism` at a time — create the ingestion job first and pass it in as each feature group is created.
 
-Each target is a `TableIngestionTarget` naming a feature group that already exists. Job-level arguments (`write_mode`, `batch_size`, tuning) are the defaults; any field set on a target overrides the default for that table only.
+Create the empty job with `data_source.new_ingestion_job(name)`, then pass it as `sink_job=` to each feature group. Each `.save()` registers that feature group as a target **locally**; nothing is created on the server until you call the job's `.save()`, so a failed or partial set of feature groups never leaves a half-built job behind. Prefer this over a loop of per-FG sink jobs when the sources share a connector: it is one job to schedule, run, and monitor instead of N.
 
 ```python
 import hopsworks
-from hopsworks.core import TableIngestionTarget
+from hopsworks.core import SinkJobConfiguration
 
 project = hopsworks.login()
 fs = project.get_feature_store()
 
 ds = fs.get_data_source("my_connector")   # the source all targets pull from
 
-job = ds.create_ingestion_job(
+# 1. create the ingestion job first
+job = ds.new_ingestion_job(
     name="crm_nightly_ingest",
     table_parallelism=3,                  # copy at most 3 tables concurrently
     write_mode="APPEND",                  # job-level default for every target
-    targets=[
-        TableIngestionTarget(feature_group=fs.get_feature_group("accounts", 1)),
-        TableIngestionTarget(
-            feature_group=fs.get_feature_group("contacts", 1),
-            write_mode="MERGE",           # override just for this table
-        ),
-        TableIngestionTarget(feature_group_id=42),   # or reference a FG by id
-    ],
 )
 
-job.run()   # runs the multi-table job server-side (see hops-job to monitor)
-```
-
-Reference a target's feature group either by object (`feature_group=`) or by id (`feature_group_id=`); one of the two is required. To pause a table without removing it from the config, set `enabled=False` on its target. Attach a schedule with `schedule_config=` to run the whole set on a cadence.
-
-### Build the job feature-group-first
-
-When you are defining the feature groups anyway, it reads better to attach a shared job to each one than to hand-build a `targets=[...]` list. `data_source.new_ingestion_job(name)` returns an empty job; pass it as `sink_job=` to each feature group, and each `.save()` registers that feature group as a target **locally**. Nothing is created on the server until you call the job's `.save()`, so a failed or partial set of feature groups never leaves a half-built job behind — it is atomic, unlike calling a per-feature-group `sink_job` for each.
-
-```python
-job = ds.new_ingestion_job(name="crm_nightly_ingest", table_parallelism=3)
+# 2. pass it in as each feature group is created
+fs.get_or_create_feature_group(
+    "accounts", version=1, data_source=ds,
+    sink_enabled=True, sink_job=job,
+).save()                                  # local: registers "accounts" as a target
 
 fs.get_or_create_feature_group(
     "contacts", version=1, data_source=ds,
     sink_enabled=True, sink_job=job,
-).save()                       # local: registers "contacts" as a target
+    sink_job_conf=SinkJobConfiguration(write_mode="MERGE"),   # override this table only
+).save()                                  # local: registers "contacts" (with its override)
 
-fs.get_or_create_feature_group(
-    "companies", version=1, data_source=ds,
-    sink_enabled=True, sink_job=job,
-    sink_job_conf=SinkJobConfiguration(write_mode="MERGE"),   # per-target override
-).save()                       # local: registers "companies" (with its override)
-
+# 3. create the job with all its targets, then run it
 job.save()   # ONE atomic create with both feature groups as targets
-job.run()
+job.run()    # runs the multi-table job server-side (see hops-job to monitor)
 ```
 
-A feature group's own `sink_job_conf` supplies that target's overrides; only the fields it changes from the defaults are applied, so a bare config inherits the job-level defaults. To add an already-existing feature group (one `get_or_create` returns without re-saving), call `job.add_target(fg)` explicitly. This is the same backend job as the `targets=[...]` form — pick whichever reads better for your code.
+A feature group's own `sink_job_conf` supplies that target's overrides; only the fields it changes from the defaults are applied, so a feature group with a bare config (or none) inherits the job-level defaults. Attach a schedule with `schedule_config=` on `new_ingestion_job` to run the whole set on a cadence. To include a feature group that already exists (one `get_or_create` returns without re-saving), call `job.add_target(fg)` before `job.save()`.
 
 ### Size resources before ingesting
 

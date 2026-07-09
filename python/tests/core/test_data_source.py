@@ -388,44 +388,23 @@ class TestDataSourceApiInferMetadata:
             api._infer_metadata(sc_mock, preview_data)
 
 
-class TestDataSourceCreateIngestionJob:
-    def test_create_ingestion_job_builds_multi_table_config(self):
-        from hopsworks_common.core.sink_job_configuration import TableIngestionTarget
+class TestDataSourceNewIngestionJob:
+    def test_new_ingestion_job_returns_empty_builder(self):
+        from hsfs.core.multi_table_ingestion import MultiTableIngestionJob
 
         sc = storage_connector.RedshiftConnector(9, "sc", 7)
         ds = data_source.DataSource(storage_connector=sc)
 
-        with patch("hopsworks_common.core.job_api.JobApi") as MockJobApi:
-            mock_api = MockJobApi.return_value
-            mock_api.create.return_value = MagicMock()
+        job = ds.new_ingestion_job(name="crm_ingestion", table_parallelism=2)
 
-            ds.create_ingestion_job(
-                name="crm_ingestion",
-                table_parallelism=2,
-                targets=[
-                    TableIngestionTarget(feature_group_id=1),
-                    TableIngestionTarget(feature_group_id=2, write_mode="MERGE"),
-                ],
-            )
+        assert isinstance(job, MultiTableIngestionJob)
+        assert job.name == "crm_ingestion"
+        assert job.targets == []
 
-            posted_name, posted_conf = mock_api.create.call_args[0]
-            payload = posted_conf.to_dict()
-
-        assert posted_name == "crm_ingestion"
-        assert payload["tableParallelism"] == 2
-        assert payload["featurestoreId"] == 7
-        assert payload["storageConnectorId"] == 9
-        assert [t["featuregroupId"] for t in payload["targets"]] == [1, 2]
-        assert payload["targets"][1]["writeMode"] == "MERGE"
-
-    def test_create_ingestion_job_without_storage_connector_raises(self):
-        from hopsworks_common.core.sink_job_configuration import TableIngestionTarget
-
+    def test_new_ingestion_job_without_storage_connector_raises(self):
         ds = data_source.DataSource()
         with pytest.raises(ValueError, match="storage connector"):
-            ds.create_ingestion_job(
-                name="x", targets=[TableIngestionTarget(feature_group_id=1)]
-            )
+            ds.new_ingestion_job(name="x")
 
 
 class TestDataSourceEstimateIngestionResources:
