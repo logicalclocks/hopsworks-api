@@ -35,6 +35,7 @@ from hsfs.core import (
     transformation_function_engine,
 )
 from hsfs.core.deltastreamer_jobconf import DeltaStreamerJobConf
+from hsfs.core.multi_table_ingestion import MultiTableIngestionJob
 from hsfs.core.schema_validation import DataFrameValidator
 from hsfs.storage_connector import StorageConnector
 
@@ -728,12 +729,19 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             and not new_fg.data_source.rest_endpoint
         ):
             new_fg.data_source.rest_endpoint = pre_save_rest_endpoint
-        self._create_sink_job_if_needed(
-            new_fg,
-            is_new_feature_group,
-            sink_job_conf=requested_sink_job_conf,
-            source_features=pre_save_features,
-        )
+        requested_sink_job = feature_group.sink_job
+        if feature_group.sink_enabled and isinstance(requested_sink_job, MultiTableIngestionJob):
+            # Shared multi-table job: register this feature group as a target
+            # locally; the job itself is created when the user saves the job.
+            requested_sink_job._attach_feature_group(new_fg, requested_sink_job_conf)
+            feature_group._sink_job = requested_sink_job
+        else:
+            self._create_sink_job_if_needed(
+                new_fg,
+                is_new_feature_group,
+                sink_job_conf=requested_sink_job_conf,
+                source_features=pre_save_features,
+            )
 
         if feature_schema_available:
             # create empty table to write feature schema to table path.

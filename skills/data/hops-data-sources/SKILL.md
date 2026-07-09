@@ -150,6 +150,30 @@ job.run()   # runs the multi-table job server-side (see hops-job to monitor)
 
 Reference a target's feature group either by object (`feature_group=`) or by id (`feature_group_id=`); one of the two is required. To pause a table without removing it from the config, set `enabled=False` on its target. Attach a schedule with `schedule_config=` to run the whole set on a cadence.
 
+### Build the job feature-group-first
+
+When you are defining the feature groups anyway, it reads better to attach a shared job to each one than to hand-build a `targets=[...]` list. `data_source.new_ingestion_job(name)` returns an empty job; pass it as `sink_job=` to each feature group, and each `.save()` registers that feature group as a target **locally**. Nothing is created on the server until you call the job's `.save()`, so a failed or partial set of feature groups never leaves a half-built job behind — it is atomic, unlike calling a per-feature-group `sink_job` for each.
+
+```python
+job = ds.new_ingestion_job(name="crm_nightly_ingest", table_parallelism=3)
+
+fs.get_or_create_feature_group(
+    "contacts", version=1, data_source=ds,
+    sink_enabled=True, sink_job=job,
+).save()                       # local: registers "contacts" as a target
+
+fs.get_or_create_feature_group(
+    "companies", version=1, data_source=ds,
+    sink_enabled=True, sink_job=job,
+    sink_job_conf=SinkJobConfiguration(write_mode="MERGE"),   # per-target override
+).save()                       # local: registers "companies" (with its override)
+
+job.save()   # ONE atomic create with both feature groups as targets
+job.run()
+```
+
+A feature group's own `sink_job_conf` supplies that target's overrides; only the fields it changes from the defaults are applied, so a bare config inherits the job-level defaults. To add an already-existing feature group (one `get_or_create` returns without re-saving), call `job.add_target(fg)` explicitly. This is the same backend job as the `targets=[...]` form — pick whichever reads better for your code.
+
 ### Size resources before ingesting
 
 Rather than guessing the memory and CPU an ingestion needs, ask the backend with `data_source.estimate_ingestion_resources`. It derives a recommendation from the target feature group's schema and the runtime knobs you pass (the same `write_mode`, `batch_size`, worker counts you intend to run with — a bigger batch or more workers raises the estimate). Use it to set a target's `resource_config`, or a single sink job's worker resources, deliberately.

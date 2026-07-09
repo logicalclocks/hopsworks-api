@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     from hsfs.core import data_source_data as dsd
     from hsfs.core.explicit_provenance import Links
     from hsfs.core.inferred_metadata import InferredMetadata
+    from hsfs.core.multi_table_ingestion import MultiTableIngestionJob
     from hsfs.training_dataset import TrainingDataset
 
 
@@ -463,45 +464,111 @@ class DataSource:
         Returns:
             The created ingestion job.
         """
-        from hopsworks_common.core.job_api import JobApi
-        from hopsworks_common.core.sink_job_configuration import SinkJobConfiguration
+        builder = self.new_ingestion_job(
+            name,
+            table_parallelism=table_parallelism,
+            environment_name=environment_name,
+            transform_script_path=transform_script_path,
+            write_mode=write_mode,
+            batch_size=batch_size,
+            sql_source_fetch_chunk_size=sql_source_fetch_chunk_size,
+            source_read_workers=source_read_workers,
+            data_processing_workers=data_processing_workers,
+            max_upload_batch_size_mb=max_upload_batch_size_mb,
+            sql_table_num_partitions=sql_table_num_partitions,
+            schedule_config=schedule_config,
+        )
+        for target in targets:
+            builder._add_target_object(target)
+        return builder.save()
+
+    @public
+    def new_ingestion_job(
+        self,
+        name: str,
+        *,
+        table_parallelism: int = 1,
+        environment_name: str | None = None,
+        transform_script_path: str | None = None,
+        write_mode: str | None = None,
+        batch_size: int | None = None,
+        sql_source_fetch_chunk_size: int | None = None,
+        source_read_workers: int | None = None,
+        data_processing_workers: int | None = None,
+        max_upload_batch_size_mb: int | None = None,
+        sql_table_num_partitions: int | None = None,
+        schedule_config: JobSchedule | dict | None = None,
+    ) -> MultiTableIngestionJob:
+        """Start assembling a multi-table ingestion job for this data source.
+
+        Returns an empty [`MultiTableIngestionJob`][hsfs.core.multi_table_ingestion.MultiTableIngestionJob]
+        you attach feature groups to, either by passing it as `sink_job` when creating
+        each feature group or by calling
+        [`MultiTableIngestionJob.add_target`][hsfs.core.multi_table_ingestion.MultiTableIngestionJob.add_target].
+        Nothing is created on the server until you call
+        [`MultiTableIngestionJob.save`][hsfs.core.multi_table_ingestion.MultiTableIngestionJob.save], so the
+        job is built atomically from the full set of targets.
+
+        The arguments here are the job-level defaults every target inherits unless it
+        overrides them.
+
+        Example:
+            ```python
+            fs = ...
+            data_source = fs.get_data_source("hubspot")
+
+            job = data_source.new_ingestion_job(name="hubspot_ingestion", table_parallelism=2)
+
+            fs.get_or_create_feature_group(
+                "contacts", version=1, data_source=data_source,
+                sink_enabled=True, sink_job=job,
+            ).save()
+            fs.get_or_create_feature_group(
+                "companies", version=1, data_source=data_source,
+                sink_enabled=True, sink_job=job,
+            ).save()
+
+            job.save()   # creates one job with both feature groups as targets
+            job.run()
+            ```
+
+        Parameters:
+            name: Name of the ingestion job to create.
+            table_parallelism: How many tables run at the same time; `1` runs them sequentially.
+            environment_name: Python environment the job runs in.
+            transform_script_path: Default transformation script path for targets that do not set their own.
+            write_mode: Default write mode (`APPEND` or `MERGE`) for targets that do not set their own.
+            batch_size: Default write batch size.
+            sql_source_fetch_chunk_size: Default source fetch chunk size for SQL sources.
+            source_read_workers: Default number of source read workers.
+            data_processing_workers: Default number of data processing workers.
+            max_upload_batch_size_mb: Default maximum upload batch size in MB.
+            sql_table_num_partitions: Default number of read partitions for SQL sources.
+            schedule_config: Optional schedule for the job.
+
+        Returns:
+            An empty ingestion job to collect targets on.
+        """
+        from hsfs.core.multi_table_ingestion import MultiTableIngestionJob
 
         if self._storage_connector is None:
             raise ValueError("The data source has no storage connector to ingest from.")
 
-        job_level_defaults = {
-            "environment_name": environment_name,
-            "write_mode": write_mode,
-            "batch_size": batch_size,
-            "sql_source_fetch_chunk_size": sql_source_fetch_chunk_size,
-            "source_read_workers": source_read_workers,
-            "data_processing_workers": data_processing_workers,
-            "max_upload_batch_size_mb": max_upload_batch_size_mb,
-            "sql_table_num_partitions": sql_table_num_partitions,
-        }
-        # drop unset knobs so SinkJobConfiguration applies its own defaults
-        job_level_defaults = {
-            key: value for key, value in job_level_defaults.items() if value is not None
-        }
-
-        sink_job_conf = SinkJobConfiguration(
-            name=name,
-            transform_script_path=transform_script_path,
-            targets=targets,
+        return MultiTableIngestionJob(
+            self,
+            name,
             table_parallelism=table_parallelism,
+            environment_name=environment_name,
+            transform_script_path=transform_script_path,
+            write_mode=write_mode,
+            batch_size=batch_size,
+            sql_source_fetch_chunk_size=sql_source_fetch_chunk_size,
+            source_read_workers=source_read_workers,
+            data_processing_workers=data_processing_workers,
+            max_upload_batch_size_mb=max_upload_batch_size_mb,
+            sql_table_num_partitions=sql_table_num_partitions,
             schedule_config=schedule_config,
-            **job_level_defaults,
         )
-        sink_job_conf._set_extra_params(
-            featurestore_id=self._storage_connector._featurestore_id,
-            storage_connector_id=self._storage_connector.id,
-        )
-
-        job_api = JobApi()
-        created_job = job_api.create(name, sink_job_conf)
-        if sink_job_conf.schedule_config:
-            job_api.create_or_update_schedule_job(name, sink_job_conf.schedule_config)
-        return created_job
 
     @public
     def estimate_ingestion_resources(

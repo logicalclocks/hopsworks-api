@@ -1826,6 +1826,67 @@ class TestFeatureGroupEngine:
         # Assert
         mock_job_api.create.assert_not_called()
 
+    def test_save_feature_group_metadata_attaches_to_shared_ingestion_job(self, mocker):
+        # Arrange
+        feature_store_id = 42
+        mocker.patch("hsfs.engine._get_type")
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
+        )
+        mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+        mocker.patch("hsfs.util._get_feature_group_url", return_value="url")
+        mocker.patch("builtins.print")
+        mock_job_api = mocker.patch(
+            "hsfs.core.feature_group_engine.job_api.JobApi"
+        ).return_value
+
+        fg_engine = feature_group_engine.FeatureGroupEngine(
+            feature_store_id=feature_store_id
+        )
+
+        def _save_side_effect(fg):
+            fg._id = 10
+            return fg
+
+        mock_fg_api.return_value._save.side_effect = _save_side_effect
+
+        storage_connector = CRMAndAnalyticsConnector(
+            id=1,
+            name="crm",
+            featurestore_id=feature_store_id,
+            crm_type=CRMSource.HUBSPOT,
+        )
+        data_source = DataSource(storage_connector=storage_connector)
+        shared_job = data_source.new_ingestion_job("crm_ingestion", table_parallelism=2)
+
+        fg = feature_group.FeatureGroup(
+            name="fg",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            sink_enabled=True,
+            sink_job_conf=sink_job_configuration.SinkJobConfiguration(
+                write_mode="MERGE"
+            ),
+            sink_job=shared_job,
+            data_source=data_source,
+        )
+
+        dataframe_feature = feature.Feature(name="f", type="str")
+
+        # Act
+        fg_engine._save_feature_group_metadata(
+            feature_group=fg, dataframe_features=[dataframe_feature], write_options=None
+        )
+
+        # Assert: no per-feature-group job is created; the feature group is
+        # registered as a target on the shared job instead, carrying its override.
+        mock_job_api.create.assert_not_called()
+        assert [t._feature_group_id for t in shared_job.targets] == [10]
+        assert shared_job.targets[0].to_dict()["writeMode"] == "MERGE"
+
     def test_save_feature_group_metadata_features(self, mocker):
         # Arrange
         feature_store_id = 99
