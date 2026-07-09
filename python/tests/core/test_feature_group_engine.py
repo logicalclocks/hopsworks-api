@@ -1957,6 +1957,42 @@ class TestFeatureGroupEngine:
             {"sourceColumn": "user_id", "featureName": "user_id"}
         ]
 
+    def test_attach_to_shared_ingestion_job_copies_rest_endpoint(self, mocker):
+        from hopsworks_common.core.rest_endpoint import RestEndpointConfig
+        from hsfs.core.data_source import DataSource
+        from hsfs.storage_connector import RestConnector
+
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        fg_engine = feature_group_engine.FeatureGroupEngine(feature_store_id=42)
+
+        endpoint = RestEndpointConfig(relative_url="v1/events")
+        connector = RestConnector(id=1, name="rest", featurestore_id=42)
+        data_source = DataSource(storage_connector=connector, rest_endpoint=endpoint)
+        shared_job = data_source.new_ingestion_job("rest_ingestion")
+
+        rest_fg = feature_group.FeatureGroup(
+            name="events",
+            version=1,
+            featurestore_id=42,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            features=[feature.Feature("f", "str")],
+            sink_enabled=True,
+            data_source=data_source,
+        )
+        rest_fg._id = 7
+
+        # Act
+        fg_engine._attach_to_shared_ingestion_job(
+            rest_fg, shared_job, None, rest_fg.columns
+        )
+
+        # Assert: the REST endpoint from the data source lands on the target,
+        # so a REST multi-table target reaches execution with its endpoint config.
+        target = shared_job.targets[0].to_dict()
+        assert target["endpointConfig"] == endpoint.to_dict()
+
     def test_save_feature_group_metadata_features(self, mocker):
         # Arrange
         feature_store_id = 99

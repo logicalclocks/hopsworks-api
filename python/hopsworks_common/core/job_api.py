@@ -305,9 +305,14 @@ class JobApi:
     @public
     @usage._method_logger
     def create_or_update_schedule_job(
-        self, name: str, schedule_config: dict[str, Any]
+        self, name: str, schedule_config: dict[str, Any] | job_schedule.JobSchedule
     ) -> job_schedule.JobSchedule:
         _client = client._get_instance()
+        # Callers may pass a JobSchedule object (e.g. from a SinkJobConfiguration,
+        # which normalizes dict schedules into JobSchedule); serialize it to the
+        # dict this endpoint expects.
+        if not isinstance(schedule_config, dict):
+            schedule_config = schedule_config.to_dict()
         path_params = ["project", _client._project_id, "jobs", name, "schedule", "v2"]
         headers = {"content-type": "application/json"}
         method = "PUT" if schedule_config["id"] else "POST"

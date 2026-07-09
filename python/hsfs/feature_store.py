@@ -1267,6 +1267,28 @@ class FeatureStore:
                 partitioned_by=partitioned_by,
                 online_partition_columns=online_partition_columns,
             )
+        elif sink_job is not None:
+            # The feature group already exists: attach it to a shared multi-table
+            # ingestion job now, so a rerun still registers it as a target (a new
+            # feature group attaches on save instead). Other sink_job types are
+            # only wired at creation time and are ignored here.
+            from hopsworks_common.core.sink_job_configuration import (
+                SinkJobConfiguration,
+            )
+            from hsfs.core.multi_table_ingestion import MultiTableIngestionJob
+
+            if isinstance(sink_job, MultiTableIngestionJob):
+                target_conf = (
+                    SinkJobConfiguration.from_response_json(sink_job_conf)
+                    if isinstance(sink_job_conf, dict)
+                    else sink_job_conf
+                )
+                feature_group_object._feature_group_engine._attach_to_shared_ingestion_job(
+                    feature_group_object,
+                    sink_job,
+                    target_conf,
+                    feature_group_object.columns,
+                )
         feature_group_object.feature_store = self
         return feature_group_object
 

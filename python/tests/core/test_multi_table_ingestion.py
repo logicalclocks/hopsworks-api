@@ -116,3 +116,36 @@ class TestMultiTableIngestionJob:
         job = _builder()
         job._attach_feature_group(_feature_group(5), None)
         assert job.targets[0].to_dict() == {"featuregroupId": 5, "enabled": True}
+
+
+class TestScheduleConfigNormalization:
+    def test_create_or_update_schedule_accepts_job_schedule_object(self, mocker):
+        import datetime
+
+        from hopsworks_common.core.job_api import JobApi
+        from hopsworks_common.job_schedule import JobSchedule
+
+        client = mocker.patch(
+            "hopsworks_common.core.job_api.client._get_instance"
+        ).return_value
+        client._project_id = 1
+        client._send_request.return_value = {}
+        mocker.patch(
+            "hopsworks_common.core.job_api.job_schedule.JobSchedule.from_response_json"
+        )
+
+        # SinkJobConfiguration normalizes dict schedules to JobSchedule objects,
+        # which used to break this endpoint (it indexed schedule_config["id"]).
+        schedule = JobSchedule(
+            start_date_time=datetime.datetime(2026, 1, 1),
+            enabled=True,
+            cron_expression="0 0 * * *",
+            id=99,
+        )
+
+        JobApi().create_or_update_schedule_job("crm_ingestion", schedule)
+
+        method, _path = client._send_request.call_args[0][:2]
+        body = client._send_request.call_args.kwargs["data"]
+        assert method == "PUT"  # id is set
+        assert '"id": 99' in body
