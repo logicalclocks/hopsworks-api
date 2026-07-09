@@ -270,6 +270,8 @@ class SinkJobConfiguration:
         column_mappings: Sequence[FeatureColumnMapping | dict] | None = None,
         endpoint_config: dict | RestEndpointConfig | None = None,
         schedule_config: JobSchedule | dict | None = None,
+        targets: Sequence[TableIngestionTarget] | None = None,
+        table_parallelism: int | None = 1,
     ):
         self._name = name
         self._environment_name = environment_name
@@ -301,8 +303,14 @@ class SinkJobConfiguration:
             if isinstance(schedule_config, dict)
             else schedule_config
         )
+        # multi-table ingestion: one job copies several feature groups, one worker
+        # pod per table, up to table_parallelism tables at a time
+        self._targets = list(targets) if targets else None
+        self._table_parallelism = table_parallelism
 
     def to_dict(self):
+        if self._targets:
+            return self._to_multi_table_dict()
         return {
             "type": self.DTO_TYPE,
             "name": self._name,
@@ -338,6 +346,56 @@ class SinkJobConfiguration:
                 else self._schedule_config
             ),
         }
+
+    def _to_multi_table_dict(self):
+        # Job-level scalar fields (write mode, batch sizes, workers, endpoint) are
+        # the defaults the backend applies to any target that does not override
+        # them; feature group, loading config and column mappings are per-target.
+        return {
+            "type": self.DTO_TYPE,
+            "name": self._name,
+            "environmentName": self._environment_name,
+            "transformScriptPath": self._transform_script_path,
+            "writeMode": self._write_mode.value,
+            "batchSize": self._batch_size,
+            "sqlSourceFetchChunkSize": self._sql_source_fetch_chunk_size,
+            "sourceReadWorkers": self._source_read_workers,
+            "dataProcessingWorkers": self._data_processing_workers,
+            "maxUploadBatchSizeMB": self._max_upload_batch_size_mb,
+            "sqlTableNumPartitions": self._sql_table_num_partitions,
+            "featurestoreId": self._featurestore_id,
+            "storageConnectorId": self._storage_connector_id,
+            "tableParallelism": self._table_parallelism,
+            "targets": [target.to_dict() for target in self._targets],
+            "endpointConfig": (
+                self._endpoint_config.to_dict()
+                if hasattr(self._endpoint_config, "to_dict")
+                else self._endpoint_config
+            ),
+            "jobSchedule": (
+                self._schedule_config.to_dict()
+                if isinstance(self._schedule_config, JobSchedule)
+                else self._schedule_config
+            ),
+        }
+
+    @public
+    @property
+    def targets(self) -> list[TableIngestionTarget] | None:
+        return self._targets
+
+    @targets.setter
+    def targets(self, targets: Sequence[TableIngestionTarget] | None) -> None:
+        self._targets = list(targets) if targets else None
+
+    @public
+    @property
+    def table_parallelism(self) -> int | None:
+        return self._table_parallelism
+
+    @table_parallelism.setter
+    def table_parallelism(self, table_parallelism: int | None) -> None:
+        self._table_parallelism = table_parallelism
 
     @staticmethod
     def _normalize_column_mapping(mapping):
@@ -582,4 +640,156 @@ class SinkJobConfiguration:
             JobSchedule.from_response_json(schedule_config)
             if isinstance(schedule_config, dict)
             else schedule_config
+        )
+
+
+@public("hopsworks.core.TableIngestionTarget")
+class TableIngestionTarget:
+    """A single source table -> feature group of a multi-table ingestion job.
+
+    Each target is copied by its own worker pod and can override the job-level
+    ingestion settings; unset fields fall back to the job-level defaults.
+
+    Parameters:
+        feature_group: The (saved) feature group to ingest into. Either this or
+            `feature_group_id` must be provided.
+        feature_group_id: The id of the feature group, when the object is not at hand.
+        enabled: Whether this table is ingested. A disabled target stays part of the
+            job but is skipped for the run. Defaults to `True`.
+        loading_config: Per-target loading strategy (full / incremental).
+        column_mappings: Per-target source column -> feature name mappings.
+        transform_script_path: Per-target transformation script path.
+        write_mode: Per-target write mode (`APPEND` / `MERGE`).
+        batch_size / sql_source_fetch_chunk_size / sql_table_num_partitions /
+        max_upload_batch_size_mb / source_read_workers / data_processing_workers:
+            Per-target tuning overrides.
+        resource_config: Per-target worker pod resources, e.g.
+            `{"cores": 2, "memory": 4096}`.
+        endpoint_config: Per-target REST endpoint configuration.
+    """
+
+    def __init__(
+        self,
+        feature_group=None,
+        *,
+        feature_group_id: int | None = None,
+        enabled: bool = True,
+        loading_config: LoadingConfig | dict | None = None,
+        column_mappings: Sequence[FeatureColumnMapping | dict] | None = None,
+        transform_script_path: str | None = None,
+        write_mode: WriteMode | str | None = None,
+        batch_size: int | None = None,
+        sql_source_fetch_chunk_size: int | None = None,
+        sql_table_num_partitions: int | None = None,
+        max_upload_batch_size_mb: int | None = None,
+        source_read_workers: int | None = None,
+        data_processing_workers: int | None = None,
+        resource_config: dict | None = None,
+        endpoint_config: dict | RestEndpointConfig | None = None,
+    ):
+        resolved_id = feature_group_id
+        if feature_group is not None:
+            resolved_id = getattr(feature_group, "id", None) or feature_group_id
+        if resolved_id is None:
+            raise ValueError(
+                "TableIngestionTarget requires a saved feature_group (with an id) "
+                "or an explicit feature_group_id."
+            )
+        self._feature_group_id = resolved_id
+        self._enabled = enabled
+        self._loading_config = (
+            LoadingConfig.from_response_json(loading_config)
+            if isinstance(loading_config, dict)
+            else loading_config
+        )
+        self._column_mappings = column_mappings
+        self._transform_script_path = transform_script_path
+        if isinstance(write_mode, WriteMode):
+            self._write_mode = write_mode.value
+        elif isinstance(write_mode, str):
+            self._write_mode = WriteMode(write_mode.upper()).value
+        else:
+            self._write_mode = None
+        self._batch_size = batch_size
+        self._sql_source_fetch_chunk_size = sql_source_fetch_chunk_size
+        self._sql_table_num_partitions = sql_table_num_partitions
+        self._max_upload_batch_size_mb = max_upload_batch_size_mb
+        self._source_read_workers = source_read_workers
+        self._data_processing_workers = data_processing_workers
+        self._resource_config = resource_config
+        self._endpoint_config = (
+            RestEndpointConfig.from_response_json(endpoint_config)
+            if isinstance(endpoint_config, dict)
+            else endpoint_config
+        )
+
+    def to_dict(self):
+        target = {
+            "featuregroupId": self._feature_group_id,
+            "enabled": self._enabled,
+        }
+        if self._loading_config is not None:
+            target["loadingConfig"] = (
+                self._loading_config.to_dict()
+                if hasattr(self._loading_config, "to_dict")
+                else self._loading_config
+            )
+        if self._column_mappings is not None:
+            target["columnMappings"] = [
+                SinkJobConfiguration._normalize_column_mapping(mapping)
+                for mapping in self._column_mappings
+            ]
+        # only send overrides the caller set; the backend inherits the rest
+        for key, value in (
+            ("transformScriptPath", self._transform_script_path),
+            ("writeMode", self._write_mode),
+            ("batchSize", self._batch_size),
+            ("sqlSourceFetchChunkSize", self._sql_source_fetch_chunk_size),
+            ("sqlTableNumPartitions", self._sql_table_num_partitions),
+            ("maxUploadBatchSizeMB", self._max_upload_batch_size_mb),
+            ("sourceReadWorkers", self._source_read_workers),
+            ("dataProcessingWorkers", self._data_processing_workers),
+            ("resourceConfig", self._resource_config),
+        ):
+            if value is not None:
+                target[key] = value
+        if self._endpoint_config is not None:
+            target["endpointConfig"] = (
+                self._endpoint_config.to_dict()
+                if hasattr(self._endpoint_config, "to_dict")
+                else self._endpoint_config
+            )
+        return target
+
+    def json(self):
+        return json.dumps(self.to_dict())
+
+    @classmethod
+    def from_response_json(cls, json_dict):
+        json_decamelized = humps.decamelize(json_dict)
+        loading_config = json_decamelized.get("loading_config")
+        return cls(
+            feature_group_id=json_decamelized.get("featuregroup_id"),
+            enabled=json_decamelized.get("enabled", True),
+            loading_config=(
+                LoadingConfig.from_response_json(loading_config)
+                if loading_config
+                else None
+            ),
+            column_mappings=[
+                FeatureColumnMapping.from_response_json(mapping)
+                for mapping in json_decamelized.get("column_mappings", [])
+            ]
+            or None,
+            transform_script_path=json_decamelized.get("transform_script_path"),
+            write_mode=json_decamelized.get("write_mode"),
+            batch_size=json_decamelized.get("batch_size"),
+            sql_source_fetch_chunk_size=json_decamelized.get(
+                "sql_source_fetch_chunk_size"
+            ),
+            sql_table_num_partitions=json_decamelized.get("sql_table_num_partitions"),
+            max_upload_batch_size_mb=json_decamelized.get("max_upload_batch_size_mb"),
+            source_read_workers=json_decamelized.get("source_read_workers"),
+            data_processing_workers=json_decamelized.get("data_processing_workers"),
+            resource_config=json_decamelized.get("resource_config"),
         )
