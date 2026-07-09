@@ -270,3 +270,27 @@ class DataSourceApi:
             raise
 
         return im.InferredMetadata.from_response_json(response)
+
+    def _estimate_ingestion_resources(
+        self,
+        storage_connector: sc.StorageConnector,
+        payload: dict,
+    ) -> dict:
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "featurestores",
+            storage_connector._featurestore_id,
+            "storageconnectors",
+            storage_connector._name,
+            "data_source",
+            "estimate-ingestion-resources",
+        ]
+
+        return _client._send_request(
+            "POST",
+            path_params,
+            headers={"content-type": "application/json"},
+            data=json.dumps(payload),
+        )

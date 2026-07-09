@@ -504,6 +504,108 @@ class DataSource:
         return created_job
 
     @public
+    def estimate_ingestion_resources(
+        self,
+        feature_group: fg.FeatureGroup | None = None,
+        *,
+        feature_group_id: int | None = None,
+        write_mode: str | None = None,
+        loading_strategy: str | None = None,
+        batch_size: int | None = None,
+        sql_source_fetch_chunk_size: int | None = None,
+        source_read_workers: int | None = None,
+        data_processing_workers: int | None = None,
+        max_upload_batch_size_mb: int | None = None,
+        sql_table_num_partitions: int | None = None,
+        transform_script_path: str | None = None,
+        configured_memory_mb: int | None = None,
+        configured_cpu_cores: float | None = None,
+    ) -> dict:
+        """Estimate the memory and CPU an ingestion into a feature group needs.
+
+        Calls the same backend the UI uses to size a DLTHub ingestion job.
+        It derives a recommendation from the feature group's schema and the runtime
+        knobs you pass, so you can set `resource_config` on a
+        [`TableIngestionTarget`][hopsworks.core.sink_job_configuration.TableIngestionTarget]
+        (or the worker resources of a single sink job) before running an ingestion,
+        instead of guessing.
+        Pass the same runtime knobs you intend to run the ingestion with, since a
+        larger batch size or more workers raises the estimate.
+
+        Example:
+            ```python
+            fs = ...
+            data_source = fs.get_data_source("hubspot")
+            contacts_fg = fs.get_feature_group("contacts", version=1)
+
+            estimate = data_source.estimate_ingestion_resources(
+                contacts_fg,
+                write_mode="MERGE",
+                batch_size=200000,
+            )
+            print(estimate["recommendedMemoryMb"], estimate["recommendedCpuCores"])
+            ```
+
+        Parameters:
+            feature_group: The feature group the ingestion writes to; supplies the schema the estimate is based on.
+            feature_group_id: Id of the target feature group, as an alternative to passing `feature_group`.
+            write_mode: Write mode the ingestion will run with (`APPEND` or `MERGE`).
+            loading_strategy: Loading strategy the ingestion will run with.
+            batch_size: Write batch size the ingestion will run with.
+            sql_source_fetch_chunk_size: Source fetch chunk size for SQL sources.
+            source_read_workers: Number of source read workers.
+            data_processing_workers: Number of data processing workers.
+            max_upload_batch_size_mb: Maximum upload batch size in MB.
+            sql_table_num_partitions: Number of read partitions for SQL sources.
+            transform_script_path: Path of a transformation script the ingestion will run.
+            configured_memory_mb: Memory you plan to give the job, to compare against the recommendation.
+            configured_cpu_cores: CPU cores you plan to give the job, to compare against the recommendation.
+
+        Returns:
+            The backend estimation, including `recommendedMemoryMb`, `recommendedCpuCores`, `confidence`, `peakStage`, `reasons`, and `warnings`.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
+        """
+        from hsfs.core.data_source_api import DataSourceApi
+
+        if self._storage_connector is None:
+            raise ValueError("The data source has no storage connector to ingest from.")
+
+        resolved_id = feature_group_id
+        if resolved_id is None and feature_group is not None:
+            resolved_id = feature_group.id
+        if resolved_id is None:
+            raise ValueError(
+                "Pass either a feature_group or a feature_group_id to estimate for."
+            )
+
+        payload = {
+            "featuregroupId": resolved_id,
+            "featurestoreId": self._storage_connector._featurestore_id,
+        }
+        optional = {
+            "writeMode": write_mode,
+            "loadingStrategy": loading_strategy,
+            "batchSize": batch_size,
+            "sqlSourceFetchChunkSize": sql_source_fetch_chunk_size,
+            "sourceReadWorkers": source_read_workers,
+            "dataProcessingWorkers": data_processing_workers,
+            "maxUploadBatchSizeMB": max_upload_batch_size_mb,
+            "sqlTableNumPartitions": sql_table_num_partitions,
+            "transformScriptPath": transform_script_path,
+            "configuredMemoryMb": configured_memory_mb,
+            "configuredCpuCores": configured_cpu_cores,
+        }
+        payload.update(
+            {key: value for key, value in optional.items() if value is not None}
+        )
+
+        return DataSourceApi()._estimate_ingestion_resources(
+            self._storage_connector, payload
+        )
+
+    @public
     def get_feature_groups_provenance(self) -> Links | None:
         """Get the generated feature groups using this data source, based on explicit provenance.
 

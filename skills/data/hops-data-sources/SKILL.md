@@ -150,6 +150,27 @@ job.run()   # runs the multi-table job server-side (see hops-job to monitor)
 
 Reference a target's feature group either by object (`feature_group=`) or by id (`feature_group_id=`); one of the two is required. To pause a table without removing it from the config, set `enabled=False` on its target. Attach a schedule with `schedule_config=` to run the whole set on a cadence.
 
+### Size resources before ingesting
+
+Rather than guessing the memory and CPU an ingestion needs, ask the backend with `data_source.estimate_ingestion_resources`. It derives a recommendation from the target feature group's schema and the runtime knobs you pass (the same `write_mode`, `batch_size`, worker counts you intend to run with — a bigger batch or more workers raises the estimate). Use it to set a target's `resource_config`, or a single sink job's worker resources, deliberately.
+
+```python
+est = ds.estimate_ingestion_resources(
+    fs.get_feature_group("contacts", 1),
+    write_mode="MERGE",
+    batch_size=200000,
+)
+print(est["recommendedMemoryMb"], est["recommendedCpuCores"], est["confidence"])
+
+# Feed the recommendation straight into a target:
+target = TableIngestionTarget(
+    feature_group=fs.get_feature_group("contacts", 1),
+    resource_config={"memory": est["recommendedMemoryMb"], "cores": est["recommendedCpuCores"]},
+)
+```
+
+The returned dict also carries `peakStage`, `reasons`, and `warnings` explaining the recommendation. Pass `configured_memory_mb`/`configured_cpu_cores` to have the estimate compare against resources you already plan to give the job.
+
 ## Ingest from Google Sheets
 
 Google Sheets is an independent top-level connector (type `GOOGLE_SHEETS`) authenticated by a GCP service-account JSON keyfile.

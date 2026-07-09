@@ -426,3 +426,52 @@ class TestDataSourceCreateIngestionJob:
             ds.create_ingestion_job(
                 name="x", targets=[TableIngestionTarget(feature_group_id=1)]
             )
+
+
+class TestDataSourceEstimateIngestionResources:
+    def test_estimate_builds_payload_and_returns_estimate(self):
+        sc = storage_connector.RedshiftConnector(9, "sc", 7)
+        ds = data_source.DataSource(storage_connector=sc)
+
+        fake_fg = MagicMock()
+        fake_fg.id = 33
+
+        with patch("hsfs.core.data_source_api.DataSourceApi") as MockApi:
+            api = MockApi.return_value
+            api._estimate_ingestion_resources.return_value = {
+                "recommendedMemoryMb": 4096,
+                "recommendedCpuCores": 2.0,
+            }
+
+            result = ds.estimate_ingestion_resources(
+                fake_fg, write_mode="MERGE", batch_size=200000
+            )
+
+            posted_sc, payload = api._estimate_ingestion_resources.call_args[0]
+
+        assert result["recommendedMemoryMb"] == 4096
+        assert posted_sc is sc
+        assert payload["featuregroupId"] == 33
+        assert payload["featurestoreId"] == 7
+        assert payload["writeMode"] == "MERGE"
+        assert payload["batchSize"] == 200000
+        # unset knobs are not sent, so the backend applies its own defaults
+        assert "sourceReadWorkers" not in payload
+
+    def test_estimate_accepts_feature_group_id(self):
+        sc = storage_connector.RedshiftConnector(9, "sc", 7)
+        ds = data_source.DataSource(storage_connector=sc)
+
+        with patch("hsfs.core.data_source_api.DataSourceApi") as MockApi:
+            api = MockApi.return_value
+            api._estimate_ingestion_resources.return_value = {}
+            ds.estimate_ingestion_resources(feature_group_id=5)
+            payload = api._estimate_ingestion_resources.call_args[0][1]
+
+        assert payload["featuregroupId"] == 5
+
+    def test_estimate_without_feature_group_raises(self):
+        sc = storage_connector.RedshiftConnector(9, "sc", 7)
+        ds = data_source.DataSource(storage_connector=sc)
+        with pytest.raises(ValueError, match="feature_group"):
+            ds.estimate_ingestion_resources()
