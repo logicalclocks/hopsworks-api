@@ -293,7 +293,7 @@ class Execution:
 
         This streams the running pod, so it shows progress while the execution is still going,
         unlike [`Execution.download_logs`][hopsworks.execution.Execution.download_logs] which fetches the archived files.
-        The returned [`ExecutionPodLog.status`][hopsworks.core.execution_pod_log.ExecutionPodLog.status] tells you whether the log is available yet.
+        The returned [`ExecutionPodLog.status`][hopsworks_common.core.execution_pod_log.ExecutionPodLog.status] tells you whether the log is available yet.
 
         Parameters:
             table_index: For a multi-table ingestion, the index of the table whose pod to read; `None` reads the execution's own pod.

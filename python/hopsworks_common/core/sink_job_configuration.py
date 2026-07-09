@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import humps
 from hopsworks_apigen import public
@@ -660,9 +660,12 @@ class TableIngestionTarget:
         column_mappings: Per-target source column -> feature name mappings.
         transform_script_path: Per-target transformation script path.
         write_mode: Per-target write mode (`APPEND` / `MERGE`).
-        batch_size / sql_source_fetch_chunk_size / sql_table_num_partitions /
-        max_upload_batch_size_mb / source_read_workers / data_processing_workers:
-            Per-target tuning overrides.
+        batch_size: Per-target write batch size.
+        sql_source_fetch_chunk_size: Per-target source fetch chunk size for SQL sources.
+        sql_table_num_partitions: Per-target number of read partitions for SQL sources.
+        max_upload_batch_size_mb: Per-target maximum upload batch size in MB.
+        source_read_workers: Per-target number of source read workers.
+        data_processing_workers: Per-target number of data processing workers.
         resource_config: Per-target worker pod resources, e.g.
             `{"cores": 2, "memory": 4096}`.
         endpoint_config: Per-target REST endpoint configuration.
@@ -670,7 +673,7 @@ class TableIngestionTarget:
 
     def __init__(
         self,
-        feature_group=None,
+        feature_group: Any = None,
         *,
         feature_group_id: int | None = None,
         enabled: bool = True,

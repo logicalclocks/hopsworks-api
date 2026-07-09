@@ -164,7 +164,7 @@ class MultiTableIngestionJob:
         A target already added for the same feature group is replaced, so adding a
         feature group twice (for example on a re-run) never duplicates it.
         Any keyword override accepted by
-        [`TableIngestionTarget`][hopsworks.core.sink_job_configuration.TableIngestionTarget]
+        [`TableIngestionTarget`][hopsworks_common.core.sink_job_configuration.TableIngestionTarget]
         applies to this target only.
 
         Parameters:

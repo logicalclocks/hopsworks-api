@@ -505,7 +505,7 @@ class DataSource:
         Calls the same backend the UI uses to size a DLTHub ingestion job.
         It derives a recommendation from the feature group's schema and the runtime
         knobs you pass, so you can set `resource_config` on a
-        [`TableIngestionTarget`][hopsworks.core.sink_job_configuration.TableIngestionTarget]
+        [`TableIngestionTarget`][hopsworks_common.core.sink_job_configuration.TableIngestionTarget]
         (or the worker resources of a single sink job) before running an ingestion,
         instead of guessing.
         Pass the same runtime knobs you intend to run the ingestion with, since a
