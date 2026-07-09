@@ -1179,25 +1179,21 @@ class Engine:
         """Persist and materialize a dataframe that more than one action will consume.
 
         Returns the (possibly persisted) dataframe and whether it was persisted.
-        The cache is populated immediately with
-        `spark.sql.optimizer.canChangeCachedPlanOutputPartitioning` enabled: by default
-        that flag is off and a cached plan keeps the static pre-AQE shuffle partitioning
-        (`spark.sql.shuffle.partitions`), which re-inflates a small AQE-coalesced result
-        into hundreds of near-empty partitions and taxes every downstream action with
-        task scheduling, tiny output files, and per-task Python-worker round-trips.
-        The flag is restored right after materialization so plans compiled outside this
-        window (including user caches in interactive sessions) keep default behavior.
+        The cache keeps the plan's native shuffle partitioning on purpose: many small
+        cache blocks bound the memory a single task must hold, so materialization and
+        the downstream writes stay within executor heap regardless of data size. The
+        write-side `coalesce` to a byte-derived target (`_write_training_dataset_splits`)
+        is what controls output file counts and Python-worker batch sizes; `coalesce` is
+        a narrow dependency, so the coalesced write tasks stream the many small cached
+        blocks without ever building an oversized partition. Letting AQE coalesce the
+        cached plan instead (`canChangeCachedPlanOutputPartitioning`) sizes partitions
+        by compressed shuffle bytes and packs whole deserialized partitions into single
+        tasks, which blows the executor heap on real data volumes.
         """
         if consumers <= 1:
             return dataset, False
-        partitioning_key = "spark.sql.optimizer.canChangeCachedPlanOutputPartitioning"
-        previous = self._spark_session.conf.get(partitioning_key, "false")
-        self._spark_session.conf.set(partitioning_key, "true")
-        try:
-            dataset = dataset.persist()
-            dataset.count()
-        finally:
-            self._spark_session.conf.set(partitioning_key, previous)
+        dataset = dataset.persist()
+        dataset.count()
         return dataset, True
 
     @staticmethod

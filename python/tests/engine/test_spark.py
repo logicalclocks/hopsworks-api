@@ -3136,18 +3136,16 @@ class TestSpark:
         assert cached is False
         assert dataset.persist.call_count == 0
 
-    def test_materialize_for_reuse_persists_under_adaptive_partitioning(self, mocker):
-        # More than one consumer: the source is persisted and materialized with
-        # canChangeCachedPlanOutputPartitioning enabled (so AQE can coalesce the
-        # cached plan instead of pinning the static shuffle partitioning), and
-        # the flag is restored afterwards.
+    def test_materialize_for_reuse_persists_at_native_partitioning(self, mocker):
+        # More than one consumer: the source is persisted and materialized once.
+        # The cached plan keeps its native shuffle partitioning (many small blocks
+        # bound per-task memory); the session's cached-plan-partitioning conf is
+        # never touched, since AQE-coalescing the cache packs whole deserialized
+        # partitions into single tasks and OOMs executors on real data volumes.
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
         spark_engine = spark.Engine()
-        conf = mocker.Mock()
-        conf.get.return_value = "false"
         spark_engine._spark_session = mocker.Mock()
-        spark_engine._spark_session.conf = conf
         dataset = mocker.Mock()
         persisted = dataset.persist.return_value
 
@@ -3158,9 +3156,7 @@ class TestSpark:
         assert result is persisted
         assert cached is True
         assert persisted.count.call_count == 1
-        partitioning_key = "spark.sql.optimizer.canChangeCachedPlanOutputPartitioning"
-        assert conf.set.call_args_list[0][0] == (partitioning_key, "true")
-        assert conf.set.call_args_list[-1][0] == (partitioning_key, "false")
+        assert spark_engine._spark_session.conf.set.call_count == 0
 
     def test_target_file_count(self, mocker):
         # Arrange
