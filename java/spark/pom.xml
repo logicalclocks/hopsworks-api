@@ -161,7 +161,7 @@
                 <dependency>
                     <groupId>io.hops</groupId>
                     <artifactId>hadoop-client</artifactId>
-                    <version>3.4.3.1-EE-RC0</version>
+                    <version>3.4.3.2-EE-RC0</version>
                     <scope>provided</scope>
                 </dependency>
             </dependencies>
