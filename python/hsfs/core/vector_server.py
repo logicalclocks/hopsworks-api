@@ -19,6 +19,7 @@ import concurrent.futures
 import decimal
 import itertools
 import logging
+import numbers
 import threading
 import warnings
 from base64 import b64decode
@@ -400,6 +401,20 @@ class VectorServer:
                 features=entity.features,
             )
         )
+        # server-dependent verdict state must not survive a client reset (review X13):
+        # EXPLAIN outcomes, rejected templates, and the collect-metadata refusal all
+        # describe the PREVIOUS server (a reset can point at an upgraded or different
+        # RonDB whose planner accepts what the old one refused, and vice versa)
+        for stale in (
+            "_ronsql_statements",
+            "_ronsql_batch_statements",
+            "_ronsql_rejected",
+            "_ronsql_explain_cache",
+            "_collect_metadata_unservable",
+            "_collect_base_read_proven",
+        ):
+            if hasattr(self, stale):
+                delattr(self, stale)
         # This logic needs to move to the above engine init
         online_store_rest_client._init_or_reset_online_store_rest_client(
             optional_config=config_rest_client,
@@ -907,7 +922,10 @@ class VectorServer:
         """
         # Errors in batch requests are returned as None values
         if _logger.isEnabledFor(logging.DEBUG):
-            _logger.debug("Assembling serving vector: %s", result_dict)
+            _logger.debug(
+                "Assembling serving vector with features: %s",
+                sorted(result_dict) if result_dict else [],
+            )
         if result_dict is None:
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug("Found null result, setting to empty dict.")
@@ -1745,14 +1763,23 @@ class VectorServer:
 
         Entity-key columns are excluded from the per-row structs (they keep their scalar
         values in the vector).
+        Struct field values decode per the persisted `array<struct<name:type,...>>`
+        schema (review X10): the REST wire carries timestamps/dates as strings, decimals
+        as JSON numbers, and binary as base64, while the SQL client and the offline
+        engines return native values.
         Statements from a backend predating the collapsed schema fold each column into
         its own list instead, with nulls preserved so the lists stay row-aligned.
         """
         entity_keys = {param.name for param in statement.prepared_statement_parameters}
         if statement.collect_feature_name is not None:
             collect_name = (statement.prefix or "") + statement.collect_feature_name
+            field_types = self._collect_struct_field_types(collect_name)
             serving_vector[collect_name] = [
-                {col: val for col, val in row.items() if col not in entity_keys}
+                {
+                    col: self._decode_collect_field(val, field_types.get(col))
+                    for col, val in row.items()
+                    if col not in entity_keys
+                }
                 for row in rows
             ]
         else:
@@ -1765,6 +1792,59 @@ class VectorServer:
                 if name in entity_keys:
                     continue
                 serving_vector[name] = [row.get(name) for row in rows]
+
+    def _collect_struct_field_types(self, collect_name: str) -> dict[str, str]:
+        """Field name -> type of a collect feature's `array<struct<...>>` schema."""
+        for feature in getattr(self, "_features", None) or []:
+            if feature.name != collect_name:
+                continue
+            type_str = (feature.type or "").strip().lower()
+            if not (
+                type_str.startswith("array<struct<") and type_str.endswith(">>")
+            ):
+                return {}
+            fields: dict[str, str] = {}
+            body = type_str[len("array<struct<"):-2]
+            depth = 0
+            part = []
+            parts = []
+            for char in body:
+                if char in "<(":
+                    depth += 1
+                elif char in ">)":
+                    depth -= 1
+                if char == "," and depth == 0:
+                    parts.append("".join(part))
+                    part = []
+                else:
+                    part.append(char)
+            if part:
+                parts.append("".join(part))
+            for entry in parts:
+                name, _, field_type = entry.partition(":")
+                if name:
+                    fields[name.strip()] = field_type.strip()
+            return fields
+        return {}
+
+    @staticmethod
+    def _decode_collect_field(value: Any, field_type: str | None) -> Any:
+        """Decode one REST-wire struct field value to its schema type."""
+        if value is None or not field_type:
+            return value
+        base = field_type.split("(")[0]
+        try:
+            if base in ("timestamp", "datetime") and isinstance(value, str):
+                return datetime.fromisoformat(value.replace(" ", "T"))
+            if base == "date" and isinstance(value, str):
+                return date.fromisoformat(value[:10])
+            if base == "decimal" and isinstance(value, (int, float, str)):
+                return decimal.Decimal(str(value))
+            if base == "binary" and isinstance(value, str):
+                return b64decode(value)
+        except (ValueError, decimal.InvalidOperation):
+            return value
+        return value
 
     def _scan_rows_ronsql(
         self, entry: dict[str, Any], limit: int | None = None
@@ -1858,7 +1938,7 @@ class VectorServer:
                     f"Missing entity key '{param.name}' in entry for the collect scan."
                 )
             key_columns.append(param.name)
-            entity_values.append(value)
+            entity_values.append(self._scan_wire_value(value))
         key_columns.append(statement.collect_order_by)
         body = {
             "limit": statement.collect_n
@@ -1894,6 +1974,31 @@ class VectorServer:
             self._statement_feature_group_table(statement),
             body,
         )
+
+    @staticmethod
+    def _scan_wire_value(value: Any) -> Any:
+        """A /scan key value in a JSON-encodable, wire-exact form (review X15).
+
+        Decimals render as exact strings (RDRS parses numeric strings for typed
+        columns; a float round trip could query the wrong high-precision key),
+        numpy scalars convert to native int/float, and timezone-aware datetimes
+        normalize to UTC before dropping the offset.
+        """
+        if isinstance(value, decimal.Decimal):
+            return format(value, "f")
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, numbers.Integral) and not isinstance(value, int):
+            return int(value)
+        if isinstance(value, numbers.Real) and not isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, datetime) and value.tzinfo is not None:
+            return (
+                value.astimezone(timezone.utc)
+                .replace(tzinfo=None)
+                .strftime("%Y-%m-%d %H:%M:%S")
+            )
+        return value
 
     _SCAN_FILTER_CONDS = {
         "EQUALS": "EQ",
@@ -2749,6 +2854,13 @@ class VectorServer:
         # bool is an int subclass; check it first
         if isinstance(value, bool):
             return "1" if value else "0"
+        if isinstance(value, decimal.Decimal):
+            # exact rendering: DECIMAL keys must never round-trip through float
+            if not value.is_finite():
+                raise exceptions.FeatureStoreException(
+                    "NaN/Inf entity-key values cannot be used in a RonSQL statement."
+                )
+            return format(value, "f")
         if isinstance(value, int):
             return str(value)
         if isinstance(value, float):
@@ -2756,8 +2868,23 @@ class VectorServer:
                 raise exceptions.FeatureStoreException(
                     "NaN/Inf entity-key values cannot be used in a RonSQL statement."
                 )
-            return repr(value)
+            # float() first: numpy.float64 is a float subclass whose repr wraps the value
+            return repr(float(value))
+        if isinstance(value, numbers.Integral):
+            # numpy integer scalars and other exact Integral types
+            return str(int(value))
+        if isinstance(value, numbers.Real):
+            # numpy floating scalars and other Real types
+            as_float = float(value)
+            if as_float != as_float or as_float in (float("inf"), float("-inf")):
+                raise exceptions.FeatureStoreException(
+                    "NaN/Inf entity-key values cannot be used in a RonSQL statement."
+                )
+            return repr(as_float)
         if isinstance(value, (datetime, date)):
+            if isinstance(value, datetime) and value.tzinfo is not None:
+                # normalize aware datetimes to UTC before dropping the offset
+                value = value.astimezone(timezone.utc).replace(tzinfo=None)
             return "'" + value.strftime("%Y-%m-%d %H:%M:%S") + "'"
         if isinstance(value, str):
             if len(value) > VectorServer._RONSQL_MAX_STRING_LITERAL:
@@ -2790,6 +2917,9 @@ class VectorServer:
         if base_type in ("int", "integer", "bigint", "smallint", "tinyint", "long"):
             if isinstance(value, (bool, int)):
                 return int(value)
+            if isinstance(value, numbers.Integral):
+                # numpy integer scalars and other exact Integral types
+                return int(value)
             if isinstance(value, str):
                 try:
                     return int(value)
@@ -2799,8 +2929,28 @@ class VectorServer:
                 f"Entity-key value {value!r} is not valid for a {feature_type} "
                 "serving key."
             )
-        if base_type in ("float", "double", "decimal"):
+        if base_type == "decimal":
+            # exact parsing: coercing through float would silently query the wrong
+            # high-precision key (review X15)
+            if isinstance(value, decimal.Decimal):
+                return value
+            if isinstance(value, (int, str)) and not isinstance(value, bool):
+                try:
+                    return decimal.Decimal(value)
+                except decimal.InvalidOperation:
+                    pass
+            if isinstance(value, float):
+                return decimal.Decimal(str(value))
+            raise exceptions.FeatureStoreException(
+                f"Entity-key value {value!r} is not valid for a {feature_type} "
+                "serving key."
+            )
+        if base_type in ("float", "double"):
+            if isinstance(value, decimal.Decimal):
+                return float(value)
             if isinstance(value, (int, float)) and not isinstance(value, bool):
+                return float(value)
+            if isinstance(value, numbers.Real) and not isinstance(value, bool):
                 return float(value)
             if isinstance(value, str):
                 try:
@@ -2907,7 +3057,9 @@ class VectorServer:
             _logger.debug(
                 f"Retrieve inference helper values for batch entries via {default_client.upper()} client."
             )
-            _logger.debug(f"entries: {entries} as return type: {return_type}")
+            _logger.debug(
+                "%d entries as return type: %s", len(entries), return_type
+            )
 
         if default_client == self.DEFAULT_REST_CLIENT:
             batch_results = self.rest_client_engine._get_batch_feature_vectors(
@@ -3343,9 +3495,13 @@ class VectorServer:
                 for (sk_required, sk_name) in composite_group
             ]
             if not all(present_keys) and any(present_keys):
+                # name the KEYS only: entry VALUES are entity identifiers and must
+                # not leak into exception messages or logs
                 raise exceptions.FeatureStoreException(
                     "Provide either all composite serving keys or none. "
-                    f"Composite keys: {[prefix_key for (prefix_key, _) in composite_group]} or {[key for (_, key) in composite_group]} in entry {entry}."
+                    f"Composite keys: {[prefix_key for (prefix_key, _) in composite_group]} "
+                    f"or {[key for (_, key) in composite_group]}; "
+                    f"the entry provides {sorted(entry)}."
                 )
 
         if allow_missing is False:

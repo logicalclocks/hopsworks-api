@@ -780,7 +780,10 @@ class Query:
         Returns:
             The query object with the applied collect.
         """
-        if n is None or n <= 0:
+        if isinstance(n, bool) or not isinstance(n, int):
+            # the backend field is an integer; True or 2.5 would fail or coerce later
+            raise TypeError(f"collect(n): n must be an int, got {type(n).__name__}")
+        if n <= 0:
             raise ValueError("collect(n): n must be a positive integer")
         if self._aggregate is not None:
             raise ValueError(
@@ -892,8 +895,22 @@ class Query:
                         )
         if isinstance(window, timedelta):
             window = window.total_seconds()
-        if window is not None and window <= 0:
-            raise ValueError("aggregate(): window must be positive")
+        if window is not None:
+            if isinstance(window, bool) or not isinstance(window, (int, float)):
+                raise TypeError(
+                    "aggregate(): window must be seconds (int/float/timedelta), "
+                    f"got {type(window).__name__}"
+                )
+            if window <= 0:
+                raise ValueError("aggregate(): window must be positive")
+            if window != int(window):
+                # the backend window is whole seconds; silently truncating a
+                # fractional window would change which rows the read matches
+                raise ValueError(
+                    "aggregate(): window must be a whole number of seconds, "
+                    f"got {window}"
+                )
+            window = int(window)
         self._aggregate = {
             name.replace(" ", ""): [fn.lower() for fn in fns]
             for name, fns in aggregations.items()

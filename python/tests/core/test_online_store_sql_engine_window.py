@@ -27,6 +27,7 @@ def make_engine():
     engine._rank_cap_by_serving_index = {}
     engine._scan_prepared_statements = {}
     engine._collect_ascending_by_serving_index = {}
+    engine._aggregate_names_by_serving_index = {}
     return engine
 
 
@@ -49,7 +50,17 @@ class _FakeTaskThread:
     def _submit(self, task):
         self.functions.append(task.task_function.__name__)
         self.calls.append(task.task_args)
-        if task.task_function.__name__ == "_execute_per_entry_scans":
+        name = task.task_function.__name__
+        if name == "_execute_batch_reads":
+            scan_specs = task.task_args[2]
+            per_index = {}
+            for index in scan_specs:
+                if isinstance(self.scan_results, dict):
+                    per_index[index] = self.scan_results.get(index, [])
+                else:
+                    per_index[index] = self.scan_results or []
+            return self.results, per_index
+        if name == "_execute_per_entry_scans":
             return self.scan_results
         return self.results
 
@@ -429,6 +440,19 @@ class TestSingleVectorDirectScan:
         assert executed == {0: "windowed"}
         assert [s["ts"] for s in vector["t_collect"]] == [2, 3]
 
+    def test_prefixed_collect_fold_strips_struct_prefix(self):
+        # statement columns carry the join prefix (the feature view's names):
+        # struct fields fold back to the SOURCE names, matching the persisted
+        # array<struct<...>> schema, and the entity key stays scalar under its
+        # prefixed name
+        rows = [{"txn_user_id": 7, "txn_ts": 3, "txn_amount": 5.0}]
+        engine = make_serving_engine({0: rows})
+        engine._prefix_by_serving_index = {0: "txn_"}
+        engine._collect_name_by_serving_index = {0: "txn_t_collect"}
+        vector = engine._single_vector_result({"user_id": 7}, {0: "windowed"})
+        assert vector["txn_user_id"] == 7
+        assert vector["txn_t_collect"] == [{"ts": 3, "amount": 5.0}]
+
     def test_get_single_feature_vector_passes_label_scans(self):
         engine = make_engine()
         engine._parametrised_prepared_statements = {
@@ -508,9 +532,11 @@ class TestBatchCollectDirectScans:
             {0: "windowed-batch"},
             scan_statements={0: "direct"},
         )
-        # the windowed IN statement never executes
-        assert engine._async_task_thread.functions == ["_execute_per_entry_scans"]
-        statement, binds_list = engine._async_task_thread.calls[0]
+        # point statements and scans run in ONE wave; the windowed IN never executes
+        assert engine._async_task_thread.functions == ["_execute_batch_reads"]
+        statements, _, scan_specs = engine._async_task_thread.calls[0]
+        assert statements == {}
+        statement, binds_list = scan_specs[0]
         assert statement == "direct"
         assert binds_list == [
             {"user_id": 0, "hw_rank_cap": 3},
@@ -518,10 +544,32 @@ class TestBatchCollectDirectScans:
             {"user_id": 2, "hw_rank_cap": 3},
         ]
         assert [s["ts"] for s in batch_results[0]["t_collect"]] == [2, 1]
-        # like the windowed plan, an entity with no history stays empty
-        assert batch_results[1] == {}
+        # empty semantics pinned to the single-read contract: no history -> []
+        assert batch_results[1] == {"t_collect": []}
         assert [s["ts"] for s in batch_results[2]["t_collect"]] == [9]
         assert [sk.feature_name for sk in serving_keys] == ["user_id"]
+
+    def test_batch_scan_deduplicates_repeated_entries(self):
+        scan_results = [
+            [{"user_id": 0, "ts": 2}],
+            [{"user_id": 1, "ts": 9}],
+        ]
+        engine = make_serving_engine({})
+        engine._async_task_thread = _FakeTaskThread({}, scan_results=scan_results)
+        batch_results, _ = engine._batch_vector_results(
+            [{"user_id": 0}, {"user_id": 0}, {"user_id": 1}],
+            {0: "windowed-batch"},
+            scan_statements={0: "direct"},
+        )
+        _, _, scan_specs = engine._async_task_thread.calls[0]
+        # the repeated entity issues ONE scan, both entries fold its result
+        assert scan_specs[0][1] == [
+            {"user_id": 0, "hw_rank_cap": 3},
+            {"user_id": 1, "hw_rank_cap": 3},
+        ]
+        assert [s["ts"] for s in batch_results[0]["t_collect"]] == [2]
+        assert [s["ts"] for s in batch_results[1]["t_collect"]] == [2]
+        assert [s["ts"] for s in batch_results[2]["t_collect"]] == [9]
 
     def test_batch_scan_reverses_for_ascending_views(self):
         scan_results = [[{"user_id": 0, "ts": 3}, {"user_id": 0, "ts": 2}]]
@@ -539,8 +587,33 @@ class TestBatchCollectDirectScans:
         batch_results, _ = engine._batch_vector_results(
             [{"user_id": 0}], {0: "windowed-batch"}, scan_statements=None
         )
-        assert engine._async_task_thread.functions == ["_execute_prep_statements"]
+        assert engine._async_task_thread.functions == ["_execute_batch_reads"]
+        statements, _, scan_specs = engine._async_task_thread.calls[0]
+        assert statements == {0: "windowed-batch"}
+        assert scan_specs == {}
         assert [s["ts"] for s in batch_results[0]["t_collect"]] == [2]
+
+    def test_batch_synthesizes_aggregate_defaults_for_missed_entities(self):
+        # the grouped IN statement emits no row for an entity with no matching
+        # rows; the single statement returns COUNT 0 and NULLs, so the batch
+        # synthesizes exactly that
+        engine = make_serving_engine(
+            {0: [{"user_id": 0, "amount_sum": 5.0, "amount_count": 2, "count": 2}]}
+        )
+        engine._collect_n_by_serving_index = {}
+        engine._collect_name_by_serving_index = {}
+        engine._aggregate_names_by_serving_index = {
+            0: ["amount_sum", "amount_count", "count"]
+        }
+        batch_results, _ = engine._batch_vector_results(
+            [{"user_id": 0}, {"user_id": 1}], {0: "batch-aggregate"}
+        )
+        assert batch_results[0]["amount_sum"] == 5.0
+        assert batch_results[1] == {
+            "amount_sum": None,
+            "amount_count": 0,
+            "count": 0,
+        }
 
     def test_get_batch_feature_vectors_passes_single_label_scans(self):
         engine = make_engine()
@@ -593,7 +666,7 @@ class TestFalsyServingKeys:
         batch_results, _ = engine._batch_vector_results(
             [{"user_id": 0}, {"user_id": 1}], {0: "batch-collect-statement"}
         )
-        _, entry_values = engine._async_task_thread.calls[0]
+        _, entry_values, _ = engine._async_task_thread.calls[0]
         # entity key 0 binds as 0, not as the feature-name fallback (None)
         assert entry_values[0]["batch_ids"] == [(0,), (1,)]
         assert [s["ts"] for s in batch_results[0]["t_collect"]] == [2, 1]

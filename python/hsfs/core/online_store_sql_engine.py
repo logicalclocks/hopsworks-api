@@ -58,6 +58,11 @@ class OnlineStoreSqlClient:
     # Alias of the ROW_NUMBER column the backend adds to a collect (most recent N rows per
     # entity) prepared statement. It is dropped when folding the N rows into list features.
     COLLECT_RANK_ALIAS = "hopsworks_collect_rank"
+    # collect batch scans (review X9): extra pool connections so per-entry scans run
+    # concurrently (a collect-only view would otherwise serialize on a one-connection
+    # pool), and the per-wave task bound that caps in-flight cursors for large batches
+    _COLLECT_SCAN_POOL_SIZE = 8
+    _COLLECT_SCAN_CHUNK = 64
     # Bind-parameter name of an aggregation statement's trailing window bound.
     WINDOW_BOUND_PARAM = "hw_window_bound"
     # Bind-parameter name of a collect statement's rank cap (<= collect N; scans narrow it).
@@ -111,6 +116,8 @@ class OnlineStoreSqlClient:
         self._scan_prepared_statements: dict[str, dict[int, Any]] = {}
         # prepared_statement_index -> collect_ascending, to order direct-scan output
         self._collect_ascending_by_serving_index: dict[int, bool] = {}
+        # prepared_statement_index -> prefixed aggregate output names (empty-set defaults)
+        self._aggregate_names_by_serving_index: dict[int, list[str]] = {}
         self._serving_key_by_serving_index: dict[str, ServingKey] = {}
         self._serving_keys: set[ServingKey] = set(serving_keys or [])
 
@@ -288,6 +295,15 @@ class OnlineStoreSqlClient:
             for statement in prepared_statements
             if statement.collect_n is not None
         }
+        # aggregate output names, for synthesizing the empty-set defaults an entity
+        # missed by the batch GROUP BY would have received from the single statement
+        self._aggregate_names_by_serving_index = {
+            statement.prepared_statement_index: list(
+                getattr(statement, "aggregate_feature_names", None) or []
+            )
+            for statement in prepared_statements
+            if getattr(statement, "aggregate_feature_names", None)
+        }
         self._feature_name_order_by_psp = {
             statement.prepared_statement_index: {
                 param.name: param.index
@@ -418,12 +434,18 @@ class OnlineStoreSqlClient:
 
         if not self._async_task_thread:
             # Create the async event thread if it is not already running and start it.
+            # The pool minimum is one connection per statement (the single-vector
+            # fan-out); collect statements add per-entry batch scans, so the pool
+            # MAXIMUM is raised to let those run concurrently instead of serializing
+            # on a one-connection pool (review X9). User minsize/maxsize options win.
+            statement_count = len(self._prepared_statements[self.SINGLE_VECTOR_KEY])
+            pool_max = statement_count
+            if self._collect_n_by_serving_index:
+                pool_max = max(statement_count, self._COLLECT_SCAN_POOL_SIZE)
             self._async_task_thread = AsyncTaskThread(
                 connection_pool_initializer=self._get_connection_pool,
                 connection_test=self._test_connection,
-                connection_pool_params=(
-                    len(self._prepared_statements[self.SINGLE_VECTOR_KEY]),
-                ),
+                connection_pool_params=(statement_count, pool_max),
             )
             self._async_task_thread.start()
 
@@ -713,9 +735,13 @@ class OnlineStoreSqlClient:
         for key in results_dict:
             collect_n = self._collect_n_by_serving_index.get(key)
             if collect_n is not None:
-                # collect feature group: fold the up-to-N rows into list-typed features
+                # collect feature group: fold the up-to-N rows into list-typed
+                # features. Statement columns carry the join prefix (the feature
+                # view's names), so entity keys match by prefixed name and struct
+                # fields strip the prefix back to the source names (review X3).
+                prefix = self.prefix_by_serving_index.get(key) or ""
                 pk_names = {
-                    sk.feature_name
+                    prefix + sk.feature_name
                     for sk in self.serving_key_by_serving_index.get(key, [])
                 }
                 rows = results_dict[key]
@@ -733,6 +759,7 @@ class OnlineStoreSqlClient:
                         rows,
                         pk_names,
                         self._collect_name_by_serving_index.get(key),
+                        prefix=prefix,
                     )
                 )
                 continue
@@ -748,14 +775,18 @@ class OnlineStoreSqlClient:
         rows: list[Any],
         pk_names: set[str],
         collect_feature_name: str | None,
+        prefix: str = "",
     ) -> dict[str, Any]:
         """Fold the up-to-N rows of a collect feature group into one feature dict.
 
-        Entity-key columns stay scalar (the entity id, identical across rows); the remaining
-        columns of each row become one struct (dict), and the structs form a list ordered
-        most-recent-first as returned by the query, assigned to the single
-        array<struct<...>> feature named `collect_feature_name` (v2 Design Contract C1).
-        The hopsworks_collect_rank helper column is dropped.
+        Entity-key columns stay scalar (the entity id, identical across rows) under their
+        feature-view (prefixed) names; the remaining columns of each row become one struct
+        (dict) whose FIELD names are the source column names — the statement's join prefix
+        is stripped, because the persisted array<struct<...>> schema uses the raw source
+        names (review X3). The structs form a list ordered most-recent-first as returned
+        by the query, assigned to the single array<struct<...>> feature named
+        `collect_feature_name` (v2 Design Contract C1). The hopsworks_collect_rank helper
+        column is dropped.
 
         When `collect_feature_name` is None (statement from a backend predating the
         collapsed schema), each column folds into its own list instead, with nulls
@@ -770,10 +801,14 @@ class OnlineStoreSqlClient:
                     continue
                 if col in pk_names:
                     folded[col] = val
-                elif collect_feature_name is None:
-                    folded.setdefault(col, []).append(val)
+                    continue
+                field = (
+                    col[len(prefix):] if prefix and col.startswith(prefix) else col
+                )
+                if collect_feature_name is None:
+                    folded.setdefault(field, []).append(val)
                 else:
-                    struct_row[col] = val
+                    struct_row[field] = val
             if collect_feature_name is not None:
                 structs.append(struct_row)
         if collect_feature_name is not None:
@@ -831,9 +866,40 @@ class OnlineStoreSqlClient:
                 is not None
                 and prepared_statement_index in scan_statements
             ):
-                scan_executions[prepared_statement_index] = scan_statements[
+                # per-entry direct scans: bind each entry's serving keys plus the rank
+                # cap, deduplicating identical entries so repeated keys share one scan
+                serving_keys = self.serving_key_by_serving_index[
                     prepared_statement_index
                 ]
+                rank_cap = self._rank_cap_by_serving_index.get(
+                    prepared_statement_index
+                ) or self._collect_n_by_serving_index.get(prepared_statement_index)
+                unique_binds: list[dict[str, Any]] = []
+                entry_to_unique: list[int] = []
+                seen_binds: dict[Any, int] = {}
+                for entry in entries:
+                    binds = {
+                        sk.feature_name: self._entry_serving_key_value(entry, sk)
+                        for sk in serving_keys
+                    }
+                    binds[self.RANK_CAP_PARAM] = rank_cap
+                    try:
+                        bind_key = tuple(sorted(binds.items()))
+                        position = seen_binds.get(bind_key)
+                        if position is None:
+                            position = len(unique_binds)
+                            seen_binds[bind_key] = position
+                            unique_binds.append(binds)
+                    except TypeError:
+                        # unhashable key value: run it unshared
+                        position = len(unique_binds)
+                        unique_binds.append(binds)
+                    entry_to_unique.append(position)
+                scan_executions[prepared_statement_index] = (
+                    scan_statements[prepared_statement_index],
+                    unique_binds,
+                    entry_to_unique,
+                )
                 continue
 
             prepared_stmts_to_execute[prepared_statement_index] = (
@@ -871,19 +937,33 @@ class OnlineStoreSqlClient:
                 entry_values[prepared_statement_index][self.RANK_CAP_PARAM] = rank_cap
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
-                f"Executing batch prepared statements {sorted(entry_values)}"
+                "Executing batch prepared statements %s and %d per-entry scan sets",
+                sorted(entry_values),
+                len(scan_executions),
             )
-        # run all the prepared statements in parallel using aiomysql engine
-        parallel_results = (
+        # ONE wave: the batch IN statements and every per-entry collect scan share the
+        # bounded pool concurrently instead of running in sequential waves (review X9)
+        parallel_results, scan_results = (
             self._async_task_thread._submit(
                 AsyncTask(
-                    task_function=self._execute_prep_statements,
-                    task_args=(prepared_stmts_to_execute, entry_values),
+                    task_function=self._execute_batch_reads,
+                    task_args=(
+                        prepared_stmts_to_execute,
+                        entry_values,
+                        {
+                            index: (statement, unique_binds)
+                            for index, (
+                                statement,
+                                unique_binds,
+                                _,
+                            ) in scan_executions.items()
+                        },
+                    ),
                     requires_connection_pool=True,
                 )
             )
-            if prepared_stmts_to_execute
-            else {}
+            if prepared_stmts_to_execute or scan_executions
+            else ({}, {})
         )
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
@@ -923,6 +1003,10 @@ class OnlineStoreSqlClient:
                         self._collect_name_by_serving_index.get(
                             prepared_statement_index
                         ),
+                        prefix=self.prefix_by_serving_index.get(
+                            prepared_statement_index
+                        )
+                        or "",
                     )
             else:
                 # rows and stitch keys carry feature data and entity keys:
@@ -946,53 +1030,75 @@ class OnlineStoreSqlClient:
                         self._get_result_key_serving_key(serving_keys, entry), {}
                     )
                 )
-        for prepared_statement_index, statement in scan_executions.items():
-            # per-entry direct scans: results align with entries, so folding needs
-            # no result-key stitching
+        for prepared_statement_index, (
+            _,
+            _unique_binds,
+            entry_to_unique,
+        ) in scan_executions.items():
+            # per-entry direct scans: results align with entries through the dedup
+            # mapping, so folding needs no result-key stitching. Duplicate entries
+            # fold one shared unique result.
             serving_keys = self.serving_key_by_serving_index[prepared_statement_index]
             serving_keys_all_fg += serving_keys
-            rank_cap = self._rank_cap_by_serving_index.get(
-                prepared_statement_index
-            ) or self._collect_n_by_serving_index.get(prepared_statement_index)
-            binds_list = []
-            for entry in entries:
-                binds = {
-                    sk.feature_name: self._entry_serving_key_value(entry, sk)
-                    for sk in serving_keys
-                }
-                binds[self.RANK_CAP_PARAM] = rank_cap
-                binds_list.append(binds)
-            if _logger.isEnabledFor(logging.DEBUG):
-                _logger.debug(
-                    "Executing %d direct collect scans for statement %d",
-                    len(binds_list),
-                    prepared_statement_index,
-                )
-            per_entry_rows = self._async_task_thread._submit(
-                AsyncTask(
-                    task_function=self._execute_per_entry_scans,
-                    task_args=(statement, binds_list),
-                    requires_connection_pool=True,
-                )
-            )
-            pk_names = {sk.feature_name for sk in serving_keys}
+            unique_rows = scan_results.get(prepared_statement_index, [])
+            prefix = self.prefix_by_serving_index.get(prepared_statement_index) or ""
+            pk_names = {prefix + sk.feature_name for sk in serving_keys}
             collect_name = self._collect_name_by_serving_index.get(
                 prepared_statement_index
             )
             ascending = self._collect_ascending_by_serving_index.get(
                 prepared_statement_index
             )
-            for i, rows in enumerate(per_entry_rows):
-                if not rows:
-                    # like the windowed IN plan: an entity with no matching
-                    # history contributes nothing to its batch entry
-                    continue
-                # the scan returns newest-first; an ascending collect folds
-                # oldest-first (offline parity)
-                ordered = list(reversed(rows)) if ascending else list(rows)
-                batch_results[i].update(
-                    self._fold_collect_rows(ordered, pk_names, collect_name)
+            folded_by_unique: dict[int, dict[str, Any]] = {}
+            for i, unique_position in enumerate(entry_to_unique):
+                rows = (
+                    unique_rows[unique_position]
+                    if unique_position < len(unique_rows)
+                    else []
                 )
+                if not rows:
+                    # the empty-semantics pass below folds this entity to an
+                    # empty collected array, like the single-vector fold
+                    continue
+                folded = folded_by_unique.get(unique_position)
+                if folded is None:
+                    # the scan returns newest-first; an ascending collect folds
+                    # oldest-first (offline parity)
+                    ordered = list(reversed(rows)) if ascending else list(rows)
+                    folded = self._fold_collect_rows(
+                        ordered, pk_names, collect_name, prefix=prefix
+                    )
+                    folded_by_unique[unique_position] = folded
+                batch_results[i].update(folded)
+        # pin the empty semantics to the single-read contract (review X5): an entity
+        # with no matching history reads as an EMPTY collected array (the windowed IN
+        # plan and the per-entry scans both surface nothing for it), and an entity the
+        # batch aggregate's GROUP BY misses reads as the SQL aggregate over an empty
+        # set (COUNT 0, every other function NULL) exactly like the single statement,
+        # which has no GROUP BY and always returns one row.
+        for index, collect_name in self._collect_name_by_serving_index.items():
+            if (
+                index not in prepared_statement_objects
+                or index not in self._serving_key_by_serving_index
+            ):
+                continue
+            for entry_result in batch_results:
+                entry_result.setdefault(collect_name, [])
+        for index, output_names in self._aggregate_names_by_serving_index.items():
+            if (
+                index not in prepared_statement_objects
+                or index not in self._serving_key_by_serving_index
+            ):
+                continue
+            prefix = self.prefix_by_serving_index.get(index) or ""
+            for entry_result in batch_results:
+                for name in output_names:
+                    default = (
+                        0
+                        if name == prefix + "count" or name.endswith("_count")
+                        else None
+                    )
+                    entry_result.setdefault(name, default)
         return batch_results, serving_keys_all_fg
 
     async def _execute_per_entry_scans(
@@ -1005,20 +1111,60 @@ class OnlineStoreSqlClient:
 
         Each scan is the single-entity `ORDER BY order_col DESC LIMIT ?` statement,
         so the per-batch cost scales with `len(entries) * N` instead of the total
-        history of the selected entities.
+        history of the selected entities. Scans run in bounded waves of
+        `_COLLECT_SCAN_CHUNK` tasks (the query timeout applies per wave), capping
+        in-flight cursors and task objects for large batches (review X9).
         """
-        tasks = [
-            asyncio.create_task(
-                self._query_async_sql(statement, binds, connection_pool),
-                name="query_collect_scan_" + str(i),
-            )
-            for i, binds in enumerate(binds_list)
-        ]
-        return await asyncio.wait_for(
-            asyncio.gather(*tasks),
-            timeout=self.connection_options.get("query_timeout", 120)
+        timeout = (
+            self.connection_options.get("query_timeout", 120)
             if self.connection_options
-            else 120,
+            else 120
+        )
+        results: list[Any] = []
+        for start in range(0, len(binds_list), self._COLLECT_SCAN_CHUNK):
+            tasks = [
+                asyncio.create_task(
+                    self._query_async_sql(statement, binds, connection_pool),
+                    name="query_collect_scan_" + str(start + i),
+                )
+                for i, binds in enumerate(
+                    binds_list[start : start + self._COLLECT_SCAN_CHUNK]
+                )
+            ]
+            results.extend(
+                await asyncio.wait_for(asyncio.gather(*tasks), timeout=timeout)
+            )
+        return results
+
+    async def _execute_batch_reads(
+        self,
+        prepared_statements: dict[int, str],
+        entries: dict[int, dict[str, Any]],
+        scan_specs: dict[int, tuple[Any, list[dict[str, Any]]]],
+        connection_pool: aiomysql.utils._ConnectionContextManager,
+    ):
+        """Run the batch IN statements and every per-entry collect scan in ONE wave.
+
+        Point-read/aggregate statements and collect scans share the bounded pool
+        concurrently instead of completing in sequential waves (review X9).
+        """
+
+        async def _no_statements():
+            return {}
+
+        statement_results, *scan_results = await asyncio.gather(
+            self._execute_prep_statements(
+                prepared_statements, entries, connection_pool
+            )
+            if prepared_statements
+            else _no_statements(),
+            *[
+                self._execute_per_entry_scans(statement, binds_list, connection_pool)
+                for statement, binds_list in scan_specs.values()
+            ],
+        )
+        return statement_results, dict(
+            zip(scan_specs.keys(), scan_results, strict=False)
         )
 
     def _refresh_mysql_connection(self):
@@ -1175,13 +1321,16 @@ class OnlineStoreSqlClient:
             ]
         return prepared_statements_list
 
-    async def _get_connection_pool(self, default_min_size: int) -> None:
+    async def _get_connection_pool(
+        self, default_min_size: int, default_max_size: int | None = None
+    ) -> None:
         return await util_sql._create_async_engine(
             self._online_connector,
             self._external,
             default_min_size,
             options=self._connection_options,
             hostname=self._hostname,
+            default_max_size=default_max_size,
         )
 
     async def _test_connection(

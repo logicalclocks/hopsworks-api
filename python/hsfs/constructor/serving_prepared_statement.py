@@ -46,6 +46,7 @@ class ServingPreparedStatement:
         query_ronsql: str | None = None,
         ronsql_database: str | None = None,
         aggregate_window: int | None = None,
+        aggregate_feature_names: list[str] | None = None,
         type: str | None = None,
         items: list[dict[str, Any]] | None = None,
         count: int | None = None,
@@ -106,6 +107,11 @@ class ServingPreparedStatement:
         # When set, query_ronsql is a pushdown-aggregation statement whose trailing `?`
         # is the window bound: the client substitutes now - aggregate_window (seconds).
         self._aggregate_window = aggregate_window
+        # The prefixed aggregate output feature names in statement order: the batch
+        # GROUP BY emits no row for an entity with no matching rows, so the client
+        # synthesizes the SQL empty-set defaults (COUNT 0, other functions NULL) for
+        # these names, matching the single statement. None for non-aggregate statements.
+        self._aggregate_feature_names = aggregate_feature_names
 
     @classmethod
     def from_response_json(
@@ -215,6 +221,10 @@ class ServingPreparedStatement:
     @property
     def aggregate_window(self) -> int | None:
         return self._aggregate_window
+
+    @property
+    def aggregate_feature_names(self) -> list[str] | None:
+        return self._aggregate_feature_names
 
     @feature_group_id.setter
     def feature_group_id(self, feature_group_id: int | None) -> None:

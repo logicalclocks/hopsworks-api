@@ -101,6 +101,80 @@ class TestRonsqlLiteral:
         with pytest.raises(FeatureStoreException):
             VectorServer._ronsql_literal(object())
 
+    def test_decimal_renders_exactly(self):
+        import decimal
+
+        # a float round trip would change the key; Decimal stays exact
+        value = decimal.Decimal("12345678901234567890.123456789")
+        assert VectorServer._ronsql_literal(value) == "12345678901234567890.123456789"
+
+    def test_decimal_typed_key_never_goes_through_float(self):
+        import decimal
+
+        rendered = VectorServer._ronsql_literal(
+            "12345678901234567890.123456789", "decimal(29,9)"
+        )
+        assert rendered == "12345678901234567890.123456789"
+        assert VectorServer._coerce_for_feature_type(
+            "12345678901234567890.123456789", "decimal(29,9)"
+        ) == decimal.Decimal("12345678901234567890.123456789")
+
+    def test_numpy_scalars_render_natively(self):
+        np = pytest.importorskip("numpy")
+        assert VectorServer._ronsql_literal(np.int64(7)) == "7"
+        assert VectorServer._ronsql_literal(np.float64(3.5)) == "3.5"
+
+    def test_aware_datetime_normalizes_to_utc(self):
+        from datetime import timedelta
+        from datetime import timezone as tz
+
+        aware = datetime(2026, 6, 21, 12, 0, 0, tzinfo=tz(timedelta(hours=2)))
+        assert VectorServer._ronsql_literal(aware) == "'2026-06-21 10:00:00'"
+
+    def test_scan_wire_value_conversions(self):
+        import decimal
+        from datetime import timedelta
+        from datetime import timezone as tz
+
+        assert VectorServer._scan_wire_value(decimal.Decimal("1.50")) == "1.50"
+        aware = datetime(2026, 6, 21, 12, 0, 0, tzinfo=tz(timedelta(hours=2)))
+        assert VectorServer._scan_wire_value(aware) == "2026-06-21 10:00:00"
+        assert VectorServer._scan_wire_value(7) == 7
+
+
+class TestCollectStructDecode:
+    def test_rest_struct_fields_decode_per_schema(self):
+        import decimal
+
+        # the REST wire carries timestamps as strings, decimals as numbers, and
+        # binary as base64; the persisted struct schema drives the decode
+        assert VectorServer._decode_collect_field(
+            "2026-06-21 10:00:00", "timestamp"
+        ) == datetime(2026, 6, 21, 10, 0, 0)
+        assert VectorServer._decode_collect_field(
+            "2026-06-21", "date"
+        ) == datetime(2026, 6, 21).date()
+        assert VectorServer._decode_collect_field(
+            "1.50", "decimal(10,2)"
+        ) == decimal.Decimal("1.50")
+        assert VectorServer._decode_collect_field("aGk=", "binary") == b"hi"
+        assert VectorServer._decode_collect_field(5.0, "double") == 5.0
+        assert VectorServer._decode_collect_field(None, "timestamp") is None
+
+    def test_struct_field_types_parse_from_feature_type(self):
+        class _Feature:
+            name = "t_collect"
+            type = "array<struct<ts:timestamp,amount:decimal(10,2),tag:string>>"
+
+        server = VectorServer.__new__(VectorServer)
+        server._features = [_Feature()]
+        assert server._collect_struct_field_types("t_collect") == {
+            "ts": "timestamp",
+            "amount": "decimal(10,2)",
+            "tag": "string",
+        }
+        assert server._collect_struct_field_types("missing") == {}
+
 
 class TestRonsqlTemplateSubstitution:
     def test_substitutes_entity_key(self):
