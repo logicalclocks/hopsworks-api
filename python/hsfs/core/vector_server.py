@@ -1701,15 +1701,17 @@ class VectorServer:
                 )
 
     def _handle_timestamp_based_on_dtype(
-        self, timestamp_value: str | int
+        self, timestamp_value: str | int | datetime | None
     ) -> datetime | None:
         """Handle the timestamp based on the dtype which is returned.
 
-        Currently timestamp which are in the database are returned as string. Whereas
-        passed features which were given as datetime are returned as integer timestamp.
+        The rest client returns timestamps as strings.
+        Passed features given as datetime are returned as integer timestamps.
+        The sql client already returns datetime objects.
+        Missing values arrive as None and are passed through.
 
         Parameters:
-            timestamp_value: The timestamp value to be handled, either as int or str.
+            timestamp_value: The timestamp value to be handled.
         """
         if timestamp_value is None:
             return None

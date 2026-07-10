@@ -528,3 +528,11 @@ class TestVectorDbClient:
         )
 
         assert result["f_ts"] == datetime(2024, 4, 18, 12, 0, 25, 789000)
+
+    def test_convert_to_pandas_type_epoch_zero_is_not_null(self):
+        # 0 epoch ms is a valid timestamp and must not be skipped as null
+        result = self.target._convert_to_pandas_type(
+            self.fg.columns, {"f1": 4, "f_ts": 0}
+        )
+
+        assert result["f_ts"] == datetime(1970, 1, 1)
