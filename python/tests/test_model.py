@@ -75,6 +75,34 @@ class TestModel:
             m_json = json["items"][i]
             self.assert_model(mocker, m, m_json, MODEL.FRAMEWORK_PYTHON)
 
+    @pytest.mark.parametrize(
+        "fixture_key, framework",
+        [
+            ("get_python", MODEL.FRAMEWORK_PYTHON),
+            ("get_sklearn", MODEL.FRAMEWORK_SKLEARN),
+            ("get_tensorflow", MODEL.FRAMEWORK_TENSORFLOW),
+            ("get_torch", MODEL.FRAMEWORK_TORCH),
+            ("get_llm", MODEL.FRAMEWORK_LLM),
+        ],
+    )
+    def test_from_response_json_framework_subclass(
+        self, mocker, backend_fixtures, fixture_key, framework
+    ):
+        # from_response_json dispatches to the framework subclass, so this
+        # catches a subclass dropping a base-Model kwarg such as
+        # missing_mandatory_tags (FSTORE-2049).
+        # Arrange
+        json = backend_fixtures["model"][fixture_key]["response"]
+        json_camelized = humps.camelize(json)  # as returned by the backend
+
+        # Act
+        m_lst = model.Model.from_response_json(copy.deepcopy(json_camelized))
+
+        # Assert
+        assert isinstance(m_lst, list)
+        assert len(m_lst) == 1
+        self.assert_model(mocker, m_lst[0], json["items"][0], framework)
+
     # constructor
 
     def test_constructor_base(self, mocker, backend_fixtures):
@@ -243,6 +271,7 @@ class TestModel:
             env_vars=None,
             vllm_variant=None,
             vllm_image_tag=None,
+            tags=None,
         )
         mock_predictor.deploy.assert_called_once()
 
@@ -262,6 +291,150 @@ class TestModel:
         # Assert
         assert mock_predictor_for_model.call_args.kwargs["env_vars"] == env_vars
         mock_predictor.deploy.assert_called_once()
+
+    def test_deploy_forwards_tags(self, mocker, backend_fixtures):
+        # Arrange
+        m_json = backend_fixtures["model"]["get_python"]["response"]["items"][0]
+        mock_predictor = mocker.Mock()
+        mock_predictor_for_model = mocker.patch(
+            "hsml.predictor.Predictor.for_model", return_value=mock_predictor
+        )
+        tags = {"owner": "team-a"}
+
+        # Act
+        m = model.Model.from_response_json(m_json)
+        m.deploy(name="test", tags=tags)
+
+        # Assert
+        assert mock_predictor_for_model.call_args.kwargs["tags"] == tags
+        mock_predictor.deploy.assert_called_once()
+
+    # get-time missing mandatory tag warning
+
+    def test_get_model_warns_on_missing_mandatory_tags(self, mocker, backend_fixtures):
+        # Arrange
+        from hsml import model_registry
+
+        m_json = backend_fixtures["model"]["get_python"]["response"]["items"][0]
+        m = model.Model.from_response_json(m_json)
+        m._missing_mandatory_tags = [{"name": "owner"}]
+        mocker.patch("hsml.core.model_api.ModelApi._get", return_value=m)
+        mr = model_registry.ModelRegistry(
+            project_name="p", project_id=1, model_registry_id=1
+        )
+
+        # Act / Assert
+        with pytest.warns(UserWarning, match="Missing mandatory tags"):
+            mr.get_model("my_model", version=1)
+
+    def test_get_model_no_warning_when_tags_present(self, mocker, backend_fixtures):
+        # Arrange
+        import warnings
+
+        from hsml import model_registry
+
+        m_json = backend_fixtures["model"]["get_python"]["response"]["items"][0]
+        m = model.Model.from_response_json(m_json)
+        m._missing_mandatory_tags = []
+        mocker.patch("hsml.core.model_api.ModelApi._get", return_value=m)
+        mr = model_registry.ModelRegistry(
+            project_name="p", project_id=1, model_registry_id=1
+        )
+
+        # Act
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            mr.get_model("my_model", version=1)
+
+        # Assert
+        assert not [w for w in caught if "Missing mandatory tags" in str(w.message)]
+
+    # to_dict tags
+
+    def test_to_dict_omits_tags_when_absent(self, mocker, backend_fixtures):
+        # Arrange
+        m_json = backend_fixtures["model"]["get_python"]["response"]["items"][0]
+
+        # Act
+        m = model.Model.from_response_json(m_json)
+
+        # Assert
+        assert "tags" not in m.to_dict()
+
+    def test_to_dict_serializes_tags_at_creation(self, mocker):
+        # create_model builds the model with tags via the shared Tag normalizer;
+        # to_dict must emit the same TagsDTO shape as feature groups: count plus
+        # items with string values raw and dict values json-encoded, so the tags
+        # ride the create PUT (FSTORE-2049 mandatory-tag enforcement at creation).
+        # Arrange
+        mocker.patch("hsml.model_registry.ModelRegistry.from_response_json")
+        mr = mocker.MagicMock()
+        mr.shared_registry_project_name = None
+        mr.model_registry_id = 1
+        from hsml.python import signature
+
+        signature._mr = mr
+
+        # Act
+        m = signature.create_model(
+            name="my_model",
+            version=1,
+            tags=[
+                {"name": "owner", "value": "team-a"},
+                {"name": "cost_center", "value": {"id": 42}},
+            ],
+        )
+        model_dict = m.to_dict()
+
+        # Assert
+        assert model_dict["tags"] == {
+            "count": 2,
+            "items": [
+                {"name": "owner", "value": "team-a"},
+                {"name": "cost_center", "value": '{"id": 42}'},
+            ],
+        }
+
+    def test_to_dict_serializes_tags_from_list_and_tag_forms(self, mocker):
+        # The tags argument accepts the same shapes as feature groups: a single
+        # name/value dict, a list of such dicts, and a Tag object. Each must
+        # serialize to the identical TagsDTO item.
+        # Arrange
+        from hopsworks_common.tag import Tag
+        from hsml.python import signature
+
+        mocker.patch("hsml.model_registry.ModelRegistry.from_response_json")
+        mr = mocker.MagicMock()
+        mr.shared_registry_project_name = None
+        mr.model_registry_id = 1
+        signature._mr = mr
+        expected = {"count": 1, "items": [{"name": "a", "value": "1"}]}
+
+        # Act / Assert
+        for tags in (
+            [{"name": "a", "value": "1"}],
+            {"name": "a", "value": "1"},
+            Tag(name="a", value="1"),
+        ):
+            m = signature.create_model(name="my_model", version=1, tags=tags)
+            assert m.to_dict()["tags"] == expected
+
+    def test_to_dict_omits_response_tags_on_round_trip(self, mocker, backend_fixtures):
+        # A model built from a GET response carries a backend-populated tags
+        # field; re-saving must not resend them, so to_dict emits no tags key.
+        # Arrange
+        m_json = backend_fixtures["model"]["get_python"]["response"]["items"][0]
+        m_json = {
+            **m_json,
+            "tags": {"count": 1, "items": [{"name": "x", "value": "y"}]},
+        }
+
+        # Act
+        m = model.Model.from_response_json(m_json)
+        m.update_from_response_json(m_json)
+
+        # Assert
+        assert "tags" not in m.to_dict()
 
     # delete
 
@@ -400,6 +573,9 @@ class TestModel:
         assert m.training_metrics == m_json["metrics"]
         assert m._user_full_name == m_json["user_full_name"]
         assert m.model_registry_id == m_json["model_registry_id"]
+        # Framework subclasses must forward missing_mandatory_tags to the base
+        # constructor; a dropped kwarg silently reverts it to [] (FSTORE-2049).
+        assert m.missing_mandatory_tags == m_json.get("missing_mandatory_tags", [])
 
         if model_framework is None:
             assert m.framework is None

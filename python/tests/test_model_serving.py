@@ -86,6 +86,66 @@ class TestTracingForwarding:
         # Assert
         assert mock_for_model.call_args.kwargs["tracing"] is tracing
 
+    def test_create_predictor_forwards_tags(self, ms, mocker):
+        # Arrange
+        model = mocker.Mock()
+        model._get_default_serving_name.return_value = "my_model"
+        mock_for_model = mocker.patch("hsml.model_serving.Predictor.for_model")
+        tags = {"owner": "team-a"}
+
+        # Act
+        ms.create_predictor(model, tags=tags)
+
+        # Assert
+        assert mock_for_model.call_args.kwargs["tags"] == tags
+
+    def test_create_deployment_sets_tags_on_predictor(self, ms, mocker):
+        # create_deployment normalizes the tags through the shared Tag helper and
+        # stashes the resulting list[Tag] on the predictor so Predictor.to_dict
+        # serializes them into the serving-create body (FSTORE-2049).
+        # Arrange
+        from hopsworks_common.tag import Tag
+
+        predictor = mocker.Mock()
+        mock_deployment = mocker.patch("hsml.model_serving.Deployment")
+        tags = {"name": "owner", "value": "team-a"}
+
+        # Act
+        ms.create_deployment(predictor, tags=tags)
+
+        # Assert
+        assert Tag._tags_to_dict(predictor._tags) == {
+            "count": 1,
+            "items": [{"name": "owner", "value": "team-a"}],
+        }
+        mock_deployment.assert_called_once_with(predictor=predictor, name=None)
+
+    def test_get_deployment_warns_on_missing_mandatory_tags(self, ms, mocker):
+        # Arrange
+        d = mocker.Mock()
+        d.missing_mandatory_tags = [{"name": "owner"}]
+        mocker.patch.object(ms._serving_api, "_get", return_value=d)
+
+        # Act / Assert
+        with pytest.warns(UserWarning, match="Missing mandatory tags"):
+            ms.get_deployment("my_deployment")
+
+    def test_get_deployment_no_warning_when_tags_present(self, ms, mocker):
+        # Arrange
+        import warnings
+
+        d = mocker.Mock()
+        d.missing_mandatory_tags = []
+        mocker.patch.object(ms._serving_api, "_get", return_value=d)
+
+        # Act
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            ms.get_deployment("my_deployment")
+
+        # Assert
+        assert not [w for w in caught if "Missing mandatory tags" in str(w.message)]
+
     def test_create_endpoint_forwards_tracing(self, ms, mocker):
         # Arrange
         tracing = deployment_tracing_config.DeploymentTracingConfig(

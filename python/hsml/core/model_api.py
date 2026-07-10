@@ -18,7 +18,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from hsml import client, decorators, model, tag
+from hopsworks_common import tag
+from hsml import client, decorators, model
 from hsml.core import explicit_provenance
 
 
@@ -56,6 +57,35 @@ class ModelApi:
             )
         )
 
+    def _patch(self, model_instance: model.Model, body: dict) -> model.Model:
+        """Update mutable fields (currently framework) of a model version.
+
+        Parameters:
+            model_instance: metadata object of the model to update
+            body: mutable fields to update, e.g. ``{"framework": ...}``
+
+        Returns:
+            updated metadata object of the model
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "modelregistries",
+            str(model_instance.model_registry_id),
+            "models",
+            model_instance.name + "_" + str(model_instance.version),
+        ]
+        headers = {"content-type": "application/json"}
+        return model_instance.update_from_response_json(
+            _client._send_request(
+                "PATCH",
+                path_params,
+                headers=headers,
+                data=json.dumps(body),
+            )
+        )
+
     @decorators._catch_not_found("hsml.model.Model", fallback_return=None)
     def _get(
         self,
@@ -84,7 +114,7 @@ class ModelApi:
             "models",
             name + "_" + str(version),
         ]
-        query_params = {"expand": "trainingdatasets"}
+        query_params = {"expand": ["trainingdatasets", "mandatorytags"]}
 
         model_json = _client._send_request("GET", path_params, query_params)
         model_meta = model.Model.from_response_json(model_json)
@@ -160,9 +190,7 @@ class ModelApi:
         ]
         _client._send_request("DELETE", path_params)
 
-    def _set_tag(
-        self, model_instance: model.Model, name: str, value: str | dict
-    ) -> None:
+    def _set_tag(self, model_instance: model.Model, name: str, value: Any) -> None:
         """Attach a name/value tag to a model.
 
         A tag consists of a name/value pair. Tag names are unique identifiers.
@@ -211,7 +239,7 @@ class ModelApi:
         _client._send_request("DELETE", path_params)
 
     @decorators._catch_not_found("hopsworks_common.tag.Tag", fallback_return={})
-    def _get_tags(self, model_instance: model.Model) -> dict:
+    def _get_tags(self, model_instance: model.Model) -> dict[str, Any]:
         """Get the tags.
 
         Gets all tags if no tag name is specified.
