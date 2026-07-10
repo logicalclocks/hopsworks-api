@@ -94,7 +94,7 @@ dev-no-opt = [
     "pandas>=2.2.0",
     "typeguard==4.2.1",
     "delta-spark==3.3.1",
-    "duckdb",
+    "duckdb==1.5.4",
     "setuptools; python_version >= '3.12'",
 ]
 dev-pandas1 = [

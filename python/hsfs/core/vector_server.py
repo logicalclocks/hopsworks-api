@@ -1502,7 +1502,7 @@ class VectorServer:
         specs = self._overlay_specs(skip)
         if not specs:
             return []
-        now = datetime.now(timezone.utc).replace(microsecond=0)
+        now = datetime.now(timezone.utc)
         pool = self._ronsql_pool()
         return [
             (spec, pool.submit(self._run_overlay_fetch, spec, entry, now))
@@ -1993,10 +1993,9 @@ class VectorServer:
         if isinstance(value, numbers.Real) and not isinstance(value, (int, float)):
             return float(value)
         if isinstance(value, datetime) and value.tzinfo is not None:
-            return (
-                value.astimezone(timezone.utc)
-                .replace(tzinfo=None)
-                .strftime("%Y-%m-%d %H:%M:%S")
+            naive = value.astimezone(timezone.utc).replace(tzinfo=None)
+            return naive.strftime(
+                "%Y-%m-%d %H:%M:%S.%f" if naive.microsecond else "%Y-%m-%d %H:%M:%S"
             )
         return value
 
@@ -2135,7 +2134,7 @@ class VectorServer:
                 for result, entry in zip(results, entries, strict=True)
             ]
         covered = self._overlay_batch_aggregates(results, entries)
-        now = datetime.now(timezone.utc).replace(microsecond=0)
+        now = datetime.now(timezone.utc)
         tasks: list[tuple[int, tuple[str, Any, str | None]]] = []
         for idx in range(len(entries)):
             for spec in self._overlay_specs(covered.get(idx, frozenset())):
@@ -2179,7 +2178,7 @@ class VectorServer:
         cross-chunk snapshot), which matches online-serving expectations but
         differs from a single SQL batch statement.
         """
-        now = datetime.now(timezone.utc).replace(microsecond=0)
+        now = datetime.now(timezone.utc)
         contexts: list[dict[str, Any]] = []
         tasks: list[tuple[dict[str, Any], str, list[str]]] = []
         for statement in self._get_ronsql_batch_statements():
@@ -2371,10 +2370,11 @@ class VectorServer:
         """The aggregation window's lower bound from the read's shared UTC reference.
 
         Both the RonSQL substitution and the SQL client's MySQL bind resolve the
-        window from a client-computed UTC now truncated to whole seconds, so the two
-        serving paths share one clock.
+        window from ONE client-computed UTC now, microseconds preserved (X2-R14:
+        offline training anchors windows at exact microsecond precision, so the online
+        bound must not silently truncate), keeping the two serving paths on one clock.
         """
-        reference = now or datetime.now(timezone.utc).replace(microsecond=0)
+        reference = now or datetime.now(timezone.utc)
         return reference - timedelta(seconds=statement.aggregate_window)
 
     def _entry_value(self, entry: dict[str, Any], name: str) -> Any:
@@ -2885,6 +2885,11 @@ class VectorServer:
             if isinstance(value, datetime) and value.tzinfo is not None:
                 # normalize aware datetimes to UTC before dropping the offset
                 value = value.astimezone(timezone.utc).replace(tzinfo=None)
+            if isinstance(value, datetime) and value.microsecond:
+                # review X2-R14: offline training preserves microseconds, so the online
+                # window bound must not silently truncate; whole-second values keep the
+                # engine-verified fraction-less spelling
+                return "'" + value.strftime("%Y-%m-%d %H:%M:%S.%f") + "'"
             return "'" + value.strftime("%Y-%m-%d %H:%M:%S") + "'"
         if isinstance(value, str):
             if len(value) > VectorServer._RONSQL_MAX_STRING_LITERAL:

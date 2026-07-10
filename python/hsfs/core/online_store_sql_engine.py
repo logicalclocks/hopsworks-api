@@ -646,9 +646,9 @@ class OnlineStoreSqlClient:
         bind_entries = {}
         prepared_statement_execution = {}
         # one UTC reference for every aggregation window in this read, shared with
-        # what the RonSQL path would substitute (naive UTC, whole seconds)
+        # what the RonSQL path would substitute (naive UTC, microseconds preserved — X2-R14)
         window_reference = (
-            datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
+            datetime.now(timezone.utc).replace(tzinfo=None)
             if self._aggregate_window_by_serving_index
             else None
         )
@@ -844,9 +844,9 @@ class OnlineStoreSqlClient:
         prepared_stmts_to_execute = {}
         scan_executions = {}
         # one UTC reference for every aggregation window in this read, shared with
-        # what the RonSQL path would substitute (naive UTC, whole seconds)
+        # what the RonSQL path would substitute (naive UTC, microseconds preserved — X2-R14)
         window_reference = (
-            datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
+            datetime.now(timezone.utc).replace(tzinfo=None)
             if self._aggregate_window_by_serving_index
             else None
         )
