@@ -912,13 +912,19 @@ class VectorServer:
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug("Found null result, setting to empty dict.")
             result_dict = {}
+        # feature VALUES (vector-db results, passed features) are never
+        # logged, even at DEBUG: names only
         if vector_db_result is not None and len(vector_db_result) > 0:
             if _logger.isEnabledFor(logging.DEBUG):
-                _logger.debug("Updating with vector_db features: %s", vector_db_result)
+                _logger.debug(
+                    "Updating with vector_db features: %s", sorted(vector_db_result)
+                )
             result_dict.update(vector_db_result)
         if passed_values is not None and len(passed_values) > 0:
             if _logger.isEnabledFor(logging.DEBUG):
-                _logger.debug("Updating with passed features: %s", passed_values)
+                _logger.debug(
+                    "Updating with passed features: %s", sorted(passed_values)
+                )
             result_dict.update(passed_values)
 
         missing_features = (
@@ -2851,7 +2857,9 @@ class VectorServer:
             _logger.debug(
                 f"Retrieve inference helper values for single entry via {default_client.upper()} client."
             )
-            _logger.debug(f"entry: {entry} as return type: {return_type}")
+            _logger.debug(
+                "entry keys: %s as return type: %s", sorted(entry), return_type
+            )
         if default_client == self.DEFAULT_REST_CLIENT:
             return self._handle_feature_vector_return_type(
                 self.rest_client_engine._get_single_feature_vector(

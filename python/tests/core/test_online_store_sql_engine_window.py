@@ -13,6 +13,9 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+import asyncio
+import logging
+
 from hsfs.constructor.serving_prepared_statement import ServingPreparedStatement
 from hsfs.core.online_store_sql_engine import OnlineStoreSqlClient
 
@@ -24,6 +27,47 @@ def make_engine():
     engine._rank_cap_by_serving_index = {}
     engine._scan_prepared_statements = {}
     engine._collect_ascending_by_serving_index = {}
+    return engine
+
+
+class _ServingKey:
+    def __init__(self, feature_name, required_serving_key=None, join_index=0):
+        self.feature_name = feature_name
+        self.required_serving_key = required_serving_key or feature_name
+        self.join_index = join_index
+
+
+class _FakeTaskThread:
+    """Records the submitted statements/binds and returns canned rows."""
+
+    def __init__(self, results, scan_results=None):
+        self.results = results
+        self.scan_results = scan_results
+        self.calls = []
+        self.functions = []
+
+    def _submit(self, task):
+        self.functions.append(task.task_function.__name__)
+        self.calls.append(task.task_args)
+        if task.task_function.__name__ == "_execute_per_entry_scans":
+            return self.scan_results
+        return self.results
+
+    def is_alive(self):
+        # engine.__del__ probes the executor thread before stopping it
+        return False
+
+
+def make_serving_engine(results, collect_ascending=False):
+    """An engine wired for one collect statement (index 0) with a fake executor."""
+    engine = make_engine()
+    engine._serving_key_by_serving_index = {0: [_ServingKey("user_id")]}
+    engine._prefix_by_serving_index = {0: None}
+    engine._collect_n_by_serving_index = {0: 3}
+    engine._collect_name_by_serving_index = {0: "t_collect"}
+    engine._collect_ascending_by_serving_index = {0: collect_ascending}
+    engine._rank_cap_by_serving_index = {0: 3}
+    engine._async_task_thread = _FakeTaskThread(results)
     return engine
 
 
@@ -227,7 +271,9 @@ class TestCollectRankCapParameter:
             ],
             batch=False,
         )
-        rendered = str(engine._scan_prepared_statements[0])
+        rendered = str(
+            engine._scan_prepared_statements[OnlineStoreSqlClient.SINGLE_VECTOR_KEY][0]
+        )
         assert ":user_id" in rendered
         assert rendered.endswith("LIMIT :hw_rank_cap")
         assert engine._first_unquoted_placeholder(rendered) == -1
@@ -250,7 +296,9 @@ class TestCollectRankCapParameter:
             ],
             batch=False,
         )
-        rendered = str(engine._scan_prepared_statements[0])
+        rendered = str(
+            engine._scan_prepared_statements[OnlineStoreSqlClient.SINGLE_VECTOR_KEY][0]
+        )
         assert "LIKE 'vip?%'" in rendered
         assert "`user_id` = :user_id" in rendered
         assert rendered.endswith("LIMIT :hw_rank_cap")
@@ -263,7 +311,9 @@ class TestCollectRankCapParameter:
         engine._parametrised_prepared_statements = {
             OnlineStoreSqlClient.SINGLE_VECTOR_KEY: {0: "windowed-statement"}
         }
-        engine._scan_prepared_statements = {0: "direct-statement"}
+        engine._scan_prepared_statements = {
+            OnlineStoreSqlClient.SINGLE_VECTOR_KEY: {0: "direct-statement"}
+        }
         seen = {}
 
         def fake_single_vector_result(entry, statements, raw_rows=False,
@@ -283,7 +333,9 @@ class TestCollectRankCapParameter:
         engine._parametrised_prepared_statements = {
             OnlineStoreSqlClient.SINGLE_VECTOR_KEY: {0: "windowed-statement"}
         }
-        engine._scan_prepared_statements = {0: "direct-statement"}
+        engine._scan_prepared_statements = {
+            OnlineStoreSqlClient.SINGLE_VECTOR_KEY: {0: "direct-statement"}
+        }
         engine._single_vector_result = (
             lambda entry, statements, raw_rows=False, scan_limit=None: [
                 {"ts": 3},
@@ -331,3 +383,279 @@ class TestCollectRankCapParameter:
         assert seen["raw_rows"] is True
         assert seen["scan_limit"] == 2
         assert len(rows) == 2
+
+
+class TestSingleVectorDirectScan:
+    """get_feature_vector's collect fold executes the direct scan statement.
+
+    The windowed ROW_NUMBER plan ranks the entity's WHOLE history to return the
+    newest N; the direct `ORDER BY order_col DESC LIMIT ?` statement walks the
+    ordered index backward and stops at the cap. The windowed statement stays
+    the fallback for backends predating `queryOnlineScan`.
+    """
+
+    def test_fold_prefers_direct_scan_and_binds_full_n(self):
+        rows = [{"user_id": 7, "ts": 3}, {"user_id": 7, "ts": 2}]
+        engine = make_serving_engine({0: rows})
+        vector = engine._single_vector_result(
+            {"user_id": 7}, {0: "windowed"}, scan_statements={0: "direct"}
+        )
+        executed, binds = engine._async_task_thread.calls[0]
+        assert executed == {0: "direct"}
+        # vector folds bind the FULL collect N, not a narrowed scan limit
+        assert binds[0]["hw_rank_cap"] == 3
+        assert [s["ts"] for s in vector["t_collect"]] == [3, 2]
+        assert vector["user_id"] == 7
+
+    def test_fold_reverses_ascending_scan_rows(self):
+        # the direct scan always returns newest-first; an ascending collect
+        # folds oldest-first, matching offline output order
+        rows = [{"user_id": 7, "ts": 3}, {"user_id": 7, "ts": 2}]
+        engine = make_serving_engine({0: rows}, collect_ascending=True)
+        vector = engine._single_vector_result(
+            {"user_id": 7}, {0: "windowed"}, scan_statements={0: "direct"}
+        )
+        assert [s["ts"] for s in vector["t_collect"]] == [2, 3]
+
+    def test_fold_keeps_windowed_statement_without_scan(self):
+        # old backend: no queryOnlineScan -> the windowed statement executes and
+        # already carries the output order server-side (no client reversal)
+        rows = [{"user_id": 7, "ts": 2}, {"user_id": 7, "ts": 3}]
+        engine = make_serving_engine({0: rows}, collect_ascending=True)
+        vector = engine._single_vector_result(
+            {"user_id": 7}, {0: "windowed"}, scan_statements=None
+        )
+        executed, _ = engine._async_task_thread.calls[0]
+        assert executed == {0: "windowed"}
+        assert [s["ts"] for s in vector["t_collect"]] == [2, 3]
+
+    def test_get_single_feature_vector_passes_label_scans(self):
+        engine = make_engine()
+        engine._parametrised_prepared_statements = {
+            OnlineStoreSqlClient.SINGLE_VECTOR_KEY: {0: "windowed"}
+        }
+        engine._scan_prepared_statements = {
+            OnlineStoreSqlClient.SINGLE_VECTOR_KEY: {0: "direct"}
+        }
+        captured = {}
+
+        def fake_single_vector_result(entry, statements, scan_statements=None):
+            captured["scan_statements"] = scan_statements
+            return {}
+
+        engine._single_vector_result = fake_single_vector_result
+        engine._get_single_feature_vector({"user_id": 7})
+        assert captured["scan_statements"] == {0: "direct"}
+
+    def test_scan_statements_are_kept_per_label(self):
+        # each label's scan projects that label's columns: a logging variant's
+        # scan (helper columns included) must never serve the plain vector
+        engine = make_engine()
+        engine._parametrize_prepared_statements(
+            [
+                make_statement(
+                    TestCollectRankCapParameter.COLLECT_SQL,
+                    collect_n=100,
+                    query_online_scan=(
+                        "SELECT `amount`, `ts` FROM `db`.`t_1` "
+                        "WHERE `user_id` = ? ORDER BY `ts` DESC LIMIT ?"
+                    ),
+                )
+            ],
+            batch=False,
+        )
+        engine._parametrize_prepared_statements(
+            [
+                make_statement(
+                    TestCollectRankCapParameter.COLLECT_SQL,
+                    collect_n=100,
+                    query_online_scan=(
+                        "SELECT `amount`, `ts`, `helper_col` FROM `db`.`t_1` "
+                        "WHERE `user_id` = ? ORDER BY `ts` DESC LIMIT ?"
+                    ),
+                )
+            ],
+            batch=False,
+            label=OnlineStoreSqlClient.SINGLE_LOGGING_VECTOR_KEY,
+        )
+        single = engine._scan_prepared_statements[
+            OnlineStoreSqlClient.SINGLE_VECTOR_KEY
+        ]
+        logging_scans = engine._scan_prepared_statements[
+            OnlineStoreSqlClient.SINGLE_LOGGING_VECTOR_KEY
+        ]
+        assert "`helper_col`" not in str(single[0])
+        assert "`helper_col`" in str(logging_scans[0])
+
+
+class TestBatchCollectDirectScans:
+    """The batch collect path runs one direct scan per entry.
+
+    The windowed IN plan it replaces reads and ranks the whole history of every
+    entity in the list, so its cost scales with total history, not entries * N.
+    """
+
+    def test_batch_collect_uses_per_entry_scans(self):
+        scan_results = [
+            [{"user_id": 0, "ts": 2}, {"user_id": 0, "ts": 1}],
+            [],
+            [{"user_id": 2, "ts": 9}],
+        ]
+        engine = make_serving_engine({})
+        engine._async_task_thread = _FakeTaskThread({}, scan_results=scan_results)
+        batch_results, serving_keys = engine._batch_vector_results(
+            [{"user_id": 0}, {"user_id": 1}, {"user_id": 2}],
+            {0: "windowed-batch"},
+            scan_statements={0: "direct"},
+        )
+        # the windowed IN statement never executes
+        assert engine._async_task_thread.functions == ["_execute_per_entry_scans"]
+        statement, binds_list = engine._async_task_thread.calls[0]
+        assert statement == "direct"
+        assert binds_list == [
+            {"user_id": 0, "hw_rank_cap": 3},
+            {"user_id": 1, "hw_rank_cap": 3},
+            {"user_id": 2, "hw_rank_cap": 3},
+        ]
+        assert [s["ts"] for s in batch_results[0]["t_collect"]] == [2, 1]
+        # like the windowed plan, an entity with no history stays empty
+        assert batch_results[1] == {}
+        assert [s["ts"] for s in batch_results[2]["t_collect"]] == [9]
+        assert [sk.feature_name for sk in serving_keys] == ["user_id"]
+
+    def test_batch_scan_reverses_for_ascending_views(self):
+        scan_results = [[{"user_id": 0, "ts": 3}, {"user_id": 0, "ts": 2}]]
+        engine = make_serving_engine({}, collect_ascending=True)
+        engine._async_task_thread = _FakeTaskThread({}, scan_results=scan_results)
+        batch_results, _ = engine._batch_vector_results(
+            [{"user_id": 0}], {0: "windowed-batch"}, scan_statements={0: "direct"}
+        )
+        assert [s["ts"] for s in batch_results[0]["t_collect"]] == [2, 3]
+
+    def test_batch_collect_keeps_windowed_plan_without_scan(self):
+        # old backend: no queryOnlineScan -> the windowed IN statement executes
+        rows = [{"user_id": 0, "ts": 2}]
+        engine = make_serving_engine({0: rows})
+        batch_results, _ = engine._batch_vector_results(
+            [{"user_id": 0}], {0: "windowed-batch"}, scan_statements=None
+        )
+        assert engine._async_task_thread.functions == ["_execute_prep_statements"]
+        assert [s["ts"] for s in batch_results[0]["t_collect"]] == [2]
+
+    def test_get_batch_feature_vectors_passes_single_label_scans(self):
+        engine = make_engine()
+        engine._parametrised_prepared_statements = {
+            OnlineStoreSqlClient.BATCH_VECTOR_KEY: {0: "windowed-batch"}
+        }
+        engine._scan_prepared_statements = {
+            OnlineStoreSqlClient.SINGLE_VECTOR_KEY: {0: "direct"}
+        }
+        captured = {}
+
+        def fake_batch_vector_results(entries, statements, scan_statements=None):
+            captured["scan_statements"] = scan_statements
+            return [], []
+
+        engine._batch_vector_results = fake_batch_vector_results
+        engine._get_batch_feature_vectors([{"user_id": 0}])
+        assert captured["scan_statements"] == {0: "direct"}
+
+
+class TestFalsyServingKeys:
+    """Falsy entity keys (0, False, "") are valid and must not trigger fallbacks."""
+
+    def test_entry_value_keeps_falsy_required_keys(self):
+        sk = _ServingKey("user_id")
+        for falsy in (0, False, ""):
+            entry = {"user_id": falsy}
+            value = OnlineStoreSqlClient._entry_serving_key_value(entry, sk)
+            assert value is falsy or value == falsy
+
+    def test_entry_value_falls_back_only_when_absent(self):
+        sk = _ServingKey("user_id", required_serving_key="fg2_user_id")
+        assert (
+            OnlineStoreSqlClient._entry_serving_key_value(
+                {"fg2_user_id": 0, "user_id": 5}, sk
+            )
+            == 0
+        )
+        assert (
+            OnlineStoreSqlClient._entry_serving_key_value({"user_id": 5}, sk) == 5
+        )
+
+    def test_batch_binds_and_stitching_keep_falsy_keys(self):
+        rows = [
+            {"user_id": 0, "ts": 2, "amount": 5.0},
+            {"user_id": 0, "ts": 1, "amount": 3.0},
+            {"user_id": 1, "ts": 9, "amount": 7.0},
+        ]
+        engine = make_serving_engine({0: rows})
+        batch_results, _ = engine._batch_vector_results(
+            [{"user_id": 0}, {"user_id": 1}], {0: "batch-collect-statement"}
+        )
+        _, entry_values = engine._async_task_thread.calls[0]
+        # entity key 0 binds as 0, not as the feature-name fallback (None)
+        assert entry_values[0]["batch_ids"] == [(0,), (1,)]
+        assert [s["ts"] for s in batch_results[0]["t_collect"]] == [2, 1]
+        assert [s["ts"] for s in batch_results[1]["t_collect"]] == [9]
+        assert batch_results[0]["user_id"] == 0
+
+
+class TestDebugRedaction:
+    """Serving DEBUG logs carry indexes, parameter names, and counts: never values."""
+
+    SENTINEL = "SENTINEL-VALUE-0xC0FFEE"
+
+    def test_single_and_batch_paths_never_log_values(self, caplog):
+        rows = [{"user_id": self.SENTINEL, "amount": self.SENTINEL}]
+        engine = make_serving_engine({0: rows})
+        # a point-read statement exercises the non-collect stitching loops
+        engine._collect_n_by_serving_index = {}
+        engine._collect_name_by_serving_index = {}
+        with caplog.at_level(
+            logging.DEBUG, logger="hsfs.core.online_store_sql_engine"
+        ):
+            engine._single_vector_result({"user_id": self.SENTINEL}, {0: "stmt"})
+            engine._batch_vector_results([{"user_id": self.SENTINEL}], {0: "stmt"})
+        assert caplog.text
+        assert self.SENTINEL not in caplog.text
+
+    def test_query_async_sql_logs_parameter_names_only(self, caplog):
+        sentinel = self.SENTINEL
+
+        class _StubCursor:
+            async def fetchall(self):
+                return [{"amount": sentinel}]
+
+            async def close(self):
+                return None
+
+        class _StubConn:
+            async def execute(self, stmt, params):
+                return _StubCursor()
+
+        class _StubAcquire:
+            async def __aenter__(self):
+                return _StubConn()
+
+            async def __aexit__(self, *args):
+                return False
+
+        class _StubPool:
+            def acquire(self):
+                return _StubAcquire()
+
+        engine = make_engine()
+        with caplog.at_level(
+            logging.DEBUG, logger="hsfs.core.online_store_sql_engine"
+        ):
+            result = asyncio.run(
+                engine._query_async_sql(
+                    "SELECT `amount` FROM `t` WHERE `user_id` = :user_id",
+                    {"user_id": sentinel},
+                    _StubPool(),
+                )
+            )
+        assert result == [{"amount": sentinel}]
+        assert "user_id" in caplog.text
+        assert sentinel not in caplog.text

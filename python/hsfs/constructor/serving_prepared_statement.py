@@ -57,10 +57,11 @@ class ServingPreparedStatement:
         # use setter to ensure that the parameters are sorted by index
         self.prepared_statement_parameters = prepared_statement_parameters
         self._query_online = query_online
-        # Direct single-entity scan for collect statements (scan_vectors on the SQL
-        # client): reads the ordered index backward and stops at the bound row cap,
-        # unlike query_online's windowed ROW_NUMBER plan. The trailing ? binds
-        # min(limit, collect_n). None from backends predating the field.
+        # Direct single-entity scan for collect statements (scan_vectors and the
+        # single-vector fold on the SQL client): reads the ordered index backward and
+        # stops at the bound row cap, unlike query_online's windowed ROW_NUMBER plan.
+        # The trailing ? binds collect_n for folds, min(limit, collect_n) for scans.
+        # None from backends predating the field.
         self._query_online_scan = query_online_scan
         self._prefix = prefix
         # collect ("most recent N rows per entity"): when set, this statement returns up to
@@ -79,7 +80,8 @@ class ServingPreparedStatement:
         self._collect_order_by = collect_order_by
         self._collect_ascending = collect_ascending
         # True when the feature view's filters apply to this collect statement: the /scan
-        # fallback cannot express them, so it must not serve filtered collects.
+        # fallback applies the structured collect_filters below, and refuses /scan only
+        # when they are absent (a condition is not /scan-expressible, e.g. LIKE).
         self._collect_filter_applied = collect_filter_applied
         # The statement's source columns (primary keys, then struct fields, order column
         # first): the /scan fallback projects exactly these so it never reads columns the
