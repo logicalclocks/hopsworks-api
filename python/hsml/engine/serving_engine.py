@@ -31,6 +31,7 @@ from hopsworks_common.constants import (
 )
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
 from hopsworks_common.core import dataset_api, inode
+from hsml import deployable_component_logs
 from hsml.core import serving_api
 from hsml.engine import local_engine
 from hsml.utils.local_paths import _resolve_serving_file
@@ -477,6 +478,67 @@ class ServingEngine:
 
         return local_path
 
+    def _download_logs(self, deployment_instance, path=None, latest=False):
+        """Download the HopsFS log archives of a deployment.
+
+        The backend archives the pod logs of a deployment to the project's
+        ``Logs`` dataset when the deployment is stopped or deleted, one file
+        per pod and component under ``Logs/Serving/<deployment_name>/`` named
+        ``<UTC yyyyMMdd-HHmmss>_<pod>_<component>[.previous].log``.
+
+        Parameters:
+            deployment_instance: The deployment whose archived logs to download.
+            path: Local directory to download into; the current working directory when unset.
+            latest: Download only the archives of the most recent stop instead of all of them.
+
+        Returns:
+            The local paths of the downloaded archive files.
+
+        Raises:
+            hopsworks.client.exceptions.ModelServingException: If `path` does not exist or the deployment has no archived logs.
+        """
+        if path is not None and not os.path.exists(path):
+            raise ModelServingException(f"Path {path} does not exist")
+        if path is None:
+            path = os.getcwd()
+
+        archives_path = f"{MODEL_SERVING.LOGS_DATASET}/{MODEL_SERVING.ARCHIVED_LOGS_DIR}/{deployment_instance.name}"
+        no_archives_msg = (
+            f"No archived logs found for deployment '{deployment_instance.name}' "
+            f"under {archives_path}. Log archives are written when a deployment "
+            "is stopped or deleted."
+        )
+        if not self._dataset_api.path_exists(archives_path):
+            raise ModelServingException(no_archives_msg)
+
+        _, items = self._dataset_api._list_dataset_path(
+            archives_path, inode.Inode, sort_by="NAME:desc"
+        )
+        archive_paths = [entry.path for entry in items if not entry.dir]
+        if latest and archive_paths:
+            # File names start with the UTC stop timestamp, so the
+            # lexicographically greatest prefix is the most recent stop.
+            latest_prefix = max(
+                os.path.basename(p).split("_", 1)[0] for p in archive_paths
+            )
+            archive_paths = [
+                p
+                for p in archive_paths
+                if os.path.basename(p).startswith(latest_prefix + "_")
+            ]
+        if not archive_paths:
+            raise ModelServingException(no_archives_msg)
+
+        download_dir = os.path.join(
+            path,
+            f"logs-deployment-{deployment_instance.name}_{str(uuid.uuid4())[:16]}",
+        )
+        os.makedirs(download_dir, exist_ok=True)
+        return [
+            self._dataset_api.download(p, download_dir, overwrite=True)
+            for p in archive_paths
+        ]
+
     def _create(self, deployment_instance):
         try:
             self._serving_api._put(deployment_instance)
@@ -663,17 +725,16 @@ class ServingEngine:
         return self._serving_api._get_logs(deployment_instance, component, tail)
 
     # ----- Programmatic log APIs (read_logs / tail_logs) ---------------------
-    # These never print and never short-circuit on deployment state. The
-    # OpenSearch source returns logs even when the deployment is stopped, so
-    # the legacy "deployment is stopping → return None" guard would just hide
-    # data that is in fact retrievable.
+    # These never print and never short-circuit on deployment state, so a
+    # deployment that is starting or stopping can still be read without the
+    # legacy "deployment is stopping → return None" guard hiding data.
 
     def _read_logs(
         self,
         deployment_instance,
         component: str = "predictor",
         tail: int = 100,
-        source: str = "opensearch",
+        source: str = "kubernetes",
         since: str | None = None,
         until: str | None = None,
         pod: str | None = None,
@@ -687,7 +748,7 @@ class ServingEngine:
             deployment_instance: The deployment whose logs to read.
             component: Which deployment component to read (``predictor``, ``transformer``).
             tail: Maximum number of recent log entries to fetch.
-            source: Log source (``opensearch`` or ``kubernetes``).
+            source: Log source (``kubernetes`` or ``opensearch``).
             since: ISO-8601 lower bound for log timestamps, if any.
             until: ISO-8601 upper bound for log timestamps, if any.
             pod: Specific pod name to read logs for, if any.
@@ -711,7 +772,7 @@ class ServingEngine:
         deployment_instance,
         component: str = "predictor",
         interval: float = 2.0,
-        source: str = "opensearch",
+        source: str = "kubernetes",
         since: str | None = "now",
         timeout: float | None = None,
         stop_on_status=None,
@@ -721,8 +782,10 @@ class ServingEngine:
         v1 streaming is client-side polling: each tick calls
         :py:meth:`read_logs` with a moving ``since`` cursor and yields the
         portion not already seen. Deduplication is by (timestamp, doc_id)
-        on the OpenSearch path and by content hash for the Kubernetes path
-        (which has neither field). The generator stops when:
+        on the OpenSearch path (old backends). The Kubernetes path has
+        neither field: each poll returns a whole tail window per pod, so
+        the previous window is kept per pod and only the suffix not
+        overlapping it is emitted. The generator stops when:
 
         - ``timeout`` (seconds, optional) elapses,
         - ``stop_on_status`` matches the current ``deployment.get_state().status``, or
@@ -732,7 +795,7 @@ class ServingEngine:
             deployment_instance: The deployment whose logs to tail.
             component: Which deployment component to tail (``predictor``, ``transformer``).
             interval: Seconds between successive polls.
-            source: Log source (``opensearch`` or ``kubernetes``).
+            source: Log source (``kubernetes`` or ``opensearch``).
             since: ISO-8601 starting cursor, or ``"now"`` for new-only.
             timeout: Stop after this many seconds, if set.
             stop_on_status: Stop when the deployment status matches this value.
@@ -745,11 +808,10 @@ class ServingEngine:
         # successive overlapping windows.
         seen_doc_ids: set[str] = set()
         last_timestamp: str | None = since if (since and since != "now") else None
-        # Kubernetes path has no doc id / timestamp, so dedupe by content
-        # hash instead. Bound the set so a chatty deployment doesn't keep
-        # the dedupe state growing forever.
-        seen_hashes: set[int] = set()
-        seen_hashes_cap = 4096
+        # Kubernetes chunks carry no doc id / timestamp: each poll returns
+        # the current tail window of each pod. Keep the previous window per
+        # pod (keyed by instance name) for overlap-suffix dedup.
+        previous_lines_by_pod: dict[str, list[str]] = {}
 
         # ``since="now"`` is a UX shorthand: start streaming brand-new lines
         # only. Resolved here on the first call to a real ISO-8601 timestamp
@@ -785,22 +847,33 @@ class ServingEngine:
                     if chunk.doc_id in seen_doc_ids:
                         continue
                     seen_doc_ids.add(chunk.doc_id)
+                    new_chunks.append(chunk)
+                    if chunk.timestamp is not None and (
+                        last_timestamp is None or chunk.timestamp > last_timestamp
+                    ):
+                        last_timestamp = chunk.timestamp
                 else:
-                    key = hash((chunk.instance_name, chunk.content))
-                    if key in seen_hashes:
-                        continue
-                    if len(seen_hashes) >= seen_hashes_cap:
-                        # Drop the oldest half — set has no ordering, so we
-                        # just clear and start fresh; worst case we re-yield
-                        # at most ``seen_hashes_cap / 2`` already-seen lines
-                        # once before steady state is restored.
-                        seen_hashes = set()
-                    seen_hashes.add(key)
-                new_chunks.append(chunk)
-                if chunk.timestamp is not None and (
-                    last_timestamp is None or chunk.timestamp > last_timestamp
-                ):
-                    last_timestamp = chunk.timestamp
+                    # Kubernetes path: the chunk holds this pod's current
+                    # tail window; emit only the lines not already covered
+                    # by the previous window of the same pod.
+                    pod = chunk.instance_name or ""
+                    new_lines = (chunk.content or "").splitlines()
+                    previous_lines = previous_lines_by_pod.get(pod)
+                    remainder = (
+                        new_lines
+                        if previous_lines is None
+                        else self._overlap_remainder(previous_lines, new_lines)
+                    )
+                    previous_lines_by_pod[pod] = new_lines
+                    if remainder:
+                        # ``content`` is read-only on the DTO, so build a
+                        # new chunk holding only the unseen lines.
+                        new_chunks.append(
+                            deployable_component_logs.DeployableComponentLogs(
+                                instance_name=chunk.instance_name,
+                                content="\n".join(remainder),
+                            )
+                        )
 
             if new_chunks:
                 yield self._format_log_chunks(new_chunks)
@@ -814,6 +887,29 @@ class ServingEngine:
                 return
 
             time.sleep(interval)
+
+    @staticmethod
+    def _overlap_remainder(
+        previous_lines: list[str], new_lines: list[str]
+    ) -> list[str]:
+        """Return the lines of a new tail window not covered by the previous one.
+
+        Finds the largest suffix of the previous window that is a prefix of
+        the new window and returns the remaining new lines. When no overlap
+        exists (the window rotated fully between polls), the whole new
+        window is returned.
+
+        Parameters:
+            previous_lines: Lines of the previous poll's tail window.
+            new_lines: Lines of the current poll's tail window.
+
+        Returns:
+            The lines of `new_lines` that were not already observed.
+        """
+        for overlap in range(min(len(previous_lines), len(new_lines)), 0, -1):
+            if previous_lines[-overlap:] == new_lines[:overlap]:
+                return new_lines[overlap:]
+        return new_lines
 
     @staticmethod
     def _format_log_chunks(chunks) -> str:

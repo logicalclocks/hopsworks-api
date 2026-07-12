@@ -256,11 +256,12 @@ def agent_query(
 @click.option(
     "--source",
     type=click.Choice(["opensearch", "kubernetes"]),
-    default="opensearch",
+    default="kubernetes",
     show_default=True,
     help=(
-        "opensearch: historical logs from the project serving index "
-        "(works for stopped agents). kubernetes: live pod-tailing."
+        "kubernetes: live pod logs. opensearch: deprecated; new backends "
+        "serve it from the Kubernetes path as well. Logs of stopped agents "
+        "are retrieved with --download."
     ),
 )
 @click.option("--since", help="ISO-8601 lower bound on log timestamp.")
@@ -278,6 +279,14 @@ def agent_query(
     show_default=True,
     help="Seconds between polls when --follow is set.",
 )
+@click.option(
+    "--download",
+    is_flag=True,
+    help=(
+        "Download the HopsFS log archives written when the agent was "
+        "stopped or deleted. Cannot be combined with --follow or --source."
+    ),
+)
 @click.pass_context
 def agent_logs(
     ctx: click.Context,
@@ -289,6 +298,7 @@ def agent_logs(
     until: str | None,
     follow: bool,
     interval: float,
+    download: bool,
 ) -> None:
     """Read or follow logs from an agent component.
 
@@ -297,13 +307,33 @@ def agent_logs(
         name: Agent name.
         component: Component to query (e.g. ``predictor``, ``transformer``).
         tail: Number of lines.
-        source: ``opensearch`` or ``kubernetes``.
+        source: ``kubernetes`` or ``opensearch`` (deprecated).
         since: ISO-8601 lower bound on log timestamp.
         until: ISO-8601 upper bound on log timestamp.
         follow: Stream new lines instead of returning a one-shot tail.
         interval: Seconds between polls when following.
+        download: Download the HopsFS log archives instead of reading pods.
     """
     agent = _get_agent(ctx, name)
+
+    if download:
+        source_given = (
+            ctx.get_parameter_source("source") is not click.core.ParameterSource.DEFAULT
+        )
+        if follow or source_given:
+            raise click.UsageError(
+                "--download cannot be combined with --follow or --source."
+            )
+        try:
+            local_paths = agent.download_logs()
+        except Exception as exc:  # noqa: BLE001
+            raise click.ClickException(f"Log download failed: {exc}") from exc
+        if output.JSON_MODE:
+            output.print_json({"paths": local_paths})
+            return
+        for local_path in local_paths:
+            click.echo(local_path)
+        return
 
     if follow:
         try:

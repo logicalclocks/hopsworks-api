@@ -76,6 +76,8 @@ class TestConstants:
             "DEPLOYMENTS_DATASET": "Deployments",
             "ARTIFACTS_DIR_NAME": "Artifacts",
             "DEPLOYMENT_RESOURCES_DIR": "resources",
+            "LOGS_DATASET": "Logs",
+            "ARCHIVED_LOGS_DIR": "Serving",
         }
 
         # Assert
