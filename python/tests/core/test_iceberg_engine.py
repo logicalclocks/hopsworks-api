@@ -113,6 +113,47 @@ class TestIcebergEngine:
         # Arrange
         iceberg_engine = _make_engine(mocker)
         fg_alias = _make_alias(end_timestamp=1234567890000)
+        mocker.patch.object(iceberg_engine, "_resolve_snapshot_id_at", return_value=1)
+
+        # Act
+        options = iceberg_engine._setup_iceberg_read_opts(fg_alias, "location")
+
+        # Assert
+        assert options == {"as-of-timestamp": "1234567890000"}
+
+    def test_setup_iceberg_read_opts_time_travel_query_before_first_snapshot(
+        self, mocker
+    ):
+        # Arrange: the end timestamp predates the first snapshot (fresh insert),
+        # so the read falls back to the earliest snapshot id
+        iceberg_engine = _make_engine(mocker)
+        fg_alias = _make_alias(end_timestamp=1234567890000)
+        mocker.patch.object(
+            iceberg_engine, "_resolve_snapshot_id_at", return_value=None
+        )
+        mocker.patch.object(
+            iceberg_engine,
+            "_read_snapshots",
+            return_value=[
+                {"committed_at": 1234567890123, "snapshot_id": 11},
+                {"committed_at": 1234567891000, "snapshot_id": 22},
+            ],
+        )
+
+        # Act
+        options = iceberg_engine._setup_iceberg_read_opts(fg_alias, "location")
+
+        # Assert
+        assert options == {"snapshot-id": "11"}
+
+    def test_setup_iceberg_read_opts_time_travel_query_no_snapshots(self, mocker):
+        # Arrange: table without snapshots keeps the timestamp bound
+        iceberg_engine = _make_engine(mocker)
+        fg_alias = _make_alias(end_timestamp=1234567890000)
+        mocker.patch.object(
+            iceberg_engine, "_resolve_snapshot_id_at", return_value=None
+        )
+        mocker.patch.object(iceberg_engine, "_read_snapshots", return_value=[])
 
         # Act
         options = iceberg_engine._setup_iceberg_read_opts(fg_alias, "location")

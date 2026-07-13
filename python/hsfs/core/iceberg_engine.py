@@ -220,6 +220,7 @@ class IcebergEngine:
     ICEBERG_SPARK_FORMAT = "iceberg"
     ICEBERG_SPARK_CATALOG_IMPL = "org.apache.iceberg.spark.SparkCatalog"
     ICEBERG_QUERY_TIME_TRAVEL_AS_OF_TIMESTAMP = "as-of-timestamp"
+    ICEBERG_QUERY_TIME_TRAVEL_SNAPSHOT_ID = "snapshot-id"
     ICEBERG_START_SNAPSHOT_ID = "start-snapshot-id"
     ICEBERG_END_SNAPSHOT_ID = "end-snapshot-id"
     ICEBERG_DOT_PREFIX = "iceberg."
@@ -953,11 +954,29 @@ class IcebergEngine:
             and iceberg_fg_alias.left_feature_group_start_timestamp is None
         ):
             # snapshot query with end time; Iceberg expects epoch milliseconds
-            iceberg_options = {
-                self.ICEBERG_QUERY_TIME_TRAVEL_AS_OF_TIMESTAMP: str(
-                    iceberg_fg_alias.left_feature_group_end_timestamp
-                ),
-            }
+            end_ts = iceberg_fg_alias.left_feature_group_end_timestamp
+            if self._resolve_snapshot_id_at(location, end_ts) is not None:
+                iceberg_options = {
+                    self.ICEBERG_QUERY_TIME_TRAVEL_AS_OF_TIMESTAMP: str(end_ts),
+                }
+            else:
+                # Requested time predates the table's first snapshot.
+                # Happens when compute_statistics runs immediately after a fresh
+                # insert: the backend-recorded commit_time can be a few ms before
+                # the first snapshot's commit, and Iceberg rejects as-of-timestamp
+                # in that range. Fall back to reading the earliest snapshot.
+                snapshots = self._read_snapshots(location)
+                if snapshots:
+                    iceberg_options = {
+                        self.ICEBERG_QUERY_TIME_TRAVEL_SNAPSHOT_ID: str(
+                            snapshots[0]["snapshot_id"]
+                        ),
+                    }
+                else:
+                    # no snapshots at all; keep the timestamp bound
+                    iceberg_options = {
+                        self.ICEBERG_QUERY_TIME_TRAVEL_AS_OF_TIMESTAMP: str(end_ts),
+                    }
         elif iceberg_fg_alias.left_feature_group_start_timestamp is not None:
             # incremental query; Iceberg only supports snapshot-id bounds,
             # so the wallclock bounds are resolved against the snapshot log
