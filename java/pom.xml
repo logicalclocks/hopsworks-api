@@ -359,7 +359,17 @@
                 <enabled>true</enabled>
             </snapshots>
         </repository>
-        
+        <repository>
+            <id>spark</id>
+            <name>Hops Spark Repository</name>
+            <url>https://nexus.hops.works/repository/spark/</url>
+            <releases>
+                <enabled>true</enabled>
+            </releases>
+            <snapshots>
+                <enabled>true</enabled>
+            </snapshots>
+        </repository>
     </repositories>
 
     <distributionManagement>
