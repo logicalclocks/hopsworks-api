@@ -8,11 +8,11 @@
     <version>5.1.0-SNAPSHOT</version>
 
     <properties>
-        <hops.version>3.4.3.2-EE-SNAPSHOT</hops.version>
+        <hops.version>3.4.3.2-EE-RC0</hops.version>
         <hsfs.version>${project.version}</hsfs.version>
         <slf4j.version>2.0.17</slf4j.version>
         <hudi.version>1.2.0</hudi.version>
-        <spark.version>4.1.3-SNAPSHOT</spark.version>
+        <spark.version>4.1.2.0</spark.version>
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
     </properties>
