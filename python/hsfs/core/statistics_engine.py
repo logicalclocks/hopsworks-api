@@ -94,7 +94,9 @@ class StatisticsEngine:
             stats_str = self._profile_statistics_with_config(
                 feature_dataframe, metadata_instance.statistics_config
             )
-            desc_stats = self._parse_deequ_statistics(stats_str)
+            desc_stats = self._parse_deequ_statistics(
+                stats_str, metadata_instance.statistics_config.exact_uniqueness
+            )
             if desc_stats:
                 stats = statistics.Statistics(
                     computation_time=computation_time,
@@ -185,7 +187,7 @@ class StatisticsEngine:
                 kll=kll,
                 histogram_bins=histogram_bins,
             )
-            desc_stats = self._parse_deequ_statistics(stats_str)
+            desc_stats = self._parse_deequ_statistics(stats_str, exact_uniqueness)
 
             stats = statistics.Statistics(
                 computation_time=commit_time,
@@ -298,7 +300,9 @@ class StatisticsEngine:
                 ),
                 td_metadata_instance.statistics_config,
             )
-            desc_stats = self._parse_deequ_statistics(stats_str)
+            desc_stats = self._parse_deequ_statistics(
+                stats_str, td_metadata_instance.statistics_config.exact_uniqueness
+            )
             statistics_of_splits.append(
                 split_statistics.SplitStatistics(
                     name=split_name,
@@ -365,7 +369,8 @@ class StatisticsEngine:
         stats_str = self._profile_transformation_fn_statistics(
             feature_dataframe, columns, label_encoder_features
         )
-        desc_stats = self._parse_deequ_statistics(stats_str)
+        # _profile_transformation_fn_statistics profiles with exact_uniqueness=False
+        desc_stats = self._parse_deequ_statistics(stats_str, False)
         return statistics.Statistics(
             computation_time=computation_time,
             feature_descriptive_statistics=desc_stats,
@@ -600,7 +605,9 @@ class StatisticsEngine:
             )
         return stats
 
-    def _parse_deequ_statistics(self, stats) -> list[FeatureDescriptiveStatistics]:
+    def _parse_deequ_statistics(
+        self, stats, exact_uniqueness: bool
+    ) -> list[FeatureDescriptiveStatistics]:
         if stats is None:
             warnings.warn(
                 "There is no Deequ statistics to deserialize. A possible cause might be that Deequ did not succeed in the statistics computation.",
@@ -610,6 +617,18 @@ class StatisticsEngine:
             return None
         if isinstance(stats, str):
             stats = json.loads(stats)
+        if not exact_uniqueness:
+            # The JVM deequ profiler emits uniqueness-family metrics even when
+            # the Uniqueness analyzer was not requested; drop them so they stay
+            # None instead of a spurious 0.0.
+            for col_stats in stats["columns"]:
+                for key in (
+                    "uniqueness",
+                    "distinctness",
+                    "entropy",
+                    "exactNumDistinctValues",
+                ):
+                    col_stats.pop(key, None)
         return [
             FeatureDescriptiveStatistics._from_deequ_json(col_stats)
             for col_stats in stats["columns"]
