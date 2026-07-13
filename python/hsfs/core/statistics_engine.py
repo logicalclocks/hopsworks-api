@@ -607,7 +607,7 @@ class StatisticsEngine:
 
     def _parse_deequ_statistics(
         self, stats, exact_uniqueness: bool
-    ) -> list[FeatureDescriptiveStatistics]:
+    ) -> list[FeatureDescriptiveStatistics] | None:
         if stats is None:
             warnings.warn(
                 "There is no Deequ statistics to deserialize. A possible cause might be that Deequ did not succeed in the statistics computation.",

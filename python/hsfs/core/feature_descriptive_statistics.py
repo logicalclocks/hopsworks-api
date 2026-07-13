@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import math
+import numbers
 from typing import TYPE_CHECKING
 
 import humps
@@ -34,7 +35,7 @@ def _finite_or_none(value):
     Non-finite values are not valid JSON and not valid SQL numerics: a single
     one aborts the whole statistics registration on the backend.
     """
-    if isinstance(value, float) and not math.isfinite(value):
+    if isinstance(value, numbers.Real) and not math.isfinite(value):
         return None
     return value
 

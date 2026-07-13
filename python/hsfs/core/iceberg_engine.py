@@ -955,28 +955,25 @@ class IcebergEngine:
         ):
             # snapshot query with end time; Iceberg expects epoch milliseconds
             end_ts = iceberg_fg_alias.left_feature_group_end_timestamp
-            if self._resolve_snapshot_id_at(location, end_ts) is not None:
-                iceberg_options = {
-                    self.ICEBERG_QUERY_TIME_TRAVEL_AS_OF_TIMESTAMP: str(end_ts),
-                }
-            else:
+            snapshots = self._read_snapshots(location)
+            if snapshots and (
+                util._convert_event_time_to_timestamp(snapshots[0]["committed_at"])
+                > end_ts
+            ):
                 # Requested time predates the table's first snapshot.
                 # Happens when compute_statistics runs immediately after a fresh
                 # insert: the backend-recorded commit_time can be a few ms before
                 # the first snapshot's commit, and Iceberg rejects as-of-timestamp
                 # in that range. Fall back to reading the earliest snapshot.
-                snapshots = self._read_snapshots(location)
-                if snapshots:
-                    iceberg_options = {
-                        self.ICEBERG_QUERY_TIME_TRAVEL_SNAPSHOT_ID: str(
-                            snapshots[0]["snapshot_id"]
-                        ),
-                    }
-                else:
-                    # no snapshots at all; keep the timestamp bound
-                    iceberg_options = {
-                        self.ICEBERG_QUERY_TIME_TRAVEL_AS_OF_TIMESTAMP: str(end_ts),
-                    }
+                iceberg_options = {
+                    self.ICEBERG_QUERY_TIME_TRAVEL_SNAPSHOT_ID: str(
+                        snapshots[0]["snapshot_id"]
+                    ),
+                }
+            else:
+                iceberg_options = {
+                    self.ICEBERG_QUERY_TIME_TRAVEL_AS_OF_TIMESTAMP: str(end_ts),
+                }
         elif iceberg_fg_alias.left_feature_group_start_timestamp is not None:
             # incremental query; Iceberg only supports snapshot-id bounds,
             # so the wallclock bounds are resolved against the snapshot log
