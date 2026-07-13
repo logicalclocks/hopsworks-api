@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import json
+import math
 from typing import TYPE_CHECKING
 
 import humps
@@ -25,6 +26,17 @@ from hsfs import util
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+
+
+def _finite_or_none(value):
+    """Map non-finite numbers (NaN, Infinity) to None.
+
+    Non-finite values are not valid JSON and not valid SQL numerics: a single
+    one aborts the whole statistics registration on the backend.
+    """
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    return value
 
 
 @public
@@ -187,25 +199,30 @@ class FeatureDescriptiveStatistics:
         return cls(**stats_dict)
 
     def to_dict(self):
+        percentiles = self._percentiles
+        if isinstance(percentiles, dict):
+            percentiles = {k: _finite_or_none(v) for k, v in percentiles.items()}
+        elif isinstance(percentiles, list):
+            percentiles = [_finite_or_none(v) for v in percentiles]
         _dict = {
             "id": self._id,
             "featureName": self._feature_name,
             "count": self._count,
             "featureType": self._feature_type,
-            "min": self._min,
-            "max": self._max,
-            "sum": self._sum,
-            "mean": self._mean,
-            "stdDev": self._std_dev,
-            "completeness": self._completeness,
+            "min": _finite_or_none(self._min),
+            "max": _finite_or_none(self._max),
+            "sum": _finite_or_none(self._sum),
+            "mean": _finite_or_none(self._mean),
+            "stdDev": _finite_or_none(self._std_dev),
+            "completeness": _finite_or_none(self._completeness),
             "numNonNullValues": self._num_non_null_values,
             "numNullValues": self._num_null_values,
-            "distinctness": self._distinctness,
-            "entropy": self._entropy,
-            "uniqueness": self._uniqueness,
+            "distinctness": _finite_or_none(self._distinctness),
+            "entropy": _finite_or_none(self._entropy),
+            "uniqueness": _finite_or_none(self._uniqueness),
             "approxNumDistinctValues": self._approx_num_distinct_values,
             "exactNumDistinctValues": self._exact_num_distinct_values,
-            "percentiles": self._percentiles,
+            "percentiles": percentiles,
         }
         if self._extended_statistics is not None:
             _dict["extendedStatistics"] = json.dumps(self._extended_statistics)
