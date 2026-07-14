@@ -47,27 +47,27 @@ import java.util.Map;
  * Replacement for Deequ's {@code ColumnProfilerRunner} producing JSON wire-compatible with
  * Deequ 2.0.7-spark-3.5 for all keys except {@code kll}.
  *
- * <h3>KLL gating divergence from Deequ</h3>
+ * <h2>KLL gating divergence from Deequ</h2>
  *
  * <p>Deequ always emits {@code kll} for numeric columns regardless of {@code withKLLProfiling()};
  * the toggle is a no-op in 2.0.7-spark-3.5. This implementation emits {@code kll} only when
  * {@code kll=true}, aligning with the Phase-1 API contract. The {@code kll=false} path produces
  * smaller profiles. The golden-parity test (task #6) accounts for this known divergence.
  *
- * <h3>Entropy computation</h3>
+ * <h2>Entropy computation</h2>
  *
  * <p>Shannon entropy is derived from the exact per-value frequency distribution via
  * {@code groupBy(col).count()} per column. For numeric columns where all values are unique
  * this equals {@code ln(exactNumDistinctValues)}, but the groupBy is required for correctness
  * when duplicates exist.
  *
- * <h3>Uniqueness formula</h3>
+ * <h2>Uniqueness formula</h2>
  *
  * <p>{@code uniqueness = max(0, (2 * exactDistinct - nonNull) / nonNull)} — verified against
  * the Deequ baseline. This formula holds because Deequ defines uniqueness as the fraction of
  * values appearing exactly once, and with random integers most duplicates appear exactly twice.
  *
- * <h3>stdDev</h3>
+ * <h2>stdDev</h2>
  *
  * <p>Uses Spark's {@code stddev_pop()} (population standard deviation, dividing by n). Deequ's
  * StandardDeviation metric also uses population stddev — verified against the baseline.

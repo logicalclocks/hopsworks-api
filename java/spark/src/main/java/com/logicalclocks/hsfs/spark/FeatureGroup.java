@@ -61,6 +61,11 @@ public class FeatureGroup extends FeatureGroupBase<Dataset<Row>> {
   private final FeatureGroupEngine featureGroupEngine = new FeatureGroupEngine();
   protected StatisticsEngine statisticsEngine = new StatisticsEngine(EntityEndpointType.FEATURE_GROUP);
 
+  public static class FeatureGroupBuilder {
+    FeatureGroupBuilder() {
+    }
+  }
+
   @Builder
   public FeatureGroup(FeatureStore featureStore, @NonNull String name, Integer version,
                       String description, List<String> primaryKeys, List<String> partitionKeys,

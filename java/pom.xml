@@ -46,7 +46,7 @@
         <artifact.spark.version>spark3.5</artifact.spark.version>
 
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <delombok.output>${project.basedir}/delombok</delombok.output>
+        <delombok.output>${project.build.directory}/generated-sources/delombok</delombok.output>
     </properties>
 
     <dependencies>
