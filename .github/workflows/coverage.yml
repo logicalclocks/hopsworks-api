@@ -46,7 +46,7 @@ jobs:
           uv sync --extra dev --project python --reinstall-package hopsworks
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
-        run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.13:4.1.2.0 --repositories https://nexus.hops.works/repository/spark/ pyspark-shell" >> $GITHUB_ENV
+        run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.13:4.1.1 pyspark-shell" >> $GITHUB_ENV
 
       - name: Run tests with coverage
         run: |
