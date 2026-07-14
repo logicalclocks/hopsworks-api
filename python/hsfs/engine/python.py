@@ -1684,6 +1684,16 @@ class Engine:
         except ImportError:
             arrow_flight_client_imported = False
 
+        # The Query Service create-training-dataset action does not receive the
+        # training dataset's sink and always materializes to the default HopsFS
+        # location.
+        # If the training dataset targets an external connector or specifies a
+        # non-empty sink path, use the Spark materialization job instead.
+        has_user_supplied_sink = (
+            training_dataset.training_dataset_type == training_dataset.EXTERNAL
+            or bool(training_dataset.data_source and training_dataset.data_source.path)
+        )
+
         if (
             arrow_flight_client_imported
             and arrow_flight_client._is_query_supported(dataset, user_write_options)
@@ -1692,6 +1702,7 @@ class Engine:
             and len(feature_view_obj.transformation_functions) == 0
             and training_dataset.data_format == "parquet"
             and not transformation_context
+            and not has_user_supplied_sink
         ):
             # The materialized layout is Hive-partitioned by each row's
             # event-time day; force the event-time column through the query

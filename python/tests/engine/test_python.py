@@ -36,6 +36,7 @@ from hsfs import (
 from hsfs.client import exceptions
 from hsfs.constructor import query
 from hsfs.constructor.hudi_feature_group_alias import HudiFeatureGroupAlias
+from hsfs.core import data_source as ds
 from hsfs.core import inode, job, online_ingestion
 from hsfs.core.constants import GE_MAJOR, HAS_GREAT_EXPECTATIONS
 from hsfs.engine import python
@@ -3690,6 +3691,141 @@ class TestPython:
         assert mock_fv_api.return_value._compute_training_dataset.call_count == 1
         assert mock_td_api.return_value._compute.call_count == 0
         assert mock_job._wait_for_job.call_count == 1
+
+    def _write_training_dataset_arrow_flight_arrange(self, mocker, backend_fixtures):
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type")
+        mocker.patch("hsfs.core.training_dataset_job_conf.TrainingDatasetJobConf")
+        mock_job = mocker.patch("hsfs.core.job.Job")
+        mock_fv_api = mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mock_fv_api.return_value._compute_training_dataset.return_value = mock_job
+        mocker.patch("hsfs.util._get_job_url")
+        mocker.patch(
+            "hsfs.core.arrow_flight_client._is_query_supported", return_value=True
+        )
+        mock_afc_instance = mocker.patch("hsfs.core.arrow_flight_client._get_instance")
+        mocker.patch(
+            "hsfs.util._run_with_loading_animation",
+            side_effect=lambda message, func, *args, **kwargs: func(*args, **kwargs),
+        )
+        mocker.patch(
+            "hsfs.constructor.query.Query._prep_read",
+            return_value=(mocker.Mock(), None),
+        )
+
+        fg = feature_group.FeatureGroup.from_response_json(
+            backend_fixtures["feature_group"]["get"]["response"]
+        )
+        q = query.Query(fg, fg.columns)
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            query=q,
+            featurestore_id=99,
+            labels=[],
+        )
+        return mock_fv_api, mock_afc_instance, q, fv
+
+    def test_write_training_dataset_default_sink_arrow_flight(
+        self, mocker, backend_fixtures
+    ):
+        # Arrange
+        mock_fv_api, mock_afc_instance, q, fv = (
+            self._write_training_dataset_arrow_flight_arrange(mocker, backend_fixtures)
+        )
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            version=1,
+            data_format="parquet",
+            featurestore_id=99,
+            splits={},
+            id=10,
+        )
+
+        # Act
+        python_engine = python.Engine()
+        python_engine._write_training_dataset(
+            training_dataset=td,
+            dataset=q,
+            user_write_options={},
+            save_mode=None,
+            feature_view_obj=fv,
+            to_df=False,
+        )
+
+        # Assert
+        assert mock_afc_instance.return_value._create_training_dataset.call_count == 1
+        assert mock_fv_api.return_value._compute_training_dataset.call_count == 0
+
+    def test_write_training_dataset_external_sink_uses_job(
+        self, mocker, backend_fixtures
+    ):
+        # Arrange
+        mock_fv_api, mock_afc_instance, q, fv = (
+            self._write_training_dataset_arrow_flight_arrange(mocker, backend_fixtures)
+        )
+
+        connector = storage_connector.S3Connector(
+            id=1, name="test_connector", featurestore_id=99, bucket="test-bucket"
+        )
+        td = training_dataset.TrainingDataset(
+            name="test",
+            version=1,
+            data_format="parquet",
+            featurestore_id=99,
+            splits={},
+            id=10,
+            data_source=ds.DataSource(storage_connector=connector, path="td_path"),
+        )
+
+        # Act
+        python_engine = python.Engine()
+        python_engine._write_training_dataset(
+            training_dataset=td,
+            dataset=q,
+            user_write_options={},
+            save_mode=None,
+            feature_view_obj=fv,
+            to_df=False,
+        )
+
+        # Assert
+        assert mock_afc_instance.return_value._create_training_dataset.call_count == 0
+        assert mock_fv_api.return_value._compute_training_dataset.call_count == 1
+
+    def test_write_training_dataset_hopsfs_path_sink_uses_job(
+        self, mocker, backend_fixtures
+    ):
+        # Arrange
+        mock_fv_api, mock_afc_instance, q, fv = (
+            self._write_training_dataset_arrow_flight_arrange(mocker, backend_fixtures)
+        )
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            version=1,
+            data_format="parquet",
+            featurestore_id=99,
+            splits={},
+            id=10,
+            data_source=ds.DataSource(path="/Projects/test/Resources/td_path"),
+        )
+
+        # Act
+        python_engine = python.Engine()
+        python_engine._write_training_dataset(
+            training_dataset=td,
+            dataset=q,
+            user_write_options={},
+            save_mode=None,
+            feature_view_obj=fv,
+            to_df=False,
+        )
+
+        # Assert
+        assert mock_afc_instance.return_value._create_training_dataset.call_count == 0
+        assert mock_fv_api.return_value._compute_training_dataset.call_count == 1
 
     def test_return_dataframe_type_default(self):
         # Arrange
