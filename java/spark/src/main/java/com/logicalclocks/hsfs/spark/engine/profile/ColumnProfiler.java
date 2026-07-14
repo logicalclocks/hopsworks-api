@@ -63,9 +63,11 @@ import java.util.Map;
  *
  * <h3>Uniqueness formula</h3>
  *
- * <p>{@code uniqueness = max(0, (2 * exactDistinct - nonNull) / nonNull)} — verified against
- * the Deequ baseline. This formula holds because Deequ defines uniqueness as the fraction of
- * values appearing exactly once, and with random integers most duplicates appear exactly twice.
+ * <p>{@code uniqueness = singletons / nonNull} — Deequ's exact definition (fraction of values
+ * appearing exactly once). The singleton count comes from the same per-value frequency pass
+ * as entropy, so no additional Spark job is paid for it. (An earlier shortcut,
+ * {@code (2 * exactDistinct - nonNull) / nonNull}, is only equivalent when no value occurs
+ * more than twice and undercounts otherwise.)
  *
  * <h3>stdDev</h3>
  *
@@ -116,10 +118,12 @@ public class ColumnProfiler {
       }
 
       Row aggRow = computeScalars(df, columns, exactUniqueness);
-      // entropy is derived from exact per-value frequencies; only pay for the
-      // per-column groupBy when exact uniqueness stats were requested
-      Map<String, Double> entropyMap = exactUniqueness
-          ? computeEntropy(df, columns) : new LinkedHashMap<String, Double>();
+      // entropy and the uniqueness singleton count are derived from exact per-value
+      // frequencies; only pay for the per-column groupBy when exact uniqueness
+      // stats were requested
+      Map<String, ValueFrequencyStats> frequencyStatsMap = exactUniqueness
+          ? computeValueFrequencyStats(df, columns)
+          : new LinkedHashMap<String, ValueFrequencyStats>();
 
       Map<String, Map<String, Double>> correlationMap =
           new LinkedHashMap<String, Map<String, Double>>();
@@ -129,7 +133,7 @@ public class ColumnProfiler {
 
       List<ColumnProfile> profiles = new ArrayList<ColumnProfile>(columns.size());
       for (ColumnInfo col : columns) {
-        ColumnProfile cp = buildProfile(df, col, aggRow, entropyMap, correlationMap,
+        ColumnProfile cp = buildProfile(df, col, aggRow, frequencyStatsMap, correlationMap,
             histogram, histogramBins, kll, exactUniqueness);
         profiles.add(cp);
       }
@@ -213,18 +217,31 @@ public class ColumnProfiler {
   }
 
   // ---------------------------------------------------------------------------
-  // Pass 2: entropy — one groupBy per column
+  // Pass 2: per-value frequencies (entropy + uniqueness singletons) — one groupBy per column
   // ---------------------------------------------------------------------------
 
-  private Map<String, Double> computeEntropy(Dataset<Row> df, List<ColumnInfo> columns) {
-    Map<String, Double> result = new LinkedHashMap<String, Double>();
+  /** Per-column stats derived from the exact per-value frequency distribution. */
+  private static final class ValueFrequencyStats {
+    private final double entropy;
+    private final long singletons;
+
+    private ValueFrequencyStats(double entropy, long singletons) {
+      this.entropy = entropy;
+      this.singletons = singletons;
+    }
+  }
+
+  private Map<String, ValueFrequencyStats> computeValueFrequencyStats(Dataset<Row> df,
+      List<ColumnInfo> columns) {
+    Map<String, ValueFrequencyStats> result = new LinkedHashMap<String, ValueFrequencyStats>();
     for (ColumnInfo col : columns) {
-      result.put(col.name, computeColumnEntropy(df, col.name));
+      result.put(col.name, computeColumnValueFrequencyStats(df, col.name));
     }
     return result;
   }
 
-  private double computeColumnEntropy(Dataset<Row> df, String columnName) {
+  private ValueFrequencyStats computeColumnValueFrequencyStats(Dataset<Row> df,
+      String columnName) {
     Column cc = functions.col(columnName);
     List<Row> rows = df.filter(cc.isNotNull())
         .groupBy(cc)
@@ -233,14 +250,19 @@ public class ColumnProfiler {
         .collectAsList();
 
     if (rows.isEmpty()) {
-      return 0.0;
+      return new ValueFrequencyStats(0.0, 0L);
     }
     long total = 0;
+    long singletons = 0;
     for (Row row : rows) {
-      total += row.getLong(0);
+      long count = row.getLong(0);
+      total += count;
+      if (count == 1) {
+        singletons++;
+      }
     }
     if (total == 0) {
-      return 0.0;
+      return new ValueFrequencyStats(0.0, 0L);
     }
     double entropy = 0.0;
     for (Row row : rows) {
@@ -250,7 +272,7 @@ public class ColumnProfiler {
         entropy -= pp * Math.log(pp);
       }
     }
-    return entropy;
+    return new ValueFrequencyStats(entropy, singletons);
   }
 
   // ---------------------------------------------------------------------------
@@ -285,7 +307,7 @@ public class ColumnProfiler {
   // ---------------------------------------------------------------------------
 
   private ColumnProfile buildProfile(Dataset<Row> df, ColumnInfo col, Row aggRow,
-      Map<String, Double> entropyMap,
+      Map<String, ValueFrequencyStats> frequencyStatsMap,
       Map<String, Map<String, Double>> correlationMap,
       boolean histogram, int histogramBins, boolean kll, boolean exactUniqueness) {
     String nn = col.name;
@@ -300,15 +322,16 @@ public class ColumnProfiler {
     // meaningful when exactUniqueness=true. When false they stay null and the serializer
     // omits their keys, so consumers deserialize them as absent instead of a bogus 0.
     Long exactDistinct = exactUniqueness ? (Long) aggRow.getAs(nn + "__exact_distinct") : null;
+    ValueFrequencyStats freqStats = frequencyStatsMap.get(nn);
 
     double completeness = total > 0 ? (double) nonNull / total : 0.0;
     Double distinctness = exactUniqueness
         ? (nonNull > 0 ? (double) exactDistinct / nonNull : 0.0) : null;
     Double uniqueness = exactUniqueness
-        ? (nonNull > 0 ? Math.max(0.0, (double) (2L * exactDistinct - nonNull) / nonNull) : 0.0)
+        ? (nonNull > 0 && freqStats != null ? (double) freqStats.singletons / nonNull : 0.0)
         : null;
     Double entropy = exactUniqueness
-        ? (entropyMap.containsKey(nn) ? entropyMap.get(nn) : 0.0) : null;
+        ? (freqStats != null ? freqStats.entropy : 0.0) : null;
 
     ColumnProfile.Builder builder = new ColumnProfile.Builder()
         .columnName(nn)

@@ -203,6 +203,31 @@ public class ColumnProfilerSmokeTest {
     }
   }
 
+  @Test
+  void uniquenessCountsSingletonsWithHighMultiplicity() throws Exception {
+    // 15 values; 5 occurs three times, 4/3/2/1 twice, 9/8/7/6 once.
+    // Deequ uniqueness = singletons / nonNull = 4/15. The former shortcut
+    // (2*distinct - n)/n gave 3/15 whenever a value occurred more than twice.
+    StructType schema = new StructType(new StructField[]{
+      DataTypes.createStructField("col_1", DataTypes.IntegerType, true),
+    });
+    int[] values = {5, 4, 3, 2, 1, 5, 4, 3, 2, 1, 9, 8, 7, 6, 5};
+    List<Row> rows = new ArrayList<>(values.length);
+    for (int value : values) {
+      rows.add(RowFactory.create(value));
+    }
+    Dataset<Row> df = SparkEngine.getInstance().getSparkSession().createDataFrame(rows, schema);
+
+    String json = new ColumnProfiler().profile(df, null, false, false, 20, true, false);
+
+    JsonNode col = findColumn(new ObjectMapper().readTree(json).get("columns"), "col_1");
+    Assertions.assertNotNull(col);
+    Assertions.assertEquals(4.0 / 15.0, col.get("uniqueness").asDouble(), 1e-9,
+        "uniqueness must be the exact singleton fraction");
+    Assertions.assertEquals(9.0 / 15.0, col.get("distinctness").asDouble(), 1e-9);
+    Assertions.assertEquals(9, col.get("exactNumDistinctValues").asLong());
+  }
+
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
