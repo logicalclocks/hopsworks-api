@@ -1515,9 +1515,9 @@ class Engine:
 
         # The Query Service create-training-dataset action does not receive the
         # training dataset's sink and always materializes to the default HopsFS
-        # location, so any user-supplied data source (external connector or
-        # custom path) must go through the Spark materialization job instead,
-        # which reads the sink from the persisted training dataset metadata.
+        # location.
+        # If the training dataset targets an external connector or specifies a
+        # non-empty sink path, use the Spark materialization job instead.
         has_user_supplied_sink = (
             training_dataset.training_dataset_type == training_dataset.EXTERNAL
             or bool(training_dataset.data_source and training_dataset.data_source.path)
