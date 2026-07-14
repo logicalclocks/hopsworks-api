@@ -271,17 +271,25 @@ class DeltaEngine:
             delta_fg_alias.left_feature_group_end_timestamp is not None
             and delta_fg_alias.left_feature_group_start_timestamp is None
         ):
-            # snapshot query with end time
+            # snapshot query with end time; resolve the version against the Delta
+            # history instead of passing timestampAsOf. Delta resolves timestamp
+            # bounds against commit-file modification times, while the
+            # backend-recorded commit_time comes from history()'s in-commit
+            # timestamp, which can be tens of milliseconds earlier — enough for
+            # timestampAsOf to silently resolve to the previous version (or to be
+            # rejected outright when it predates the first commit, which happens
+            # when compute_statistics runs right after a fresh insert).
             end_ts = delta_fg_alias.left_feature_group_end_timestamp
-            earliest = self._get_delta_earliest_commit(location) if location else None
-            if earliest is not None and end_ts <= earliest[1]:
-                # Requested time predates the Delta log's first commit.
-                # Happens when compute_statistics runs immediately after a fresh
-                # insert: the backend-recorded commit_time can be a few ms before
-                # the Delta log's first commit, and Delta rejects timestampAsOf
-                # in that range. Fall back to versionAsOf on the earliest commit.
+            commits = self._get_delta_commits(location) if location else None
+            if commits:
+                # latest version committed at or before end_ts; when end_ts
+                # predates the first history timestamp, pin the earliest version
+                version = commits[0][0]
+                for commit_version, commit_ts in commits:
+                    if commit_ts <= end_ts:
+                        version = commit_version
                 delta_options = {
-                    self.DELTA_QUERY_TIME_TRAVEL_AS_OF_VERSION: earliest[0],
+                    self.DELTA_QUERY_TIME_TRAVEL_AS_OF_VERSION: version,
                 }
             else:
                 _delta_commit_end_time = util._get_delta_datestr_from_timestamp(end_ts)
@@ -317,11 +325,13 @@ class DeltaEngine:
 
         return delta_options
 
-    def _get_delta_earliest_commit(self, location: str):
-        """Get earliest commit from the Delta log.
+    def _get_delta_commits(self, location: str):
+        """Get all commits from the Delta log.
 
-        Return (version, timestamp_ms) of the earliest commit in the Delta
-        log at `location`, or None if the history cannot be read.
+        Return a list of (version, timestamp_ms) tuples sorted by version
+        ascending, or None if the history cannot be read or is empty.
+        The timestamps come from the history's in-commit timestamps, the same
+        source the backend-recorded commit times are derived from.
         """
         try:
             if self._spark_session is not None:
@@ -333,26 +343,37 @@ class DeltaEngine:
                     .select("version", "timestamp")
                     .collect()
                 )
-                if not rows:
-                    return None
-                oldest = min(rows, key=lambda r: r["version"])
-                return int(oldest["version"]), int(
-                    oldest["timestamp"].timestamp() * 1000
-                )
+                commits = [
+                    (int(row["version"]), int(row["timestamp"].timestamp() * 1000))
+                    for row in rows
+                ]
+            else:
+                from deltalake import DeltaTable as DeltaRsTable
 
-            from deltalake import DeltaTable as DeltaRsTable
-
-            history = DeltaRsTable(location, storage_options={}).history()
-            if not history:
+                history = DeltaRsTable(location, storage_options={}).history()
+                commits = [
+                    (
+                        int(commit["version"]),
+                        int(util._convert_event_time_to_timestamp(commit["timestamp"])),
+                    )
+                    for commit in history
+                ]
+            if not commits:
                 return None
-            oldest = min(history, key=lambda c: c["version"])
-            return (
-                int(oldest["version"]),
-                int(util._convert_event_time_to_timestamp(oldest["timestamp"])),
-            )
+            commits.sort(key=lambda commit: commit[0])
+            return commits
         except Exception as e:
             _logger.debug(f"Could not read Delta history at {location}: {e}")
             return None
+
+    def _get_delta_earliest_commit(self, location: str):
+        """Get earliest commit from the Delta log.
+
+        Return (version, timestamp_ms) of the earliest commit in the Delta
+        log at `location`, or None if the history cannot be read.
+        """
+        commits = self._get_delta_commits(location)
+        return commits[0] if commits else None
 
     def _delete_record(self, delete_df):
         partition_transforms._require_writable(self._feature_group)
