@@ -1122,6 +1122,69 @@ class TestFeatureViewEngine:
         assert read_options["event_start_time"] == 20260701
         assert read_options["event_end_time"] == 20260701
 
+    def test_get_training_data_time_range_misaligned_start_warns(self, mocker):
+        # At month/year precision partitions are keyed by the period start, so
+        # a start bound inside a period excludes that whole period; the user is
+        # warned about the silently dropped rows.
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mock_fv_engine_get_training_dataset_metadata = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
+        )
+        mock_engine = mocker.patch("hsfs.engine._get_instance")
+        mock_engine.return_value._read_options.side_effect = (
+            lambda data_format, read_options: read_options or {}
+        )
+        mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._read_dir_from_storage_connector"
+        )
+        mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine._get_batch_query")
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="parquet",
+            featurestore_id=99,
+            splits={},
+            partition_precision="month",
+        )
+        mock_fv_engine_get_training_dataset_metadata.return_value = td
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            query=query,
+            featurestore_id=feature_store_id,
+            labels=[],
+        )
+        fv.schema = [
+            TrainingDatasetFeature(name="id", type="bigint", label=False),
+        ]
+
+        # Act / Assert: a mid-month start bound warns
+        with pytest.warns(UserWarning, match="boundary"):
+            fv_engine._get_training_data(
+                feature_view_obj=fv,
+                training_dataset_version=1,
+                event_start_time="2026-07-15 00:00:00",
+            )
+
+        # Act / Assert: a month-start bound stays silent
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            fv_engine._get_training_data(
+                feature_view_obj=fv,
+                training_dataset_version=1,
+                event_start_time="2026-07-01 00:00:00",
+            )
+
     def test_get_training_data_time_range_in_memory_raises(self, mocker):
         # An in-memory training dataset has no materialized increments to
         # prune, so a time-range read is a user error.
@@ -2232,41 +2295,66 @@ class TestFeatureViewEngine:
         # Assert
         mock_recompute.assert_not_called()
 
-    def test_insert_training_data_partition_precision(self, mocker):
-        # The precision rides in the write options so it reaches the engine
-        # and the backend materialization job.
+    def test_compute_training_dataset_partition_precision_in_write_options(
+        self, mocker
+    ):
+        # The precision is fixed at creation in the training dataset metadata;
+        # every materialization (initial or append) ships it to the engine and
+        # the backend job through the write options, falling back to day when
+        # no precision is recorded (in-memory, or pre-existing datasets).
         # Arrange
-        fv_engine, fv, _ = self._arrange_insert_training_data(mocker)
-        mock_compute = mocker.patch.object(fv_engine, "_compute_training_dataset")
+        feature_store_id = 99
 
-        # Act
-        fv_engine._insert_training_data(
-            feature_view_obj=fv,
-            training_dataset_version=1,
-            start_time="",
-            end_time="",
-            user_write_options={},
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_schema"
+        )
+        mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine._get_batch_query")
+        mocker.patch("hsfs.engine._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=query,
+        )
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="parquet",
+            featurestore_id=99,
+            splits={},
             partition_precision="month",
         )
 
+        # Act
+        user_write_options = {}
+        fv_engine._compute_training_dataset(
+            feature_view_obj=fv,
+            user_write_options=user_write_options,
+            training_dataset_obj=td,
+        )
+
         # Assert
-        write_options = mock_compute.call_args[0][1]
-        assert write_options["partition_precision"] == "month"
+        assert user_write_options["partition_precision"] == "month"
 
-    def test_insert_training_data_invalid_partition_precision(self, mocker):
-        # Arrange
-        fv_engine, fv, _ = self._arrange_insert_training_data(mocker)
+        # Act: no recorded precision falls back to day
+        td.partition_precision = None
+        user_write_options = {}
+        fv_engine._compute_training_dataset(
+            feature_view_obj=fv,
+            user_write_options=user_write_options,
+            training_dataset_obj=td,
+        )
 
-        # Act / Assert
-        with pytest.raises(FeatureStoreException, match="partition precision"):
-            fv_engine._insert_training_data(
-                feature_view_obj=fv,
-                training_dataset_version=1,
-                start_time="",
-                end_time="",
-                user_write_options={},
-                partition_precision="hour",
-            )
+        # Assert
+        assert user_write_options["partition_precision"] == "day"
 
     def test_recompute_training_dataset_statistics(self, mocker):
         # Arrange

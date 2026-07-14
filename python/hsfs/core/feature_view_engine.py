@@ -561,6 +561,31 @@ class FeatureViewEngine:
                 "a training dataset and cannot be used with an in-memory "
                 "training dataset, which is recomputed on read."
             )
+        # Partitions are keyed by the period start (e.g. `20260601` for June
+        # at month precision), so a start bound inside a period excludes that
+        # whole period from the read — silent data loss rather than a coarser
+        # range, hence the warning.
+        if event_start_time is not None and td_updated.partition_precision in (
+            "month",
+            "year",
+        ):
+            period_start = (
+                event_start_time % 100 == 1
+                if td_updated.partition_precision == "month"
+                else event_start_time % 10000 == 101
+            )
+            if not period_start:
+                warnings.warn(
+                    f"`start_time` does not fall on a "
+                    f"{td_updated.partition_precision} boundary, but this "
+                    f"training dataset is partitioned at "
+                    f"`{td_updated.partition_precision}` precision: the "
+                    f"period containing `start_time` is excluded entirely, "
+                    f"including its rows at or after `start_time`. Align "
+                    f"`start_time` with the start of the "
+                    f"{td_updated.partition_precision} to include them.",
+                    stacklevel=1,
+                )
 
         if td_updated.training_dataset_type != td_updated.IN_MEMORY:
             split_df = self._read_from_storage_connector(
@@ -740,7 +765,6 @@ class FeatureViewEngine:
         spine=None,
         transformation_context: dict[str, Any] = None,
         compute_statistics=False,
-        partition_precision="day",
     ):
         # Append (`overwrite=False`) works on both engines: the Spark engine
         # writes the new `_hopsworks_event_date=<v>` partition directly, and the
@@ -787,20 +811,6 @@ class FeatureViewEngine:
         # window is not reused for an incremental append.
         training_dataset_obj.event_start_time = start_time
         training_dataset_obj.event_end_time = end_time
-
-        if partition_precision not in ("day", "month", "year"):
-            raise FeatureStoreException(
-                f"Invalid partition precision `{partition_precision}`; "
-                "supported values are ['day', 'month', 'year']."
-            )
-        # Ride the precision along in the write options so it reaches the
-        # engine (and the backend materialization job) with the rest of the
-        # write configuration. All materializations of a version must use the
-        # same precision for time-range reads to stay sound.
-        user_write_options = {
-            **user_write_options,
-            "partition_precision": partition_precision,
-        }
 
         td_job = self._compute_training_dataset(
             feature_view_obj,
@@ -1027,6 +1037,13 @@ class FeatureViewEngine:
         user_write_options["training_helper_columns"] = training_helper_columns
         user_write_options["primary_keys"] = primary_keys
         user_write_options["event_time"] = event_time
+        # The partition precision is fixed at creation and stored in the
+        # training dataset metadata; every materialization (initial or append)
+        # rides it to the engine through the write options. `None` (in-memory,
+        # or created before the field existed) falls back to day.
+        user_write_options["partition_precision"] = (
+            training_dataset_obj.partition_precision or "day"
+        )
         # The per-call event-time window set by `_insert_training_data` lives
         # only on this client-side object; the `create_fv_td` job re-fetches
         # the training dataset from backend metadata, whose window is the

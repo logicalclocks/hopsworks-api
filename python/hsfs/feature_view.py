@@ -1707,6 +1707,7 @@ class FeatureView:
         data_source: ds.DataSource | dict[str, Any] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
+        partition_precision: str = "day",
         **kwargs,
     ) -> tuple[int, job.Job]:
         """Create the metadata for a training dataset and save the corresponding training data into `location`.
@@ -1879,6 +1880,9 @@ class FeatureView:
                 For one window across every feature group, pass a `FeatureGroupLookback` — e.g. `FeatureGroupLookback(key="PARTITION_KEY", start=date(2026, 5, 5), end=date(2026, 5, 17))` or its dict form `{"key": "PARTITION_KEY", "start": date(2026, 5, 5), "end": date(2026, 5, 17)}`.
                 For different windows per feature group, pass a `Lookback` — e.g. `Lookback(default=FeatureGroupLookback(...), feature_group_lookbacks={"dim_a": FeatureGroupLookback(...)})` or its dict form `{"default": {...}, "feature_group_lookbacks": {"dim_a": {...}}}`.
                 See [`FeatureGroupLookback`][hsfs.constructor.lookback.FeatureGroupLookback] and [`Lookback`][hsfs.constructor.lookback.Lookback] for accepted key values, validation rules, and per-FG key matching semantics.
+            partition_precision: Truncation of the event date keying the materialized partitions: `day` (the default), `month` or `year`.
+                Fixed at creation for the lifetime of the training dataset version: every increment appended with [`insert_training_data`][hsfs.feature_view.FeatureView.insert_training_data] is partitioned at the same precision.
+                Coarser precisions produce fewer partitions for long histories, at the cost of coarser time-range reads.
 
         Returns:
             td_version: training dataset version
@@ -1908,6 +1912,7 @@ class FeatureView:
             coalesce=coalesce,
             extra_filter=extra_filter,
             tags=normalized_tags,
+            partition_precision=partition_precision,
         )
         # td_job is used only if the python engine is used
         td, td_job = self._feature_view_engine._create_training_dataset(
@@ -1950,6 +1955,7 @@ class FeatureView:
         data_source: ds.DataSource | dict[str, Any] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
+        partition_precision: str = "day",
         **kwargs,
     ) -> tuple[int, job.Job]:
         # TODO: Convert the docstrings from this point on:
@@ -2173,6 +2179,9 @@ class FeatureView:
                 For one window across every feature group, pass a `FeatureGroupLookback` — e.g. `FeatureGroupLookback(key="PARTITION_KEY", start=date(2026, 5, 5), end=date(2026, 5, 17))` or its dict form `{"key": "PARTITION_KEY", "start": date(2026, 5, 5), "end": date(2026, 5, 17)}`.
                 For different windows per feature group, pass a `Lookback` — e.g. `Lookback(default=FeatureGroupLookback(...), feature_group_lookbacks={"dim_a": FeatureGroupLookback(...)})` or its dict form `{"default": {...}, "feature_group_lookbacks": {"dim_a": {...}}}`.
                 See [`FeatureGroupLookback`][hsfs.constructor.lookback.FeatureGroupLookback] and [`Lookback`][hsfs.constructor.lookback.Lookback] for accepted key values, validation rules, and per-FG key matching semantics.
+            partition_precision: Truncation of the event date keying the materialized partitions: `day` (the default), `month` or `year`.
+                Fixed at creation for the lifetime of the training dataset version: every increment appended with [`insert_training_data`][hsfs.feature_view.FeatureView.insert_training_data] is partitioned at the same precision.
+                Coarser precisions produce fewer partitions for long histories, at the cost of coarser time-range reads.
 
         Returns:
             td_version: The version of the created training dataset.
@@ -2209,6 +2218,7 @@ class FeatureView:
             coalesce=coalesce,
             extra_filter=extra_filter,
             tags=normalized_tags,
+            partition_precision=partition_precision,
         )
         # td_job is used only if the python engine is used
         td, td_job = self._feature_view_engine._create_training_dataset(
@@ -2253,6 +2263,7 @@ class FeatureView:
         data_source: ds.DataSource | dict[str, Any] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
+        partition_precision: str = "day",
         **kwargs,
     ) -> tuple[int, job.Job]:
         """Create the metadata for a training dataset and save the corresponding training data into `location`.
@@ -2461,6 +2472,9 @@ class FeatureView:
                 For one window across every feature group, pass a `FeatureGroupLookback` — e.g. `FeatureGroupLookback(key="PARTITION_KEY", start=date(2026, 5, 5), end=date(2026, 5, 17))` or its dict form `{"key": "PARTITION_KEY", "start": date(2026, 5, 5), "end": date(2026, 5, 17)}`.
                 For different windows per feature group, pass a `Lookback` — e.g. `Lookback(default=FeatureGroupLookback(...), feature_group_lookbacks={"dim_a": FeatureGroupLookback(...)})` or its dict form `{"default": {...}, "feature_group_lookbacks": {"dim_a": {...}}}`.
                 See [`FeatureGroupLookback`][hsfs.constructor.lookback.FeatureGroupLookback] and [`Lookback`][hsfs.constructor.lookback.Lookback] for accepted key values, validation rules, and per-FG key matching semantics.
+            partition_precision: Truncation of the event date keying the materialized partitions: `day` (the default), `month` or `year`.
+                Fixed at creation for the lifetime of the training dataset version: every increment appended with [`insert_training_data`][hsfs.feature_view.FeatureView.insert_training_data] is partitioned at the same precision.
+                Coarser precisions produce fewer partitions for long histories, at the cost of coarser time-range reads.
 
         Returns:
             td_version: The training dataset version.
@@ -2505,6 +2519,7 @@ class FeatureView:
             coalesce=coalesce,
             extra_filter=extra_filter,
             tags=normalized_tags,
+            partition_precision=partition_precision,
         )
         # td_job is used only if the python engine is used
         td, td_job = self._feature_view_engine._create_training_dataset(
@@ -2618,14 +2633,13 @@ class FeatureView:
         spine: SplineDataFrameTypes | None = None,
         transformation_context: dict[str, Any] | None = None,
         compute_statistics: bool = False,
-        partition_precision: str = "day",
     ) -> job.Job:
         """Append a new batch of data to an existing training dataset version.
 
         Materializes the feature view query over the `start_time`/`end_time` window and, with `overwrite=False` (the default), writes the result as a new increment of the training dataset: the batch is stored in its own Hive partition under the existing location, leaving data already materialized untouched.
         This lets a large (multi-terabyte) training dataset grow — for example with a new daily batch — without rewriting it, while keeping the same training dataset version.
 
-        The materialized data is stored in Hive partitions keyed by each row's UTC event date (a human-readable `YYYYMMDD` value), truncated to `partition_precision` — `day` by default, or `month`/`year` for coarser layouts with fewer partitions.
+        The materialized data is stored in Hive partitions keyed by each row's UTC event date (a human-readable `YYYYMMDD` value), truncated to the training dataset's partition precision — `day` by default, or `month`/`year` for coarser layouts with fewer partitions, fixed when the version was created (see the `partition_precision` parameter of [`create_training_data`][hsfs.feature_view.FeatureView.create_training_data]).
         This makes the dataset time-addressable: [`get_training_data`][hsfs.feature_view.FeatureView.get_training_data] returns everything by default, or only a time range via its `start_time`/`end_time` parameters (e.g. a sliding training window over a growing time-series dataset).
         Because rows land in the day partitions they belong to, batches may arrive in any order: backfills and late-arriving events are supported.
         Re-appending a batch that was already materialized adds its rows again — appends are not deduplicated, as with feature group inserts.
@@ -2690,9 +2704,6 @@ class FeatureView:
             compute_statistics: Whether to recompute the descriptive statistics over all increments after the batch is written, at the cost of reading the whole dataset back.
                 Only applies when appending; an overwrite recomputes statistics as part of the materialization itself.
                 When appending through a materialization job, only use it together with the default `wait_for_job=True`, so the statistics include the new batch.
-            partition_precision: Truncation of the event date keying the materialized partitions: `day` (the default), `month` or `year`.
-                Coarser precisions produce fewer partitions for long histories, at the cost of coarser time-range reads.
-                All materializations of a training dataset version must use the same precision.
 
         Returns:
             The Hopsworks Job that was launched to materialize the batch.
@@ -2711,7 +2722,6 @@ class FeatureView:
             spine=spine,
             transformation_context=transformation_context,
             compute_statistics=compute_statistics,
-            partition_precision=partition_precision,
         )
         self.update_last_accessed_training_dataset(td.version)
 

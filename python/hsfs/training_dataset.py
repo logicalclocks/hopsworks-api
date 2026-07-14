@@ -90,12 +90,14 @@ class TrainingDatasetBase:
         data_source=None,
         missing_mandatory_tags=None,
         tags=None,
+        partition_precision=None,
         **kwargs,
     ):
         self._name = name
         self._version = version
         self._description = description
         self._data_format = data_format
+        self.partition_precision = partition_precision
         self._validation_size = validation_size
         self._test_size = test_size
         self._train_start = train_start
@@ -261,6 +263,7 @@ class TrainingDatasetBase:
             "eventStartTime": self._start_time,
             "eventEndTime": self._end_time,
             "extraFilter": self._extra_filter,
+            "partitionPrecision": self._partition_precision,
         }
         if self._data_source:
             td_meta_dict["dataSource"] = self._data_source.to_dict()
@@ -297,6 +300,28 @@ class TrainingDatasetBase:
     def missing_mandatory_tags(self) -> list[dict[str, Any]]:
         """List of missing mandatory tags for the training dataset."""
         return self._missing_mandatory_tags
+
+    @property
+    def partition_precision(self) -> str | None:
+        """Truncation of the event date keying the materialized partitions: `day`, `month` or `year`.
+
+        Set at creation and fixed for the lifetime of the training dataset version: every materialization (the initial one and every appended increment) partitions by the same truncation, so time-range reads stay sound.
+        `None` when no precision is recorded — an in-memory training dataset, or one created before the precision was stored; materializations then partition at day precision.
+        """
+        return self._partition_precision
+
+    @partition_precision.setter
+    def partition_precision(self, partition_precision: str | None) -> None:
+        if partition_precision is not None and partition_precision not in (
+            "day",
+            "month",
+            "year",
+        ):
+            raise ValueError(
+                f"Invalid partition precision `{partition_precision}`; "
+                "supported values are ['day', 'month', 'year']."
+            )
+        self._partition_precision = partition_precision
 
     @property
     def data_format(self):
@@ -589,6 +614,7 @@ class TrainingDataset(TrainingDatasetBase):
         missing_mandatory_tags=None,
         tags=None,
         lookback=None,
+        partition_precision=None,
         **kwargs,
     ):
         super().__init__(
@@ -622,6 +648,7 @@ class TrainingDataset(TrainingDatasetBase):
             data_source=data_source,
             missing_mandatory_tags=missing_mandatory_tags,
             tags=tags,
+            partition_precision=partition_precision,
         )
 
         self._id = id
@@ -1005,6 +1032,7 @@ class TrainingDataset(TrainingDatasetBase):
             "eventStartTime": self._start_time,
             "eventEndTime": self._end_time,
             "extraFilter": self._extra_filter,
+            "partitionPrecision": self._partition_precision,
             "type": "trainingDatasetDTO",
         }
         if self._lookback is not None:
