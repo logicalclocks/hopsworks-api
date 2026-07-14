@@ -116,7 +116,10 @@ public class ColumnProfiler {
       }
 
       Row aggRow = computeScalars(df, columns, exactUniqueness);
-      Map<String, Double> entropyMap = computeEntropy(df, columns);
+      // entropy is derived from exact per-value frequencies; only pay for the
+      // per-column groupBy when exact uniqueness stats were requested
+      Map<String, Double> entropyMap = exactUniqueness
+          ? computeEntropy(df, columns) : new LinkedHashMap<String, Double>();
 
       Map<String, Map<String, Double>> correlationMap =
           new LinkedHashMap<String, Map<String, Double>>();
@@ -294,18 +297,18 @@ public class ColumnProfiler {
     long total = nonNull + nullCount;
     long approxDistinct = aggRow.getAs(nn + "__approx_distinct");
     // exactNumDistinctValues + derived stats (distinctness/uniqueness/entropy) are only
-    // meaningful when exactUniqueness=true. When false we leave them at 0; the serializer
-    // still emits the keys (matching Deequ's shape, which is always keys-present).
-    long exactDistinct = exactUniqueness ? (Long) aggRow.getAs(nn + "__exact_distinct") : 0L;
+    // meaningful when exactUniqueness=true. When false they stay null and the serializer
+    // omits their keys, so consumers deserialize them as absent instead of a bogus 0.
+    Long exactDistinct = exactUniqueness ? (Long) aggRow.getAs(nn + "__exact_distinct") : null;
 
     double completeness = total > 0 ? (double) nonNull / total : 0.0;
-    double distinctness = exactUniqueness && nonNull > 0
-        ? (double) exactDistinct / nonNull : 0.0;
-    double uniqueness = exactUniqueness && nonNull > 0
-        ? Math.max(0.0, (double) (2L * exactDistinct - nonNull) / nonNull)
-        : 0.0;
-    double entropy = exactUniqueness && entropyMap.containsKey(nn)
-        ? entropyMap.get(nn) : 0.0;
+    Double distinctness = exactUniqueness
+        ? (nonNull > 0 ? (double) exactDistinct / nonNull : 0.0) : null;
+    Double uniqueness = exactUniqueness
+        ? (nonNull > 0 ? Math.max(0.0, (double) (2L * exactDistinct - nonNull) / nonNull) : 0.0)
+        : null;
+    Double entropy = exactUniqueness
+        ? (entropyMap.containsKey(nn) ? entropyMap.get(nn) : 0.0) : null;
 
     ColumnProfile.Builder builder = new ColumnProfile.Builder()
         .columnName(nn)

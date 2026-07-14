@@ -161,6 +161,48 @@ public class ColumnProfilerSmokeTest {
     Assertions.assertNull(cBool.get("kll"), "c_bool must NOT have kll field");
   }
 
+  @Test
+  void omitsUniquenessFamilyWhenExactUniquenessDisabled() throws Exception {
+    Dataset<Row> df = buildDataset();
+
+    String json = new ColumnProfiler().profile(df, null, false, false, 20, false, false);
+
+    JsonNode columns = new ObjectMapper().readTree(json).get("columns");
+    for (JsonNode col : columns) {
+      String name = col.get("column").asText();
+      Assertions.assertFalse(col.has("uniqueness"),
+          name + " must not emit 'uniqueness' when exactUniqueness is disabled");
+      Assertions.assertFalse(col.has("distinctness"),
+          name + " must not emit 'distinctness' when exactUniqueness is disabled");
+      Assertions.assertFalse(col.has("entropy"),
+          name + " must not emit 'entropy' when exactUniqueness is disabled");
+      Assertions.assertFalse(col.has("exactNumDistinctValues"),
+          name + " must not emit 'exactNumDistinctValues' when exactUniqueness is disabled");
+      Assertions.assertTrue(col.has("approximateNumDistinctValues"),
+          name + " must still emit 'approximateNumDistinctValues'");
+    }
+  }
+
+  @Test
+  void emitsUniquenessFamilyWhenExactUniquenessEnabled() throws Exception {
+    Dataset<Row> df = buildDataset();
+
+    String json = new ColumnProfiler().profile(df, null, false, false, 20, true, false);
+
+    JsonNode columns = new ObjectMapper().readTree(json).get("columns");
+    for (JsonNode col : columns) {
+      String name = col.get("column").asText();
+      Assertions.assertTrue(col.has("uniqueness"),
+          name + " must emit 'uniqueness' when exactUniqueness is enabled");
+      Assertions.assertTrue(col.has("distinctness"),
+          name + " must emit 'distinctness' when exactUniqueness is enabled");
+      Assertions.assertTrue(col.has("entropy"),
+          name + " must emit 'entropy' when exactUniqueness is enabled");
+      Assertions.assertTrue(col.has("exactNumDistinctValues"),
+          name + " must emit 'exactNumDistinctValues' when exactUniqueness is enabled");
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
