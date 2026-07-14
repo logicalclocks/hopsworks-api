@@ -2313,6 +2313,55 @@ class TestFeatureViewEngine:
             fv, td, mock_td_engine_read.return_value
         )
 
+    def test_recompute_training_dataset_statistics_transformation_pinned_warning(
+        self, mocker
+    ):
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mock_metadata = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
+        )
+        mocker.patch("hsfs.core.training_dataset_engine.TrainingDatasetEngine._read")
+        mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._compute_training_dataset_statistics"
+        )
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="parquet",
+            featurestore_id=99,
+            splits={},
+        )
+        mock_metadata.return_value = td
+
+        from hsfs.transformation_statistics import TransformationStatistics
+
+        stats = TransformationStatistics("feature1")
+
+        @udf(int)
+        def scale_feature(feature1, statistics=stats):
+            return feature1 - statistics.feature1.mean
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=query,
+            transformation_functions=[scale_feature],
+        )
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        # Act / Assert: the descriptive statistics are recomputed, but the user
+        # is warned that the transformation-function statistics stay pinned
+        with pytest.warns(UserWarning, match="pinned"):
+            fv_engine._recompute_training_dataset_statistics(fv, 1)
+
     def test_recompute_training_dataset_statistics_in_memory_raises(self, mocker):
         # Arrange
         feature_store_id = 99

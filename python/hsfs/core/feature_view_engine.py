@@ -1125,6 +1125,20 @@ class FeatureViewEngine:
                 "Statistics are disabled for this training dataset version, so "
                 "there is nothing to recompute."
             )
+        if any(
+            tf.hopsworks_udf.statistics_required
+            for tf in feature_view_obj.transformation_functions
+        ):
+            warnings.warn(
+                "Only the descriptive statistics are recomputed: the statistics "
+                "used by the model-dependent transformation functions stay "
+                "pinned to the ones fit when the training dataset version was "
+                "created, since the materialized data was transformed with "
+                "them. To refit them, rebuild the version with "
+                "`insert_training_data(..., overwrite=True)` or create a new "
+                "training dataset version.",
+                stacklevel=1,
+            )
         # Read the materialized data back (all increments of an incremental
         # dataset) and recompute the descriptive statistics on it. The
         # transformation-function statistics are deliberately not refit: the
