@@ -29,7 +29,10 @@ jobs:
             ${{ runner.os }}-maven-
       - name: Test
         working-directory: ./java
-        run: mvn clean test -Pspark-4.1 -Dspark.version=4.1.2 -Dhudi.version=1.2.0
+        # The spark-4.1 profile pins the Hops Spark fork (4.1.2.0), which CI
+        # runners cannot resolve from public repositories, so CI overrides it
+        # to build against upstream Apache Spark instead.
+        run: mvn clean test -Pspark-4.1 -Dspark.version=4.1.2
 
   unit_tests_local_tz:
     name: Unit Tests (Local TZ)
@@ -58,7 +61,10 @@ jobs:
 
       - name: Test
         working-directory: ./java
-        run: mvn clean test -Pspark-4.1 -Dspark.version=4.1.2 -Dhudi.version=1.2.0
+        # The spark-4.1 profile pins the Hops Spark fork (4.1.2.0), which CI
+        # runners cannot resolve from public repositories, so CI overrides it
+        # to build against upstream Apache Spark instead.
+        run: mvn clean test -Pspark-4.1 -Dspark.version=4.1.2
 
   unit_tests_spark41:
     name: Unit Tests
@@ -88,4 +94,7 @@ jobs:
 
       - name: Test
         working-directory: ./java
-        run: mvn clean test -Pspark-4.1 -Dspark.version=4.1.2 -Dhudi.version=1.2.0
+        # The spark-4.1 profile pins the Hops Spark fork (4.1.2.0), which CI
+        # runners cannot resolve from public repositories, so CI overrides it
+        # to build against upstream Apache Spark instead.
+        run: mvn clean test -Pspark-4.1 -Dspark.version=4.1.2

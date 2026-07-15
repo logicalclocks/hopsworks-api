@@ -331,7 +331,7 @@ public class StorageConnectorUtils {
     } else if (connector instanceof StorageConnector.GlueConnector) {
       return read((StorageConnector.GlueConnector) connector, dataSource, dataFormat, options);
     } else if (connector instanceof StorageConnector.KafkaConnector) {
-      throw new UnsupportedOperationException("Reading a Kafka Stream into a static Spark Dataframe is not supported.");
+      throw new UnsupportedOperationException("Reading a Kafka Stream into a static Spark DataFrame is not supported.");
     } else {
       throw new FeatureStoreException("Unknown type of StorageConnector.");
     }

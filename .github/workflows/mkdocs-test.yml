@@ -60,7 +60,10 @@ jobs:
 
       - name: Build javadoc documentation
         working-directory: java
-        run: mvn clean install javadoc:javadoc javadoc:aggregate -Pspark-4.1 -DskipTests -Dspark.version=4.1.2 -Dhudi.version=1.2.0 && cp -r target/site/apidocs ../logicalclocks.github.io/docs/javadoc
+        # The spark-4.1 profile pins the Hops Spark fork (4.1.2.0), which CI
+        # runners cannot resolve from public repositories, so CI overrides it
+        # to build against upstream Apache Spark instead.
+        run: mvn clean install javadoc:javadoc javadoc:aggregate -Pspark-4.1 -DskipTests -Dspark.version=4.1.2 && cp -r target/site/apidocs ../logicalclocks.github.io/docs/javadoc
 
       - name: Check for broken links
         working-directory: logicalclocks.github.io
