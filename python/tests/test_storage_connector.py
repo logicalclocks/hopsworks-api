@@ -1250,6 +1250,68 @@ class TestGcsConnector:
         assert mock_engine_read.call_args[0][3] == "gs://test-bucket"
 
 
+class TestGoogleSheetsConnector:
+    def test_from_response_json(self, backend_fixtures):
+        # Arrange
+        json = backend_fixtures["storage_connector"]["get_google_sheets"]["response"]
+
+        # Act
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        # Assert
+        assert isinstance(sc, storage_connector.GoogleSheetsConnector)
+        assert sc.id == 1
+        assert sc.name == "test_google_sheets"
+        assert sc._featurestore_id == 67
+        assert sc.description == "Google Sheets connector description"
+        assert sc.key_path == "test_key_path"
+        assert sc.spreadsheet_id == "test_spreadsheet_id"
+
+    def test_from_response_json_basic_info(self, backend_fixtures):
+        # Arrange
+        json = backend_fixtures["storage_connector"]["get_google_sheets_basic_info"][
+            "response"
+        ]
+
+        # Act
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        # Assert
+        assert isinstance(sc, storage_connector.GoogleSheetsConnector)
+        assert sc.id == 1
+        assert sc.name == "test_google_sheets"
+        assert sc._featurestore_id == 67
+        assert sc.description is None
+        assert sc.key_path is None
+        assert sc.spreadsheet_id is None
+
+    def test_to_dict(self, backend_fixtures):
+        # Arrange
+        json = backend_fixtures["storage_connector"]["get_google_sheets"]["response"]
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        # Act
+        payload = sc.to_dict()
+
+        # Assert
+        assert payload["id"] == 1
+        assert payload["name"] == "test_google_sheets"
+        assert payload["featurestoreId"] == 67
+        assert payload["storageConnectorType"] == "GOOGLE_SHEETS"
+        assert payload["type"] == "featurestoreGoogleSheetsConnectorDTO"
+        assert payload["keyPath"] == "test_key_path"
+        assert payload["spreadsheetId"] == "test_spreadsheet_id"
+
+    def test_spark_options_empty(self):
+        # Arrange
+        sc = storage_connector.GoogleSheetsConnector(
+            id=1, name="test_google_sheets", featurestore_id=67
+        )
+
+        # Act / Assert
+        assert sc.spark_options() == {}
+
+
 class TestBigQueryConnector:
     def test_from_response_json(self, backend_fixtures):
         # Arrange
@@ -1679,6 +1741,47 @@ class TestOracleConnector:
         )
         opts = sc.spark_options()
         assert opts["url"] == "jdbc:oracle:thin:@mydb_high"
+
+    def test_inline_tns_url_prefers_configured_database_alias(self, tmp_path):
+        """The database alias wins over _tp and its descriptor is inlined.
+
+        Matching is case-insensitive; a bare alias URL is not a hostname.
+        """
+        (tmp_path / "tnsnames.ora").write_text(
+            "mydb_low = (description=(address=(host=low.example.com)))\n"
+            "mydb_tp = (description=(address=(host=tp.example.com)))\n"
+        )
+        sc = storage_connector.SqlConnector(
+            id=1,
+            name="test",
+            featurestore_id=1,
+            database_type="ORACLE",
+            database="MYDB_low",  # TNS alias, different case than tnsnames.ora
+            user="scott",
+            password="tiger",
+            wallet_path="/Projects/myproj/Resources/wallet.zip",
+        )
+        url = sc._inline_tns_url(str(tmp_path))
+        assert url == "jdbc:oracle:thin:@(description=(address=(host=low.example.com)))"
+
+    def test_inline_tns_url_falls_back_to_tp_alias(self, tmp_path):
+        """When the database is not an alias, prefer the _tp alias."""
+        (tmp_path / "tnsnames.ora").write_text(
+            "mydb_low = (description=(address=(host=low.example.com)))\n"
+            "mydb_tp = (description=(address=(host=tp.example.com)))\n"
+        )
+        sc = storage_connector.SqlConnector(
+            id=1,
+            name="test",
+            featurestore_id=1,
+            database_type="ORACLE",
+            database="not_an_alias",
+            user="scott",
+            password="tiger",
+            wallet_path="/Projects/myproj/Resources/wallet.zip",
+        )
+        url = sc._inline_tns_url(str(tmp_path))
+        assert url == "jdbc:oracle:thin:@(description=(address=(host=tp.example.com)))"
 
     def test_spark_options_no_host_no_wallet_raises(self):
         """Oracle connector without host/port AND without wallet is invalid."""

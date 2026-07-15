@@ -3895,7 +3895,9 @@ class TestSpark:
         # Assert
         assert result == mock_df
         mock_read.format.assert_called_once_with("csv")
-        mock_read.format.return_value.options.assert_called_once_with(name="value")
+        mock_read.format.return_value.options.assert_called_once_with(
+            delimiter=",", header="true", inferSchema="true", name="value"
+        )
         mock_read.format.return_value.options.return_value.load.assert_called_once()
         mock_spark_engine_setup_storage_connector.assert_called_once()
         mock_spark_engine_setup_storage_connector.assert_called_once_with(None, None)
@@ -4121,7 +4123,9 @@ class TestSpark:
         # Assert
         assert result == mock_df
         mock_read.format.assert_called_once_with("csv")
-        mock_read.format.return_value.options.assert_called_once_with(header="true")
+        mock_read.format.return_value.options.assert_called_once_with(
+            delimiter=",", header="true", inferSchema="true"
+        )
         mock_read.format.return_value.options.return_value.load.assert_called_once()
         mock_spark_engine_setup_storage_connector.assert_called_once()
         mock_spark_engine_setup_storage_connector.assert_called_once_with(
@@ -4160,7 +4164,9 @@ class TestSpark:
         # Assert
         assert result == mock_df
         mock_read.format.assert_called_once_with("csv")
-        mock_read.format.return_value.options.assert_called_once_with(header="true")
+        mock_read.format.return_value.options.assert_called_once_with(
+            delimiter=",", header="true", inferSchema="true"
+        )
         mock_read.format.return_value.options.return_value.load.assert_called_once()
         mock_spark_engine_setup_storage_connector.assert_called_once()
         mock_spark_engine_setup_storage_connector.assert_called_once_with(

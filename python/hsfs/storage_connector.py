@@ -72,6 +72,7 @@ class StorageConnector(ABC):
     SQL = "SQL"
     OPENSEARCH = "OPENSEARCH"
     CRM = "CRM"
+    GOOGLE_SHEETS = "GOOGLE_SHEETS"
     REST = "REST"
     ORACLE = "ORACLE"
     UNITY_CATALOG = "UNITY_CATALOG"
@@ -98,6 +99,7 @@ class StorageConnector(ABC):
         ORACLE: "featurestoreSqlConnectorDTO",
         OPENSEARCH: "featurestoreOpenSearchConnectorDTO",
         CRM: "featurestoreCRMConnectorDTO",
+        GOOGLE_SHEETS: "featurestoreGoogleSheetsConnectorDTO",
         UNITY_CATALOG: "featurestoreUnityCatalogConnectorDTO",
         REST: "featurestoreRESTConnectorDTO",
     }
@@ -469,7 +471,11 @@ class StorageConnector(ABC):
         Returns:
             A list of database names available in the storage connector.
         """
-        if self.type == StorageConnector.CRM or self.type == StorageConnector.REST:
+        if self.type in [
+            StorageConnector.CRM,
+            StorageConnector.GOOGLE_SHEETS,
+            StorageConnector.REST,
+        ]:
             raise ValueError("This connector type does not support fetching databases.")
         return self._data_source_api._get_databases(self)
 
@@ -491,9 +497,11 @@ class StorageConnector(ABC):
             database:
                 The name of the database to list tables from.
                 If not provided, the default database is used.
+                Not required for Google Sheets connectors — sheet names are fetched from the connector's spreadsheet.
 
         Returns:
             A list of DataSource objects representing the tables.
+            For Google Sheets connectors, each entry represents a sheet name.
         """
         if self.type == StorageConnector.REST:
             raise ValueError("This connector type does not support fetching tables.")
@@ -543,7 +551,11 @@ class StorageConnector(ABC):
                         "explicit `database` to get_tables()."
                     )
                 database = self.database
-            elif self.type in [StorageConnector.S3, StorageConnector.GCS]:
+            elif self.type in [
+                StorageConnector.S3,
+                StorageConnector.GCS,
+                StorageConnector.GOOGLE_SHEETS,
+            ]:
                 pass
             else:
                 raise ValueError(
@@ -576,12 +588,16 @@ class StorageConnector(ABC):
             ```
         Parameters:
             data_source (DataSource): The data source to retrieve data from.
-            use_cached (bool): Whether to use cached data if available. Only supported for CRM and REST connectors. Defaults to `True`.
+            use_cached (bool): Whether to use cached data if available. Only supported for CRM, Google Sheets, and REST connectors. Defaults to `True`.
 
         Returns:
             An object containing the data retrieved from the data source.
         """
-        if self.type in [StorageConnector.REST, StorageConnector.CRM]:
+        if self.type in [
+            StorageConnector.REST,
+            StorageConnector.CRM,
+            StorageConnector.GOOGLE_SHEETS,
+        ]:
             if not data_source.table:
                 raise ValueError(
                     f"{self.type} data sources require a table name in data_source.table."
@@ -613,7 +629,11 @@ class StorageConnector(ABC):
         Returns:
             A dictionary containing metadata about the data source.
         """
-        if self.type in [StorageConnector.REST, StorageConnector.CRM]:
+        if self.type in [
+            StorageConnector.REST,
+            StorageConnector.CRM,
+            StorageConnector.GOOGLE_SHEETS,
+        ]:
             raise ValueError("This connector type does not support fetching metadata.")
         return self._data_source_api._get_metadata(data_source)
 
@@ -3257,7 +3277,9 @@ class SqlConnector(StorageConnector):
 
         Avoids setting oracle.net.tns_admin to a driver-local path, which
         would fail on executor pods that don't share the driver filesystem.
-        Prefers the _tp alias (general-purpose); falls back to the first alias.
+        Prefers the alias matching the configured database (TNS aliases are
+        case-insensitive); falls back to the _tp alias (general-purpose),
+        then the first alias.
         """
         tnsnames_path = os.path.join(wallet_dir, "tnsnames.ora")
         aliases: dict[str, str] = {}
@@ -3269,17 +3291,22 @@ class SqlConnector(StorageConnector):
                     if current_alias:
                         aliases[current_alias] = "".join(current_desc).strip()
                     current_alias, _, rest = line.partition("=")
-                    current_alias = current_alias.strip()
+                    current_alias = current_alias.strip().lower()
                     current_desc = [rest]
                 elif current_alias:
                     current_desc.append(line)
         if current_alias:
             aliases[current_alias] = "".join(current_desc).strip()
-        alias = next(
-            (a for a in aliases if a.endswith("_tp")),
-            next(iter(aliases), None),
+        database = (self._database or "").lower()
+        alias = (
+            database
+            if database in aliases
+            else next(
+                (a for a in aliases if a.endswith("_tp")),
+                next(iter(aliases), None),
+            )
         )
-        if alias and self._database not in aliases:
+        if alias:
             return f"jdbc:{self._JDBC_SCHEMES[self.ORACLE]}:@{aliases[alias]}"
         return self.spark_options()["url"]
 
@@ -4913,3 +4940,64 @@ class GlueConnector(StorageConnector):
             options["s3.session-token"] = self._session_token
             options["glue.session-token"] = self._session_token
         return options
+
+
+@public
+class GoogleSheetsConnector(StorageConnector):
+    """A Google Sheets storage connector authenticated by a GCP service-account keyfile.
+
+    The connector stores the path to a service-account JSON key uploaded to HopsFS.
+    An optional spreadsheet ID can be set at connector level; if omitted it must be provided per feature group via `DataSource.spreadsheet_id`.
+    """
+
+    type = StorageConnector.GOOGLE_SHEETS
+
+    def __init__(
+        self,
+        id: int | None,
+        name: str,
+        featurestore_id: int,
+        description: str | None = None,
+        key_path: str | None = None,
+        spreadsheet_id: str | None = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(id, name, description, featurestore_id)
+        self._key_path = key_path
+        self._spreadsheet_id = spreadsheet_id
+
+    @public
+    @property
+    def key_path(self) -> str | None:
+        """Get or set the HopsFS path to the service-account JSON keyfile."""
+        return self._key_path
+
+    @key_path.setter
+    def key_path(self, key_path: str) -> None:
+        self._key_path = key_path
+
+    @public
+    @property
+    def spreadsheet_id(self) -> str | None:
+        """Get or set the Google Spreadsheet ID.
+
+        Optional at connector level — can be provided per feature group via `DataSource.spreadsheet_id` instead.
+        """
+        return self._spreadsheet_id
+
+    @spreadsheet_id.setter
+    def spreadsheet_id(self, spreadsheet_id: str) -> None:
+        self._spreadsheet_id = spreadsheet_id
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = super().to_dict()
+        payload.update(
+            {
+                "keyPath": self._key_path,
+                "spreadsheetId": self._spreadsheet_id,
+            }
+        )
+        return payload
+
+    def spark_options(self) -> dict[str, Any]:
+        return {}
