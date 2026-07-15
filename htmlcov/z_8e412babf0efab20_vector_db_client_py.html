@@ -55,8 +55,8 @@
         </aside>
         <h2>
             <span class="text">253 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">181<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">72<span class="text"> missing</span></button>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">182<span class="text"> run</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">71<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">3<span class="text"> excluded</span></button>
         </h2>
         <p class="text">
@@ -65,7 +65,7 @@
             <a id="nextFileLink" class="nav" href="z_8e412babf0efab20_vector_server_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.14.3">coverage.py v7.14.3</a>,
-            created at 2026-07-14 08:54 +0000
+            created at 2026-07-15 08:52 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -299,17 +299,17 @@
     <p class="run"><span class="n"><a id="t217" href="#t217">217</a></span><span class="t">            <span class="nam">feature_name</span> <span class="op">=</span> <span class="nam">feature</span><span class="op">.</span><span class="nam">name</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t218" href="#t218">218</a></span><span class="t">            <span class="nam">feature_type</span> <span class="op">=</span> <span class="nam">feature</span><span class="op">.</span><span class="nam">type</span><span class="op">.</span><span class="nam">lower</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t219" href="#t219">219</a></span><span class="t">            <span class="nam">feature_value</span> <span class="op">=</span> <span class="nam">result</span><span class="op">.</span><span class="nam">get</span><span class="op">(</span><span class="nam">feature_name</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t220" href="#t220">220</a></span><span class="t">            <span class="key">if</span> <span class="key">not</span> <span class="nam">feature_value</span><span class="op">:</span>  <span class="com"># Feature value can be null</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t220" href="#t220">220</a></span><span class="t">            <span class="key">if</span> <span class="nam">feature_value</span> <span class="key">is</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t221" href="#t221">221</a></span><span class="t">                <span class="key">continue</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t222" href="#t222">222</a></span><span class="t">            <span class="key">if</span> <span class="nam">feature_type</span> <span class="op">==</span> <span class="str">"date"</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t223" href="#t223">223</a></span><span class="t">                <span class="nam">result</span><span class="op">[</span><span class="nam">feature_name</span><span class="op">]</span> <span class="op">=</span> <span class="nam">datetime</span><span class="op">.</span><span class="nam">fromtimestamp</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis mis2 show_mis"><span class="n"><a id="t224" href="#t224">224</a></span><span class="t">                    <span class="nam">feature_value</span> <span class="op">//</span> <span class="num">10</span><span class="op">**</span><span class="num">3</span><span class="op">,</span> <span class="nam">tz</span><span class="op">=</span><span class="nam">timezone</span><span class="op">.</span><span class="nam">utc</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis mis2 show_mis"><span class="n"><a id="t225" href="#t225">225</a></span><span class="t">                <span class="op">)</span><span class="op">.</span><span class="nam">date</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t226" href="#t226">226</a></span><span class="t">            <span class="key">elif</span> <span class="nam">feature_type</span> <span class="op">==</span> <span class="str">"timestamp"</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t227" href="#t227">227</a></span><span class="t">                <span class="com"># convert timestamp in ms to datetime in s</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t228" href="#t228">228</a></span><span class="t">                <span class="nam">result</span><span class="op">[</span><span class="nam">feature_name</span><span class="op">]</span> <span class="op">=</span> <span class="nam">datetime</span><span class="op">.</span><span class="nam">fromtimestamp</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t229" href="#t229">229</a></span><span class="t">                    <span class="nam">feature_value</span> <span class="op">//</span> <span class="num">10</span><span class="op">**</span><span class="num">3</span><span class="op">,</span> <span class="nam">tz</span><span class="op">=</span><span class="nam">timezone</span><span class="op">.</span><span class="nam">utc</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t230" href="#t230">230</a></span><span class="t">                <span class="op">)</span><span class="op">.</span><span class="nam">replace</span><span class="op">(</span><span class="nam">tzinfo</span><span class="op">=</span><span class="key">None</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t227" href="#t227">227</a></span><span class="t">                <span class="com"># true division so sub-second precision survives, e.g. timestamp(3)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t228" href="#t228">228</a></span><span class="t">                <span class="nam">result</span><span class="op">[</span><span class="nam">feature_name</span><span class="op">]</span> <span class="op">=</span> <span class="nam">datetime</span><span class="op">.</span><span class="nam">fromtimestamp</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t229" href="#t229">229</a></span><span class="t">                    <span class="nam">feature_value</span> <span class="op">/</span> <span class="num">10</span><span class="op">**</span><span class="num">3</span><span class="op">,</span> <span class="nam">tz</span><span class="op">=</span><span class="nam">timezone</span><span class="op">.</span><span class="nam">utc</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t230" href="#t230">230</a></span><span class="t">                <span class="op">)</span><span class="op">.</span><span class="nam">replace</span><span class="op">(</span><span class="nam">tzinfo</span><span class="op">=</span><span class="key">None</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t231" href="#t231">231</a></span><span class="t">            <span class="key">elif</span> <span class="nam">feature_type</span> <span class="op">==</span> <span class="str">"binary"</span> <span class="key">or</span> <span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t232" href="#t232">232</a></span><span class="t">                <span class="nam">feature</span><span class="op">.</span><span class="nam">is_complex</span><span class="op">(</span><span class="op">)</span> <span class="key">and</span> <span class="nam">feature</span> <span class="key">not</span> <span class="key">in</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_embedding_features</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t233" href="#t233">233</a></span><span class="t">            <span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
@@ -637,7 +637,7 @@
             <a class="nav" href="z_8e412babf0efab20_vector_server_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.14.3">coverage.py v7.14.3</a>,
-            created at 2026-07-14 08:54 +0000
+            created at 2026-07-15 08:52 +0000
         </p>
     </div>
 </footer>
