@@ -29,9 +29,12 @@ jobs:
             ${{ runner.os }}-maven-
       - name: Test
         working-directory: ./java
-        # The spark-4.1 profile pins the Hops Spark fork (4.1.2.0), which CI
-        # runners cannot resolve from public repositories, so CI overrides it
-        # to build against upstream Apache Spark instead.
+        # The spark-4.1 profile pins the Hops Spark fork (4.1.2.0). Its
+        # artifacts are public (nexus.hops.works/repository/spark), but their
+        # poms depend on io.hops:hadoop-client-* and io.hops.hive:* hosted in
+        # the authenticated hops-artifacts repository, which CI (and fork PRs
+        # in particular) cannot access, so CI overrides spark.version to build
+        # against upstream Apache Spark instead.
         run: mvn clean test -Pspark-4.1 -Dspark.version=4.1.2
 
   unit_tests_local_tz:
@@ -61,9 +64,12 @@ jobs:
 
       - name: Test
         working-directory: ./java
-        # The spark-4.1 profile pins the Hops Spark fork (4.1.2.0), which CI
-        # runners cannot resolve from public repositories, so CI overrides it
-        # to build against upstream Apache Spark instead.
+        # The spark-4.1 profile pins the Hops Spark fork (4.1.2.0). Its
+        # artifacts are public (nexus.hops.works/repository/spark), but their
+        # poms depend on io.hops:hadoop-client-* and io.hops.hive:* hosted in
+        # the authenticated hops-artifacts repository, which CI (and fork PRs
+        # in particular) cannot access, so CI overrides spark.version to build
+        # against upstream Apache Spark instead.
         run: mvn clean test -Pspark-4.1 -Dspark.version=4.1.2
 
   unit_tests_spark41:
@@ -94,7 +100,10 @@ jobs:
 
       - name: Test
         working-directory: ./java
-        # The spark-4.1 profile pins the Hops Spark fork (4.1.2.0), which CI
-        # runners cannot resolve from public repositories, so CI overrides it
-        # to build against upstream Apache Spark instead.
+        # The spark-4.1 profile pins the Hops Spark fork (4.1.2.0). Its
+        # artifacts are public (nexus.hops.works/repository/spark), but their
+        # poms depend on io.hops:hadoop-client-* and io.hops.hive:* hosted in
+        # the authenticated hops-artifacts repository, which CI (and fork PRs
+        # in particular) cannot access, so CI overrides spark.version to build
+        # against upstream Apache Spark instead.
         run: mvn clean test -Pspark-4.1 -Dspark.version=4.1.2
