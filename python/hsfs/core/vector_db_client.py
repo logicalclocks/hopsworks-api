@@ -213,15 +213,15 @@ class VectorDbClient:
             feature_name = feature.name
             feature_type = feature.type.lower()
             feature_value = result.get(feature_name)
-            if not feature_value:  # Feature value can be null
+            if feature_value is None:
                 continue
             if feature_type == "date":
                 result[feature_name] = datetime.utcfromtimestamp(
                     feature_value // 10**3
                 ).date()
             elif feature_type == "timestamp":
-                # convert timestamp in ms to datetime in s
-                result[feature_name] = datetime.utcfromtimestamp(feature_value // 10**3)
+                # true division so sub-second precision survives, e.g. timestamp(3)
+                result[feature_name] = datetime.utcfromtimestamp(feature_value / 10**3)
             elif feature_type == "binary" or (
                 feature.is_complex() and feature not in self._embedding_features
             ):
