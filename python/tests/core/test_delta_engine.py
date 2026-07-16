@@ -1035,7 +1035,7 @@ class TestDeltaEngine:
         engine = DeltaEngine(
             1, "fs", _make_fg("hopsfs://nn:8020/p"), mocker.Mock(), None
         )
-        flat = _fake_schema([("c%d" % i, None) for i in range(40)])  # c0..c39
+        flat = _fake_schema([(f"c{i}", None) for i in range(40)])  # c0..c39
         assert engine._required_indexed_cols(flat, ["c0", "c5"]) == 6
         assert engine._required_indexed_cols(flat, ["c31"]) == 32  # 32nd
         assert engine._required_indexed_cols(flat, ["c32"]) == 33  # 33rd
@@ -1046,7 +1046,7 @@ class TestDeltaEngine:
 
         # A scalar column after a 32-leaf struct sits at flattened ordinal 33,
         # even though it is only the 2nd top-level column.
-        nested = _fake_schema([("s", ["f%d" % i for i in range(32)]), ("scalar", None)])
+        nested = _fake_schema([("s", [f"f{i}" for i in range(32)]), ("scalar", None)])
         assert engine._required_indexed_cols(nested, ["scalar"]) == 33
 
     def test_reconcile_indexed_cols_only_widens(self, mocker):
@@ -1084,7 +1084,7 @@ class TestDeltaEngine:
         monkeypatch.setitem(sys.modules, "delta.tables", fake_delta_tables)
 
         dataset = mocker.MagicMock()
-        dataset.schema = _fake_schema([("c%d" % i, None) for i in range(40)])
+        dataset.schema = _fake_schema([(f"c{i}", None) for i in range(40)])
         spark.sql.return_value.select.return_value.collect.return_value = [(["c32"],)]
 
         # Act
@@ -1113,7 +1113,7 @@ class TestDeltaEngine:
         monkeypatch.setitem(sys.modules, "delta.tables", fake_delta_tables)
 
         dataset = mocker.MagicMock()
-        dataset.schema = _fake_schema([("c%d" % i, None) for i in range(40)])
+        dataset.schema = _fake_schema([(f"c{i}", None) for i in range(40)])
         spark.sql.return_value.select.return_value.collect.return_value = [(["c32"],)]
 
         # Act: user sets 50, which already covers ordinal 33
