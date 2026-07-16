@@ -929,9 +929,7 @@ class TestQuery:
         mocker.patch("hsfs.engine._get_type", return_value="python")
 
         with pytest.raises(ValueError, match="group_by"):
-            TestQuery.fg1.select_all().aggregate(
-                {"label": ["count"]}, group_by=["id"]
-            )
+            TestQuery.fg1.select_all().aggregate({"label": ["count"]}, group_by=["id"])
 
     def test_aggregate_collect_mutually_exclusive(self, mocker):
         mocker.patch("hsfs.engine._get_type", return_value="python")
@@ -1176,3 +1174,111 @@ class TestQueryRead:
         feat, prefix, fg = q._get_feature_by_name("tf3_name")
         assert feat.name == "tf3_name"
         assert fg == TestQuery.fg3
+
+
+class TestQueryOnlineReadPushdownGate:
+    """`read(online=True)` must refuse collect/aggregate queries.
+
+    The backend's online SQL string is the flat join over raw event rows (the fold and
+    aggregation are served by the feature-view serving statements, not by that string),
+    so executing it would silently return a different shape than offline reads.
+    """
+
+    @staticmethod
+    def _online_fg(fg_id, name, with_event_time=True):
+        return feature_group.FeatureGroup(
+            name=name,
+            version=1,
+            featurestore_id=99,
+            primary_key=["id"],
+            partition_key=[],
+            features=[
+                feature.Feature("id", feature_group_id=fg_id),
+                feature.Feature("ts", feature_group_id=fg_id),
+                feature.Feature("amount", feature_group_id=fg_id),
+            ],
+            id=fg_id,
+            stream=False,
+            online_enabled=True,
+            event_time="ts" if with_event_time else None,
+        )
+
+    def test_online_read_collect_query_raises(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        q = self._online_fg(21, "events").select_all().collect(10)
+
+        with pytest.raises(FeatureStoreException, match="collect or aggregate"):
+            q._check_read_supported(online=True)
+
+    def test_online_read_aggregate_query_raises(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        q = self._online_fg(22, "events").select_all().aggregate({"amount": ["sum"]})
+
+        with pytest.raises(FeatureStoreException, match="collect or aggregate"):
+            q._check_read_supported(online=True)
+
+    def test_online_read_joined_collect_query_raises(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        labels = self._online_fg(23, "labels")
+        events = self._online_fg(24, "events")
+        q = labels.select_all().join(events.select_all().collect(5), on=["id"])
+
+        with pytest.raises(FeatureStoreException, match="events"):
+            q._check_read_supported(online=True)
+
+    def test_online_read_plain_query_passes_gate(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        q = self._online_fg(25, "events").select_all()
+
+        q._check_read_supported(online=True)
+
+    def test_offline_read_collect_query_passes_gate(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        q = self._online_fg(26, "events").select_all().collect(10)
+
+        q._check_read_supported(online=False)
+
+
+class TestQueryPushdownNameNormalization:
+    """Feature names are lower-cased in the feature store.
+
+    collect(order_by=...) and aggregate() keys must normalize like Feature does,
+    or the backend lookup misses and the round trip mangles mixed-case keys.
+    """
+
+    def test_collect_order_by_string_is_normalized(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        with pytest.warns(UserWarning, match="upper case"):
+            q = TestQuery.fg1.select_all().collect(5, order_by="TS")
+
+        assert q._collect_order_by == "ts"
+
+    def test_aggregate_keys_are_normalized(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        with pytest.warns(UserWarning, match="upper case"):
+            q = TestQuery.fg1.select_all().aggregate(
+                {
+                    "Amount": ["sum"],
+                    "Amount_In, Amount_Out": ["greatest"],
+                    "*": ["count"],
+                }
+            )
+
+        assert q._aggregate == {
+            "amount": ["sum"],
+            "amount_in,amount_out": ["greatest"],
+            "*": ["count"],
+        }
+
+    def test_collect_ascending_null_on_wire_deserializes_false(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        original = TestQuery.fg1.select_all().collect(5)
+        payload = json.loads(original.json())
+        payload["collectAscending"] = None
+        restored = query.Query.from_response_json(payload)
+
+        assert restored._collect == 5
+        assert restored._collect_ascending is False

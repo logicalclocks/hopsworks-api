@@ -759,9 +759,10 @@ class Query:
         `collect` is the user-facing name for the "limit with order by"
         transformation: it returns up to `n` rows per entity, ordered by the
         feature group's event-time column.
-        When the query is used to define a feature view, each collected feature
-        becomes a list-typed feature, served identically offline (training data)
-        and online (`get_feature_vector(s)`).
+        When the query is used to define a feature view, the selected features of
+        this feature group fold into a single feature named `<feature_group>_collect`
+        of type `array<struct<order_column, value_columns...>>`, served identically
+        offline (training data) and online (`get_feature_vector(s)`).
 
         `collect` is not terminal: it returns the query so you can keep building,
         for example joining in features from other feature groups.
@@ -789,6 +790,10 @@ class Query:
             raise ValueError(
                 "collect() and aggregate() are mutually exclusive on the same query"
             )
+        if isinstance(order_by, str):
+            # feature names are lower-cased in the feature store; normalize like
+            # Feature does so the backend lookup matches
+            order_by = util._autofix_feature_name(order_by, warn=True)
         self._collect = n
         self._collect_order_by = order_by
         self._collect_ascending = ascending
@@ -911,8 +916,18 @@ class Query:
                     f"got {window}"
                 )
             window = int(window)
+        def normalize_key(name: str) -> str:
+            # feature names are lower-cased in the feature store; normalize each
+            # (comma-separated) part like Feature does so the backend lookup matches
+            if name == "*":
+                return name
+            return ",".join(
+                util._autofix_feature_name(part.strip(), warn=True)
+                for part in name.split(",")
+            )
+
         self._aggregate = {
-            name.replace(" ", ""): [fn.lower() for fn in fns]
+            normalize_key(name): [fn.lower() for fn in fns]
             for name, fns in aggregations.items()
         }
         self._aggregate_window = window
@@ -989,7 +1004,8 @@ class Query:
             limit=json_decamelized.get("limit", None),
             collect=json_decamelized.get("collect", None),
             collect_order_by=json_decamelized.get("collect_order_by", None),
-            collect_ascending=json_decamelized.get("collect_ascending", False),
+            # `or False` also absorbs an explicit "collectAscending": null on the wire
+            collect_ascending=json_decamelized.get("collect_ascending", False) or False,
             aggregate=json_decamelized.get("aggregate", None),
             aggregate_window=json_decamelized.get("aggregate_window", None),
         )
@@ -1024,6 +1040,24 @@ class Query:
                 "Reading from query containing join of feature group with embedding index from online storage is not supported. "
                 "Use `feature_view.get_feature_vector(s)` instead."
             )
+        pushdown = self._pushdown_feature_group_names()
+        if pushdown:
+            raise FeatureStoreException(
+                "Reading a query with collect or aggregate features from online storage via "
+                f"`read(online=True)` is not supported (feature groups: {', '.join(pushdown)}): "
+                "the online SQL returns the raw event rows instead of the folded or aggregated features. "
+                "Create a feature view and use `get_feature_vector(s)` or `scan_vectors` for online reads, "
+                "or use `read()` for offline data."
+            )
+
+    def _pushdown_feature_group_names(self) -> list[str]:
+        """Names of the feature groups in this query that carry a collect or aggregate pushdown."""
+        names = []
+        if self._collect is not None or self._aggregate:
+            names.append(self._left_feature_group.name)
+        for join_obj in self._joins:
+            names.extend(join_obj.query._pushdown_feature_group_names())
+        return names
 
     @classmethod
     def _hopsworks_json(cls, json_dict: dict[str, Any]) -> Query:
