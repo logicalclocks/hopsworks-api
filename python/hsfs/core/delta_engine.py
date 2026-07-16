@@ -1139,7 +1139,10 @@ class DeltaEngine:
                         "optimize(strategy='zorder') on DELTA needs "
                         "columns=[...] (legacy OPTIMIZE ZORDER BY)."
                     )
-                statement += f" ZORDER BY ({', '.join(columns)})"
+                # Canonicalize to the sanitized feature names so the
+                # interpolated column identifiers match the stored columns.
+                zorder_columns = [util._autofix_feature_name(c) for c in columns]
+                statement += f" ZORDER BY ({', '.join(zorder_columns)})"
             if full:
                 statement += " FULL"
             _logger.debug(f"Running {statement}")

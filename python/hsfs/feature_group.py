@@ -4782,33 +4782,14 @@ class FeatureGroup(FeatureGroupBase):
     ) -> dict[str, Any] | None:
         """Rewrite the offline data files to apply or maintain the layout.
 
-        On ICEBERG feature groups this runs an Iceberg `rewriteDataFiles`
-        action and requires the Spark engine. `strategy` picks the rewrite:
-        `"zorder"` (over `columns`, defaulting to
-        [`zorder_by`][hsfs.feature_group.FeatureGroup.zorder_by]), `"sort"`
-        (the table's persistent
-        [`sort_order`][hsfs.feature_group.FeatureGroup.sort_order]), or
-        `"binpack"`; unset, it follows the feature group's stored layout in
-        that order. `rewrite_all` forces rewriting every file and defaults to
-        False for every strategy, so a routine maintenance call never rewrites
-        the whole table by accident; pass `rewrite_all=True` for the initial
-        full z-order (the planner otherwise skips file groups below its
-        thresholds). `target_file_size_mb` overrides the target file size, and
-        `where` restricts the rewrite to the matching files through an Iceberg
-        filter expression over the feature group's columns.
-        On DELTA feature groups this runs `OPTIMIZE`, which incrementally
-        clusters the data when the feature group has
-        [`clustered_by`][hsfs.feature_group.FeatureGroup.clustered_by];
-        `full=True` runs `OPTIMIZE FULL` to recluster all existing data
-        after the clustering columns changed (clustered feature groups
-        only), `where` restricts the rewrite with a predicate, and
-        `strategy="zorder"` with `columns` runs the legacy
-        `OPTIMIZE ... ZORDER BY`, which Delta only supports on unclustered
-        tables (z-order and liquid clustering are incompatible). Clustered
-        feature groups require Spark; without Spark only unclustered
-        compaction is available.
-        HUDI feature groups are rejected: layout maintenance runs through
-        Hudi inline clustering on writes.
+        On ICEBERG feature groups this runs an Iceberg `rewriteDataFiles` action and requires the Spark engine.
+        `strategy` picks the rewrite: `"zorder"` (over `columns`, defaulting to [`zorder_by`][hsfs.feature_group.FeatureGroup.zorder_by]), `"sort"` (the table's persistent [`sort_order`][hsfs.feature_group.FeatureGroup.sort_order]), or `"binpack"`; unset, it follows the feature group's stored layout in that order.
+        `rewrite_all` forces rewriting every file and defaults to False for every strategy, so a routine maintenance call never rewrites the whole table by accident; pass `rewrite_all=True` for the initial full z-order (the planner otherwise skips file groups below its thresholds).
+        `target_file_size_mb` overrides the target file size, and `where` restricts the rewrite to the matching files through an Iceberg filter expression over the feature group's columns.
+        On DELTA feature groups this runs `OPTIMIZE`, which incrementally clusters the data when the feature group has [`clustered_by`][hsfs.feature_group.FeatureGroup.clustered_by].
+        `full=True` runs `OPTIMIZE FULL` to recluster all existing data after the clustering columns changed (clustered feature groups only), `where` restricts the rewrite with a predicate, and `strategy="zorder"` with `columns` runs the legacy `OPTIMIZE ... ZORDER BY`, which Delta only supports on unclustered tables (z-order and liquid clustering are incompatible).
+        Clustered feature groups require Spark; without Spark only unclustered compaction is available.
+        HUDI feature groups are rejected: layout maintenance runs through Hudi inline clustering on writes.
 
         Example:
             ```python

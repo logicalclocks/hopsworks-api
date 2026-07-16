@@ -593,23 +593,28 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                     "column names; use disable_clustering() to turn "
                     "clustering off."
                 )
-            # Feature names are sanitized to lower case, so the clustering
-            # columns are canonicalized and deduplicated case-insensitively
-            # to match the stored names and the actual Delta columns.
-            lowered = [c.lower() for c in columns if isinstance(c, str) and c]
-            if len(lowered) != len(columns) or len(set(lowered)) != len(lowered):
+            # Feature names are sanitized (lower case, spaces to
+            # underscores), so the clustering columns are canonicalized with
+            # the same rule and deduplicated case-insensitively to match the
+            # stored names and the actual Delta columns.
+            canonical = [
+                util._autofix_feature_name(c)
+                for c in columns
+                if isinstance(c, str) and c
+            ]
+            if len(canonical) != len(columns) or len(set(canonical)) != len(canonical):
                 raise exceptions.FeatureStoreException(
                     "update_clustering() needs a non-empty list of distinct "
                     "column names; use disable_clustering() to turn "
                     "clustering off."
                 )
-            if len(lowered) > partition_transforms.MAX_CLUSTER_COLUMNS:
+            if len(canonical) > partition_transforms.MAX_CLUSTER_COLUMNS:
                 raise exceptions.FeatureStoreException(
                     "update_clustering() supports at most "
                     f"{partition_transforms.MAX_CLUSTER_COLUMNS} columns "
                     "(the Delta liquid clustering limit)."
                 )
-            columns = lowered
+            columns = canonical
         spark_session, spark_context = (
             FeatureGroupEngine._get_spark_session_and_context()
         )
