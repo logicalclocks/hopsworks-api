@@ -272,13 +272,14 @@ class DeltaEngine:
             and delta_fg_alias.left_feature_group_start_timestamp is None
         ):
             # snapshot query with end time; resolve the version against the Delta
-            # history instead of passing timestampAsOf. Delta resolves timestamp
-            # bounds against commit-file modification times, while the
-            # backend-recorded commit_time comes from history()'s in-commit
-            # timestamp, which can be tens of milliseconds earlier — enough for
-            # timestampAsOf to silently resolve to the previous version (or to be
-            # rejected outright when it predates the first commit, which happens
-            # when compute_statistics runs right after a fresh insert).
+            # log's in-commit timestamps instead of passing timestampAsOf. Delta
+            # resolves timestamp bounds against commit-file modification times,
+            # while the backend-recorded commit_time carries the log's in-commit
+            # commitInfo timestamp, which is tens to hundreds of milliseconds
+            # earlier — enough for timestampAsOf to silently resolve to the
+            # previous version (or to be rejected outright when it predates the
+            # first commit, which happens when compute_statistics runs right
+            # after a fresh insert).
             end_ts = delta_fg_alias.left_feature_group_end_timestamp
             commits = self._get_delta_commits(location) if location else None
             if commits:
@@ -329,25 +330,41 @@ class DeltaEngine:
         """Get all commits from the Delta log.
 
         Return a list of (version, timestamp_ms) tuples sorted by version
-        ascending, or None if the history cannot be read or is empty.
-        The timestamps come from the history's in-commit timestamps, the same
-        source the backend-recorded commit times are derived from.
+        ascending, or None if the log cannot be read or is empty.
+
+        The timestamps are the log's in-commit ``commitInfo.timestamp`` values,
+        the same clock the backend-recorded commit times are derived from.
+        ``DeltaTable.history()`` is deliberately NOT used here: its timestamp
+        column carries the commit-file modification time, which lags the
+        in-commit timestamp (tens to hundreds of milliseconds on HopsFS), so
+        resolving a recorded commit time against it can silently land on the
+        previous version.
         """
         try:
             if self._spark_session is not None:
-                from delta.tables import DeltaTable
+                from pyspark.sql import functions as F  # noqa: PLC0415
 
+                log_df = self._spark_session.read.json(
+                    location.rstrip("/") + "/_delta_log/*.json"
+                )
+                if "commitInfo" not in log_df.columns:
+                    return None
                 rows = (
-                    DeltaTable.forPath(self._spark_session, location)
-                    .history()
-                    .select("version", "timestamp")
+                    log_df.withColumn("_file", F.input_file_name())
+                    .filter(F.col("commitInfo").isNotNull())
+                    .withColumn(
+                        "version",
+                        F.regexp_extract(F.col("_file"), r"(\d+)\.json", 1).cast(
+                            "long"
+                        ),
+                    )
+                    .select("version", F.col("commitInfo.timestamp").alias("timestamp"))
                     .collect()
                 )
-                commits = [
-                    (int(row["version"]), int(row["timestamp"].timestamp() * 1000))
-                    for row in rows
-                ]
+                commits = [(int(row["version"]), int(row["timestamp"])) for row in rows]
             else:
+                # delta-rs reads the commit timestamps from the log itself, so
+                # its history() is already on the in-commit clock
                 from deltalake import DeltaTable as DeltaRsTable
 
                 history = DeltaRsTable(location, storage_options={}).history()
@@ -363,7 +380,7 @@ class DeltaEngine:
             commits.sort(key=lambda commit: commit[0])
             return commits
         except Exception as e:
-            _logger.debug(f"Could not read Delta history at {location}: {e}")
+            _logger.debug(f"Could not read Delta log at {location}: {e}")
             return None
 
     def _get_delta_earliest_commit(self, location: str):
