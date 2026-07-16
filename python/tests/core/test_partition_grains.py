@@ -137,7 +137,12 @@ def test_spark_date_event_time_with_hour_grain(spark_session):
     # A date event_time has no sub-day resolution; the hour grain must come
     # out as 0 rather than failing.
     fg = _fg(
-        ["year(event_date)", "month(event_date)", "day(event_date)", "hour(event_date)"],
+        [
+            "year(event_date)",
+            "month(event_date)",
+            "day(event_date)",
+            "hour(event_date)",
+        ],
         event_time="event_date",
     )
     df = spark_session.createDataFrame([(date(2026, 4, 15),)], ["event_date"])

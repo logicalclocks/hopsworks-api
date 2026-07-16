@@ -330,9 +330,7 @@ class TestHudiEngine:
 
         # Assert: bucket_index is not a partition; it maps to the Hudi
         # bucket index options, leaving the partition path untouched
-        assert (
-            result["hoodie.datasource.write.partitionpath.field"] == "year:SIMPLE"
-        )
+        assert result["hoodie.datasource.write.partitionpath.field"] == "year:SIMPLE"
         assert result["hoodie.datasource.hive_sync.partition_fields"] == "year"
         assert result["hoodie.index.type"] == "BUCKET"
         assert result["hoodie.bucket.index.num.buckets"] == "8"
@@ -377,9 +375,7 @@ class TestHudiEngine:
 
         # Assert: zorder_by maps to inline clustering with a z-order layout
         assert result["hoodie.clustering.inline"] == "true"
-        assert (
-            result["hoodie.clustering.plan.strategy.sort.columns"] == "key1,amount"
-        )
+        assert result["hoodie.clustering.plan.strategy.sort.columns"] == "key1,amount"
         assert result["hoodie.layout.optimize.strategy"] == "z-order"
 
     def test__setup_hudi_write_opts_no_zorder_without_zorder_by(self, mocker):
