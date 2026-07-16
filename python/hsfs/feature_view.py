@@ -1707,6 +1707,7 @@ class FeatureView:
         data_source: ds.DataSource | dict[str, Any] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
+        partition_precision: str = "day",
         **kwargs,
     ) -> tuple[int, job.Job]:
         """Create the metadata for a training dataset and save the corresponding training data into `location`.
@@ -1879,6 +1880,9 @@ class FeatureView:
                 For one window across every feature group, pass a `FeatureGroupLookback` — e.g. `FeatureGroupLookback(key="PARTITION_KEY", start=date(2026, 5, 5), end=date(2026, 5, 17))` or its dict form `{"key": "PARTITION_KEY", "start": date(2026, 5, 5), "end": date(2026, 5, 17)}`.
                 For different windows per feature group, pass a `Lookback` — e.g. `Lookback(default=FeatureGroupLookback(...), feature_group_lookbacks={"dim_a": FeatureGroupLookback(...)})` or its dict form `{"default": {...}, "feature_group_lookbacks": {"dim_a": {...}}}`.
                 See [`FeatureGroupLookback`][hsfs.constructor.lookback.FeatureGroupLookback] and [`Lookback`][hsfs.constructor.lookback.Lookback] for accepted key values, validation rules, and per-FG key matching semantics.
+            partition_precision: Truncation of the event date keying the materialized partitions: `day` (the default), `month` or `year`.
+                Fixed at creation for the lifetime of the training dataset version: every increment appended with [`insert_training_data`][hsfs.feature_view.FeatureView.insert_training_data] is partitioned at the same precision.
+                Coarser precisions produce fewer partitions for long histories, at the cost of coarser time-range reads.
 
         Returns:
             td_version: training dataset version
@@ -1908,6 +1912,7 @@ class FeatureView:
             coalesce=coalesce,
             extra_filter=extra_filter,
             tags=normalized_tags,
+            partition_precision=partition_precision,
         )
         # td_job is used only if the python engine is used
         td, td_job = self._feature_view_engine._create_training_dataset(
@@ -1950,6 +1955,7 @@ class FeatureView:
         data_source: ds.DataSource | dict[str, Any] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
+        partition_precision: str = "day",
         **kwargs,
     ) -> tuple[int, job.Job]:
         # TODO: Convert the docstrings from this point on:
@@ -2173,6 +2179,9 @@ class FeatureView:
                 For one window across every feature group, pass a `FeatureGroupLookback` — e.g. `FeatureGroupLookback(key="PARTITION_KEY", start=date(2026, 5, 5), end=date(2026, 5, 17))` or its dict form `{"key": "PARTITION_KEY", "start": date(2026, 5, 5), "end": date(2026, 5, 17)}`.
                 For different windows per feature group, pass a `Lookback` — e.g. `Lookback(default=FeatureGroupLookback(...), feature_group_lookbacks={"dim_a": FeatureGroupLookback(...)})` or its dict form `{"default": {...}, "feature_group_lookbacks": {"dim_a": {...}}}`.
                 See [`FeatureGroupLookback`][hsfs.constructor.lookback.FeatureGroupLookback] and [`Lookback`][hsfs.constructor.lookback.Lookback] for accepted key values, validation rules, and per-FG key matching semantics.
+            partition_precision: Truncation of the event date keying the materialized partitions: `day` (the default), `month` or `year`.
+                Fixed at creation for the lifetime of the training dataset version: every increment appended with [`insert_training_data`][hsfs.feature_view.FeatureView.insert_training_data] is partitioned at the same precision.
+                Coarser precisions produce fewer partitions for long histories, at the cost of coarser time-range reads.
 
         Returns:
             td_version: The version of the created training dataset.
@@ -2209,6 +2218,7 @@ class FeatureView:
             coalesce=coalesce,
             extra_filter=extra_filter,
             tags=normalized_tags,
+            partition_precision=partition_precision,
         )
         # td_job is used only if the python engine is used
         td, td_job = self._feature_view_engine._create_training_dataset(
@@ -2253,6 +2263,7 @@ class FeatureView:
         data_source: ds.DataSource | dict[str, Any] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
+        partition_precision: str = "day",
         **kwargs,
     ) -> tuple[int, job.Job]:
         """Create the metadata for a training dataset and save the corresponding training data into `location`.
@@ -2461,6 +2472,9 @@ class FeatureView:
                 For one window across every feature group, pass a `FeatureGroupLookback` — e.g. `FeatureGroupLookback(key="PARTITION_KEY", start=date(2026, 5, 5), end=date(2026, 5, 17))` or its dict form `{"key": "PARTITION_KEY", "start": date(2026, 5, 5), "end": date(2026, 5, 17)}`.
                 For different windows per feature group, pass a `Lookback` — e.g. `Lookback(default=FeatureGroupLookback(...), feature_group_lookbacks={"dim_a": FeatureGroupLookback(...)})` or its dict form `{"default": {...}, "feature_group_lookbacks": {"dim_a": {...}}}`.
                 See [`FeatureGroupLookback`][hsfs.constructor.lookback.FeatureGroupLookback] and [`Lookback`][hsfs.constructor.lookback.Lookback] for accepted key values, validation rules, and per-FG key matching semantics.
+            partition_precision: Truncation of the event date keying the materialized partitions: `day` (the default), `month` or `year`.
+                Fixed at creation for the lifetime of the training dataset version: every increment appended with [`insert_training_data`][hsfs.feature_view.FeatureView.insert_training_data] is partitioned at the same precision.
+                Coarser precisions produce fewer partitions for long histories, at the cost of coarser time-range reads.
 
         Returns:
             td_version: The training dataset version.
@@ -2505,6 +2519,7 @@ class FeatureView:
             coalesce=coalesce,
             extra_filter=extra_filter,
             tags=normalized_tags,
+            partition_precision=partition_precision,
         )
         # td_job is used only if the python engine is used
         td, td_job = self._feature_view_engine._create_training_dataset(
@@ -2605,6 +2620,158 @@ class FeatureView:
         self.update_last_accessed_training_dataset(td.version)
 
         return td_job
+
+    @public
+    @usage._method_logger
+    def insert_training_data(
+        self,
+        training_dataset_version: int,
+        start_time: str | int | datetime | date | None = "",
+        end_time: str | int | datetime | date | None = "",
+        overwrite: bool = False,
+        write_options: dict[Any, Any] | None = None,
+        spine: SplineDataFrameTypes | None = None,
+        transformation_context: dict[str, Any] | None = None,
+        compute_statistics: bool = False,
+    ) -> job.Job:
+        """Append a new batch of data to an existing training dataset version.
+
+        Materializes the feature view query over the `start_time`/`end_time` window and, with `overwrite=False` (the default), writes the result as a new increment of the training dataset: the batch is stored in its own Hive partition under the existing location, leaving data already materialized untouched.
+        This lets a large (multi-terabyte) training dataset grow — for example with a new daily batch — without rewriting it, while keeping the same training dataset version.
+
+        The materialized data is stored in Hive partitions keyed by each row's UTC event date (a human-readable `YYYYMMDD` value), truncated to the training dataset's partition precision — `day` by default, or `month`/`year` for coarser layouts with fewer partitions, fixed when the version was created (see the `partition_precision` parameter of [`create_training_data`][hsfs.feature_view.FeatureView.create_training_data]).
+        This makes the dataset time-addressable: [`get_training_data`][hsfs.feature_view.FeatureView.get_training_data] returns everything by default, or only a time range via its `start_time`/`end_time` parameters (e.g. a sliding training window over a growing time-series dataset).
+        Because rows land in the day partitions they belong to, batches may arrive in any order: backfills and late-arriving events are supported.
+        Re-appending a batch that was already materialized adds its rows again — appends are not deduplicated, as with feature group inserts.
+        The partition column itself is an internal storage detail and never surfaces as a feature.
+        If the feature view's query has no event-time column to derive the partitions from (the left feature group defines none), each increment is keyed by a counter instead — the dataset stays appendable but cannot be read by time range.
+
+        With `overwrite=True` the entire training dataset version is rewritten instead, equivalent to [`recreate_training_dataset`][hsfs.feature_view.FeatureView.recreate_training_dataset] for the given window.
+
+        Statistics are not recomputed on append by default, since that reads the whole (potentially multi-terabyte) dataset back on every append.
+        Pass `compute_statistics=True` to refresh the descriptive statistics over all increments after the batch is written, or call [`compute_training_dataset_statistics`][hsfs.feature_view.FeatureView.compute_training_dataset_statistics] explicitly when needed, e.g. periodically or right before retraining.
+        Model-dependent transformation functions transform each appended batch with the statistics fit when the version was created, so all increments and serving stay consistent with each other; `compute_statistics=True` refreshes only the descriptive statistics and does not refit them — to refit those statistics, rebuild the version with `overwrite=True` or create a new version.
+
+        Randomly split training datasets are appended per split: each split receives a share of the batch (e.g. 80/10/10), which is sound over many appends.
+        Appending to a time-series-split training dataset is not supported and raises an error.
+        For time-series data, grow an unsplit training dataset instead and derive the train and test sets at read time, as shown below.
+
+        Example:
+            ```python
+            # get feature view instance
+            feature_view = fs.get_feature_view(...)
+
+            # create an unsplit training dataset once, then grow it with a
+            # daily batch (rows are partitioned by their event-time day)
+            job = feature_view.insert_training_data(
+                training_dataset_version=1,
+                start_time="2026-07-01 00:00:00",
+                end_time="2026-07-01 23:59:59",
+            )
+
+            # at (re)training time, derive sliding train and test sets by
+            # time range instead of materialized splits: train on everything
+            # up to 30 days ago, test on the most recent 30 days
+            X_train, y_train = feature_view.get_training_data(
+                training_dataset_version=1,
+                end_time="2026-06-01",
+            )
+            X_test, y_test = feature_view.get_training_data(
+                training_dataset_version=1,
+                start_time="2026-06-02",
+            )
+            ```
+
+        Warning: Engine Support
+            Appending (`overwrite=False`) is only supported for the `parquet` data format.
+            On the `python` engine the append is offloaded to the Hopsworks Feature Query Service (FlyingDuck) or a backend Spark job; appending requires Hopsworks 5.1 or later, as older versions overwrite instead of appending.
+
+        Parameters:
+            training_dataset_version: Version of the training dataset to append to.
+            start_time: Start event time for the batch query, inclusive.
+                Strings should be formatted in one of the following ways `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
+            end_time: End event time for the batch query, inclusive.
+                Strings should be formatted in one of the following ways `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
+            overwrite: Whether to overwrite the entire training dataset version instead of appending a new increment.
+            write_options: Additional options as key/value pairs to pass to the execution engine.
+                Defaults to `{}`.
+                For spark engine: Dictionary of read options for Spark.
+            spine: Spine dataframe with primary key, event time and label column to use for point in time join when fetching features.
+                Defaults to `None` and is only required when the feature view was created with a spine group in the feature query.
+            transformation_context:
+                A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
+                The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
+            compute_statistics: Whether to recompute the descriptive statistics over all increments after the batch is written, at the cost of reading the whole dataset back.
+                Only applies when appending; an overwrite recomputes statistics as part of the materialization itself.
+                When appending through a materialization job, only use it together with the default `wait_for_job=True`, so the statistics include the new batch.
+
+        Returns:
+            The Hopsworks Job that was launched to materialize the batch.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+            hopsworks.client.exceptions.FeatureStoreException: If the training dataset has a non-`parquet` data format, or if appending to a time-series-split training dataset.
+        """
+        td, td_job = self._feature_view_engine._insert_training_data(
+            self,
+            training_dataset_version=training_dataset_version,
+            start_time=start_time,
+            end_time=end_time,
+            user_write_options=write_options or {},
+            overwrite=overwrite,
+            spine=spine,
+            transformation_context=transformation_context,
+            compute_statistics=compute_statistics,
+        )
+        self.update_last_accessed_training_dataset(td.version)
+
+        return td_job
+
+    @public
+    @usage._method_logger
+    def compute_training_dataset_statistics(
+        self, training_dataset_version: int
+    ) -> Statistics:
+        """Recompute the descriptive statistics of a materialized training dataset version.
+
+        Reads the materialized data back — all increments of a training dataset grown with [`insert_training_data`][hsfs.feature_view.FeatureView.insert_training_data] — computes the descriptive statistics on it, and saves them as the statistics of this version.
+        Appends do not recompute statistics automatically (that would read the whole, potentially multi-terabyte, dataset back on every append), so call this after growing a training dataset when fresh statistics are needed, e.g. for data exploration or as a drift baseline.
+
+        The statistics used by model-dependent transformation functions are not refit by this method.
+        They are deliberately pinned to the ones computed when the version was created: the materialized data (including every appended increment) was transformed with them, so refitting them would make serving and future appends inconsistent with the data already written.
+        To refit the transformation statistics, rebuild the version with `insert_training_data(..., overwrite=True)` or create a new training dataset version.
+
+        Example:
+            ```python
+            # get feature view instance
+            feature_view = fs.get_feature_view(...)
+
+            # grow the training dataset with a new batch
+            feature_view.insert_training_data(
+                training_dataset_version=1,
+                start_time="2026-07-01 00:00:00",
+                end_time="2026-07-01 23:59:59",
+            )
+
+            # refresh the descriptive statistics over all increments
+            statistics = feature_view.compute_training_dataset_statistics(
+                training_dataset_version=1
+            )
+            ```
+
+        Parameters:
+            training_dataset_version: Version of the training dataset to recompute the statistics for.
+
+        Returns:
+            The recomputed statistics.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+            hopsworks.client.exceptions.FeatureStoreException: If the training dataset is in-memory, or if statistics are disabled for it.
+        """
+        return self._feature_view_engine._recompute_training_dataset_statistics(
+            self, training_dataset_version
+        )
 
     @public
     @usage._method_logger
@@ -3246,12 +3413,18 @@ class FeatureView:
         dataframe_type: str | None = "default",
         transformation_context: dict[str, Any] = None,
         n_processes: int | None = None,
+        start_time: str | int | datetime | date | None = None,
+        end_time: str | int | datetime | date | None = None,
         **kwargs,
     ) -> tuple[
         TrainingDatasetDataFrameTypes,
         TrainingDatasetDataFrameTypes | None,
     ]:
         """Get training data created by `feature_view.create_training_data` or `feature_view.training_data`.
+
+        For a training dataset grown incrementally with [`insert_training_data`][hsfs.feature_view.FeatureView.insert_training_data], `start_time`/`end_time` read only the rows whose event time falls inside the given range, instead of the whole dataset.
+        The materialized data is stored in Hive partitions keyed by each row's UTC event date, truncated to the dataset's partition precision (day by default, or month/year), so a time-range read prunes to the matching partitions and never scans the rest of the data — for example, one growing time-series training dataset can serve `[t0, t1]` as the training set and `(t1, t2]` as the test set with two calls.
+        The range selects whole partitions (both bounds inclusive, converted to UTC dates), so align the bounds with the dataset's partition precision; finer bounds do not filter rows within a partition.
 
         Example:
             ```python
@@ -3263,6 +3436,14 @@ class FeatureView:
 
             # get training data
             features_df, labels_df = feature_view.get_training_data(training_dataset_version=1)
+
+            # read only the increments of June 2026 from an incrementally
+            # grown time-series training dataset
+            features_df, labels_df = feature_view.get_training_data(
+                training_dataset_version=1,
+                start_time="2026-06-01",
+                end_time="2026-06-30 23:59:59",
+            )
             ```
 
         Warning: External Storage Support
@@ -3298,9 +3479,17 @@ class FeatureView:
                 Independent transformations run concurrently; a chained sequence runs in order.
                 Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
                 Ignored by the Spark engine, which pushes transformations down to Spark.
+            start_time: Read only the rows whose event date is at or after this event time, inclusive (converted to a UTC date).
+                Requires a materialized training dataset partitioned by event time; data materialized without an event-time column is never matched.
+                Strings should be formatted in one of the following ways `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
+            end_time: Read only the rows whose event date is at or before this event time, inclusive (converted to a UTC date).
+                Strings should be formatted in one of the following ways `%Y-%m-%d`, `%Y-%m-%d %H`, `%Y-%m-%d %H:%M`, `%Y-%m-%d %H:%M:%S`, or `%Y-%m-%d %H:%M:%S.%f`.
 
         Returns:
             (X, y): Tuple of dataframe of features and labels
+
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException: If `start_time`/`end_time` is used with an in-memory training dataset or one that is not partitioned by event time.
         """
         td, df = self._feature_view_engine._get_training_data(
             self,
@@ -3312,6 +3501,8 @@ class FeatureView:
             dataframe_type=dataframe_type,
             transformation_context=transformation_context,
             n_processes=n_processes,
+            event_start_time=start_time,
+            event_end_time=end_time,
         )
         self.update_last_accessed_training_dataset(td.version)
         util._check_missing_mandatory_tags(td.missing_mandatory_tags)
@@ -3482,6 +3673,43 @@ class FeatureView:
         )
         self.update_last_accessed_training_dataset(td.version)
         return df
+
+    @public
+    @usage._method_logger
+    def get_training_dataset(
+        self, training_dataset_version: int
+    ) -> training_dataset.TrainingDatasetBase:
+        """Returns the metadata of a single training dataset created with this feature view.
+
+        Example:
+            ```python
+            # get feature store instance
+            fs = ...
+
+            # get feature view instance
+            feature_view = fs.get_feature_view(...)
+
+            # get metadata of a specific training dataset version
+            td_meta = feature_view.get_training_dataset(training_dataset_version=1)
+            ```
+
+        Parameters:
+            training_dataset_version: Version of the training dataset to retrieve.
+
+        Returns:
+            Training dataset metadata.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+        """
+        td = self._feature_view_engine._get_training_dataset(
+            self, training_dataset_version
+        )
+        util._check_missing_mandatory_tags(
+            td.missing_mandatory_tags,
+            message=f"Training dataset '{td.name}' version {td.version} has missing mandatory tags",
+        )
+        return td
 
     @public
     @usage._method_logger
