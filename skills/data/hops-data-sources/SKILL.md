@@ -32,6 +32,27 @@ If platform intelligence is not configured on the cluster, the command exits wit
 
 Programmatic equivalent: `data_source.infer_metadata()` on a `DataSource` returned by `data_source.get_tables()`; it raises `hopsworks.client.exceptions.PlatformIntelligenceException` (with `.reason` of `NOT_CONFIGURED` or `INFERENCE_FAILED`) on the same failure modes.
 
+## Preview source schema and data (CRM / Google Sheets / REST)
+
+Non-SQL sources (CRM, Google Sheets, REST) have no catalog to read the schema from, so Hopsworks samples the source with a server-side schema-fetch job and infers it.
+`StorageConnector.get_data(data_source)` fetches one resource and starts one job per call.
+`StorageConnector.get_data_batch(data_sources)` fetches several resources with ONE job that processes them sequentially in a single container — prefer it whenever you preview more than one resource.
+
+```python
+sc = fs.get_storage_connector("my_crm_connector")
+tables = sc.get_tables()                  # CRM: the connector's supported resources
+
+by_name = sc.get_data_batch(tables[:3])   # N resources, ONE schema-fetch job
+by_name["contacts"].features              # inferred schema of one resource
+by_name["contacts"].preview               # sampled rows
+
+data = sc.get_data(tables[0])             # single resource fallback
+```
+
+Both calls block until the fetch finishes and raise `hopsworks.client.exceptions.DataSourceException` with the job logs when it fails; `get_data_batch` reports every failed resource in one exception.
+Results are cached server-side per resource — pass `use_cached=False` to force a refetch.
+For REST connectors there is no `get_tables()`; build each entry yourself with `DataSource(table="issues", rest_endpoint=RestEndpointConfig(relative_url="v1/issues"))` so every endpoint carries its own request config.
+
 ## Mount a table as an external feature group
 
 An external feature group leaves data in the source and queries it through the connector, no copy into Hopsworks. It is offline-only: reads serve training and batch inference. Set an `event_time` column so the feature store can read point-in-time correct snapshots and so polling can read a `start_time`/`end_time` range for backfill or incremental runs.
