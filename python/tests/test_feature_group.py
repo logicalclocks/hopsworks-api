@@ -1101,6 +1101,24 @@ class TestFeatureGroup:
         assert fg.online_enabled is True
         assert fg.stream is False
 
+    def test_embedding_index_from_response_json_non_dict(self):
+        # The left feature group embedded in a QueryDTO carries the embedding
+        # index as a bare string (or omits it); there is no DTO to reconstruct,
+        # so it must deserialize to None rather than raise.
+        assert hsfs.embedding.EmbeddingIndex.from_response_json("some_index") is None
+        assert hsfs.embedding.EmbeddingIndex.from_response_json(None) is None
+
+    def test_embedding_index_from_response_json_dict(self):
+        # A full feature-group response still reconstructs the index.
+        index = hsfs.embedding.EmbeddingIndex.from_response_json(
+            {
+                "index_name": "test_index",
+                "features": [{"name": "emb_feat", "dimension": 128}],
+            }
+        )
+        assert index is not None
+        assert index.index_name == "test_index"
+
 
 class TestExternalFeatureGroup:
     def test_from_response_json(self, backend_fixtures):
