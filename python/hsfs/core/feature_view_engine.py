@@ -547,10 +547,10 @@ class FeatureViewEngine:
         # partition key (see `Engine.DATE_PARTITION_COLUMN`); an in-memory
         # training dataset has no materialized layout to prune. The bounds are
         # converted to the keys' `YYYYMMDD` UTC date encoding.
-        event_start_time = self._event_date_int(
+        event_start_time = util._get_event_date_int_from_timestamp(
             util._convert_event_time_to_timestamp(event_start_time)
         )
-        event_end_time = self._event_date_int(
+        event_end_time = util._get_event_date_int_from_timestamp(
             util._convert_event_time_to_timestamp(event_end_time)
         )
         if (event_start_time is not None or event_end_time is not None) and (
@@ -771,7 +771,7 @@ class FeatureViewEngine:
         # Python engine offloads to a backend that does the same — either the
         # Hopsworks Feature Query Service (FlyingDuck) fast path, which is sent
         # `overwrite=false`, or the fallback backend Spark job. Note this relies
-        # on a recent enough Query Service; older versions ignore the flag and
+        # on a Hopsworks 5.1+ Query Service; older versions ignore the flag and
         # overwrite instead (see `ArrowFlightClient._create_training_dataset`).
         training_dataset_obj = self._get_training_dataset_metadata(
             feature_view_obj, training_dataset_version
@@ -791,9 +791,7 @@ class FeatureViewEngine:
         ):
             raise FeatureStoreException(
                 "Appending to a time-series-split training dataset is not "
-                "supported: the new batch would land entirely in the last "
-                "split (e.g. test) while the earlier splits stay unchanged, "
-                "skewing the dataset. For a growing time-series training "
+                "supported. For a growing time-series training "
                 "dataset, create it without splits, append batches with "
                 "`insert_training_data`, and read the train and test sets as "
                 "time ranges with `get_training_data(start_time=..., "
@@ -830,17 +828,6 @@ class FeatureViewEngine:
                 feature_view_obj, training_dataset_version
             )
         return training_dataset_obj, td_job
-
-    @staticmethod
-    def _event_date_int(timestamp_ms):
-        """Convert an epoch-millisecond timestamp to the partition keys' `YYYYMMDD` UTC date integer."""
-        if timestamp_ms is None:
-            return None
-        return int(
-            datetime.datetime.fromtimestamp(
-                timestamp_ms / 1000, tz=datetime.timezone.utc
-            ).strftime("%Y%m%d")
-        )
 
     def _read_from_storage_connector(
         self,

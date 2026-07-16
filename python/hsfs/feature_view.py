@@ -2650,10 +2650,10 @@ class FeatureView:
 
         Statistics are not recomputed on append by default, since that reads the whole (potentially multi-terabyte) dataset back on every append.
         Pass `compute_statistics=True` to refresh the descriptive statistics over all increments after the batch is written, or call [`compute_training_dataset_statistics`][hsfs.feature_view.FeatureView.compute_training_dataset_statistics] explicitly when needed, e.g. periodically or right before retraining.
-        Model-dependent transformation functions transform each appended batch with the statistics computed when the version was created, so all increments and serving stay consistent with each other; to refit those statistics, rebuild the version with `overwrite=True` or create a new version.
+        Model-dependent transformation functions transform each appended batch with the statistics fit when the version was created, so all increments and serving stay consistent with each other; `compute_statistics=True` refreshes only the descriptive statistics and does not refit them — to refit those statistics, rebuild the version with `overwrite=True` or create a new version.
 
         Randomly split training datasets are appended per split: each split receives a share of the batch (e.g. 80/10/10), which is sound over many appends.
-        Appending to a time-series-split training dataset is not supported and raises an error: the batch would land entirely in the last split (e.g. test) while the earlier splits stay frozen, skewing the dataset with every append.
+        Appending to a time-series-split training dataset is not supported and raises an error.
         For time-series data, grow an unsplit training dataset instead and derive the train and test sets at read time, as shown below.
 
         Example:
@@ -2684,7 +2684,7 @@ class FeatureView:
 
         Warning: Engine Support
             Appending (`overwrite=False`) is only supported for the `parquet` data format.
-            On the `python` engine the append is offloaded to the Hopsworks Feature Query Service (FlyingDuck) or a backend Spark job; it requires a recent enough Query Service, as older versions overwrite instead of appending.
+            On the `python` engine the append is offloaded to the Hopsworks Feature Query Service (FlyingDuck) or a backend Spark job; appending requires Hopsworks 5.1 or later, as older versions overwrite instead of appending.
 
         Parameters:
             training_dataset_version: Version of the training dataset to append to.
