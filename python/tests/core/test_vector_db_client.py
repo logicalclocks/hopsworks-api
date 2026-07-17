@@ -13,6 +13,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from datetime import datetime
 from unittest import mock
 from unittest.mock import MagicMock
 
@@ -488,3 +489,22 @@ class TestVectorDbClient:
     def test_read_without_pk_or_keys(self):
         with pytest.raises(FeatureStoreException):
             self.target.read(self.fg.id, self.fg.features)
+
+    def test_convert_to_pandas_type_timestamp_keeps_milliseconds(self):
+        # OpenSearch stores timestamps as epoch ms; sub-second precision must
+        # survive the conversion, e.g. for timestamp(3) online types (FSTORE-2061)
+        epoch_ms = convert_event_time_to_timestamp("2024-04-18 12:00:25.789")
+
+        result = self.target._convert_to_pandas_type(
+            self.fg.features, {"f1": 4, "f_ts": epoch_ms}
+        )
+
+        assert result["f_ts"] == datetime(2024, 4, 18, 12, 0, 25, 789000)
+
+    def test_convert_to_pandas_type_epoch_zero_is_not_null(self):
+        # 0 epoch ms is a valid timestamp and must not be skipped as null
+        result = self.target._convert_to_pandas_type(
+            self.fg.features, {"f1": 4, "f_ts": 0}
+        )
+
+        assert result["f_ts"] == datetime(1970, 1, 1)
