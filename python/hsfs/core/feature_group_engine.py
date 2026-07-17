@@ -716,6 +716,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             )
         is_new_feature_group = feature_group.id is None
         requested_sink_job_conf = feature_group.sink_job_conf
+        requested_sink_job = feature_group.sink_job
         pre_save_features = list(feature_group.columns) if feature_group.columns else []
         pre_save_rest_endpoint = (
             feature_group.data_source.rest_endpoint
@@ -729,7 +730,6 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             and not new_fg.data_source.rest_endpoint
         ):
             new_fg.data_source.rest_endpoint = pre_save_rest_endpoint
-        requested_sink_job = feature_group.sink_job
         if feature_group.sink_enabled and isinstance(
             requested_sink_job, MultiTableIngestionJob
         ):

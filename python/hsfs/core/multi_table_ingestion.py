@@ -149,6 +149,8 @@ class MultiTableIngestionJob:
         }
         self._targets: list[TableIngestionTarget] = []
         self._target_index: dict[int, int] = {}
+        self._target_alias_index: dict[int, int] = {}
+        self._staged_target_ids: set[int] = set()
         self._job: job.Job | None = None
 
     @public
@@ -215,14 +217,18 @@ class MultiTableIngestionJob:
         resolved_id = feature_group_id
         if resolved_id is None and feature_group is not None:
             resolved_id = feature_group.id
-        if resolved_id is None or resolved_id not in self._target_index:
+        if self._job is not None:
+            self._refresh_job_from_server()
+        index = self._target_position(resolved_id) if resolved_id is not None else None
+        if resolved_id is None or index is None:
             raise ValueError(
                 "No target for that feature group; add it with add_target(...) "
                 "or by creating a feature group with sink_job set to this job."
             )
-        self._targets[self._target_index[resolved_id]]._enabled = enabled
+        self._refresh_feature_group_reference(feature_group, index)
+        self._targets[index]._enabled = enabled
         if self._job is not None:
-            self.save()
+            self._save_enabled_state(index, enabled)
         return self
 
     def _add_target_object(self, target: TableIngestionTarget) -> None:
@@ -232,6 +238,102 @@ class MultiTableIngestionJob:
         else:
             self._target_index[key] = len(self._targets)
             self._targets.append(target)
+        self._target_alias_index[key] = self._target_index[key]
+        if self._job is not None:
+            self._staged_target_ids.add(key)
+
+    def _target_position(self, feature_group_id: int) -> int | None:
+        return self._target_index.get(
+            feature_group_id, self._target_alias_index.get(feature_group_id)
+        )
+
+    def _refresh_feature_group_reference(
+        self, feature_group: fg.FeatureGroup | None, index: int
+    ) -> None:
+        if feature_group is None:
+            return
+        current_id = self._targets[index]._feature_group_id
+        try:
+            feature_group.id = current_id
+        except AttributeError:
+            feature_group._id = current_id
+
+    def _sync_targets_from_job_config(
+        self, config: dict | None, preserve_staged_targets: bool = False
+    ) -> None:
+        if not isinstance(config, dict):
+            return
+        targets = config.get("targets")
+        if not targets:
+            return
+
+        from hopsworks_common.core.sink_job_configuration import TableIngestionTarget
+
+        previous_targets = list(self._targets)
+        previous_alias_index = dict(self._target_alias_index)
+        server_targets = [
+            TableIngestionTarget.from_response_json(target) for target in targets
+        ]
+        if preserve_staged_targets:
+            staged_target_ids = set(self._staged_target_ids)
+            merged_targets = list(server_targets)
+            staged_positions = [
+                index
+                for index, previous_target in enumerate(previous_targets)
+                if previous_target._feature_group_id in staged_target_ids
+            ]
+            for index in staged_positions:
+                previous_target = previous_targets[index]
+                if index < len(server_targets):
+                    previous_target._feature_group_id = server_targets[
+                        index
+                    ]._feature_group_id
+                    merged_targets[index] = previous_target
+                else:
+                    merged_targets.append(previous_target)
+            self._targets = merged_targets
+            self._staged_target_ids = {
+                self._targets[index]._feature_group_id for index in staged_positions
+            }
+        else:
+            self._targets = server_targets
+            self._staged_target_ids.clear()
+        self._target_index = {
+            target._feature_group_id: index
+            for index, target in enumerate(self._targets)
+        }
+        self._target_alias_index = dict(self._target_index)
+        for old_id, old_index in previous_alias_index.items():
+            if old_index < len(self._targets):
+                self._target_alias_index[old_id] = old_index
+        for index, old_target in enumerate(previous_targets):
+            if index < len(self._targets):
+                self._target_alias_index[old_target._feature_group_id] = index
+
+    def _refresh_job_from_server(self) -> None:
+        if self._job is None:
+            return
+
+        from hopsworks_common.core.job_api import JobApi
+
+        self._job = JobApi().get(self._name)
+        self._sync_targets_from_job_config(
+            self._job.config, preserve_staged_targets=True
+        )
+
+    def _save_enabled_state(self, index: int, enabled: bool) -> None:
+        targets = (
+            self._job.config.get("targets")
+            if isinstance(self._job.config, dict)
+            else None
+        )
+        if not targets:
+            return
+        targets[index]["enabled"] = enabled
+        self._job = self._job.save()
+        self._sync_targets_from_job_config(
+            self._job.config, preserve_staged_targets=True
+        )
 
     def _attach_feature_group(
         self,
@@ -268,7 +370,7 @@ class MultiTableIngestionJob:
 
         Sends every collected target in a single request, so the job is created
         atomically.
-        Calling `save` again re-creates the job with the current set of targets.
+        Calling `save` again updates the job with the current set of targets.
 
         Returns:
             The created ingestion job.
@@ -300,6 +402,7 @@ class MultiTableIngestionJob:
 
         job_api = JobApi()
         self._job = job_api.create(self._name, sink_job_conf)
+        self._sync_targets_from_job_config(self._job.config)
         if sink_job_conf.schedule_config:
             job_api.create_or_update_schedule_job(
                 self._name, sink_job_conf.schedule_config
