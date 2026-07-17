@@ -254,3 +254,102 @@ class TestSinkJobConfiguration:
 
         with pytest.raises(ValueError, match="Invalid write_mode"):
             sink_job_configuration.SinkJobConfiguration(write_mode="invalid")
+
+
+class _FakeFeatureGroup:
+    def __init__(self, fg_id):
+        self.id = fg_id
+
+
+class TestTableIngestionTarget:
+    def test_requires_a_feature_group_id(self):
+        with pytest.raises(ValueError, match="feature_group"):
+            sink_job_configuration.TableIngestionTarget()
+
+    def test_accepts_feature_group_object(self):
+        target = sink_job_configuration.TableIngestionTarget(_FakeFeatureGroup(42))
+        assert target.to_dict() == {"featuregroupId": 42, "enabled": True}
+
+    def test_accepts_explicit_id(self):
+        target = sink_job_configuration.TableIngestionTarget(feature_group_id=7)
+        assert target.to_dict()["featuregroupId"] == 7
+
+    def test_only_set_overrides_are_emitted(self):
+        target = sink_job_configuration.TableIngestionTarget(
+            feature_group_id=1,
+            enabled=False,
+            write_mode="MERGE",
+            batch_size=5000,
+            resource_config={"cores": 2, "memory": 4096},
+        )
+        d = target.to_dict()
+        assert d == {
+            "featuregroupId": 1,
+            "enabled": False,
+            "writeMode": "MERGE",
+            "batchSize": 5000,
+            "resourceConfig": {"cores": 2, "memory": 4096},
+        }
+        # untouched tuning fields are not sent, so the backend applies job defaults
+        assert "sqlSourceFetchChunkSize" not in d
+
+    def test_per_target_loading_and_column_mappings(self):
+        target = sink_job_configuration.TableIngestionTarget(
+            feature_group_id=1,
+            loading_config=sink_job_configuration.LoadingConfig(
+                "INCREMENTAL_ID", source_cursor_field="id"
+            ),
+            column_mappings=[
+                sink_job_configuration.FeatureColumnMapping("src", "feat"),
+            ],
+        )
+        d = target.to_dict()
+        assert d["loadingConfig"]["loadingStrategy"] == "INCREMENTAL_ID"
+        assert d["columnMappings"] == [{"sourceColumn": "src", "featureName": "feat"}]
+
+
+class TestSinkJobConfigurationMultiTable:
+    def test_multi_table_payload(self):
+        config = sink_job_configuration.SinkJobConfiguration(
+            name="crm_ingestion",
+            table_parallelism=3,
+            targets=[
+                sink_job_configuration.TableIngestionTarget(feature_group_id=1),
+                sink_job_configuration.TableIngestionTarget(
+                    feature_group_id=2, write_mode="MERGE"
+                ),
+            ],
+        )
+        config._set_extra_params(featurestore_id=7, storage_connector_id=9)
+        d = config.to_dict()
+
+        assert d["type"] == sink_job_configuration.SinkJobConfiguration.DTO_TYPE
+        assert d["tableParallelism"] == 3
+        assert d["featurestoreId"] == 7
+        assert d["storageConnectorId"] == 9
+        assert [t["featuregroupId"] for t in d["targets"]] == [1, 2]
+        assert d["targets"][1]["writeMode"] == "MERGE"
+        # multi-table jobs carry no single feature group at the top level
+        assert "featuregroupId" not in d
+        # job-level scalars stay as defaults for targets to inherit
+        assert d["batchSize"] == 100000
+
+    def test_no_targets_keeps_single_table_payload(self):
+        config = sink_job_configuration.SinkJobConfiguration(name="single")
+        d = config.to_dict()
+        assert "targets" not in d
+        assert "featuregroupId" in d
+
+
+class TestTableIngestionTargetRoundTrip:
+    def test_from_response_json_keeps_endpoint_config(self):
+        from hopsworks_common.core.rest_endpoint import RestEndpointConfig
+
+        target = sink_job_configuration.TableIngestionTarget(
+            feature_group_id=1,
+            endpoint_config=RestEndpointConfig(relative_url="v1/events"),
+        )
+        restored = sink_job_configuration.TableIngestionTarget.from_response_json(
+            target.to_dict()
+        )
+        assert restored.to_dict()["endpointConfig"] == {"relativeUrl": "v1/events"}
