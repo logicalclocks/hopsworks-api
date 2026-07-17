@@ -332,6 +332,620 @@ class TestFeatureGroupEngine:
         assert result is None
         delta_engine_cls.assert_not_called()
 
+    def test_optimize_dispatches_to_iceberg_engine(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine._get_type")
+        fg = feature_group.FeatureGroup(
+            name="fg",
+            version=1,
+            featurestore_id=1,
+            featurestore_name="fs",
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            time_travel_format="ICEBERG",
+        )
+        mocker.patch.object(
+            feature_group_engine.FeatureGroupEngine,
+            "_get_spark_session_and_context",
+            return_value=("spark", "context"),
+        )
+        iceberg_engine_mock = mocker.Mock()
+        iceberg_engine_cls = mocker.patch(
+            "hsfs.core.feature_group_engine.iceberg_engine.IcebergEngine",
+            return_value=iceberg_engine_mock,
+        )
+
+        # Act
+        feature_group_engine.FeatureGroupEngine._optimize(fg)
+
+        # Assert
+        iceberg_engine_cls.assert_called_once_with(
+            fg.feature_store_id,
+            fg.feature_store_name,
+            fg,
+            "spark",
+            "context",
+        )
+        iceberg_engine_mock._optimize.assert_called_once_with(
+            strategy=None,
+            columns=None,
+            rewrite_all=None,
+            target_file_size_mb=None,
+            where=None,
+        )
+
+    def test_optimize_dispatches_to_delta_engine(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine._get_type")
+        fg = feature_group.FeatureGroup(
+            name="fg",
+            version=1,
+            featurestore_id=1,
+            featurestore_name="fs",
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            time_travel_format="DELTA",
+        )
+        mocker.patch.object(
+            feature_group_engine.FeatureGroupEngine,
+            "_get_spark_session_and_context",
+            return_value=("spark", "context"),
+        )
+        delta_engine_mock = mocker.Mock()
+        delta_engine_cls = mocker.patch(
+            "hsfs.core.feature_group_engine.delta_engine.DeltaEngine",
+            return_value=delta_engine_mock,
+        )
+
+        # Act
+        feature_group_engine.FeatureGroupEngine._optimize(fg)
+
+        # Assert
+        delta_engine_cls.assert_called_once_with(
+            fg.feature_store_id,
+            fg.feature_store_name,
+            fg,
+            "spark",
+            "context",
+        )
+        delta_engine_mock._optimize.assert_called_once_with(
+            full=False, strategy=None, columns=None, where=None
+        )
+
+    def test_optimize_full_passes_through_to_delta_engine(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine._get_type")
+        fg = feature_group.FeatureGroup(
+            name="fg",
+            version=1,
+            featurestore_id=1,
+            featurestore_name="fs",
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            time_travel_format="DELTA",
+        )
+        mocker.patch.object(
+            feature_group_engine.FeatureGroupEngine,
+            "_get_spark_session_and_context",
+            return_value=("spark", "context"),
+        )
+        delta_engine_mock = mocker.Mock()
+        mocker.patch(
+            "hsfs.core.feature_group_engine.delta_engine.DeltaEngine",
+            return_value=delta_engine_mock,
+        )
+
+        # Act
+        feature_group_engine.FeatureGroupEngine._optimize(fg, full=True)
+
+        # Assert
+        delta_engine_mock._optimize.assert_called_once_with(
+            full=True, strategy=None, columns=None, where=None
+        )
+
+    def test_optimize_full_rejected_on_iceberg(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine._get_type")
+        fg = feature_group.FeatureGroup(
+            name="fg",
+            version=1,
+            featurestore_id=1,
+            featurestore_name="fs",
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            time_travel_format="ICEBERG",
+        )
+        mocker.patch.object(
+            feature_group_engine.FeatureGroupEngine,
+            "_get_spark_session_and_context",
+            return_value=("spark", "context"),
+        )
+
+        # Act & Assert: full is a Delta operation; the Iceberg rewrite uses
+        # rewrite_all=True to rewrite every file instead. where is accepted on
+        # Iceberg (mapped to a RewriteDataFiles filter), so it is not rejected.
+        with pytest.raises(
+            exceptions.FeatureStoreException, match="is a Delta operation"
+        ):
+            feature_group_engine.FeatureGroupEngine._optimize(fg, full=True)
+
+    def test_optimize_rewrite_all_rejected_on_delta(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine._get_type")
+        fg = feature_group.FeatureGroup(
+            name="fg",
+            version=1,
+            featurestore_id=1,
+            featurestore_name="fs",
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            time_travel_format="DELTA",
+        )
+        mocker.patch.object(
+            feature_group_engine.FeatureGroupEngine,
+            "_get_spark_session_and_context",
+            return_value=("spark", "context"),
+        )
+
+        # Act & Assert: rewrite_all/target_file_size_mb steer the Iceberg
+        # rewrite; Delta reclusters through full=True or where=...
+        with pytest.raises(
+            exceptions.FeatureStoreException, match="Iceberg rewrite\\s+options"
+        ):
+            feature_group_engine.FeatureGroupEngine._optimize(fg, rewrite_all=True)
+
+    def test_optimize_rejects_unknown_strategy(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine._get_type")
+        fg = feature_group.FeatureGroup(
+            name="fg",
+            version=1,
+            featurestore_id=1,
+            featurestore_name="fs",
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            time_travel_format="ICEBERG",
+        )
+
+        # Act & Assert
+        with pytest.raises(
+            exceptions.FeatureStoreException, match="Unknown optimize strategy"
+        ):
+            feature_group_engine.FeatureGroupEngine._optimize(fg, strategy="bogus")
+
+    def test_optimize_rejects_hudi(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine._get_type")
+        fg = feature_group.FeatureGroup(
+            name="fg",
+            version=1,
+            featurestore_id=1,
+            featurestore_name="fs",
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            time_travel_format="HUDI",
+        )
+        mocker.patch.object(
+            feature_group_engine.FeatureGroupEngine,
+            "_get_spark_session_and_context",
+            return_value=("spark", "context"),
+        )
+
+        # Act & Assert: Hudi layout maintenance runs through inline
+        # clustering on writes, not an explicit optimize
+        with pytest.raises(exceptions.FeatureStoreException, match="ICEBERG and DELTA"):
+            feature_group_engine.FeatureGroupEngine._optimize(fg)
+
+    @staticmethod
+    def _layout_fg(
+        time_travel_format,
+        partitioned_by=None,
+        clustered_by=None,
+        event_time=None,
+        id=None,
+        partition_key=None,
+    ):
+        return feature_group.FeatureGroup(
+            name="fg",
+            version=1,
+            featurestore_id=1,
+            featurestore_name="fs",
+            primary_key=[],
+            foreign_key=[],
+            partition_key=partition_key or [],
+            event_time=event_time,
+            time_travel_format=time_travel_format,
+            partitioned_by=partitioned_by,
+            clustered_by=clustered_by,
+            id=id,
+        )
+
+    def test_update_partition_spec_rejects_non_iceberg(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine._get_type")
+        fg = self._layout_fg("DELTA")
+        fg_engine = feature_group_engine.FeatureGroupEngine(feature_store_id=1)
+
+        # Act & Assert
+        with pytest.raises(
+            exceptions.FeatureStoreException, match="requires an ICEBERG"
+        ):
+            fg_engine._update_partition_spec(fg, ["day(ts)"], None)
+
+    def test_update_partition_spec_no_args_requires_spark(self, mocker):
+        # Arrange: reconcile mode still commits the metadata re-sync through
+        # the Iceberg Java API
+        mocker.patch("hsfs.engine._get_type")
+        fg = self._layout_fg("ICEBERG")
+        fg_engine = feature_group_engine.FeatureGroupEngine(feature_store_id=1)
+        mocker.patch.object(
+            feature_group_engine.FeatureGroupEngine,
+            "_get_spark_session_and_context",
+            return_value=(None, None),
+        )
+
+        # Act & Assert
+        with pytest.raises(
+            exceptions.FeatureStoreException, match="requires the Spark engine"
+        ):
+            fg_engine._update_partition_spec(fg, None, None)
+
+    def test_update_partition_spec_no_args_reconciles_and_persists(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine._get_type")
+        fg = self._layout_fg("ICEBERG", partitioned_by=["day(ts)"])
+        fg_engine = feature_group_engine.FeatureGroupEngine(feature_store_id=1)
+        mocker.patch.object(
+            feature_group_engine.FeatureGroupEngine,
+            "_get_spark_session_and_context",
+            return_value=("spark", "context"),
+        )
+        iceberg_engine_mock = mocker.Mock()
+        iceberg_engine_mock._update_partition_spec.return_value = [
+            "day(ts)",
+            "bucket(16,pk)",
+        ]
+        mocker.patch(
+            "hsfs.core.feature_group_engine.iceberg_engine.IcebergEngine",
+            return_value=iceberg_engine_mock,
+        )
+        persist_mock = mocker.patch.object(
+            feature_group_engine.FeatureGroupEngine, "_persist_layout_metadata"
+        )
+
+        # Act: no add, no remove is reconcile mode
+        fg_engine._update_partition_spec(fg, None, None)
+
+        # Assert: the engine reads the current spec back without changing it
+        # and whatever it returns is persisted
+        iceberg_engine_mock._update_partition_spec.assert_called_once_with([], [])
+        persist_mock.assert_called_once_with(
+            fg,
+            partitioned_by=["day(ts)", "bucket(16,pk)"],
+            retry_hint=mocker.ANY,
+        )
+
+    def test_update_partition_spec_rejects_partition_key_fg(self, mocker):
+        # Arrange: partition_key identity partitions live as flags on the
+        # features; an evolved partitioned_by next to them is rejected by
+        # the backend, so the call fails before any table change
+        mocker.patch("hsfs.engine._get_type")
+        fg = self._layout_fg("ICEBERG", partition_key=["region"])
+        fg_engine = feature_group_engine.FeatureGroupEngine(feature_store_id=1)
+        iceberg_engine_cls = mocker.patch(
+            "hsfs.core.feature_group_engine.iceberg_engine.IcebergEngine"
+        )
+
+        # Act & Assert
+        with pytest.raises(
+            exceptions.FeatureStoreException, match="uses partition_key"
+        ):
+            fg_engine._update_partition_spec(fg, ["hour(ts)"], None)
+        iceberg_engine_cls.assert_not_called()
+
+    def test_update_partition_spec_validates_added_transforms(self, mocker):
+        # Arrange: week is not an Iceberg transform
+        mocker.patch("hsfs.engine._get_type")
+        fg = self._layout_fg("ICEBERG")
+        fg_engine = feature_group_engine.FeatureGroupEngine(feature_store_id=1)
+
+        # Act & Assert
+        with pytest.raises(
+            exceptions.FeatureStoreException,
+            match="not supported for time_travel_format=ICEBERG",
+        ):
+            fg_engine._update_partition_spec(fg, ["week(ts)"], None)
+
+    def test_update_partition_spec_requires_spark(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine._get_type")
+        fg = self._layout_fg("ICEBERG")
+        fg_engine = feature_group_engine.FeatureGroupEngine(feature_store_id=1)
+        mocker.patch.object(
+            feature_group_engine.FeatureGroupEngine,
+            "_get_spark_session_and_context",
+            return_value=(None, None),
+        )
+
+        # Act & Assert
+        with pytest.raises(
+            exceptions.FeatureStoreException, match="requires the Spark engine"
+        ):
+            fg_engine._update_partition_spec(fg, ["hour(ts)"], None)
+
+    def test_update_partition_spec_applies_and_persists(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine._get_type")
+        fg = self._layout_fg("ICEBERG", partitioned_by=["day(ts)", "bucket(16,pk)"])
+        fg_engine = feature_group_engine.FeatureGroupEngine(feature_store_id=1)
+        mocker.patch.object(
+            feature_group_engine.FeatureGroupEngine,
+            "_get_spark_session_and_context",
+            return_value=("spark", "context"),
+        )
+        iceberg_engine_mock = mocker.Mock()
+        iceberg_engine_mock._update_partition_spec.return_value = [
+            "bucket(4,id)",
+            "hour(ts)",
+        ]
+        iceberg_engine_cls = mocker.patch(
+            "hsfs.core.feature_group_engine.iceberg_engine.IcebergEngine",
+            return_value=iceberg_engine_mock,
+        )
+        persist_mock = mocker.patch.object(
+            feature_group_engine.FeatureGroupEngine, "_persist_layout_metadata"
+        )
+
+        # Act
+        fg_engine._update_partition_spec(fg, ["hour(ts)"], ["day(ts)"])
+
+        # Assert: the evolution runs through the Iceberg engine with the
+        # parsed transforms, and the spec the engine read back from the
+        # committed table (not a local reconstruction) is persisted
+        iceberg_engine_cls.assert_called_once_with(
+            fg.feature_store_id, fg.feature_store_name, fg, "spark", "context"
+        )
+        add_args, remove_args = (
+            iceberg_engine_mock._update_partition_spec.call_args.args
+        )
+        assert [str(t) for t in add_args] == ["hour(ts)"]
+        assert [str(t) for t in remove_args] == ["day(ts)"]
+        persist_mock.assert_called_once_with(
+            fg,
+            partitioned_by=["bucket(4,id)", "hour(ts)"],
+            retry_hint=mocker.ANY,
+        )
+
+    def test_update_clustering_rejects_non_delta(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine._get_type")
+        fg = self._layout_fg("ICEBERG")
+        fg_engine = feature_group_engine.FeatureGroupEngine(feature_store_id=1)
+
+        # Act & Assert
+        with pytest.raises(exceptions.FeatureStoreException, match="require a DELTA"):
+            fg_engine._update_clustering(fg, ["a"])
+
+    @pytest.mark.parametrize("columns", [[], ["a", "a"]])
+    def test_update_clustering_rejects_empty_or_duplicate_columns(
+        self, mocker, columns
+    ):
+        # Arrange
+        mocker.patch("hsfs.engine._get_type")
+        fg = self._layout_fg("DELTA")
+        fg_engine = feature_group_engine.FeatureGroupEngine(feature_store_id=1)
+
+        # Act & Assert
+        with pytest.raises(
+            exceptions.FeatureStoreException, match="non-empty list of distinct"
+        ):
+            fg_engine._update_clustering(fg, columns)
+
+    def test_update_clustering_caps_columns(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine._get_type")
+        fg = self._layout_fg("DELTA")
+        fg_engine = feature_group_engine.FeatureGroupEngine(feature_store_id=1)
+
+        # Act & Assert
+        with pytest.raises(exceptions.FeatureStoreException, match="at most"):
+            fg_engine._update_clustering(fg, ["a", "b", "c", "d", "e"])
+
+    def test_update_clustering_requires_spark(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine._get_type")
+        fg = self._layout_fg("DELTA")
+        fg_engine = feature_group_engine.FeatureGroupEngine(feature_store_id=1)
+        mocker.patch.object(
+            feature_group_engine.FeatureGroupEngine,
+            "_get_spark_session_and_context",
+            return_value=(None, None),
+        )
+
+        # Act & Assert
+        with pytest.raises(
+            exceptions.FeatureStoreException, match="require the\\s+Spark engine"
+        ):
+            fg_engine._update_clustering(fg, ["a"])
+
+    def test_update_clustering_applies_and_persists(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine._get_type")
+        fg = self._layout_fg("DELTA")
+        fg_engine = feature_group_engine.FeatureGroupEngine(feature_store_id=1)
+        mocker.patch.object(
+            feature_group_engine.FeatureGroupEngine,
+            "_get_spark_session_and_context",
+            return_value=("spark", "context"),
+        )
+        delta_engine_mock = mocker.Mock()
+        delta_engine_cls = mocker.patch(
+            "hsfs.core.feature_group_engine.delta_engine.DeltaEngine",
+            return_value=delta_engine_mock,
+        )
+        persist_mock = mocker.patch.object(
+            feature_group_engine.FeatureGroupEngine, "_persist_layout_metadata"
+        )
+
+        # Act
+        fg_engine._update_clustering(fg, ["ts", "id"])
+
+        # Assert
+        delta_engine_cls.assert_called_once_with(
+            fg.feature_store_id, fg.feature_store_name, fg, "spark", "context"
+        )
+        delta_engine_mock._update_clustering.assert_called_once_with(["ts", "id"])
+        persist_mock.assert_called_once_with(
+            fg, clustered_by=["ts", "id"], retry_hint=mocker.ANY
+        )
+
+    def test_update_clustering_none_disables_and_persists_clear(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine._get_type")
+        fg = self._layout_fg("DELTA")
+        fg_engine = feature_group_engine.FeatureGroupEngine(feature_store_id=1)
+        mocker.patch.object(
+            feature_group_engine.FeatureGroupEngine,
+            "_get_spark_session_and_context",
+            return_value=("spark", "context"),
+        )
+        delta_engine_mock = mocker.Mock()
+        mocker.patch(
+            "hsfs.core.feature_group_engine.delta_engine.DeltaEngine",
+            return_value=delta_engine_mock,
+        )
+        persist_mock = mocker.patch.object(
+            feature_group_engine.FeatureGroupEngine, "_persist_layout_metadata"
+        )
+
+        # Act
+        fg_engine._update_clustering(fg, None)
+
+        # Assert: [] is the clear sentinel persisted to the backend
+        delta_engine_mock._update_clustering.assert_called_once_with(None)
+        persist_mock.assert_called_once_with(fg, clustered_by=[], retry_hint=mocker.ANY)
+
+    def test_persist_layout_metadata_updates_copy_and_live_object(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine._get_type")
+        fg = self._layout_fg("DELTA", clustered_by=["a"], id=10)
+        fg_engine = feature_group_engine.FeatureGroupEngine(feature_store_id=1)
+        fg_engine._feature_group_api = mocker.Mock()
+
+        # Act
+        fg_engine._persist_layout_metadata(fg, clustered_by=["b", "c"])
+
+        # Assert: the copy sent to the backend carries the new list and the
+        # live object reflects it after the call
+        fg_engine._feature_group_api._update_metadata.assert_called_once()
+        _, copy_fg, query_param = (
+            fg_engine._feature_group_api._update_metadata.call_args.args
+        )
+        assert copy_fg is not fg
+        assert copy_fg._clustered_by == ["b", "c"]
+        assert query_param == "updateMetadata"
+        assert fg.clustered_by == ["b", "c"]
+
+    def test_persist_layout_metadata_empty_list_clears_live_clustering(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine._get_type")
+        fg = self._layout_fg("DELTA", clustered_by=["a"], id=10)
+        fg_engine = feature_group_engine.FeatureGroupEngine(feature_store_id=1)
+        fg_engine._feature_group_api = mocker.Mock()
+
+        # Act
+        fg_engine._persist_layout_metadata(fg, clustered_by=[])
+
+        # Assert: the copy carries the [] clear sentinel; the live object
+        # reads back as unclustered
+        _, copy_fg, _ = fg_engine._feature_group_api._update_metadata.call_args.args
+        assert copy_fg._clustered_by == []
+        assert fg._clustered_by is None
+        assert fg.clustered_by is None
+
+    def test_persist_layout_metadata_failure_wraps_and_keeps_live_object(self, mocker):
+        # Arrange: the storage-level change already happened; a metadata
+        # persistence failure must be explicit and carry the retry hint
+        mocker.patch("hsfs.engine._get_type")
+        fg = self._layout_fg("DELTA", clustered_by=["a"], id=10)
+        fg_engine = feature_group_engine.FeatureGroupEngine(feature_store_id=1)
+        fg_engine._feature_group_api = mocker.Mock()
+        fg_engine._feature_group_api._update_metadata.side_effect = Exception("boom")
+
+        # Act & Assert
+        with pytest.raises(
+            exceptions.FeatureStoreException,
+            match="storage-level layout change was committed",
+        ) as e:
+            fg_engine._persist_layout_metadata(
+                fg, clustered_by=["b"], retry_hint="re-run the same call"
+            )
+        assert "re-run the same call" in str(e.value)
+        # the live object must not pretend the stale metadata was updated
+        assert fg.clustered_by == ["a"]
+
+    def test_persist_layout_metadata_partitioned_by(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine._get_type")
+        fg = self._layout_fg("ICEBERG", partitioned_by=["day(ts)"], id=10)
+        fg_engine = feature_group_engine.FeatureGroupEngine(feature_store_id=1)
+        fg_engine._feature_group_api = mocker.Mock()
+
+        # Act
+        fg_engine._persist_layout_metadata(fg, partitioned_by=["hour(ts)"])
+
+        # Assert
+        _, copy_fg, _ = fg_engine._feature_group_api._update_metadata.call_args.args
+        assert copy_fg._partitioned_by == ["hour(ts)"]
+        assert fg.partitioned_by == ["hour(ts)"]
+
+    def test_columns_for_user_schema_excludes_hudi_grain_columns(self, mocker):
+        # Arrange: HUDI grain columns are backend-appended, so the user
+        # dataframe must not be expected to carry them
+        fg = mocker.Mock()
+        fg.time_travel_format = "HUDI"
+        fg.partitioned_by = ["year(ts)", "month(ts)"]
+        fg.columns = [feature.Feature(name) for name in ["id", "ts", "year", "month"]]
+
+        # Act
+        columns = feature_group_engine.FeatureGroupEngine._columns_for_user_schema(fg)
+
+        # Assert
+        assert [col.name for col in columns] == ["id", "ts"]
+
+    def test_columns_for_user_schema_keeps_all_columns_for_non_hudi(self, mocker):
+        # Arrange: Iceberg and Delta add no synthetic columns
+        fg = mocker.Mock()
+        fg.time_travel_format = "ICEBERG"
+        fg.partitioned_by = ["year(ts)", "month(ts)"]
+        fg.columns = [feature.Feature(name) for name in ["id", "ts", "year"]]
+
+        # Act & Assert
+        assert (
+            feature_group_engine.FeatureGroupEngine._columns_for_user_schema(fg)
+            is fg.columns
+        )
+
+    def test_columns_for_user_schema_old_grain_spec_is_opaque(self, mocker):
+        # Arrange: pre-transform specs do not parse; nothing is excluded
+        fg = mocker.Mock()
+        fg.time_travel_format = "HUDI"
+        fg.partitioned_by = ["year", "month"]
+        fg.columns = [feature.Feature(name) for name in ["id", "ts", "year"]]
+
+        # Act & Assert
+        assert (
+            feature_group_engine.FeatureGroupEngine._columns_for_user_schema(fg)
+            is fg.columns
+        )
+
     @pytest.mark.parametrize(
         "online_enabled,validation_options,should_validate_schema",
         [

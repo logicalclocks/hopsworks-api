@@ -20,7 +20,12 @@ import os
 from urllib.parse import unquote, urlsplit
 
 from hsfs import feature_group_commit, util
-from hsfs.core import dataset_api, feature_group_api, partition_grains
+from hsfs.core import (
+    dataset_api,
+    feature_group_api,
+    partition_grains,
+    partition_transforms,
+)
 
 
 class HudiEngine:
@@ -93,6 +98,16 @@ class HudiEngine:
         "hoodie.datasource.hive_sync.auto_create_database"
     )
 
+    HUDI_INDEX_TYPE = "hoodie.index.type"
+    HUDI_INDEX_TYPE_BUCKET_VAL = "BUCKET"
+    HUDI_BUCKET_INDEX_NUM_BUCKETS = "hoodie.bucket.index.num.buckets"
+    HUDI_BUCKET_INDEX_HASH_FIELD = "hoodie.bucket.index.hash.field"
+    HUDI_BUCKET_INDEX_ENGINE = "hoodie.index.bucket.engine"
+    HUDI_CLUSTERING_INLINE = "hoodie.clustering.inline"
+    HUDI_CLUSTERING_SORT_COLUMNS = "hoodie.clustering.plan.strategy.sort.columns"
+    HUDI_LAYOUT_OPTIMIZE_STRATEGY = "hoodie.layout.optimize.strategy"
+    HUDI_LAYOUT_OPTIMIZE_ZORDER_VAL = "z-order"
+
     def __init__(
         self,
         feature_store_id,
@@ -136,6 +151,7 @@ class HudiEngine:
         ).load(location).createOrReplaceTempView(hudi_fg_alias.alias)
 
     def _write_hudi_dataset(self, dataset, save_mode, operation, write_options):
+        partition_transforms._require_writable(self._feature_group)
         location = self._feature_group.prepare_spark_location()
 
         # partitioned_by grain columns are derived from event_time into the
@@ -162,27 +178,25 @@ class HudiEngine:
         if self._feature_group.event_time is not None:
             primary_key = primary_key + "," + self._feature_group.event_time
 
-        # When `partitioned_by` is set, the grain columns were materialized
-        # into the records by `_write_hudi_dataset`, so they partition like
-        # ordinary columns via SIMPLE key types. Hive-style paths
-        # (year=2026/month=04/...) keep the on-disk layout identical to the
-        # Delta path — and to what the backend's DeltaStreamer config (see
-        # FsJobManagerController.injectHudiPartitionedByOptions) produces.
-        partitioned_by = getattr(self._feature_group, "partitioned_by", None)
-        if partitioned_by:
-            partition_key = ",".join(partitioned_by)
-            partition_path = ":SIMPLE,".join(partitioned_by) + ":SIMPLE"
+        # When `partitioned_by` is set, its transforms map onto Hudi as:
+        # temporal grains become materialized INT columns (added to the
+        # records by `_write_hudi_dataset`) and identity transforms partition
+        # on their source column directly, all via SIMPLE key types with
+        # hive-style paths (year=2026/month=04/...).
+        transforms = partition_transforms._try_parse(
+            getattr(self._feature_group, "partitioned_by", None)
+        )
+        if transforms:
+            partition_cols = [
+                t.source if t.name == partition_transforms.IDENTITY else t.name
+                for t in transforms
+            ]
         else:
-            partition_key = (
-                ",".join(self._feature_group.partition_key)
-                if len(self._feature_group.partition_key) >= 1
-                else ""
-            )
-            partition_path = (
-                ":SIMPLE,".join(self._feature_group.partition_key) + ":SIMPLE"
-                if len(self._feature_group.partition_key) >= 1
-                else ""
-            )
+            partition_cols = list(self._feature_group.partition_key or [])
+        partition_key = ",".join(partition_cols)
+        partition_path = (
+            ":SIMPLE,".join(partition_cols) + ":SIMPLE" if partition_cols else ""
+        )
         pre_combine_key = (
             self._feature_group.hudi_precombine_key
             if self._feature_group.hudi_precombine_key
@@ -251,8 +265,32 @@ class HudiEngine:
             hudi_options[self.HUDI_META_SYNC_CLASSES] = self.HUDI_GLUE_SYNC_TOOL
         hudi_options.update(HudiEngine.HUDI_DEFAULT_PARALLELISM)
 
-        if partitioned_by:
+        if transforms:
             hudi_options[self.HUDI_HIVE_STYLE_PARTITIONING] = "true"
+
+        bucket_index = getattr(self._feature_group, "bucket_index", None)
+        if bucket_index:
+            # bucket_index configures the Hudi bucket index, not a partition;
+            # the same options can equally be set by the user through
+            # write_options (which override these).
+            hudi_options[self.HUDI_INDEX_TYPE] = self.HUDI_INDEX_TYPE_BUCKET_VAL
+            hudi_options[self.HUDI_BUCKET_INDEX_NUM_BUCKETS] = str(
+                bucket_index["num_buckets"]
+            )
+            hudi_options[self.HUDI_BUCKET_INDEX_HASH_FIELD] = bucket_index["field"]
+            if bucket_index.get("engine"):
+                hudi_options[self.HUDI_BUCKET_INDEX_ENGINE] = bucket_index[
+                    "engine"
+                ].upper()
+
+        zorder_by = getattr(self._feature_group, "zorder_by", None)
+        if zorder_by:
+            # z-ordering runs through Hudi inline clustering on writes.
+            hudi_options[self.HUDI_CLUSTERING_INLINE] = "true"
+            hudi_options[self.HUDI_CLUSTERING_SORT_COLUMNS] = ",".join(zorder_by)
+            hudi_options[self.HUDI_LAYOUT_OPTIMIZE_STRATEGY] = (
+                self.HUDI_LAYOUT_OPTIMIZE_ZORDER_VAL
+            )
 
         if write_options:
             hudi_options.update(write_options)

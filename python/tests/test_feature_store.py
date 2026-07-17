@@ -163,6 +163,76 @@ class TestFeatureStore:
         assert fg_res.feature_store == fs
         assert fg_res._feature_store == fs
 
+    def test_create_feature_group_passes_partitioned_by_and_zorder_by(
+        self, backend_fixtures, mocker
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_pyiceberg", return_value=True
+        )
+        json = backend_fixtures["feature_store"]["get"]["response"]
+        fs = feature_store_mod.FeatureStore.from_response_json(json)
+
+        # Act
+        fg_res = fs.create_feature_group(
+            "test_feature_group_name",
+            version=1,
+            primary_key=["cc_num"],
+            event_time="ts",
+            time_travel_format="ICEBERG",
+            partitioned_by=["day(ts)", "bucket(16, cc_num)"],
+            zorder_by=["merchant_id", "amount"],
+        )
+
+        # Assert: both specs land on the object, partitioned_by canonicalized
+        assert fg_res.partitioned_by == ["day(ts)", "bucket(16,cc_num)"]
+        assert fg_res.zorder_by == ["merchant_id", "amount"]
+
+    def test_create_feature_group_passes_clustered_by(self, backend_fixtures, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
+        json = backend_fixtures["feature_store"]["get"]["response"]
+        fs = feature_store_mod.FeatureStore.from_response_json(json)
+
+        # Act: stream=True satisfies the Spark-writers requirement for
+        # liquid clustering on the python engine
+        fg_res = fs.create_feature_group(
+            "test_feature_group_name",
+            version=1,
+            primary_key=["cc_num"],
+            time_travel_format="DELTA",
+            clustered_by=["merchant_id", "amount"],
+            stream=True,
+        )
+
+        # Assert
+        assert fg_res.clustered_by == ["merchant_id", "amount"]
+
+    def test_create_feature_group_passes_bucket_index(self, backend_fixtures, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        json = backend_fixtures["feature_store"]["get"]["response"]
+        fs = feature_store_mod.FeatureStore.from_response_json(json)
+
+        # Act
+        fg_res = fs.create_feature_group(
+            "test_feature_group_name",
+            version=1,
+            primary_key=["cc_num"],
+            time_travel_format="HUDI",
+            bucket_index={"field": "cc_num", "num_buckets": 16},
+        )
+
+        # Assert
+        assert fg_res.bucket_index == {"field": "cc_num", "num_buckets": 16}
+
     def test_create_feature_group_normalizes_tags(self, backend_fixtures, mocker):
         # Arrange
         from hopsworks_common.tag import Tag
