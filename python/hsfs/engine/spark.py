@@ -142,6 +142,32 @@ class Engine:
     APPEND = "append"
     OVERWRITE = "overwrite"
 
+    # Hive-partition column added to a training dataset when data is appended
+    # incrementally, so a multi-TB training dataset can grow without rewriting
+    # the data already materialized. The partition value is the row's UTC
+    # event date as a human-readable `YYYYMMDD` integer, truncated to the
+    # dataset's partition precision (`20260701` for a daily partition,
+    # `20260701` with day `01` for July at month precision, `20260101` for
+    # 2026 at year precision). Zero-padded date integers order
+    # chronologically, which makes the layout time-addressable: a time-range
+    # read prunes to the partitions whose value falls inside the requested
+    # window, and late or backfilled batches land in the partitions their
+    # rows belong to. The column is stripped on read so it never surfaces as
+    # a feature.
+    DATE_PARTITION_COLUMN = "_hopsworks_event_date"
+
+    # Hive-partition column keying each increment of a training dataset whose
+    # data has no event time (e.g. the query's left feature group defines
+    # none) with a small counter (0, 1, 2, ...): the dataset stays appendable
+    # but is not time-addressable. A dataset is partitioned by exactly one of
+    # the two columns — Hive layouts cannot mix partition column names — so
+    # appends validate the existing scheme first. Also stripped on read.
+    COUNTER_PARTITION_COLUMN = "_hopsworks_append_id"
+
+    # Supported truncations of the partition date, and what to hand Spark's
+    # `trunc()` for each.
+    PARTITION_PRECISIONS = {"day": None, "month": "month", "year": "year"}
+
     def _create_spark_session(self):
         """Create and return a SparkSession.
 
@@ -1076,11 +1102,32 @@ class Engine:
         Raises:
             ValueError: If the training dataset statistics could not be retrieved.
         """
+        # The dataset's partition precision rides in the write options so it
+        # also reaches the backend materialization job; popped so it never
+        # hits the Spark writer as an option. All materializations of a
+        # version must use the same precision for time-range reads to stay
+        # sound.
+        user_write_options = dict(user_write_options or {})
+        partition_precision = user_write_options.pop("partition_precision", "day")
+        if partition_precision not in self.PARTITION_PRECISIONS:
+            raise FeatureStoreException(
+                f"Invalid partition precision `{partition_precision}`; "
+                f"supported values are {sorted(self.PARTITION_PRECISIONS)}."
+            )
         write_options = self._write_options(
             training_dataset.data_format, user_write_options
         )
         if read_options is None:
             read_options = {}
+
+        # The materialized layout is Hive-partitioned by each row's event
+        # date (see `DATE_PARTITION_COLUMN`), so the event-time column must
+        # be present in the materialized dataframe; force it through the query
+        # when the user did not select it, and drop it again before the write.
+        event_time_column = None
+        drop_event_time = False
+        if not to_df and isinstance(query_obj, query.Query):
+            event_time_column, drop_event_time = query_obj._include_left_event_time()
 
         if len(training_dataset.splits) == 0:
             if isinstance(query_obj, query.Query):
@@ -1090,14 +1137,20 @@ class Engine:
             else:
                 raise ValueError("Dataset should be a query.")
 
-            # Statistics are always refit (training_dataset_version not
-            # passed): an unsplit in-memory training dataset retrieved by
-            # version is not consistent.
+            # On append, bind the transformation statistics saved when the
+            # version was created instead of refitting on the batch, so every
+            # increment is transformed identically to the data already
+            # materialized. Otherwise statistics are always refit
+            # (training_dataset_version not passed): an unsplit in-memory
+            # training dataset retrieved by version is not consistent.
             dataset = transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
                 training_dataset,
                 feature_view_obj,
                 dataset,
                 transformation_context=transformation_context,
+                training_dataset_version=(
+                    training_dataset.version if save_mode == self.APPEND else None
+                ),
             )
 
             if training_dataset.coalesce:
@@ -1111,6 +1164,9 @@ class Engine:
                 save_mode,
                 path,
                 to_df=to_df,
+                event_time_column=event_time_column,
+                drop_event_time=drop_event_time,
+                partition_precision=partition_precision,
             )
         split_dataset = self._split_df(
             query_obj, training_dataset, read_options=read_options
@@ -1121,12 +1177,18 @@ class Engine:
 
             split_dataset[key] = split_dataset[key].cache()
 
+        # On append, bind the transformation statistics saved when the version
+        # was created (see the unsplit branch above for the rationale).
         split_dataset = transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
             training_dataset,
             feature_view_obj,
             split_dataset,
             transformation_context=transformation_context,
-            training_dataset_version=training_dataset_version,
+            training_dataset_version=(
+                training_dataset.version
+                if save_mode == self.APPEND
+                else training_dataset_version
+            ),
         )
 
         return self._write_training_dataset_splits(
@@ -1135,6 +1197,9 @@ class Engine:
             write_options,
             save_mode,
             to_df=to_df,
+            event_time_column=event_time_column,
+            drop_event_time=drop_event_time,
+            partition_precision=partition_precision,
         )
 
     def _split_df(self, query_obj, training_dataset, read_options=None):
@@ -1304,6 +1369,9 @@ class Engine:
         write_options,
         save_mode,
         to_df=False,
+        event_time_column=None,
+        drop_event_time=False,
+        partition_precision="day",
     ):
         for split_name, feature_dataframe in feature_dataframes.items():
             split_path = training_dataset.location + "/" + str(split_name)
@@ -1315,6 +1383,9 @@ class Engine:
                 save_mode,
                 split_path,
                 to_df=to_df,
+                event_time_column=event_time_column,
+                drop_event_time=drop_event_time,
+                partition_precision=partition_precision,
             )
 
         if to_df:
@@ -1330,6 +1401,9 @@ class Engine:
         save_mode,
         path,
         to_df=False,
+        event_time_column=None,
+        drop_event_time=False,
+        partition_precision="day",
     ):
         # The dataframe arrives fully transformed (see
         # TransformationFunctionEngine._fit_and_transform); this method only
@@ -1342,18 +1416,172 @@ class Engine:
 
         path = self._setup_storage_connector(storage_connector, path)
 
+        # Both overwrite and append write into Hive partitions so the layout
+        # is uniform: a training dataset is always partitioned and can always
+        # be appended to. With an event time, each row's partition value is
+        # its UTC event date as a `YYYYMMDD` integer, truncated to the
+        # dataset's partition precision, making the dataset time-addressable
+        # on read and letting late or backfilled batches land in the
+        # partitions their rows belong to; without one, a per-increment
+        # counter keys a differently-named partition column instead. The
+        # partition column is discovered by the parquet reader on read and
+        # stripped before the data is returned, so it never surfaces as a
+        # feature.
+        if (
+            event_time_column is not None
+            and event_time_column in feature_dataframe.columns
+        ):
+            if save_mode == self.APPEND:
+                # The batch's date partitions merge into the existing ones;
+                # the layout must already be date-keyed.
+                self._validate_partition_scheme(path, self.DATE_PARTITION_COLUMN)
+            partition_column = self.DATE_PARTITION_COLUMN
+            feature_dataframe = feature_dataframe.withColumn(
+                partition_column,
+                self._event_partition_date(
+                    feature_dataframe, event_time_column, partition_precision
+                ),
+            )
+            if drop_event_time:
+                # The event-time column was forced through the query only to
+                # derive the partition key; the user did not select it.
+                feature_dataframe = feature_dataframe.drop(event_time_column)
+        else:
+            if save_mode == self.APPEND:
+                # Append: add the next counter partition, leaving existing
+                # ones in place; the layout must already be counter-keyed.
+                counter_values = self._validate_partition_scheme(
+                    path, self.COUNTER_PARTITION_COLUMN
+                )
+                partition_value = max(counter_values) + 1 if counter_values else 0
+            else:
+                # Overwrite: `.mode("overwrite")` replaces the whole location,
+                # so the dataset restarts at partition 0.
+                partition_value = 0
+            partition_column = self.COUNTER_PARTITION_COLUMN
+            feature_dataframe = feature_dataframe.withColumn(
+                partition_column, lit(partition_value)
+            )
         feature_dataframe.write.format(data_format).options(**write_options).mode(
             save_mode
-        ).save(path)
+        ).partitionBy(partition_column).save(path)
 
         feature_dataframe.unpersist()
         return None
+
+    def _event_partition_date(
+        self, feature_dataframe, event_time_column, partition_precision
+    ):
+        """Return a column with `event_time_column` as a `YYYYMMDD` UTC date integer.
+
+        The date is truncated to `partition_precision` (`day`, `month` or
+        `year`), zero-filling the finer components, so keys stay uniform
+        8-digit integers whose numeric order is chronological.
+        Integer columns are taken to hold epoch-millisecond timestamps (the
+        Hopsworks convention for numeric event-time columns); any other type
+        is cast to a timestamp, whose cast to a number yields epoch seconds
+        independently of the Spark session time zone.
+        Rows with a null event time end up in Spark's default null partition,
+        which time-range reads never match.
+        """
+        from pyspark.sql.functions import date_add, date_format, trunc
+
+        event_time = feature_dataframe[event_time_column]
+        dtype = feature_dataframe.schema[event_time_column].dataType
+        if isinstance(dtype, (ShortType, IntegerType, LongType)):
+            event_ms = event_time.cast("long")
+        else:
+            event_ms = (event_time.cast("timestamp").cast("double") * lit(1000)).cast(
+                "long"
+            )
+        # Epoch days -> a DateType holding the UTC calendar date; going
+        # through day arithmetic (rather than timestamp calendar functions)
+        # keeps the result independent of the Spark session time zone.
+        utc_date = date_add(
+            lit("1970-01-01").cast("date"), (event_ms / lit(86400000)).cast("int")
+        )
+        trunc_format = self.PARTITION_PRECISIONS[partition_precision]
+        if trunc_format is not None:
+            utc_date = trunc(utc_date, trunc_format)
+        return date_format(utc_date, "yyyyMMdd").cast("long")
+
+    def _validate_partition_scheme(self, path, partition_column):
+        """Validate that an append with `partition_column` fits the existing layout.
+
+        A Hive layout is partitioned by exactly one column name, so appending
+        the other scheme (date-keyed vs counter-keyed increments) would
+        produce a directory Spark cannot interpret as one dataset.
+        Returns the partition values already materialized for
+        `partition_column`, so the counter scheme can compute its next value
+        from them.
+        The path's storage connector must already be configured on the Hadoop
+        configuration (via `_setup_storage_connector`).
+
+        Raises:
+            FeatureStoreException: If `path` holds partitions of the other
+                scheme, or a legacy non-partitioned dataset (data files
+                directly under the location); either must be recreated (or
+                overwritten) before it can be appended to.
+        """
+        other_column = (
+            self.COUNTER_PARTITION_COLUMN
+            if partition_column == self.DATE_PARTITION_COLUMN
+            else self.DATE_PARTITION_COLUMN
+        )
+        prefix = partition_column + "="
+        other_prefix = other_column + "="
+        hadoop_path = self._jvm.org.apache.hadoop.fs.Path(path)
+        fs = hadoop_path.getFileSystem(self._spark_context._jsc.hadoopConfiguration())
+        existing = []
+        has_other_scheme = False
+        has_flat_data = False
+        if fs.exists(hadoop_path):
+            for status in fs.listStatus(hadoop_path):
+                name = status.getPath().getName()
+                if status.isDirectory() and name.startswith(prefix):
+                    suffix = name[len(prefix) :]
+                    if suffix.isdigit():
+                        existing.append(int(suffix))
+                elif status.isDirectory() and name.startswith(other_prefix):
+                    has_other_scheme = True
+                elif not status.isDirectory() and not name.startswith("_"):
+                    # A data file (not a Spark marker like `_SUCCESS`) sitting
+                    # directly under the location means this dataset was
+                    # materialized before incremental append and is not
+                    # partitioned.
+                    has_flat_data = True
+        if has_other_scheme:
+            raise FeatureStoreException(
+                "This training dataset is partitioned by "
+                f"`{other_column}`, but the appended batch would be "
+                f"partitioned by `{partition_column}` (a dataset is keyed by "
+                "event date only when the query provides an event time). "
+                "Appending the two schemes into one dataset would corrupt "
+                "it; use `overwrite=True` to rebuild the training dataset "
+                "with the new scheme instead."
+            )
+        if has_flat_data:
+            raise FeatureStoreException(
+                "This training dataset was materialized before incremental "
+                "append was supported and is not partitioned, so new data "
+                "cannot be appended to it without corrupting it. Recreate the "
+                "training dataset, or use `overwrite=True` to rewrite it, "
+                "before appending."
+            )
+        return existing
 
     def _read(
         self, storage_connector, data_format, read_options, location, dataframe_type
     ):
         if not data_format:
             raise FeatureStoreException("data_format is not specified")
+
+        # Internal keys carrying a time-range read of an incremental training
+        # dataset (see `FeatureViewEngine._read_from_storage_connector`);
+        # popped so they never reach the Spark reader as reader options.
+        read_options = dict(read_options) if read_options else {}
+        event_start_time = read_options.pop("event_start_time", None)
+        event_end_time = read_options.pop("event_end_time", None)
 
         # Apply format-specific read defaults (e.g. header/inferSchema for
         # CSV/TSV, recordType for tfrecord), letting caller options win.
@@ -1390,12 +1618,44 @@ class Engine:
 
         path = self._setup_storage_connector(storage_connector, path)
 
-        return self._return_dataframe_type(
+        df = (
             self._spark_session.read.format(data_format)
             .options(**(read_options if read_options else {}))
-            .load(path),
-            dataframe_type=dataframe_type,
+            .load(path)
         )
+
+        if event_start_time is not None or event_end_time is not None:
+            # A counter-keyed dataset (materialized without an event time)
+            # surfaces the counter partition column instead of the date one;
+            # a legacy layout surfaces neither. Either way there is no event
+            # date to prune by.
+            if self.DATE_PARTITION_COLUMN not in df.columns:
+                raise FeatureStoreException(
+                    "A time-range read requires a training dataset "
+                    "partitioned by event time, but this dataset is not (its "
+                    "data has no event-time column, or it was materialized "
+                    "before event-time partitioning was supported). Read it "
+                    "without `start_time`/`end_time` instead."
+                )
+            # Filter on the partition column so Spark prunes to the date
+            # partitions whose event date falls inside the requested range;
+            # only those partition directories are scanned.
+            if event_start_time is not None:
+                df = df.filter(col(self.DATE_PARTITION_COLUMN) >= event_start_time)
+            if event_end_time is not None:
+                df = df.filter(col(self.DATE_PARTITION_COLUMN) <= event_end_time)
+
+        # Drop the incremental-append partition column (see
+        # `_write_training_dataset_single`) if the reader surfaced it, so it
+        # never leaks into the returned data as a feature.
+        for partition_column in (
+            self.DATE_PARTITION_COLUMN,
+            self.COUNTER_PARTITION_COLUMN,
+        ):
+            if partition_column in df.columns:
+                df = df.drop(partition_column)
+
+        return self._return_dataframe_type(df, dataframe_type=dataframe_type)
 
     def _read_jdbc_on_driver(self, options, dataframe_type):
         # Wallet files exist on the driver only — read via JVM DriverManager
