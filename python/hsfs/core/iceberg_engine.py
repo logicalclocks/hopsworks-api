@@ -954,26 +954,9 @@ class IcebergEngine:
             and iceberg_fg_alias.left_feature_group_start_timestamp is None
         ):
             # snapshot query with end time; Iceberg expects epoch milliseconds
-            end_ts = iceberg_fg_alias.left_feature_group_end_timestamp
-            snapshots = self._read_snapshots(location)
-            if snapshots and (
-                util._convert_event_time_to_timestamp(snapshots[0]["committed_at"])
-                > end_ts
-            ):
-                # Requested time predates the table's first snapshot.
-                # Happens when compute_statistics runs immediately after a fresh
-                # insert: the backend-recorded commit_time can be a few ms before
-                # the first snapshot's commit, and Iceberg rejects as-of-timestamp
-                # in that range. Fall back to reading the earliest snapshot.
-                iceberg_options = {
-                    self.ICEBERG_QUERY_TIME_TRAVEL_SNAPSHOT_ID: str(
-                        snapshots[0]["snapshot_id"]
-                    ),
-                }
-            else:
-                iceberg_options = {
-                    self.ICEBERG_QUERY_TIME_TRAVEL_AS_OF_TIMESTAMP: str(end_ts),
-                }
+            iceberg_options = self._snapshot_read_opts_at(
+                location, iceberg_fg_alias.left_feature_group_end_timestamp
+            )
         elif iceberg_fg_alias.left_feature_group_start_timestamp is not None:
             # incremental query; Iceberg only supports snapshot-id bounds,
             # so the wallclock bounds are resolved against the snapshot log
@@ -981,19 +964,31 @@ class IcebergEngine:
                 location, iceberg_fg_alias.left_feature_group_start_timestamp
             )
             if start_snapshot_id is None:
-                raise FeatureStoreException(
-                    "Cannot run the incremental query: no Iceberg snapshot exists at or before "
-                    f"the start time {iceberg_fg_alias.left_feature_group_start_timestamp}."
+                # The window starts before the table's first snapshot (e.g. a
+                # rolling monitoring window on a fresh table). start-snapshot-id
+                # is exclusive, so the first snapshot's changes cannot be part
+                # of an incremental scan; read the table state at the end bound
+                # instead, which equals the window content when every commit is
+                # inside the window (mirrors the Delta CDF earliest-version
+                # fallback).
+                end_ts = iceberg_fg_alias.left_feature_group_end_timestamp
+                iceberg_options = (
+                    self._snapshot_read_opts_at(location, end_ts)
+                    if end_ts is not None
+                    else {}
                 )
-            iceberg_options = {
-                self.ICEBERG_START_SNAPSHOT_ID: str(start_snapshot_id),
-            }
-            if iceberg_fg_alias.left_feature_group_end_timestamp is not None:
-                end_snapshot_id = self._resolve_snapshot_id_at(
-                    location, iceberg_fg_alias.left_feature_group_end_timestamp
-                )
-                if end_snapshot_id is not None:
-                    iceberg_options[self.ICEBERG_END_SNAPSHOT_ID] = str(end_snapshot_id)
+            else:
+                iceberg_options = {
+                    self.ICEBERG_START_SNAPSHOT_ID: str(start_snapshot_id),
+                }
+                if iceberg_fg_alias.left_feature_group_end_timestamp is not None:
+                    end_snapshot_id = self._resolve_snapshot_id_at(
+                        location, iceberg_fg_alias.left_feature_group_end_timestamp
+                    )
+                    if end_snapshot_id is not None:
+                        iceberg_options[self.ICEBERG_END_SNAPSHOT_ID] = str(
+                            end_snapshot_id
+                        )
 
         if read_options:
             for key in read_options:
@@ -1010,6 +1005,26 @@ class IcebergEngine:
         )
 
         return iceberg_options
+
+    def _snapshot_read_opts_at(self, location: str, end_ts: int) -> dict[str, str]:
+        """Read options pinning the table state at *end_ts*.
+
+        A time that predates the table's first snapshot pins the earliest
+        snapshot by id instead: compute_statistics runs right after a fresh
+        insert, and the backend-recorded commit_time can be a few ms before
+        the first snapshot's commit, a range where Iceberg rejects
+        as-of-timestamp.
+        """
+        snapshots = self._read_snapshots(location)
+        if snapshots and (
+            util._convert_event_time_to_timestamp(snapshots[0]["committed_at"]) > end_ts
+        ):
+            return {
+                self.ICEBERG_QUERY_TIME_TRAVEL_SNAPSHOT_ID: str(
+                    snapshots[0]["snapshot_id"]
+                ),
+            }
+        return {self.ICEBERG_QUERY_TIME_TRAVEL_AS_OF_TIMESTAMP: str(end_ts)}
 
     @staticmethod
     def _is_catalog_identifier(address: str) -> bool:
