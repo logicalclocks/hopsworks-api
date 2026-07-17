@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage for python/hsfs/feature_group.py: 74%</title>
+    <title>Coverage for python/hsfs/feature_group.py: 75%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_c827f16f.png">
     <link rel="stylesheet" href="style_cb_4667309f.css" type="text/css">
     <script src="coverage_html_cb_dd2e7eb5.js" defer></script>
@@ -12,7 +12,7 @@
     <div class="content">
         <h1>
             <span class="text">Coverage for </span><b>python<span class="sep">/</span>hsfs<span class="sep">/</span>feature_group.py</b>:
-            <span class="pc_cov">74%</span>
+            <span class="pc_cov">75%</span>
         </h1>
         <aside id="help_panel_wrapper">
             <input id="help_panel_state" type="checkbox">
@@ -55,8 +55,8 @@
         </aside>
         <h2>
             <span class="text">1360 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">1008<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">352<span class="text"> missing</span></button>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">1018<span class="text"> run</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">342<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">14<span class="text"> excluded</span></button>
         </h2>
         <p class="text">
@@ -65,7 +65,7 @@
             <a id="nextFileLink" class="nav" href="z_28d549aca2dbb40e_feature_group_commit_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.14.3">coverage.py v7.14.3</a>,
-            created at 2026-07-17 09:55 +0000
+            created at 2026-07-17 12:38 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -4846,30 +4846,30 @@
     <p class="run"><span class="n"><a id="t4764" href="#t4764">4764</a></span><span class="t">        <span class="key">return</span> <span class="op">[</span><span class="nam">cls</span><span class="op">(</span><span class="op">**</span><span class="nam">fg</span><span class="op">)</span> <span class="key">for</span> <span class="nam">fg</span> <span class="key">in</span> <span class="nam">json_decamelized</span><span class="op">]</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t4765" href="#t4765">4765</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t4766" href="#t4766">4766</a></span><span class="t">    <span class="key">def</span> <span class="nam">update_from_response_json</span><span class="op">(</span><span class="nam">self</span><span class="op">,</span> <span class="nam">json_dict</span><span class="op">:</span> <span class="nam">dict</span><span class="op">[</span><span class="nam">str</span><span class="op">,</span> <span class="nam">Any</span><span class="op">]</span><span class="op">)</span> <span class="op">-></span> <span class="nam">FeatureGroup</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t4767" href="#t4767">4767</a></span><span class="t">        <span class="nam">json_decamelized</span> <span class="op">=</span> <span class="nam">humps</span><span class="op">.</span><span class="nam">decamelize</span><span class="op">(</span><span class="nam">json_dict</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t4768" href="#t4768">4768</a></span><span class="t">        <span class="nam">json_decamelized</span><span class="op">[</span><span class="str">"stream"</span><span class="op">]</span> <span class="op">=</span> <span class="nam">json_decamelized</span><span class="op">[</span><span class="str">"type"</span><span class="op">]</span> <span class="op">==</span> <span class="str">"streamFeatureGroupDTO"</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t4769" href="#t4769">4769</a></span><span class="t">        <span class="nam">_</span> <span class="op">=</span> <span class="nam">json_decamelized</span><span class="op">.</span><span class="nam">pop</span><span class="op">(</span><span class="str">"type"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t4770" href="#t4770">4770</a></span><span class="t">        <span class="key">if</span> <span class="str">"embedding_index"</span> <span class="key">in</span> <span class="nam">json_decamelized</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t4767" href="#t4767">4767</a></span><span class="t">        <span class="nam">json_decamelized</span> <span class="op">=</span> <span class="nam">humps</span><span class="op">.</span><span class="nam">decamelize</span><span class="op">(</span><span class="nam">json_dict</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t4768" href="#t4768">4768</a></span><span class="t">        <span class="nam">json_decamelized</span><span class="op">[</span><span class="str">"stream"</span><span class="op">]</span> <span class="op">=</span> <span class="nam">json_decamelized</span><span class="op">[</span><span class="str">"type"</span><span class="op">]</span> <span class="op">==</span> <span class="str">"streamFeatureGroupDTO"</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t4769" href="#t4769">4769</a></span><span class="t">        <span class="nam">_</span> <span class="op">=</span> <span class="nam">json_decamelized</span><span class="op">.</span><span class="nam">pop</span><span class="op">(</span><span class="str">"type"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t4770" href="#t4770">4770</a></span><span class="t">        <span class="key">if</span> <span class="str">"embedding_index"</span> <span class="key">in</span> <span class="nam">json_decamelized</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t4771" href="#t4771">4771</a></span><span class="t">            <span class="nam">json_decamelized</span><span class="op">[</span><span class="str">"embedding_index"</span><span class="op">]</span> <span class="op">=</span> <span class="nam">EmbeddingIndex</span><span class="op">.</span><span class="nam">from_response_json</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis mis2 show_mis"><span class="n"><a id="t4772" href="#t4772">4772</a></span><span class="t">                <span class="nam">json_decamelized</span><span class="op">[</span><span class="str">"embedding_index"</span><span class="op">]</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis mis2 show_mis"><span class="n"><a id="t4773" href="#t4773">4773</a></span><span class="t">            <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t4774" href="#t4774">4774</a></span><span class="t">        <span class="key">if</span> <span class="str">"transformation_functions"</span> <span class="key">in</span> <span class="nam">json_decamelized</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t4775" href="#t4775">4775</a></span><span class="t">            <span class="nam">transformation_functions</span> <span class="op">=</span> <span class="nam">json_decamelized</span><span class="op">[</span><span class="str">"transformation_functions"</span><span class="op">]</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t4776" href="#t4776">4776</a></span><span class="t">            <span class="nam">json_decamelized</span><span class="op">[</span><span class="str">"transformation_functions"</span><span class="op">]</span> <span class="op">=</span> <span class="op">[</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t4777" href="#t4777">4777</a></span><span class="t">                <span class="nam">TransformationFunction</span><span class="op">.</span><span class="nam">from_response_json</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t4778" href="#t4778">4778</a></span><span class="t">                    <span class="op">{</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t4779" href="#t4779">4779</a></span><span class="t">                        <span class="op">**</span><span class="nam">transformation_function</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t4780" href="#t4780">4780</a></span><span class="t">                        <span class="str">"transformation_type"</span><span class="op">:</span> <span class="nam">TransformationType</span><span class="op">.</span><span class="nam">ON_DEMAND</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t4781" href="#t4781">4781</a></span><span class="t">                    <span class="op">}</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t4782" href="#t4782">4782</a></span><span class="t">                <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t4783" href="#t4783">4783</a></span><span class="t">                <span class="key">for</span> <span class="nam">transformation_function</span> <span class="key">in</span> <span class="nam">transformation_functions</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t4784" href="#t4784">4784</a></span><span class="t">            <span class="op">]</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t4785" href="#t4785">4785</a></span><span class="t">        <span class="key">if</span> <span class="str">"sinkJob"</span> <span class="key">in</span> <span class="nam">json_dict</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t4774" href="#t4774">4774</a></span><span class="t">        <span class="key">if</span> <span class="str">"transformation_functions"</span> <span class="key">in</span> <span class="nam">json_decamelized</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t4775" href="#t4775">4775</a></span><span class="t">            <span class="nam">transformation_functions</span> <span class="op">=</span> <span class="nam">json_decamelized</span><span class="op">[</span><span class="str">"transformation_functions"</span><span class="op">]</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t4776" href="#t4776">4776</a></span><span class="t">            <span class="nam">json_decamelized</span><span class="op">[</span><span class="str">"transformation_functions"</span><span class="op">]</span> <span class="op">=</span> <span class="op">[</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t4777" href="#t4777">4777</a></span><span class="t">                <span class="nam">TransformationFunction</span><span class="op">.</span><span class="nam">from_response_json</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t4778" href="#t4778">4778</a></span><span class="t">                    <span class="op">{</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t4779" href="#t4779">4779</a></span><span class="t">                        <span class="op">**</span><span class="nam">transformation_function</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t4780" href="#t4780">4780</a></span><span class="t">                        <span class="str">"transformation_type"</span><span class="op">:</span> <span class="nam">TransformationType</span><span class="op">.</span><span class="nam">ON_DEMAND</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t4781" href="#t4781">4781</a></span><span class="t">                    <span class="op">}</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t4782" href="#t4782">4782</a></span><span class="t">                <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t4783" href="#t4783">4783</a></span><span class="t">                <span class="key">for</span> <span class="nam">transformation_function</span> <span class="key">in</span> <span class="nam">transformation_functions</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t4784" href="#t4784">4784</a></span><span class="t">            <span class="op">]</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t4785" href="#t4785">4785</a></span><span class="t">        <span class="key">if</span> <span class="str">"sinkJob"</span> <span class="key">in</span> <span class="nam">json_dict</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t4786" href="#t4786">4786</a></span><span class="t">            <span class="nam">json_decamelized</span><span class="op">[</span><span class="str">"sink_job"</span><span class="op">]</span> <span class="op">=</span> <span class="nam">job</span><span class="op">.</span><span class="nam">Job</span><span class="op">.</span><span class="nam">from_response_json</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis mis2 show_mis"><span class="n"><a id="t4787" href="#t4787">4787</a></span><span class="t">                <span class="nam">json_dict</span><span class="op">[</span><span class="str">"sinkJob"</span><span class="op">]</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis mis2 show_mis"><span class="n"><a id="t4788" href="#t4788">4788</a></span><span class="t">            <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t4789" href="#t4789">4789</a></span><span class="t">        <span class="nam">self</span><span class="op">.</span><span class="nam">__init__</span><span class="op">(</span><span class="op">**</span><span class="nam">json_decamelized</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t4790" href="#t4790">4790</a></span><span class="t">        <span class="key">return</span> <span class="nam">self</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t4789" href="#t4789">4789</a></span><span class="t">        <span class="nam">self</span><span class="op">.</span><span class="nam">__init__</span><span class="op">(</span><span class="op">**</span><span class="nam">json_decamelized</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t4790" href="#t4790">4790</a></span><span class="t">        <span class="key">return</span> <span class="nam">self</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t4791" href="#t4791">4791</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t4792" href="#t4792">4792</a></span><span class="t">    <span class="key">def</span> <span class="nam">json</span><span class="op">(</span><span class="nam">self</span><span class="op">)</span> <span class="op">-></span> <span class="nam">str</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t4793" href="#t4793">4793</a></span><span class="t">        <span class="str">"""Get specific Feature Group metadata in json format.</span>&nbsp;</span><span class="r"></span></p>
@@ -6182,7 +6182,7 @@
             <a class="nav" href="z_28d549aca2dbb40e_feature_group_commit_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.14.3">coverage.py v7.14.3</a>,
-            created at 2026-07-17 09:55 +0000
+            created at 2026-07-17 12:38 +0000
         </p>
     </div>
 </footer>
