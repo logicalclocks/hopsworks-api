@@ -150,6 +150,7 @@ class MultiTableIngestionJob:
         self._targets: list[TableIngestionTarget] = []
         self._target_index: dict[int, int] = {}
         self._target_alias_index: dict[int, int] = {}
+        self._staged_target_ids: set[int] = set()
         self._job: job.Job | None = None
 
     @public
@@ -238,6 +239,8 @@ class MultiTableIngestionJob:
             self._target_index[key] = len(self._targets)
             self._targets.append(target)
         self._target_alias_index[key] = self._target_index[key]
+        if self._job is not None:
+            self._staged_target_ids.add(key)
 
     def _target_position(self, feature_group_id: int) -> int | None:
         return self._target_index.get(
@@ -255,7 +258,9 @@ class MultiTableIngestionJob:
         except AttributeError:
             feature_group._id = current_id
 
-    def _sync_targets_from_job_config(self, config: dict | None) -> None:
+    def _sync_targets_from_job_config(
+        self, config: dict | None, preserve_staged_targets: bool = False
+    ) -> None:
         if not isinstance(config, dict):
             return
         targets = config.get("targets")
@@ -266,9 +271,33 @@ class MultiTableIngestionJob:
 
         previous_targets = list(self._targets)
         previous_alias_index = dict(self._target_alias_index)
-        self._targets = [
+        server_targets = [
             TableIngestionTarget.from_response_json(target) for target in targets
         ]
+        if preserve_staged_targets:
+            staged_target_ids = set(self._staged_target_ids)
+            merged_targets = list(server_targets)
+            staged_positions = [
+                index
+                for index, previous_target in enumerate(previous_targets)
+                if previous_target._feature_group_id in staged_target_ids
+            ]
+            for index in staged_positions:
+                previous_target = previous_targets[index]
+                if index < len(server_targets):
+                    previous_target._feature_group_id = server_targets[
+                        index
+                    ]._feature_group_id
+                    merged_targets[index] = previous_target
+                else:
+                    merged_targets.append(previous_target)
+            self._targets = merged_targets
+            self._staged_target_ids = {
+                self._targets[index]._feature_group_id for index in staged_positions
+            }
+        else:
+            self._targets = server_targets
+            self._staged_target_ids.clear()
         self._target_index = {
             target._feature_group_id: index
             for index, target in enumerate(self._targets)
@@ -288,7 +317,9 @@ class MultiTableIngestionJob:
         from hopsworks_common.core.job_api import JobApi
 
         self._job = JobApi().get(self._name)
-        self._sync_targets_from_job_config(self._job.config)
+        self._sync_targets_from_job_config(
+            self._job.config, preserve_staged_targets=True
+        )
 
     def _save_enabled_state(self, index: int, enabled: bool) -> None:
         targets = (
@@ -300,7 +331,9 @@ class MultiTableIngestionJob:
             return
         targets[index]["enabled"] = enabled
         self._job = self._job.save()
-        self._sync_targets_from_job_config(self._job.config)
+        self._sync_targets_from_job_config(
+            self._job.config, preserve_staged_targets=True
+        )
 
     def _attach_feature_group(
         self,

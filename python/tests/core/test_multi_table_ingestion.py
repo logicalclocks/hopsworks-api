@@ -189,6 +189,70 @@ class TestMultiTableIngestionJob:
         assert [target._feature_group_id for target in job.targets] == [11, 12]
         assert old_fg.id == 11
 
+    def test_set_table_enabled_preserves_pending_target_additions(self):
+        job = _builder()
+        job.add_target(feature_group_id=1)
+
+        with patch("hopsworks_common.core.job_api.JobApi") as MockJobApi:
+            api = MockJobApi.return_value
+            created = MagicMock()
+            created.config = {"targets": [{"featuregroupId": 1, "enabled": True}]}
+            current = MagicMock()
+            current.config = {"targets": [{"featuregroupId": 1, "enabled": True}]}
+            updated = MagicMock()
+            updated.config = {"targets": [{"featuregroupId": 1, "enabled": False}]}
+            current.save.return_value = updated
+            api.create.return_value = created
+            api.get.return_value = current
+
+            job.save()
+            job.add_target(feature_group_id=2, batch_size=777)
+            job.set_table_enabled(feature_group_id=1, enabled=False)
+
+        assert [target._feature_group_id for target in job.targets] == [1, 2]
+        assert job.targets[0].to_dict()["enabled"] is False
+        assert job.targets[1].to_dict()["batchSize"] == 777
+
+    def test_set_table_enabled_preserves_pending_target_edits(self):
+        job = _builder()
+        job.add_target(feature_group_id=1)
+        job.add_target(feature_group_id=2)
+
+        with patch("hopsworks_common.core.job_api.JobApi") as MockJobApi:
+            api = MockJobApi.return_value
+            created = MagicMock()
+            created.config = {
+                "targets": [
+                    {"featuregroupId": 1, "enabled": True},
+                    {"featuregroupId": 2, "enabled": True},
+                ]
+            }
+            current = MagicMock()
+            current.config = {
+                "targets": [
+                    {"featuregroupId": 1, "enabled": True},
+                    {"featuregroupId": 2, "enabled": True},
+                ]
+            }
+            updated = MagicMock()
+            updated.config = {
+                "targets": [
+                    {"featuregroupId": 1, "enabled": False},
+                    {"featuregroupId": 2, "enabled": True},
+                ]
+            }
+            current.save.return_value = updated
+            api.create.return_value = created
+            api.get.return_value = current
+
+            job.save()
+            job.add_target(feature_group_id=2, batch_size=777)
+            job.set_table_enabled(feature_group_id=1, enabled=False)
+
+        assert [target._feature_group_id for target in job.targets] == [1, 2]
+        assert job.targets[0].to_dict()["enabled"] is False
+        assert job.targets[1].to_dict()["batchSize"] == 777
+
     def test_set_table_enabled_preserves_column_mappings(self):
         job = _builder()
         # attach with generated column mappings, as the engine does
