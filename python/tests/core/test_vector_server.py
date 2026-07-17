@@ -14,6 +14,7 @@
 #   limitations under the License.
 #
 
+from datetime import datetime
 from unittest.mock import PropertyMock
 
 import pytest
@@ -119,3 +120,24 @@ class TestVectorServer:
         server._setup_rest_client_and_engine(entity, reset_rest_client=True)
 
         singleton.assert_called_once_with(transport=None, optional_config=None)
+
+    @pytest.mark.parametrize(
+        "timestamp_value, expected",
+        [
+            ("2024-04-18 12:00:25", datetime(2024, 4, 18, 12, 0, 25)),
+            # fractional seconds appear when the online type has sub-second
+            # precision, e.g. timestamp(3) (FSTORE-2061)
+            ("2024-04-18 12:00:25.789", datetime(2024, 4, 18, 12, 0, 25, 789000)),
+            ("2024-04-18 12:00:25.789000", datetime(2024, 4, 18, 12, 0, 25, 789000)),
+            (1713441625789, datetime(2024, 4, 18, 12, 0, 25, 789000)),
+            (
+                datetime(2024, 4, 18, 12, 0, 25, 789000),
+                datetime(2024, 4, 18, 12, 0, 25, 789000),
+            ),
+            (None, None),
+        ],
+    )
+    def test_handle_timestamp_based_on_dtype(self, timestamp_value, expected):
+        server = VectorServer.__new__(VectorServer)
+
+        assert server._handle_timestamp_based_on_dtype(timestamp_value) == expected

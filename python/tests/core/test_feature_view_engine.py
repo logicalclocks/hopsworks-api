@@ -14,6 +14,7 @@
 #   limitations under the License.
 #
 
+import warnings
 from unittest.mock import MagicMock
 
 import pandas as pd
@@ -807,6 +808,52 @@ class TestFeatureViewEngine:
             assert td_feature.type == expected_td_feature.type
             assert td_feature.label == expected_td_feature.label
 
+    def test_get_training_dataset(self, mocker):
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mock_get_metadata = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
+        )
+        mock_get_schema = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_schema"
+        )
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=3,
+            data_format="CSV",
+            featurestore_id=feature_store_id,
+            splits={},
+        )
+        mock_get_metadata.return_value = td
+        mock_get_schema.return_value = [
+            TrainingDatasetFeature(name="id", type="bigint", label=False),
+        ]
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            query=query,
+            featurestore_id=feature_store_id,
+            labels=[],
+        )
+
+        # Act
+        result = fv_engine._get_training_dataset(fv, training_dataset_version=3)
+
+        # Assert: fetched by the requested version and schema set on the object.
+        mock_get_metadata.assert_called_once_with(fv, 3)
+        assert td.schema == mock_get_schema.return_value
+        # Metadata-only view: same downcast-to-base proxy as `_get_training_datasets`.
+        assert result.__self__ is td
+        assert result.__thisclass__ is training_dataset.TrainingDataset
+
     def test_get_training_data_transformations(self, mocker):
         # Arrange
         feature_store_id = 99
@@ -1015,6 +1062,172 @@ class TestFeatureViewEngine:
             assert td_feature.name == expected_td_feature.name
             assert td_feature.type == expected_td_feature.type
             assert td_feature.label == expected_td_feature.label
+
+    def test_get_training_data_time_range_in_read_options(self, mocker):
+        # A time-range read converts the window to epoch millis and ships it
+        # to the engine read as internal read options, pruning the increments
+        # by their event-window partition key.
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mock_fv_engine_get_training_dataset_metadata = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
+        )
+        mock_engine = mocker.patch("hsfs.engine._get_instance")
+        mock_engine.return_value._read_options.side_effect = (
+            lambda data_format, read_options: read_options or {}
+        )
+        mock_fv_engine_read_dir = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._read_dir_from_storage_connector"
+        )
+        mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine._get_batch_query")
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="parquet",
+            featurestore_id=99,
+            splits={},
+        )
+        mock_fv_engine_get_training_dataset_metadata.return_value = td
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            query=query,
+            featurestore_id=feature_store_id,
+            labels=[],
+        )
+        fv.schema = [
+            TrainingDatasetFeature(name="id", type="bigint", label=False),
+        ]
+
+        # Act
+        fv_engine._get_training_data(
+            feature_view_obj=fv,
+            training_dataset_version=1,
+            event_start_time="2026-07-01 00:00:00",
+            event_end_time="2026-07-01 23:59:59",
+        )
+
+        # Assert: the window reached the directory read as the partition
+        # keys' `YYYYMMDD` UTC date encoding
+        read_options = mock_fv_engine_read_dir.call_args[0][2]
+        assert read_options["event_start_time"] == 20260701
+        assert read_options["event_end_time"] == 20260701
+
+    def test_get_training_data_time_range_misaligned_start_warns(self, mocker):
+        # At month/year precision partitions are keyed by the period start, so
+        # a start bound inside a period excludes that whole period; the user is
+        # warned about the silently dropped rows.
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mock_fv_engine_get_training_dataset_metadata = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
+        )
+        mock_engine = mocker.patch("hsfs.engine._get_instance")
+        mock_engine.return_value._read_options.side_effect = (
+            lambda data_format, read_options: read_options or {}
+        )
+        mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._read_dir_from_storage_connector"
+        )
+        mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine._get_batch_query")
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="parquet",
+            featurestore_id=99,
+            splits={},
+            partition_precision="month",
+        )
+        mock_fv_engine_get_training_dataset_metadata.return_value = td
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            query=query,
+            featurestore_id=feature_store_id,
+            labels=[],
+        )
+        fv.schema = [
+            TrainingDatasetFeature(name="id", type="bigint", label=False),
+        ]
+
+        # Act / Assert: a mid-month start bound warns
+        with pytest.warns(UserWarning, match="boundary"):
+            fv_engine._get_training_data(
+                feature_view_obj=fv,
+                training_dataset_version=1,
+                event_start_time="2026-07-15 00:00:00",
+            )
+
+        # Act / Assert: a month-start bound stays silent
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            fv_engine._get_training_data(
+                feature_view_obj=fv,
+                training_dataset_version=1,
+                event_start_time="2026-07-01 00:00:00",
+            )
+
+    def test_get_training_data_time_range_in_memory_raises(self, mocker):
+        # An in-memory training dataset has no materialized increments to
+        # prune, so a time-range read is a user error.
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mock_fv_engine_get_training_dataset_metadata = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
+        )
+        mocker.patch("hsfs.engine._get_instance")
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="parquet",
+            featurestore_id=99,
+            splits={},
+            training_dataset_type=training_dataset.TrainingDataset.IN_MEMORY,
+        )
+        mock_fv_engine_get_training_dataset_metadata.return_value = td
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            query=query,
+            featurestore_id=feature_store_id,
+            labels=[],
+        )
+
+        # Act / Assert
+        with pytest.raises(FeatureStoreException) as e_info:
+            fv_engine._get_training_data(
+                feature_view_obj=fv,
+                training_dataset_version=1,
+                event_start_time="2026-07-01 00:00:00",
+            )
+        assert "in-memory" in str(e_info.value)
 
     def test_get_training_data_td_version_transformations(self, mocker):
         # Arrange
@@ -1631,6 +1844,680 @@ class TestFeatureViewEngine:
             assert td_feature.type == expected_td_feature.type
             assert td_feature.label == expected_td_feature.label
 
+    def test_insert_training_data(self, mocker):
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        mock_fv_engine_get_training_dataset_metadata = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
+        )
+        mock_fv_engine_compute_training_dataset = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._compute_training_dataset"
+        )
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="parquet",
+            featurestore_id=99,
+            splits={},
+        )
+        mock_fv_engine_get_training_dataset_metadata.return_value = td
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=query,
+        )
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        # Act
+        result_td, _ = fv_engine._insert_training_data(
+            feature_view_obj=fv,
+            training_dataset_version=1,
+            start_time="2026-07-01 00:00:00",
+            end_time="2026-07-01 23:59:59",
+            user_write_options={},
+        )
+
+        # Assert
+        assert mock_fv_engine_get_training_dataset_metadata.call_count == 1
+        assert mock_fv_engine_compute_training_dataset.call_count == 1
+        # the per-call window overrides the persisted create-time window
+        assert result_td.event_start_time == "2026-07-01 00:00:00"
+        assert result_td.event_end_time == "2026-07-01 23:59:59"
+        # append save mode is passed through
+        _, kwargs = mock_fv_engine_compute_training_dataset.call_args
+        assert kwargs["save_mode"] == fv_engine._APPEND
+
+    def test_insert_training_data_overwrite(self, mocker):
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        # overwrite must not require the Spark engine
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mock_fv_engine_get_training_dataset_metadata = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
+        )
+        mock_fv_engine_compute_training_dataset = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._compute_training_dataset"
+        )
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="parquet",
+            featurestore_id=99,
+            splits={},
+        )
+        mock_fv_engine_get_training_dataset_metadata.return_value = td
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=query,
+        )
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        # Act
+        fv_engine._insert_training_data(
+            feature_view_obj=fv,
+            training_dataset_version=1,
+            start_time="",
+            end_time="",
+            user_write_options={},
+            overwrite=True,
+        )
+
+        # Assert
+        _, kwargs = mock_fv_engine_compute_training_dataset.call_args
+        assert kwargs["save_mode"] == fv_engine._OVERWRITE
+
+    def test_insert_training_data_append_python_engine(self, mocker):
+        # Arrange: append is allowed on the python engine; it offloads to a
+        # backend (FlyingDuck / Spark job) that honors the APPEND save mode.
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mock_fv_engine_get_training_dataset_metadata = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
+        )
+        mock_fv_engine_compute_training_dataset = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._compute_training_dataset"
+        )
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="parquet",
+            featurestore_id=99,
+            splits={},
+        )
+        mock_fv_engine_get_training_dataset_metadata.return_value = td
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=query,
+        )
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        # Act
+        fv_engine._insert_training_data(
+            feature_view_obj=fv,
+            training_dataset_version=1,
+            start_time="",
+            end_time="",
+            user_write_options={},
+        )
+
+        # Assert
+        _, kwargs = mock_fv_engine_compute_training_dataset.call_args
+        assert kwargs["save_mode"] == fv_engine._APPEND
+
+    def test_insert_training_data_random_split_appends(self, mocker):
+        # Arrange: a random-split TD appends per split without warning.
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        mock_fv_engine_get_training_dataset_metadata = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
+        )
+        mock_fv_engine_compute_training_dataset = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._compute_training_dataset"
+        )
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="parquet",
+            featurestore_id=99,
+            splits={"train": 0.8, "test": 0.2},
+            train_split="train",
+        )
+        mock_fv_engine_get_training_dataset_metadata.return_value = td
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=query,
+        )
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        # Act
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")  # any warning fails the test
+            fv_engine._insert_training_data(
+                feature_view_obj=fv,
+                training_dataset_version=1,
+                start_time="",
+                end_time="",
+                user_write_options={},
+            )
+
+        # Assert
+        _, kwargs = mock_fv_engine_compute_training_dataset.call_args
+        assert kwargs["save_mode"] == fv_engine._APPEND
+
+    def test_insert_training_data_time_series_split_raises(self, mocker):
+        # Arrange: appending to a time-series split is refused — the batch
+        # would land entirely in the last split and skew the dataset; the
+        # supported pattern is an unsplit dataset read with a time range.
+        from hsfs.training_dataset_split import TrainingDatasetSplit
+
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        mock_fv_engine_get_training_dataset_metadata = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
+        )
+        mock_fv_engine_compute_training_dataset = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._compute_training_dataset"
+        )
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="parquet",
+            featurestore_id=99,
+            splits={},
+        )
+        td._splits = [
+            TrainingDatasetSplit(
+                name="train",
+                split_type=TrainingDatasetSplit.TIME_SERIES_SPLIT,
+                start_time=1000,
+                end_time=2000,
+            ),
+            TrainingDatasetSplit(
+                name="test",
+                split_type=TrainingDatasetSplit.TIME_SERIES_SPLIT,
+                start_time=2000,
+                end_time=3000,
+            ),
+        ]
+        mock_fv_engine_get_training_dataset_metadata.return_value = td
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=query,
+        )
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        # Act / Assert
+        with pytest.raises(FeatureStoreException, match="time-series"):
+            fv_engine._insert_training_data(
+                feature_view_obj=fv,
+                training_dataset_version=1,
+                start_time="",
+                end_time="",
+                user_write_options={},
+            )
+        mock_fv_engine_compute_training_dataset.assert_not_called()
+
+    def test_insert_training_data_time_series_split_overwrite_allowed(self, mocker):
+        # Arrange: overwrite rebuilds the splits over the full data, so it stays allowed.
+        from hsfs.training_dataset_split import TrainingDatasetSplit
+
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        mock_fv_engine_get_training_dataset_metadata = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
+        )
+        mock_fv_engine_compute_training_dataset = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._compute_training_dataset"
+        )
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="parquet",
+            featurestore_id=99,
+            splits={},
+        )
+        td._splits = [
+            TrainingDatasetSplit(
+                name="train",
+                split_type=TrainingDatasetSplit.TIME_SERIES_SPLIT,
+                start_time=1000,
+                end_time=2000,
+            ),
+        ]
+        mock_fv_engine_get_training_dataset_metadata.return_value = td
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=query,
+        )
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        # Act
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            fv_engine._insert_training_data(
+                feature_view_obj=fv,
+                training_dataset_version=1,
+                start_time="",
+                end_time="",
+                user_write_options={},
+                overwrite=True,
+            )
+
+        # Assert
+        _, kwargs = mock_fv_engine_compute_training_dataset.call_args
+        assert kwargs["save_mode"] == fv_engine._OVERWRITE
+
+    def test_insert_training_data_non_parquet_raises(self, mocker):
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        mock_fv_engine_get_training_dataset_metadata = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
+        )
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="csv",
+            featurestore_id=99,
+            splits={},
+        )
+        mock_fv_engine_get_training_dataset_metadata.return_value = td
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=query,
+        )
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        # Act / Assert
+        with pytest.raises(FeatureStoreException, match="parquet"):
+            fv_engine._insert_training_data(
+                feature_view_obj=fv,
+                training_dataset_version=1,
+                start_time="",
+                end_time="",
+                user_write_options={},
+            )
+
+    def _arrange_insert_training_data(self, mocker):
+        # Shared arrangement for the compute_statistics opt-in tests: a plain
+        # parquet training dataset with the materialization mocked out.
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        mock_metadata = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
+        )
+        mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._compute_training_dataset"
+        )
+        mock_recompute = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._recompute_training_dataset_statistics"
+        )
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="parquet",
+            featurestore_id=99,
+            splits={},
+        )
+        mock_metadata.return_value = td
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=query,
+        )
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+        return fv_engine, fv, mock_recompute
+
+    def test_insert_training_data_compute_statistics(self, mocker):
+        # Arrange
+        fv_engine, fv, mock_recompute = self._arrange_insert_training_data(mocker)
+
+        # Act: default append leaves statistics untouched
+        fv_engine._insert_training_data(
+            feature_view_obj=fv,
+            training_dataset_version=1,
+            start_time="",
+            end_time="",
+            user_write_options={},
+        )
+
+        # Assert
+        mock_recompute.assert_not_called()
+
+        # Act: opting in refreshes the statistics after the append
+        fv_engine._insert_training_data(
+            feature_view_obj=fv,
+            training_dataset_version=1,
+            start_time="",
+            end_time="",
+            user_write_options={},
+            compute_statistics=True,
+        )
+
+        # Assert
+        mock_recompute.assert_called_once_with(fv, 1)
+
+    def test_insert_training_data_compute_statistics_overwrite_skipped(self, mocker):
+        # An overwrite recomputes statistics as part of the materialization
+        # itself, so the opt-in refresh must not read the dataset back again.
+        # Arrange
+        fv_engine, fv, mock_recompute = self._arrange_insert_training_data(mocker)
+
+        # Act
+        fv_engine._insert_training_data(
+            feature_view_obj=fv,
+            training_dataset_version=1,
+            start_time="",
+            end_time="",
+            user_write_options={},
+            overwrite=True,
+            compute_statistics=True,
+        )
+
+        # Assert
+        mock_recompute.assert_not_called()
+
+    def test_compute_training_dataset_partition_precision_in_write_options(
+        self, mocker
+    ):
+        # The precision is fixed at creation in the training dataset metadata;
+        # every materialization (initial or append) ships it to the engine and
+        # the backend job through the write options, falling back to day when
+        # no precision is recorded (in-memory, or pre-existing datasets).
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_schema"
+        )
+        mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine._get_batch_query")
+        mocker.patch("hsfs.engine._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=query,
+        )
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="parquet",
+            featurestore_id=99,
+            splits={},
+            partition_precision="month",
+        )
+
+        # Act
+        user_write_options = {}
+        fv_engine._compute_training_dataset(
+            feature_view_obj=fv,
+            user_write_options=user_write_options,
+            training_dataset_obj=td,
+        )
+
+        # Assert
+        assert user_write_options["partition_precision"] == "month"
+
+        # Act: no recorded precision falls back to day
+        td.partition_precision = None
+        user_write_options = {}
+        fv_engine._compute_training_dataset(
+            feature_view_obj=fv,
+            user_write_options=user_write_options,
+            training_dataset_obj=td,
+        )
+
+        # Assert
+        assert user_write_options["partition_precision"] == "day"
+
+    def test_recompute_training_dataset_statistics(self, mocker):
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mock_metadata = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
+        )
+        mock_td_engine_read = mocker.patch(
+            "hsfs.core.training_dataset_engine.TrainingDatasetEngine._read"
+        )
+        mock_compute_statistics = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._compute_training_dataset_statistics"
+        )
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="parquet",
+            featurestore_id=99,
+            splits={},
+        )
+        mock_metadata.return_value = td
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=query,
+        )
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        # Act
+        fv_engine._recompute_training_dataset_statistics(fv, 1)
+
+        # Assert: the materialized data is read back and the statistics are
+        # computed and saved on it
+        mock_td_engine_read.assert_called_once_with(td, None, {})
+        mock_compute_statistics.assert_called_once_with(
+            fv, td, mock_td_engine_read.return_value
+        )
+
+    def test_recompute_training_dataset_statistics_transformation_pinned_warning(
+        self, mocker
+    ):
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mock_metadata = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
+        )
+        mocker.patch("hsfs.core.training_dataset_engine.TrainingDatasetEngine._read")
+        mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._compute_training_dataset_statistics"
+        )
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="parquet",
+            featurestore_id=99,
+            splits={},
+        )
+        mock_metadata.return_value = td
+
+        from hsfs.transformation_statistics import TransformationStatistics
+
+        stats = TransformationStatistics("feature1")
+
+        @udf(int)
+        def scale_feature(feature1, statistics=stats):
+            return feature1 - statistics.feature1.mean
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=query,
+            transformation_functions=[scale_feature],
+        )
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        # Act / Assert: the descriptive statistics are recomputed, but the user
+        # is warned that the transformation-function statistics stay pinned
+        with pytest.warns(UserWarning, match="pinned"):
+            fv_engine._recompute_training_dataset_statistics(fv, 1)
+
+    def test_recompute_training_dataset_statistics_in_memory_raises(self, mocker):
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mock_metadata = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
+        )
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="parquet",
+            featurestore_id=99,
+            splits={},
+            training_dataset_type=training_dataset.TrainingDataset.IN_MEMORY,
+        )
+        mock_metadata.return_value = td
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=query,
+        )
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        # Act / Assert
+        with pytest.raises(FeatureStoreException, match="in-memory"):
+            fv_engine._recompute_training_dataset_statistics(fv, 1)
+
+    def test_recompute_training_dataset_statistics_disabled_raises(self, mocker):
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mock_metadata = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
+        )
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="parquet",
+            featurestore_id=99,
+            splits={},
+        )
+        td.statistics_config.enabled = False
+        mock_metadata.return_value = td
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=query,
+        )
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        # Act / Assert
+        with pytest.raises(FeatureStoreException, match="disabled"):
+            fv_engine._recompute_training_dataset_statistics(fv, 1)
+
     def test_read_from_storage_connector(self, mocker):
         # Arrange
         feature_store_id = 99
@@ -1919,6 +2806,107 @@ class TestFeatureViewEngine:
             assert td_feature.name == expected_td_feature.name
             assert td_feature.type == expected_td_feature.type
             assert td_feature.label == expected_td_feature.label
+
+    def test_compute_training_dataset_event_time_window_in_write_options(self, mocker):
+        # The per-call window set by `_insert_training_data` exists only on the
+        # client-side TD object; the create_fv_td job re-fetches the TD from the
+        # backend (create-time window), so `_compute_training_dataset` must ship
+        # the window to the job through the write options, as epoch millis.
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_schema"
+        )
+        mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine._get_batch_query")
+        mock_engine = mocker.patch("hsfs.engine._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=query,
+        )
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="parquet",
+            featurestore_id=99,
+            splits={},
+        )
+        # raw values, as `_insert_training_data` assigns them
+        td.event_start_time = "2026-07-01 00:00:00"
+        td.event_end_time = "2026-07-01 23:59:59"
+
+        user_write_options = {}
+
+        # Act
+        fv_engine._compute_training_dataset(
+            feature_view_obj=fv,
+            user_write_options=user_write_options,
+            training_dataset_obj=td,
+        )
+
+        # Assert: 2026-07-01 00:00:00 / 23:59:59 UTC in epoch millis
+        assert user_write_options["event_start_time"] == 1782864000000
+        assert user_write_options["event_end_time"] == 1782950399000
+        assert mock_engine.return_value._write_training_dataset.call_count == 1
+
+    def test_compute_training_dataset_no_event_time_window(self, mocker):
+        # Without a per-call window (plain create/recreate) no window keys are
+        # added, so create_fv_td keeps rebuilding from the persisted metadata.
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_schema"
+        )
+        mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine._get_batch_query")
+        mock_engine = mocker.patch("hsfs.engine._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=query,
+        )
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="parquet",
+            featurestore_id=99,
+            splits={},
+        )
+
+        user_write_options = {}
+
+        # Act
+        fv_engine._compute_training_dataset(
+            feature_view_obj=fv,
+            user_write_options=user_write_options,
+            training_dataset_obj=td,
+        )
+
+        # Assert
+        assert "event_start_time" not in user_write_options
+        assert "event_end_time" not in user_write_options
+        assert mock_engine.return_value._write_training_dataset.call_count == 1
 
     def test_compute_training_dataset_td_transformations(self, mocker):
         # Arrange
