@@ -36,6 +36,7 @@ from hsfs.core import (
     transformation_function_engine,
 )
 from hsfs.core.deltastreamer_jobconf import DeltaStreamerJobConf
+from hsfs.core.multi_table_ingestion import MultiTableIngestionJob
 from hsfs.core.schema_validation import DataFrameValidator
 from hsfs.storage_connector import StorageConnector
 
@@ -992,12 +993,25 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             and not new_fg.data_source.rest_endpoint
         ):
             new_fg.data_source.rest_endpoint = pre_save_rest_endpoint
-        self._create_sink_job_if_needed(
-            new_fg,
-            is_new_feature_group,
-            sink_job_conf=requested_sink_job_conf,
-            source_features=pre_save_features,
-        )
+        requested_sink_job = feature_group.sink_job
+        if feature_group.sink_enabled and isinstance(
+            requested_sink_job, MultiTableIngestionJob
+        ):
+            # Shared multi-table job: register this feature group as a target
+            # locally; the job itself is created when the user saves the job.
+            self._attach_to_shared_ingestion_job(
+                new_fg,
+                requested_sink_job,
+                requested_sink_job_conf,
+                pre_save_features,
+            )
+        else:
+            self._create_sink_job_if_needed(
+                new_fg,
+                is_new_feature_group,
+                sink_job_conf=requested_sink_job_conf,
+                source_features=pre_save_features,
+            )
 
         if feature_schema_available:
             # create empty table to write feature schema to table path. The
@@ -1104,6 +1118,35 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 # materialization job creates the table on first write instead.
                 return
             iceberg_engine_instance._save_empty_table(write_options=write_options)
+
+    def _attach_to_shared_ingestion_job(
+        self,
+        feature_group: fg.FeatureGroup,
+        shared_job: MultiTableIngestionJob,
+        sink_job_conf: SinkJobConfiguration | None,
+        source_features: list[feature.Feature] | None,
+    ) -> None:
+        """Register a feature group as a target of a shared multi-table job.
+
+        The job is created later when the user saves it; here we only build the
+        per-target config, mirroring the single-table sink job: default column
+        mappings so the SDK's sanitized feature names map back to their source
+        columns, and the REST endpoint from the data source for REST connectors.
+        """
+        target_conf = sink_job_conf or SinkJobConfiguration()
+        target_conf = self._merge_default_sink_column_mappings(
+            source_features or feature_group.columns,
+            target_conf,
+        )
+        if (
+            feature_group.storage_connector is not None
+            and feature_group.storage_connector.type == StorageConnector.REST
+            and feature_group.data_source is not None
+            and feature_group.data_source.rest_endpoint is not None
+        ):
+            target_conf._endpoint_config = feature_group.data_source.rest_endpoint
+        shared_job._attach_feature_group(feature_group, target_conf)
+        feature_group._sink_job = shared_job
 
     def _create_sink_job_if_needed(
         self,
