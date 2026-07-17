@@ -1272,6 +1272,12 @@ class TransformationFunctionEngine:
         Returns:
             The transformed dataset, in the same shape as `dataset`.
         """
+        # A standalone training dataset (created directly, not from a feature
+        # view) has no feature view and therefore no transformation functions,
+        # so there is nothing to fit or apply — return the dataset unchanged.
+        if feature_view_obj is None:
+            return dataset
+
         if training_dataset_version is not None:
             # The statistics of an existing training dataset version already
             # exist in the backend: bind them, then every frame (train

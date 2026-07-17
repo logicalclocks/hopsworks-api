@@ -67,6 +67,7 @@ if TYPE_CHECKING:
 
     import pandas as pd
     from hsfs.constructor.query import Query
+    from hsfs.core.multi_table_ingestion import MultiTableIngestionJob
     from hsfs.embedding import EmbeddingIndex
     from hsfs.hopsworks_udf import HopsworksUdf
     from hsfs.online_config import OnlineConfig
@@ -785,9 +786,14 @@ class FeatureStore:
         online_disk: bool | None = None,
         sink_enabled: bool | None = False,
         sink_job_conf: dict[str, Any] | None = None,
+        sink_job: Job | MultiTableIngestionJob | dict[str, Any] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         partitioned_by: list[str] | None = None,
         online_partition_columns: bool = False,
+        zorder_by: list[str] | None = None,
+        clustered_by: list[str] | None = None,
+        bucket_index: dict[str, Any] | None = None,
+        sort_order: list[str] | None = None,
     ) -> feature_group.FeatureGroup:
         """Create a feature group metadata object.
 
@@ -933,6 +939,9 @@ class FeatureStore:
             sink_job_conf:
                 Optional configuration describing the sink job to create when `sink_enabled` is True.
                 Accepts either a job configuration object or a dictionary.
+            sink_job:
+                Optional shared multi-table ingestion job from [`DataSource.new_ingestion_job`][hsfs.core.data_source.DataSource.new_ingestion_job].
+                When set, this feature group is registered as a target of that job instead of getting its own sink job, and `sink_job_conf` supplies its per-target overrides.
             tags:
                 Optionally, define tags for the feature group. Tags can be provided as:
                 - A single Tag object
@@ -941,13 +950,31 @@ class FeatureStore:
                 - A list of dictionaries with 'name' and 'value' keys
                 Tags will be attached to the feature group after it is saved.
             partitioned_by:
-                A list of time grains derived from `event_time` to partition the offline data by, e.g. `["year", "month", "day"]`.
-                Supported grains are `year`, `month`, `week`, `day`, and `hour`.
-                The backend appends one synthetic grain feature per grain to the schema and the write path derives their values from `event_time`, so the user DataFrame must not contain them.
+                A list of native partition transform expressions applied to the offline data, e.g. `["day(ts)", "bucket(16, id)"]`.
+                On ICEBERG the list compiles into the table's partition spec (hidden partitioning) and supports `identity(col)` (or a bare column name), `bucket(N, col)`, `truncate(W, col)`, `year(col)`, `month(col)`, `day(col)`, `hour(col)`, and `void(col)`.
+                On HUDI it supports `identity(col)` plus the temporal grains `year/month/week/day/hour(event_time_col)`, which materialize as partition columns.
+                DELTA is rejected because Delta has no partition transforms; use `clustered_by` or `partition_key` there.
                 Mutually exclusive with `partition_key`; defaults to `None`.
             online_partition_columns:
                 Whether the synthetic `partitioned_by` grain columns are also stored in the online feature store.
+                Only meaningful on HUDI, the one format that creates synthetic columns.
                 When `False` the grain columns live only in the offline storage; defaults to `False`.
+            zorder_by:
+                A list of column names to z-order the offline data by, e.g. `["merchant_id", "amount"]`.
+                Supported for ICEBERG (applied by [`FeatureGroup.optimize`][hsfs.feature_group.FeatureGroup.optimize]) and HUDI (applied by inline clustering on writes); DELTA is rejected because `clustered_by` covers the use case.
+                At most 4 columns; defaults to `None`.
+            clustered_by:
+                A list of column names to liquid-cluster the offline data by, e.g. `["ts", "customer_id"]`; DELTA only, at most 4 columns.
+                Clustered feature groups are writable by Spark only, because liquid clustering uses Delta writer table features that delta-rs does not support; from a Python environment pass `stream=True` so writes go through the Spark materialization job.
+                Mutually exclusive with `partition_key`; defaults to `None`.
+            bucket_index:
+                Hudi bucket index configuration as `{"field": <primary key column>, "num_buckets": N}`, optionally with `"engine"` set to `"simple"` (the only supported engine; consistent hashing requires a merge-on-read table); HUDI only.
+                Injects the corresponding `hoodie.bucket.index.*` write options; the same options, including a partition-level bucket index, can be set directly through `write_options`.
+                Defaults to `None`.
+            sort_order:
+                A persistent Iceberg write sort order, e.g. `["merchant_id asc", "amount desc nulls last"]`; ICEBERG only.
+                New writes are range-distributed and sorted on these fields, and [`FeatureGroup.optimize`][hsfs.feature_group.FeatureGroup.optimize] with `strategy="sort"` rewrites existing files to the order.
+                Mutually exclusive with `zorder_by` (the two prescribe conflicting file layouts); defaults to `None`.
 
         Returns:
             The feature group metadata object.
@@ -997,9 +1024,14 @@ class FeatureStore:
             online_disk=online_disk,
             sink_enabled=sink_enabled,
             sink_job_conf=sink_job_conf,
+            sink_job=sink_job,
             tags=normalized_tags,
             partitioned_by=partitioned_by,
             online_partition_columns=online_partition_columns,
+            zorder_by=zorder_by,
+            clustered_by=clustered_by,
+            bucket_index=bucket_index,
+            sort_order=sort_order,
         )
         feature_group_object.feature_store = self
         return feature_group_object
@@ -1043,9 +1075,14 @@ class FeatureStore:
         online_disk: bool | None = None,
         sink_enabled: bool | None = False,
         sink_job_conf: dict[str, Any] | None = None,
+        sink_job: Job | MultiTableIngestionJob | dict[str, Any] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         partitioned_by: list[str] | None = None,
         online_partition_columns: bool = False,
+        zorder_by: list[str] | None = None,
+        clustered_by: list[str] | None = None,
+        bucket_index: dict[str, Any] | None = None,
+        sort_order: list[str] | None = None,
     ) -> (
         feature_group.FeatureGroup
         | feature_group.ExternalFeatureGroup
@@ -1184,6 +1221,9 @@ class FeatureStore:
                 Enable copying data from the configured data source to the feature group.
             sink_job_conf:
                 Optional configuration describing the sink job to create when `sink_enabled` is True.
+            sink_job:
+                Optional shared multi-table ingestion job from [`DataSource.new_ingestion_job`][hsfs.core.data_source.DataSource.new_ingestion_job].
+                When set, this feature group is registered as a target of that job instead of getting its own sink job, and `sink_job_conf` supplies its per-target overrides.
             tags:
                 Optionally, define tags for the feature group. Tags can be provided as:
                 - A single Tag object
@@ -1192,13 +1232,31 @@ class FeatureStore:
                 - A list of dictionaries with 'name' and 'value' keys
                 Tags will be attached to the feature group after it is saved.
             partitioned_by:
-                A list of time grains derived from `event_time` to partition the offline data by, e.g. `["year", "month", "day"]`.
-                Supported grains are `year`, `month`, `week`, `day`, and `hour`.
-                The backend appends one synthetic grain feature per grain to the schema and the write path derives their values from `event_time`, so the user DataFrame must not contain them.
+                A list of native partition transform expressions applied to the offline data, e.g. `["day(ts)", "bucket(16, id)"]`.
+                On ICEBERG the list compiles into the table's partition spec (hidden partitioning) and supports `identity(col)` (or a bare column name), `bucket(N, col)`, `truncate(W, col)`, `year(col)`, `month(col)`, `day(col)`, `hour(col)`, and `void(col)`.
+                On HUDI it supports `identity(col)` plus the temporal grains `year/month/week/day/hour(event_time_col)`, which materialize as partition columns.
+                DELTA is rejected because Delta has no partition transforms; use `clustered_by` or `partition_key` there.
                 Mutually exclusive with `partition_key`; defaults to `None`.
             online_partition_columns:
                 Whether the synthetic `partitioned_by` grain columns are also stored in the online feature store.
+                Only meaningful on HUDI, the one format that creates synthetic columns.
                 When `False` the grain columns live only in the offline storage; defaults to `False`.
+            zorder_by:
+                A list of column names to z-order the offline data by, e.g. `["merchant_id", "amount"]`.
+                Supported for ICEBERG (applied by [`FeatureGroup.optimize`][hsfs.feature_group.FeatureGroup.optimize]) and HUDI (applied by inline clustering on writes); DELTA is rejected because `clustered_by` covers the use case.
+                At most 4 columns; defaults to `None`.
+            clustered_by:
+                A list of column names to liquid-cluster the offline data by, e.g. `["ts", "customer_id"]`; DELTA only, at most 4 columns.
+                Clustered feature groups are writable by Spark only, because liquid clustering uses Delta writer table features that delta-rs does not support; from a Python environment pass `stream=True` so writes go through the Spark materialization job.
+                Mutually exclusive with `partition_key`; defaults to `None`.
+            bucket_index:
+                Hudi bucket index configuration as `{"field": <primary key column>, "num_buckets": N}`, optionally with `"engine"` set to `"simple"` (the only supported engine; consistent hashing requires a merge-on-read table); HUDI only.
+                Injects the corresponding `hoodie.bucket.index.*` write options; the same options, including a partition-level bucket index, can be set directly through `write_options`.
+                Defaults to `None`.
+            sort_order:
+                A persistent Iceberg write sort order, e.g. `["merchant_id asc", "amount desc nulls last"]`; ICEBERG only.
+                New writes are range-distributed and sorted on these fields, and [`FeatureGroup.optimize`][hsfs.feature_group.FeatureGroup.optimize] with `strategy="sort"` rewrites existing files to the order.
+                Mutually exclusive with `zorder_by` (the two prescribe conflicting file layouts); defaults to `None`.
 
         Returns:
             The feature group metadata object.
@@ -1252,10 +1310,37 @@ class FeatureStore:
                 online_disk=online_disk,
                 sink_enabled=sink_enabled,
                 sink_job_conf=sink_job_conf,
+                sink_job=sink_job,
                 tags=normalized_tags,
                 partitioned_by=partitioned_by,
                 online_partition_columns=online_partition_columns,
+                zorder_by=zorder_by,
+                clustered_by=clustered_by,
+                bucket_index=bucket_index,
+                sort_order=sort_order,
             )
+        elif sink_job is not None:
+            # The feature group already exists: attach it to a shared multi-table
+            # ingestion job now, so a rerun still registers it as a target (a new
+            # feature group attaches on save instead). Other sink_job types are
+            # only wired at creation time and are ignored here.
+            from hopsworks_common.core.sink_job_configuration import (
+                SinkJobConfiguration,
+            )
+            from hsfs.core.multi_table_ingestion import MultiTableIngestionJob
+
+            if isinstance(sink_job, MultiTableIngestionJob):
+                target_conf = (
+                    SinkJobConfiguration.from_response_json(sink_job_conf)
+                    if isinstance(sink_job_conf, dict)
+                    else sink_job_conf
+                )
+                feature_group_object._feature_group_engine._attach_to_shared_ingestion_job(
+                    feature_group_object,
+                    sink_job,
+                    target_conf,
+                    feature_group_object.columns,
+                )
         feature_group_object.feature_store = self
         return feature_group_object
 

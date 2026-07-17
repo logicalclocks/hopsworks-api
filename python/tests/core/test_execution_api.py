@@ -115,3 +115,83 @@ class TestJobApiLaunch:
             headers={"content-type": "text/plain"},
             data="--flag value",
         )
+
+
+class TestExecutionApiPerTable:
+    @pytest.fixture
+    def mock_client(self, mocker):
+        client_mock = Mock()
+        client_mock._project_id = 42
+        client_mock._send_request.return_value = {}
+        mocker.patch(
+            "hopsworks_common.core.execution_api.client._get_instance",
+            return_value=client_mock,
+        )
+        return client_mock
+
+    def test_stop_table_puts_table_status(self, mock_client):
+        ExecutionApi()._stop_table("my_job", 5, 2)
+
+        args, kwargs = mock_client._send_request.call_args
+        assert args[0] == "PUT"
+        assert kwargs["path_params"] == [
+            "project",
+            42,
+            "jobs",
+            "my_job",
+            "executions",
+            5,
+            "tables",
+            2,
+            "status",
+        ]
+
+    def test_get_pod_logs_builds_query(self, mock_client, mocker):
+        mocker.patch(
+            "hopsworks_common.core.execution_api.execution_pod_log."
+            "ExecutionPodLog.from_response_json",
+            return_value=Mock(),
+        )
+        ExecutionApi()._get_pod_logs(
+            "my_job", 5, table_index=2, lines=100, limit_bytes=2048
+        )
+
+        _, kwargs = mock_client._send_request.call_args
+        assert kwargs["path_params"][-1] == "pod-logs"
+        assert kwargs["query_params"] == {
+            "tableIndex": 2,
+            "lines": 100,
+            "limitBytes": 2048,
+        }
+
+    def test_get_pod_logs_omits_unset_query_params(self, mock_client, mocker):
+        mocker.patch(
+            "hopsworks_common.core.execution_api.execution_pod_log."
+            "ExecutionPodLog.from_response_json",
+            return_value=Mock(),
+        )
+        ExecutionApi()._get_pod_logs("my_job", 5)
+
+        _, kwargs = mock_client._send_request.call_args
+        assert kwargs["query_params"] == {}
+
+
+class TestExecutionPodLog:
+    def test_from_response_json_decamelizes(self):
+        from hopsworks_common.core.execution_pod_log import ExecutionPodLog
+
+        podlog = ExecutionPodLog.from_response_json(
+            {
+                "status": "AVAILABLE",
+                "available": True,
+                "message": None,
+                "log": "line1\nline2",
+                "podName": "ingest-table-0",
+                "containerName": "dlt",
+            }
+        )
+        assert podlog.status == "AVAILABLE"
+        assert podlog.available is True
+        assert podlog.log == "line1\nline2"
+        assert podlog.pod_name == "ingest-table-0"
+        assert podlog.container_name == "dlt"

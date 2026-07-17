@@ -54,6 +54,22 @@ class DataSourceApi:
 
         return _client._send_request("GET", path_params)
 
+    def _get_google_sheet_names(
+        self, storage_connector: sc.StorageConnector
+    ) -> list[str]:
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "featurestores",
+            storage_connector._featurestore_id,
+            "storageconnectors",
+            storage_connector._name,
+            "sheets",
+        ]
+
+        return _client._send_request("GET", path_params)
+
     def _get_crm_resources(
         self, storage_connector: sc.StorageConnector
     ) -> dsd.DataSourceData:
@@ -113,6 +129,10 @@ class DataSourceApi:
             return self._get_rest_data(storage_connector, data_source, use_cached)
         if storage_connector.type == "CRM":
             return self._get_crm_data(storage_connector, data_source, use_cached)
+        if storage_connector.type == "GOOGLE_SHEETS":
+            return self._get_google_sheets_data(
+                storage_connector, data_source, use_cached
+            )
         raise ValueError("This connector type does not support fetching NoSQL data.")
 
     def _get_rest_data(
@@ -170,6 +190,75 @@ class DataSourceApi:
         return dsd.DataSourceData.from_response_json(
             _client._send_request("GET", path_params, query_params=query_params)
         )
+
+    def _get_google_sheets_data(
+        self,
+        storage_connector: sc.StorageConnector,
+        data_source: ds.DataSource,
+        use_cached=True,
+    ) -> dsd.DataSourceData:
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "featurestores",
+            storage_connector._featurestore_id,
+            "storageconnectors",
+            storage_connector._name,
+            "data_source",
+            "resources",
+            data_source.table,
+        ]
+        query_params = {"forceRefetch": not use_cached}
+
+        return dsd.DataSourceData.from_response_json(
+            _client._send_request("GET", path_params, query_params=query_params)
+        )
+
+    def _start_no_sql_schema_fetch(
+        self,
+        storage_connector: sc.StorageConnector,
+        data_sources: list[ds.DataSource],
+        use_cached=True,
+    ) -> dict[str, dsd.DataSourceData]:
+        """Fetch the schemas of several resources with ONE backend schema-fetch job.
+
+        The backend job processes the resources sequentially in a single container.
+        Returns one entry per requested resource, keyed by resource name.
+        Re-invoking while the job runs only reports progress; it never starts duplicate jobs.
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "featurestores",
+            storage_connector._featurestore_id,
+            "storageconnectors",
+            storage_connector._name,
+            "data_source",
+            "resources",
+        ]
+        resources = []
+        for data_source in data_sources:
+            resource: dict = {"name": data_source.table}
+            if data_source.rest_endpoint is not None:
+                resource["endpointConfig"] = data_source.rest_endpoint.to_dict()
+            if data_source.metrics:
+                resource["metrics"] = data_source.metrics
+            if data_source.dimensions:
+                resource["dimensions"] = data_source.dimensions
+            resources.append(resource)
+        response = _client._send_request(
+            "POST",
+            path_params,
+            query_params={"forceRefetch": not use_cached},
+            headers={"content-type": "application/json"},
+            data=json.dumps({"resources": resources}),
+        )
+        return {
+            item["name"]: dsd.DataSourceData.from_response_json(item)
+            for item in (response.get("items") or [])
+        }
 
     def _get_data(self, data_source: ds.DataSource) -> dsd.DataSourceData:
         _client = client._get_instance()
@@ -270,3 +359,27 @@ class DataSourceApi:
             raise
 
         return im.InferredMetadata.from_response_json(response)
+
+    def _estimate_ingestion_resources(
+        self,
+        storage_connector: sc.StorageConnector,
+        payload: dict,
+    ) -> dict:
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "featurestores",
+            storage_connector._featurestore_id,
+            "storageconnectors",
+            storage_connector._name,
+            "data_source",
+            "estimate-ingestion-resources",
+        ]
+
+        return _client._send_request(
+            "POST",
+            path_params,
+            headers={"content-type": "application/json"},
+            data=json.dumps(payload),
+        )
