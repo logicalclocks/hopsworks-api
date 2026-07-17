@@ -3551,6 +3551,7 @@ class FeatureGroup(FeatureGroupBase):
             and self.storage_connector.type
             in [
                 sc.StorageConnector.CRM,
+                sc.StorageConnector.GOOGLE_SHEETS,
                 sc.StorageConnector.REST,
                 sc.StorageConnector.SNOWFLAKE,
                 sc.StorageConnector.REDSHIFT,
@@ -3578,8 +3579,9 @@ class FeatureGroup(FeatureGroupBase):
             )
             raise FeatureStoreException(
                 f"Sink cannot be enabled for storage connector type '{connector_type}'. "
-                "Supported connector types: CRM, REST, SNOWFLAKE, REDSHIFT, BIGQUERY, MONGODB, "
-                "and SQL connectors with database_type MYSQL, POSTGRESQL, or ORACLE."
+                "Supported connector types: CRM, GOOGLE_SHEETS, REST, SNOWFLAKE, REDSHIFT, "
+                "BIGQUERY, MONGODB, and SQL connectors with database_type MYSQL, POSTGRESQL, "
+                "or ORACLE."
             )
 
         # CRM/Google Sheets/REST connectors always have sink enabled.
