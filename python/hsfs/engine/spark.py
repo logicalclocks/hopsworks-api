@@ -113,6 +113,7 @@ from hsfs import feature_group as fg_mod
 from hsfs.core import (
     dataset_api,
     delta_engine,
+    glue_catalog,
     hudi_engine,
     iceberg_engine,
     kafka_engine,
@@ -306,14 +307,22 @@ class Engine:
 
     def _register_external_temporary_table(self, external_fg, alias):
         if not isinstance(external_fg, fg_mod.SpineGroup):
-            external_dataset = external_fg.data_source.storage_connector.read(
-                external_fg.data_source.query,
-                external_fg.data_format,
-                external_fg.options,
-                external_fg.data_source.storage_connector._get_path(
-                    external_fg.data_source.path
-                ),  # cant rely on location since this method can be used before FG is saved
-            )
+            glue = glue_catalog.GlueCatalog._for_feature_group(external_fg)
+            if glue is not None and (external_fg.data_format or "").lower() == "iceberg":
+                # A Glue-managed Iceberg table keeps its current-metadata pointer
+                # in the catalog, not in the location's version-hint.text, so it
+                # must be read by catalog identifier rather than by S3 path (a
+                # path-based Iceberg read would fail looking for version-hint.text).
+                external_dataset = self._read_glue_iceberg_via_catalog(glue)
+            else:
+                external_dataset = external_fg.data_source.storage_connector.read(
+                    external_fg.data_source.query,
+                    external_fg.data_format,
+                    external_fg.options,
+                    external_fg.data_source.storage_connector._get_path(
+                        external_fg.data_source.path
+                    ),  # cant rely on location since this method can be used before FG is saved
+                )
             if (
                 external_fg.data_source.storage_connector.type
                 == StorageConnector.MONGODB
@@ -338,6 +347,24 @@ class Engine:
 
         external_dataset.createOrReplaceTempView(alias)
         return external_dataset
+
+    def _read_glue_iceberg_via_catalog(self, glue):
+        """Read a Glue Data Catalog Iceberg table by catalog identifier.
+
+        Configures the Glue catalog on the session and reads through
+        `.table(<catalog>.<database>.<table>)` instead of a path-based
+        `.load()`, mirroring the managed-Iceberg read path
+        ([`IcebergEngine._register_temporary_table_via_catalog`][hsfs.core.iceberg_engine.IcebergEngine._register_temporary_table_via_catalog]),
+        because the table's current-metadata pointer lives in the catalog.
+        """
+        glue._configure_spark_session(
+            self._spark_session,
+            self._spark_context,
+            iceberg_engine.IcebergEngine.ICEBERG_SPARK_CATALOG_IMPL,
+        )
+        return self._spark_session.read.format(
+            iceberg_engine.IcebergEngine.ICEBERG_SPARK_FORMAT
+        ).table(glue.qualified_name)
 
     def _register_hudi_temporary_table(
         self, hudi_fg_alias, feature_store_id, feature_store_name, read_options
