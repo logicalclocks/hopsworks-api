@@ -30,6 +30,13 @@ from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistic
 logger = logging.getLogger(__name__)
 
 
+# Iceberg's vectorized (Arrow) reader can crash the executor JVM — SIGSEGV in
+# the shaded Arrow bounds check — while scanning statistics windows, so
+# statistics reads force the row-based reader. Other table formats ignore the
+# unknown option, so it is passed unconditionally.
+_ICEBERG_STATS_READ_OPTIONS = {"iceberg.vectorization-enabled": "false"}
+
+
 if TYPE_CHECKING:
     import pandas as pd
     from hsfs import feature_group, feature_view, training_dataset
@@ -85,7 +92,11 @@ class StatisticsEngine:
                                 feature_group_commit_id
                             )
                         )
-                        .read(online=False, dataframe_type="default", read_options={})
+                        .read(
+                            online=False,
+                            dataframe_type="default",
+                            read_options=_ICEBERG_STATS_READ_OPTIONS,
+                        )
                     )
                 else:
                     feature_dataframe = metadata_instance.read()

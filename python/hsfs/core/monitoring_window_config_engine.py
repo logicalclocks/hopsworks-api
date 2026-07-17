@@ -558,7 +558,7 @@ class MonitoringWindowConfigEngine:
         else:
             entity_df = fv_query.as_of(
                 exclude_until=start_time, wallclock_time=end_time
-            ).read()
+            ).read(read_options=statistics_engine._ICEBERG_STATS_READ_OPTIONS)
 
         if feature_names:
             entity_df = entity_df.select(feature_names)
@@ -607,7 +607,9 @@ class MonitoringWindowConfigEngine:
                 )
             return pre_df.read()
 
-        return pre_df.as_of(exclude_until=start_time, wallclock_time=end_time).read()
+        return pre_df.as_of(exclude_until=start_time, wallclock_time=end_time).read(
+            read_options=statistics_engine._ICEBERG_STATS_READ_OPTIONS
+        )
 
     def _round_and_convert_event_time(self, event_time: datetime) -> int | None:
         """Round event time to the latest hour and convert to timestamp.
