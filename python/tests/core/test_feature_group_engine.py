@@ -2209,8 +2209,9 @@ class TestFeatureGroupEngine:
         )
 
         def _save_side_effect(fg):
-            fg._id = 10
-            return fg
+            response = fg.to_dict()
+            response["id"] = 10
+            return fg.update_from_response_json(response)
 
         mock_fg_api.return_value._save.side_effect = _save_side_effect
 
@@ -2271,8 +2272,9 @@ class TestFeatureGroupEngine:
         )
 
         def _save_side_effect(fg):
-            fg._id = 10
-            return fg
+            response = fg.to_dict()
+            response["id"] = 10
+            return fg.update_from_response_json(response)
 
         mock_fg_api.return_value._save.side_effect = _save_side_effect
 
@@ -2459,8 +2461,9 @@ class TestFeatureGroupEngine:
         )
 
         def _save_side_effect(fg):
-            fg._id = 10
-            return fg
+            response = fg.to_dict()
+            response["id"] = 10
+            return fg.update_from_response_json(response)
 
         mock_fg_api.return_value._save.side_effect = _save_side_effect
 
