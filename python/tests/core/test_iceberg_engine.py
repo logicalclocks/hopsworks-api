@@ -489,9 +489,13 @@ class TestIcebergEngine:
         spec_builder.truncate.assert_called_once_with("zip", 4)
         spec_builder.alwaysNull.assert_called_once_with("x")
         spec_builder.identity.assert_called_once_with("cat")
-        # a partitioned table shuffles rows to their partitions on write
+        # a partitioned table shuffles rows to their partitions on write;
+        # vectorization is disabled on every new table (FSTORE-2067 workaround)
         properties = jvm.java.util.HashMap.return_value
-        properties.put.assert_called_once_with("write.distribution-mode", "hash")
+        assert properties.put.call_args_list == [
+            mock.call("read.parquet.vectorization.enabled", "false"),
+            mock.call("write.distribution-mode", "hash"),
+        ]
         # HadoopTables.create(schema, spec, properties, location)
         tables = jvm.org.apache.iceberg.hadoop.HadoopTables.return_value
         create_args = tables.create.call_args.args
@@ -510,8 +514,11 @@ class TestIcebergEngine:
         # Act
         iceberg_engine._create_iceberg_table(mocker.MagicMock(), "hopsfs://nn/p")
 
-        # Assert
-        jvm.java.util.HashMap.return_value.put.assert_not_called()
+        # Assert: no distribution mode, only the always-on vectorization
+        # workaround (FSTORE-2067)
+        jvm.java.util.HashMap.return_value.put.assert_called_once_with(
+            "read.parquet.vectorization.enabled", "false"
+        )
 
     def test_optimize_requires_classic_spark(self, mocker):
         # Arrange
@@ -1258,6 +1265,8 @@ class TestIcebergCatalogWrites:
         assert "PARTITIONED BY" not in create_ddl
         dataset.writeTo.assert_called_once_with("prod.fs.fg_1")
         dataset.writeTo.return_value.append.assert_called_once_with()
+        # tables are created with vectorization disabled (FSTORE-2067 workaround)
+        assert "'read.parquet.vectorization.enabled'='false'" in create_ddl
 
     def test_create_iceberg_table_catalog_partitioned_ddl(self, mocker):
         # Arrange
@@ -1292,7 +1301,10 @@ class TestIcebergCatalogWrites:
             "PARTITIONED BY (days(ts), bucket(16, pk), truncate(4, zip), cat)"
             in statement
         )
-        assert "TBLPROPERTIES ('write.distribution-mode'='hash')" in statement
+        assert "TBLPROPERTIES (" in statement
+        assert "'write.distribution-mode'='hash'" in statement
+        # tables are created with vectorization disabled (FSTORE-2067 workaround)
+        assert "'read.parquet.vectorization.enabled'='false'" in statement
 
     @pytest.mark.parametrize("expr", ["void(x)", "bucket(16, pk) as shard"])
     def test_create_iceberg_table_catalog_rejects_inexpressible_transforms(
