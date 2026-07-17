@@ -129,13 +129,65 @@ class TestMultiTableIngestionJob:
 
         with patch("hopsworks_common.core.job_api.JobApi") as MockJobApi:
             api = MockJobApi.return_value
-            api.create.return_value = MagicMock()
+            created = MagicMock()
+            created.config = {"targets": [{"featuregroupId": 1, "enabled": True}]}
+            current = MagicMock()
+            current.config = {"targets": [{"featuregroupId": 1, "enabled": True}]}
+            updated = MagicMock()
+            updated.config = {"targets": [{"featuregroupId": 1, "enabled": False}]}
+            current.save.return_value = updated
+            api.create.return_value = created
+            api.get.return_value = current
             job.save()
             api.create.reset_mock()
 
             job.set_table_enabled(feature_group_id=1, enabled=False)
 
-            api.create.assert_called_once()
+            api.get.assert_called_once_with("crm_ingestion")
+            current.save.assert_called_once()
+            api.create.assert_not_called()
+            assert current.config["targets"][0]["enabled"] is False
+            assert job.job is updated
+
+    def test_set_table_enabled_resolves_recreated_feature_group_ids(self):
+        job = _builder()
+        old_fg = _feature_group(1)
+        job.add_target(feature_group_id=1)
+        job.add_target(feature_group_id=2)
+
+        with patch("hopsworks_common.core.job_api.JobApi") as MockJobApi:
+            api = MockJobApi.return_value
+            created = MagicMock()
+            created.config = {
+                "targets": [
+                    {"featuregroupId": 1, "enabled": True},
+                    {"featuregroupId": 2, "enabled": True},
+                ]
+            }
+            current = MagicMock()
+            current.config = {
+                "targets": [
+                    {"featuregroupId": 11, "enabled": True},
+                    {"featuregroupId": 12, "enabled": True},
+                ]
+            }
+            updated = MagicMock()
+            updated.config = {
+                "targets": [
+                    {"featuregroupId": 11, "enabled": False},
+                    {"featuregroupId": 12, "enabled": True},
+                ]
+            }
+            current.save.return_value = updated
+            api.create.return_value = created
+            api.get.return_value = current
+
+            job.save()
+            job.set_table_enabled(feature_group=old_fg, enabled=False)
+
+        assert current.config["targets"][0]["enabled"] is False
+        assert [target._feature_group_id for target in job.targets] == [11, 12]
+        assert old_fg.id == 11
 
     def test_set_table_enabled_preserves_column_mappings(self):
         job = _builder()
