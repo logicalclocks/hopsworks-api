@@ -217,6 +217,51 @@ class TestFeatureStore:
             ("tier", "gold"),
         ]
 
+    def test_get_or_create_feature_group_attaches_existing_to_shared_job(
+        self, backend_fixtures, mocker
+    ):
+        # Arrange
+        from hsfs import feature as feature_mod
+        from hsfs.core.data_source import DataSource
+        from hsfs.storage_connector import RedshiftConnector
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
+        json = backend_fixtures["feature_store"]["get"]["response"]
+        fs = feature_store_mod.FeatureStore.from_response_json(json)
+
+        sc = RedshiftConnector(9, "sc", fs.id)
+        ds = DataSource(storage_connector=sc)
+        shared_job = ds.new_ingestion_job("crm_ingestion")
+
+        # An already-existing feature group returned by the backend.
+        existing = feature_group_mod.FeatureGroup(
+            name="accounts",
+            version=1,
+            featurestore_id=fs.id,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            features=[feature_mod.Feature("id", "int")],
+            sink_enabled=True,
+            data_source=ds,
+        )
+        existing._id = 55
+        mocker.patch.object(fs._feature_group_api, "_get", return_value=existing)
+
+        # Act
+        fg_res = fs.get_or_create_feature_group(
+            "accounts", version=1, sink_job=shared_job
+        )
+
+        # Assert: the existing feature group is registered as a target so a rerun
+        # is not left with an empty multi-table job.
+        assert fg_res is existing
+        assert [t._feature_group_id for t in shared_job.targets] == [55]
+
     def test_get_or_create_feature_view_forwards_tags_when_missing(
         self, backend_fixtures, mocker
     ):

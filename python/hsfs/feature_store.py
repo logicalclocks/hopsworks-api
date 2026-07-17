@@ -67,6 +67,7 @@ if TYPE_CHECKING:
 
     import pandas as pd
     from hsfs.constructor.query import Query
+    from hsfs.core.multi_table_ingestion import MultiTableIngestionJob
     from hsfs.embedding import EmbeddingIndex
     from hsfs.hopsworks_udf import HopsworksUdf
     from hsfs.online_config import OnlineConfig
@@ -785,6 +786,7 @@ class FeatureStore:
         online_disk: bool | None = None,
         sink_enabled: bool | None = False,
         sink_job_conf: dict[str, Any] | None = None,
+        sink_job: Job | MultiTableIngestionJob | dict[str, Any] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         partitioned_by: list[str] | None = None,
         online_partition_columns: bool = False,
@@ -933,6 +935,9 @@ class FeatureStore:
             sink_job_conf:
                 Optional configuration describing the sink job to create when `sink_enabled` is True.
                 Accepts either a job configuration object or a dictionary.
+            sink_job:
+                Optional shared multi-table ingestion job from [`DataSource.new_ingestion_job`][hsfs.core.data_source.DataSource.new_ingestion_job].
+                When set, this feature group is registered as a target of that job instead of getting its own sink job, and `sink_job_conf` supplies its per-target overrides.
             tags:
                 Optionally, define tags for the feature group. Tags can be provided as:
                 - A single Tag object
@@ -997,6 +1002,7 @@ class FeatureStore:
             online_disk=online_disk,
             sink_enabled=sink_enabled,
             sink_job_conf=sink_job_conf,
+            sink_job=sink_job,
             tags=normalized_tags,
             partitioned_by=partitioned_by,
             online_partition_columns=online_partition_columns,
@@ -1043,6 +1049,7 @@ class FeatureStore:
         online_disk: bool | None = None,
         sink_enabled: bool | None = False,
         sink_job_conf: dict[str, Any] | None = None,
+        sink_job: Job | MultiTableIngestionJob | dict[str, Any] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         partitioned_by: list[str] | None = None,
         online_partition_columns: bool = False,
@@ -1184,6 +1191,9 @@ class FeatureStore:
                 Enable copying data from the configured data source to the feature group.
             sink_job_conf:
                 Optional configuration describing the sink job to create when `sink_enabled` is True.
+            sink_job:
+                Optional shared multi-table ingestion job from [`DataSource.new_ingestion_job`][hsfs.core.data_source.DataSource.new_ingestion_job].
+                When set, this feature group is registered as a target of that job instead of getting its own sink job, and `sink_job_conf` supplies its per-target overrides.
             tags:
                 Optionally, define tags for the feature group. Tags can be provided as:
                 - A single Tag object
@@ -1252,10 +1262,33 @@ class FeatureStore:
                 online_disk=online_disk,
                 sink_enabled=sink_enabled,
                 sink_job_conf=sink_job_conf,
+                sink_job=sink_job,
                 tags=normalized_tags,
                 partitioned_by=partitioned_by,
                 online_partition_columns=online_partition_columns,
             )
+        elif sink_job is not None:
+            # The feature group already exists: attach it to a shared multi-table
+            # ingestion job now, so a rerun still registers it as a target (a new
+            # feature group attaches on save instead). Other sink_job types are
+            # only wired at creation time and are ignored here.
+            from hopsworks_common.core.sink_job_configuration import (
+                SinkJobConfiguration,
+            )
+            from hsfs.core.multi_table_ingestion import MultiTableIngestionJob
+
+            if isinstance(sink_job, MultiTableIngestionJob):
+                target_conf = (
+                    SinkJobConfiguration.from_response_json(sink_job_conf)
+                    if isinstance(sink_job_conf, dict)
+                    else sink_job_conf
+                )
+                feature_group_object._feature_group_engine._attach_to_shared_ingestion_job(
+                    feature_group_object,
+                    sink_job,
+                    target_conf,
+                    feature_group_object.columns,
+                )
         feature_group_object.feature_store = self
         return feature_group_object
 

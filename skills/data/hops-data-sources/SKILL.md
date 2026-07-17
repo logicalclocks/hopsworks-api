@@ -32,6 +32,27 @@ If platform intelligence is not configured on the cluster, the command exits wit
 
 Programmatic equivalent: `data_source.infer_metadata()` on a `DataSource` returned by `data_source.get_tables()`; it raises `hopsworks.client.exceptions.PlatformIntelligenceException` (with `.reason` of `NOT_CONFIGURED` or `INFERENCE_FAILED`) on the same failure modes.
 
+## Preview source schema and data (CRM / Google Sheets / REST)
+
+Non-SQL sources (CRM, Google Sheets, REST) have no catalog to read the schema from, so Hopsworks samples the source with a server-side schema-fetch job and infers it.
+`StorageConnector.get_data(data_source)` fetches one resource and starts one job per call.
+`StorageConnector.get_data_batch(data_sources)` fetches several resources with ONE job that processes them sequentially in a single container — prefer it whenever you preview more than one resource.
+
+```python
+sc = fs.get_storage_connector("my_crm_connector")
+tables = sc.get_tables()                  # CRM: the connector's supported resources
+
+by_name = sc.get_data_batch(tables[:3])   # N resources, ONE schema-fetch job
+by_name["contacts"].features              # inferred schema of one resource
+by_name["contacts"].preview               # sampled rows
+
+data = sc.get_data(tables[0])             # single resource fallback
+```
+
+Both calls block until the fetch finishes and raise `hopsworks.client.exceptions.DataSourceException` with the job logs when it fails; `get_data_batch` reports every failed resource in one exception.
+Results are cached server-side per resource — pass `use_cached=False` to force a refetch.
+For REST connectors there is no `get_tables()`; build each entry yourself with `DataSource(table="issues", rest_endpoint=RestEndpointConfig(relative_url="v1/issues"))` so every endpoint carries its own request config.
+
 ## Mount a table as an external feature group
 
 An external feature group leaves data in the source and queries it through the connector, no copy into Hopsworks. It is offline-only: reads serve training and batch inference. Set an `event_time` column so the feature store can read point-in-time correct snapshots and so polling can read a `start_time`/`end_time` range for backfill or incremental runs.
@@ -115,6 +136,96 @@ class MyTransformer(HopsIngestionTransformer):
 ```
 
 `from dlt.destinations...` resolves only in that server environment. Importing it in the interactive venv raises `ModuleNotFoundError`, which is why the transform is referenced by path, never imported into your session.
+
+## Ingest many tables with one job
+
+The per-feature-group `sink_job` above creates one ingestion job per feature group. To copy several source tables from the same connector under a **single** job — one worker pod per table, at most `table_parallelism` at a time — create the ingestion job first and pass it in as each feature group is created.
+
+Create the empty job with `data_source.new_ingestion_job(name)`, then pass it as `sink_job=` to each feature group. Each `.save()` registers that feature group as a target **locally**; nothing is created on the server until you call the job's `.save()`, so a failed or partial set of feature groups never leaves a half-built job behind. Prefer this over a loop of per-FG sink jobs when the sources share a connector: it is one job to schedule, run, and monitor instead of N.
+
+```python
+import hopsworks
+from hopsworks.core import SinkJobConfiguration
+
+project = hopsworks.login()
+fs = project.get_feature_store()
+
+ds = fs.get_data_source("my_connector")   # the source all targets pull from
+
+# 1. create the ingestion job first
+job = ds.new_ingestion_job(
+    name="crm_nightly_ingest",
+    table_parallelism=3,                  # copy at most 3 tables concurrently
+    write_mode="APPEND",                  # job-level default for every target
+)
+
+# 2. pass it in as each feature group is created
+fs.get_or_create_feature_group(
+    "accounts", version=1, data_source=ds,
+    sink_enabled=True, sink_job=job,
+).save()                                  # local: registers "accounts" as a target
+
+fs.get_or_create_feature_group(
+    "contacts", version=1, data_source=ds,
+    sink_enabled=True, sink_job=job,
+    sink_job_conf=SinkJobConfiguration(write_mode="MERGE"),   # override this table only
+).save()                                  # local: registers "contacts" (with its override)
+
+# 3. create the job with all its targets, then run it
+job.save()   # ONE atomic create with both feature groups as targets
+job.run()    # runs the multi-table job server-side (see hops-job to monitor)
+```
+
+A feature group's own `sink_job_conf` supplies that target's overrides; only the fields it changes from the defaults are applied, so a feature group with a bare config (or none) inherits the job-level defaults. Each target's column mappings are generated automatically from its feature group's schema — where the SDK sanitized a source column name (e.g. `"Total Amount"` -> `total_amount`), the mapping back to the original source column is added for you, just like a single-table sink job. For REST sources, the endpoint from the feature group's data source is carried onto its target automatically. Attach a schedule with `schedule_config=` on `new_ingestion_job` to run the whole set on a cadence.
+
+Passing `sink_job=` to `get_or_create_feature_group` registers the feature group whether it is newly created or already exists, so re-running the same script rebuilds the full job. To add a feature group object you already hold (not via `get_or_create`), call `job.add_target(fg)` before `job.save()`.
+
+### Control and monitor individual tables
+
+A multi-table job runs one worker pod per table, and you can act on a single table by its index in the target list (the order you added them):
+
+```python
+execution = job.run()          # or job.job.get_executions()[0] for a running one
+
+# Stream one table's live pod log (progress while it is still running), rather
+# than the whole job's archived stdout/stderr from execution.download_logs().
+podlog = execution.get_pod_logs(table_index=1, lines=200)
+print(podlog.status, podlog.log)   # status: AVAILABLE / WAITING_FOR_POD / ...
+
+execution.stop_table(1)        # stop just that table; the others keep running
+execution.stop()               # stop the whole execution
+```
+
+To exclude a table from *future* runs (rather than stopping the current one), disable it on the job and re-run:
+
+```python
+job.set_table_enabled(fs.get_feature_group("contacts", 1), enabled=False)
+job.run()                      # "contacts" is skipped; its config and mappings are kept
+```
+
+`set_table_enabled` works on a job object you hold; it re-saves the job when it has already been created. `enabled=False` at creation time (via a target or `sink_job_conf`) does the same up front.
+
+### Size resources before ingesting
+
+Rather than guessing the memory and CPU an ingestion needs, ask the backend with `data_source.estimate_ingestion_resources`. It derives a recommendation from the target feature group's schema and the runtime knobs you pass (the same `write_mode`, `batch_size`, worker counts you intend to run with — a bigger batch or more workers raises the estimate). Use it to set a target's `resource_config`, or a single sink job's worker resources, deliberately.
+
+```python
+est = ds.estimate_ingestion_resources(
+    fs.get_feature_group("contacts", 1),
+    write_mode="MERGE",
+    batch_size=200000,
+)
+print(est["recommendedMemoryMb"], est["recommendedCpuCores"], est["confidence"])
+
+# Feed the recommendation into a target's worker resources when you build the job:
+job = ds.new_ingestion_job(name="crm_nightly_ingest")
+job.add_target(
+    fs.get_feature_group("contacts", 1),
+    resource_config={"memory": est["recommendedMemoryMb"], "cores": est["recommendedCpuCores"]},
+)
+```
+
+The returned dict also carries `peakStage`, `reasons`, and `warnings` explaining the recommendation. Pass `configured_memory_mb`/`configured_cpu_cores` to have the estimate compare against resources you already plan to give the job.
 
 ## Ingest from Google Sheets
 

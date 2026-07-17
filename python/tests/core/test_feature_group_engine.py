@@ -1826,6 +1826,173 @@ class TestFeatureGroupEngine:
         # Assert
         mock_job_api.create.assert_not_called()
 
+    def test_save_feature_group_metadata_attaches_to_shared_ingestion_job(self, mocker):
+        # Arrange
+        feature_store_id = 42
+        mocker.patch("hsfs.engine._get_type")
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
+        )
+        mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+        mocker.patch("hsfs.util._get_feature_group_url", return_value="url")
+        mocker.patch("builtins.print")
+        mock_job_api = mocker.patch(
+            "hsfs.core.feature_group_engine.job_api.JobApi"
+        ).return_value
+
+        fg_engine = feature_group_engine.FeatureGroupEngine(
+            feature_store_id=feature_store_id
+        )
+
+        def _save_side_effect(fg):
+            fg._id = 10
+            return fg
+
+        mock_fg_api.return_value._save.side_effect = _save_side_effect
+
+        storage_connector = CRMAndAnalyticsConnector(
+            id=1,
+            name="crm",
+            featurestore_id=feature_store_id,
+            crm_type=CRMSource.HUBSPOT,
+        )
+        data_source = DataSource(storage_connector=storage_connector)
+        shared_job = data_source.new_ingestion_job("crm_ingestion", table_parallelism=2)
+
+        fg = feature_group.FeatureGroup(
+            name="fg",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            sink_enabled=True,
+            sink_job_conf=sink_job_configuration.SinkJobConfiguration(
+                write_mode="MERGE"
+            ),
+            sink_job=shared_job,
+            data_source=data_source,
+        )
+
+        # a feature whose source column the SDK sanitized to a new name
+        dataframe_feature = feature.Feature(name="total_amount", type="str")
+        dataframe_feature._original_name = "Total Amount"
+
+        # Act
+        fg_engine._save_feature_group_metadata(
+            feature_group=fg, dataframe_features=[dataframe_feature], write_options=None
+        )
+
+        # Assert: no per-feature-group job is created; the feature group is
+        # registered as a target on the shared job instead, carrying its override
+        # and the auto-generated column mapping from the sanitized name.
+        mock_job_api.create.assert_not_called()
+        target = shared_job.targets[0].to_dict()
+        assert [t._feature_group_id for t in shared_job.targets] == [10]
+        assert target["writeMode"] == "MERGE"
+        assert target["columnMappings"] == [
+            {"sourceColumn": "Total Amount", "featureName": "total_amount"}
+        ]
+
+    def test_save_feature_group_metadata_attaches_column_mappings_without_conf(
+        self, mocker
+    ):
+        # Arrange
+        feature_store_id = 42
+        mocker.patch("hsfs.engine._get_type")
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
+        )
+        mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+        mocker.patch("hsfs.util._get_feature_group_url", return_value="url")
+        mocker.patch("builtins.print")
+        mock_job_api = mocker.patch(
+            "hsfs.core.feature_group_engine.job_api.JobApi"
+        ).return_value
+
+        fg_engine = feature_group_engine.FeatureGroupEngine(
+            feature_store_id=feature_store_id
+        )
+
+        def _save_side_effect(fg):
+            fg._id = 11
+            return fg
+
+        mock_fg_api.return_value._save.side_effect = _save_side_effect
+
+        storage_connector = CRMAndAnalyticsConnector(
+            id=1,
+            name="crm",
+            featurestore_id=feature_store_id,
+            crm_type=CRMSource.HUBSPOT,
+        )
+        data_source = DataSource(storage_connector=storage_connector)
+        shared_job = data_source.new_ingestion_job("crm_ingestion")
+
+        # no sink_job_conf at all: mappings must still be generated
+        fg = feature_group.FeatureGroup(
+            name="fg",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            sink_enabled=True,
+            sink_job=shared_job,
+            data_source=data_source,
+        )
+
+        dataframe_feature = feature.Feature(name="user_id", type="str")
+
+        # Act
+        fg_engine._save_feature_group_metadata(
+            feature_group=fg, dataframe_features=[dataframe_feature], write_options=None
+        )
+
+        # Assert
+        mock_job_api.create.assert_not_called()
+        target = shared_job.targets[0].to_dict()
+        assert "writeMode" not in target  # bare config inherits job defaults
+        assert target["columnMappings"] == [
+            {"sourceColumn": "user_id", "featureName": "user_id"}
+        ]
+
+    def test_attach_to_shared_ingestion_job_copies_rest_endpoint(self, mocker):
+        from hopsworks_common.core.rest_endpoint import RestEndpointConfig
+        from hsfs.core.data_source import DataSource
+        from hsfs.storage_connector import RestConnector
+
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        fg_engine = feature_group_engine.FeatureGroupEngine(feature_store_id=42)
+
+        endpoint = RestEndpointConfig(relative_url="v1/events")
+        connector = RestConnector(id=1, name="rest", featurestore_id=42)
+        data_source = DataSource(storage_connector=connector, rest_endpoint=endpoint)
+        shared_job = data_source.new_ingestion_job("rest_ingestion")
+
+        rest_fg = feature_group.FeatureGroup(
+            name="events",
+            version=1,
+            featurestore_id=42,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            features=[feature.Feature("f", "str")],
+            sink_enabled=True,
+            data_source=data_source,
+        )
+        rest_fg._id = 7
+
+        # Act
+        fg_engine._attach_to_shared_ingestion_job(
+            rest_fg, shared_job, None, rest_fg.columns
+        )
+
+        # Assert: the REST endpoint from the data source lands on the target,
+        # so a REST multi-table target reaches execution with its endpoint config.
+        target = shared_job.targets[0].to_dict()
+        assert target["endpointConfig"] == endpoint.to_dict()
+
     def test_save_feature_group_metadata_features(self, mocker):
         # Arrange
         feature_store_id = 99
