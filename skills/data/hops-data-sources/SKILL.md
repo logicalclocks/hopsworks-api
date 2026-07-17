@@ -96,6 +96,8 @@ hops datasource delete <name> --yes
 
 DLTHub copies a source into a managed feature group for the cases mounting cannot serve: loading the online store or a vector index, or pulling from an API/SaaS/REST endpoint. Ingestion runs server-side in the `dlthub-ingestion-pipeline` environment, driven by a `SinkJobConfiguration` attached to a sink-enabled feature group. It is configuration plus a server job, not an in-process `dlt` call.
 
+The per-feature-group `sink_job` shown here is for ingesting a **single** table. When ingesting more than one table from the same connector, default to one multi-table job for all of them — see [Ingest many tables with one job](#ingest-many-tables-with-one-job) — instead of looping this pattern.
+
 ```python
 import hopsworks
 from hopsworks.core import SinkJobConfiguration
@@ -139,9 +141,9 @@ class MyTransformer(HopsIngestionTransformer):
 
 ## Ingest many tables with one job
 
-The per-feature-group `sink_job` above creates one ingestion job per feature group. To copy several source tables from the same connector under a **single** job — one worker pod per table, at most `table_parallelism` at a time — create the ingestion job first and pass it in as each feature group is created.
+**This is the default whenever more than one table is ingested from the same connector.** The per-feature-group `sink_job` above creates one ingestion job per feature group — use it only for a single table. To copy several source tables under a **single** job — one worker pod per table, at most `table_parallelism` at a time — create the ingestion job first and pass it in as each feature group is created. Only fall back to a loop of per-FG sink jobs when the tables come from different connectors or genuinely need independent schedules.
 
-Create the empty job with `data_source.new_ingestion_job(name)`, then pass it as `sink_job=` to each feature group. Each `.save()` registers that feature group as a target **locally**; nothing is created on the server until you call the job's `.save()`, so a failed or partial set of feature groups never leaves a half-built job behind. Prefer this over a loop of per-FG sink jobs when the sources share a connector: it is one job to schedule, run, and monitor instead of N.
+Create the empty job with `data_source.new_ingestion_job(name)`, then pass it as `sink_job=` to each feature group. Each `.save()` registers that feature group as a target **locally**; nothing is created on the server until you call the job's `.save()`, so a failed or partial set of feature groups never leaves a half-built job behind. It is one job to schedule, run, and monitor instead of N.
 
 ```python
 import hopsworks
@@ -280,20 +282,25 @@ fg.sink_job.run()   # copies the sheet into the managed feature group
 
 **Multiple sheet tabs → multiple feature groups**
 
-Each feature group targets one sheet tab.
-Reuse the same connector and vary `table` (and `spreadsheet_id` if the tabs live in different spreadsheets):
+Each feature group targets one sheet tab. Reuse the same connector and vary `table` (and `spreadsheet_id` if the tabs live in different spreadsheets). As with any multi-table ingest, default to ONE multi-table job for all tabs (see [Ingest many tables with one job](#ingest-many-tables-with-one-job)) rather than one sink job per tab:
 
 ```python
+ds = fs.get_data_source("my_google_sheets_connector")
+
+job = ds.new_ingestion_job(name="gsheets_ingest", table_parallelism=2)
+
 for tab, fg_name in [("Users", "gs_users"), ("Orders", "gs_orders")]:
-    fg = fs.create_feature_group(
+    fs.get_or_create_feature_group(
         name=fg_name,
         version=1,
         primary_key=["id"],
         data_source=DataSource(storage_connector=connector, table=tab),
         sink_enabled=True,
-    )
-    fg.save()
-    fg.sink_job.run()
+        sink_job=job,
+    ).save()                # local: registers the tab as a target
+
+job.save()   # ONE atomic create with every tab as a target
+job.run()    # one job copies all tabs, one worker pod per tab
 ```
 
 ## Next Steps

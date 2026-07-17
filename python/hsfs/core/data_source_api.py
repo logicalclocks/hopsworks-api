@@ -54,6 +54,22 @@ class DataSourceApi:
 
         return _client._send_request("GET", path_params)
 
+    def _get_google_sheet_names(
+        self, storage_connector: sc.StorageConnector
+    ) -> list[str]:
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "featurestores",
+            storage_connector._featurestore_id,
+            "storageconnectors",
+            storage_connector._name,
+            "sheets",
+        ]
+
+        return _client._send_request("GET", path_params)
+
     def _get_crm_resources(
         self, storage_connector: sc.StorageConnector
     ) -> dsd.DataSourceData:
@@ -113,6 +129,10 @@ class DataSourceApi:
             return self._get_rest_data(storage_connector, data_source, use_cached)
         if storage_connector.type == "CRM":
             return self._get_crm_data(storage_connector, data_source, use_cached)
+        if storage_connector.type == "GOOGLE_SHEETS":
+            return self._get_google_sheets_data(
+                storage_connector, data_source, use_cached
+            )
         raise ValueError("This connector type does not support fetching NoSQL data.")
 
     def _get_rest_data(
@@ -166,6 +186,30 @@ class DataSourceApi:
         query_params = data_source.to_dict()
         if use_cached is not None:
             query_params["forceRefetch"] = not use_cached
+
+        return dsd.DataSourceData.from_response_json(
+            _client._send_request("GET", path_params, query_params=query_params)
+        )
+
+    def _get_google_sheets_data(
+        self,
+        storage_connector: sc.StorageConnector,
+        data_source: ds.DataSource,
+        use_cached=True,
+    ) -> dsd.DataSourceData:
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "featurestores",
+            storage_connector._featurestore_id,
+            "storageconnectors",
+            storage_connector._name,
+            "data_source",
+            "resources",
+            data_source.table,
+        ]
+        query_params = {"forceRefetch": not use_cached}
 
         return dsd.DataSourceData.from_response_json(
             _client._send_request("GET", path_params, query_params=query_params)

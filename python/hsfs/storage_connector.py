@@ -568,6 +568,13 @@ class StorageConnector(ABC):
                 ds.DataSource(table=resource, storage_connector=self)
                 for resource in (data.supported_resources or [])
             ]
+        if self.type == StorageConnector.GOOGLE_SHEETS:
+            # Sheet tabs are the spreadsheet's "tables"; the backend lists them
+            # only on the dedicated /sheets endpoint, not data_source/tables.
+            return [
+                ds.DataSource(table=sheet_name, storage_connector=self)
+                for sheet_name in self._data_source_api._get_google_sheet_names(self)
+            ]
 
         return self._data_source_api._get_tables(self, database)
 
