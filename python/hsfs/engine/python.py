@@ -121,6 +121,17 @@ if HAS_POLARS:
 
 _logger = logging.getLogger(__name__)
 
+# Hive-partition column keying the rows of an incremental training dataset by
+# their UTC event date as a `YYYYMMDD` integer (truncated to the dataset's
+# partition precision). Must match `Engine.DATE_PARTITION_COLUMN` in the
+# Spark engine, which owns the write path.
+DATE_PARTITION_COLUMN = "_hopsworks_event_date"
+
+# Hive-partition column keying each increment by a counter when the data has
+# no event time; such datasets are appendable but not time-addressable. Must
+# match `Engine.COUNTER_PARTITION_COLUMN` in the Spark engine.
+COUNTER_PARTITION_COLUMN = "_hopsworks_append_id"
+
 
 class Engine:
     def __init__(self) -> None:
@@ -355,9 +366,21 @@ class Engine:
         if not data_format:
             raise FeatureStoreException("data_format is not specified")
 
+        # Internal keys carrying a time-range read of an incremental training
+        # dataset (see `FeatureViewEngine._read_from_storage_connector`);
+        # popped so they never reach the readers as reader options.
+        read_options = dict(read_options) if read_options else {}
+        event_start_time = read_options.pop("event_start_time", None)
+        event_end_time = read_options.pop("event_end_time", None)
+
         if storage_connector.type == storage_connector.HOPSFS:
             df_list = self._read_hopsfs(
-                location, data_format, read_options, dataframe_type
+                location,
+                data_format,
+                read_options,
+                dataframe_type,
+                event_start_time=event_start_time,
+                event_end_time=event_end_time,
             )
         elif storage_connector.type in (
             storage_connector.S3,
@@ -368,7 +391,12 @@ class Engine:
             # way as for an S3 connector. Reading a Glue-registered table by
             # database/table is a Spark-engine, catalog-mediated path instead.
             df_list = self._read_s3(
-                storage_connector, location, data_format, dataframe_type
+                storage_connector,
+                location,
+                data_format,
+                dataframe_type,
+                event_start_time=event_start_time,
+                event_end_time=event_end_time,
             )
         else:
             raise NotImplementedError(
@@ -424,15 +452,46 @@ class Engine:
     def _is_metadata_file(self, path):
         return Path(path).stem.startswith("_")
 
+    def _date_partition_value(self, name: str) -> int | None:
+        """Parse an event-date Hive partition name into its `YYYYMMDD` value.
+
+        Returns the integer value of a `_hopsworks_event_date=<v>` directory
+        name (see `DATE_PARTITION_COLUMN` in the Spark engine), or `None`
+        when `name` is not a date partition.
+        """
+        prefix = DATE_PARTITION_COLUMN + "="
+        if name.startswith(prefix) and name[len(prefix) :].isdigit():
+            return int(name[len(prefix) :])
+        return None
+
+    def _is_counter_partition(self, name: str) -> bool:
+        """Whether `name` is a counter-keyed Hive partition (data without an event time)."""
+        return name.startswith(COUNTER_PARTITION_COLUMN + "=")
+
+    def _raise_not_time_addressable(self) -> None:
+        raise FeatureStoreException(
+            "A time-range read requires a training dataset partitioned by "
+            "event time, but this dataset is not (its data has no event-time "
+            "column, or it was materialized before event-time partitioning "
+            "was supported). Read it without `start_time`/`end_time` instead."
+        )
+
     def _read_hopsfs(
         self,
         location: str,
         data_format: str,
         read_options: dict[str, Any] | None = None,
         dataframe_type: str = "default",
+        event_start_time: int | None = None,
+        event_end_time: int | None = None,
     ) -> list[pd.DataFrame | pl.DataFrame]:
         return self._read_hopsfs_remote(
-            location, data_format, read_options or {}, dataframe_type
+            location,
+            data_format,
+            read_options or {},
+            dataframe_type,
+            event_start_time=event_start_time,
+            event_end_time=event_end_time,
         )
 
     # This read method uses the Hopsworks REST APIs or Flyingduck Server
@@ -443,8 +502,9 @@ class Engine:
         data_format: str,
         read_options: dict[str, Any] | None = None,
         dataframe_type: str = "default",
+        event_start_time: int | None = None,
+        event_end_time: int | None = None,
     ) -> list[pd.DataFrame | pl.DataFrame]:
-        df_list = []
         if read_options is None:
             read_options = {}
 
@@ -453,29 +513,99 @@ class Engine:
         is_dir = path_metadata.get("attributes", {}).get("dir", False)
 
         if is_dir:
-            # Location is a directory, list all files
-            total_count = 10000
-            offset = 0
-            while offset < total_count:
-                total_count, inode_list = self._dataset_api._list_dataset_path(
-                    location, inode.Inode, offset=offset, limit=100
-                )
+            return self._read_hopsfs_dir(
+                location,
+                data_format,
+                read_options,
+                dataframe_type,
+                event_start_time=event_start_time,
+                event_end_time=event_end_time,
+            )
 
-                for inode_entry in inode_list:
-                    if not self._is_metadata_file(inode_entry.path):
-                        df = self._read_single_hopsfs_file(
-                            inode_entry.path, data_format, read_options, dataframe_type
+        if event_start_time is not None or event_end_time is not None:
+            # A single file has no partition layout to prune.
+            self._raise_not_time_addressable()
+
+        # Location is a single file, read it directly
+        if self._is_metadata_file(location):
+            return []
+        return [
+            self._read_single_hopsfs_file(
+                location, data_format, read_options, dataframe_type
+            )
+        ]
+
+    def _read_hopsfs_dir(
+        self,
+        location: str,
+        data_format: str,
+        read_options: dict[str, Any],
+        dataframe_type: str = "default",
+        event_start_time: int | None = None,
+        event_end_time: int | None = None,
+    ) -> list[pd.DataFrame | pl.DataFrame]:
+        # Recurse into subdirectories so Hive-partitioned training datasets
+        # (e.g. `_hopsworks_event_date=<v>/`) are read too, not just flat
+        # files directly under the location. A time-range read prunes the
+        # append partitions by their event-date value at this level; the
+        # content of a matching partition is then read in full, so the range
+        # is not propagated into the recursion.
+        range_requested = event_start_time is not None or event_end_time is not None
+        saw_date_partition = False
+        df_list = []
+        total_count = 10000
+        offset = 0
+        while offset < total_count:
+            total_count, inode_list = self._dataset_api._list_dataset_path(
+                location, inode.Inode, offset=offset, limit=100
+            )
+
+            for inode_entry in inode_list:
+                if inode_entry.dir:
+                    name = Path(inode_entry.path).name
+                    if range_requested and self._is_counter_partition(name):
+                        # A counter-keyed increment (materialized without an
+                        # event time) never matches a time range, whatever
+                        # the bounds.
+                        continue
+                    partition_value = self._date_partition_value(name)
+                    if range_requested and partition_value is not None:
+                        saw_date_partition = True
+                        if (
+                            event_start_time is not None
+                            and partition_value < event_start_time
+                        ) or (
+                            event_end_time is not None
+                            and partition_value > event_end_time
+                        ):
+                            continue
+                    df_list.extend(
+                        self._read_hopsfs_dir(
+                            inode_entry.path,
+                            data_format,
+                            read_options,
+                            dataframe_type,
                         )
-                        df_list.append(df)
-                offset += len(inode_list)
-        else:
-            # Location is a single file, read it directly
-            if not self._is_metadata_file(location):
-                df = self._read_single_hopsfs_file(
-                    location, data_format, read_options, dataframe_type
-                )
-                df_list.append(df)
+                    )
+                elif not self._is_metadata_file(inode_entry.path):
+                    if range_requested:
+                        # A data file directly under the location means the
+                        # dataset is not partitioned by event time.
+                        self._raise_not_time_addressable()
+                    df_list.append(
+                        self._read_single_hopsfs_file(
+                            inode_entry.path,
+                            data_format,
+                            read_options,
+                            dataframe_type,
+                        )
+                    )
+            offset += len(inode_list)
 
+        if range_requested and not saw_date_partition:
+            # Nothing here is keyed by an event date — the dataset was
+            # materialized without an event time (counter partitions only).
+            self._raise_not_time_addressable()
         return df_list
 
     def _read_single_hopsfs_file(
@@ -505,6 +635,8 @@ class Engine:
         location: str,
         data_format: str,
         dataframe_type: str = "default",
+        event_start_time: int | None = None,
+        event_end_time: int | None = None,
     ) -> list[pd.DataFrame | pl.DataFrame]:
         # get key prefix
         path_parts = location.replace("s3://", "").split("/")
@@ -533,6 +665,8 @@ class Engine:
                 region_name=storage_connector.region,
             )
 
+        range_requested = event_start_time is not None or event_end_time is not None
+        saw_date_partition = False
         df_list = []
         object_list = {"is_truncated": True}
         while object_list.get("is_truncated", False):
@@ -552,6 +686,39 @@ class Engine:
 
             for obj in object_list["Contents"]:
                 if not self._is_metadata_file(obj["Key"]) and obj["Size"] > 0:
+                    if range_requested:
+                        # S3 lists objects flat; the partition appears as a
+                        # key segment. Prune the rows outside the requested
+                        # event-date range by that segment; counter-keyed
+                        # increments (data without an event time) never match
+                        # a time range, whatever the bounds.
+                        segments = obj["Key"].split("/")
+                        if any(
+                            self._is_counter_partition(segment) for segment in segments
+                        ):
+                            continue
+                        partition_values = [
+                            value
+                            for value in (
+                                self._date_partition_value(segment)
+                                for segment in segments
+                            )
+                            if value is not None
+                        ]
+                        if not partition_values:
+                            # A data object without a date partition segment
+                            # means the dataset is not partitioned by event
+                            # time.
+                            self._raise_not_time_addressable()
+                        saw_date_partition = True
+                        if (
+                            event_start_time is not None
+                            and partition_values[0] < event_start_time
+                        ) or (
+                            event_end_time is not None
+                            and partition_values[0] > event_end_time
+                        ):
+                            continue
                     obj = s3.get_object(
                         Bucket=bucket,
                         Key=obj["Key"],
@@ -560,6 +727,10 @@ class Engine:
                         df_list.append(self._read_polars(data_format, obj["Body"]))
                     else:
                         df_list.append(self._read_pandas(data_format, obj["Body"]))
+        if range_requested and not saw_date_partition:
+            # Nothing here is keyed by an event date — the dataset was
+            # materialized without an event time (counter partitions only).
+            self._raise_not_time_addressable()
         return df_list
 
     def _read_options(
@@ -1533,6 +1704,11 @@ class Engine:
             and not transformation_context
             and not has_user_supplied_sink
         ):
+            # The materialized layout is Hive-partitioned by each row's
+            # event-time day; force the event-time column through the query
+            # when the user did not select it, and tell the Query Service to
+            # drop it again after deriving the partition keys.
+            event_time_column, drop_event_time = dataset._include_left_event_time()
             query_obj, _ = dataset._prep_read(False, user_write_options)
             return util._run_with_loading_animation(
                 "Materializing data to Hopsworks, using Hopsworks Feature Query Service",
@@ -1541,6 +1717,12 @@ class Engine:
                 training_dataset,
                 query_obj,
                 user_write_options.get("arrow_flight_config", {}),
+                overwrite=(save_mode == "overwrite"),
+                event_time_column=event_time_column,
+                drop_event_time=drop_event_time,
+                partition_precision=user_write_options.get(
+                    "partition_precision", "day"
+                ),
             )
 
         # As for creating a feature group, users have the possibility of passing

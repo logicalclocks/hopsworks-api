@@ -19,6 +19,7 @@ from datetime import datetime
 
 from hopsworks_apigen import also_available_as
 from hopsworks_common import client, execution
+from hopsworks_common.core import execution_pod_log
 
 
 @also_available_as("hopsworks.core.execution_api.ExecutionApi")
@@ -143,6 +144,60 @@ class ExecutionApi:
             path_params=path_params,
             data={"state": "stopped"},
             headers={"Content-Type": "application/json"},
+        )
+
+    def _stop_table(self, job_name: str, id: int, table_index: int) -> None:
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "jobs",
+            job_name,
+            "executions",
+            id,
+            "tables",
+            table_index,
+            "status",
+        ]
+        _client._send_request(
+            "PUT",
+            path_params=path_params,
+            headers={"Content-Type": "application/json"},
+        )
+
+    def _get_pod_logs(
+        self,
+        job_name: str,
+        id: int,
+        table_index: int | None = None,
+        lines: int | None = None,
+        limit_bytes: int | None = None,
+    ) -> execution_pod_log.ExecutionPodLog:
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "jobs",
+            job_name,
+            "executions",
+            id,
+            "pod-logs",
+        ]
+        query_params = {}
+        if table_index is not None:
+            query_params["tableIndex"] = table_index
+        if lines is not None:
+            query_params["lines"] = lines
+        if limit_bytes is not None:
+            query_params["limitBytes"] = limit_bytes
+
+        return execution_pod_log.ExecutionPodLog.from_response_json(
+            _client._send_request(
+                "GET",
+                path_params=path_params,
+                query_params=query_params,
+                headers={"content-type": "application/json"},
+            )
         )
 
 

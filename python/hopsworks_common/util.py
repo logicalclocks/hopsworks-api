@@ -285,6 +285,17 @@ def _get_delta_datestr_from_timestamp(timestamp: int) -> str:
     )
 
 
+@also_available_as("hopsworks.util._get_event_date_int_from_timestamp")
+def _get_event_date_int_from_timestamp(timestamp: int | None) -> int | None:
+    # Convert an epoch-millisecond timestamp to the `YYYYMMDD` UTC date integer
+    # used as the event-date partition key of materialized training datasets.
+    if timestamp is None:
+        return None
+    return int(
+        datetime.fromtimestamp(timestamp / 1000, timezone.utc).strftime("%Y%m%d")
+    )
+
+
 @also_available_as("hopsworks.util._convert_event_time_to_timestamp")
 def _convert_event_time_to_timestamp(
     event_time: str

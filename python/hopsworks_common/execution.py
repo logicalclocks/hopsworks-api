@@ -21,7 +21,7 @@ import json
 import humps
 from hopsworks_apigen import public
 from hopsworks_common import client, constants, usage, util
-from hopsworks_common.core import execution_api
+from hopsworks_common.core import execution_api, execution_pod_log
 from hopsworks_common.engine import execution_engine
 
 
@@ -263,6 +263,52 @@ class Execution:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         self._execution_api._stop(self.job_name, self.id)
+
+    @public
+    @usage._method_logger
+    def stop_table(self, table_index: int) -> None:
+        """Stop the ingestion of a single table of a multi-table ingestion execution.
+
+        The other tables keep running.
+        Use [`Execution.stop`][hopsworks.execution.Execution.stop] to stop the whole execution instead.
+        To exclude a table from future runs rather than stopping the current one, disable it on the job with
+        [`MultiTableIngestionJob.set_table_enabled`][hsfs.core.multi_table_ingestion.MultiTableIngestionJob.set_table_enabled].
+
+        Parameters:
+            table_index: Index of the table to stop, matching its position in the job's target list.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        self._execution_api._stop_table(self.job_name, self.id, table_index)
+
+    @public
+    def get_pod_logs(
+        self,
+        table_index: int | None = None,
+        lines: int | None = None,
+        limit_bytes: int | None = None,
+    ) -> execution_pod_log.ExecutionPodLog:
+        """Read the live log of the execution's pod, or of one table's pod.
+
+        This streams the running pod, so it shows progress while the execution is still going,
+        unlike [`Execution.download_logs`][hopsworks.execution.Execution.download_logs] which fetches the archived files.
+        The returned [`ExecutionPodLog.status`][hopsworks_common.core.execution_pod_log.ExecutionPodLog.status] tells you whether the log is available yet.
+
+        Parameters:
+            table_index: For a multi-table ingestion, the index of the table whose pod to read; `None` reads the execution's own pod.
+            lines: Number of log lines to tail from the end.
+            limit_bytes: Maximum number of bytes to read from the pod log stream.
+
+        Returns:
+            The pod log, including its availability status and content.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._execution_api._get_pod_logs(
+            self.job_name, self.id, table_index, lines, limit_bytes
+        )
 
     @public
     def await_termination(self, timeout: float | None = None):

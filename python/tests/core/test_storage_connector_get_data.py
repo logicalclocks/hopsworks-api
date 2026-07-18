@@ -15,9 +15,16 @@
 #
 
 import pytest
+from hopsworks_common.client.exceptions import DataSourceException
 from hopsworks_common.core.rest_endpoint import RestEndpointConfig
 from hsfs.core import data_source
-from hsfs.storage_connector import CRMAndAnalyticsConnector, CRMSource, RestConnector
+from hsfs.core.data_source_data import DataSourceData
+from hsfs.storage_connector import (
+    CRMAndAnalyticsConnector,
+    CRMSource,
+    HopsFSConnector,
+    RestConnector,
+)
 
 
 class TestStorageConnectorGetData:
@@ -70,3 +77,99 @@ class TestStorageConnectorGetData:
 
         assert [table.table for table in tables] == ["contacts", "deals"]
         assert all(table.storage_connector is connector for table in tables)
+
+
+class TestStorageConnectorGetDataBatch:
+    def _crm_connector(self):
+        return CRMAndAnalyticsConnector(
+            id=1,
+            name="crm",
+            featurestore_id=1,
+            crm_type=CRMSource.HUBSPOT,
+        )
+
+    def test_unsupported_connector_type_raises(self):
+        connector = HopsFSConnector(id=1, name="hopsfs", featurestore_id=1)
+
+        with pytest.raises(ValueError, match="only supported for CRM"):
+            connector.get_data_batch([data_source.DataSource(table="t")])
+
+    def test_empty_data_sources_raises(self):
+        with pytest.raises(ValueError, match="At least one data source"):
+            self._crm_connector().get_data_batch([])
+
+    def test_requires_table_on_every_source(self):
+        sources = [
+            data_source.DataSource(table="contacts"),
+            data_source.DataSource(table=None),
+        ]
+
+        with pytest.raises(ValueError, match="require a table name"):
+            self._crm_connector().get_data_batch(sources)
+
+    def test_rest_connector_sets_default_rest_endpoint(self, mocker):
+        connector = RestConnector(id=1, name="rest", featurestore_id=1)
+        sources = [
+            data_source.DataSource(table="a", rest_endpoint=None),
+            data_source.DataSource(table="b", rest_endpoint=None),
+        ]
+        mocker.patch.object(
+            connector._data_source_api,
+            "_start_no_sql_schema_fetch",
+            return_value={"a": DataSourceData(), "b": DataSourceData()},
+        )
+
+        connector.get_data_batch(sources)
+
+        assert all(
+            isinstance(source.rest_endpoint, RestEndpointConfig) for source in sources
+        )
+
+    def test_polls_until_all_resources_finished(self, mocker):
+        connector = self._crm_connector()
+        sources = [
+            data_source.DataSource(table="contacts"),
+            data_source.DataSource(table="deals"),
+        ]
+        in_progress = {
+            "contacts": DataSourceData(schema_fetch_in_progress=True),
+            "deals": DataSourceData(schema_fetch_in_progress=True),
+        }
+        done = {"contacts": DataSourceData(), "deals": DataSourceData()}
+        api_mock = mocker.patch.object(
+            connector._data_source_api,
+            "_start_no_sql_schema_fetch",
+            side_effect=[in_progress, in_progress, done],
+        )
+        mocker.patch("hsfs.storage_connector.time.sleep")
+
+        results = connector.get_data_batch(sources, use_cached=False)
+
+        assert results == done
+        assert api_mock.call_count == 3
+        # the initial call forwards use_cached, the polling calls never force
+        assert api_mock.call_args_list[0].args == (connector, sources, False)
+        assert api_mock.call_args_list[1].args == (connector, sources)
+
+    def test_failed_resource_raises_with_logs(self, mocker):
+        connector = self._crm_connector()
+        sources = [
+            data_source.DataSource(table="contacts"),
+            data_source.DataSource(table="deals"),
+        ]
+        mocker.patch.object(
+            connector._data_source_api,
+            "_start_no_sql_schema_fetch",
+            return_value={
+                "contacts": DataSourceData(),
+                "deals": DataSourceData(
+                    schema_fetch_failed=True, schema_fetch_logs="boom"
+                ),
+            },
+        )
+
+        with pytest.raises(DataSourceException, match="1 of 2") as excinfo:
+            connector.get_data_batch(sources)
+
+        assert "deals" in str(excinfo.value)
+        assert "boom" in str(excinfo.value)

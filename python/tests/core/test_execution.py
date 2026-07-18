@@ -107,3 +107,27 @@ class TestExecution:
         )
 
         assert ex.app_url == "https://myhost:443/hopsworks-api/pythonapp/proj/my_app/"
+
+
+class TestExecutionPerTable:
+    def test_stop_table_delegates_to_api(self, mocker):
+        job = mock.Mock()
+        job.name = "crm_ingestion"
+        ex = Execution(id=5, job=job)
+        ex._execution_api = mock.Mock()
+
+        ex.stop_table(2)
+
+        ex._execution_api._stop_table.assert_called_once_with("crm_ingestion", 5, 2)
+
+    def test_get_pod_logs_delegates_to_api(self, mocker):
+        job = mock.Mock()
+        job.name = "crm_ingestion"
+        ex = Execution(id=5, job=job)
+        ex._execution_api = mock.Mock()
+
+        ex.get_pod_logs(table_index=2, lines=50)
+
+        ex._execution_api._get_pod_logs.assert_called_once_with(
+            "crm_ingestion", 5, 2, 50, None
+        )

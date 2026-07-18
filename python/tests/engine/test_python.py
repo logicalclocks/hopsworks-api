@@ -819,6 +819,149 @@ class TestPython:
         assert mock_dataset_api.return_value._list_dataset_path.call_count == 1
         assert mock_python_engine_read_pandas.call_count == 3
 
+    def test_read_hopsfs_remote_partitioned(self, mocker):
+        # Hive-partitioned training datasets nest parquet files under
+        # partition subdirs (here a counter-keyed increment); the reader must
+        # recurse into them.
+        # Arrange
+        mock_dataset_api = mocker.patch("hsfs.core.dataset_api.DatasetApi")
+        mock_python_engine_read_pandas = mocker.patch(
+            "hsfs.engine.python.Engine._read_pandas"
+        )
+
+        python_engine = python.Engine()
+
+        # Top level reports the location is a directory holding one partition dir.
+        mock_dataset_api.return_value._get.return_value = {"attributes": {"dir": True}}
+        partition_dir = inode.Inode(
+            attributes={"path": "td/_hopsworks_append_id=0", "dir": True}
+        )
+        parquet_file = inode.Inode(
+            attributes={"path": "td/_hopsworks_append_id=0/part-00000.parquet"}
+        )
+
+        # First listing (the location) -> the partition dir; second listing
+        # (the partition dir) -> the parquet file. Each returns total_count 0 so
+        # the paging loop stops after one page.
+        mock_dataset_api.return_value._list_dataset_path.side_effect = [
+            (0, [partition_dir]),
+            (0, [parquet_file]),
+        ]
+        mock_dataset_api.return_value.read_content.return_value.content = b""
+
+        # Act
+        python_engine._read_hopsfs_remote(location="td", data_format=None)
+
+        # Assert: recursed into the partition dir and read the single file.
+        assert mock_dataset_api.return_value._list_dataset_path.call_count == 2
+        assert mock_python_engine_read_pandas.call_count == 1
+
+    def test_read_hopsfs_remote_time_range_prunes_partitions(self, mocker):
+        # A time-range read skips the partition dirs whose event-window start
+        # falls outside the range, without listing their content.
+        # Arrange
+        mock_dataset_api = mocker.patch("hsfs.core.dataset_api.DatasetApi")
+        mock_python_engine_read_pandas = mocker.patch(
+            "hsfs.engine.python.Engine._read_pandas"
+        )
+
+        python_engine = python.Engine()
+
+        mock_dataset_api.return_value._get.return_value = {"attributes": {"dir": True}}
+        early = inode.Inode(
+            attributes={"path": "td/_hopsworks_event_date=20260628", "dir": True}
+        )
+        in_range = inode.Inode(
+            attributes={"path": "td/_hopsworks_event_date=20260701", "dir": True}
+        )
+        late = inode.Inode(
+            attributes={"path": "td/_hopsworks_event_date=20260703", "dir": True}
+        )
+        parquet_file = inode.Inode(
+            attributes={"path": "td/_hopsworks_event_date=20260701/part-00000.parquet"}
+        )
+
+        # The location listing yields all three partitions; only the in-range
+        # one is listed further.
+        mock_dataset_api.return_value._list_dataset_path.side_effect = [
+            (0, [early, in_range, late]),
+            (0, [parquet_file]),
+        ]
+        mock_dataset_api.return_value.read_content.return_value.content = b""
+
+        # Act
+        python_engine._read_hopsfs_remote(
+            location="td",
+            data_format=None,
+            event_start_time=20260630,
+            event_end_time=20260702,
+        )
+
+        # Assert: only the in-range partition dir was recursed into and read.
+        assert mock_dataset_api.return_value._list_dataset_path.call_count == 2
+        assert (
+            mock_dataset_api.return_value._list_dataset_path.call_args_list[1][0][0]
+            == "td/_hopsworks_event_date=20260701"
+        )
+        assert mock_python_engine_read_pandas.call_count == 1
+
+    def test_read_hopsfs_remote_time_range_counter_partitions_raise(self, mocker):
+        # A dataset whose partitions are all counter-keyed (materialized
+        # without an event time) is not time-addressable; failing beats
+        # silently returning an empty result.
+        # Arrange
+        mock_dataset_api = mocker.patch("hsfs.core.dataset_api.DatasetApi")
+        mocker.patch("hsfs.engine.python.Engine._read_pandas")
+
+        python_engine = python.Engine()
+
+        mock_dataset_api.return_value._get.return_value = {"attributes": {"dir": True}}
+        counter_0 = inode.Inode(
+            attributes={"path": "td/_hopsworks_append_id=0", "dir": True}
+        )
+        counter_1 = inode.Inode(
+            attributes={"path": "td/_hopsworks_append_id=1", "dir": True}
+        )
+        mock_dataset_api.return_value._list_dataset_path.return_value = (
+            0,
+            [counter_0, counter_1],
+        )
+
+        # Act / Assert
+        with pytest.raises(exceptions.FeatureStoreException) as e_info:
+            python_engine._read_hopsfs_remote(
+                location="td",
+                data_format=None,
+                event_start_time=20260101,
+            )
+        assert "partitioned by event time" in str(e_info.value)
+
+    def test_read_hopsfs_remote_time_range_not_partitioned_raises(self, mocker):
+        # A time-range read of a dataset with flat data files (no event-time
+        # partitions) cannot be pruned; failing beats silently returning
+        # everything.
+        # Arrange
+        mock_dataset_api = mocker.patch("hsfs.core.dataset_api.DatasetApi")
+        mocker.patch("hsfs.engine.python.Engine._read_pandas")
+
+        python_engine = python.Engine()
+
+        mock_dataset_api.return_value._get.return_value = {"attributes": {"dir": True}}
+        flat_file = inode.Inode(attributes={"path": "td/part-00000.parquet"})
+        mock_dataset_api.return_value._list_dataset_path.return_value = (
+            0,
+            [flat_file],
+        )
+
+        # Act / Assert
+        with pytest.raises(exceptions.FeatureStoreException) as e_info:
+            python_engine._read_hopsfs_remote(
+                location="td",
+                data_format=None,
+                event_start_time=20260630,
+            )
+        assert "partitioned by event time" in str(e_info.value)
+
     def test_read_s3(self, mocker):
         # Arrange
         mock_boto3_client = mocker.patch("boto3.client")
@@ -851,6 +994,117 @@ class TestPython:
         assert "aws_session_token" not in mock_boto3_client.call_args[1]
         assert mock_boto3_client.call_count == 1
         assert mock_python_engine_read_pandas.call_count == 2
+
+    def test_read_s3_time_range_prunes_partitions(self, mocker):
+        # S3 lists objects flat; a time-range read prunes by the append
+        # partition segment in the object key.
+        # Arrange
+        mock_boto3_client = mocker.patch("boto3.client")
+        mock_python_engine_read_pandas = mocker.patch(
+            "hsfs.engine.python.Engine._read_pandas"
+        )
+
+        python_engine = python.Engine()
+
+        connector = storage_connector.S3Connector(
+            id=1, name="test_connector", featurestore_id=1
+        )
+
+        mock_boto3_client.return_value.list_objects_v2.return_value = {
+            "is_truncated": False,
+            "Contents": [
+                {
+                    "Key": "td/_hopsworks_event_date=20260628/part-0.parquet",
+                    "Size": 1,
+                    "Body": "",
+                },
+                {
+                    "Key": "td/_hopsworks_event_date=20260701/part-0.parquet",
+                    "Size": 1,
+                    "Body": "",
+                },
+                {
+                    "Key": "td/_hopsworks_event_date=20260703/part-0.parquet",
+                    "Size": 1,
+                    "Body": "",
+                },
+            ],
+        }
+
+        # Act
+        python_engine._read_s3(
+            storage_connector=connector,
+            location="",
+            data_format=None,
+            event_start_time=20260630,
+            event_end_time=20260702,
+        )
+
+        # Assert: only the in-range increment was fetched and read.
+        assert mock_boto3_client.return_value.get_object.call_count == 1
+        assert (
+            mock_boto3_client.return_value.get_object.call_args[1]["Key"]
+            == "td/_hopsworks_event_date=20260701/part-0.parquet"
+        )
+        assert mock_python_engine_read_pandas.call_count == 1
+
+    def test_read_s3_time_range_counter_partitions_raise(self, mocker):
+        # Arrange
+        mock_boto3_client = mocker.patch("boto3.client")
+        mocker.patch("hsfs.engine.python.Engine._read_pandas")
+
+        python_engine = python.Engine()
+
+        connector = storage_connector.S3Connector(
+            id=1, name="test_connector", featurestore_id=1
+        )
+
+        mock_boto3_client.return_value.list_objects_v2.return_value = {
+            "is_truncated": False,
+            "Contents": [
+                {
+                    "Key": "td/_hopsworks_append_id=0/part-0.parquet",
+                    "Size": 1,
+                    "Body": "",
+                }
+            ],
+        }
+
+        # Act / Assert
+        with pytest.raises(exceptions.FeatureStoreException) as e_info:
+            python_engine._read_s3(
+                storage_connector=connector,
+                location="",
+                data_format=None,
+                event_start_time=20260101,
+            )
+        assert "partitioned by event time" in str(e_info.value)
+
+    def test_read_s3_time_range_not_partitioned_raises(self, mocker):
+        # Arrange
+        mock_boto3_client = mocker.patch("boto3.client")
+        mocker.patch("hsfs.engine.python.Engine._read_pandas")
+
+        python_engine = python.Engine()
+
+        connector = storage_connector.S3Connector(
+            id=1, name="test_connector", featurestore_id=1
+        )
+
+        mock_boto3_client.return_value.list_objects_v2.return_value = {
+            "is_truncated": False,
+            "Contents": [{"Key": "td/part-0.parquet", "Size": 1, "Body": ""}],
+        }
+
+        # Act / Assert
+        with pytest.raises(exceptions.FeatureStoreException) as e_info:
+            python_engine._read_s3(
+                storage_connector=connector,
+                location="",
+                data_format=None,
+                event_start_time=20260630,
+            )
+        assert "partitioned by event time" in str(e_info.value)
 
     def test_read_s3_session_token(self, mocker):
         # Arrange

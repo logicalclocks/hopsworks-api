@@ -568,6 +568,13 @@ class StorageConnector(ABC):
                 ds.DataSource(table=resource, storage_connector=self)
                 for resource in (data.supported_resources or [])
             ]
+        if self.type == StorageConnector.GOOGLE_SHEETS:
+            # Sheet tabs are the spreadsheet's "tables"; the backend lists them
+            # only on the dedicated /sheets endpoint, not data_source/tables.
+            return [
+                ds.DataSource(table=sheet_name, storage_connector=self)
+                for sheet_name in self._data_source_api._get_google_sheet_names(self)
+            ]
 
         return self._data_source_api._get_tables(self, database)
 
@@ -606,6 +613,80 @@ class StorageConnector(ABC):
                 data_source.rest_endpoint = RestEndpointConfig()
             return self._get_no_sql_data(data_source, use_cached)
         return self._data_source_api._get_data(data_source)
+
+    @public
+    def get_data_batch(
+        self, data_sources: list[ds.DataSource], use_cached=True
+    ) -> dict[str, DataSourceData]:
+        """Retrieve the data of several data sources with a single schema-fetch job.
+
+        Only supported for CRM, Google Sheets, and REST connectors.
+        The backend starts ONE job that fetches the schemas of all resources sequentially in one container, instead of one job per resource.
+        This call blocks until every resource has been fetched.
+
+        Example:
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            sc = fs.get_storage_connector("conn_name")
+
+            tables = sc.get_tables()
+
+            data_by_resource = sc.get_data_batch(tables[:3])
+            ```
+        Parameters:
+            data_sources: The data sources to retrieve data for; each needs a table name in `data_source.table`.
+            use_cached: Whether to use cached data if available. Defaults to `True`.
+
+        Returns:
+            A dictionary mapping each resource name to the data retrieved for it.
+
+        Raises:
+            hopsworks.client.exceptions.DataSourceException: If the schema fetch failed for one or more resources.
+        """
+        if self.type not in [
+            StorageConnector.REST,
+            StorageConnector.CRM,
+            StorageConnector.GOOGLE_SHEETS,
+        ]:
+            raise ValueError(
+                "Batch data retrieval is only supported for CRM, Google Sheets, and REST connectors."
+            )
+        if not data_sources:
+            raise ValueError("At least one data source must be provided.")
+        for data_source in data_sources:
+            if not data_source.table:
+                raise ValueError(
+                    f"{self.type} data sources require a table name in data_source.table."
+                )
+            if self.type == StorageConnector.REST and data_source.rest_endpoint is None:
+                data_source.rest_endpoint = RestEndpointConfig()
+
+        results = self._data_source_api._start_no_sql_schema_fetch(
+            self, data_sources, use_cached
+        )
+        while any(data.schema_fetch_in_progress for data in results.values()):
+            time.sleep(3)
+            _logger.info("Schema fetch in progress...")
+            # polling re-uses the batch endpoint without forceRefetch: the running
+            # job is reported, never restarted
+            results = self._data_source_api._start_no_sql_schema_fetch(
+                self, data_sources
+            )
+
+        failed = {
+            name: data for name, data in results.items() if data.schema_fetch_failed
+        }
+        if failed:
+            details = "\n".join(
+                f"{name}:\n{data.schema_fetch_logs}" for name, data in failed.items()
+            )
+            raise DataSourceException(
+                f"Schema fetch failed for {len(failed)} of {len(results)} resource(s):\n{details}"
+            )
+        _logger.info("Schema fetch succeeded for all %d resources.", len(results))
+        return results
 
     @public
     def get_metadata(self, data_source: ds.DataSource) -> dict:

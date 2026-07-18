@@ -20,7 +20,7 @@ import pytest
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core.constants import HAS_PYICEBERG
 from hsfs import feature_group
-from hsfs.core import feature_group_engine
+from hsfs.core import feature_group_engine, partition_transforms
 from hsfs.core.iceberg_engine import IcebergEngine
 
 
@@ -29,6 +29,9 @@ def _make_fg(
     primary_key=None,
     event_time=None,
     partition_key=None,
+    partitioned_by=None,
+    zorder_by=None,
+    sort_order=None,
 ):
     fg = mock.MagicMock()
     fg.name = "fg"
@@ -38,6 +41,9 @@ def _make_fg(
     fg.primary_key = primary_key if primary_key is not None else ["pk"]
     fg.event_time = event_time
     fg.partition_key = partition_key if partition_key is not None else []
+    fg.partitioned_by = partitioned_by
+    fg.zorder_by = zorder_by
+    fg.sort_order = sort_order
     return fg
 
 
@@ -402,6 +408,442 @@ class TestIcebergEngine:
 
         # Assert
         assert "Spark Connect" in str(e_info.value)
+
+    def test_partition_spec_transforms_prefers_partitioned_by(self, mocker):
+        # Arrange
+        fg = _make_fg(partitioned_by=["day(ts)", "bucket(16, pk)"])
+        iceberg_engine = _make_engine(mocker, fg=fg)
+
+        # Act
+        transforms = iceberg_engine._partition_spec_transforms()
+
+        # Assert
+        assert [(t.name, t.source, t.param) for t in transforms] == [
+            ("day", "ts", None),
+            ("bucket", "pk", 16),
+        ]
+
+    def test_partition_spec_transforms_identity_fallback_from_partition_key(
+        self, mocker
+    ):
+        # Arrange
+        fg = _make_fg(partition_key=["a", "b"])
+        iceberg_engine = _make_engine(mocker, fg=fg)
+
+        # Act
+        transforms = iceberg_engine._partition_spec_transforms()
+
+        # Assert
+        assert [(t.name, t.source) for t in transforms] == [
+            ("identity", "a"),
+            ("identity", "b"),
+        ]
+
+    def test_partition_spec_transforms_old_grain_spec_is_opaque(self, mocker):
+        # Arrange: pre-transform stored specs do not parse and derive nothing
+        fg = _make_fg(partitioned_by=["year", "month"])
+        iceberg_engine = _make_engine(mocker, fg=fg)
+
+        # Act & Assert
+        assert iceberg_engine._partition_spec_transforms() == []
+
+    @staticmethod
+    def _self_returning_spec_builder(mocker):
+        spec_builder = mocker.MagicMock()
+        for method in (
+            "identity",
+            "bucket",
+            "truncate",
+            "alwaysNull",
+            "year",
+            "month",
+            "day",
+            "hour",
+        ):
+            getattr(spec_builder, method).return_value = spec_builder
+        return spec_builder
+
+    def test_create_iceberg_table_builds_spec_from_transforms(self, mocker):
+        # Arrange
+        fg = _make_fg(
+            partitioned_by=[
+                "day(ts)",
+                "bucket(16, pk)",
+                "truncate(4, zip)",
+                "void(x)",
+                "cat",
+            ]
+        )
+        spark_context = mocker.MagicMock()
+        jvm = spark_context._jvm
+        spec_builder = self._self_returning_spec_builder(mocker)
+        jvm.org.apache.iceberg.PartitionSpec.builderFor.return_value = spec_builder
+        iceberg_engine = _make_engine(mocker, fg=fg, spark_context=spark_context)
+
+        # Act
+        iceberg_engine._create_iceberg_table(mocker.MagicMock(), "hopsfs://nn/p")
+
+        # Assert: each transform lands on its PartitionSpec builder method
+        spec_builder.day.assert_called_once_with("ts")
+        spec_builder.bucket.assert_called_once_with("pk", 16)
+        spec_builder.truncate.assert_called_once_with("zip", 4)
+        spec_builder.alwaysNull.assert_called_once_with("x")
+        spec_builder.identity.assert_called_once_with("cat")
+        # a partitioned table shuffles rows to their partitions on write
+        properties = jvm.java.util.HashMap.return_value
+        properties.put.assert_called_once_with("write.distribution-mode", "hash")
+        # HadoopTables.create(schema, spec, properties, location)
+        tables = jvm.org.apache.iceberg.hadoop.HadoopTables.return_value
+        create_args = tables.create.call_args.args
+        assert len(create_args) == 4
+        assert create_args[1] is spec_builder.build.return_value
+        assert create_args[2] is properties
+        assert create_args[3] == "hopsfs://nn/p"
+
+    def test_create_iceberg_table_unpartitioned_sets_no_distribution_mode(self, mocker):
+        # Arrange
+        fg = _make_fg()
+        spark_context = mocker.MagicMock()
+        jvm = spark_context._jvm
+        iceberg_engine = _make_engine(mocker, fg=fg, spark_context=spark_context)
+
+        # Act
+        iceberg_engine._create_iceberg_table(mocker.MagicMock(), "hopsfs://nn/p")
+
+        # Assert
+        jvm.java.util.HashMap.return_value.put.assert_not_called()
+
+    def test_optimize_requires_classic_spark(self, mocker):
+        # Arrange
+        iceberg_engine = _make_engine(mocker, spark_context=None)
+
+        # Act & Assert
+        with pytest.raises(FeatureStoreException, match="classic"):
+            iceberg_engine._optimize()
+
+    def test_optimize_rejects_glue_catalog(self, mocker):
+        # Arrange
+        iceberg_engine = _make_engine(mocker, spark_context=mocker.MagicMock())
+        mocker.patch.object(iceberg_engine, "_glue_catalog", return_value=mocker.Mock())
+
+        # Act & Assert
+        with pytest.raises(FeatureStoreException, match="Glue"):
+            iceberg_engine._optimize()
+
+    def test_optimize_zorder_rewrites_data_files(self, mocker):
+        # Arrange
+        fg = _make_fg(zorder_by=["merchant_id", "amount"])
+        spark_context = mocker.MagicMock()
+        jvm = spark_context._jvm
+        iceberg_engine = _make_engine(mocker, fg=fg, spark_context=spark_context)
+        mocker.patch.object(iceberg_engine, "_glue_catalog", return_value=None)
+
+        # Act
+        iceberg_engine._optimize()
+
+        # Assert: the table is loaded path-based and rewritten with z-order
+        tables = jvm.org.apache.iceberg.hadoop.HadoopTables.return_value
+        tables.load.assert_called_once_with(
+            "hopsfs://nn/apps/hive/warehouse/fs.db/fg_1"
+        )
+        action = jvm.org.apache.iceberg.spark.actions.SparkActions.get.return_value.rewriteDataFiles.return_value
+        spark_context._gateway.new_array.assert_called_once_with(
+            jvm.java.lang.String, 2
+        )
+        cols = spark_context._gateway.new_array.return_value
+        action.zOrder.assert_called_once_with(cols)
+        zordered = action.zOrder.return_value
+        # rewrite_all defaults to False, so no full-table rewrite by default
+        zordered.option.assert_not_called()
+        zordered.execute.assert_called_once_with()
+
+    def test_optimize_zorder_rewrite_all_sets_option(self, mocker):
+        # Arrange
+        fg = _make_fg(zorder_by=["merchant_id"])
+        spark_context = mocker.MagicMock()
+        jvm = spark_context._jvm
+        iceberg_engine = _make_engine(mocker, fg=fg, spark_context=spark_context)
+        mocker.patch.object(iceberg_engine, "_glue_catalog", return_value=None)
+
+        # Act: an operator asks for the initial full z-order explicitly
+        iceberg_engine._optimize(rewrite_all=True)
+
+        # Assert: rewrite-all is set only when requested
+        action = jvm.org.apache.iceberg.spark.actions.SparkActions.get.return_value.rewriteDataFiles.return_value
+        zordered = action.zOrder.return_value
+        zordered.option.assert_called_once_with("rewrite-all", "true")
+        zordered.option.return_value.execute.assert_called_once_with()
+
+    def test_optimize_where_applies_iceberg_filter(self, mocker):
+        # Arrange
+        fg = _make_fg()
+        spark_context = mocker.MagicMock()
+        jvm = spark_context._jvm
+        iceberg_engine = _make_engine(mocker, fg=fg, spark_context=spark_context)
+        mocker.patch.object(iceberg_engine, "_glue_catalog", return_value=None)
+        # In Iceberg 1.7 the converter is at
+        # org.apache.spark.sql.execution.datasources with convertToIcebergExpression
+        converter = (
+            jvm.org.apache.spark.sql.execution.datasources.SparkExpressionConverter
+        )
+
+        # Act
+        iceberg_engine._optimize(where="amount > 100")
+
+        # Assert: the predicate is converted to an Iceberg expression and the
+        # rewrite is restricted with .filter(); the temp view is cleaned up
+        converter.collectResolvedSparkExpression.assert_called_once()
+        action = jvm.org.apache.iceberg.spark.actions.SparkActions.get.return_value.rewriteDataFiles.return_value
+        action.filter.assert_called_once_with(
+            converter.convertToIcebergExpression.return_value
+        )
+        iceberg_engine._spark_session.catalog.dropTempView.assert_called_once()
+
+    def test_optimize_compacts_without_zorder_by(self, mocker):
+        # Arrange
+        fg = _make_fg()
+        spark_context = mocker.MagicMock()
+        jvm = spark_context._jvm
+        iceberg_engine = _make_engine(mocker, fg=fg, spark_context=spark_context)
+        mocker.patch.object(iceberg_engine, "_glue_catalog", return_value=None)
+
+        # Act
+        iceberg_engine._optimize()
+
+        # Assert: plain bin-packing compaction, no z-order strategy
+        action = jvm.org.apache.iceberg.spark.actions.SparkActions.get.return_value.rewriteDataFiles.return_value
+        action.zOrder.assert_not_called()
+        action.execute.assert_called_once_with()
+
+    def test_update_partition_spec_requires_classic_spark(self, mocker):
+        # Arrange
+        iceberg_engine = _make_engine(mocker, spark_context=None)
+        add = partition_transforms._parse(["hour(ts)"])
+
+        # Act & Assert
+        with pytest.raises(FeatureStoreException, match="classic Spark session"):
+            iceberg_engine._update_partition_spec(add, [])
+
+    def test_update_partition_spec_rejects_glue_catalog(self, mocker):
+        # Arrange
+        iceberg_engine = _make_engine(mocker, spark_context=mocker.MagicMock())
+        mocker.patch.object(iceberg_engine, "_glue_catalog", return_value=mocker.Mock())
+        add = partition_transforms._parse(["hour(ts)"])
+
+        # Act & Assert
+        with pytest.raises(FeatureStoreException, match="Glue"):
+            iceberg_engine._update_partition_spec(add, [])
+
+    def test_update_partition_spec_rejects_void_add(self, mocker):
+        # Arrange: removing a field already voids it in the evolved spec
+        iceberg_engine = _make_engine(mocker, spark_context=mocker.MagicMock())
+        mocker.patch.object(iceberg_engine, "_glue_catalog", return_value=None)
+        add = partition_transforms._parse(["void(x)"])
+
+        # Act & Assert
+        with pytest.raises(FeatureStoreException, match="void transforms"):
+            iceberg_engine._update_partition_spec(add, [])
+
+    def test_update_partition_spec_commits_through_jvm(self, mocker):
+        # Arrange
+        spark_context = mocker.MagicMock()
+        jvm = spark_context._jvm
+        iceberg_engine = _make_engine(mocker, spark_context=spark_context)
+        mocker.patch.object(iceberg_engine, "_glue_catalog", return_value=None)
+        add = partition_transforms._parse(["hour(ts)"])
+        remove = partition_transforms._parse(["day(ts)"])
+
+        # Act
+        iceberg_engine._update_partition_spec(add, remove)
+
+        # Assert: the table is loaded path-based and the spec update chains
+        # removeField before addField, then commits
+        tables = jvm.org.apache.iceberg.hadoop.HadoopTables.return_value
+        tables.load.assert_called_once_with(
+            "hopsfs://nn/apps/hive/warehouse/fs.db/fg_1"
+        )
+        expressions = jvm.org.apache.iceberg.expressions.Expressions
+        expressions.day.assert_called_once_with("ts")
+        expressions.hour.assert_called_once_with("ts")
+        update = tables.load.return_value.updateSpec.return_value
+        update.removeField.assert_called_once_with(expressions.day.return_value)
+        after_remove = update.removeField.return_value
+        after_remove.addField.assert_called_once_with(expressions.hour.return_value)
+        after_remove.addField.return_value.commit.assert_called_once_with()
+        tables.load.return_value.refresh.assert_called_once_with()
+
+    def test_update_partition_spec_add_with_alias_names_field(self, mocker):
+        # Arrange
+        spark_context = mocker.MagicMock()
+        jvm = spark_context._jvm
+        iceberg_engine = _make_engine(mocker, spark_context=spark_context)
+        mocker.patch.object(iceberg_engine, "_glue_catalog", return_value=None)
+        add = partition_transforms._parse(["bucket(16,id) as shard"])
+
+        # Act
+        iceberg_engine._update_partition_spec(add, [])
+
+        # Assert: the two-argument addField overload names the partition field
+        expressions = jvm.org.apache.iceberg.expressions.Expressions
+        tables = jvm.org.apache.iceberg.hadoop.HadoopTables.return_value
+        update = tables.load.return_value.updateSpec.return_value
+        update.addField.assert_called_once_with(
+            "shard", expressions.bucket.return_value
+        )
+
+    def test_update_partition_spec_empty_reconciles_without_commit(self, mocker):
+        # Arrange
+        iceberg_engine = _make_engine(mocker, spark_context=mocker.MagicMock())
+        mocker.patch.object(iceberg_engine, "_glue_catalog", return_value=None)
+        table = mocker.MagicMock()
+        mocker.patch.object(iceberg_engine, "_load_jvm_table", return_value=table)
+        spec_mock = mocker.patch.object(
+            IcebergEngine, "_spec_expressions", return_value=["day(ts)"]
+        )
+
+        # Act
+        result = iceberg_engine._update_partition_spec([], [])
+
+        # Assert: nothing is committed; the current spec is only read back
+        table.updateSpec.assert_not_called()
+        spec_mock.assert_called_once_with(table)
+        assert result == ["day(ts)"]
+
+    def test_update_partition_spec_returns_committed_spec(self, mocker):
+        # Arrange
+        iceberg_engine = _make_engine(mocker, spark_context=mocker.MagicMock())
+        mocker.patch.object(iceberg_engine, "_glue_catalog", return_value=None)
+        table = mocker.MagicMock()
+        mocker.patch.object(iceberg_engine, "_load_jvm_table", return_value=table)
+        mocker.patch.object(
+            IcebergEngine,
+            "_spec_expressions",
+            return_value=["bucket(4,id)", "hour(ts)"],
+        )
+        add = partition_transforms._parse(["hour(ts)"])
+
+        # Act
+        result = iceberg_engine._update_partition_spec(add, [])
+
+        # Assert: the returned spec is read back from the refreshed table
+        table.updateSpec.return_value.addField.return_value.commit.assert_called_once_with()
+        table.refresh.assert_called_once_with()
+        assert result == ["bucket(4,id)", "hour(ts)"]
+
+    @staticmethod
+    def _jvm_partition_field(mocker, name, transform, source_id):
+        field = mocker.Mock()
+        field.name.return_value = name
+        field.transform.return_value.toString.return_value = transform
+        field.sourceId.return_value = source_id
+        return field
+
+    def test_spec_expressions_round_trips_transform_grammar(self, mocker):
+        # Arrange: identity, parameterized, temporal, aliased, and void
+        # (V1 removed-field placeholder) fields
+        table = mocker.Mock()
+        schema = table.schema.return_value
+        schema.findColumnName.side_effect = {1: "region", 2: "id", 3: "ts"}.get
+        table.spec.return_value.fields.return_value = [
+            self._jvm_partition_field(mocker, "region", "identity", 1),
+            self._jvm_partition_field(mocker, "id_bucket", "bucket[16]", 2),
+            self._jvm_partition_field(mocker, "shard", "day", 3),
+            self._jvm_partition_field(mocker, "old_field", "void", 3),
+        ]
+
+        # Act
+        expressions = IcebergEngine._spec_expressions(table)
+
+        # Assert: an alias suffix appears whenever the actual field name
+        # differs from Iceberg's generated default
+        assert expressions == [
+            "region",
+            "bucket(16,id)",
+            "day(ts) as shard",
+            "void(ts) as old_field",
+        ]
+
+    def test_spec_expressions_rejects_inexpressible_transform(self, mocker):
+        # Arrange
+        table = mocker.Mock()
+        table.schema.return_value.findColumnName.return_value = "ts"
+        table.spec.return_value.fields.return_value = [
+            self._jvm_partition_field(mocker, "weird", "unknown<42>", 1),
+        ]
+
+        # Act & Assert
+        with pytest.raises(FeatureStoreException, match="cannot be expressed"):
+            IcebergEngine._spec_expressions(table)
+
+    def test_load_jvm_table_glue_uses_catalog(self, mocker):
+        # Arrange
+        spark = mocker.MagicMock()
+        spark_context = mocker.MagicMock()
+        jvm = spark_context._jvm
+        iceberg_engine = _make_engine(
+            mocker, spark_session=spark, spark_context=spark_context
+        )
+        mocker.patch.object(iceberg_engine, "_glue_catalog", return_value=mocker.Mock())
+        mocker.patch.object(
+            iceberg_engine, "_prepare_glue_session", return_value="glue.db.tbl"
+        )
+
+        # Act
+        table = iceberg_engine._load_jvm_table()
+
+        # Assert: the Glue catalog owns the pointer; no path-based load
+        load_mock = jvm.org.apache.iceberg.spark.Spark3Util.loadIcebergTable
+        load_mock.assert_called_once_with(spark._jsparkSession, "glue.db.tbl")
+        assert table is load_mock.return_value
+        jvm.org.apache.iceberg.hadoop.HadoopTables.assert_not_called()
+
+    def test_load_jvm_table_path_failure_points_at_user_catalog(self, mocker):
+        # Arrange: a failing path-based load usually means the table is
+        # owned by an ad-hoc user catalog (the iceberg.catalog write option)
+        spark_context = mocker.MagicMock()
+        jvm = spark_context._jvm
+        iceberg_engine = _make_engine(mocker, spark_context=spark_context)
+        mocker.patch.object(iceberg_engine, "_glue_catalog", return_value=None)
+        tables = jvm.org.apache.iceberg.hadoop.HadoopTables.return_value
+        tables.load.side_effect = RuntimeError("no version-hint")
+
+        # Act & Assert
+        with pytest.raises(FeatureStoreException, match="user-provided catalog"):
+            iceberg_engine._load_jvm_table()
+
+    @pytest.mark.parametrize(
+        ("expr", "method", "args"),
+        [
+            ("identity(c)", "ref", ("c",)),
+            ("bucket(16, c)", "bucket", ("c", 16)),
+            ("truncate(4, c)", "truncate", ("c", 4)),
+            ("year(c)", "year", ("c",)),
+            ("month(c)", "month", ("c",)),
+            ("day(c)", "day", ("c",)),
+            ("hour(c)", "hour", ("c",)),
+        ],
+    )
+    def test_iceberg_term_mapping(self, mocker, expr, method, args):
+        # Arrange
+        jvm = mocker.MagicMock()
+        transform = partition_transforms._parse_expression(expr)
+
+        # Act
+        term = IcebergEngine._iceberg_term(jvm, transform)
+
+        # Assert
+        expressions = jvm.org.apache.iceberg.expressions.Expressions
+        getattr(expressions, method).assert_called_once_with(*args)
+        assert term is getattr(expressions, method).return_value
+
+    def test_iceberg_term_rejects_week(self, mocker):
+        # Arrange: week is not an Iceberg transform
+        jvm = mocker.MagicMock()
+        transform = partition_transforms._parse_expression("week(ts)")
+
+        # Act & Assert
+        with pytest.raises(FeatureStoreException, match="Iceberg term"):
+            IcebergEngine._iceberg_term(jvm, transform)
 
     def test_delete_record_not_iceberg_table_raises(self, mocker):
         # Arrange
@@ -802,16 +1244,87 @@ class TestIcebergCatalogWrites:
         iceberg_engine = _make_engine(mocker, fg=fg, spark_session=spark)
         mocker.patch.object(iceberg_engine, "_build_fg_commit")
         dataset = mocker.MagicMock()
+        dataset.schema.fields = []
 
         # Act
         iceberg_engine._write_iceberg_dataset(
             dataset, {"iceberg.catalog": "prod"}, operation="upsert"
         )
 
-        # Assert
+        # Assert: the table is created through DDL, then the data is appended
+        create_ddl = spark.sql.call_args_list[0].args[0]
+        assert create_ddl.startswith("CREATE TABLE prod.fs.fg_1 ")
+        assert "USING iceberg" in create_ddl
+        assert "PARTITIONED BY" not in create_ddl
         dataset.writeTo.assert_called_once_with("prod.fs.fg_1")
-        dataset.writeTo.return_value.using.assert_called_once_with("iceberg")
-        dataset.writeTo.return_value.using.return_value.create.assert_called_once()
+        dataset.writeTo.return_value.append.assert_called_once_with()
+
+    def test_create_iceberg_table_catalog_partitioned_ddl(self, mocker):
+        # Arrange
+        spark = mocker.MagicMock()
+        fg = _make_fg(
+            partitioned_by=[
+                "day(ts)",
+                "bucket(16, pk)",
+                "truncate(4, zip)",
+                "cat",
+            ]
+        )
+        iceberg_engine = _make_engine(mocker, fg=fg, spark_session=spark)
+        pk_field = mock.Mock()
+        pk_field.name = "pk"
+        pk_field.dataType.simpleString.return_value = "bigint"
+        ts_field = mock.Mock()
+        ts_field.name = "ts"
+        ts_field.dataType.simpleString.return_value = "timestamp"
+        dataset = mocker.MagicMock()
+        dataset.schema.fields = [pk_field, ts_field]
+
+        # Act
+        iceberg_engine._create_iceberg_table_catalog(dataset, "prod.fs.fg_1")
+
+        # Assert: Spark DDL spells temporal transforms in plural
+        statement = spark.sql.call_args.args[0]
+        assert statement.startswith(
+            "CREATE TABLE prod.fs.fg_1 (pk bigint, ts timestamp) USING iceberg"
+        )
+        assert (
+            "PARTITIONED BY (days(ts), bucket(16, pk), truncate(4, zip), cat)"
+            in statement
+        )
+        assert "TBLPROPERTIES ('write.distribution-mode'='hash')" in statement
+
+    @pytest.mark.parametrize("expr", ["void(x)", "bucket(16, pk) as shard"])
+    def test_create_iceberg_table_catalog_rejects_inexpressible_transforms(
+        self, mocker, expr
+    ):
+        # Arrange: Spark's CREATE TABLE DDL grammar cannot express void
+        # transforms or partition-field aliases; they are rejected rather
+        # than silently dropped
+        spark = mocker.MagicMock()
+        fg = _make_fg(partitioned_by=[expr])
+        iceberg_engine = _make_engine(mocker, fg=fg, spark_session=spark)
+
+        # Act & Assert
+        with pytest.raises(FeatureStoreException, match="catalog CREATE TABLE DDL"):
+            iceberg_engine._create_iceberg_table_catalog(
+                mocker.MagicMock(), "prod.fs.fg_1"
+            )
+        spark.sql.assert_not_called()
+
+    def test_create_iceberg_table_catalog_rejects_sort_order(self, mocker):
+        # Arrange: the catalog creation path cannot apply a persistent sort
+        # order; erasing an accepted argument is not an option
+        spark = mocker.MagicMock()
+        fg = _make_fg(sort_order=["pk asc"])
+        iceberg_engine = _make_engine(mocker, fg=fg, spark_session=spark)
+
+        # Act & Assert
+        with pytest.raises(FeatureStoreException, match="catalog creation path"):
+            iceberg_engine._create_iceberg_table_catalog(
+                mocker.MagicMock(), "prod.fs.fg_1"
+            )
+        spark.sql.assert_not_called()
 
     @pytest.mark.skipif(not HAS_PYICEBERG, reason="pyiceberg not installed")
     def test_write_pyiceberg_dataset_catalog_upsert(self, mocker):
@@ -859,6 +1372,34 @@ class TestIcebergCatalogWrites:
         # no HopsFS-specific setup
         publish_mock.assert_not_called()
         setup_mock.assert_not_called()
+
+    @pytest.mark.skipif(not HAS_PYICEBERG, reason="pyiceberg not installed")
+    def test_write_pyiceberg_dataset_catalog_create_rejects_sort_order(self, mocker):
+        # Arrange: create_table would silently drop the sort order, so the
+        # creation path rejects it before creating anything
+        import pyarrow as pa
+
+        fg = _make_fg(primary_key=["pk"], sort_order=["pk asc"])
+        iceberg_engine = _make_engine(mocker, fg=fg, spark_session=_NO_SPARK)
+        catalog = mocker.MagicMock()
+        catalog.table_exists.return_value = False
+        mocker.patch("pyiceberg.catalog.load_catalog", return_value=catalog)
+        arrow_table = pa.table({"pk": pa.array([1], type=pa.int64())})
+        mocker.patch.object(
+            iceberg_engine, "_prepare_arrow_table", return_value=arrow_table
+        )
+
+        # Act & Assert
+        with pytest.raises(
+            FeatureStoreException, match="PyIceberg catalog creation path"
+        ):
+            iceberg_engine._write_pyiceberg_dataset(
+                mocker.Mock(),
+                write_options={"iceberg.catalog": "prod"},
+                operation="upsert",
+            )
+        catalog.create_namespace.assert_not_called()
+        catalog.create_table.assert_not_called()
 
 
 class TestIcebergArrowFlight:
@@ -1335,6 +1876,96 @@ class TestPyIcebergEngine:
 
         # Assert
         delete_mock.assert_called_once_with(delete_df)
+
+    @pytest.mark.skipif(not HAS_PYICEBERG, reason="pyiceberg not installed")
+    def test_describe_layout_python_glue_loads_through_catalog(self, mocker):
+        # Arrange: the Glue catalog owns the current-metadata pointer, so
+        # layout introspection loads through pyiceberg's Glue catalog rather
+        # than the table path
+        iceberg_engine = self._pyiceberg_engine(mocker)
+        glue = mocker.Mock()
+        glue.catalog_name = "glue"
+        glue.identifier = "db.tbl"
+        glue._pyiceberg_catalog_properties.return_value = {"type": "glue"}
+        mocker.patch.object(iceberg_engine, "_glue_catalog", return_value=glue)
+        catalog = mocker.MagicMock()
+        table = catalog.load_table.return_value
+        table.specs.return_value = {}
+        table.sort_order.return_value.fields = []
+        load_catalog_mock = mocker.patch(
+            "pyiceberg.catalog.load_catalog", return_value=catalog
+        )
+
+        # Act
+        layout = iceberg_engine._describe_layout()
+
+        # Assert
+        load_catalog_mock.assert_called_once_with("glue", type="glue")
+        catalog.load_table.assert_called_once_with("db.tbl")
+        assert layout == {
+            "partition_spec": None,
+            "partition_specs": None,
+            "sort_order": None,
+        }
+
+    def test_describe_layout_jvm_current_spec_and_transformed_sort(self, mocker):
+        # The current spec is table.spec(), not the highest spec id (external
+        # engines can add non-default specs), and a transformed sort field
+        # renders its transform instead of masquerading as an identity sort.
+        iceberg_engine = _make_engine(mocker, spark_context=mocker.MagicMock())
+
+        def jvm_field(name, transform, source_id):
+            f = mocker.MagicMock()
+            f.name.return_value = name
+            f.transform.return_value.toString.return_value = transform
+            f.sourceId.return_value = source_id
+            return f
+
+        schema = mocker.MagicMock()
+        schema.findColumnName.side_effect = lambda i: {1: "ts", 2: "id"}[i]
+        current_spec = mocker.MagicMock()
+        current_spec.fields.return_value = [jvm_field("ts_day", "day", 1)]
+        other_spec = mocker.MagicMock()
+        other_spec.fields.return_value = [jvm_field("id_bucket", "bucket[4]", 2)]
+        sort_field = mocker.MagicMock()
+        sort_field.transform.return_value.toString.return_value = "bucket[16]"
+        sort_field.sourceId.return_value = 2
+        sort_field.direction.return_value.toString.return_value = "DESC"
+        sort_field.nullOrder.return_value.toString.return_value = "NULLS_LAST"
+        table = mocker.MagicMock()
+        table.schema.return_value = schema
+        table.spec.return_value = current_spec
+        table.specs.return_value = {0: current_spec, 1: other_spec}
+        table.sortOrder.return_value.fields.return_value = [sort_field]
+        mocker.patch.object(iceberg_engine, "_load_jvm_table", return_value=table)
+
+        layout = iceberg_engine._describe_layout()
+
+        assert layout["partition_spec"] == ["ts_day: day(ts)"]
+        assert layout["partition_specs"] == [
+            ["ts_day: day(ts)"],
+            ["id_bucket: bucket[4](id)"],
+        ]
+        assert layout["sort_order"] == ["bucket[16](id) desc nulls last"]
+
+    def test_describe_layout_python_no_metadata_points_at_user_catalog(self, mocker):
+        # Arrange: no version-hint.text at the location; either nothing was
+        # written yet or a user-provided catalog owns the pointer
+        iceberg_engine = self._pyiceberg_engine(mocker)
+        mocker.patch.object(iceberg_engine, "_glue_catalog", return_value=None)
+        mocker.patch.object(iceberg_engine, "_setup_pyiceberg")
+        mocker.patch.object(iceberg_engine, "_make_pyiceberg_catalog")
+        mocker.patch.object(
+            iceberg_engine, "_get_pyiceberg_location", return_value="loc"
+        )
+        mocker.patch.object(
+            iceberg_engine, "_load_pyiceberg_table", return_value=(None, None)
+        )
+
+        # Act & Assert
+        with pytest.raises(FeatureStoreException, match="version-hint.text") as e:
+            iceberg_engine._describe_layout()
+        assert "user-provided catalog" in str(e.value)
 
     @pytest.mark.skipif(not HAS_PYICEBERG, reason="pyiceberg not installed")
     @pytest.mark.skipif(

@@ -550,13 +550,35 @@ class ArrowFlightClient:
         ),
     )
     def _create_training_dataset(
-        self, feature_view_obj, training_dataset_obj, query_obj, arrow_flight_config
+        self,
+        feature_view_obj,
+        training_dataset_obj,
+        query_obj,
+        arrow_flight_config,
+        overwrite=True,
+        event_time_column=None,
+        drop_event_time=False,
+        partition_precision="day",
     ):
         training_dataset = {}
         training_dataset["project_name"] = self._client._project_name
         training_dataset["fv_name"] = feature_view_obj.name
         training_dataset["fv_version"] = feature_view_obj.version
         training_dataset["tds_version"] = training_dataset_obj.version
+        # `overwrite=False` appends the query result as new incremental
+        # partitions instead of rewriting the dataset. Older Query Service
+        # versions ignore this flag and always overwrite.
+        training_dataset["overwrite"] = overwrite
+        # The named column keys each row's Hive partition by its event-time
+        # day, making the dataset time-addressable on read; without it the
+        # Query Service falls back to a per-increment counter partition.
+        # `drop_event_time` marks a column forced through the query only for
+        # partitioning, to be dropped again after the keys are derived.
+        training_dataset["event_time_column"] = event_time_column
+        training_dataset["drop_event_time"] = drop_event_time
+        # Truncation of the event date keying the partitions (`day`, `month`
+        # or `year`).
+        training_dataset["partition_precision"] = partition_precision
         training_dataset["query"] = json.loads(query_obj.hqs_payload)
         _logger.debug(f"Creating training dataset: {training_dataset}")
         try:
