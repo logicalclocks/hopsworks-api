@@ -3200,6 +3200,44 @@ class FeatureGroupBase:
         self._feature_group_engine._update_ttl(self, None, False)
         return self
 
+    @public
+    def check_duplicates(self, recheck: bool = False) -> dict:
+        """Retrieve the result of the duplicate feature group check for this feature group.
+
+        When a feature group is created, Hopsworks asynchronously checks whether it duplicates features of existing feature groups and stores the result.
+        This method returns that stored result as a dictionary with keys such as `status`, `suspected_duplicates`, and `matches`.
+        `status` is one of `"NOT_CHECKED"`, `"PENDING"`, `"RUNNING"`, `"SUCCEEDED"`, or `"FAILED"`.
+        Each entry in `matches` describes a suspected duplicate feature group, including the matched features, the reason, and the suspected duplicate feature names.
+        The same result is also available from the feature store through [`FeatureStore.check_feature_group_duplicates`][hsfs.feature_store.FeatureStore.check_feature_group_duplicates].
+
+        Example:
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            # get the Feature Group instance
+            fg = fs.get_or_create_feature_group(...)
+
+            # get the stored duplicate check result
+            result = fg.check_duplicates()
+            if result["suspected_duplicates"]:
+                print(result["matches"])
+            ```
+
+        Parameters:
+            recheck: If `True`, run a fresh synchronous platform-intelligence check instead of returning the stored result.
+
+        Returns:
+            The duplicate check result.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+            hopsworks.client.exceptions.PlatformIntelligenceException: If platform intelligence is not configured on the cluster, the duplicate check is disabled, or the check failed.
+        """
+        return self._feature_group_engine._feature_group_api._check_duplicates(
+            self, recheck=recheck
+        )
+
 
 @public
 @typechecked
@@ -3266,6 +3304,7 @@ class FeatureGroup(FeatureGroupBase):
         clustered_by: list[str] | None = None,
         bucket_index: dict[str, Any] | None = None,
         sort_order: list[str] | None = None,
+        not_check_duplicate: bool = False,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -3333,6 +3372,7 @@ class FeatureGroup(FeatureGroupBase):
             None if sort_order is None else list(sort_order)
         )
         self._online_partition_columns: bool = bool(online_partition_columns)
+        self._not_check_duplicate: bool = not_check_duplicate
 
         self._materialization_job: Job = None
 
