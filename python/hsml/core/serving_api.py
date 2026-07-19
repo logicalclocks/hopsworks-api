@@ -489,10 +489,10 @@ class ServingApi:
             deployment_instance: Metadata object of the deployment to get logs from.
             component: Deployment component (e.g., predictor or transformer).
             tail: Number of tailing lines to retrieve.
-            source: ``"opensearch"`` for historical logs from the project's
-                serving index (works for stopped deployments), ``"kubernetes"``
-                for live pod-tailing. Default ``None`` lets the backend
-                pick the legacy Kubernetes path.
+            source: ``"kubernetes"`` for live pod logs, or the deprecated
+                ``"opensearch"`` (served from the Kubernetes path by new
+                backends). Default ``None`` lets the backend pick the
+                legacy Kubernetes path.
             since: ISO-8601 lower bound on the log timestamp; ignored on
                 the Kubernetes path.
             until: ISO-8601 upper bound on the log timestamp; ignored on

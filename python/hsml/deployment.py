@@ -14,6 +14,7 @@
 #   limitations under the License.
 from __future__ import annotations
 
+import warnings
 from typing import TYPE_CHECKING, Any
 
 from hopsworks_apigen import public
@@ -37,6 +38,22 @@ if TYPE_CHECKING:
     from hsml.resources import Resources
     from hsml.scaling_config import PredictorScalingConfig
     from hsml.transformer import Transformer
+
+
+def _warn_opensearch_source_deprecated() -> None:
+    """Warn that ``source="opensearch"`` is deprecated for deployment logs.
+
+    New backends serve OpenSearch requests from the Kubernetes pod-logs path,
+    so the value only changes behaviour against old backends.
+    """
+    warnings.warn(
+        "source='opensearch' is deprecated; new backends read deployment logs "
+        "directly from the Kubernetes pods (live pods only). Use the default "
+        "source='kubernetes', and `download_logs()` for the archived logs of "
+        "a stopped deployment.",
+        DeprecationWarning,
+        stacklevel=3,
+    )
 
 
 @public
@@ -466,6 +483,10 @@ class Deployment:
     def get_logs(self, component: str = "predictor", tail: int = 10):
         """Prints the deployment logs of the predictor or transformer.
 
+        Only the live pods of a running deployment are read. Logs of a
+        stopped or deleted deployment are archived to HopsFS and retrieved
+        with :py:meth:`download_logs` or the "Log history" section in the UI.
+
         .. note::
             Legacy: this method **prints to stdout and returns ``None``**.
             New code (and any agent / scripted use) should call
@@ -498,7 +519,7 @@ class Deployment:
         self,
         component: str = "predictor",
         tail: int = 100,
-        source: str = "opensearch",
+        source: str = "kubernetes",
         since: str | None = None,
         until: str | None = None,
         pod: str | None = None,
@@ -507,16 +528,17 @@ class Deployment:
 
         Programmatic counterpart to :py:meth:`get_logs`. Suitable for
         agents and scripts: never prints, never short-circuits on
-        deployment state. The default ``source="opensearch"`` reads the
-        project's serving index and works for stopped or restarted
-        deployments — :py:meth:`get_logs` only reads live pod stdout and
-        returns ``None`` when the deployment isn't running.
+        deployment state. The default ``source="kubernetes"`` reads the
+        live pods only; logs of a stopped or deleted deployment are
+        archived to HopsFS and retrieved with :py:meth:`download_logs`
+        or the "Log history" section in the UI.
 
         Parameters:
             component: ``predictor`` or ``transformer``.
             tail: Most-recent lines to retrieve. Capped server-side.
-            source: ``opensearch`` (historical, default) or ``kubernetes``
-                (live pod-tailing; only works while running).
+            source: ``kubernetes`` (live pod logs, default) or
+                ``opensearch`` (deprecated; new backends serve it from the
+                Kubernetes path as well).
             since: ISO-8601 lower bound on log timestamp. Ignored on the
                 Kubernetes path.
             until: ISO-8601 upper bound on log timestamp. Ignored on the
@@ -528,6 +550,8 @@ class Deployment:
             matching lines; ``==> <instance> <==\\n`` block headers when
             multiple instances are present.
         """
+        if source == "opensearch":
+            _warn_opensearch_source_deprecated()
         components = list(util._get_members(DEPLOYABLE_COMPONENT))
         if component not in components:
             raise ValueError(
@@ -550,7 +574,7 @@ class Deployment:
         self,
         component: str = "predictor",
         interval: float = 2.0,
-        source: str = "opensearch",
+        source: str = "kubernetes",
         since: str | None = "now",
         timeout: float | None = None,
         stop_on_status: str | None = None,
@@ -559,9 +583,11 @@ class Deployment:
 
         Client-side polling, not server-streaming: each tick calls
         :py:meth:`read_logs` with a moving cursor and yields the portion
-        not already seen. Deduplication uses the OpenSearch ``timestamp``
-        + ``doc_id`` pair; a content-hash fallback covers the Kubernetes
-        path.
+        not already seen. The Kubernetes path dedups per pod by
+        overlapping the previous and current tail windows; the OpenSearch
+        path (old backends) uses the ``timestamp`` + ``doc_id`` pair.
+        Only the live pods are followed; the archived logs of a stopped
+        deployment are retrieved with :py:meth:`download_logs`.
 
         Example::
 
@@ -571,7 +597,8 @@ class Deployment:
         Parameters:
             component: ``predictor`` or ``transformer``.
             interval: Seconds between polls.
-            source: ``opensearch`` (default) or ``kubernetes``.
+            source: ``kubernetes`` (default) or ``opensearch`` (deprecated;
+                new backends serve it from the Kubernetes path as well).
             since: ``"now"`` to start from the current instant (default),
                 or an ISO-8601 timestamp to replay from a specific point.
             timeout: Stop after this many seconds. ``None`` runs forever.
@@ -581,6 +608,8 @@ class Deployment:
         Yields:
             Plain-text log chunks containing only newly observed content.
         """
+        if source == "opensearch":
+            _warn_opensearch_source_deprecated()
         components = list(util._get_members(DEPLOYABLE_COMPONENT))
         if component not in components:
             raise ValueError(
@@ -597,6 +626,38 @@ class Deployment:
             timeout=timeout,
             stop_on_status=stop_on_status,
         )
+
+    @public
+    @usage._method_logger
+    def download_logs(self, path: str | None = None, latest: bool = False) -> list[str]:
+        """Download the archived logs of this deployment from HopsFS.
+
+        When a deployment is stopped or deleted, the backend archives the
+        logs of each of its pods to the project's ``Logs`` dataset under
+        ``Logs/Serving/<deployment_name>/``, one file per pod and component
+        named ``<UTC yyyyMMdd-HHmmss>_<pod>_<component>[.previous].log``.
+        The ``.previous`` variant holds the log of the crashed instance of
+        a restarted container.
+
+        Example: Downloading the archives written by the most recent stop
+            ```python
+            local_paths = deployment.download_logs(latest=True)
+            for local_path in local_paths:
+                print(open(local_path).read())
+            ```
+
+        Parameters:
+            path: Local directory to download the archives into; the current working directory is used when unset.
+            latest: Download only the archives of the most recent stop instead of all of them.
+
+        Returns:
+            The local paths of the downloaded archive files.
+
+        Raises:
+            hopsworks.client.exceptions.ModelServingException: If `path` does not exist or the deployment has no archived logs.
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
+        """
+        return self._serving_engine._download_logs(self, path=path, latest=latest)
 
     @public
     def get_url(self):

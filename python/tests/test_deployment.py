@@ -15,6 +15,7 @@
 #
 
 import copy
+import os
 
 import humps
 import pytest
@@ -1101,7 +1102,7 @@ class TestDeployment:
 
         d.read_logs(
             tail=200,
-            source="opensearch",
+            source="kubernetes",
             since="2026-05-08T00:00:00Z",
             until="2026-05-08T01:00:00Z",
             pod="my-pod-0",
@@ -1109,12 +1110,40 @@ class TestDeployment:
 
         # All optional params land in the API call as kwargs.
         kwargs = mock_api.call_args.kwargs
-        assert kwargs["source"] == "opensearch"
+        assert kwargs["source"] == "kubernetes"
         assert kwargs["since"] == "2026-05-08T00:00:00Z"
         assert kwargs["until"] == "2026-05-08T01:00:00Z"
         assert kwargs["pod"] == "my-pod-0"
         # tail goes through positionally per ServingApi._get_logs signature.
         assert mock_api.call_args.args[2] == 200
+
+    def test_read_logs_defaults_to_kubernetes_source(self, mocker, backend_fixtures):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch("hopsworks_common.util._get_members", return_value=["predictor"])
+        mock_api = mocker.patch(
+            "hsml.core.serving_api.ServingApi._get_logs", return_value=[]
+        )
+
+        d.read_logs()
+
+        assert mock_api.call_args.kwargs["source"] == "kubernetes"
+
+    def test_read_logs_opensearch_source_warns_deprecation(
+        self, mocker, backend_fixtures
+    ):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch("hopsworks_common.util._get_members", return_value=["predictor"])
+        mock_api = mocker.patch(
+            "hsml.core.serving_api.ServingApi._get_logs", return_value=[]
+        )
+
+        with pytest.warns(DeprecationWarning, match="opensearch"):
+            d.read_logs(source="opensearch")
+
+        # The deprecated value is still forwarded for old backends.
+        assert mock_api.call_args.kwargs["source"] == "opensearch"
 
     def test_read_logs_multiple_instances_get_block_headers(
         self, mocker, backend_fixtures
@@ -1182,16 +1211,16 @@ class TestDeployment:
         # On the second poll only the new entry (x3) appears.
         assert second_chunk.strip() == "c"
 
-    def test_tail_logs_dedup_hash_for_kubernetes_source(self, mocker, backend_fixtures):
+    def test_tail_logs_dedup_overlap_for_kubernetes_source(
+        self, mocker, backend_fixtures
+    ):
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
         mocker.patch("hopsworks_common.util._get_members", return_value=["predictor"])
-        # No timestamp / doc_id → engine falls back to (instance, content) hash.
+        # No timestamp / doc_id → the engine dedups each pod's tail window
+        # by overlapping it with the previous poll's window.
         first = [self._make_chunk(content="boot\n")]
-        second = [
-            self._make_chunk(content="boot\n"),
-            self._make_chunk(content="ready\n"),
-        ]
+        second = [self._make_chunk(content="boot\nready\n")]
         mocker.patch(
             "hsml.core.serving_api.ServingApi._get_logs",
             side_effect=[first, second],
@@ -1205,8 +1234,143 @@ class TestDeployment:
         second_chunk = next(gen)
 
         assert first_chunk == "boot\n"
-        # First poll already cached "boot"; second poll only yields "ready".
+        # First poll already covered "boot"; second poll only yields "ready".
         assert second_chunk == "ready\n"
+
+    def test_tail_logs_kubernetes_dedup_with_real_log_chunks(
+        self, mocker, backend_fixtures
+    ):
+        from hsml.deployable_component_logs import DeployableComponentLogs
+
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch("hopsworks_common.util._get_members", return_value=["predictor"])
+        # Real DTO objects: ``content`` is a read-only property, so the
+        # engine must build new chunks rather than mutate the fetched ones.
+        first = [DeployableComponentLogs(instance_name="pod-A", content="a1\na2\n")]
+        second = [DeployableComponentLogs(instance_name="pod-A", content="a2\na3\n")]
+        mocker.patch(
+            "hsml.core.serving_api.ServingApi._get_logs",
+            side_effect=[first, second],
+        )
+        mocker.patch("time.sleep")
+        monot = mocker.patch("time.monotonic")
+        monot.side_effect = [0.0, 1.0, 99.0]
+
+        chunks = list(d.tail_logs(source="kubernetes", timeout=10.0, since=None))
+
+        assert chunks == ["a1\na2\n", "a3\n"]
+
+    def test_tail_logs_kubernetes_rolling_window_emits_one_line_per_poll(
+        self, mocker, backend_fixtures
+    ):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch("hopsworks_common.util._get_members", return_value=["predictor"])
+        # A 200-line tail window advancing by exactly one line per poll: only
+        # the single new line may be emitted, not the re-fetched window.
+        window = 200
+
+        def snapshot(start):
+            lines = [f"line-{i}" for i in range(start, start + window)]
+            return [self._make_chunk(content="\n".join(lines) + "\n")]
+
+        mocker.patch(
+            "hsml.core.serving_api.ServingApi._get_logs",
+            side_effect=[snapshot(0), snapshot(1), snapshot(2)],
+        )
+        mocker.patch("time.sleep")
+        monot = mocker.patch("time.monotonic")
+        monot.side_effect = [0.0, 1.0, 2.0, 99.0]
+
+        chunks = list(d.tail_logs(source="kubernetes", timeout=10.0, since=None))
+
+        assert len(chunks) == 3
+        assert len(chunks[0].splitlines()) == window
+        assert chunks[1] == f"line-{window}\n"
+        assert chunks[2] == f"line-{window + 1}\n"
+
+    def test_tail_logs_kubernetes_no_overlap_emits_full_snapshot(
+        self, mocker, backend_fixtures
+    ):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch("hopsworks_common.util._get_members", return_value=["predictor"])
+        # Fast rotation between polls: no line of the previous window
+        # remains, so the whole new window is emitted.
+        first = [self._make_chunk(content="a1\na2\na3\n")]
+        second = [self._make_chunk(content="b1\nb2\nb3\n")]
+        mocker.patch(
+            "hsml.core.serving_api.ServingApi._get_logs",
+            side_effect=[first, second],
+        )
+        mocker.patch("time.sleep")
+        monot = mocker.patch("time.monotonic")
+        monot.side_effect = [0.0, 1.0, 99.0]
+
+        chunks = list(d.tail_logs(source="kubernetes", timeout=10.0, since=None))
+
+        assert chunks == ["a1\na2\na3\n", "b1\nb2\nb3\n"]
+
+    def test_tail_logs_kubernetes_dedups_per_pod_independently(
+        self, mocker, backend_fixtures
+    ):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch("hopsworks_common.util._get_members", return_value=["predictor"])
+        # pod-A advances by one line while pod-B is unchanged: only pod-A's
+        # new line may be emitted on the second poll.
+        first = [
+            self._make_chunk(instance_name="pod-A", content="a1\na2\n"),
+            self._make_chunk(instance_name="pod-B", content="b1\nb2\n"),
+        ]
+        second = [
+            self._make_chunk(instance_name="pod-A", content="a2\na3\n"),
+            self._make_chunk(instance_name="pod-B", content="b1\nb2\n"),
+        ]
+        mocker.patch(
+            "hsml.core.serving_api.ServingApi._get_logs",
+            side_effect=[first, second],
+        )
+        mocker.patch("time.sleep")
+        monot = mocker.patch("time.monotonic")
+        monot.side_effect = [0.0, 1.0, 99.0]
+
+        chunks = list(d.tail_logs(source="kubernetes", timeout=10.0, since=None))
+
+        assert len(chunks) == 2
+        assert "==> pod-A <==" in chunks[0] and "==> pod-B <==" in chunks[0]
+        # Second poll: pod-B contributed nothing, so no block headers.
+        assert chunks[1] == "a3\n"
+
+    def test_tail_logs_defaults_to_kubernetes_source(self, mocker, backend_fixtures):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch("hopsworks_common.util._get_members", return_value=["predictor"])
+        mock_api = mocker.patch(
+            "hsml.core.serving_api.ServingApi._get_logs", return_value=[]
+        )
+        mocker.patch("time.sleep")
+        monot = mocker.patch("time.monotonic")
+        monot.side_effect = [0.0, 99.0]
+
+        assert list(d.tail_logs(timeout=10.0, since=None)) == []
+
+        assert mock_api.call_args.kwargs["source"] == "kubernetes"
+
+    def test_tail_logs_opensearch_source_warns_deprecation(
+        self, mocker, backend_fixtures
+    ):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch("hopsworks_common.util._get_members", return_value=["predictor"])
+        mocker.patch("hsml.core.serving_api.ServingApi._get_logs", return_value=[])
+        mocker.patch("time.sleep")
+        monot = mocker.patch("time.monotonic")
+        monot.side_effect = [0.0, 99.0]
+
+        with pytest.warns(DeprecationWarning, match="opensearch"):
+            list(d.tail_logs(source="opensearch", timeout=10.0, since=None))
 
     def test_tail_logs_stops_on_status(self, mocker, backend_fixtures):
         p = self._get_dummy_predictor(mocker, backend_fixtures)
@@ -1248,6 +1412,102 @@ class TestDeployment:
 
         assert ret is None
         assert "[mock log line]" in captured.out
+
+    # download logs (HopsFS archives written at deployment stop/delete)
+
+    def _make_inode(self, path, is_dir=False):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(path=path, dir=is_dir)
+
+    def _mock_archive_listing(self, mocker, d, file_names):
+        archives_dir = f"/Projects/demo/Logs/Serving/{d.name}"
+        inodes = [self._make_inode(f"{archives_dir}/{f}") for f in file_names]
+        mocker.patch(
+            "hopsworks_common.core.dataset_api.DatasetApi.path_exists",
+            return_value=True,
+        )
+        mock_list = mocker.patch(
+            "hopsworks_common.core.dataset_api.DatasetApi._list_dataset_path",
+            return_value=(len(inodes), inodes),
+        )
+        mock_download = mocker.patch(
+            "hopsworks_common.core.dataset_api.DatasetApi.download",
+            side_effect=lambda path, local_path, overwrite=False: os.path.join(
+                local_path, os.path.basename(path)
+            ),
+        )
+        return mock_list, mock_download
+
+    def test_download_logs_downloads_all_archives(
+        self, mocker, backend_fixtures, tmp_path
+    ):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        file_names = [
+            "20260601-120000_pod-a_predictor.log",
+            "20260601-120000_pod-a_predictor.previous.log",
+            "20260530-080000_pod-b_predictor.log",
+        ]
+        mock_list, mock_download = self._mock_archive_listing(mocker, d, file_names)
+
+        local_paths = d.download_logs(path=str(tmp_path))
+
+        # The listing targets the deployment's archive directory in the
+        # project's Logs dataset.
+        assert mock_list.call_args.args[0] == f"Logs/Serving/{d.name}"
+        assert mock_download.call_count == 3
+        assert [os.path.basename(lp) for lp in local_paths] == file_names
+        assert all(lp.startswith(str(tmp_path)) for lp in local_paths)
+
+    def test_download_logs_latest_only_downloads_most_recent_stop(
+        self, mocker, backend_fixtures, tmp_path
+    ):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        file_names = [
+            "20260601-120000_pod-a_predictor.log",
+            "20260601-120000_pod-a_predictor.previous.log",
+            "20260530-080000_pod-b_predictor.log",
+        ]
+        _, mock_download = self._mock_archive_listing(mocker, d, file_names)
+
+        local_paths = d.download_logs(path=str(tmp_path), latest=True)
+
+        # Only the files of the most recent stop timestamp prefix.
+        assert [os.path.basename(lp) for lp in local_paths] == [
+            "20260601-120000_pod-a_predictor.log",
+            "20260601-120000_pod-a_predictor.previous.log",
+        ]
+        assert mock_download.call_count == 2
+
+    def test_download_logs_raises_when_no_archives(
+        self, mocker, backend_fixtures, tmp_path
+    ):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mock_list, mock_download = self._mock_archive_listing(mocker, d, [])
+
+        with pytest.raises(ModelServingException, match="No archived logs"):
+            d.download_logs(path=str(tmp_path))
+        mock_download.assert_not_called()
+
+    def test_download_logs_raises_when_archive_dir_missing(
+        self, mocker, backend_fixtures, tmp_path
+    ):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch(
+            "hopsworks_common.core.dataset_api.DatasetApi.path_exists",
+            return_value=False,
+        )
+        mock_list = mocker.patch(
+            "hopsworks_common.core.dataset_api.DatasetApi._list_dataset_path"
+        )
+
+        with pytest.raises(ModelServingException, match="No archived logs"):
+            d.download_logs(path=str(tmp_path))
+        mock_list.assert_not_called()
 
     # get url
 
