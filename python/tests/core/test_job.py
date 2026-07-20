@@ -420,6 +420,45 @@ class TestJob:
         # Assert
         assert str(e_info.value) == "The Hopsworks Job was stopped"
 
+    def test_run_await_termination_python_raises_on_queue_timeout(
+        self, mocker, backend_fixtures
+    ):
+        # Arrange — a PYTHON job that never got resources is terminated by the
+        # backend with state QUEUE_TIMEOUT (final_status stays UNDEFINED). This
+        # is a terminal failure state; await_termination must raise, not hang.
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hopsworks_common.execution.Execution.get_url")
+        mock_execution_api = mocker.patch(
+            "hopsworks_common.core.execution_api.ExecutionApi",
+        )
+        python_job_mock = mocker.Mock()
+        python_job_mock.job_type = "PYTHON"
+        mock_execution_api.return_value._start.return_value = execution.Execution(
+            job=python_job_mock
+        )
+        mock_execution_api.return_value._get.return_value = execution.Execution(
+            id=1, state="QUEUE_TIMEOUT", final_status="UNDEFINED", job=python_job_mock
+        )
+
+        j = job.Job(
+            id="test_id",
+            name="test_name",
+            creation_time=None,
+            config={},
+            job_type="PYTHON",
+            creator=None,
+        )
+
+        # Act
+        with pytest.raises(exceptions.JobExecutionException) as e_info:
+            j.run(await_termination=True)
+
+        # Assert
+        assert (
+            str(e_info.value)
+            == "Execution failed with status: QUEUE_TIMEOUT. See the logs for more information."
+        )
+
     # --- PYTHON_APP tests ---
 
     def test_run_python_app_waits_for_running(self, mocker, backend_fixtures):
