@@ -1155,6 +1155,45 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
   }
 
   /**
+   * Drops records present in the provided DataFrame from the offline table, and optionally from the online
+   * store of an online-enabled feature group.
+   *
+   * <p>When {@code deleteOnline} is true, {@code featureData} must carry the feature columns, not only the
+   * primary key, so the records serialize against the feature group schema.
+   *
+   * @param featureData Spark DataFrame, RDD. Feature data to be deleted.
+   * @param deleteOnline Also delete the records from the online store when the feature group is online-enabled.
+   * @throws FeatureStoreException If deleteOnline is set and the feature group is not online-enabled or the
+   *                               backend does not support online deletes; or on other client/commit errors.
+   * @throws IOException Generic IO exception.
+   * @throws ParseException In case it's unable to parse HUDI commit date string to date type.
+   */
+  public void commitDeleteRecord(Dataset<Row> featureData, boolean deleteOnline)
+      throws FeatureStoreException, IOException, ParseException {
+    featureGroupEngine.commitDelete(this, featureData, null, deleteOnline);
+  }
+
+  /**
+   * Drops records present in the provided DataFrame from the offline table, and optionally from the online
+   * store of an online-enabled feature group.
+   *
+   * <p>When {@code deleteOnline} is true, {@code featureData} must carry the feature columns, not only the
+   * primary key, so the records serialize against the feature group schema.
+   *
+   * @param featureData Spark DataFrame, RDD. Feature data to be deleted.
+   * @param writeOptions Additional write options as key-value pairs.
+   * @param deleteOnline Also delete the records from the online store when the feature group is online-enabled.
+   * @throws FeatureStoreException If deleteOnline is set and the feature group is not online-enabled or the
+   *                               backend does not support online deletes; or on other client/commit errors.
+   * @throws IOException Generic IO exception.
+   * @throws ParseException In case it's unable to parse HUDI commit date string to date type.
+   */
+  public void commitDeleteRecord(Dataset<Row> featureData, Map<String, String> writeOptions, boolean deleteOnline)
+      throws FeatureStoreException, IOException, ParseException {
+    featureGroupEngine.commitDelete(this, featureData, writeOptions, deleteOnline);
+  }
+
+  /**
    * Retrieves commit timeline for this stream feature group.
    *
    * <pre>

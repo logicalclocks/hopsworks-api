@@ -584,10 +584,41 @@ public class SparkEngine extends EngineBase {
     return query;
   }
 
+  /**
+   * Produces an online delete tombstone for every row in the dataset.
+   *
+   * <p>Each message carries the row encoded against the feature group Avro schema plus an
+   * {@code operation: delete} header; OnlineFS deletes the row by primary key and ignores the values.
+   * The dataset must therefore carry the feature columns, not only the primary key, so the Avro schema
+   * serializes.
+   *
+   * @param featureGroupBase the online-enabled feature group
+   * @param dataset the rows to delete
+   * @param writeOptions kafka write options
+   */
+  public void deleteOnlineDataframe(FeatureGroupBase featureGroupBase, Dataset<Row> dataset,
+                                    Map<String, String> writeOptions)
+      throws FeatureStoreException, IOException {
+    Map<String, String> kafkaConfig = SparkEngine.getInstance().getKafkaConfig(featureGroupBase, writeOptions);
+    onlineFeatureGroupToAvro(featureGroupBase, encodeComplexFeatures(featureGroupBase, dataset))
+        .withColumn("headers", getHeader(featureGroupBase, dataset.count(), writeOptions, "delete"))
+        .write()
+        .format(Constants.KAFKA_FORMAT)
+        .options(kafkaConfig)
+        .option("topic", featureGroupBase.getOnlineTopicName())
+        .save();
+  }
+
   private Column getHeader(FeatureGroupBase featureGroup, Long numEntries, Map<String, String> options)
       throws FeatureStoreException, IOException {
+    return getHeader(featureGroup, numEntries, options, null);
+  }
+
+  private Column getHeader(FeatureGroupBase featureGroup, Long numEntries, Map<String, String> options,
+                           String operation)
+      throws FeatureStoreException, IOException {
     return array(
-      FeatureGroupUtils.getHeaders(featureGroup, numEntries, options).entrySet().stream()
+      FeatureGroupUtils.getHeaders(featureGroup, numEntries, options, operation).entrySet().stream()
       .map(entry -> struct(
         lit(entry.getKey()).as("key"),
         lit(entry.getValue()).as("value")

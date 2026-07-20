@@ -29,6 +29,7 @@ import com.logicalclocks.hsfs.OnlineConfig;
 import com.logicalclocks.hsfs.Storage;
 import com.logicalclocks.hsfs.TimeTravelFormat;
 import com.logicalclocks.hsfs.engine.FeatureGroupEngineBase;
+import com.logicalclocks.hsfs.engine.FeatureGroupUtils;
 import com.logicalclocks.hsfs.FeatureGroupBase;
 import com.logicalclocks.hsfs.StatisticsConfig;
 import com.logicalclocks.hsfs.spark.ExternalFeatureGroup;
@@ -468,14 +469,36 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
   public FeatureGroupCommit commitDelete(FeatureGroupBase featureGroupBase, Dataset<Row> genericDataset,
                                          Map<String, String> writeOptions)
       throws IOException, FeatureStoreException, ParseException {
+    return commitDelete(featureGroupBase, genericDataset, writeOptions, false);
+  }
+
+  public FeatureGroupCommit commitDelete(FeatureGroupBase featureGroupBase, Dataset<Row> genericDataset,
+                                         Map<String, String> writeOptions, boolean deleteOnline)
+      throws IOException, FeatureStoreException, ParseException {
     if (!((featureGroupBase instanceof FeatureGroup && featureGroupBase.getTimeTravelFormat() == TimeTravelFormat.HUDI)
         || featureGroupBase instanceof StreamFeatureGroup)) {
       // operation is only valid for time travel enabled feature group
       throw new FeatureStoreException("delete function is only valid for "
           + "time travel enabled feature group");
     }
-    return HudiEngine.getInstance().deleteRecord(SparkEngine.getInstance().getSparkSession(), featureGroupBase,
-        genericDataset, writeOptions);
+    // Offline delete is always applied; online delete is opt-in and routed as a Kafka
+    // tombstone consumed by OnlineFS, which deletes the row from RonDB by primary key.
+    FeatureGroupCommit commit = HudiEngine.getInstance().deleteRecord(
+        SparkEngine.getInstance().getSparkSession(), featureGroupBase, genericDataset, writeOptions);
+
+    if (deleteOnline) {
+      if (!Boolean.TRUE.equals(featureGroupBase.getOnlineEnabled())) {
+        throw new FeatureStoreException("deleteOnline was set but this feature group is not online-enabled.");
+      }
+      if (!FeatureGroupUtils.backendSupportsOnlineDelete()) {
+        throw new FeatureStoreException("Online delete requires a Hopsworks backend version >= "
+            + FeatureGroupUtils.minBackendVersionOnlineDelete()
+            + ". Upgrade the cluster, or omit deleteOnline to delete offline only.");
+      }
+      SparkEngine.getInstance().deleteOnlineDataframe(featureGroupBase, genericDataset,
+          writeOptions != null ? writeOptions : new HashMap<>());
+    }
+    return commit;
   }
 
   public ExternalFeatureGroup saveExternalFeatureGroup(ExternalFeatureGroup externalFeatureGroup)
