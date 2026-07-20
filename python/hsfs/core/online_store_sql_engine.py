@@ -18,9 +18,10 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import re
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core import variable_api
 from hopsworks_common.util import AsyncTask, AsyncTaskThread
 from hsfs import util
@@ -54,6 +55,19 @@ _logger = logging.getLogger(__name__)
 
 
 class OnlineStoreSqlClient:
+    # Alias of the ROW_NUMBER column the backend adds to a collect (most recent N rows per
+    # entity) prepared statement. It is dropped when folding the N rows into list features.
+    COLLECT_RANK_ALIAS = "hopsworks_collect_rank"
+    # collect batch scans (review X9): extra pool connections so per-entry scans run
+    # concurrently (a collect-only view would otherwise serialize on a one-connection
+    # pool), and the per-wave task bound that caps in-flight cursors for large batches
+    _COLLECT_SCAN_POOL_SIZE = 8
+    _COLLECT_SCAN_CHUNK = 64
+    # Bind-parameter name of an aggregation statement's trailing window bound.
+    WINDOW_BOUND_PARAM = "hw_window_bound"
+    # Bind-parameter name of a collect statement's rank cap (<= collect N; scans narrow it).
+    RANK_CAP_PARAM = "hw_rank_cap"
+
     BATCH_HELPER_KEY = "batch_helper_column"
     SINGLE_HELPER_KEY = "single_helper_column"
     BATCH_VECTOR_KEY = "batch_feature_vectors"
@@ -84,6 +98,26 @@ class OnlineStoreSqlClient:
 
         self._prefix_by_serving_index = None
         self._pkname_by_serving_index = None
+        # prepared_statement_index -> collect N (None when the statement is a regular point read)
+        self._collect_n_by_serving_index: dict[int, int] = {}
+        self._collect_name_by_serving_index: dict[int, str] = {}
+        # prepared_statement_index -> aggregation window seconds, for statements whose
+        # trailing ? is the window's lower bound (bound at read time from client UTC)
+        self._aggregate_window_by_serving_index: dict[int, int] = {}
+        # prepared_statement_index -> collect N, for statements whose trailing ? caps
+        # the rank filter (folds bind N; scans narrow to min(limit, N))
+        self._rank_cap_by_serving_index: dict[int, int] = {}
+        # statement label -> prepared_statement_index -> direct single-entity scan
+        # statement (ORDER BY order_col DESC LIMIT ?), preferred over the windowed
+        # collect statement by _get_scan_rows and the single-vector fold. Keyed per
+        # label because each label's scan projects that label's columns (a logging
+        # variant's scan carries helper columns the plain vector must not return).
+        # Empty for backends predating the field.
+        self._scan_prepared_statements: dict[str, dict[int, Any]] = {}
+        # prepared_statement_index -> collect_ascending, to order direct-scan output
+        self._collect_ascending_by_serving_index: dict[int, bool] = {}
+        # prepared_statement_index -> prefixed aggregate output names (empty-set defaults)
+        self._aggregate_names_by_serving_index: dict[int, list[str]] = {}
         self._serving_key_by_serving_index: dict[str, ServingKey] = {}
         self._serving_keys: set[ServingKey] = set(serving_keys or [])
 
@@ -105,8 +139,9 @@ class OnlineStoreSqlClient:
     def __del__(self):
         # Safely stop the async task thread.
         # The connection pool will be closed during garbage collection by aiomysql.
-        if self._async_task_thread.is_alive():
-            self._async_task_thread._stop()
+        task_thread = getattr(self, "_async_task_thread", None)
+        if task_thread is not None and task_thread.is_alive():
+            task_thread._stop()
 
     def _fetch_prepared_statements(
         self,
@@ -193,6 +228,13 @@ class OnlineStoreSqlClient:
             _logger.debug(
                 "Fetch and reset prepared statements and external as user may be re-initialising with different parameters"
             )
+        # derived bind/statement state is rebuilt below; a re-initialization must
+        # not inherit entries from the previous statement set (a stale window or
+        # rank-cap index would mis-bind the new statements)
+        self._aggregate_window_by_serving_index = {}
+        self._rank_cap_by_serving_index = {}
+        self._parametrised_prepared_statements = {}
+        self._scan_prepared_statements = {}
         self._fetch_prepared_statements(
             entity,
             inference_helper_columns,
@@ -213,7 +255,9 @@ class OnlineStoreSqlClient:
                 _logger.debug(f"Parametrize prepared statements for key {key}")
             self._parametrised_prepared_statements[key] = (
                 self._parametrize_prepared_statements(
-                    self.prepared_statements[key], batch=key.startswith("batch")
+                    self.prepared_statements[key],
+                    batch=key.startswith("batch"),
+                    label=key,
                 )
             )
 
@@ -230,6 +274,36 @@ class OnlineStoreSqlClient:
             statement.prepared_statement_index: statement.prefix
             for statement in prepared_statements
         }
+        self._collect_n_by_serving_index = {
+            statement.prepared_statement_index: statement.collect_n
+            for statement in prepared_statements
+            if statement.collect_n is not None
+        }
+        # v2 C1: the feature-view feature name (prefix applied, like every other column
+        # alias in the statement) that the collect rows fold into as a list of structs.
+        self._collect_name_by_serving_index = {
+            statement.prepared_statement_index: (statement.prefix or "")
+            + statement.collect_feature_name
+            for statement in prepared_statements
+            if statement.collect_n is not None
+            and statement.collect_feature_name is not None
+        }
+        self._collect_ascending_by_serving_index = {
+            statement.prepared_statement_index: bool(
+                getattr(statement, "collect_ascending", False)
+            )
+            for statement in prepared_statements
+            if statement.collect_n is not None
+        }
+        # aggregate output names, for synthesizing the empty-set defaults an entity
+        # missed by the batch GROUP BY would have received from the single statement
+        self._aggregate_names_by_serving_index = {
+            statement.prepared_statement_index: list(
+                getattr(statement, "aggregate_feature_names", None) or []
+            )
+            for statement in prepared_statements
+            if getattr(statement, "aggregate_feature_names", None)
+        }
         self._feature_name_order_by_psp = {
             statement.prepared_statement_index: {
                 param.name: param.index
@@ -239,6 +313,9 @@ class OnlineStoreSqlClient:
         }
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug("Build serving keys by PreparedStatementParameter.index")
+        # rebuild from scratch: the additive loop below would otherwise duplicate
+        # every serving key on re-initialization
+        self._serving_key_by_serving_index = {}
         for sk in self._serving_keys:
             self.serving_key_by_serving_index[sk.join_index] = (
                 self.serving_key_by_serving_index.get(sk.join_index, []) + [sk]
@@ -264,6 +341,7 @@ class OnlineStoreSqlClient:
         self,
         prepared_statements: list[ServingPreparedStatement],
         batch: bool,
+        label: str = SINGLE_VECTOR_KEY,
     ) -> dict[int, sql.text]:
         prepared_statements_dict = {}
         for prepared_statement in prepared_statements:
@@ -274,10 +352,57 @@ class OnlineStoreSqlClient:
             if not batch:
                 for param in prepared_statement.prepared_statement_parameters:
                     query_online = self._parametrize_query(param.name, query_online)
-                query_online = sql.text(query_online)
             else:
                 query_online = self._parametrize_query("batch_ids", query_online)
-                query_online = sql.text(query_online)
+            if (
+                getattr(prepared_statement, "aggregate_window", None) is not None
+                and self._has_unquoted_placeholder(query_online)
+            ):
+                # pushdown aggregation (FSTORE-2059): the trailing ? is the window's
+                # lower bound, bound at read time as now - window from the client's
+                # UTC clock — the same reference the RonSQL path substitutes, so the
+                # two serving paths share one clock. A backend predating the
+                # parameter inlines NOW(6) and leaves no marker here.
+                query_online = self._parametrize_query(
+                    self.WINDOW_BOUND_PARAM, query_online
+                )
+                self._aggregate_window_by_serving_index[
+                    prepared_statement.prepared_statement_index
+                ] = prepared_statement.aggregate_window
+            if (
+                getattr(prepared_statement, "collect_n", None) is not None
+                and self._has_unquoted_placeholder(query_online)
+            ):
+                # collect (most recent N rows per entity): the trailing ? caps the
+                # rank filter. Vector folds bind the full collect N; scan_vectors
+                # narrows it to min(limit, N) so MySQL stops returning rows the
+                # caller would discard. A backend predating the parameter inlines
+                # the N literal and leaves no marker here.
+                query_online = self._parametrize_query(
+                    self.RANK_CAP_PARAM, query_online
+                )
+                self._rank_cap_by_serving_index[
+                    prepared_statement.prepared_statement_index
+                ] = prepared_statement.collect_n
+            scan_query = getattr(prepared_statement, "query_online_scan", None)
+            if not batch and scan_query:
+                # direct single-entity scan (backward ordered-index read stopping at
+                # the cap): same pk markers, then the trailing LIMIT ? binds through
+                # the same rank-cap parameter. Serves scan_vectors and the
+                # single-vector collect fold.
+                scan_query = str(scan_query).replace("\n", " ")
+                for param in prepared_statement.prepared_statement_parameters:
+                    scan_query = self._parametrize_query(param.name, scan_query)
+                scan_query = self._parametrize_query(self.RANK_CAP_PARAM, scan_query)
+                self._scan_prepared_statements.setdefault(label, {})[
+                    prepared_statement.prepared_statement_index
+                ] = sql.text(scan_query)
+                self._rank_cap_by_serving_index.setdefault(
+                    prepared_statement.prepared_statement_index,
+                    prepared_statement.collect_n,
+                )
+            query_online = sql.text(query_online)
+            if batch:
                 query_online = query_online.bindparams(
                     batch_ids=bindparam("batch_ids", expanding=True)
                 )
@@ -309,12 +434,18 @@ class OnlineStoreSqlClient:
 
         if not self._async_task_thread:
             # Create the async event thread if it is not already running and start it.
+            # The pool minimum is one connection per statement (the single-vector
+            # fan-out); collect statements add per-entry batch scans, so the pool
+            # MAXIMUM is raised to let those run concurrently instead of serializing
+            # on a one-connection pool (review X9). User minsize/maxsize options win.
+            statement_count = len(self._prepared_statements[self.SINGLE_VECTOR_KEY])
+            pool_max = statement_count
+            if self._collect_n_by_serving_index:
+                pool_max = max(statement_count, self._COLLECT_SCAN_POOL_SIZE)
             self._async_task_thread = AsyncTaskThread(
                 connection_pool_initializer=self._get_connection_pool,
                 connection_test=self._test_connection,
-                connection_pool_params=(
-                    len(self._prepared_statements[self.SINGLE_VECTOR_KEY]),
-                ),
+                connection_pool_params=(statement_count, pool_max),
             )
             self._async_task_thread.start()
 
@@ -348,6 +479,9 @@ class OnlineStoreSqlClient:
         return self._single_vector_result(
             entry,
             self.parametrised_prepared_statements[key],
+            # collect statements execute the label's direct scan when the backend
+            # provides one, bounding the read at N instead of ranking all history
+            scan_statements=self._scan_prepared_statements.get(key),
         )
 
     def _get_batch_feature_vectors(
@@ -373,13 +507,22 @@ class OnlineStoreSqlClient:
         """
         if logging_data:
             key = self.BATCH_LOGGING_VECTOR_KEY
+            scan_label = self.SINGLE_LOGGING_VECTOR_KEY
         elif feature_vector_with_inference_helpers:
             key = self.BATCH_VECTOR_WITH_INFERENCE_HELPERS_KEY
+            scan_label = self.SINGLE_VECTOR_WITH_INFERENCE_HELPERS_KEY
         else:
             key = self.BATCH_VECTOR_KEY
+            scan_label = self.SINGLE_VECTOR_KEY
         return self._batch_vector_results(
             entries,
             self.parametrised_prepared_statements[key],
+            # collect statements run one direct scan per entry (bounded by the
+            # connection pool) instead of the windowed IN plan, which reads and
+            # ranks the WHOLE history of every entity in the list. The scan
+            # statement is single-entity, so it lives under the matching
+            # single-vector label (statement indexes align across labels).
+            scan_statements=self._scan_prepared_statements.get(scan_label),
         )
 
     def _get_inference_helper_vector(self, entry: dict[str, Any]) -> dict[str, Any]:
@@ -410,10 +553,86 @@ class OnlineStoreSqlClient:
             entries, self.parametrised_prepared_statements[self.BATCH_HELPER_KEY]
         )
 
+    def _get_scan_rows(
+        self, entry: dict[str, Any], limit: int | None = None
+    ) -> list[dict[str, Any]]:
+        """Return the most-recent rows of the collect feature group(s) for one entity.
+
+        This is the row-level (un-folded) view of the collect operation used by
+        `FeatureView.scan_vectors`: the online query already orders by the collect order
+        column and caps at the feature view's collect N, so this returns up to N rows per
+        collect feature group, newest-first, with the internal rank column dropped.
+        Only the collect statements execute (the point-read and aggregate statements
+        contribute nothing to scan output), and `limit` narrows the statement's rank
+        cap to min(limit, N) so MySQL stops returning rows the caller would discard
+        (statements from a backend predating the rank-cap parameter return N rows and
+        are sliced here instead).
+
+        Parameters:
+            entry: Entity-key values (e.g. {"user_id": 123}).
+            limit: Optional cap on the number of rows returned (<= the FV collect N).
+
+        Returns:
+            A list of row dicts (feature name -> value), newest-first.
+        """
+        collect_statements = {
+            index: statement
+            for index, statement in self.parametrised_prepared_statements[
+                self.SINGLE_VECTOR_KEY
+            ].items()
+            if self._collect_n_by_serving_index.get(index) is not None
+        }
+        if len(collect_statements) > 1:
+            # a flat row list over several collect sources is ambiguous, and a
+            # global limit would silently drop later sources
+            raise FeatureStoreException(
+                "scan_vectors is ambiguous for a feature view with multiple "
+                "collect feature groups; read each feature group's rows "
+                "directly, or use get_feature_vector for the folded features."
+            )
+        # prefer the direct scan statements (backward ordered-index read stopping
+        # at the cap) over the windowed plan, which ranks the whole entity history
+        scan_statements = self._scan_prepared_statements.get(
+            self.SINGLE_VECTOR_KEY, {}
+        )
+        direct = {
+            index: scan_statements[index]
+            for index in collect_statements
+            if index in scan_statements
+        }
+        rows = self._single_vector_result(
+            entry,
+            direct or collect_statements,
+            raw_rows=True,
+            scan_limit=limit,
+        )
+        if direct:
+            # the direct statement returns newest-first; the windowed one already
+            # carries the feature view's output order
+            for index in direct:
+                if self._collect_ascending_by_serving_index.get(index):
+                    rows = list(reversed(rows))
+        return rows[:limit] if limit is not None else rows
+
     def _single_vector_result(
-        self, entry: dict[str, Any], prepared_statement_objects: dict[int, sql.text]
-    ) -> dict[str, Any]:
-        """Retrieve single vector with parallel queries using aiomysql engine."""
+        self,
+        entry: dict[str, Any],
+        prepared_statement_objects: dict[int, sql.text],
+        raw_rows: bool = False,
+        scan_limit: int | None = None,
+        scan_statements: dict[int, sql.text] | None = None,
+    ) -> dict[str, Any] | list[dict[str, Any]]:
+        """Retrieve single vector with parallel queries using aiomysql engine.
+
+        When `raw_rows` is True, return the collect feature group's rows as a list of dicts
+        (the un-folded scan result) instead of the assembled single feature vector.
+        `scan_limit` narrows the collect statements' rank-cap bind to min(scan_limit, N).
+        `scan_statements` substitutes the direct single-entity scan for the matching
+        statement indexes: the backward ordered-index read stops at the rank cap
+        instead of ranking the entity's whole history, and the rows fold identically.
+        The scan returns newest-first, so an ascending collect is reversed before
+        folding (the windowed statement carries its output order server-side).
+        """
         if all(isinstance(val, list) for val in entry.values()):
             raise ValueError(
                 "Entry is expected to be single value per primary key. "
@@ -426,6 +645,13 @@ class OnlineStoreSqlClient:
         serving_vector = {}
         bind_entries = {}
         prepared_statement_execution = {}
+        # one UTC reference for every aggregation window in this read, shared with
+        # what the RonSQL path would substitute (naive UTC, microseconds preserved — X2-R14)
+        window_reference = (
+            datetime.now(timezone.utc).replace(tzinfo=None)
+            if self._aggregate_window_by_serving_index
+            else None
+        )
         for prepared_statement_index in prepared_statement_objects:
             pk_entry = {}
             next_statement = False
@@ -444,15 +670,34 @@ class OnlineStoreSqlClient:
                     pk_entry[sk.feature_name] = entry[sk.required_serving_key]
             if next_statement:
                 continue
-            bind_entries[prepared_statement_index] = pk_entry
-            prepared_statement_execution[prepared_statement_index] = (
-                prepared_statement_objects[prepared_statement_index]
+            window = self._aggregate_window_by_serving_index.get(
+                prepared_statement_index
             )
+            if window is not None:
+                pk_entry[self.WINDOW_BOUND_PARAM] = window_reference - timedelta(
+                    seconds=window
+                )
+            rank_cap = self._rank_cap_by_serving_index.get(prepared_statement_index)
+            if rank_cap is not None:
+                pk_entry[self.RANK_CAP_PARAM] = (
+                    rank_cap if scan_limit is None else min(scan_limit, rank_cap)
+                )
+            bind_entries[prepared_statement_index] = pk_entry
+            statement = prepared_statement_objects[prepared_statement_index]
+            if scan_statements is not None and prepared_statement_index in (
+                scan_statements
+            ):
+                # collect fold: the direct scan stops at the rank cap instead of
+                # ranking the whole history; the windowed statement stays the
+                # old-backend fallback (no scan statement -> no substitution)
+                statement = scan_statements[prepared_statement_index]
+            prepared_statement_execution[prepared_statement_index] = statement
 
         # run all the prepared statements in parallel using aiomysql engine
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
-                f"Executing prepared statements for serving vector with entries: {bind_entries}"
+                f"Executing prepared statements {sorted(prepared_statement_execution)} "
+                f"binding {[sorted(binds) for binds in bind_entries.values()]}"
             )
         results_dict = self._async_task_thread._submit(
             AsyncTask(
@@ -465,23 +710,127 @@ class OnlineStoreSqlClient:
             )
         )
         if _logger.isEnabledFor(logging.DEBUG):
-            _logger.debug(f"Retrieved feature vectors: {results_dict}")
+            _logger.debug(
+                "Retrieved rows per statement: %s",
+                {key: len(rows) for key, rows in results_dict.items()},
+            )
             _logger.debug("Constructing serving vector from results")
+        if raw_rows:
+            # Return the un-folded rows of the collect statement(s) for this entity,
+            # newest-first, with the internal rank column dropped. Used by scan_vectors.
+            scan_rows: list[dict[str, Any]] = []
+            for key in results_dict:
+                if self._collect_n_by_serving_index.get(key) is None:
+                    continue
+                for row in results_dict[key]:
+                    scan_rows.append(
+                        {
+                            col: val
+                            for col, val in dict(row).items()
+                            if col != self.COLLECT_RANK_ALIAS
+                        }
+                    )
+            return scan_rows
+
         for key in results_dict:
+            collect_n = self._collect_n_by_serving_index.get(key)
+            if collect_n is not None:
+                # collect feature group: fold the up-to-N rows into list-typed
+                # features. Statement columns carry the join prefix (the feature
+                # view's names), so entity keys match by prefixed name and struct
+                # fields strip the prefix back to the source names (review X3).
+                prefix = self.prefix_by_serving_index.get(key) or ""
+                pk_names = {
+                    prefix + sk.feature_name
+                    for sk in self.serving_key_by_serving_index.get(key, [])
+                }
+                rows = results_dict[key]
+                if (
+                    scan_statements is not None
+                    and key in scan_statements
+                    and self._collect_ascending_by_serving_index.get(key)
+                ):
+                    # the direct scan returns newest-first; an ascending collect
+                    # folds oldest-first (offline parity), which the windowed
+                    # statement orders server-side
+                    rows = list(reversed(rows))
+                serving_vector.update(
+                    self._fold_collect_rows(
+                        rows,
+                        pk_names,
+                        self._collect_name_by_serving_index.get(key),
+                        prefix=prefix,
+                    )
+                )
+                continue
             for row in results_dict[key]:
-                if _logger.isEnabledFor(logging.DEBUG):
-                    _logger.debug(f"Processing row: {row} for prepared statement {key}")
+                # row values are feature data: never logged, even at DEBUG
                 result_dict = dict(row)
                 serving_vector.update(result_dict)
 
         return serving_vector
 
+    def _fold_collect_rows(
+        self,
+        rows: list[Any],
+        pk_names: set[str],
+        collect_feature_name: str | None,
+        prefix: str = "",
+    ) -> dict[str, Any]:
+        """Fold the up-to-N rows of a collect feature group into one feature dict.
+
+        Entity-key columns stay scalar (the entity id, identical across rows) under their
+        feature-view (prefixed) names; the remaining columns of each row become one struct
+        (dict) whose FIELD names are the source column names — the statement's join prefix
+        is stripped, because the persisted array<struct<...>> schema uses the raw source
+        names (review X3). The structs form a list ordered most-recent-first as returned
+        by the query, assigned to the single array<struct<...>> feature named
+        `collect_feature_name` (v2 Design Contract C1). The hopsworks_collect_rank helper
+        column is dropped.
+
+        When `collect_feature_name` is None (statement from a backend predating the
+        collapsed schema), each column folds into its own list instead, with nulls
+        preserved so the lists stay row-aligned.
+        """
+        folded: dict[str, Any] = {}
+        structs: list[dict[str, Any]] = []
+        for row in rows:
+            struct_row: dict[str, Any] = {}
+            for col, val in dict(row).items():
+                if col == self.COLLECT_RANK_ALIAS:
+                    continue
+                if col in pk_names:
+                    folded[col] = val
+                    continue
+                field = (
+                    col[len(prefix):] if prefix and col.startswith(prefix) else col
+                )
+                if collect_feature_name is None:
+                    folded.setdefault(field, []).append(val)
+                else:
+                    struct_row[field] = val
+            if collect_feature_name is not None:
+                structs.append(struct_row)
+        if collect_feature_name is not None:
+            folded[collect_feature_name] = structs
+        return folded
+
     def _batch_vector_results(
         self,
         entries: list[dict[str, Any]],
         prepared_statement_objects: dict[int, sql.text],
+        scan_statements: dict[int, sql.text] | None = None,
     ):
-        """Execute prepared statements in parallel using aiomysql engine."""
+        """Execute prepared statements in parallel using aiomysql engine.
+
+        Collect statements with a direct scan statement in `scan_statements` run one
+        backward-index scan per entry (concurrency bounded by the connection pool)
+        instead of the windowed IN plan: the window reads and ranks the WHOLE history
+        of every entity in the list, so its cost scales with total history and one
+        hot key dominates the batch, while per-entry scans stop at N rows each.
+        The windowed IN statement stays the fallback for backends predating
+        `queryOnlineScan`.
+        """
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
                 f"Starting batch vector retrieval for {len(entries)} entries via aiomysql engine."
@@ -493,15 +842,64 @@ class OnlineStoreSqlClient:
         entry_values = {}
         serving_keys_all_fg = []
         prepared_stmts_to_execute = {}
+        scan_executions = {}
+        # one UTC reference for every aggregation window in this read, shared with
+        # what the RonSQL path would substitute (naive UTC, microseconds preserved — X2-R14)
+        window_reference = (
+            datetime.now(timezone.utc).replace(tzinfo=None)
+            if self._aggregate_window_by_serving_index
+            else None
+        )
         # construct the list of entry values for binding to query
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
-                f"Parametrize prepared statements with entry values: {entries}"
+                f"Parametrize prepared statements for {len(entries)} entries"
             )
         for prepared_statement_index in prepared_statement_objects:
             # prepared_statement_index include fg with label only
             # But _serving_key_by_serving_index include the index when the join_index is 0 (left side)
             if prepared_statement_index not in self._serving_key_by_serving_index:
+                continue
+            if (
+                scan_statements is not None
+                and self._collect_n_by_serving_index.get(prepared_statement_index)
+                is not None
+                and prepared_statement_index in scan_statements
+            ):
+                # per-entry direct scans: bind each entry's serving keys plus the rank
+                # cap, deduplicating identical entries so repeated keys share one scan
+                serving_keys = self.serving_key_by_serving_index[
+                    prepared_statement_index
+                ]
+                rank_cap = self._rank_cap_by_serving_index.get(
+                    prepared_statement_index
+                ) or self._collect_n_by_serving_index.get(prepared_statement_index)
+                unique_binds: list[dict[str, Any]] = []
+                entry_to_unique: list[int] = []
+                seen_binds: dict[Any, int] = {}
+                for entry in entries:
+                    binds = {
+                        sk.feature_name: self._entry_serving_key_value(entry, sk)
+                        for sk in serving_keys
+                    }
+                    binds[self.RANK_CAP_PARAM] = rank_cap
+                    try:
+                        bind_key = tuple(sorted(binds.items()))
+                        position = seen_binds.get(bind_key)
+                        if position is None:
+                            position = len(unique_binds)
+                            seen_binds[bind_key] = position
+                            unique_binds.append(binds)
+                    except TypeError:
+                        # unhashable key value: run it unshared
+                        position = len(unique_binds)
+                        unique_binds.append(binds)
+                    entry_to_unique.append(position)
+                scan_executions[prepared_statement_index] = (
+                    scan_statements[prepared_statement_index],
+                    unique_binds,
+                    entry_to_unique,
+                )
                 continue
 
             prepared_stmts_to_execute[prepared_statement_index] = (
@@ -511,12 +909,7 @@ class OnlineStoreSqlClient:
                 map(
                     lambda e, prepared_statement_index=prepared_statement_index: tuple(
                         [
-                            (
-                                e.get(sk.required_serving_key)
-                                # Check if there is any entry matched with feature name,
-                                # if the required serving key is not provided.
-                                or e.get(sk.feature_name)
-                            )
+                            self._entry_serving_key_value(e, sk)
                             for sk in self.serving_key_by_serving_index[
                                 prepared_statement_index
                             ]
@@ -527,24 +920,55 @@ class OnlineStoreSqlClient:
             )
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug(
-                    f"Prepared statement {prepared_statement_index} with entries: {entry_values_tuples}"
+                    f"Prepared statement {prepared_statement_index} with "
+                    f"{len(entry_values_tuples)} entry tuples"
                 )
             entry_values[prepared_statement_index] = {"batch_ids": entry_values_tuples}
+            window = self._aggregate_window_by_serving_index.get(
+                prepared_statement_index
+            )
+            if window is not None:
+                entry_values[prepared_statement_index][self.WINDOW_BOUND_PARAM] = (
+                    window_reference - timedelta(seconds=window)
+                )
+            rank_cap = self._rank_cap_by_serving_index.get(prepared_statement_index)
+            if rank_cap is not None:
+                # batch folds always need the full collect N per entity
+                entry_values[prepared_statement_index][self.RANK_CAP_PARAM] = rank_cap
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
-                f"Executing prepared statements for batch vector with entries: {entry_values}"
+                "Executing batch prepared statements %s and %d per-entry scan sets",
+                sorted(entry_values),
+                len(scan_executions),
             )
-        # run all the prepared statements in parallel using aiomysql engine
-        parallel_results = self._async_task_thread._submit(
-            AsyncTask(
-                task_function=self._execute_prep_statements,
-                task_args=(prepared_stmts_to_execute, entry_values),
-                requires_connection_pool=True,
+        # ONE wave: the batch IN statements and every per-entry collect scan share the
+        # bounded pool concurrently instead of running in sequential waves (review X9)
+        parallel_results, scan_results = (
+            self._async_task_thread._submit(
+                AsyncTask(
+                    task_function=self._execute_batch_reads,
+                    task_args=(
+                        prepared_stmts_to_execute,
+                        entry_values,
+                        {
+                            index: (statement, unique_binds)
+                            for index, (
+                                statement,
+                                unique_binds,
+                                _,
+                            ) in scan_executions.items()
+                        },
+                    ),
+                    requires_connection_pool=True,
+                )
             )
+            if prepared_stmts_to_execute or scan_executions
+            else ({}, {})
         )
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
-                f"Retrieved feature vectors: {parallel_results}, stitching them."
+                "Retrieved rows per statement: %s; stitching.",
+                {key: len(rows) for key, rows in parallel_results.items()},
             )
         # construct the results
         for prepared_statement_index in prepared_stmts_to_execute:
@@ -561,38 +985,187 @@ class OnlineStoreSqlClient:
                     f"Use prefix from prepare statement because prefix from serving key is collision adjusted {prefix_features}."
                 )
                 _logger.debug("iterate over results by index of the prepared statement")
-            for row in parallel_results[prepared_statement_index]:
-                if _logger.isEnabledFor(logging.DEBUG):
-                    _logger.debug(f"Processing row: {row}")
-                row_dict = dict(row)
-                # can primary key be complex feature? No, not supported.
-                result_dict = row_dict
-                if _logger.isEnabledFor(logging.DEBUG):
-                    _logger.debug(
-                        f"Add result to statement results: {self._get_result_key(prefix_features, row_dict)} : {result_dict}"
+            collect_n = self._collect_n_by_serving_index.get(prepared_statement_index)
+            if collect_n is not None:
+                # collect feature group: group the up-to-N rows per entity, then fold each
+                # group into list-typed features keyed by the entity's serving key.
+                grouped: dict[Any, list[dict[str, Any]]] = {}
+                for row in parallel_results[prepared_statement_index]:
+                    row_dict = dict(row)
+                    grouped.setdefault(
+                        self._get_result_key(prefix_features, row_dict), []
+                    ).append(row_dict)
+                pk_names = set(prefix_features)
+                for result_key, group_rows in grouped.items():
+                    statement_results[result_key] = self._fold_collect_rows(
+                        group_rows,
+                        pk_names,
+                        self._collect_name_by_serving_index.get(
+                            prepared_statement_index
+                        ),
+                        prefix=self.prefix_by_serving_index.get(
+                            prepared_statement_index
+                        )
+                        or "",
                     )
-                statement_results[self._get_result_key(prefix_features, row_dict)] = (
-                    result_dict
-                )
+            else:
+                # rows and stitch keys carry feature data and entity keys:
+                # never logged, even at DEBUG
+                for row in parallel_results[prepared_statement_index]:
+                    row_dict = dict(row)
+                    # can primary key be complex feature? No, not supported.
+                    statement_results[
+                        self._get_result_key(prefix_features, row_dict)
+                    ] = row_dict
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug(
-                    f"Add partial results to batch results: {statement_results}"
+                    "Stitching %d result rows from statement %d into %d entries",
+                    len(statement_results),
+                    prepared_statement_index,
+                    len(entries),
                 )
             for i, entry in enumerate(entries):
-                if _logger.isEnabledFor(logging.DEBUG):
-                    _logger.debug(
-                        "Processing entry %s : %s",
-                        entry,
-                        statement_results.get(
-                            self._get_result_key_serving_key(serving_keys, entry), {}
-                        ),
-                    )
                 batch_results[i].update(
                     statement_results.get(
                         self._get_result_key_serving_key(serving_keys, entry), {}
                     )
                 )
+        for prepared_statement_index, (
+            _,
+            _unique_binds,
+            entry_to_unique,
+        ) in scan_executions.items():
+            # per-entry direct scans: results align with entries through the dedup
+            # mapping, so folding needs no result-key stitching. Duplicate entries
+            # fold one shared unique result.
+            serving_keys = self.serving_key_by_serving_index[prepared_statement_index]
+            serving_keys_all_fg += serving_keys
+            unique_rows = scan_results.get(prepared_statement_index, [])
+            prefix = self.prefix_by_serving_index.get(prepared_statement_index) or ""
+            pk_names = {prefix + sk.feature_name for sk in serving_keys}
+            collect_name = self._collect_name_by_serving_index.get(
+                prepared_statement_index
+            )
+            ascending = self._collect_ascending_by_serving_index.get(
+                prepared_statement_index
+            )
+            folded_by_unique: dict[int, dict[str, Any]] = {}
+            for i, unique_position in enumerate(entry_to_unique):
+                rows = (
+                    unique_rows[unique_position]
+                    if unique_position < len(unique_rows)
+                    else []
+                )
+                if not rows:
+                    # the empty-semantics pass below folds this entity to an
+                    # empty collected array, like the single-vector fold
+                    continue
+                folded = folded_by_unique.get(unique_position)
+                if folded is None:
+                    # the scan returns newest-first; an ascending collect folds
+                    # oldest-first (offline parity)
+                    ordered = list(reversed(rows)) if ascending else list(rows)
+                    folded = self._fold_collect_rows(
+                        ordered, pk_names, collect_name, prefix=prefix
+                    )
+                    folded_by_unique[unique_position] = folded
+                batch_results[i].update(folded)
+        # pin the empty semantics to the single-read contract (review X5): an entity
+        # with no matching history reads as an EMPTY collected array (the windowed IN
+        # plan and the per-entry scans both surface nothing for it), and an entity the
+        # batch aggregate's GROUP BY misses reads as the SQL aggregate over an empty
+        # set (COUNT 0, every other function NULL) exactly like the single statement,
+        # which has no GROUP BY and always returns one row.
+        for index, collect_name in self._collect_name_by_serving_index.items():
+            if (
+                index not in prepared_statement_objects
+                or index not in self._serving_key_by_serving_index
+            ):
+                continue
+            for entry_result in batch_results:
+                entry_result.setdefault(collect_name, [])
+        for index, output_names in self._aggregate_names_by_serving_index.items():
+            if (
+                index not in prepared_statement_objects
+                or index not in self._serving_key_by_serving_index
+            ):
+                continue
+            prefix = self.prefix_by_serving_index.get(index) or ""
+            for entry_result in batch_results:
+                for name in output_names:
+                    default = (
+                        0
+                        if name == prefix + "count" or name.endswith("_count")
+                        else None
+                    )
+                    entry_result.setdefault(name, default)
         return batch_results, serving_keys_all_fg
+
+    async def _execute_per_entry_scans(
+        self,
+        statement,
+        binds_list: list[dict[str, Any]],
+        connection_pool: aiomysql.utils._ConnectionContextManager,
+    ):
+        """Run one direct collect scan per entry, bounded by the connection pool.
+
+        Each scan is the single-entity `ORDER BY order_col DESC LIMIT ?` statement,
+        so the per-batch cost scales with `len(entries) * N` instead of the total
+        history of the selected entities. Scans run in bounded waves of
+        `_COLLECT_SCAN_CHUNK` tasks (the query timeout applies per wave), capping
+        in-flight cursors and task objects for large batches (review X9).
+        """
+        timeout = (
+            self.connection_options.get("query_timeout", 120)
+            if self.connection_options
+            else 120
+        )
+        results: list[Any] = []
+        for start in range(0, len(binds_list), self._COLLECT_SCAN_CHUNK):
+            tasks = [
+                asyncio.create_task(
+                    self._query_async_sql(statement, binds, connection_pool),
+                    name="query_collect_scan_" + str(start + i),
+                )
+                for i, binds in enumerate(
+                    binds_list[start : start + self._COLLECT_SCAN_CHUNK]
+                )
+            ]
+            results.extend(
+                await asyncio.wait_for(asyncio.gather(*tasks), timeout=timeout)
+            )
+        return results
+
+    async def _execute_batch_reads(
+        self,
+        prepared_statements: dict[int, str],
+        entries: dict[int, dict[str, Any]],
+        scan_specs: dict[int, tuple[Any, list[dict[str, Any]]]],
+        connection_pool: aiomysql.utils._ConnectionContextManager,
+    ):
+        """Run the batch IN statements and every per-entry collect scan in ONE wave.
+
+        Point-read/aggregate statements and collect scans share the bounded pool
+        concurrently instead of completing in sequential waves (review X9).
+        """
+
+        async def _no_statements():
+            return {}
+
+        statement_results, *scan_results = await asyncio.gather(
+            self._execute_prep_statements(
+                prepared_statements, entries, connection_pool
+            )
+            if prepared_statements
+            else _no_statements(),
+            *[
+                self._execute_per_entry_scans(statement, binds_list, connection_pool)
+                for statement, binds_list in scan_specs.values()
+            ],
+        )
+        return statement_results, dict(
+            zip(scan_specs.keys(), scan_results, strict=False)
+        )
 
     def _refresh_mysql_connection(self):
         if _logger.isEnabledFor(logging.DEBUG):
@@ -628,23 +1201,51 @@ class OnlineStoreSqlClient:
         )
 
     @staticmethod
-    def _parametrize_query(name: str, query_online: str) -> str:
-        # Now we have ordered pk_names, iterate over it and replace `?` with `:feature_name` one by one.
-        # Regex `"^(.*?)\?"` will identify 1st occurrence of `?` in the sql string and replace it with provided
-        # feature name, e.g. `:feature_name`:. As we iteratively update `query_online` we are always aiming to
-        # replace 1st occurrence of `?`. This approach can only work if primary key names are sorted properly.
-        # Regex `"^(.*?)\?"`:
-        # `^` - asserts position at start of a line
-        # `.*?` - matches any character (except for line terminators). `*?` Quantifier —
-        # Matches between zero and unlimited times, expanding until needed, i.e 1st occurrence of `\?`
-        # character.
+    def _first_unquoted_placeholder(query_online: str) -> int:
+        """Index of the first `?` bind marker outside any SQL quoting, or -1.
+
+        Tracks single-quoted string literals (with `''` escapes) and
+        backtick-quoted identifiers, so a `?` inside a filter literal (for
+        example `LIKE 'vip?%'`) is never treated as a marker.
+        """
+        quote = None
+        i = 0
+        while i < len(query_online):
+            char = query_online[i]
+            if quote is None:
+                if char == "?":
+                    return i
+                if char in ("'", "`"):
+                    quote = char
+            elif quote == char:
+                if char == "'" and query_online[i + 1 : i + 2] == "'":
+                    # '' inside a string literal is an escaped quote
+                    i += 1
+                else:
+                    quote = None
+            i += 1
+        return -1
+
+    @classmethod
+    def _has_unquoted_placeholder(cls, query_online: str) -> bool:
+        return cls._first_unquoted_placeholder(query_online) != -1
+
+    @classmethod
+    def _parametrize_query(cls, name: str, query_online: str) -> str:
+        """Replace the next `?` bind marker with `:name`.
+
+        Iterating in parameter order consumes markers left to right, so this only
+        works if the parameter names are sorted by their statement position. The
+        scan is quote-aware: a `?` inside a string literal or a backtick-quoted
+        identifier is never replaced (a filter literal containing `?` would
+        otherwise be corrupted and the real marker left unbound).
+        """
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(f"Parametrizing name {name} in query {query_online}")
-        return re.sub(
-            r"^(.*?)\?",
-            r"\1:" + name,
-            query_online,
-        )
+        index = cls._first_unquoted_placeholder(query_online)
+        if index == -1:
+            return query_online
+        return query_online[:index] + ":" + name + query_online[index + 1 :]
 
     @staticmethod
     def _get_result_key(
@@ -652,7 +1253,7 @@ class OnlineStoreSqlClient:
     ) -> tuple[str]:
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
-                f"Get result key {primary_keys} from result dict {result_dict}"
+                f"Get result key for primary keys {primary_keys}"
             )
         result_key = []
         for pk in primary_keys:
@@ -660,12 +1261,24 @@ class OnlineStoreSqlClient:
         return tuple(result_key)
 
     @staticmethod
+    def _entry_serving_key_value(entry: dict[str, Any], sk: ServingKey) -> Any:
+        """The entry's value for one serving key.
+
+        Falls back from the required serving key to the feature name only when
+        the required key is ABSENT: falsy values (0, False, "") are valid
+        entity keys and must not trigger the fallback.
+        """
+        if sk.required_serving_key in entry:
+            return entry[sk.required_serving_key]
+        return entry.get(sk.feature_name)
+
+    @classmethod
     def _get_result_key_serving_key(
-        serving_keys: list[ServingKey], result_dict: dict[str, dict[str, Any]]
+        cls, serving_keys: list[ServingKey], result_dict: dict[str, dict[str, Any]]
     ) -> tuple[str]:
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
-                f"Get result key serving key {serving_keys} from result dict {result_dict}"
+                "Get result key for serving keys"
             )
         result_key = []
         for sk in serving_keys:
@@ -673,12 +1286,9 @@ class OnlineStoreSqlClient:
                 _logger.debug(
                     f"Get result key for serving key {sk.required_serving_key} or {sk.feature_name}"
                 )
-            result_key.append(
-                result_dict.get(sk.required_serving_key)
-                or result_dict.get(sk.feature_name)
-            )
+            result_key.append(cls._entry_serving_key_value(result_dict, sk))
         if _logger.isEnabledFor(logging.DEBUG):
-            _logger.debug(f"Result key: {result_key}")
+            _logger.debug("Built result key of length %d", len(result_key))
         return tuple(result_key)
 
     @staticmethod
@@ -711,13 +1321,16 @@ class OnlineStoreSqlClient:
             ]
         return prepared_statements_list
 
-    async def _get_connection_pool(self, default_min_size: int) -> None:
+    async def _get_connection_pool(
+        self, default_min_size: int, default_max_size: int | None = None
+    ) -> None:
         return await util_sql._create_async_engine(
             self._online_connector,
             self._external,
             default_min_size,
             options=self._connection_options,
             hostname=self._hostname,
+            default_max_size=default_max_size,
         )
 
     async def _test_connection(
@@ -740,10 +1353,11 @@ class OnlineStoreSqlClient:
         """Query prepared statement together with bind params using aiomysql connection pool."""
         # create connection pool
         async with connection_pool.acquire() as conn:
-            # Execute the prepared statement
+            # Execute the prepared statement. Bind VALUES are entity keys and
+            # passed features: log parameter names only, never values.
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug(
-                    f"Executing prepared statement: {stmt} with bind params: {bind_params}"
+                    "Executing prepared statement binding %s", sorted(bind_params)
                 )
             cursor = await conn.execute(stmt, bind_params)
             # Fetch the result
@@ -751,7 +1365,7 @@ class OnlineStoreSqlClient:
                 _logger.debug("Waiting for resultset.")
             resultset = await cursor.fetchall()
             if _logger.isEnabledFor(logging.DEBUG):
-                _logger.debug(f"Retrieved resultset: {resultset}. Closing cursor.")
+                _logger.debug("Retrieved %d rows. Closing cursor.", len(resultset))
             await cursor.close()
 
         return resultset

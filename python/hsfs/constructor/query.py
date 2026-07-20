@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import logging
 import warnings
+from datetime import timedelta
 from typing import TYPE_CHECKING, Any, TypeVar
 
 import humps
@@ -81,6 +82,11 @@ class Query:
         joins: list[join_module.Join] | None = None,
         filter: Filter | Logic | dict[str, Any] | None = None,
         limit: int | None = None,
+        collect: int | None = None,
+        collect_order_by: str | Feature | None = None,
+        collect_ascending: bool = False,
+        aggregate: dict[str, list[str]] | None = None,
+        aggregate_window: float | None = None,
         **kwargs,
     ) -> None:
         self._feature_store_name = feature_store_name
@@ -92,6 +98,16 @@ class Query:
         self._joins = joins or []
         self._filter = Logic.from_response_json(filter)
         self._limit = limit
+        # Collect ("most recent N rows per entity"): set by collect(). The
+        # order-by column defaults to the feature group's event_time, resolved
+        # by the backend which owns the feature group metadata.
+        self._collect = collect
+        self._collect_order_by = collect_order_by
+        self._collect_ascending = collect_ascending
+        # Pushdown aggregations ("per-entity COUNT/SUM/... over a time-windowed
+        # index scan"): set by aggregate(). The window is stored in seconds.
+        self._aggregate = aggregate
+        self._aggregate_window = aggregate_window
         # Lookback configuration for the feature view's joins; set only on the
         # root Query and emitted as the top-level `lookback` field on the wire.
         self._lookback: Lookback | None = None
@@ -731,10 +747,203 @@ class Query:
         self._limit = n
         return self
 
+    @public
+    def collect(
+        self,
+        n: int,
+        order_by: str | Feature | None = None,
+        ascending: bool = False,
+    ) -> Query:
+        """Collect the most recent `n` rows per entity for this query.
+
+        `collect` is the user-facing name for the "limit with order by"
+        transformation: it returns up to `n` rows per entity, ordered by the
+        feature group's event-time column.
+        When the query is used to define a feature view, the selected features of
+        this feature group fold into a single feature named `<feature_group>_collect`
+        of type `array<struct<order_column, value_columns...>>`, served identically
+        offline (training data) and online (`get_feature_vector(s)`).
+
+        `collect` is not terminal: it returns the query so you can keep building,
+        for example joining in features from other feature groups.
+
+        Example:
+            ```python
+            fg = fs.get_feature_group("events_fg")
+            query = fg.select_all().filter(fg.event_type == "x").collect(100)
+            ```
+
+        Parameters:
+            n: Maximum number of rows to collect per entity.
+            order_by: Column to order by, defaults to the feature group's event_time.
+            ascending: Order ascending instead of descending (most recent first).
+
+        Returns:
+            The query object with the applied collect.
+        """
+        if isinstance(n, bool) or not isinstance(n, int):
+            # the backend field is an integer; True or 2.5 would fail or coerce later
+            raise TypeError(f"collect(n): n must be an int, got {type(n).__name__}")
+        if n <= 0:
+            raise ValueError("collect(n): n must be a positive integer")
+        if self._aggregate is not None:
+            raise ValueError(
+                "collect() and aggregate() are mutually exclusive on the same query"
+            )
+        if isinstance(order_by, str):
+            # feature names are lower-cased in the feature store; normalize like
+            # Feature does so the backend lookup matches
+            order_by = util._autofix_feature_name(order_by, warn=True)
+        self._collect = n
+        self._collect_order_by = order_by
+        self._collect_ascending = ascending
+        return self
+
+    _AGGREGATE_FUNCTIONS = ("count", "sum", "min", "max", "avg")
+    _AGGREGATE_NARY_FUNCTIONS = ("greatest", "least")
+
+    @public
+    def aggregate(
+        self,
+        aggregations: dict[str, list[str]],
+        window: float | timedelta | None = None,
+        group_by: list[str] | None = None,
+    ) -> Query:
+        """Aggregate features per entity as pushdown aggregations.
+
+        Each (feature, function) pair becomes one scalar output feature computed
+        over the entity's rows, optionally bounded by a trailing time window on
+        the feature group's event-time column.
+        Online, the aggregation is pushed down to the RonDB data nodes; offline,
+        the same trailing window is applied per training-data row, keeping
+        train/serve consistency.
+
+        Three key forms are supported, covering RonSQL's full aggregation surface:
+        a feature name with `count`, `sum`, `min`, `max` or `avg`; the special key
+        `"*"` with `count` for a row count (`COUNT(*)`, output feature `count`);
+        and a comma-separated list of two or more features with `greatest` or
+        `least`, aggregating the per-row n-ary maximum/minimum over the entity's
+        rows (output feature `<a>_<b>_greatest`).
+
+        `aggregate` is not terminal: it returns the query so you can keep
+        building, for example joining in features from other feature groups.
+        It is mutually exclusive with [`Query.collect`][hsfs.constructor.query.Query.collect]
+        on the same query.
+
+        Example:
+            ```python
+            fg = fs.get_feature_group("transactions")
+            query = fg.select(["amount"]).aggregate(
+                {
+                    "amount": ["count", "sum", "avg"],
+                    "*": ["count"],                       # row count
+                    "amount_in,amount_out": ["greatest"],  # max of per-row GREATEST
+                },
+                window=timedelta(days=30),
+            )
+            ```
+
+        Parameters:
+            aggregations: Mapping of feature name (or `"*"`, or a comma-separated
+                feature list for `greatest`/`least`) to the aggregation functions
+                to apply.
+            window: Optional trailing time window over the feature group's
+                event-time column, as seconds or a timedelta.
+                If the feature group has a TTL, the window must not exceed it.
+            group_by: Reserved for sub-entity grouping; not yet supported.
+
+        Returns:
+            The query object with the applied aggregations.
+        """
+        if self._collect is not None:
+            raise ValueError(
+                "collect() and aggregate() are mutually exclusive on the same query"
+            )
+        if group_by is not None:
+            raise ValueError(
+                "aggregate(group_by=...) is not supported yet; aggregations group "
+                "by the entity key"
+            )
+        if not aggregations:
+            raise ValueError("aggregate(): at least one aggregation is required")
+        for feature_name, functions in aggregations.items():
+            if not functions:
+                raise ValueError(
+                    f"aggregate(): no functions given for feature '{feature_name}'"
+                )
+            fns = [fn.lower() for fn in functions]
+            if feature_name == "*":
+                if any(fn != "count" for fn in fns):
+                    raise ValueError(
+                        "aggregate(): the '*' key supports only 'count' (COUNT(*))"
+                    )
+            elif "," in feature_name:
+                parts = [part.strip() for part in feature_name.split(",")]
+                if len(parts) < 2 or any(not part for part in parts):
+                    raise ValueError(
+                        "aggregate(): a greatest/least key must list two or more "
+                        f"features, got '{feature_name}'"
+                    )
+                for fn in fns:
+                    if fn not in self._AGGREGATE_NARY_FUNCTIONS:
+                        raise ValueError(
+                            f"aggregate(): multi-feature keys support only "
+                            f"{', '.join(self._AGGREGATE_NARY_FUNCTIONS)}; got '{fn}'"
+                        )
+            else:
+                for fn in fns:
+                    if fn not in self._AGGREGATE_FUNCTIONS:
+                        raise ValueError(
+                            f"aggregate(): unsupported function '{fn}' for feature "
+                            f"'{feature_name}'; allowed: "
+                            f"{', '.join(self._AGGREGATE_FUNCTIONS)}"
+                        )
+        if isinstance(window, timedelta):
+            window = window.total_seconds()
+        if window is not None:
+            if isinstance(window, bool) or not isinstance(window, (int, float)):
+                raise TypeError(
+                    "aggregate(): window must be seconds (int/float/timedelta), "
+                    f"got {type(window).__name__}"
+                )
+            if window <= 0:
+                raise ValueError("aggregate(): window must be positive")
+            if window != int(window):
+                # the backend window is whole seconds; silently truncating a
+                # fractional window would change which rows the read matches
+                raise ValueError(
+                    "aggregate(): window must be a whole number of seconds, "
+                    f"got {window}"
+                )
+            window = int(window)
+        def normalize_key(name: str) -> str:
+            # feature names are lower-cased in the feature store; normalize each
+            # (comma-separated) part like Feature does so the backend lookup matches
+            if name == "*":
+                return name
+            return ",".join(
+                util._autofix_feature_name(part.strip(), warn=True)
+                for part in name.split(",")
+            )
+
+        self._aggregate = {
+            normalize_key(name): [fn.lower() for fn in fns]
+            for name, fns in aggregations.items()
+        }
+        self._aggregate_window = window
+        return self
+
     def json(self) -> str:
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self) -> dict[str, Any]:
+        # collect_order_by may be a Feature or a column-name string; the backend
+        # expects a column name, so serialize a Feature to its name.
+        collect_order_by = (
+            self._collect_order_by.name
+            if hasattr(self._collect_order_by, "name")
+            else self._collect_order_by
+        )
         payload: dict[str, Any] = {
             "featureStoreName": self._feature_store_name,
             "featureStoreId": self._feature_store_id,
@@ -745,6 +954,11 @@ class Query:
             "joins": self._joins,
             "filter": self._filter,
             "limit": self._limit,
+            "collect": self._collect,
+            "collectOrderBy": collect_order_by,
+            "collectAscending": self._collect_ascending,
+            "aggregate": self._aggregate,
+            "aggregateWindow": self._aggregate_window,
             "hiveEngine": self._python_engine,
         }
         if self._lookback is not None:
@@ -788,6 +1002,12 @@ class Query:
             ],
             filter=json_decamelized.get("filter", None),
             limit=json_decamelized.get("limit", None),
+            collect=json_decamelized.get("collect", None),
+            collect_order_by=json_decamelized.get("collect_order_by", None),
+            # `or False` also absorbs an explicit "collectAscending": null on the wire
+            collect_ascending=json_decamelized.get("collect_ascending", False) or False,
+            aggregate=json_decamelized.get("aggregate", None),
+            aggregate_window=json_decamelized.get("aggregate_window", None),
         )
         # Restore Lookback from the wire payload so cross-process consumers
         # that reconstruct a Query from JSON keep the lookback. Local-process
@@ -820,6 +1040,24 @@ class Query:
                 "Reading from query containing join of feature group with embedding index from online storage is not supported. "
                 "Use `feature_view.get_feature_vector(s)` instead."
             )
+        pushdown = self._pushdown_feature_group_names()
+        if pushdown:
+            raise FeatureStoreException(
+                "Reading a query with collect or aggregate features from online storage via "
+                f"`read(online=True)` is not supported (feature groups: {', '.join(pushdown)}): "
+                "the online SQL returns the raw event rows instead of the folded or aggregated features. "
+                "Create a feature view and use `get_feature_vector(s)` or `scan_vectors` for online reads, "
+                "or use `read()` for offline data."
+            )
+
+    def _pushdown_feature_group_names(self) -> list[str]:
+        """Names of the feature groups in this query that carry a collect or aggregate pushdown."""
+        names = []
+        if self._collect is not None or self._aggregate:
+            names.append(self._left_feature_group.name)
+        for join_obj in self._joins:
+            names.extend(join_obj.query._pushdown_feature_group_names())
+        return names
 
     @classmethod
     def _hopsworks_json(cls, json_dict: dict[str, Any]) -> Query:

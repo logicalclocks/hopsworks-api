@@ -1085,6 +1085,55 @@ class FeatureView:
         )
 
     @public
+    def scan_vectors(
+        self,
+        entry: dict[str, Any],
+        limit: int | None = None,
+        return_type: Literal["list", "pandas", "polars"] = "pandas",
+        external: bool | None = None,
+        force_rest_client: bool = False,
+        force_sql_client: bool = False,
+    ) -> pd.DataFrame | pl.DataFrame | list[dict[str, Any]]:
+        """Scan the most-recent rows of the collect feature group for a single entity.
+
+        For a feature view whose label feature group uses `collect(N)`, `get_feature_vector`
+        folds the N most-recent rows of that entity into one array-typed feature. `scan_vectors`
+        instead returns those rows directly, newest-first, ordered by the collect order column
+        (the feature group `event_time`), up to N (or `limit` if smaller). It is the online
+        counterpart of the offline collect window.
+
+        Example:
+            ```python
+            fv = fs.get_feature_view("transactions_fv", version=1)
+
+            # the 100 most recent transaction rows for user 123, newest first
+            rows = fv.scan_vectors(entry={"user_id": 123}, limit=100)
+            ```
+
+        Parameters:
+            entry: Entity-key values, e.g. {"user_id": 123}. The collect order column
+                (event_time) is not a required key.
+            limit: Optional client-side cap on the number of rows returned, at most the
+                feature view's collect N.
+            return_type: "pandas", "polars", or "list" (list of row dicts).
+            external: Whether to connect to the online store from an external network.
+            force_rest_client: Force the REST online client.
+            force_sql_client: Force the SQL online client.
+
+        Returns:
+            The collected rows for the entity in the requested format.
+        """
+        if not self._vector_server._serving_initialized:
+            self.init_serving(external=external)
+        return self._vector_server._scan_vectors(
+            entry=entry,
+            limit=limit,
+            return_type=return_type,
+            force_rest_client=force_rest_client,
+            force_sql_client=force_sql_client,
+        )
+
+    @public
     def get_inference_helper(
         self,
         entry: dict[str, Any],
