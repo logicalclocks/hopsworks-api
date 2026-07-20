@@ -832,17 +832,42 @@ class Engine:
                 options=write_options.get("online_ingestion_options", {})
             )
 
+    def _delete_online_dataframe(self, feature_group, dataframe, write_options):
+        # Produce an online delete tombstone for every row in `dataframe`.
+        # Each message carries the row encoded against the feature group Avro
+        # schema plus an `operation: delete` header; OnlineFS deletes the row by
+        # primary key and ignores the values. `dataframe` must therefore carry the
+        # feature columns, not only the primary key, so the Avro schema serializes.
+        write_options = kafka_engine._get_kafka_config(
+            feature_group.feature_store_id, write_options, engine="spark"
+        )
+        serialized_df = self._serialize_to_avro(feature_group, dataframe)
+
+        (
+            serialized_df.withColumn(
+                "headers",
+                self._get_headers(
+                    feature_group, dataframe.count(), write_options, operation="delete"
+                ),
+            )
+            .write.format(self.KAFKA_FORMAT)
+            .options(**write_options)
+            .option("topic", feature_group._online_topic_name)
+            .save()
+        )
+
     def _get_headers(
         self,
         feature_group: fg_mod.FeatureGroup | fg_mod.ExternalFeatureGroup,
         num_entries: int | None = None,
         options: dict | None = None,
+        operation: str | None = None,
     ) -> array:
         return array(
             *[
                 struct(lit(key).alias("key"), lit(value).alias("value"))
                 for key, value in kafka_engine._get_headers(
-                    feature_group, num_entries, options
+                    feature_group, num_entries, options, operation
                 ).items()
             ]
         )

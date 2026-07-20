@@ -18,6 +18,7 @@ from __future__ import annotations
 import copy
 import json
 import logging
+import re
 import time
 import warnings
 from datetime import date, datetime, timedelta
@@ -121,6 +122,22 @@ _logger = logging.getLogger(__name__)
 
 
 VALID_PARTITION_GRAINS = ("hour", "day", "week", "month", "year")
+
+# Minimum Hopsworks backend major.minor that ships the delete-capable OnlineFS.
+# TODO(FSTORE-2068): set to the release that includes the OnlineFS delete branch.
+_MIN_BACKEND_MAJOR_MINOR_ONLINE_DELETE = (5, 2)
+
+
+def _backend_supports_online_delete() -> bool:
+    """Return whether the connected backend ships the delete-capable OnlineFS."""
+    backend_version = VariableApi()._get_version("hopsworks")
+    if not backend_version:
+        return False
+    match = re.search(r"(\d+)\.(\d+)", backend_version)
+    if not match:
+        return False
+    major_minor = (int(match.group(1)), int(match.group(2)))
+    return major_minor >= _MIN_BACKEND_MAJOR_MINOR_ONLINE_DELETE
 
 
 def _validate_partitioned_by(
@@ -4453,17 +4470,24 @@ class FeatureGroup(FeatureGroupBase):
         self,
         delete_df: TypeVar("pyspark.sql.DataFrame"),  # noqa: F821
         write_options: dict[Any, Any] | None = None,
+        delete_online: bool = False,
     ) -> None:
         """Drops records present in the provided DataFrame and commits it as update to this Feature group.
 
         This method can only be used on feature groups stored as HUDI, DELTA, or ICEBERG.
 
+        By default only the offline table is affected.
+        Set `delete_online` to also delete the records from the online store of an online-enabled feature group.
+        When `delete_online` is set, `delete_df` must carry the feature columns, not only the primary key, so the records serialize against the feature group schema.
+
         Parameters:
             delete_df: dataFrame containing records to be deleted.
             write_options: User provided write options.
+            delete_online: Also delete the records from the online store when the feature group is online-enabled.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+            hopsworks.client.exceptions.FeatureStoreException: If `delete_online` is set and the feature group has an embedding index, is not online-enabled, or the backend does not support online deletes.
         """
         if self.time_travel_format == "HUDI" and not engine._get_type().startswith(
             "spark"
@@ -4481,6 +4505,26 @@ class FeatureGroup(FeatureGroupBase):
                 "Install 'pyiceberg' to enable it."
             )
         self._feature_group_engine._commit_delete(self, delete_df, write_options or {})
+
+        if delete_online:
+            if self.embedding_index is not None:
+                raise FeatureStoreException(
+                    "delete_online is not supported for feature groups with an embedding index; "
+                    "their online data lives in the vector database, which this release does not delete from."
+                )
+            if not self.online_enabled:
+                raise FeatureStoreException(
+                    "delete_online was set but this feature group is not online-enabled."
+                )
+            if not _backend_supports_online_delete():
+                raise FeatureStoreException(
+                    "Online delete requires a Hopsworks backend version "
+                    f">= {'.'.join(str(v) for v in _MIN_BACKEND_MAJOR_MINOR_ONLINE_DELETE)}. "
+                    "Upgrade the cluster, or omit delete_online to delete offline only."
+                )
+            self._feature_group_engine._delete_online_records(
+                self, delete_df, write_options or {}
+            )
 
     @public
     def delta_vacuum(

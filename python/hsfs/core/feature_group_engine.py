@@ -382,6 +382,21 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         return None, None
 
     @staticmethod
+    def _delete_online_records(feature_group, delete_df, write_options):
+        # Produce online delete tombstones to the feature group topic; OnlineFS
+        # applies a RonDB delete by primary key. The offline delete is handled
+        # separately by `_commit_delete`.
+        online_engine = engine._get_instance()
+        if isinstance(online_engine, engine.spark.Engine):
+            online_engine._delete_online_dataframe(
+                feature_group, delete_df, write_options
+            )
+        else:
+            online_engine._delete_dataframe_kafka(
+                feature_group, delete_df, write_options
+            )
+
+    @staticmethod
     def _commit_delete(feature_group, delete_df, write_options):
         spark_session, spark_context = (
             FeatureGroupEngine._get_spark_session_and_context()

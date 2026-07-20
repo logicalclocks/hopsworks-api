@@ -132,6 +132,7 @@ def _get_headers(
     feature_group: FeatureGroup | ExternalFeatureGroup,
     num_entries: int | None = None,
     options: dict[str, Any] | None = None,
+    operation: str | None = None,
 ) -> dict[str, bytes]:
     # custom headers for hopsworks onlineFS
     headers = {
@@ -139,6 +140,11 @@ def _get_headers(
         "featureGroupId": str(feature_group._id).encode("utf8"),
         "subjectId": str(feature_group.subject["id"]).encode("utf8"),
     }
+
+    # operation header tells OnlineFS whether the message is an upsert (absent) or a
+    # delete tombstone ("delete"); OnlineFS deletes the row by primary key on "delete".
+    if operation is not None:
+        headers["operation"] = operation.encode("utf8")
 
     online_ingestion_options = (
         options.get("online_ingestion_options") if options else None
