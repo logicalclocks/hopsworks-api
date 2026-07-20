@@ -15,6 +15,7 @@
 #
 
 import os
+import sys
 from functools import wraps
 
 
@@ -29,3 +30,21 @@ def changes_environ(f):
             os.environ.update(old_environ)
 
     return g
+
+
+def get_or_create_local_spark_session():
+    # Single entry point for tests that need a real SparkSession. The worker
+    # and driver interpreters are pinned to the running interpreter at session
+    # creation: a session created here outlives the creating test (Spark keeps
+    # one JVM per process), and an unpinned session makes every later
+    # worker-forking test resolve `python3` from PATH, which on CI runners is
+    # the system interpreter, not the venv (PYTHON_VERSION_MISMATCH).
+    from pyspark.sql import SparkSession
+
+    return (
+        SparkSession.builder.master("local[1]")
+        .appName("hopsworks-unit-tests")
+        .config("spark.pyspark.python", sys.executable)
+        .config("spark.pyspark.driver.python", sys.executable)
+        .getOrCreate()
+    )

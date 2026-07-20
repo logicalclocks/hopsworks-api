@@ -28,6 +28,8 @@ from types import SimpleNamespace
 import pytest
 from hsfs.core import partition_grains
 
+from tests import util
+
 
 def _fg(partitioned_by=None, event_time="event_ts"):
     return SimpleNamespace(partitioned_by=partitioned_by, event_time=event_time)
@@ -97,9 +99,7 @@ def test_spark_noop_when_event_time_column_missing():
 
 @pytest.fixture(scope="module")
 def spark_session():
-    from pyspark.sql import SparkSession
-
-    return SparkSession.builder.master("local[1]").getOrCreate()
+    return util.get_or_create_local_spark_session()
 
 
 def test_spark_materializes_grains_from_timestamp(spark_session):

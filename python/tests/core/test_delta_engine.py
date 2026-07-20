@@ -26,6 +26,8 @@ from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs.core.delta_engine import DeltaEngine
 from hsfs.feature_group_commit import FeatureGroupCommit
 
+from tests import util
+
 
 class _FakeType:
     """A Spark-data-type stand-in: a struct carries `.fields`, else a leaf."""
@@ -1730,9 +1732,7 @@ class TestDeltaEngine:
         # pyspark's functions (F.col, F.input_file_name) require an active
         # SparkContext even against mocked DataFrames; create one so the test
         # does not depend on an earlier test having started Spark.
-        from pyspark.sql import SparkSession
-
-        SparkSession.builder.master("local[1]").getOrCreate()
+        util.get_or_create_local_spark_session()
         mocker.patch(
             "hopsworks_common.spark_connect_utils._is_spark_connect_session",
             return_value=True,
