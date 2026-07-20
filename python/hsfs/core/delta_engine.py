@@ -343,15 +343,28 @@ class DeltaEngine:
         try:
             if self._spark_session is not None:
                 from pyspark.sql import functions as F  # noqa: PLC0415
-
-                log_df = self._spark_session.read.json(
-                    location.rstrip("/") + "/_delta_log/*.json"
+                from pyspark.sql.types import (  # noqa: PLC0415
+                    LongType,
+                    StructField,
+                    StructType,
                 )
-                if "commitInfo" not in log_df.columns:
-                    return None
+
+                # explicit schema: avoids inferring/parsing the large
+                # add/remove action payloads and tolerates commitInfo rows
+                # without a timestamp
+                log_schema = StructType(
+                    [
+                        StructField(
+                            "commitInfo",
+                            StructType([StructField("timestamp", LongType())]),
+                        )
+                    ]
+                )
                 rows = (
-                    log_df.withColumn("_file", F.input_file_name())
-                    .filter(F.col("commitInfo").isNotNull())
+                    self._spark_session.read.schema(log_schema)
+                    .json(location.rstrip("/") + "/_delta_log/*.json")
+                    .withColumn("_file", F.input_file_name())
+                    .filter(F.col("commitInfo.timestamp").isNotNull())
                     .withColumn(
                         "version",
                         F.regexp_extract(F.col("_file"), r"(\d+)\.json", 1).cast(
