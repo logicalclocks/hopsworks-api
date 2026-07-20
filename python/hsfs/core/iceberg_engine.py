@@ -1009,11 +1009,9 @@ class IcebergEngine:
     def _snapshot_read_opts_at(self, location: str, end_ts: int) -> dict[str, str]:
         """Read options pinning the table state at *end_ts*.
 
-        A time that predates the table's first snapshot pins the earliest
-        snapshot by id instead: compute_statistics runs right after a fresh
-        insert, and the backend-recorded commit_time can be a few ms before
-        the first snapshot's commit, a range where Iceberg rejects
-        as-of-timestamp.
+        A time before the first snapshot pins the earliest snapshot by id.
+        Fresh inserts record commit times a few ms before the first snapshot.
+        Iceberg rejects as-of-timestamp in that range.
         """
         snapshots = self._read_snapshots(location)
         if snapshots and (
