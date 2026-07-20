@@ -60,13 +60,13 @@ jobs:
 
       - name: Build javadoc documentation
         working-directory: java
-        # The spark-4.1 profile pins the Hops Spark fork (4.1.2.0). Its
+        # The spark-4.1 profile pins the Hops Spark fork (4.1.3.0). Its
         # artifacts are public (nexus.hops.works/repository/spark), but their
         # poms depend on io.hops:hadoop-client-* and io.hops.hive:* hosted in
         # the authenticated hops-artifacts repository, which CI (and fork PRs
         # in particular) cannot access, so CI overrides spark.version to build
         # against upstream Apache Spark instead.
-        run: mvn clean install javadoc:javadoc javadoc:aggregate -Pspark-4.1 -DskipTests -Dspark.version=4.1.2 && cp -r target/site/apidocs ../logicalclocks.github.io/docs/javadoc
+        run: mvn clean install javadoc:javadoc javadoc:aggregate -Pspark-4.1 -DskipTests -Dspark.version=4.1.3 && cp -r target/site/apidocs ../logicalclocks.github.io/docs/javadoc
 
       - name: Check for broken links
         working-directory: logicalclocks.github.io
