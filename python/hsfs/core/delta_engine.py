@@ -15,6 +15,7 @@
 #
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import warnings
@@ -27,7 +28,7 @@ from hopsworks_common.core import project_api
 from hopsworks_common.core.constants import HAS_POLARS
 from hopsworks_common.core.type_systems import _convert_offline_type_to_pyarrow_type
 from hsfs import feature_group, feature_group_commit, util
-from hsfs.core import feature_group_api, partition_grains, variable_api
+from hsfs.core import feature_group_api, partition_transforms, variable_api
 
 
 if TYPE_CHECKING:
@@ -354,6 +355,7 @@ class DeltaEngine:
             return None
 
     def _delete_record(self, delete_df):
+        partition_transforms._require_writable(self._feature_group)
         storage_options = None
         if self._spark_session is not None:
             location = self._feature_group.prepare_spark_location()
@@ -364,6 +366,7 @@ class DeltaEngine:
                 else None
             )
         else:
+            self._require_spark_for_clustered("delete from")
             location = self._get_delta_rs_location()
             storage_options = self._get_delta_rs_storage_options()
             try:
@@ -386,23 +389,6 @@ class DeltaEngine:
             raise FeatureStoreException(
                 f"Feature group {self._feature_group.name} is not DELTA enabled "
             )
-
-        # partitioned_by: the derived grain columns are partition_key, so the
-        # merge predicate (see _generate_merge_query) references them. A delete
-        # payload only carries primary key + event_time, so materialize the
-        # grains on it from event_time, exactly like the write path.
-        if self._spark_session is not None:
-            delete_df = partition_grains._materialize_grains_spark(
-                self._feature_group, delete_df
-            )
-        elif self._feature_group.partitioned_by:
-            if HAS_POLARS:
-                import polars as pl
-
-                if isinstance(delete_df, pl.DataFrame):
-                    delete_df = delete_df.to_arrow()
-            delete_df = self._prepare_df_for_delta(delete_df)
-            delete_df = self._materialize_partitioned_by_grains(delete_df)
 
         source_alias = (
             f"{self._feature_group.name}_{self._feature_group.version}_source"
@@ -428,21 +414,166 @@ class DeltaEngine:
         )
         return self._feature_group_api._commit(self._feature_group, fg_commit)
 
-    def _write_delta_dataset(self, dataset, write_options, operation="upsert"):
-        dataset = partition_grains._materialize_grains_spark(
-            self._feature_group, dataset
+    # Delta collects data-skipping statistics for the first N columns
+    # (delta.dataSkippingNumIndexedCols, default 32). Liquid clustering only
+    # accepts columns that have statistics, so a clustering column past that
+    # position would otherwise be rejected by Delta at write time.
+    DELTA_DEFAULT_INDEXED_COLS = 32
+    DELTA_NUM_INDEXED_COLS_PROPERTY = "delta.dataSkippingNumIndexedCols"
+
+    def _cluster_columns(self) -> list[str]:
+        """Return the feature group's liquid clustering columns, or []."""
+        return list(getattr(self._feature_group, "clustered_by", None) or [])
+
+    # -1 means "index all columns"; Delta treats it as unbounded statistics.
+    DELTA_ALL_INDEXED_COLS = -1
+
+    @staticmethod
+    def _leaf_count(data_type) -> int:
+        """Number of statistics leaves a Spark data type contributes.
+
+        Delta's `dataSkippingNumIndexedCols` counts leaf columns, descending
+        into structs (each nested field is counted) but treating arrays and
+        maps as a single leaf. Duck-typed on `fields` so it works with the
+        real Spark `StructType` without importing pyspark at module load.
+        """
+        fields = getattr(data_type, "fields", None)
+        if fields is None:
+            return 1
+        return sum(DeltaEngine._leaf_count(f.dataType) for f in fields)
+
+    def _required_indexed_cols(self, schema, cluster_columns: list[str]) -> int:
+        """Return the flattened statistics ordinal that covers the clustering columns.
+
+        Delta counts leaf columns when applying `dataSkippingNumIndexedCols`,
+        so a scalar column after a wide struct sits well past its top-level
+        position. Returns the highest 1-based flattened ordinal among the
+        clustering columns (0 when none resolve), which is the minimum
+        statistics width that indexes them all. Case-insensitive to match the
+        sanitized feature names.
+        """
+        targets = {c.lower() for c in cluster_columns}
+        required = 0
+        running = 0
+        for field in schema.fields:
+            if field.name.lower() in targets:
+                required = max(required, running + 1)
+            running += self._leaf_count(field.dataType)
+        return required
+
+    def _parse_indexed_cols_option(self, write_options: dict) -> int | None:
+        """Read an explicit `dataSkippingNumIndexedCols` from write options, if any."""
+        raw = (write_options or {}).get(self.DELTA_NUM_INDEXED_COLS_PROPERTY)
+        if raw is None:
+            return None
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            return None
+
+    def _reconcile_indexed_cols(
+        self, required: int, existing: int | None
+    ) -> int | None:
+        """Reconcile the required statistics width with the existing configuration.
+
+        Returns the value to set, or None to leave the current configuration
+        untouched. Only ever widens: an existing value already covering the
+        clustering columns (or the unbounded -1) is kept, and a smaller value
+        (including the implicit default) is raised to `required`.
+        """
+        if required <= 0:
+            return None
+        current = self.DELTA_DEFAULT_INDEXED_COLS if existing is None else existing
+        if current == self.DELTA_ALL_INDEXED_COLS or required <= current:
+            return None
+        return required
+
+    def _require_spark_for_clustered(self, operation: str) -> None:
+        """Reject delta-rs operations on a liquid-clustered feature group.
+
+        Liquid clustering uses the Clustering and DomainMetadata Delta writer
+        table features, which delta-rs does not implement; treating them as
+        optional would corrupt the table contract.
+        """
+        if self._cluster_columns():
+            raise FeatureStoreException(
+                f"Cannot {operation} a liquid-clustered Delta feature group "
+                "without Spark: clustering uses the Clustering and "
+                "DomainMetadata writer table features, which delta-rs does "
+                "not support. Run from a Spark environment, or use "
+                "stream=True so writes go through the Spark materialization "
+                "job."
+            )
+
+    def _create_clustered_delta_table(self, dataset, location, write_options):
+        """Create an empty Delta table at *location* with liquid clustering.
+
+        The DataFrameWriter cannot set clustering, so the table is created
+        through the DeltaTable builder and the data is then appended by the
+        caller's normal write.
+        The clustering postcondition is verified after the create:
+        `createIfNotExists` is a no-op on a pre-existing table, which could
+        otherwise leave `clustered_by` metadata pointing at an unclustered
+        table.
+        """
+        from delta.tables import DeltaTable
+
+        expected = self._cluster_columns()
+        builder = (
+            DeltaTable.createIfNotExists(self._spark_session)
+            .location(location)
+            .addColumns(dataset.schema)
+            .clusterBy(*expected)
         )
+        # Reconcile the statistics width against any user-provided override:
+        # apply the user's delta.* options first, then enforce the widened
+        # value only when the override (or the default) does not already cover
+        # the clustering columns, so an adequate user value is preserved and an
+        # inadequate one is raised rather than silently overwritten.
+        write_options = write_options or {}
+        user_indexed = self._parse_indexed_cols_option(write_options)
+        required = self._required_indexed_cols(dataset.schema, expected)
+        target = self._reconcile_indexed_cols(required, user_indexed)
+        for key, value in write_options.items():
+            if key.startswith(self.DELTA_DOT_PREFIX):
+                builder = builder.property(key, str(value))
+        if target is not None:
+            builder = builder.property(
+                self.DELTA_NUM_INDEXED_COLS_PROPERTY, str(target)
+            )
+        builder.execute()
+        actual = list(
+            self._spark_session.sql(f"DESCRIBE DETAIL delta.`{location}`")
+            .select("clusteringColumns")
+            .collect()[0][0]
+            or []
+        )
+        if actual != expected:
+            raise FeatureStoreException(
+                f"The Delta table at {location} has clustering columns "
+                f"{actual or None} instead of clustered_by={expected}: a "
+                "table already existed there, and createIfNotExists does "
+                "not alter an existing table. Align it with "
+                "update_clustering() (then optimize(full=True)) or recreate "
+                "the feature group."
+            )
+
+    def _write_delta_dataset(self, dataset, write_options, operation="upsert"):
+        partition_transforms._require_writable(self._feature_group)
         location = self._feature_group.prepare_spark_location()
         if write_options is None:
             write_options = {}
 
         if not _is_delta_table_at(self._spark_session, location):
+            cluster_columns = self._cluster_columns()
+            if cluster_columns:
+                self._create_clustered_delta_table(dataset, location, write_options)
             (
                 dataset.write.format(DeltaEngine.DELTA_SPARK_FORMAT)
                 .options(**write_options)
                 .partitionBy(
                     self._feature_group.partition_key
-                    if self._feature_group.partition_key
+                    if self._feature_group.partition_key and not cluster_columns
                     else []
                 )
                 .mode("append")
@@ -672,6 +803,8 @@ class DeltaEngine:
                 "Install 'hops-deltalake' to enable Delta RS features."
             ) from e
 
+        partition_transforms._require_writable(self._feature_group)
+        self._require_spark_for_clustered("write to")
         location = self._get_delta_rs_location()
         storage_options = self._get_delta_rs_storage_options()
 
@@ -683,7 +816,6 @@ class DeltaEngine:
                 dataset = dataset.to_arrow()
 
         dataset = self._prepare_df_for_delta(dataset)
-        dataset = self._materialize_partitioned_by_grains(dataset)
 
         append_requested = operation == "insert" or (
             isinstance(write_options, dict)
@@ -791,16 +923,6 @@ class DeltaEngine:
         return self._get_last_commit_metadata(
             self._spark_session, location, storage_options=storage_options
         )
-
-    def _materialize_partitioned_by_grains(self, table):
-        """Materialize the partitioned_by grain columns into an Arrow table.
-
-        delta-rs partitions only by real, materialized columns, so the grain
-        columns (year/month/week/day/hour) derived from event_time must be
-        present in the dataframe before the write. Shared with the PyIceberg
-        path via `partition_grains._materialize_grains_arrow`.
-        """
-        return partition_grains._materialize_grains_arrow(self._feature_group, table)
 
     @staticmethod
     def _prepare_df_for_delta(df, timestamp_precision="us"):
@@ -957,6 +1079,166 @@ class DeltaEngine:
             self._save_empty_delta_table_pyspark(write_options=write_options)
         else:
             self._save_empty_delta_table_python(write_options=write_options)
+
+    def _optimize(self, full=False, strategy=None, columns=None, where=None):
+        """Rewrite the table's data files to apply the clustering layout.
+
+        With Spark this runs `OPTIMIZE`, which incrementally clusters a
+        liquid-clustered table (and bin-packs an unclustered one); `full`
+        runs `OPTIMIZE FULL`, reclustering all existing data after the
+        clustering columns changed, `where` restricts the rewrite, and
+        `strategy="zorder"` with `columns` runs the legacy
+        `OPTIMIZE ... ZORDER BY` on unclustered tables. Without Spark, a
+        clustered feature group is rejected (delta-rs does not support the
+        clustering writer features) and an unclustered one is compacted.
+        """
+        if strategy == "sort":
+            raise FeatureStoreException(
+                "optimize(strategy='sort') is an Iceberg rewrite; Delta "
+                "orders data through liquid clustering (clustered_by)."
+            )
+        if strategy not in (None, "zorder"):
+            raise FeatureStoreException(
+                f"optimize(strategy={strategy!r}) is not a Delta strategy; "
+                "plain optimize() already compacts (and clusters a "
+                "liquid-clustered table)."
+            )
+        clustered = bool(self._cluster_columns())
+        if strategy == "zorder" and clustered:
+            raise FeatureStoreException(
+                "optimize(strategy='zorder') is incompatible with liquid "
+                "clustering: Delta rejects ZORDER BY on a clustered table. "
+                "Plain optimize() clusters incrementally; optimize(full=True) "
+                "reclusters everything."
+            )
+        if full and not clustered:
+            raise FeatureStoreException(
+                "optimize(full=True) is the liquid-clustering recluster "
+                "operation and requires a clustered feature group "
+                "(clustered_by); this feature group is not clustered."
+            )
+        if columns and strategy != "zorder":
+            raise FeatureStoreException(
+                "optimize(columns=...) on DELTA only applies to "
+                "strategy='zorder'; liquid clustering columns change through "
+                "update_clustering()."
+            )
+        if full and where:
+            raise FeatureStoreException(
+                "OPTIMIZE FULL rewrites the whole table and cannot be "
+                "combined with a where predicate."
+            )
+        if self._spark_session is not None:
+            location = self._feature_group.prepare_spark_location()
+            statement = f"OPTIMIZE delta.`{location}`"
+            if where:
+                statement += f" WHERE {where}"
+            if strategy == "zorder":
+                if not columns:
+                    raise FeatureStoreException(
+                        "optimize(strategy='zorder') on DELTA needs "
+                        "columns=[...] (legacy OPTIMIZE ZORDER BY)."
+                    )
+                # Canonicalize to the sanitized feature names so the
+                # interpolated column identifiers match the stored columns.
+                zorder_columns = [util._autofix_feature_name(c) for c in columns]
+                statement += f" ZORDER BY ({', '.join(zorder_columns)})"
+            if full:
+                statement += " FULL"
+            _logger.debug(f"Running {statement}")
+            rows = self._spark_session.sql(statement).collect()
+            return rows[0].asDict(recursive=True) if rows else None
+        self._require_spark_for_clustered("optimize")
+        if full or where or strategy:
+            raise FeatureStoreException(
+                "optimize() options (full, where, strategy) require Spark "
+                "on DELTA feature groups; delta-rs only compacts."
+            )
+        from deltalake import DeltaTable as DeltaRsTable
+
+        location = self._get_delta_rs_location()
+        storage_options = self._get_delta_rs_storage_options()
+        table = DeltaRsTable(location, storage_options=storage_options)
+        _logger.debug(f"Compacting Delta table at {location}")
+        return table.optimize.compact()
+
+    def _describe_layout(self):
+        """Read the table's actual clustering columns from Delta metadata.
+
+        Requires Spark: the clustering columns live in Delta domain
+        metadata, which delta-rs does not expose.
+        """
+        if self._spark_session is None:
+            raise FeatureStoreException(
+                "Layout introspection on DELTA feature groups requires the "
+                "Spark engine (clustering columns live in Delta domain "
+                "metadata, which delta-rs does not expose)."
+            )
+        location = self._feature_group.prepare_spark_location()
+        columns = (
+            self._spark_session.sql(f"DESCRIBE DETAIL delta.`{location}`")
+            .select("clusteringColumns")
+            .collect()[0][0]
+        )
+        return {"clustering_columns": list(columns) if columns else None}
+
+    def _update_clustering(self, columns):
+        """Change or disable the table's liquid clustering columns.
+
+        `ALTER TABLE ... CLUSTER BY` only affects new writes; the caller
+        reclusters existing data with `OPTIMIZE FULL` when needed. Requires
+        Spark: delta-rs does not support the clustering writer features.
+        """
+        if self._spark_session is None:
+            raise FeatureStoreException(
+                "update_clustering() / disable_clustering() require Spark: "
+                "Delta liquid clustering uses the Clustering and "
+                "DomainMetadata writer table features, which delta-rs does "
+                "not support."
+            )
+        location = self._feature_group.prepare_spark_location()
+        if columns:
+            # Widen statistics collection first (never shrink it) so a
+            # clustering column past the indexed range has the stats Delta
+            # requires before the CLUSTER BY takes effect. The existing
+            # property is read back so a user-configured or already-widened
+            # value is preserved.
+            schema = (
+                self._spark_session.read.format(DeltaEngine.DELTA_SPARK_FORMAT)
+                .load(location)
+                .schema
+            )
+            required = self._required_indexed_cols(schema, columns)
+            existing = self._read_indexed_cols_property(location)
+            target = self._reconcile_indexed_cols(required, existing)
+            if target is not None:
+                self._spark_session.sql(
+                    f"ALTER TABLE delta.`{location}` SET TBLPROPERTIES "
+                    f"('{self.DELTA_NUM_INDEXED_COLS_PROPERTY}' = '{target}')"
+                )
+        clause = f"({', '.join(columns)})" if columns else "NONE"
+        _logger.debug(f"Altering clustering at {location} to {clause}")
+        self._spark_session.sql(f"ALTER TABLE delta.`{location}` CLUSTER BY {clause}")
+
+    def _read_indexed_cols_property(self, location: str) -> int | None:
+        """Return the table's current `dataSkippingNumIndexedCols`, or None if unset.
+
+        Reads through `SHOW TBLPROPERTIES` so the reconciliation can preserve a
+        user-configured or previously widened value; an unset or unreadable
+        property falls back to Delta's default.
+        """
+        try:
+            rows = self._spark_session.sql(
+                f"SHOW TBLPROPERTIES delta.`{location}` "
+                f"('{self.DELTA_NUM_INDEXED_COLS_PROPERTY}')"
+            ).collect()
+        except Exception:  # noqa: BLE001 - unset property or unreadable table
+            return None
+        for row in rows:
+            value = row[1] if len(row) > 1 else None
+            with contextlib.suppress(TypeError, ValueError):
+                return int(value)
+        return None
 
     def _vacuum(self, retention_hours: int):
         location = self._feature_group.prepare_spark_location()

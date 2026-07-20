@@ -13,26 +13,26 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
-"""Cross-engine partitioned_by predicate translation.
+"""Hudi partitioned_by predicate translation.
 
 The point of materialising grain columns through the storage engine is that
 users keep writing `fg.filter(fg.event_time >= last_week)` (or
 `fg.filter(fg.year == 2026)`) like they would on any feature group, and
 partition pruning just works.
 
-The grain columns are ordinary materialized partition columns on both Delta
-and Hudi (no Delta GENERATED expressions, no Hudi timestamp key generator),
-so a filter on a grain column prunes natively on every engine, while an
-event_time range prunes on none of them. The translation is therefore the
-same for every (engine, format) combination: event_time range filters get
-equivalent grain-column predicates added.
+Only HUDI needs this translation: its grain columns are ordinary
+materialized partition columns, so a filter on a grain column prunes
+natively while an event_time range does not. Iceberg prunes event_time
+predicates itself (hidden partitioning) and Delta skips files from
+per-file statistics on the liquid clustering columns, so both are left
+untouched.
 
 The translator runs on `Query.read()` just before SQL generation. It adds
 equivalent predicates to the filter but never removes the original — the
 row-level filter still produces correct results if the storage engine's
 pruning is off.
 
-Non-hierarchical specs (e.g. `["month"]` without year, or `["year","week"]`)
+Non-hierarchical specs (e.g. month without year, or year plus week)
 limit what can be translated; the translator falls back to a row-level
 filter and emits a debug log line rather than producing incorrect ranges.
 """
@@ -44,6 +44,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from hsfs.constructor.filter import Filter, Logic
+from hsfs.core import partition_transforms
 
 
 if TYPE_CHECKING:
@@ -65,28 +66,32 @@ def _augment_filter(
     """Return `f` augmented with partition predicates for grain-column pruning.
 
     Returns the input unchanged when:
-      - `fg.partitioned_by` is None or empty, or
+      - the feature group is not HUDI (Iceberg and Delta prune natively), or
+      - `fg.partitioned_by` is None, empty, or unparseable, or
       - `fg.event_time` is None (no time anchor for the translation), or
-      - the partitioned_by spec is not a strict left-prefix of
+      - the temporal grains are not a strict left-prefix of
         `("year","month","day","hour")` — non-hierarchical specs are
         documented as not pruning on event_time ranges.
 
     Otherwise, returns the input AND'd with additional grain-column
-    predicates equivalent to the event_time range in `f`, which every
-    engine prunes on (the grain columns are real partition columns on
-    both Delta and Hudi). The original predicate is kept so the
-    row-level filter still produces correct results if pruning is off.
+    predicates equivalent to the event_time range in `f`, which Hudi prunes
+    on (the grain columns are real partition columns). The original
+    predicate is kept so the row-level filter still produces correct
+    results if pruning is off.
     """
     if f is None:
         return None
-    if not getattr(fg, "partitioned_by", None):
+    if (getattr(fg, "time_travel_format", None) or "").upper() != "HUDI":
+        return f
+    transforms = partition_transforms._try_parse(getattr(fg, "partitioned_by", None))
+    if not transforms:
         return f
     if not getattr(fg, "event_time", None):
         return f
-    grains = list(fg.partitioned_by)
+    grains = partition_transforms._temporal_grains(transforms)
     if not _is_hierarchical_prefix(grains):
         _logger.debug(
-            "partitioned_by spec %s is not a hierarchical year/month/day/hour "
+            "partitioned_by grains %s are not a hierarchical year/month/day/hour "
             "prefix; skipping predicate translation. The filter will run at "
             "row level on this engine.",
             grains,

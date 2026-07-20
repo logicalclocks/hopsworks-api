@@ -11,8 +11,6 @@
         <hops.version>3.4.3.2-EE-RC0</hops.version>
         <hsfs.version>${project.version}</hsfs.version>
         <slf4j.version>2.0.17</slf4j.version>
-        <hudi.version>1.2.0</hudi.version>
-        <spark.version>4.1.3.0</spark.version>
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
     </properties>
@@ -52,43 +50,6 @@
             <artifactId>commons-cli</artifactId>
             <version>1.10.0</version>
         </dependency>
-
-        <!-- Hudi DeltaStreamer Transformer interface for
-             PartitionedByTransformer. Provided at runtime by the
-             hudi-utilities-slim-bundle jar that the materialization-job
-             Spark image already ships (see docker-images/base-image/
-             spark-feature-pipeline/spark_install.sh). -->
-        <dependency>
-            <groupId>io.hops.hudi</groupId>
-            <artifactId>hudi-utilities_2.13</artifactId>
-            <version>${hudi.version}</version>
-            <scope>provided</scope>
-            <!-- hudi-spark-common has been published corrupt on archiva in the
-                 past (truncated jar, missing zip end-of-central-directory
-                 record), which breaks javac when it scans the compile
-                 classpath. Nothing in this module references it
-                 (PartitionedByTransformer only uses the Transformer interface,
-                 TypedProperties, and Spark SQL types), and it is provided at
-                 runtime by the Spark image, so exclude it. -->
-            <exclusions>
-                <exclusion>
-                    <groupId>io.hops.hudi</groupId>
-                    <artifactId>hudi-spark-common_2.13</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-
-        <!-- Spark SQL types referenced by PartitionedByTransformer (Dataset,
-             Row, Column, SparkSession, functions). Maven `provided` scope is
-             not transitive, so we declare them explicitly here even though
-             they're transitively present in hsfs-spark-spark4.1. -->
-        <dependency>
-            <groupId>org.apache.spark</groupId>
-            <artifactId>spark-sql_2.13</artifactId>
-            <version>${spark.version}</version>
-            <scope>provided</scope>
-        </dependency>
-
     </dependencies>
 
     <build>

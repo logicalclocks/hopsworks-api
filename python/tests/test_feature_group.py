@@ -2032,15 +2032,22 @@ def _fg_with_partitioned_by(
     partition_key=None,
     event_time="ts",
     online_partition_columns=False,
+    time_travel_format="DELTA",
+    primary_key=None,
+    zorder_by=None,
+    clustered_by=None,
+    bucket_index=None,
+    sort_order=None,
+    stream=False,
 ):
     return feature_group.FeatureGroup(
         name="test",
         version=1,
         description="d",
         online_enabled=False,
-        time_travel_format="DELTA",
+        time_travel_format=time_travel_format,
         partition_key=partition_key or [],
-        primary_key=["pk"],
+        primary_key=primary_key if primary_key is not None else ["pk"],
         foreign_key=[],
         hudi_precombine_key=None,
         featurestore_id=1,
@@ -2048,21 +2055,28 @@ def _fg_with_partitioned_by(
         features=[],
         statistics_config={},
         event_time=event_time,
-        stream=False,
+        stream=stream,
         expectation_suite=None,
         partitioned_by=partitioned_by,
         online_partition_columns=online_partition_columns,
+        zorder_by=zorder_by,
+        clustered_by=clustered_by,
+        bucket_index=bucket_index,
+        sort_order=sort_order,
     )
 
 
 class TestFeatureGroupPartitionedBy:
     @pytest.fixture(autouse=True)
-    def mock_has_deltalake(self, mocker):
-        # The helper builds DELTA feature groups; stub the delta-library probe
-        # so these metadata/property tests run where deltalake is not installed
-        # (e.g. the Windows CI runner).
+    def mock_offline_format_libraries(self, mocker):
+        # The helper builds DELTA/ICEBERG feature groups; stub the library
+        # probes so these metadata/property tests run where deltalake or
+        # pyiceberg is not installed (e.g. the Windows CI runner).
         mocker.patch(
             "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_pyiceberg", return_value=True
         )
 
     def test_partitioned_by_default_none(self):
@@ -2070,47 +2084,538 @@ class TestFeatureGroupPartitionedBy:
         assert fg.partitioned_by is None
         assert fg.online_partition_columns is False
 
-    def test_partitioned_by_round_trips_on_object(self):
-        fg = _fg_with_partitioned_by(partitioned_by=["year", "month"])
-        assert fg.partitioned_by == ["year", "month"]
+    def test_partitioned_by_round_trips_canonicalized(self):
+        fg = _fg_with_partitioned_by(
+            partitioned_by=["DAY( ts )", "bucket( 16 , pk )"],
+            time_travel_format="ICEBERG",
+        )
+        assert fg.partitioned_by == ["day(ts)", "bucket(16,pk)"]
 
     def test_online_partition_columns_round_trips(self):
         fg = _fg_with_partitioned_by(
-            partitioned_by=["day"], online_partition_columns=True
+            partitioned_by=["day(ts)"],
+            online_partition_columns=True,
+            time_travel_format="HUDI",
         )
         assert fg.online_partition_columns is True
 
     def test_partitioned_by_in_to_dict(self):
-        fg = _fg_with_partitioned_by(partitioned_by=["year", "month"])
+        fg = _fg_with_partitioned_by(
+            partitioned_by=["year(ts)", "month(ts)"], time_travel_format="HUDI"
+        )
         d = fg.to_dict()
-        assert d["partitionedBy"] == ["year", "month"]
+        assert d["partitionedBy"] == ["year(ts)", "month(ts)"]
         assert d["onlinePartitionColumns"] is False
 
     def test_partitioned_by_and_partition_key_raises(self):
         with pytest.raises(FeatureStoreException, match="Set either partition_key"):
             _fg_with_partitioned_by(
-                partitioned_by=["year"], partition_key=["other_col"]
+                partitioned_by=["year(ts)"], partition_key=["other_col"]
             )
 
-    def test_partitioned_by_requires_event_time(self):
-        with pytest.raises(FeatureStoreException, match="requires event_time"):
-            _fg_with_partitioned_by(partitioned_by=["day"], event_time=None)
+    def test_partitioned_by_rejects_old_grain_form(self):
+        with pytest.raises(FeatureStoreException, match="removed grain form") as e:
+            _fg_with_partitioned_by(partitioned_by=["year", "month"])
+        # the error points at the transform form on the event_time column
+        assert "year(event_time_col)" in str(e.value)
 
-    def test_partitioned_by_rejects_bad_grain(self):
-        with pytest.raises(FeatureStoreException, match="invalid grains.*minute"):
-            _fg_with_partitioned_by(partitioned_by=["minute"])
+    def test_partitioned_by_rejects_unknown_transform(self):
+        with pytest.raises(FeatureStoreException, match="Unknown partition transform"):
+            _fg_with_partitioned_by(partitioned_by=["minute(ts)"])
 
     def test_partitioned_by_rejects_duplicates(self):
-        with pytest.raises(FeatureStoreException, match="duplicate grains"):
-            _fg_with_partitioned_by(partitioned_by=["day", "day"])
+        with pytest.raises(FeatureStoreException, match="duplicate transform"):
+            _fg_with_partitioned_by(partitioned_by=["day(ts)", "day(ts)"])
 
-    def test_partitioned_by_rejects_empty_list(self):
+    def test_validate_partitioned_by_rejects_empty_list(self):
+        # The validator rejects []; the constructor normalizes [] to None
+        # before validating, so the check is unit-tested directly.
         with pytest.raises(FeatureStoreException, match="non-empty list"):
-            _fg_with_partitioned_by(partitioned_by=[])
+            feature_group._validate_partitioned_by([], None, "ts", "DELTA", ["pk"])
 
-    def test_partitioned_by_event_time_collision(self):
-        with pytest.raises(FeatureStoreException, match="collides with a"):
-            _fg_with_partitioned_by(partitioned_by=["year"], event_time="year")
+    def test_partitioned_by_requires_supported_format(self):
+        with pytest.raises(FeatureStoreException, match="requires time_travel_format"):
+            _fg_with_partitioned_by(partitioned_by=["day(ts)"], time_travel_format=None)
+
+    def test_partitioned_by_iceberg_needs_no_event_time(self):
+        # transforms name their source column explicitly; only HUDI temporal
+        # grains still require event_time
+        fg = _fg_with_partitioned_by(
+            partitioned_by=["day(ts)"], event_time=None, time_travel_format="ICEBERG"
+        )
+        assert fg.partitioned_by == ["day(ts)"]
+
+    def test_partitioned_by_event_time_named_like_grain_allowed(self):
+        # the old grain-name/event_time collision check is gone: an event_time
+        # column named "year" is a valid transform source
+        fg = _fg_with_partitioned_by(
+            partitioned_by=["year(year)"],
+            event_time="year",
+            time_travel_format="HUDI",
+        )
+        assert fg.partitioned_by == ["year(year)"]
+
+    def test_partitioned_by_iceberg_rejects_week(self):
+        with pytest.raises(FeatureStoreException, match="not supported for"):
+            _fg_with_partitioned_by(
+                partitioned_by=["week(ts)"], time_travel_format="ICEBERG"
+            )
+
+    def test_partitioned_by_iceberg_rejects_redundant_temporal(self):
+        with pytest.raises(FeatureStoreException, match="at most one temporal"):
+            _fg_with_partitioned_by(
+                partitioned_by=["year(ts)", "day(ts)"], time_travel_format="ICEBERG"
+            )
+
+    def test_partitioned_by_rejected_on_delta(self):
+        # Delta has no partition transforms; liquid clustering goes through
+        # clustered_by and identity partitions through partition_key
+        with pytest.raises(FeatureStoreException, match="not supported on DELTA") as e:
+            _fg_with_partitioned_by(partitioned_by=["day(ts)"])
+        assert "clustered_by" in str(e.value)
+
+    def test_partitioned_by_hudi_temporal_requires_event_time(self):
+        with pytest.raises(FeatureStoreException, match="requires event_time"):
+            _fg_with_partitioned_by(
+                partitioned_by=["day(ts)"],
+                event_time=None,
+                time_travel_format="HUDI",
+            )
+
+    def test_partitioned_by_hudi_temporal_source_must_be_event_time(self):
+        with pytest.raises(FeatureStoreException, match="event_time column"):
+            _fg_with_partitioned_by(
+                partitioned_by=["day(created)"], time_travel_format="HUDI"
+            )
+
+    def test_partitioned_by_hudi_rejects_bucket_transform(self):
+        # the Hudi bucket index goes through bucket_index, not a transform
+        with pytest.raises(
+            FeatureStoreException, match="not supported for time_travel_format=HUDI"
+        ):
+            _fg_with_partitioned_by(
+                partitioned_by=["bucket(4, pk)"], time_travel_format="HUDI"
+            )
+
+
+class TestFeatureGroupZorderBy:
+    @pytest.fixture(autouse=True)
+    def mock_offline_format_libraries(self, mocker):
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_pyiceberg", return_value=True
+        )
+
+    def test_zorder_by_default_none(self):
+        fg = _fg_with_partitioned_by(time_travel_format="ICEBERG")
+        assert fg.zorder_by is None
+        assert "zorderBy" not in fg.to_dict()
+
+    def test_zorder_by_round_trips_iceberg(self):
+        fg = _fg_with_partitioned_by(
+            time_travel_format="ICEBERG", zorder_by=["merchant_id", "amount"]
+        )
+        assert fg.zorder_by == ["merchant_id", "amount"]
+        assert fg.to_dict()["zorderBy"] == ["merchant_id", "amount"]
+
+    def test_zorder_by_valid_on_hudi(self):
+        fg = _fg_with_partitioned_by(time_travel_format="HUDI", zorder_by=["amount"])
+        assert fg.zorder_by == ["amount"]
+
+    def test_zorder_by_composes_with_partitioned_by(self):
+        fg = _fg_with_partitioned_by(
+            time_travel_format="ICEBERG",
+            partitioned_by=["day(ts)"],
+            zorder_by=["amount"],
+        )
+        assert fg.partitioned_by == ["day(ts)"]
+        assert fg.zorder_by == ["amount"]
+
+    def test_zorder_by_rejected_on_delta(self):
+        with pytest.raises(FeatureStoreException, match="liquid clustering"):
+            _fg_with_partitioned_by(time_travel_format="DELTA", zorder_by=["amount"])
+
+    def test_zorder_by_rejected_without_time_travel_format(self):
+        with pytest.raises(FeatureStoreException, match="ICEBERG or HUDI"):
+            _fg_with_partitioned_by(time_travel_format=None, zorder_by=["amount"])
+
+    def test_zorder_by_rejects_duplicates(self):
+        with pytest.raises(FeatureStoreException, match="duplicate"):
+            _fg_with_partitioned_by(
+                time_travel_format="ICEBERG", zorder_by=["amount", "amount"]
+            )
+
+    def test_zorder_by_caps_columns(self):
+        with pytest.raises(FeatureStoreException, match="at most"):
+            _fg_with_partitioned_by(
+                time_travel_format="ICEBERG", zorder_by=["a", "b", "c", "d", "e"]
+            )
+
+    def test_validate_zorder_by_rejects_empty_list(self):
+        # The validator rejects []; the constructor normalizes [] to None
+        # before validating, so the check is unit-tested directly.
+        with pytest.raises(FeatureStoreException, match="non-empty list"):
+            feature_group._validate_zorder_by([], "ICEBERG")
+
+    def test_sort_order_round_trips_canonical(self):
+        fg = _fg_with_partitioned_by(
+            time_travel_format="ICEBERG", sort_order=["amount desc"]
+        )
+        assert fg.sort_order == ["amount desc nulls last"]
+        assert fg.to_dict()["sortOrder"] == ["amount desc nulls last"]
+
+    def test_sort_order_and_zorder_by_mutually_exclusive(self):
+        # The two prescribe conflicting file layouts: writes would sort
+        # linearly while optimize() rewrites on the z-curve.
+        with pytest.raises(FeatureStoreException, match="not both"):
+            _fg_with_partitioned_by(
+                time_travel_format="ICEBERG",
+                sort_order=["amount desc"],
+                zorder_by=["merchant_id"],
+            )
+
+    def test_zorder_by_canonicalized_to_lower_case(self):
+        fg = _fg_with_partitioned_by(
+            time_travel_format="ICEBERG", zorder_by=["Merchant_ID", "Amount"]
+        )
+        assert fg.zorder_by == ["merchant_id", "amount"]
+
+    def test_zorder_by_rejects_case_insensitive_duplicates(self):
+        with pytest.raises(FeatureStoreException, match="duplicate"):
+            _fg_with_partitioned_by(
+                time_travel_format="ICEBERG", zorder_by=["id", "ID"]
+            )
+
+    def test_optimize_delegates_to_engine(self, mocker):
+        fg = _fg_with_partitioned_by(time_travel_format="ICEBERG", zorder_by=["amount"])
+        fg._feature_group_engine = mocker.Mock()
+        fg.optimize()
+        fg._feature_group_engine._optimize.assert_called_once_with(
+            fg,
+            full=False,
+            strategy=None,
+            columns=None,
+            rewrite_all=None,
+            target_file_size_mb=None,
+            where=None,
+        )
+
+    def test_optimize_full_passes_through(self, mocker):
+        fg = _fg_with_partitioned_by(time_travel_format="ICEBERG")
+        fg._feature_group_engine = mocker.Mock()
+        fg.optimize(full=True)
+        fg._feature_group_engine._optimize.assert_called_once_with(
+            fg,
+            full=True,
+            strategy=None,
+            columns=None,
+            rewrite_all=None,
+            target_file_size_mb=None,
+            where=None,
+        )
+
+    def test_update_partition_spec_delegates_to_engine(self, mocker):
+        fg = _fg_with_partitioned_by(
+            time_travel_format="ICEBERG", partitioned_by=["day(ts)"]
+        )
+        fg._feature_group_engine = mocker.Mock()
+        result = fg.update_partition_spec(add=["hour(ts)"], remove=["day(ts)"])
+        fg._feature_group_engine._update_partition_spec.assert_called_once_with(
+            fg, ["hour(ts)"], ["day(ts)"]
+        )
+        assert result is fg
+
+    def test_update_partition_spec_no_args_delegates_reconcile(self, mocker):
+        # a no-arg call is reconcile mode: the engine re-syncs the stored
+        # metadata from the table without changing the spec
+        fg = _fg_with_partitioned_by(
+            time_travel_format="ICEBERG", partitioned_by=["day(ts)"]
+        )
+        fg._feature_group_engine = mocker.Mock()
+        result = fg.update_partition_spec()
+        fg._feature_group_engine._update_partition_spec.assert_called_once_with(
+            fg, None, None
+        )
+        assert result is fg
+
+    @pytest.mark.parametrize(
+        "getter", ["get_partition_spec", "get_partition_specs", "get_sort_order"]
+    )
+    def test_iceberg_layout_getters_reject_other_formats(self, mocker, getter):
+        fg = _fg_with_partitioned_by(time_travel_format="HUDI")
+        fg._feature_group_engine = mocker.Mock()
+        with pytest.raises(
+            FeatureStoreException, match="requires a ICEBERG feature group"
+        ) as e:
+            getattr(fg, getter)()
+        # the format-independent alternative is pointed out
+        assert "describe_layout()" in str(e.value)
+        fg._feature_group_engine._describe_layout.assert_not_called()
+
+    def test_get_partition_spec_reads_layout(self, mocker):
+        fg = _fg_with_partitioned_by(time_travel_format="ICEBERG")
+        fg._feature_group_engine = mocker.Mock()
+        fg._feature_group_engine._describe_layout.return_value = {
+            "partition_spec": ["ts_day: day(ts)"]
+        }
+        assert fg.get_partition_spec() == ["ts_day: day(ts)"]
+
+    def test_get_clustering_columns_rejects_non_delta(self, mocker):
+        fg = _fg_with_partitioned_by(time_travel_format="ICEBERG")
+        fg._feature_group_engine = mocker.Mock()
+        with pytest.raises(
+            FeatureStoreException, match="requires a DELTA feature group"
+        ) as e:
+            fg.get_clustering_columns()
+        assert "describe_layout()" in str(e.value)
+        fg._feature_group_engine._describe_layout.assert_not_called()
+
+    def test_get_clustering_columns_reads_layout(self, mocker):
+        fg = _fg_with_partitioned_by(time_travel_format="DELTA")
+        fg._feature_group_engine = mocker.Mock()
+        fg._feature_group_engine._describe_layout.return_value = {
+            "clustering_columns": ["ts", "id"]
+        }
+        assert fg.get_clustering_columns() == ["ts", "id"]
+
+
+class TestFeatureGroupClusteredBy:
+    @pytest.fixture(autouse=True)
+    def mock_offline_format_libraries(self, mocker):
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_pyiceberg", return_value=True
+        )
+
+    def test_clustered_by_default_none(self):
+        fg = _fg_with_partitioned_by()
+        assert fg.clustered_by is None
+        assert "clusteredBy" not in fg.to_dict()
+
+    def test_clustered_by_round_trips_delta(self):
+        # stream=True routes python-engine writes through the Spark
+        # materialization job, satisfying the Spark-writers requirement
+        fg = _fg_with_partitioned_by(
+            clustered_by=["merchant_id", "amount"], stream=True
+        )
+        assert fg.clustered_by == ["merchant_id", "amount"]
+        assert fg.to_dict()["clusteredBy"] == ["merchant_id", "amount"]
+
+    def test_clustered_by_property_returns_copy(self):
+        fg = _fg_with_partitioned_by(clustered_by=["amount"], stream=True)
+        fg.clustered_by.append("mutated")
+        assert fg.clustered_by == ["amount"]
+
+    def test_clustered_by_empty_list_sentinel_serializes(self):
+        # [] is the clear sentinel written by the layout evolution APIs; it
+        # must serialize (unlike None) so the backend clears the stored spec
+        fg = _fg_with_partitioned_by(clustered_by=["amount"], stream=True)
+        fg._clustered_by = []
+        assert fg.to_dict()["clusteredBy"] == []
+        assert fg.clustered_by is None
+
+    @pytest.mark.parametrize("fmt", ["ICEBERG", "HUDI", None])
+    def test_clustered_by_requires_delta(self, fmt):
+        with pytest.raises(
+            FeatureStoreException, match="requires\\s+time_travel_format DELTA"
+        ):
+            _fg_with_partitioned_by(
+                clustered_by=["amount"], time_travel_format=fmt, stream=True
+            )
+
+    def test_clustered_by_rejects_duplicates(self):
+        with pytest.raises(FeatureStoreException, match="duplicate"):
+            _fg_with_partitioned_by(clustered_by=["amount", "amount"], stream=True)
+
+    def test_clustered_by_caps_columns(self):
+        with pytest.raises(FeatureStoreException, match="at most"):
+            _fg_with_partitioned_by(clustered_by=["a", "b", "c", "d", "e"], stream=True)
+
+    def test_validate_clustered_by_rejects_empty_list(self):
+        # The validator rejects []; the constructor normalizes [] to None
+        # before validating, so the check is unit-tested directly.
+        with pytest.raises(FeatureStoreException, match="non-empty list"):
+            feature_group._validate_clustered_by([], "DELTA", None)
+
+    def test_clustered_by_and_partition_key_mutually_exclusive(self):
+        with pytest.raises(
+            FeatureStoreException, match="Set either partition_key or clustered_by"
+        ):
+            _fg_with_partitioned_by(
+                clustered_by=["amount"], partition_key=["region"], stream=True
+            )
+
+    def test_clustered_by_python_engine_requires_stream(self, mocker):
+        # delta-rs cannot write the Clustering/DomainMetadata table features,
+        # so a python-engine clustered feature group must use stream=True
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        with pytest.raises(
+            FeatureStoreException, match="clustered_by requires Spark writers"
+        ):
+            _fg_with_partitioned_by(clustered_by=["amount"], stream=False)
+
+    def test_clustered_by_python_engine_stream_true_allowed(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        fg = _fg_with_partitioned_by(clustered_by=["amount"], stream=True)
+        assert fg.clustered_by == ["amount"]
+
+    def test_clustered_by_spark_engine_allowed_without_stream(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        fg = _fg_with_partitioned_by(clustered_by=["amount"], stream=False)
+        assert fg.clustered_by == ["amount"]
+
+    def test_zorder_by_rejected_on_delta_points_at_clustered_by(self):
+        with pytest.raises(FeatureStoreException, match="Use clustered_by"):
+            _fg_with_partitioned_by(zorder_by=["amount"])
+
+    def test_update_clustering_delegates_to_engine(self, mocker):
+        fg = _fg_with_partitioned_by(clustered_by=["amount"], stream=True)
+        fg._feature_group_engine = mocker.Mock()
+        result = fg.update_clustering(["ts", "amount"])
+        fg._feature_group_engine._update_clustering.assert_called_once_with(
+            fg, ["ts", "amount"]
+        )
+        assert result is fg
+
+    def test_disable_clustering_delegates_to_engine(self, mocker):
+        fg = _fg_with_partitioned_by(clustered_by=["amount"], stream=True)
+        fg._feature_group_engine = mocker.Mock()
+        result = fg.disable_clustering()
+        fg._feature_group_engine._update_clustering.assert_called_once_with(fg, None)
+        assert result is fg
+
+
+class TestFeatureGroupBucketIndex:
+    @pytest.fixture(autouse=True)
+    def mock_offline_format_libraries(self, mocker):
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_pyiceberg", return_value=True
+        )
+
+    def test_bucket_index_default_none(self):
+        fg = _fg_with_partitioned_by(time_travel_format="HUDI")
+        assert fg.bucket_index is None
+        assert "bucketIndex" not in fg.to_dict()
+
+    def test_bucket_index_round_trips_hudi(self):
+        fg = _fg_with_partitioned_by(
+            time_travel_format="HUDI",
+            bucket_index={"field": "pk", "num_buckets": 16},
+        )
+        assert fg.bucket_index == {"field": "pk", "num_buckets": 16}
+        assert fg.to_dict()["bucketIndex"] == {"field": "pk", "numBuckets": 16}
+
+    def test_bucket_index_property_returns_copy(self):
+        fg = _fg_with_partitioned_by(
+            time_travel_format="HUDI",
+            bucket_index={"field": "pk", "num_buckets": 16},
+        )
+        fg.bucket_index["num_buckets"] = 99
+        assert fg.bucket_index == {"field": "pk", "num_buckets": 16}
+
+    def test_bucket_index_field_canonicalized_to_lower_case(self):
+        # Feature names are sanitized to lower case; the field must match the
+        # stored primary key ("pk") even when the caller spells it "PK".
+        fg = _fg_with_partitioned_by(
+            time_travel_format="HUDI",
+            bucket_index={"field": "PK", "num_buckets": 16},
+        )
+        assert fg.bucket_index["field"] == "pk"
+
+    @pytest.mark.parametrize(
+        "bucket_index",
+        [
+            {"field": "pk"},
+            {"num_buckets": 16},
+            {"field": "pk", "num_buckets": 16, "extra": 1},
+            {},
+        ],
+    )
+    def test_bucket_index_requires_exact_keys(self, bucket_index):
+        with pytest.raises(FeatureStoreException, match="must be a dict with"):
+            _fg_with_partitioned_by(
+                time_travel_format="HUDI", bucket_index=bucket_index
+            )
+
+    def test_validate_bucket_index_rejects_non_dict(self):
+        with pytest.raises(FeatureStoreException, match="must be a dict with"):
+            feature_group._validate_bucket_index(["pk", 16], "HUDI", ["pk"])
+
+    def test_bucket_index_simple_engine_allowed(self):
+        fg = _fg_with_partitioned_by(
+            time_travel_format="HUDI",
+            bucket_index={"field": "pk", "num_buckets": 16, "engine": "simple"},
+        )
+        assert fg.bucket_index == {
+            "field": "pk",
+            "num_buckets": 16,
+            "engine": "simple",
+        }
+
+    def test_bucket_index_rejects_consistent_hashing_engine(self):
+        # consistent hashing needs a merge-on-read table with a clustering
+        # lifecycle, which copy-on-write Hudi feature groups do not have
+        with pytest.raises(FeatureStoreException, match="merge-on-read") as e:
+            _fg_with_partitioned_by(
+                time_travel_format="HUDI",
+                bucket_index={
+                    "field": "pk",
+                    "num_buckets": 16,
+                    "engine": "consistent_hashing",
+                },
+            )
+        assert "'engine' must be 'simple'" in str(e.value)
+
+    @pytest.mark.parametrize("num_buckets", [0, -1, "16", 1.5])
+    def test_bucket_index_num_buckets_must_be_positive_int(self, num_buckets):
+        with pytest.raises(FeatureStoreException, match="positive integer"):
+            _fg_with_partitioned_by(
+                time_travel_format="HUDI",
+                bucket_index={"field": "pk", "num_buckets": num_buckets},
+            )
+
+    @pytest.mark.parametrize("fmt", ["ICEBERG", "DELTA", None])
+    def test_bucket_index_requires_hudi(self, fmt):
+        with pytest.raises(
+            FeatureStoreException, match="requires\\s+time_travel_format HUDI"
+        ):
+            _fg_with_partitioned_by(
+                time_travel_format=fmt,
+                bucket_index={"field": "pk", "num_buckets": 16},
+            )
+
+    def test_bucket_index_field_must_be_in_primary_key(self):
+        with pytest.raises(FeatureStoreException, match="primary key"):
+            _fg_with_partitioned_by(
+                time_travel_format="HUDI",
+                bucket_index={"field": "amount", "num_buckets": 16},
+            )
+
+    def test_bucket_index_field_check_skipped_without_primary_key(self):
+        # the backend validates against the final schema; without a client-side
+        # primary key there is nothing to check against
+        fg = _fg_with_partitioned_by(
+            time_travel_format="HUDI",
+            primary_key=[],
+            bucket_index={"field": "amount", "num_buckets": 16},
+        )
+        assert fg.bucket_index == {"field": "amount", "num_buckets": 16}
+
+    def test_bucket_index_composes_with_partitioned_by(self):
+        fg = _fg_with_partitioned_by(
+            time_travel_format="HUDI",
+            partitioned_by=["year(ts)"],
+            bucket_index={"field": "pk", "num_buckets": 8},
+        )
+        assert fg.partitioned_by == ["year(ts)"]
+        assert fg.bucket_index == {"field": "pk", "num_buckets": 8}
 
 
 class TestFeatureGroupVisualize:

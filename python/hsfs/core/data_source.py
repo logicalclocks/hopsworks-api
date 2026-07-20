@@ -26,10 +26,12 @@ from hsfs import storage_connector as sc
 
 
 if TYPE_CHECKING:
+    from hopsworks_common.job_schedule import JobSchedule
     from hsfs import feature_group as fg
     from hsfs.core import data_source_data as dsd
     from hsfs.core.explicit_provenance import Links
     from hsfs.core.inferred_metadata import InferredMetadata
+    from hsfs.core.multi_table_ingestion import MultiTableIngestionJob
     from hsfs.training_dataset import TrainingDataset
 
 
@@ -394,6 +396,196 @@ class DataSource:
             hopsworks.client.exceptions.PlatformIntelligenceException: If platform intelligence is not enabled on the cluster, or the LLM call fails.
         """
         return self._storage_connector.infer_metadata(self, preview_data=preview_data)
+
+    @public
+    def new_ingestion_job(
+        self,
+        name: str,
+        *,
+        table_parallelism: int = 1,
+        environment_name: str | None = None,
+        transform_script_path: str | None = None,
+        write_mode: str | None = None,
+        batch_size: int | None = None,
+        sql_source_fetch_chunk_size: int | None = None,
+        source_read_workers: int | None = None,
+        data_processing_workers: int | None = None,
+        max_upload_batch_size_mb: int | None = None,
+        sql_table_num_partitions: int | None = None,
+        schedule_config: JobSchedule | dict | None = None,
+    ) -> MultiTableIngestionJob:
+        """Start assembling a multi-table ingestion job for this data source.
+
+        Returns an empty [`MultiTableIngestionJob`][hsfs.core.multi_table_ingestion.MultiTableIngestionJob]
+        you attach feature groups to, either by passing it as `sink_job` when creating
+        each feature group or by calling
+        [`MultiTableIngestionJob.add_target`][hsfs.core.multi_table_ingestion.MultiTableIngestionJob.add_target].
+        Nothing is created on the server until you call
+        [`MultiTableIngestionJob.save`][hsfs.core.multi_table_ingestion.MultiTableIngestionJob.save], so the
+        job is built atomically from the full set of targets.
+
+        The arguments here are the job-level defaults every target inherits unless it
+        overrides them.
+
+        Example:
+            ```python
+            fs = ...
+            data_source = fs.get_data_source("hubspot")
+
+            job = data_source.new_ingestion_job(name="hubspot_ingestion", table_parallelism=2)
+
+            fs.get_or_create_feature_group(
+                "contacts", version=1, data_source=data_source,
+                sink_enabled=True, sink_job=job,
+            ).save()
+            fs.get_or_create_feature_group(
+                "companies", version=1, data_source=data_source,
+                sink_enabled=True, sink_job=job,
+            ).save()
+
+            job.save()   # creates one job with both feature groups as targets
+            job.run()
+            ```
+
+        Parameters:
+            name: Name of the ingestion job to create.
+            table_parallelism: How many tables run at the same time; `1` runs them sequentially.
+            environment_name: Python environment the job runs in.
+            transform_script_path: Default transformation script path for targets that do not set their own.
+            write_mode: Default write mode (`APPEND` or `MERGE`) for targets that do not set their own.
+            batch_size: Default write batch size.
+            sql_source_fetch_chunk_size: Default source fetch chunk size for SQL sources.
+            source_read_workers: Default number of source read workers.
+            data_processing_workers: Default number of data processing workers.
+            max_upload_batch_size_mb: Default maximum upload batch size in MB.
+            sql_table_num_partitions: Default number of read partitions for SQL sources.
+            schedule_config: Optional schedule for the job.
+
+        Returns:
+            An empty ingestion job to collect targets on.
+        """
+        from hsfs.core.multi_table_ingestion import MultiTableIngestionJob
+
+        if self._storage_connector is None:
+            raise ValueError("The data source has no storage connector to ingest from.")
+
+        return MultiTableIngestionJob(
+            self,
+            name,
+            table_parallelism=table_parallelism,
+            environment_name=environment_name,
+            transform_script_path=transform_script_path,
+            write_mode=write_mode,
+            batch_size=batch_size,
+            sql_source_fetch_chunk_size=sql_source_fetch_chunk_size,
+            source_read_workers=source_read_workers,
+            data_processing_workers=data_processing_workers,
+            max_upload_batch_size_mb=max_upload_batch_size_mb,
+            sql_table_num_partitions=sql_table_num_partitions,
+            schedule_config=schedule_config,
+        )
+
+    @public
+    def estimate_ingestion_resources(
+        self,
+        feature_group: fg.FeatureGroup | None = None,
+        *,
+        feature_group_id: int | None = None,
+        write_mode: str | None = None,
+        loading_strategy: str | None = None,
+        batch_size: int | None = None,
+        sql_source_fetch_chunk_size: int | None = None,
+        source_read_workers: int | None = None,
+        data_processing_workers: int | None = None,
+        max_upload_batch_size_mb: int | None = None,
+        sql_table_num_partitions: int | None = None,
+        transform_script_path: str | None = None,
+        configured_memory_mb: int | None = None,
+        configured_cpu_cores: float | None = None,
+    ) -> dict:
+        """Estimate the memory and CPU an ingestion into a feature group needs.
+
+        Calls the same backend the UI uses to size a DLTHub ingestion job.
+        It derives a recommendation from the feature group's schema and the runtime
+        knobs you pass, so you can set `resource_config` on a
+        [`TableIngestionTarget`][hopsworks_common.core.sink_job_configuration.TableIngestionTarget]
+        (or the worker resources of a single sink job) before running an ingestion,
+        instead of guessing.
+        Pass the same runtime knobs you intend to run the ingestion with, since a
+        larger batch size or more workers raises the estimate.
+
+        Example:
+            ```python
+            fs = ...
+            data_source = fs.get_data_source("hubspot")
+            contacts_fg = fs.get_feature_group("contacts", version=1)
+
+            estimate = data_source.estimate_ingestion_resources(
+                contacts_fg,
+                write_mode="MERGE",
+                batch_size=200000,
+            )
+            print(estimate["recommendedMemoryMb"], estimate["recommendedCpuCores"])
+            ```
+
+        Parameters:
+            feature_group: The feature group the ingestion writes to; supplies the schema the estimate is based on.
+            feature_group_id: Id of the target feature group, as an alternative to passing `feature_group`.
+            write_mode: Write mode the ingestion will run with (`APPEND` or `MERGE`).
+            loading_strategy: Loading strategy the ingestion will run with.
+            batch_size: Write batch size the ingestion will run with.
+            sql_source_fetch_chunk_size: Source fetch chunk size for SQL sources.
+            source_read_workers: Number of source read workers.
+            data_processing_workers: Number of data processing workers.
+            max_upload_batch_size_mb: Maximum upload batch size in MB.
+            sql_table_num_partitions: Number of read partitions for SQL sources.
+            transform_script_path: Path of a transformation script the ingestion will run.
+            configured_memory_mb: Memory you plan to give the job, to compare against the recommendation.
+            configured_cpu_cores: CPU cores you plan to give the job, to compare against the recommendation.
+
+        Returns:
+            The backend estimation, including `recommendedMemoryMb`, `recommendedCpuCores`, `confidence`, `peakStage`, `reasons`, and `warnings`.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
+        """
+        from hsfs.core.data_source_api import DataSourceApi
+
+        if self._storage_connector is None:
+            raise ValueError("The data source has no storage connector to ingest from.")
+
+        resolved_id = feature_group_id
+        if resolved_id is None and feature_group is not None:
+            resolved_id = feature_group.id
+        if resolved_id is None:
+            raise ValueError(
+                "Pass either a feature_group or a feature_group_id to estimate for."
+            )
+
+        payload = {
+            "featuregroupId": resolved_id,
+            "featurestoreId": self._storage_connector._featurestore_id,
+        }
+        optional = {
+            "writeMode": write_mode,
+            "loadingStrategy": loading_strategy,
+            "batchSize": batch_size,
+            "sqlSourceFetchChunkSize": sql_source_fetch_chunk_size,
+            "sourceReadWorkers": source_read_workers,
+            "dataProcessingWorkers": data_processing_workers,
+            "maxUploadBatchSizeMB": max_upload_batch_size_mb,
+            "sqlTableNumPartitions": sql_table_num_partitions,
+            "transformScriptPath": transform_script_path,
+            "configuredMemoryMb": configured_memory_mb,
+            "configuredCpuCores": configured_cpu_cores,
+        }
+        payload.update(
+            {key: value for key, value in optional.items() if value is not None}
+        )
+
+        return DataSourceApi()._estimate_ingestion_resources(
+            self._storage_connector, payload
+        )
 
     @public
     def get_feature_groups_provenance(self) -> Links | None:

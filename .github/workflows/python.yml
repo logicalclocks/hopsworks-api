@@ -164,6 +164,15 @@ jobs:
       - name: Display Python version
         run: python --version
 
+      # A transient Maven Central failure while resolving spark-avro kills the
+      # Spark JVM at launch (JAVA_GATEWAY_EXITED) and fails every Spark test in
+      # the job. Cache the resolved ivy artifacts so warm runs never re-resolve.
+      - name: Cache Spark ivy packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.ivy2
+          key: ivy-spark-avro-3.5.5
+
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
         run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.13:4.1.1 pyspark-shell" >> $GITHUB_ENV
 
@@ -204,6 +213,15 @@ jobs:
         run: |
           uv cache clean hopsworks
           uv sync --extra dev-no-opt --project python --reinstall-package hopsworks
+
+      # A transient Maven Central failure while resolving spark-avro kills the
+      # Spark JVM at launch (JAVA_GATEWAY_EXITED) and fails every Spark test in
+      # the job. Cache the resolved ivy artifacts so warm runs never re-resolve.
+      - name: Cache Spark ivy packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.ivy2
+          key: ivy-spark-avro-3.5.5
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
         run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.13:4.1.1 pyspark-shell" >> $GITHUB_ENV
@@ -249,6 +267,15 @@ jobs:
       - name: Display Python version
         run: python --version
 
+      # A transient Maven Central failure while resolving spark-avro kills the
+      # Spark JVM at launch (JAVA_GATEWAY_EXITED) and fails every Spark test in
+      # the job. Cache the resolved ivy artifacts so warm runs never re-resolve.
+      - name: Cache Spark ivy packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.ivy2
+          key: ivy-spark-avro-3.5.5
+
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
         run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.13:4.1.1 pyspark-shell" >> $GITHUB_ENV
 
@@ -292,6 +319,15 @@ jobs:
 
       - name: Pin Great Expectations and Polars to lower bounds
         run: uv pip install "great-expectations==0.18.12" "polars==0.20.31"
+
+      # A transient Maven Central failure while resolving spark-avro kills the
+      # Spark JVM at launch (JAVA_GATEWAY_EXITED) and fails every Spark test in
+      # the job. Cache the resolved ivy artifacts so warm runs never re-resolve.
+      - name: Cache Spark ivy packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.ivy2
+          key: ivy-spark-avro-3.5.5
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
         run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.13:4.1.1 pyspark-shell" >> $GITHUB_ENV
@@ -337,6 +373,15 @@ jobs:
       - name: Display Python version
         run: python --version
 
+      # A transient Maven Central failure while resolving spark-avro kills the
+      # Spark JVM at launch (JAVA_GATEWAY_EXITED) and fails every Spark test in
+      # the job. Cache the resolved ivy artifacts so warm runs never re-resolve.
+      - name: Cache Spark ivy packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.ivy2
+          key: ivy-spark-avro-3.5.5
+
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
         run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.13:4.1.1 pyspark-shell" >> $GITHUB_ENV
 
@@ -368,6 +413,15 @@ jobs:
         run: |
           uv cache clean hopsworks
           uv sync --extra dev --project python --reinstall-package hopsworks
+
+      # A transient Maven Central failure while resolving spark-avro kills the
+      # Spark JVM at launch (JAVA_GATEWAY_EXITED) and fails every Spark test in
+      # the job. Cache the resolved ivy artifacts so warm runs never re-resolve.
+      - name: Cache Spark ivy packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.ivy2
+          key: ivy-spark-avro-3.5.5
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
         run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.13:4.1.1 pyspark-shell" >> $GITHUB_ENV
@@ -409,6 +463,14 @@ jobs:
 
       - name: Display Python version
         run: python --version
+
+      # See the ubuntu jobs: cached ivy artifacts keep a Maven Central blip
+      # from failing every Spark test in the job.
+      - name: Cache Spark ivy packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.ivy2
+          key: ivy-spark-avro-3.5.5
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
         shell: cmd
@@ -452,6 +514,14 @@ jobs:
 
       - name: Display pip freeze
         run: uv pip freeze
+
+      # See the ubuntu jobs: cached ivy artifacts keep a Maven Central blip
+      # from failing every Spark test in the job.
+      - name: Cache Spark ivy packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.ivy2
+          key: ivy-spark-avro-3.5.5
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
         shell: cmd
