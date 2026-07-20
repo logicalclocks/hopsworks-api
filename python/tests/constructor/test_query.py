@@ -977,6 +977,69 @@ class TestQuery:
 
         assert restored._aggregate == {"label": ["count", "avg"]}
         assert restored._aggregate_window == 3600
+    @staticmethod
+    def _fg_with_event_time(event_time):
+        return feature_group.FeatureGroup(
+            name="test_et",
+            version=1,
+            featurestore_id=99,
+            featurestore_name="test_featurestore",
+            primary_key=[],
+            partition_key=[],
+            features=[
+                feature.Feature("id", feature_group_id=21),
+                feature.Feature("ts", feature_group_id=21),
+            ],
+            id=21,
+            stream=False,
+            event_time=event_time,
+        )
+
+    def test_include_left_event_time_appends_when_absent(self, mocker):
+        # The event-time column is forced through the query for event-time
+        # partitioning when the user did not select it; the caller is told to
+        # drop it again before the data is written.
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        fg = self._fg_with_event_time("ts")
+        q = fg.select([fg["id"]])
+
+        # Act
+        column, appended = q._include_left_event_time()
+
+        # Assert
+        assert appended is True
+        assert column.endswith("ts")
+        assert any(f.name == "ts" for f in q.features)
+
+    def test_include_left_event_time_already_selected(self, mocker):
+        # A selected event-time column is reused and must not be appended
+        # again (or dropped later).
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        fg = self._fg_with_event_time("ts")
+        q = fg.select_all()
+        features_before = len(q.features)
+
+        # Act
+        column, appended = q._include_left_event_time()
+
+        # Assert
+        assert appended is False
+        assert column.endswith("ts")
+        assert len(q.features) == features_before
+
+    def test_include_left_event_time_no_event_time(self, mocker):
+        # Without an event time on the left feature group there is nothing to
+        # partition by; the caller falls back to counter partitioning.
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        fg = self._fg_with_event_time(None)
+        q = fg.select_all()
+
+        # Act
+        column, appended = q._include_left_event_time()
+
+        # Assert
+        assert column is None
+        assert appended is False
 
 
 class TestQueryRead:

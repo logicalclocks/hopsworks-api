@@ -14,86 +14,143 @@
 #   limitations under the License.
 #
 
-"""Unit tests for the shared `partitioned_by` grain materializer.
+"""Unit tests for the Hudi-only `partitioned_by` grain materializer.
 
-`_materialize_grains_arrow` is the Arrow twin used by both the delta-rs and
-PyIceberg write paths, so testing it here covers both engines.
+The grain names are derived from the temporal transforms of the feature
+group's `partitioned_by` (`year(ts)` materializes a `year` column, ...);
+Iceberg and Delta no longer materialize anything, so only the Spark twin
+exists.
 """
 
-from datetime import datetime
+from datetime import date, datetime
 from types import SimpleNamespace
 
-import pyarrow as pa
+import pytest
 from hsfs.core import partition_grains
+
+from tests import util
 
 
 def _fg(partitioned_by=None, event_time="event_ts"):
     return SimpleNamespace(partitioned_by=partitioned_by, event_time=event_time)
 
 
-def test_arrow_materializes_grains_from_timestamp():
+# region — grain derivation (no Spark needed)
+
+
+def test_grains_derived_from_temporal_transforms():
+    fg = _fg(["year(event_ts)", "bucket(4, id)", "month(event_ts)"])
+    assert partition_grains._grains(fg) == ["year", "month"]
+
+
+def test_grains_empty_for_identity_only_spec():
+    assert partition_grains._grains(_fg(["region"])) == []
+
+
+def test_grains_empty_for_old_grain_form():
+    # pre-transform specs are opaque: no grains are derived from them
+    assert partition_grains._grains(_fg(["year", "month"])) == []
+
+
+def test_grains_empty_without_partitioned_by():
+    assert partition_grains._grains(_fg(None)) == []
+
+
+# endregion
+
+
+# region — no-op paths (no Spark needed: they return before touching pyspark)
+
+
+def test_spark_noop_without_partitioned_by():
+    dataset = SimpleNamespace(columns=["id", "event_ts"])
+    assert partition_grains._materialize_grains_spark(_fg(None), dataset) is dataset
+
+
+def test_spark_noop_for_old_grain_form():
+    dataset = SimpleNamespace(columns=["id", "event_ts"])
     fg = _fg(["year", "month"])
-    table = pa.table(
-        {
-            "id": [1, 2],
-            "event_ts": pa.array(
-                [datetime(2026, 1, 15), datetime(2026, 3, 2)],
-                type=pa.timestamp("us"),
-            ),
-        }
-    )
-    out = partition_grains._materialize_grains_arrow(fg, table)
-    assert out.column_names == ["id", "event_ts", "year", "month"]
-    assert out.column("year").to_pylist() == [2026, 2026]
-    assert out.column("month").to_pylist() == [1, 3]
+    assert partition_grains._materialize_grains_spark(fg, dataset) is dataset
 
 
-def test_arrow_idempotent_when_grain_present():
-    fg = _fg(["year"])
-    table = pa.table(
-        {
-            "event_ts": pa.array([datetime(2026, 5, 1)], type=pa.timestamp("us")),
-            "year": pa.array([1999], type=pa.int32()),
-        }
+def test_spark_noop_without_temporal_transforms():
+    dataset = SimpleNamespace(columns=["id", "region"])
+    fg = _fg(["region", "bucket(4, id)"])
+    assert partition_grains._materialize_grains_spark(fg, dataset) is dataset
+
+
+def test_spark_noop_when_event_time_none():
+    dataset = SimpleNamespace(columns=["id", "event_ts"])
+    fg = _fg(["year(event_ts)"], event_time=None)
+    assert partition_grains._materialize_grains_spark(fg, dataset) is dataset
+
+
+def test_spark_noop_when_event_time_column_missing():
+    dataset = SimpleNamespace(columns=["id"])
+    fg = _fg(["year(event_ts)"])
+    assert partition_grains._materialize_grains_spark(fg, dataset) is dataset
+
+
+# endregion
+
+
+# region — materialization (real Spark)
+
+
+@pytest.fixture(scope="module")
+def spark_session():
+    return util.get_or_create_local_spark_session()
+
+
+def test_spark_materializes_grains_from_timestamp(spark_session):
+    fg = _fg(["year(event_ts)", "month(event_ts)"])
+    df = spark_session.createDataFrame(
+        [(1, datetime(2026, 1, 15)), (2, datetime(2026, 3, 2))], ["id", "event_ts"]
     )
-    out = partition_grains._materialize_grains_arrow(fg, table)
+    out = partition_grains._materialize_grains_spark(fg, df)
+    assert out.columns == ["id", "event_ts", "year", "month"]
+    rows = out.orderBy("id").collect()
+    assert [r["year"] for r in rows] == [2026, 2026]
+    assert [r["month"] for r in rows] == [1, 3]
+
+
+def test_spark_idempotent_when_grain_present(spark_session):
+    fg = _fg(["year(event_ts)"])
+    df = spark_session.createDataFrame(
+        [(datetime(2026, 5, 1), 1999)], ["event_ts", "year"]
+    )
+    out = partition_grains._materialize_grains_spark(fg, df)
     # Already present: not recomputed, not duplicated.
-    assert out.column_names == ["event_ts", "year"]
-    assert out.column("year").to_pylist() == [1999]
+    assert out.columns == ["event_ts", "year"]
+    assert out.collect()[0]["year"] == 1999
 
 
-def test_arrow_integer_seconds_event_time():
-    fg = _fg(["year"], event_time="ts")
+def test_spark_integer_seconds_event_time(spark_session):
+    fg = _fg(["year(ts)"], event_time="ts")
     # 1736899200 = 2025-01-15 00:00:00 UTC (10-digit -> seconds)
-    table = pa.table({"ts": pa.array([1736899200], type=pa.int64())})
-    out = partition_grains._materialize_grains_arrow(fg, table)
-    assert out.column("year").to_pylist() == [2025]
+    df = spark_session.createDataFrame([(1736899200,)], ["ts"])
+    out = partition_grains._materialize_grains_spark(fg, df)
+    assert out.collect()[0]["year"] == 2025
 
 
-def test_arrow_date_event_time_with_hour_grain():
-    # A date32 event_time has no sub-day resolution; pc.hour has no date32
-    # kernel, so the materializer must cast date->timestamp first (hour -> 0),
-    # matching the Spark path, rather than raising ArrowNotImplementedError.
-    import datetime
-
-    fg = _fg(["year", "month", "day", "hour"], event_time="event_date")
-    table = pa.table(
-        {"event_date": pa.array([datetime.date(2026, 4, 15)], type=pa.date32())}
+def test_spark_date_event_time_with_hour_grain(spark_session):
+    # A date event_time has no sub-day resolution; the hour grain must come
+    # out as 0 rather than failing.
+    fg = _fg(
+        [
+            "year(event_date)",
+            "month(event_date)",
+            "day(event_date)",
+            "hour(event_date)",
+        ],
+        event_time="event_date",
     )
-    out = partition_grains._materialize_grains_arrow(fg, table)
-    assert out.column("year").to_pylist() == [2026]
-    assert out.column("month").to_pylist() == [4]
-    assert out.column("day").to_pylist() == [15]
-    assert out.column("hour").to_pylist() == [0]
+    df = spark_session.createDataFrame([(date(2026, 4, 15),)], ["event_date"])
+    row = partition_grains._materialize_grains_spark(fg, df).collect()[0]
+    assert row["year"] == 2026
+    assert row["month"] == 4
+    assert row["day"] == 15
+    assert row["hour"] == 0
 
 
-def test_arrow_noop_without_partitioned_by():
-    fg = _fg(None)
-    table = pa.table({"event_ts": pa.array([datetime(2026, 1, 1)])})
-    assert partition_grains._materialize_grains_arrow(fg, table) is table
-
-
-def test_arrow_noop_when_event_time_missing():
-    fg = _fg(["year"], event_time="event_ts")
-    table = pa.table({"id": [1]})
-    assert partition_grains._materialize_grains_arrow(fg, table) is table
+# endregion

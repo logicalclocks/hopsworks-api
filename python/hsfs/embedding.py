@@ -351,6 +351,11 @@ class EmbeddingIndex:
 
     @classmethod
     def from_response_json(cls, json_dict):
+        # In lighter representations (e.g. the left feature group embedded in a
+        # QueryDTO) the embedding index is absent or a bare string rather than a
+        # nested DTO; there is no index to reconstruct in that case.
+        if not isinstance(json_dict, dict):
+            return None
         json_decamelized = humps.decamelize(json_dict)
         return cls(
             index_name=json_decamelized.get("index_name"),

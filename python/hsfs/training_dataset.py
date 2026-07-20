@@ -90,12 +90,14 @@ class TrainingDatasetBase:
         data_source=None,
         missing_mandatory_tags=None,
         tags=None,
+        partition_precision=None,
         **kwargs,
     ):
         self._name = name
         self._version = version
         self._description = description
         self._data_format = data_format
+        self.partition_precision = partition_precision
         self._validation_size = validation_size
         self._test_size = test_size
         self._train_start = train_start
@@ -261,6 +263,7 @@ class TrainingDatasetBase:
             "eventStartTime": self._start_time,
             "eventEndTime": self._end_time,
             "extraFilter": self._extra_filter,
+            "partitionPrecision": self._partition_precision,
         }
         if self._data_source:
             td_meta_dict["dataSource"] = self._data_source.to_dict()
@@ -297,6 +300,28 @@ class TrainingDatasetBase:
     def missing_mandatory_tags(self) -> list[dict[str, Any]]:
         """List of missing mandatory tags for the training dataset."""
         return self._missing_mandatory_tags
+
+    @property
+    def partition_precision(self) -> str | None:
+        """Truncation of the event date keying the materialized partitions: `day`, `month` or `year`.
+
+        Set at creation and fixed for the lifetime of the training dataset version: every materialization (the initial one and every appended increment) partitions by the same truncation, so time-range reads stay sound.
+        `None` when no precision is recorded — an in-memory training dataset, or one created before the precision was stored; materializations then partition at day precision.
+        """
+        return self._partition_precision
+
+    @partition_precision.setter
+    def partition_precision(self, partition_precision: str | None) -> None:
+        if partition_precision is not None and partition_precision not in (
+            "day",
+            "month",
+            "year",
+        ):
+            raise ValueError(
+                f"Invalid partition precision `{partition_precision}`; "
+                "supported values are ['day', 'month', 'year']."
+            )
+        self._partition_precision = partition_precision
 
     @property
     def data_format(self):
@@ -589,6 +614,7 @@ class TrainingDataset(TrainingDatasetBase):
         missing_mandatory_tags=None,
         tags=None,
         lookback=None,
+        partition_precision=None,
         **kwargs,
     ):
         super().__init__(
@@ -622,6 +648,7 @@ class TrainingDataset(TrainingDatasetBase):
             data_source=data_source,
             missing_mandatory_tags=missing_mandatory_tags,
             tags=tags,
+            partition_precision=partition_precision,
         )
 
         self._id = id
@@ -709,28 +736,29 @@ class TrainingDataset(TrainingDatasetBase):
     @public
     def insert(
         self,
-        features: query_module.Query
-        | pd.DataFrame
-        | TypeVar("pyspark.sql.DataFrame")
-        | TypeVar("pyspark.RDD")
-        | np.ndarray
-        | list[list],
-        overwrite: bool,
+        features: query_module.Query,
+        overwrite: bool = False,
         write_options: dict[Any, Any] | None = None,
     ) -> Job:
         """Insert additional feature data into the training dataset.
 
-        Warning: Deprecated
-            `insert` method is deprecated.
+        With `overwrite=False` (the default) this appends data to the training dataset as a new increment, leaving the data already materialized untouched: the rows are written into Hive partitions keyed by their event time at day granularity (or into a per-increment counter partition when the query's left feature group defines no event time).
+        This lets a large (multi-terabyte) training dataset grow — for example with a new daily batch — without rewriting it, while keeping the same training dataset version.
+        On [`read`][hsfs.training_dataset.TrainingDataset.read] all increments are returned together; the partitioning is an internal storage detail and is not exposed as a feature.
 
-        This method appends data to the training dataset either from a Feature Store `Query`, a Spark or Pandas `DataFrame`, a Spark RDD, two-dimensional Python lists or Numpy ndarrays.
-        The schemas must match for this operation.
+        With `overwrite=True` the entire training dataset is rewritten instead.
 
-        This can also be used to overwrite all data in an existing training dataset.
+        Statistics are only recomputed when overwriting; on append the existing statistics are kept, since recomputing them would require reading the entire dataset back.
+
+        The features must come from a Feature Store `Query`; unlike [`save`][hsfs.training_dataset.TrainingDataset.save], `insert` does not accept in-memory `DataFrame`, RDD, list or Numpy inputs.
+        The schema of `features` must match the training dataset.
+
+        Warning: Engine Support
+            Appending to a training dataset (`overwrite=False`) is only supported using Spark as engine, and only for the `parquet` data format.
 
         Parameters:
-            features: Feature data to be materialized.
-            overwrite: Whether to overwrite the entire data in the training dataset.
+            features: Query producing the feature data to be materialized.
+            overwrite: Whether to overwrite the entire data in the training dataset instead of appending a new increment.
             write_options:
                 Additional write options as key-value pairs, defaults to `{}`.
                 When using the `python` engine, write_options can contain the following entries:
@@ -749,7 +777,12 @@ class TrainingDataset(TrainingDatasetBase):
             self, features, write_options or {}, overwrite
         )
 
-        self.compute_statistics()
+        # On append the newly written partition is a small increment, but
+        # recomputing statistics reads the whole (potentially multi-TB) dataset
+        # back, so skip the read-and-refit; existing statistics are left as
+        # they were computed at save/overwrite time.
+        if overwrite and self.statistics_config.enabled:
+            self.compute_statistics()
 
         return td_job
 
@@ -999,6 +1032,7 @@ class TrainingDataset(TrainingDatasetBase):
             "eventStartTime": self._start_time,
             "eventEndTime": self._end_time,
             "extraFilter": self._extra_filter,
+            "partitionPrecision": self._partition_precision,
             "type": "trainingDatasetDTO",
         }
         if self._lookback is not None:
