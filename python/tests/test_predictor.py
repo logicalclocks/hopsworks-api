@@ -1275,6 +1275,38 @@ class TestPredictor:
         assert serialized["gitAutoRedeploy"] is True
         assert restored.git_auto_redeploy is True
 
+    def test_git_state_is_read_back_but_never_sent(self, mocker):
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        mocker.patch(
+            "hsml.predictor.Predictor._validate_serving_tool",
+            return_value=PREDICTOR.SERVING_TOOL_KSERVE,
+        )
+        mocker.patch(
+            "hsml.predictor.Predictor._validate_resources",
+            return_value=resources.PredictorResources(0),
+        )
+
+        p = predictor.Predictor(
+            name="my_agent",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            script_file="src/agent.py",
+            model_framework=MODEL.FRAMEWORK_PYTHON,
+            git_url="https://github.com/org/repo.git",
+            git_provider="GitHub",
+            git_current_commit="abc123",
+            git_resolved_branch="main",
+        )
+
+        assert p.git_current_commit == "abc123"
+        assert p.git_resolved_branch == "main"
+
+        # Both are server-managed, and the backend does not copy them back on update. Sending
+        # gitResolvedBranch in particular would risk pinning a deployment that tracks the
+        # repository default onto the branch it happened to resolve to.
+        serialized = p.to_dict()
+        assert "gitCurrentCommit" not in serialized
+        assert "gitResolvedBranch" not in serialized
+
     def test_git_auto_redeploy_omitted_without_git_source(self, mocker):
         self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
         mocker.patch(

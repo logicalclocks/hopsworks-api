@@ -87,6 +87,8 @@ class Predictor(DeployableComponent):
         git_provider: str | None = None,
         git_branch: str | None = None,
         git_auto_redeploy: bool | None = None,
+        git_current_commit: str | None = None,
+        git_resolved_branch: str | None = None,
         missing_mandatory_tags: list[dict[str, Any]] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         **kwargs,
@@ -144,6 +146,8 @@ class Predictor(DeployableComponent):
         self._git_provider = git_provider
         self._git_branch = git_branch
         self._git_auto_redeploy = bool(git_auto_redeploy)
+        self._git_current_commit = git_current_commit
+        self._git_resolved_branch = git_resolved_branch
         self._vllm_variant = vllm_variant
         self._vllm_image_tag = vllm_image_tag
 
@@ -350,6 +354,12 @@ class Predictor(DeployableComponent):
         )
         kwargs["git_auto_redeploy"] = util._extract_field_from_json(
             json_decamelized, "git_auto_redeploy"
+        )
+        kwargs["git_current_commit"] = util._extract_field_from_json(
+            json_decamelized, "git_current_commit"
+        )
+        kwargs["git_resolved_branch"] = util._extract_field_from_json(
+            json_decamelized, "git_resolved_branch"
         )
         kwargs["id"] = json_decamelized.pop("id")
         kwargs["created_at"] = json_decamelized.pop("created")
@@ -673,6 +683,26 @@ class Predictor(DeployableComponent):
     @git_auto_redeploy.setter
     def git_auto_redeploy(self, git_auto_redeploy: bool | None):
         self._git_auto_redeploy = bool(git_auto_redeploy)
+
+    @public
+    @property
+    def git_current_commit(self) -> str | None:
+        """Commit this deployment is currently running.
+
+        Read-only, server-managed: recorded when the deployment clones the
+        repository and when auto-redeploy rolls it to a new commit.
+        """
+        return self._git_current_commit
+
+    @public
+    @property
+    def git_resolved_branch(self) -> str | None:
+        """Branch the running clone resolved to.
+
+        Read-only. Only set when no branch was configured, in which case this
+        is the repository's default branch that the deployment checked out.
+        """
+        return self._git_resolved_branch
 
     @public
     @property
