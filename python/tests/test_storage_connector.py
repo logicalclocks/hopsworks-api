@@ -2375,7 +2375,7 @@ class TestStorageConnectorToDict:
 
         d = sc.to_dict()
 
-        assert d["type"] == "featurestoreKafkaConnectorDTO"
+        assert d["type"] == "featureStoreKafkaConnectorDTO"
         assert d["storageConnectorType"] == "KAFKA"
         assert d["bootstrapServers"] == "test_bootstrap_servers"
         assert d["securityProtocol"] == "test_security_protocol"
