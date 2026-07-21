@@ -85,7 +85,10 @@ def app_info(ctx: click.Context, name: str) -> None:
         ["Port", getattr(a, "app_port", None) or "-"],
         ["Git URL", getattr(a, "git_url", None) or "-"],
         ["Git provider", getattr(a, "git_provider", None) or "-"],
-        ["Git branch", getattr(a, "git_branch", None) or "-"],
+        [
+            "Git branch",
+            getattr(a, "git_branch", None) or getattr(a, "latest_branch", None) or "-",
+        ],
         [
             "Auto-redeploy",
             "Enabled" if getattr(a, "git_auto_redeploy", False) else "Disabled",
@@ -684,6 +687,7 @@ def _app_to_dict(a: Any) -> dict[str, Any]:
         "git_url": getattr(a, "git_url", None),
         "git_provider": getattr(a, "git_provider", None),
         "git_branch": getattr(a, "git_branch", None),
+        "latest_branch": getattr(a, "latest_branch", None),
         "git_auto_redeploy": bool(getattr(a, "git_auto_redeploy", False)),
         "latest_commit": getattr(a, "latest_commit", None),
         "entrypoint_script": getattr(a, "entrypoint_script", None),
