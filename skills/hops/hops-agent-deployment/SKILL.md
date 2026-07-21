@@ -41,14 +41,11 @@ class Predict:
 ## Deploy — CLI (preferred)
 
 Use the CLI for local HopsFS sources. Git-backed agents are supported too, but
-they are created through the SDK example below with `git_url`,
-`git_provider`, and `git_branch`. Add `git_auto_redeploy=True` to roll the agent
-to the branch HEAD whenever a new commit is pushed.
+they are created through the SDK example below with `git_url`, `git_provider`, and `git_branch`.
+Add `git_auto_redeploy=True` to roll the agent to the branch HEAD whenever a new commit is pushed.
 
-`hops agent info` shows the git source, the branch (the resolved default when
-none was configured), and the commit the deployment is running. The same values
-are on the predictor: `git_current_commit` and `git_resolved_branch`, both
-read-only.
+`hops agent info` shows the git source, the branch (the resolved default when none was configured), and the commit the deployment is running.
+The same values are on the predictor: `git_current_commit` and `git_resolved_branch`, both read-only.
 
 ```bash
 hops agent create my_agent.py --name my_agent \

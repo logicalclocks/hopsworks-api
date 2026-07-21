@@ -424,8 +424,8 @@ class ModelServing:
             git_url: Optional Git repository URL for a git-backed endpoint.
             git_provider: Git provider for git-backed endpoints.
             git_branch: Optional branch to clone for git-backed endpoints.
-            git_auto_redeploy: Roll the endpoint to the branch HEAD whenever a new
-                commit is pushed. Only valid together with `git_url`.
+            git_auto_redeploy: Roll the endpoint to the branch HEAD whenever a new commit is pushed.
+                Only valid together with `git_url`.
 
         Returns:
             The predictor metadata object.
@@ -525,9 +525,9 @@ class ModelServing:
                 a relative path inside the repository and is not uploaded.
             git_provider: Git provider for git-backed agent deployments.
             git_branch: Optional branch to clone for git-backed agent deployments.
-            git_auto_redeploy: Roll the agent to the branch HEAD whenever a new
-                commit is pushed. Only valid together with `git_url`. The running
-                agent keeps serving until the new version is ready.
+            git_auto_redeploy: Roll the agent to the branch HEAD whenever a new commit is pushed.
+                Only valid together with `git_url`.
+                The running agent keeps serving until the new version is ready.
 
         Returns:
             The deployment metadata object.

@@ -145,9 +145,9 @@ class AppApi:
             git_provider: Git provider for git-backed apps (GitHub, GitLab or
                 BitBucket).
             git_branch: Optional branch to clone for git-backed apps.
-            git_auto_redeploy: Roll the app to the branch HEAD whenever a new
-                commit is pushed. Only valid for git-backed apps. The running
-                app keeps serving until the new version is ready.
+            git_auto_redeploy: Roll the app to the branch HEAD whenever a new commit is pushed.
+                Only valid for git-backed apps.
+                The running app keeps serving until the new version is ready.
             entrypoint_script: Relative entrypoint script for Streamlit git apps.
             app_base_path: Public mount path for the app, for example ``/`` or
                 ``/myapp``.

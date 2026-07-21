@@ -112,7 +112,7 @@ class App:
         self._git_url = git_url
         self._git_provider = git_provider
         self._git_branch = git_branch
-        self._git_auto_redeploy = git_auto_redeploy or False
+        self._git_auto_redeploy = bool(git_auto_redeploy)
         self._latest_commit = latest_commit
         self._latest_branch = latest_branch
         self._entrypoint_script = entrypoint_script

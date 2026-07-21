@@ -89,10 +89,7 @@ def app_info(ctx: click.Context, name: str) -> None:
             "Git branch",
             getattr(a, "git_branch", None) or getattr(a, "latest_branch", None) or "-",
         ],
-        [
-            "Auto-redeploy",
-            "Enabled" if getattr(a, "git_auto_redeploy", False) else "Disabled",
-        ],
+        ["Auto-redeploy", _auto_redeploy_text(a)],
         ["Latest commit", getattr(a, "latest_commit", None) or "-"],
         ["Entrypoint script", getattr(a, "entrypoint_script", None) or "-"],
         ["Entrypoint", getattr(a, "entrypoint_command", None) or "-"],
@@ -702,6 +699,17 @@ def _app_to_dict(a: Any) -> dict[str, Any]:
         "description": getattr(a, "description", None),
         "app_url": getattr(a, "app_url", None),
     }
+
+
+def _auto_redeploy_text(a: Any) -> str:
+    """Auto-redeploy state, or "-" for an app that is not git-backed.
+
+    The backend rejects the flag without a git source, so "Disabled" there would
+    imply a setting that could be turned on.
+    """
+    if not getattr(a, "git_url", None):
+        return "-"
+    return "Enabled" if getattr(a, "git_auto_redeploy", False) else "Disabled"
 
 
 def _app_source(a: Any) -> str:
