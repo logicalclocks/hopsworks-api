@@ -105,6 +105,7 @@ class AppApi:
         git_url: str | None = None,
         git_provider: str | None = None,
         git_branch: str | None = None,
+        git_auto_redeploy: bool = False,
         entrypoint_script: str | None = None,
         app_base_path: str | None = None,
         readiness_probe_path: str | None = None,
@@ -144,6 +145,9 @@ class AppApi:
             git_provider: Git provider for git-backed apps (GitHub, GitLab or
                 BitBucket).
             git_branch: Optional branch to clone for git-backed apps.
+            git_auto_redeploy: Roll the app to the branch HEAD whenever a new
+                commit is pushed. Only valid for git-backed apps. The running
+                app keeps serving until the new version is ready.
             entrypoint_script: Relative entrypoint script for Streamlit git apps.
             app_base_path: Public mount path for the app, for example ``/`` or
                 ``/myapp``.
@@ -166,6 +170,13 @@ class AppApi:
         readiness_probe_path = self._trim_to_none(readiness_probe_path)
         git_repo_app = bool(git_url)
         streamlit_app = app_kind_name == "STREAMLIT"
+
+        # Mirrors PythonAppJobValidator: the backend rejects the flag without a git
+        # source. Fail here so the caller gets the reason instead of a REST error.
+        if git_auto_redeploy and not git_repo_app:
+            raise ValueError(
+                "git_auto_redeploy is only supported for Git repository apps."
+            )
 
         if streamlit_app:
             if entrypoint_command:
@@ -217,6 +228,7 @@ class AppApi:
         if git_repo_app:
             config["gitUrl"] = git_url
             config["gitProvider"] = git_provider
+            config["gitAutoRedeploy"] = bool(git_auto_redeploy)
             if git_branch:
                 config["gitBranch"] = git_branch
             if streamlit_app:

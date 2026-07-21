@@ -389,6 +389,7 @@ class ModelServing:
         git_url: str | None = None,
         git_provider: str | None = None,
         git_branch: str | None = None,
+        git_auto_redeploy: bool = False,
     ) -> Predictor:
         """Create an Entrypoint metadata object.
 
@@ -423,6 +424,8 @@ class ModelServing:
             git_url: Optional Git repository URL for a git-backed endpoint.
             git_provider: Git provider for git-backed endpoints.
             git_branch: Optional branch to clone for git-backed endpoints.
+            git_auto_redeploy: Roll the endpoint to the branch HEAD whenever a new
+                commit is pushed. Only valid together with `git_url`.
 
         Returns:
             The predictor metadata object.
@@ -433,6 +436,9 @@ class ModelServing:
 
         if git_url is not None:
             _validate_git_agent_source(script_file, git_url, git_provider, git_branch)
+        elif git_auto_redeploy:
+            # Mirrors ServingUtil: the backend rejects the flag without a git source.
+            raise ValueError("git_auto_redeploy requires git_url.")
 
         return Predictor.for_server(
             name=name,
@@ -449,6 +455,7 @@ class ModelServing:
             git_url=git_url,
             git_provider=git_provider,
             git_branch=git_branch,
+            git_auto_redeploy=git_auto_redeploy,
         )
 
     @public
@@ -470,6 +477,7 @@ class ModelServing:
         git_url: str | None = None,
         git_provider: str | None = None,
         git_branch: str | None = None,
+        git_auto_redeploy: bool = False,
     ) -> Deployment:
         """Deploy a Python script or package as an agent.
 
@@ -517,6 +525,9 @@ class ModelServing:
                 a relative path inside the repository and is not uploaded.
             git_provider: Git provider for git-backed agent deployments.
             git_branch: Optional branch to clone for git-backed agent deployments.
+            git_auto_redeploy: Roll the agent to the branch HEAD whenever a new
+                commit is pushed. Only valid together with `git_url`. The running
+                agent keeps serving until the new version is ready.
 
         Returns:
             The deployment metadata object.
@@ -534,6 +545,10 @@ class ModelServing:
         git_provider = _normalize_git_provider(git_provider)
         git_branch = _trim_to_none(git_branch)
         git_backed = git_url is not None
+
+        if not git_backed and git_auto_redeploy:
+            # Mirrors ServingUtil: the backend rejects the flag without a git source.
+            raise ValueError("git_auto_redeploy requires git_url.")
 
         if git_backed:
             _validate_git_agent_source(entry, git_url, git_provider, git_branch)
@@ -615,6 +630,7 @@ class ModelServing:
             git_url=git_url if git_backed else None,
             git_provider=git_provider if git_backed else None,
             git_branch=git_branch if git_backed else None,
+            git_auto_redeploy=git_auto_redeploy if git_backed else False,
         )
 
         existing = self.get_deployment(name)

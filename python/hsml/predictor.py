@@ -86,6 +86,7 @@ class Predictor(DeployableComponent):
         git_url: str | None = None,
         git_provider: str | None = None,
         git_branch: str | None = None,
+        git_auto_redeploy: bool | None = None,
         missing_mandatory_tags: list[dict[str, Any]] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         **kwargs,
@@ -142,6 +143,7 @@ class Predictor(DeployableComponent):
         self._git_url = git_url
         self._git_provider = git_provider
         self._git_branch = git_branch
+        self._git_auto_redeploy = bool(git_auto_redeploy)
         self._vllm_variant = vllm_variant
         self._vllm_image_tag = vllm_image_tag
 
@@ -346,6 +348,9 @@ class Predictor(DeployableComponent):
         kwargs["git_branch"] = util._extract_field_from_json(
             json_decamelized, "git_branch"
         )
+        kwargs["git_auto_redeploy"] = util._extract_field_from_json(
+            json_decamelized, "git_auto_redeploy"
+        )
         kwargs["id"] = json_decamelized.pop("id")
         kwargs["created_at"] = json_decamelized.pop("created")
         kwargs["creator"] = json_decamelized.pop("creator")
@@ -437,6 +442,13 @@ class Predictor(DeployableComponent):
             predictor_dict = {**predictor_dict, "gitProvider": self._git_provider}
         if self._git_branch is not None:
             predictor_dict = {**predictor_dict, "gitBranch": self._git_branch}
+        if self._git_url is not None:
+            # Only meaningful alongside a git source, and the backend rejects it
+            # without one, so it rides with git_url rather than being sent alone.
+            predictor_dict = {
+                **predictor_dict,
+                "gitAutoRedeploy": self._git_auto_redeploy,
+            }
         if self._scaling_configuration is not None:
             predictor_dict = {**predictor_dict, **self._scaling_configuration.to_dict()}
         tags_dict = tag.Tag._tags_to_dict(self._tags)
@@ -654,6 +666,16 @@ class Predictor(DeployableComponent):
 
     @public
     @property
+    def git_auto_redeploy(self) -> bool:
+        """Whether the deployment is rolled to the branch HEAD when a new commit is pushed."""
+        return self._git_auto_redeploy
+
+    @git_auto_redeploy.setter
+    def git_auto_redeploy(self, git_auto_redeploy: bool | None):
+        self._git_auto_redeploy = bool(git_auto_redeploy)
+
+    @public
+    @property
     def created_at(self):
         """Created at date of the predictor."""
         return self._created_at
@@ -855,4 +877,6 @@ class Predictor(DeployableComponent):
             git += f", git_provider: {self._git_provider!r}"
         if self._git_branch is not None:
             git += f", git_branch: {self._git_branch!r}"
+        if self._git_url is not None:
+            git += f", git_auto_redeploy: {self._git_auto_redeploy!r}"
         return f"Predictor(name: {self._name!r}" + desc + git + ")"

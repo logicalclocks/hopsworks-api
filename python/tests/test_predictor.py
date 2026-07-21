@@ -1243,6 +1243,59 @@ class TestPredictor:
         assert restored.git_url == "https://github.com/org/repo.git"
         assert restored.git_provider == "GitHub"
         assert restored.git_branch == "main"
+        # Defaults off, but still serialised so an update can turn it back off.
+        assert serialized["gitAutoRedeploy"] is False
+        assert restored.git_auto_redeploy is False
+
+    def test_git_auto_redeploy_round_trip(self, mocker):
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        mocker.patch(
+            "hsml.predictor.Predictor._validate_serving_tool",
+            return_value=PREDICTOR.SERVING_TOOL_KSERVE,
+        )
+        mocker.patch(
+            "hsml.predictor.Predictor._validate_resources",
+            return_value=resources.PredictorResources(0),
+        )
+
+        p = predictor.Predictor(
+            name="my_agent",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            script_file="src/agent.py",
+            model_framework=MODEL.FRAMEWORK_PYTHON,
+            git_url="https://github.com/org/repo.git",
+            git_provider="GitHub",
+            git_branch="main",
+            git_auto_redeploy=True,
+        )
+
+        serialized = p.to_dict()
+        restored = predictor.Predictor.from_response_json(serialized)
+
+        assert serialized["gitAutoRedeploy"] is True
+        assert restored.git_auto_redeploy is True
+
+    def test_git_auto_redeploy_omitted_without_git_source(self, mocker):
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        mocker.patch(
+            "hsml.predictor.Predictor._validate_serving_tool",
+            return_value=PREDICTOR.SERVING_TOOL_KSERVE,
+        )
+        mocker.patch(
+            "hsml.predictor.Predictor._validate_resources",
+            return_value=resources.PredictorResources(0),
+        )
+
+        p = predictor.Predictor(
+            name="my_agent",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            script_file="src/agent.py",
+            model_framework=MODEL.FRAMEWORK_PYTHON,
+        )
+
+        # The backend rejects the flag without a git source, so it must not be sent.
+        assert "gitAutoRedeploy" not in p.to_dict()
+        assert p.git_auto_redeploy is False
 
     # vLLM variant round-trip
 

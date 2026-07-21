@@ -78,6 +78,7 @@ class App:
         git_url=None,
         git_provider=None,
         git_branch=None,
+        git_auto_redeploy=None,
         latest_commit=None,
         entrypoint_script=None,
         app_base_path=None,
@@ -110,6 +111,7 @@ class App:
         self._git_url = git_url
         self._git_provider = git_provider
         self._git_branch = git_branch
+        self._git_auto_redeploy = git_auto_redeploy or False
         self._latest_commit = latest_commit
         self._entrypoint_script = entrypoint_script
         self._app_base_path = app_base_path
@@ -227,6 +229,12 @@ class App:
     def git_branch(self) -> str | None:
         """Configured Git branch."""
         return self._git_branch
+
+    @public
+    @property
+    def git_auto_redeploy(self) -> bool:
+        """Whether the app is rolled to the branch HEAD when a new commit is pushed."""
+        return self._git_auto_redeploy
 
     @public
     @property
@@ -493,6 +501,7 @@ class App:
         self._git_url = updated._git_url
         self._git_provider = updated._git_provider
         self._git_branch = updated._git_branch
+        self._git_auto_redeploy = updated._git_auto_redeploy
         self._latest_commit = updated._latest_commit
         self._entrypoint_script = updated._entrypoint_script
         self._public_access = updated._public_access
