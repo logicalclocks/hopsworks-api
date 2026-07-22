@@ -171,7 +171,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.ivy2
-          key: ivy-spark-avro-3.5.5
+          key: ivy-spark-avro-4.1.1
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
         run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.13:4.1.1 pyspark-shell" >> $GITHUB_ENV
@@ -221,7 +221,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.ivy2
-          key: ivy-spark-avro-3.5.5
+          key: ivy-spark-avro-4.1.1
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
         run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.13:4.1.1 pyspark-shell" >> $GITHUB_ENV
@@ -274,7 +274,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.ivy2
-          key: ivy-spark-avro-3.5.5
+          key: ivy-spark-avro-4.1.1
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
         run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.13:4.1.1 pyspark-shell" >> $GITHUB_ENV
@@ -327,7 +327,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.ivy2
-          key: ivy-spark-avro-3.5.5
+          key: ivy-spark-avro-4.1.1
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
         run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.13:4.1.1 pyspark-shell" >> $GITHUB_ENV
@@ -380,7 +380,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.ivy2
-          key: ivy-spark-avro-3.5.5
+          key: ivy-spark-avro-4.1.1
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
         run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.13:4.1.1 pyspark-shell" >> $GITHUB_ENV
@@ -421,7 +421,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.ivy2
-          key: ivy-spark-avro-3.5.5
+          key: ivy-spark-avro-4.1.1
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
         run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.13:4.1.1 pyspark-shell" >> $GITHUB_ENV
@@ -470,7 +470,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.ivy2
-          key: ivy-spark-avro-3.5.5
+          key: ivy-spark-avro-4.1.1
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
         shell: cmd
@@ -521,7 +521,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.ivy2
-          key: ivy-spark-avro-3.5.5
+          key: ivy-spark-avro-4.1.1
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
         shell: cmd
