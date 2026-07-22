@@ -117,13 +117,12 @@
             <artifactId>hudi-${artifact.spark.version}-bundle_${scala-short.version}</artifactId>
             <version>${hudi.version}</version>
             <scope>provided</scope>
+            <!-- The bundle is a shaded fat jar; its declared transitives (io.hops.hive,
+                 hudi-metaserver-client, ...) live in authenticated repositories and are
+                 not needed to compile or test against the bundle. -->
             <exclusions>
                 <exclusion>
-                    <groupId>org.apache.httpcomponents</groupId>
-                    <artifactId>*</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>com.fasterxml.jackson.core</groupId>
+                    <groupId>*</groupId>
                     <artifactId>*</artifactId>
                 </exclusion>
             </exclusions>
@@ -134,13 +133,10 @@
             <artifactId>hudi-utilities-slim-bundle_${scala-short.version}</artifactId>
             <version>${hudi.version}</version>
             <scope>provided</scope>
+            <!-- Same as the spark bundle above: shaded jar, transitives excluded. -->
             <exclusions>
                 <exclusion>
-                    <groupId>org.apache.httpcomponents</groupId>
-                    <artifactId>*</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>com.fasterxml.jackson.core</groupId>
+                    <groupId>*</groupId>
                     <artifactId>*</artifactId>
                 </exclusion>
             </exclusions>
