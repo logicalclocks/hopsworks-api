@@ -936,8 +936,8 @@ public class FeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    * store of an online-enabled feature group. This method can only be used on time travel enabled feature
    * groups.
    *
-   * <p>When {@code deleteOnline} is true, {@code featureData} must carry the feature columns, not only the
-   * primary key, so the records serialize against the feature group schema.
+   * <p>When {@code deleteOnline} is true, {@code featureData} needs to carry only the primary key columns,
+   * matching the offline delete; any other columns are ignored for the online delete.
    *
    * @param featureData Spark DataFrame, RDD. Feature data to be deleted.
    * @param deleteOnline Also delete the records from the online store when the feature group is online-enabled.
@@ -956,8 +956,8 @@ public class FeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    * store of an online-enabled feature group. This method can only be used on time travel enabled feature
    * groups.
    *
-   * <p>When {@code deleteOnline} is true, {@code featureData} must carry the feature columns, not only the
-   * primary key, so the records serialize against the feature group schema.
+   * <p>When {@code deleteOnline} is true, {@code featureData} needs to carry only the primary key columns,
+   * matching the offline delete; any other columns are ignored for the online delete.
    *
    * @param featureData Spark DataFrame, RDD. Feature data to be deleted.
    * @param writeOptions Additional write options as key-value pairs.

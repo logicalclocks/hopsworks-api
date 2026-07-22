@@ -4478,10 +4478,10 @@ class FeatureGroup(FeatureGroupBase):
 
         By default only the offline table is affected.
         Set `delete_online` to also delete the records from the online store of an online-enabled feature group.
-        When `delete_online` is set, `delete_df` must carry the feature columns, not only the primary key, so the records serialize against the feature group schema.
+        `delete_df` needs to carry only the primary key columns, matching the offline delete; any other columns are ignored for the online delete.
 
         Parameters:
-            delete_df: dataFrame containing records to be deleted.
+            delete_df: DataFrame containing records to be deleted.
             write_options: User provided write options.
             delete_online: Also delete the records from the online store when the feature group is online-enabled.
 

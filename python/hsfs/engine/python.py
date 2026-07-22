@@ -1981,15 +1981,14 @@ class Engine:
         # Each message carries the row encoded against the feature group Avro
         # schema plus an `operation: delete` header; OnlineFS deletes the row by
         # primary key and ignores the values. `storage` b"1" routes it to the
-        # online store. `dataframe` must therefore carry the feature columns, not
-        # only the primary key, so the Avro schema serializes.
+        # online store. `dataframe` needs to carry only the primary key: non-key
+        # fields are filled with null so the record serializes.
+        fill_values = kafka_engine._online_delete_fill_values(feature_group)
         n_rows = len(dataframe)
-        producer, headers, feature_writers, writer = (
-            kafka_engine._get_kafka_resources(
-                feature_group,
-                offline_write_options,
-                num_entries=n_rows,
-            )
+        producer, headers, feature_writers, writer = kafka_engine._get_kafka_resources(
+            feature_group,
+            offline_write_options,
+            num_entries=n_rows,
         )
 
         acked, progress_bar = (
@@ -2011,6 +2010,7 @@ class Engine:
             if isinstance(dataframe, pd.DataFrame):
                 row = row._asdict()
 
+            row = {**fill_values, **row}
             encoded_row = kafka_engine._encode_row(feature_writers, writer, row)
             key = "".join([str(row[pk]) for pk in sorted(feature_group.primary_key)])
 

@@ -128,6 +128,24 @@ def _get_writer_function(
     return (feature_writers, writer)
 
 
+def _online_delete_fill_values(
+    feature_group: FeatureGroup | ExternalFeatureGroup,
+) -> dict[str, Any]:
+    """Null fill values for every non-primary-key field in the feature group schema.
+
+    An online delete tombstone is serialized against the full feature group Avro
+    schema, but the caller only needs to pass the primary key (the offline delete
+    contract).
+    Non-key fields are filled with null so the record serializes; OnlineFS deletes
+    by primary key and discards the values.
+    Online feature group schemas make every non-key field a nullable union, so null
+    always serializes.
+    """
+    primary_key = set(feature_group.primary_key)
+    fields = json.loads(feature_group.avro_schema)["fields"]
+    return {field["name"]: None for field in fields if field["name"] not in primary_key}
+
+
 def _get_headers(
     feature_group: FeatureGroup | ExternalFeatureGroup,
     num_entries: int | None = None,

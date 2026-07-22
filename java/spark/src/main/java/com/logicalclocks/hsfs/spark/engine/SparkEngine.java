@@ -41,8 +41,10 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeoutException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -59,6 +61,7 @@ import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SaveMode;
 import org.apache.spark.sql.SparkSession;
+import org.apache.spark.sql.avro.SchemaConverters;
 import org.apache.spark.sql.functions;
 import org.apache.spark.sql.streaming.DataStreamReader;
 import org.apache.spark.sql.streaming.DataStreamWriter;
@@ -589,8 +592,8 @@ public class SparkEngine extends EngineBase {
    *
    * <p>Each message carries the row encoded against the feature group Avro schema plus an
    * {@code operation: delete} header; OnlineFS deletes the row by primary key and ignores the values.
-   * The dataset must therefore carry the feature columns, not only the primary key, so the Avro schema
-   * serializes.
+   * The dataset needs to carry only the primary key: non-key columns are filled with null so the Avro
+   * schema serializes.
    *
    * @param featureGroupBase the online-enabled feature group
    * @param dataset the rows to delete
@@ -600,13 +603,35 @@ public class SparkEngine extends EngineBase {
                                     Map<String, String> writeOptions)
       throws FeatureStoreException, IOException {
     Map<String, String> kafkaConfig = SparkEngine.getInstance().getKafkaConfig(featureGroupBase, writeOptions);
-    onlineFeatureGroupToAvro(featureGroupBase, encodeComplexFeatures(featureGroupBase, dataset))
-        .withColumn("headers", getHeader(featureGroupBase, dataset.count(), writeOptions, "delete"))
+    Dataset<Row> padded = padOnlineDeleteDataset(featureGroupBase, dataset);
+    onlineFeatureGroupToAvro(featureGroupBase, encodeComplexFeatures(featureGroupBase, padded))
+        .withColumn("headers", getHeader(featureGroupBase, padded.count(), writeOptions, "delete"))
         .write()
         .format(Constants.KAFKA_FORMAT)
         .options(kafkaConfig)
         .option("topic", featureGroupBase.getOnlineTopicName())
         .save();
+  }
+
+  /**
+   * Adds every feature group column the caller did not pass as a typed null.
+   *
+   * <p>A primary-key-only dataset still serializes against the full feature group Avro schema;
+   * OnlineFS deletes by primary key and discards these values. Feature group schemas wrap every
+   * field in a {@code ["null", <type>]} union, so a null fill always serializes.
+   */
+  private Dataset<Row> padOnlineDeleteDataset(FeatureGroupBase featureGroupBase, Dataset<Row> dataset)
+      throws FeatureStoreException, IOException {
+    Set<String> present = new HashSet<>(Arrays.asList(dataset.columns()));
+    Dataset<Row> padded = dataset;
+    for (Schema.Field field : featureGroupBase.getDeserializedAvroSchema().getFields()) {
+      if (present.contains(field.name())) {
+        continue;
+      }
+      DataType sparkType = SchemaConverters.toSqlType(field.schema()).dataType();
+      padded = padded.withColumn(field.name(), lit(null).cast(sparkType));
+    }
+    return padded;
   }
 
   private Column getHeader(FeatureGroupBase featureGroup, Long numEntries, Map<String, String> options)
