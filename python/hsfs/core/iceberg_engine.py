@@ -226,7 +226,8 @@ class IcebergEngine:
     # Iceberg's vectorized (Arrow) reader can crash the executor JVM with a
     # SIGSEGV in the shaded Arrow bounds check (FSTORE-2067), so tables are
     # created with Parquet vectorization disabled and every reader falls back
-    # to the row-based path. Remove together with the FSTORE-2067 fix.
+    # to the row-based path.
+    # Remove together with the FSTORE-2067 fix.
     ICEBERG_TABLE_PROPERTIES = {"read.parquet.vectorization.enabled": "false"}
     ICEBERG_CATALOG_OPTION = "iceberg.catalog"
     ICEBERG_CATALOG_PROP_PREFIX = "iceberg.catalog."
@@ -1974,16 +1975,22 @@ class IcebergEngine:
                 )
             with contextlib.suppress(NamespaceAlreadyExistsError):
                 catalog.create_namespace(Catalog.namespace_from(identifier))
+            transforms = self._partition_spec_transforms()
+            properties = dict(self.ICEBERG_TABLE_PROPERTIES)
+            if transforms:
+                # a partitioned table shuffles rows to their partitions on
+                # (Spark) write, matching the other creation paths
+                properties["write.distribution-mode"] = "hash"
             table = catalog.create_table(
                 identifier,
                 schema=arrow_table.schema,
                 location=create_location,
-                properties=self.ICEBERG_TABLE_PROPERTIES,
+                properties=properties,
             )
             # Apply the feature group's partition spec before the first data
             # commit; without this the catalog table would silently stay
             # unpartitioned.
-            self._apply_pyiceberg_spec(table, self._partition_spec_transforms())
+            self._apply_pyiceberg_spec(table, transforms)
             table.append(arrow_table)
         elif self._append_requested(operation, write_options):
             table = catalog.load_table(identifier)

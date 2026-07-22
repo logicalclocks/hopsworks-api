@@ -1413,6 +1413,52 @@ class TestIcebergCatalogWrites:
         catalog.create_namespace.assert_not_called()
         catalog.create_table.assert_not_called()
 
+    @pytest.mark.skipif(not HAS_PYICEBERG, reason="pyiceberg not installed")
+    @pytest.mark.parametrize("partitioned", [False, True])
+    def test_write_pyiceberg_dataset_catalog_create_forwards_properties(
+        self, mocker, partitioned
+    ):
+        # Arrange: the create branch must disable Parquet vectorization
+        # (FSTORE-2067 workaround) and, for a partitioned table, request
+        # hash-distributed writes like the other creation paths
+        import pyarrow as pa
+
+        fg = _make_fg(primary_key=["pk"])
+        iceberg_engine = _make_engine(mocker, fg=fg, spark_session=_NO_SPARK)
+        catalog = mocker.MagicMock()
+        catalog.table_exists.return_value = False
+        mocker.patch("pyiceberg.catalog.load_catalog", return_value=catalog)
+        arrow_table = pa.table({"pk": pa.array([1], type=pa.int64())})
+        mocker.patch.object(
+            iceberg_engine, "_prepare_arrow_table", return_value=arrow_table
+        )
+        transforms = [mocker.Mock()] if partitioned else []
+        mocker.patch.object(
+            iceberg_engine, "_partition_spec_transforms", return_value=transforms
+        )
+        apply_spec_mock = mocker.patch.object(iceberg_engine, "_apply_pyiceberg_spec")
+        mocker.patch.object(iceberg_engine, "_pyiceberg_snapshots", return_value=[])
+        mocker.patch.object(iceberg_engine, "_build_fg_commit")
+
+        # Act
+        iceberg_engine._write_pyiceberg_dataset(
+            mocker.Mock(),
+            write_options={"iceberg.catalog": "prod"},
+            operation="upsert",
+        )
+
+        # Assert
+        expected_properties = {"read.parquet.vectorization.enabled": "false"}
+        if partitioned:
+            expected_properties["write.distribution-mode"] = "hash"
+        assert catalog.create_table.call_args.kwargs["properties"] == (
+            expected_properties
+        )
+        apply_spec_mock.assert_called_once_with(
+            catalog.create_table.return_value, transforms
+        )
+        catalog.create_table.return_value.append.assert_called_once_with(arrow_table)
+
 
 class TestIcebergArrowFlight:
     def test_iceberg_query_supported_by_query_service(self, mocker):
