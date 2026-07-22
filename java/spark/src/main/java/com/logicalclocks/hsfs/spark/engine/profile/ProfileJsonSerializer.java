@@ -132,7 +132,8 @@ class ProfileJsonSerializer {
   /**
    * Emits the uniqueness-family stats, omitting the keys when they were not computed
    * (exactUniqueness disabled) so consumers deserialize them as absent instead of a
-   * bogus 0. Divergence from Deequ's always-keys-present shape is deliberate.
+   * bogus 0.
+   * Divergence from Deequ's always-keys-present shape is deliberate.
    */
   private void putUniquenessFamily(Map<String, Object> map, ColumnProfile profile) {
     if (profile.getDistinctness() != null) {

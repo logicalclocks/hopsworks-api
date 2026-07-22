@@ -272,14 +272,14 @@ class DeltaEngine:
             and delta_fg_alias.left_feature_group_start_timestamp is None
         ):
             # snapshot query with end time; resolve the version against the Delta
-            # log's in-commit timestamps instead of passing timestampAsOf. Delta
-            # resolves timestamp bounds against commit-file modification times,
-            # while the backend-recorded commit_time carries the log's in-commit
-            # commitInfo timestamp, which is tens to hundreds of milliseconds
-            # earlier — enough for timestampAsOf to silently resolve to the
-            # previous version (or to be rejected outright when it predates the
-            # first commit, which happens when compute_statistics runs right
-            # after a fresh insert).
+            # log's in-commit timestamps instead of passing timestampAsOf.
+            # Delta resolves timestamp bounds against commit-file modification
+            # times, while the backend-recorded commit_time carries the log's
+            # in-commit commitInfo timestamp, which is tens to hundreds of
+            # milliseconds earlier: enough for timestampAsOf to silently resolve
+            # to the previous version (or to be rejected outright when it
+            # predates the first commit, which happens when compute_statistics
+            # runs right after a fresh insert).
             end_ts = delta_fg_alias.left_feature_group_end_timestamp
             commits = self._get_delta_commits(location) if location else None
             if commits:
