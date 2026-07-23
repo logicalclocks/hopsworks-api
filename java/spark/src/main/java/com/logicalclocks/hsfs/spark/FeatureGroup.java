@@ -883,7 +883,7 @@ public class FeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    *        // get feature group handle
    *        FeatureGroup fg = fs.getFeatureGroup("electricity_prices", 1);
    *        // Drops records of feature data and commit
-   *        fg.commitDeleteRecord(featureData);
+   *        fg.removeRows(featureData);
    * }
    * </pre>
    *
@@ -893,7 +893,7 @@ public class FeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    * @throws IOException Generic IO exception.
    * @throws ParseException In case it's unable to parse HUDI commit date string to date type.
    */
-  public void commitDeleteRecord(Dataset<Row> featureData)
+  public void removeRows(Dataset<Row> featureData)
       throws FeatureStoreException, IOException, ParseException {
     featureGroupEngine.commitDelete(this, featureData, null);
   }
@@ -915,7 +915,7 @@ public class FeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    *                           put("hoodie.upsert.shuffle.parallelism", "5");}
    *                           };
    *        // Drops records of feature data and commit
-   *        fg.commitDeleteRecord(featureData, writeOptions);
+   *        fg.removeRows(featureData, writeOptions);
    * }
    * </pre>
    *
@@ -926,7 +926,7 @@ public class FeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    * @throws IOException Generic IO exception.
    * @throws ParseException In case it's unable to parse HUDI commit date string to date type.
    */
-  public void commitDeleteRecord(Dataset<Row> featureData, Map<String, String> writeOptions)
+  public void removeRows(Dataset<Row> featureData, Map<String, String> writeOptions)
       throws FeatureStoreException, IOException, ParseException {
     featureGroupEngine.commitDelete(this, featureData, writeOptions);
   }
@@ -947,7 +947,7 @@ public class FeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    * @throws IOException Generic IO exception.
    * @throws ParseException In case it's unable to parse HUDI commit date string to date type.
    */
-  public void commitDeleteRecord(Dataset<Row> featureData, boolean deleteOnline)
+  public void removeRows(Dataset<Row> featureData, boolean deleteOnline)
       throws FeatureStoreException, IOException, ParseException {
     featureGroupEngine.commitDelete(this, featureData, null, deleteOnline);
   }
@@ -969,9 +969,73 @@ public class FeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    * @throws IOException Generic IO exception.
    * @throws ParseException In case it's unable to parse HUDI commit date string to date type.
    */
-  public void commitDeleteRecord(Dataset<Row> featureData, Map<String, String> writeOptions, boolean deleteOnline)
+  public void removeRows(Dataset<Row> featureData, Map<String, String> writeOptions, boolean deleteOnline)
       throws FeatureStoreException, IOException, ParseException {
     featureGroupEngine.commitDelete(this, featureData, writeOptions, deleteOnline);
+  }
+
+  /**
+   * Drops records present in the provided DataFrame.
+   *
+   * @param featureData Spark DataFrame, RDD. Feature data to be deleted.
+   * @throws FeatureStoreException on client/commit errors.
+   * @throws IOException Generic IO exception.
+   * @throws ParseException In case it's unable to parse HUDI commit date string to date type.
+   * @deprecated use {@link #removeRows(Dataset)} instead.
+   */
+  @Deprecated
+  public void commitDeleteRecord(Dataset<Row> featureData)
+      throws FeatureStoreException, IOException, ParseException {
+    removeRows(featureData);
+  }
+
+  /**
+   * Drops records present in the provided DataFrame.
+   *
+   * @param featureData Spark DataFrame, RDD. Feature data to be deleted.
+   * @param writeOptions Additional write options as key-value pairs.
+   * @throws FeatureStoreException on client/commit errors.
+   * @throws IOException Generic IO exception.
+   * @throws ParseException In case it's unable to parse HUDI commit date string to date type.
+   * @deprecated use {@link #removeRows(Dataset, Map)} instead.
+   */
+  @Deprecated
+  public void commitDeleteRecord(Dataset<Row> featureData, Map<String, String> writeOptions)
+      throws FeatureStoreException, IOException, ParseException {
+    removeRows(featureData, writeOptions);
+  }
+
+  /**
+   * Drops records present in the provided DataFrame, optionally from the online store.
+   *
+   * @param featureData Spark DataFrame, RDD. Feature data to be deleted.
+   * @param deleteOnline Also delete the records from the online store when the feature group is online-enabled.
+   * @throws FeatureStoreException on client/commit errors.
+   * @throws IOException Generic IO exception.
+   * @throws ParseException In case it's unable to parse HUDI commit date string to date type.
+   * @deprecated use {@link #removeRows(Dataset, boolean)} instead.
+   */
+  @Deprecated
+  public void commitDeleteRecord(Dataset<Row> featureData, boolean deleteOnline)
+      throws FeatureStoreException, IOException, ParseException {
+    removeRows(featureData, deleteOnline);
+  }
+
+  /**
+   * Drops records present in the provided DataFrame, optionally from the online store.
+   *
+   * @param featureData Spark DataFrame, RDD. Feature data to be deleted.
+   * @param writeOptions Additional write options as key-value pairs.
+   * @param deleteOnline Also delete the records from the online store when the feature group is online-enabled.
+   * @throws FeatureStoreException on client/commit errors.
+   * @throws IOException Generic IO exception.
+   * @throws ParseException In case it's unable to parse HUDI commit date string to date type.
+   * @deprecated use {@link #removeRows(Dataset, Map, boolean)} instead.
+   */
+  @Deprecated
+  public void commitDeleteRecord(Dataset<Row> featureData, Map<String, String> writeOptions, boolean deleteOnline)
+      throws FeatureStoreException, IOException, ParseException {
+    removeRows(featureData, writeOptions, deleteOnline);
   }
 
   /**

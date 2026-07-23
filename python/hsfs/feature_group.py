@@ -4449,7 +4449,7 @@ class FeatureGroup(FeatureGroupBase):
         return self._feature_group_engine._commit_details(self, wallclock_time, limit)
 
     @public
-    def commit_delete_record(
+    def remove_rows(
         self,
         delete_df: TypeVar("pyspark.sql.DataFrame"),  # noqa: F821
         write_options: dict[Any, Any] | None = None,
@@ -4477,7 +4477,7 @@ class FeatureGroup(FeatureGroupBase):
             "spark"
         ):
             raise NotImplementedError(
-                "commit_delete_record is only supported for HUDI feature groups when using the Spark engine."
+                "remove_rows is only supported for HUDI feature groups when using the Spark engine."
             )
         if (
             self.time_travel_format == "ICEBERG"
@@ -4485,7 +4485,7 @@ class FeatureGroup(FeatureGroupBase):
             and not HAS_PYICEBERG
         ):
             raise NotImplementedError(
-                "commit_delete_record on ICEBERG feature groups without Spark requires pyiceberg. "
+                "remove_rows on ICEBERG feature groups without Spark requires pyiceberg. "
                 "Install 'pyiceberg' to enable it."
             )
         self._feature_group_engine._commit_delete(self, delete_df, write_options or {})
@@ -4520,6 +4520,22 @@ class FeatureGroup(FeatureGroupBase):
             self._feature_group_engine._delete_online_records(
                 self, delete_df, write_options or {}
             )
+
+    @deprecation.deprecated("hsfs.feature_group.FeatureGroup.remove_rows")
+    def commit_delete_record(
+        self,
+        delete_df: TypeVar("pyspark.sql.DataFrame"),  # noqa: F821
+        write_options: dict[Any, Any] | None = None,
+        delete_online: bool = False,
+    ) -> None:
+        """**Deprecated**, use [`remove_rows`][hsfs.feature_group.FeatureGroup.remove_rows] instead.
+
+        Parameters:
+            delete_df: DataFrame containing records to be deleted.
+            write_options: User provided write options.
+            delete_online: Also delete the records from the online store when the feature group is online-enabled.
+        """
+        return self.remove_rows(delete_df, write_options, delete_online)
 
     @public
     def delta_vacuum(

@@ -15,6 +15,7 @@
 #
 
 import json
+import warnings
 from io import BytesIO
 
 import fastavro
@@ -53,29 +54,57 @@ class TestOnlineDeleteFillValues:
         assert kafka_engine._online_delete_fill_values(fg) == {"measurement": None}
 
 
-class TestCommitDeleteRecordStreamGate:
+def _stream_online_fg(mocker):
+    mocker.patch("hopsworks_common.client._get_instance")
+    fg = feature_group.FeatureGroup(
+        name="test",
+        version=1,
+        featurestore_id=99,
+        primary_key=["id"],
+        partition_key=[],
+        id=10,
+        stream=True,
+        online_enabled=True,
+        time_travel_format="DELTA",
+    )
+    fg.primary_key = ["id"]
+    return fg
+
+
+class TestRemoveRowsStreamGate:
     def test_online_delete_skipped_for_stream_fg(self, mocker):
-        mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch.object(FeatureGroupEngine, "_commit_delete")
         online = mocker.patch.object(FeatureGroupEngine, "_delete_online_records")
-
-        fg = feature_group.FeatureGroup(
-            name="test",
-            version=1,
-            featurestore_id=99,
-            primary_key=["id"],
-            partition_key=[],
-            id=10,
-            stream=True,
-            online_enabled=True,
-            time_travel_format="DELTA",
-        )
-        fg.primary_key = ["id"]
+        fg = _stream_online_fg(mocker)
 
         with pytest.warns(UserWarning, match="stream feature groups"):
-            fg.commit_delete_record(pd.DataFrame({"id": [2]}), delete_online=True)
+            fg.remove_rows(pd.DataFrame({"id": [2]}), delete_online=True)
 
         online.assert_not_called()
+
+
+class TestCommitDeleteRecordDeprecated:
+    def test_commit_delete_record_warns_and_delegates(self, mocker):
+        mocker.patch.object(FeatureGroupEngine, "_commit_delete")
+        online = mocker.patch.object(FeatureGroupEngine, "_delete_online_records")
+        remove_rows = mocker.spy(feature_group.FeatureGroup, "remove_rows")
+        fg = _stream_online_fg(mocker)
+        # non-stream keeps this from hitting the stream-skip branch; the deprecated
+        # method must still warn and delegate.
+        fg.stream = False
+        delete_df = pd.DataFrame({"id": [2]})
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            fg.commit_delete_record(delete_df, delete_online=True)
+
+        # the deprecation warning fired
+        assert any(
+            "commit_delete_record is deprecated" in str(w.message) for w in caught
+        )
+        # and it delegated to remove_rows, which still performed the delete
+        remove_rows.assert_called_once()
+        online.assert_called_once()
 
 
 class TestDeleteDataframeKafka:
