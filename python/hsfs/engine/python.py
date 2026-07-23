@@ -2164,6 +2164,73 @@ class Engine:
                 options=offline_write_options.get("online_ingestion_options", {})
             )
 
+    def _delete_dataframe_kafka(
+        self,
+        feature_group: FeatureGroup | ExternalFeatureGroup,
+        dataframe: pd.DataFrame | pl.DataFrame,
+        offline_write_options: dict[str, Any],
+    ) -> None:
+        # Produce an online delete tombstone for every row in `dataframe`.
+        # Each message carries the row encoded against the feature group Avro
+        # schema plus an `operation: delete` header; OnlineFS deletes the row by
+        # primary key and ignores the values. `storage` b"1" routes it to the
+        # online store. `dataframe` needs to carry only the primary key: non-key
+        # fields are filled with null so the record serializes.
+        fill_values = kafka_engine._online_delete_fill_values(feature_group)
+        n_rows = len(dataframe)
+        producer, headers, feature_writers, writer = kafka_engine._get_kafka_resources(
+            feature_group,
+            offline_write_options,
+            num_entries=n_rows,
+        )
+
+        acked, progress_bar = (
+            kafka_engine._build_ack_callback_and_optional_progress_bar(
+                n_rows=n_rows,
+                is_multi_part_insert=feature_group._multi_part_insert,
+                offline_write_options=offline_write_options,
+            )
+        )
+
+        row_headers = {**headers, "operation": b"delete", "storage": b"1"}
+
+        if isinstance(dataframe, pd.DataFrame):
+            row_iterator = dataframe.itertuples(index=False)
+        else:
+            row_iterator = dataframe.iter_rows(named=True)
+
+        for row in row_iterator:
+            if isinstance(dataframe, pd.DataFrame):
+                row = row._asdict()
+
+            row = {**fill_values, **row}
+            encoded_row = kafka_engine._encode_row(feature_writers, writer, row)
+            key = "".join([str(row[pk]) for pk in sorted(feature_group.primary_key)])
+
+            kafka_engine._kafka_produce(
+                producer=producer,
+                key=key,
+                encoded_row=encoded_row,
+                topic_name=feature_group._online_topic_name,
+                headers=row_headers,
+                acked=acked,
+                debug_kafka=offline_write_options.get("debug_kafka", False),
+            )
+
+        producer.flush()
+        del producer
+        if progress_bar is not None:
+            progress_bar.close()
+
+        # wait for online ingestion so callers that set wait_for_online_ingestion do not
+        # return before OnlineFS has applied the deletes (matches the insert path).
+        if feature_group.online_enabled and offline_write_options.get(
+            "wait_for_online_ingestion", False
+        ):
+            feature_group.get_latest_online_ingestion().wait_for_completion(
+                options=offline_write_options.get("online_ingestion_options", {})
+            )
+
     def _run_materialization_job(
         self,
         feature_group: FeatureGroup | ExternalFeatureGroup,

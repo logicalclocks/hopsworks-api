@@ -258,11 +258,16 @@ public class FeatureGroupUtils {
 
   public static Map<String, byte[]> getHeaders(FeatureGroupBase featureGroup, Long numEntries)
       throws FeatureStoreException, IOException {
-    return getHeaders(featureGroup, numEntries, null);
+    return getHeaders(featureGroup, numEntries, null, null);
   }
 
   public static Map<String, byte[]> getHeaders(FeatureGroupBase featureGroup, Long numEntries,
       Map<String, String> options) throws FeatureStoreException, IOException {
+    return getHeaders(featureGroup, numEntries, options, null);
+  }
+
+  public static Map<String, byte[]> getHeaders(FeatureGroupBase featureGroup, Long numEntries,
+      Map<String, String> options, String operation) throws FeatureStoreException, IOException {
     Map<String, byte[]> headerMap = new HashMap<>();
 
     headerMap.put("projectId",
@@ -270,6 +275,12 @@ public class FeatureGroupUtils {
     headerMap.put("featureGroupId", String.valueOf(featureGroup.getId()).getBytes(StandardCharsets.UTF_8));
     headerMap.put("subjectId",
         String.valueOf(featureGroup.getSubject().getId()).getBytes(StandardCharsets.UTF_8));
+
+    // operation header tells OnlineFS whether the message is an upsert (absent) or a
+    // delete tombstone ("delete"); OnlineFS deletes the row by primary key on "delete".
+    if (operation != null) {
+      headerMap.put("operation", operation.getBytes(StandardCharsets.UTF_8));
+    }
 
     if (options != null
         && Boolean.parseBoolean(options.get("online_ingestion_options.upsert_if_newer"))) {

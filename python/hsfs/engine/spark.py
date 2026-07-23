@@ -858,17 +858,112 @@ class Engine:
                 options=write_options.get("online_ingestion_options", {})
             )
 
+    def _delete_online_dataframe(self, feature_group, dataframe, write_options):
+        # Produce an online delete tombstone for every row in `dataframe`.
+        # Each message carries the row encoded against the feature group Avro
+        # schema plus an `operation: delete` header; OnlineFS deletes the row by
+        # primary key and ignores the values. `dataframe` needs to carry only the
+        # primary key: non-key columns are filled with null so the schema serializes.
+        write_options = kafka_engine._get_kafka_config(
+            feature_group.feature_store_id, write_options, engine="spark"
+        )
+        dataframe = self._pad_online_delete_dataframe(feature_group, dataframe)
+        serialized_df = self._serialize_to_avro(feature_group, dataframe)
+
+        (
+            serialized_df.withColumn(
+                "headers",
+                self._get_headers(
+                    feature_group, dataframe.count(), write_options, operation="delete"
+                ),
+            )
+            .write.format(self.KAFKA_FORMAT)
+            .options(**write_options)
+            .option("topic", feature_group._online_topic_name)
+            .save()
+        )
+
+        # wait for online ingestion so callers that set wait_for_online_ingestion do not
+        # return before OnlineFS has applied the deletes (matches the insert path).
+        if feature_group.online_enabled and write_options.get(
+            "wait_for_online_ingestion", False
+        ):
+            feature_group.get_latest_online_ingestion().wait_for_completion(
+                options=write_options.get("online_ingestion_options", {})
+            )
+
+    def _pad_online_delete_dataframe(self, feature_group, dataframe):
+        # Add every feature group column the caller did not pass as a typed null,
+        # so a primary-key-only `dataframe` still serializes against the full Avro
+        # schema. OnlineFS deletes by primary key and discards these values.
+        from pyspark.sql.functions import lit
+
+        present = set(dataframe.columns)
+        for field in json.loads(feature_group.avro_schema)["fields"]:
+            if field["name"] in present:
+                continue
+            dataframe = dataframe.withColumn(
+                field["name"], lit(None).cast(self._avro_to_spark_type(field["type"]))
+            )
+        return dataframe
+
+    @staticmethod
+    def _avro_to_spark_type(avro_type):
+        # Map an Avro field type to the Spark type used to cast a null fill column.
+        # Feature group schemas wrap every field in a ["null", <type>] union.
+        from pyspark.sql import types as spark_types
+
+        if isinstance(avro_type, list):
+            non_null = [branch for branch in avro_type if branch != "null"]
+            return Engine._avro_to_spark_type(non_null[0])
+        if isinstance(avro_type, dict):
+            logical_type = avro_type.get("logicalType")
+            if logical_type == "date":
+                return spark_types.DateType()
+            if logical_type in ("timestamp-micros", "timestamp-millis"):
+                return spark_types.TimestampType()
+            complex_type = avro_type.get("type")
+            if complex_type == "array":
+                return spark_types.ArrayType(
+                    Engine._avro_to_spark_type(avro_type["items"])
+                )
+            if complex_type == "map":
+                return spark_types.MapType(
+                    spark_types.StringType(),
+                    Engine._avro_to_spark_type(avro_type["values"]),
+                )
+            if complex_type == "record":
+                return spark_types.StructType(
+                    [
+                        spark_types.StructField(
+                            f["name"], Engine._avro_to_spark_type(f["type"]), True
+                        )
+                        for f in avro_type["fields"]
+                    ]
+                )
+            return Engine._avro_to_spark_type(complex_type)
+        return {
+            "long": spark_types.LongType(),
+            "int": spark_types.IntegerType(),
+            "double": spark_types.DoubleType(),
+            "float": spark_types.FloatType(),
+            "boolean": spark_types.BooleanType(),
+            "string": spark_types.StringType(),
+            "bytes": spark_types.BinaryType(),
+        }.get(avro_type, spark_types.StringType())
+
     def _get_headers(
         self,
         feature_group: fg_mod.FeatureGroup | fg_mod.ExternalFeatureGroup,
         num_entries: int | None = None,
         options: dict | None = None,
+        operation: str | None = None,
     ) -> array:
         return array(
             *[
                 struct(lit(key).alias("key"), lit(value).alias("value"))
                 for key, value in kafka_engine._get_headers(
-                    feature_group, num_entries, options
+                    feature_group, num_entries, options, operation
                 ).items()
             ]
         )

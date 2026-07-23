@@ -32,7 +32,7 @@ from urllib.parse import urlparse
 import avro.schema
 import hsfs.expectation_suite
 import humps
-from hopsworks_apigen import deprecation, public
+from hopsworks_apigen import deprecated, deprecation, public
 from hopsworks_common import client, job
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
 from hopsworks_common.core import alerts_api
@@ -4695,27 +4695,35 @@ class FeatureGroup(FeatureGroupBase):
         return self._feature_group_engine._commit_details(self, wallclock_time, limit)
 
     @public
-    def commit_delete_record(
+    def remove_rows(
         self,
         delete_df: TypeVar("pyspark.sql.DataFrame"),  # noqa: F821
         write_options: dict[Any, Any] | None = None,
+        delete_online: bool = False,
     ) -> None:
         """Drops records present in the provided DataFrame and commits it as update to this Feature group.
 
         This method can only be used on feature groups stored as HUDI, DELTA, or ICEBERG.
 
+        By default only the offline table is affected.
+        Set `delete_online` to also delete the records from the online store of an online-enabled feature group.
+        `delete_df` needs to carry only the primary key columns, matching the offline delete; any other columns are ignored for the online delete.
+        Online delete is not supported for stream feature groups yet; it is skipped with a warning for them.
+
         Parameters:
-            delete_df: dataFrame containing records to be deleted.
+            delete_df: DataFrame containing records to be deleted.
             write_options: User provided write options.
+            delete_online: Also delete the records from the online store when the feature group is online-enabled.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+            hopsworks.client.exceptions.FeatureStoreException: If `delete_online` is set and the feature group has an embedding index or is not online-enabled.
         """
         if self.time_travel_format == "HUDI" and not engine._get_type().startswith(
             "spark"
         ):
             raise NotImplementedError(
-                "commit_delete_record is only supported for HUDI feature groups when using the Spark engine."
+                "remove_rows is only supported for HUDI feature groups when using the Spark engine."
             )
         if (
             self.time_travel_format == "ICEBERG"
@@ -4723,10 +4731,61 @@ class FeatureGroup(FeatureGroupBase):
             and not HAS_PYICEBERG
         ):
             raise NotImplementedError(
-                "commit_delete_record on ICEBERG feature groups without Spark requires pyiceberg. "
+                "remove_rows on ICEBERG feature groups without Spark requires pyiceberg. "
                 "Install 'pyiceberg' to enable it."
             )
+        if delete_online:
+            # Validate unsupported online-delete targets before the offline commit, so an
+            # invalid delete_online request fails without mutating the offline store.
+            if self.embedding_index is not None:
+                raise FeatureStoreException(
+                    "delete_online is not supported for feature groups with an embedding index; "
+                    "their online data lives in the vector database, which this release does not delete from."
+                )
+            if not self.online_enabled:
+                raise FeatureStoreException(
+                    "delete_online was set but this feature group is not online-enabled."
+                )
+
         self._feature_group_engine._commit_delete(self, delete_df, write_options or {})
+
+        if delete_online:
+            if self.stream:
+                warnings.warn(
+                    "delete_online was skipped: online delete is not supported for stream feature "
+                    "groups yet. The offline materialization (Hudi DeltaStreamer) reprocesses the "
+                    "delete tombstone and would re-insert the rows offline, so the online rows were "
+                    "NOT deleted. Support for stream feature groups is planned for a future release.",
+                    stacklevel=2,
+                )
+                return
+            # Requires an OnlineFS (clusterj-onlinefs) that understands the
+            # `operation: delete` header (the release shipping the OnlineFS delete
+            # branch onward). Not runtime-gated: OnlineFS is not reachable from the
+            # client, and the backend version is not its proxy since backend, SDK and
+            # OnlineFS can be versioned/backported independently. A controlled
+            # deployment (helm bumps SDK images and OnlineFS together) keeps them in
+            # sync; against an OnlineFS without the delete branch the tombstone is a
+            # no-op-to-corrupting write, so pair a delete-capable OnlineFS with this SDK.
+            self._feature_group_engine._delete_online_records(
+                self, delete_df, write_options or {}
+            )
+
+    @deprecated("hsfs.feature_group.FeatureGroup.remove_rows")
+    def commit_delete_record(
+        self,
+        delete_df: TypeVar("pyspark.sql.DataFrame"),  # noqa: F821
+        write_options: dict[Any, Any] | None = None,
+        delete_online: bool = False,
+    ) -> None:
+        """**Deprecated**, use [`remove_rows`][hsfs.feature_group.FeatureGroup.remove_rows] instead.
+
+        Parameters:
+            delete_df: DataFrame containing records to be deleted.
+            write_options: User provided write options.
+            delete_online: Also delete the records from the online store when the feature group is online-enabled.
+        """
+        return self.remove_rows(delete_df, write_options, delete_online)
 
     @public
     def delta_vacuum(

@@ -28,6 +28,8 @@ import com.logicalclocks.hsfs.metadata.HopsworksHttpClient;
 import com.logicalclocks.hsfs.spark.constructor.Query;
 import com.logicalclocks.hsfs.spark.engine.FeatureGroupEngine;
 
+import org.apache.spark.sql.Dataset;
+import org.apache.spark.sql.Row;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -37,7 +39,9 @@ import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.when;
@@ -173,5 +177,29 @@ public class TestFeatureGroup {
 
     // Assert
     Assertions.assertNull(featureGroup.getSubject());
+  }
+
+  @Test
+  @SuppressWarnings("deprecation")
+  public void testCommitDeleteRecordDelegatesToRemoveRows() throws Exception {
+    // The deprecated commitDeleteRecord overloads must delegate to removeRows.
+    FeatureGroup featureGroup = Mockito.spy(new FeatureGroup(null, 1));
+    Dataset<Row> df = Mockito.mock(Dataset.class);
+    Map<String, String> writeOptions = new HashMap<>();
+
+    Mockito.doNothing().when(featureGroup).removeRows(df);
+    Mockito.doNothing().when(featureGroup).removeRows(df, writeOptions);
+    Mockito.doNothing().when(featureGroup).removeRows(df, true);
+    Mockito.doNothing().when(featureGroup).removeRows(df, writeOptions, true);
+
+    featureGroup.commitDeleteRecord(df);
+    featureGroup.commitDeleteRecord(df, writeOptions);
+    featureGroup.commitDeleteRecord(df, true);
+    featureGroup.commitDeleteRecord(df, writeOptions, true);
+
+    Mockito.verify(featureGroup).removeRows(df);
+    Mockito.verify(featureGroup).removeRows(df, writeOptions);
+    Mockito.verify(featureGroup).removeRows(df, true);
+    Mockito.verify(featureGroup).removeRows(df, writeOptions, true);
   }
 }

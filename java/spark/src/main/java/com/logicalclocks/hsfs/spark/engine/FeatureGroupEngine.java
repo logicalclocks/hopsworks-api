@@ -468,14 +468,48 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
   public FeatureGroupCommit commitDelete(FeatureGroupBase featureGroupBase, Dataset<Row> genericDataset,
                                          Map<String, String> writeOptions)
       throws IOException, FeatureStoreException, ParseException {
+    return commitDelete(featureGroupBase, genericDataset, writeOptions, false);
+  }
+
+  public FeatureGroupCommit commitDelete(FeatureGroupBase featureGroupBase, Dataset<Row> genericDataset,
+                                         Map<String, String> writeOptions, boolean deleteOnline)
+      throws IOException, FeatureStoreException, ParseException {
     if (!((featureGroupBase instanceof FeatureGroup && featureGroupBase.getTimeTravelFormat() == TimeTravelFormat.HUDI)
         || featureGroupBase instanceof StreamFeatureGroup)) {
       // operation is only valid for time travel enabled feature group
       throw new FeatureStoreException("delete function is only valid for "
           + "time travel enabled feature group");
     }
-    return HudiEngine.getInstance().deleteRecord(SparkEngine.getInstance().getSparkSession(), featureGroupBase,
-        genericDataset, writeOptions);
+    // Validate unsupported online-delete targets before the offline commit, so an invalid
+    // deleteOnline request fails without mutating the offline store.
+    if (deleteOnline && !Boolean.TRUE.equals(featureGroupBase.getOnlineEnabled())) {
+      throw new FeatureStoreException("deleteOnline was set but this feature group is not online-enabled.");
+    }
+
+    // Offline delete is always applied; online delete is opt-in and routed as a Kafka
+    // tombstone consumed by OnlineFS, which deletes the row from RonDB by primary key.
+    FeatureGroupCommit commit = HudiEngine.getInstance().deleteRecord(
+        SparkEngine.getInstance().getSparkSession(), featureGroupBase, genericDataset, writeOptions);
+
+    if (deleteOnline) {
+      if (featureGroupBase instanceof StreamFeatureGroup) {
+        FeatureGroupEngineBase.LOGGER.warn(
+            "deleteOnline was skipped: online delete is not supported for stream feature groups yet. "
+            + "The offline materialization (Hudi DeltaStreamer) reprocesses the delete tombstone and would "
+            + "re-insert the rows offline, so the online rows were NOT deleted. Support for stream feature "
+            + "groups is planned for a future release.");
+        return commit;
+      }
+      // Requires an OnlineFS (clusterj-onlinefs) that understands the operation: delete header
+      // (the release shipping the OnlineFS delete branch onward). Not runtime-gated: OnlineFS is
+      // not reachable from the client, and the backend version is not its proxy since backend, SDK
+      // and OnlineFS can be versioned/backported independently. A controlled deployment (helm bumps
+      // the SDK images and OnlineFS together) keeps them in sync; pair a delete-capable OnlineFS
+      // with this SDK, as an OnlineFS without the delete branch mishandles the tombstone.
+      SparkEngine.getInstance().deleteOnlineDataframe(featureGroupBase, genericDataset,
+          writeOptions != null ? writeOptions : new HashMap<>());
+    }
+    return commit;
   }
 
   public ExternalFeatureGroup saveExternalFeatureGroup(ExternalFeatureGroup externalFeatureGroup)
