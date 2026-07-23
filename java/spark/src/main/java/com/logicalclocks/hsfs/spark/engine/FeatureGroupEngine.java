@@ -490,6 +490,14 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
       if (!Boolean.TRUE.equals(featureGroupBase.getOnlineEnabled())) {
         throw new FeatureStoreException("deleteOnline was set but this feature group is not online-enabled.");
       }
+      if (featureGroupBase instanceof StreamFeatureGroup) {
+        FeatureGroupEngineBase.LOGGER.warn(
+            "deleteOnline was skipped: online delete is not supported for stream feature groups yet. "
+            + "The offline materialization (Hudi DeltaStreamer) reprocesses the delete tombstone and would "
+            + "re-insert the rows offline, so the online rows were NOT deleted. Support for stream feature "
+            + "groups is planned for a future release.");
+        return commit;
+      }
       if (!FeatureGroupUtils.backendSupportsOnlineDelete()) {
         throw new FeatureStoreException("Online delete requires a Hopsworks backend version >= "
             + FeatureGroupUtils.minBackendVersionOnlineDelete()

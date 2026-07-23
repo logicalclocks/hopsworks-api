@@ -4479,6 +4479,7 @@ class FeatureGroup(FeatureGroupBase):
         By default only the offline table is affected.
         Set `delete_online` to also delete the records from the online store of an online-enabled feature group.
         `delete_df` needs to carry only the primary key columns, matching the offline delete; any other columns are ignored for the online delete.
+        Online delete is not supported for stream feature groups yet; it is skipped with a warning for them.
 
         Parameters:
             delete_df: DataFrame containing records to be deleted.
@@ -4516,6 +4517,15 @@ class FeatureGroup(FeatureGroupBase):
                 raise FeatureStoreException(
                     "delete_online was set but this feature group is not online-enabled."
                 )
+            if self.stream:
+                warnings.warn(
+                    "delete_online was skipped: online delete is not supported for stream feature "
+                    "groups yet. The offline materialization (Hudi DeltaStreamer) reprocesses the "
+                    "delete tombstone and would re-insert the rows offline, so the online rows were "
+                    "NOT deleted. Support for stream feature groups is planned for a future release.",
+                    stacklevel=2,
+                )
+                return
             if not _backend_supports_online_delete():
                 raise FeatureStoreException(
                     "Online delete requires a Hopsworks backend version "

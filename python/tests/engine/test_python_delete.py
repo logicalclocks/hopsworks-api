@@ -19,8 +19,10 @@ from io import BytesIO
 
 import fastavro
 import pandas as pd
+import pytest
 from hsfs import feature_group
 from hsfs.core import kafka_engine
+from hsfs.core.feature_group_engine import FeatureGroupEngine
 from hsfs.engine import python
 
 
@@ -49,6 +51,31 @@ class TestOnlineDeleteFillValues:
         fg.avro_schema = AVRO_SCHEMA
 
         assert kafka_engine._online_delete_fill_values(fg) == {"measurement": None}
+
+
+class TestCommitDeleteRecordStreamGate:
+    def test_online_delete_skipped_for_stream_fg(self, mocker):
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch.object(FeatureGroupEngine, "_commit_delete")
+        online = mocker.patch.object(FeatureGroupEngine, "_delete_online_records")
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=["id"],
+            partition_key=[],
+            id=10,
+            stream=True,
+            online_enabled=True,
+            time_travel_format="DELTA",
+        )
+        fg.primary_key = ["id"]
+
+        with pytest.warns(UserWarning, match="stream feature groups"):
+            fg.commit_delete_record(pd.DataFrame({"id": [2]}), delete_online=True)
+
+        online.assert_not_called()
 
 
 class TestDeleteDataframeKafka:

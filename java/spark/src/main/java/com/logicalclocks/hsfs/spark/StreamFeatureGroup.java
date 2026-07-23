@@ -1159,7 +1159,8 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    * store of an online-enabled feature group.
    *
    * <p>When {@code deleteOnline} is true, {@code featureData} needs to carry only the primary key columns,
-   * matching the offline delete; any other columns are ignored for the online delete.
+   * matching the offline delete; any other columns are ignored for the online delete. Online delete is
+   * skipped with a warning for stream feature groups (planned for a future release).
    *
    * @param featureData Spark DataFrame, RDD. Feature data to be deleted.
    * @param deleteOnline Also delete the records from the online store when the feature group is online-enabled.
@@ -1178,7 +1179,8 @@ public class StreamFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    * store of an online-enabled feature group.
    *
    * <p>When {@code deleteOnline} is true, {@code featureData} needs to carry only the primary key columns,
-   * matching the offline delete; any other columns are ignored for the online delete.
+   * matching the offline delete; any other columns are ignored for the online delete. Online delete is
+   * skipped with a warning for stream feature groups (planned for a future release).
    *
    * @param featureData Spark DataFrame, RDD. Feature data to be deleted.
    * @param writeOptions Additional write options as key-value pairs.
