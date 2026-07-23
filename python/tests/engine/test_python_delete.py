@@ -83,6 +83,32 @@ class TestRemoveRowsStreamGate:
         online.assert_not_called()
 
 
+class TestRemoveRowsValidation:
+    def test_online_delete_on_non_online_fg_fails_before_offline_commit(self, mocker):
+        from hopsworks_common.client.exceptions import FeatureStoreException
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        commit = mocker.patch.object(FeatureGroupEngine, "_commit_delete")
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=["id"],
+            partition_key=[],
+            id=10,
+            stream=False,
+            online_enabled=False,
+            time_travel_format="DELTA",
+        )
+        fg.primary_key = ["id"]
+
+        with pytest.raises(FeatureStoreException, match="not online-enabled"):
+            fg.remove_rows(pd.DataFrame({"id": [2]}), delete_online=True)
+
+        # offline store must not be mutated when the online-delete request is invalid
+        commit.assert_not_called()
+
+
 class TestCommitDeleteRecordDeprecated:
     def test_commit_delete_record_warns_and_delegates(self, mocker):
         mocker.patch.object(FeatureGroupEngine, "_commit_delete")

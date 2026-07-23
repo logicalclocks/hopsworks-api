@@ -4488,9 +4488,9 @@ class FeatureGroup(FeatureGroupBase):
                 "remove_rows on ICEBERG feature groups without Spark requires pyiceberg. "
                 "Install 'pyiceberg' to enable it."
             )
-        self._feature_group_engine._commit_delete(self, delete_df, write_options or {})
-
         if delete_online:
+            # Validate unsupported online-delete targets before the offline commit, so an
+            # invalid delete_online request fails without mutating the offline store.
             if self.embedding_index is not None:
                 raise FeatureStoreException(
                     "delete_online is not supported for feature groups with an embedding index; "
@@ -4500,6 +4500,10 @@ class FeatureGroup(FeatureGroupBase):
                 raise FeatureStoreException(
                     "delete_online was set but this feature group is not online-enabled."
                 )
+
+        self._feature_group_engine._commit_delete(self, delete_df, write_options or {})
+
+        if delete_online:
             if self.stream:
                 warnings.warn(
                     "delete_online was skipped: online delete is not supported for stream feature "

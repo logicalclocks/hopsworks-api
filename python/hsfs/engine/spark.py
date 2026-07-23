@@ -857,6 +857,15 @@ class Engine:
             .save()
         )
 
+        # wait for online ingestion so callers that set wait_for_online_ingestion do not
+        # return before OnlineFS has applied the deletes (matches the insert path).
+        if feature_group.online_enabled and write_options.get(
+            "wait_for_online_ingestion", False
+        ):
+            feature_group.get_latest_online_ingestion().wait_for_completion(
+                options=write_options.get("online_ingestion_options", {})
+            )
+
     def _pad_online_delete_dataframe(self, feature_group, dataframe):
         # Add every feature group column the caller did not pass as a typed null,
         # so a primary-key-only `dataframe` still serializes against the full Avro
