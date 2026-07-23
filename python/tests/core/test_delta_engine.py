@@ -383,7 +383,7 @@ class TestDeltaEngine:
 
     def test_setup_delta_read_opts_end_before_earliest_uses_version(self, mocker):
         # Snapshot-with-end counterpart of the same skew: an end time before the
-        # Delta log's first commit falls back to versionAsOf on the earliest commit.
+        # Delta log's first commit pins versionAsOf on the earliest commit.
         # Arrange
         _patch_client(mocker, is_external=False)
         fg = _make_fg("hopsfs://nn:8020/p")
@@ -391,15 +391,54 @@ class TestDeltaEngine:
         alias = mock.Mock()
         alias.left_feature_group_start_timestamp = None
         alias.left_feature_group_end_timestamp = 1000
-        mocker.patch.object(
-            engine, "_get_delta_earliest_commit", return_value=(3, 2000)
-        )
+        mocker.patch.object(engine, "_get_delta_commits", return_value=[(3, 2000)])
 
         # Act
         result = engine._setup_delta_read_opts(alias, "hopsfs://nn:8020/p")
 
         # Assert
         assert result == {engine.DELTA_QUERY_TIME_TRAVEL_AS_OF_VERSION: 3}
+
+    def test_setup_delta_read_opts_end_resolves_version_between_commits(self, mocker):
+        # Delta resolves timestampAsOf against commit-file modification times,
+        # which can be tens of milliseconds after the history()'s in-commit
+        # timestamps the backend records: an end bound equal to commit N's
+        # recorded time could silently resolve to version N-1. The end-only read
+        # therefore resolves the version against history() itself.
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        engine = DeltaEngine(1, "fs", fg, None, None)
+        alias = mock.Mock()
+        alias.left_feature_group_start_timestamp = None
+        alias.left_feature_group_end_timestamp = 2000
+        mocker.patch.object(
+            engine, "_get_delta_commits", return_value=[(0, 1000), (1, 2000), (2, 3000)]
+        )
+
+        # Act
+        result = engine._setup_delta_read_opts(alias, "hopsfs://nn:8020/p")
+
+        # Assert: end == commit 1's recorded time resolves to exactly version 1
+        assert result == {engine.DELTA_QUERY_TIME_TRAVEL_AS_OF_VERSION: 1}
+
+    def test_setup_delta_read_opts_end_unreadable_history_uses_timestamp(self, mocker):
+        # When the Delta history cannot be read the timestamp bound is kept.
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        engine = DeltaEngine(1, "fs", fg, None, None)
+        alias = mock.Mock()
+        alias.left_feature_group_start_timestamp = None
+        alias.left_feature_group_end_timestamp = 2000
+        mocker.patch.object(engine, "_get_delta_commits", return_value=None)
+        mocker.patch("hsfs.util._get_delta_datestr_from_timestamp", return_value="t")
+
+        # Act
+        result = engine._setup_delta_read_opts(alias, "hopsfs://nn:8020/p")
+
+        # Assert
+        assert result == {engine.DELTA_QUERY_TIME_TRAVEL_AS_OF_INSTANT: "t"}
 
     def test_generate_merge_query_primary_key_only(self, mocker):
         # Arrange

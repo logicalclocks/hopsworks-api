@@ -287,6 +287,31 @@ class TestFeatureMonitoringResultEngine:
         assert count_specific_difference == 2
         assert none_difference is None
 
+    def test_compute_difference_between_stats_missing_metric(self):
+        # Arrange
+        result_engine = feature_monitoring_result_engine.FeatureMonitoringResultEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+        # uniqueness is not computed when exact_uniqueness is disabled
+        detection_statistics = FeatureDescriptiveStatistics(
+            feature_name="amount", count=10
+        )
+        reference_statistics = FeatureDescriptiveStatistics(
+            feature_name="amount", count=10, uniqueness=0.5
+        )
+
+        # Act
+        difference = result_engine._compute_difference_between_stats(
+            detection_statistics=detection_statistics,
+            reference_statistics=reference_statistics,
+            metric="uniqueness",
+            relative=False,
+        )
+
+        # Assert
+        assert difference is None
+
     def test_compute_difference_and_shift(self):
         # Arrange
         from hsfs.core.statistics_comparison_config import StatisticsComparisonConfig

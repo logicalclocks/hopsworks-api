@@ -34,6 +34,9 @@ import java.util.Map;
  * {@code column, dataType, isDataTypeInferred, completeness, numRecordsNonNull, numRecordsNull,
  * distinctness, entropy, uniqueness, approximateNumDistinctValues, exactNumDistinctValues,
  * mean, maximum, minimum, sum, stdDev, correlations, histogram, kll, approxPercentiles}.
+ * The uniqueness-family keys ({@code distinctness, entropy, uniqueness, exactNumDistinctValues})
+ * are omitted when exactUniqueness is disabled — a deliberate divergence from Deequ's
+ * always-keys-present shape, so consumers see them as absent instead of a bogus 0.
  *
  * <p>Categorical/Boolean columns omit {@code mean, maximum, minimum, sum, stdDev, correlations,
  * kll, approxPercentiles}.
@@ -89,16 +92,17 @@ class ProfileJsonSerializer {
     map.put("completeness", profile.getCompleteness());
     map.put("numRecordsNonNull", profile.getNumRecordsNonNull());
     map.put("numRecordsNull", profile.getNumRecordsNull());
-    map.put("distinctness", profile.getDistinctness());
-    map.put("entropy", profile.getEntropy());
-    map.put("uniqueness", profile.getUniqueness());
-    map.put("approximateNumDistinctValues", profile.getApproximateNumDistinctValues());
-    map.put("exactNumDistinctValues", profile.getExactNumDistinctValues());
-    map.put("mean", profile.getMean());
-    map.put("maximum", profile.getMaximum());
-    map.put("minimum", profile.getMinimum());
-    map.put("sum", profile.getSum());
-    map.put("stdDev", profile.getStdDev());
+    putUniquenessFamily(map, profile);
+    // Spark's avg/min/max/sum/stddev_pop return null over an all-null column.
+    // Emitting "mean": null (etc.) would crash the has()->getDouble() parsers
+    // (org.json has() is true for JSON null, getDouble throws on it), so omit
+    // the key instead: "absent = not computed", the same contract as the
+    // uniqueness family above.
+    putIfNotNull(map, "mean", profile.getMean());
+    putIfNotNull(map, "maximum", profile.getMaximum());
+    putIfNotNull(map, "minimum", profile.getMinimum());
+    putIfNotNull(map, "sum", profile.getSum());
+    putIfNotNull(map, "stdDev", profile.getStdDev());
     if (profile.getCorrelations() != null) {
       map.put("correlations", buildCorrelationsList(profile.getCorrelations()));
     }
@@ -123,15 +127,39 @@ class ProfileJsonSerializer {
     map.put("completeness", profile.getCompleteness());
     map.put("numRecordsNonNull", profile.getNumRecordsNonNull());
     map.put("numRecordsNull", profile.getNumRecordsNull());
-    map.put("distinctness", profile.getDistinctness());
-    map.put("entropy", profile.getEntropy());
-    map.put("uniqueness", profile.getUniqueness());
-    map.put("approximateNumDistinctValues", profile.getApproximateNumDistinctValues());
-    map.put("exactNumDistinctValues", profile.getExactNumDistinctValues());
+    putUniquenessFamily(map, profile);
     if (profile.getHistogram() != null) {
       map.put("histogram", profile.getHistogram());
     }
     return map;
+  }
+
+  /**
+   * Emits the uniqueness-family stats, omitting the keys when they were not computed
+   * (exactUniqueness disabled) so consumers deserialize them as absent instead of a
+   * bogus 0.
+   * Divergence from Deequ's always-keys-present shape is deliberate.
+   */
+  private void putUniquenessFamily(Map<String, Object> map, ColumnProfile profile) {
+    if (profile.getDistinctness() != null) {
+      map.put("distinctness", profile.getDistinctness());
+    }
+    if (profile.getEntropy() != null) {
+      map.put("entropy", profile.getEntropy());
+    }
+    if (profile.getUniqueness() != null) {
+      map.put("uniqueness", profile.getUniqueness());
+    }
+    map.put("approximateNumDistinctValues", profile.getApproximateNumDistinctValues());
+    if (profile.getExactNumDistinctValues() != null) {
+      map.put("exactNumDistinctValues", profile.getExactNumDistinctValues());
+    }
+  }
+
+  private static void putIfNotNull(Map<String, Object> map, String key, Object value) {
+    if (value != null) {
+      map.put(key, value);
+    }
   }
 
   private List<Map<String, Object>> buildCorrelationsList(Map<String, Double> correlations) {

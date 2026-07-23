@@ -199,13 +199,15 @@ class DeltaEngine:
             # CDC query - remove duplicates for upserts and do not include deleted rows
             # to match behavior of other engines.
             #
-            # Why retry: Delta's CDF lower-bound check uses the commit file modification
-            # time, while DeltaTable.history() returns the in-commit creation timestamp.
-            # On a freshly-created table these can differ by tens of milliseconds, so a
-            # pre-flight comparison against history() cannot reliably predict whether
-            # Delta will accept the startingTimestamp. Instead we attempt the read with
-            # startingTimestamp and, if Delta rejects it with the "before the earliest
-            # version" error, retry from the earliest commit version (startingVersion).
+            # Why retry: Delta's CDF lower-bound check and DeltaTable.history()
+            # both report the commit-file modification time (without in-commit
+            # timestamps enabled), while the startingTimestamp we pass derives
+            # from the backend-recorded commit_time, which is ~200 ms earlier.
+            # A pre-flight comparison against history() therefore cannot reliably
+            # predict whether Delta will accept the startingTimestamp. Instead we
+            # attempt the read with startingTimestamp and, if Delta rejects it
+            # with the "before the earliest version" error, retry from the
+            # earliest commit version (startingVersion).
             def _do_cdf_read(opts):
                 return (
                     self._spark_session.read.format(self.DELTA_SPARK_FORMAT)
@@ -271,17 +273,35 @@ class DeltaEngine:
             delta_fg_alias.left_feature_group_end_timestamp is not None
             and delta_fg_alias.left_feature_group_start_timestamp is None
         ):
-            # snapshot query with end time
+            # snapshot query with end time; resolve the version against the Delta
+            # log's in-commit timestamps instead of passing timestampAsOf.
+            # Delta resolves timestamp bounds against commit-file modification
+            # times, while the backend-recorded commit_time carries the log's
+            # in-commit commitInfo timestamp, which is tens to hundreds of
+            # milliseconds earlier: enough for timestampAsOf to silently resolve
+            # to the previous version (or to be rejected outright when it
+            # predates the first commit, which happens when compute_statistics
+            # runs right after a fresh insert).
             end_ts = delta_fg_alias.left_feature_group_end_timestamp
-            earliest = self._get_delta_earliest_commit(location) if location else None
-            if earliest is not None and end_ts <= earliest[1]:
-                # Requested time predates the Delta log's first commit.
-                # Happens when compute_statistics runs immediately after a fresh
-                # insert: the backend-recorded commit_time can be a few ms before
-                # the Delta log's first commit, and Delta rejects timestampAsOf
-                # in that range. Fall back to versionAsOf on the earliest commit.
+            commits = self._get_delta_commits(location) if location else None
+            if commits:
+                # Highest version committed at or before end_ts.
+                # commitInfo timestamps are not guaranteed monotonic in version
+                # (concurrent writers / commit retries), so stop at the first
+                # commit past end_ts rather than letting a later out-of-order
+                # commit select too high a version.
+                # When end_ts predates every commit the earliest version is
+                # pinned; if the window genuinely ended before the first commit
+                # this reads post-window data instead of returning empty
+                # (indistinguishable here from clock skew, and mirrors the
+                # Iceberg earliest-snapshot fallback).
+                version = commits[0][0]
+                for commit_version, commit_ts in commits:
+                    if commit_ts > end_ts:
+                        break
+                    version = commit_version
                 delta_options = {
-                    self.DELTA_QUERY_TIME_TRAVEL_AS_OF_VERSION: earliest[0],
+                    self.DELTA_QUERY_TIME_TRAVEL_AS_OF_VERSION: version,
                 }
             else:
                 _delta_commit_end_time = util._get_delta_datestr_from_timestamp(end_ts)
@@ -317,42 +337,93 @@ class DeltaEngine:
 
         return delta_options
 
+    def _get_delta_commits(self, location: str):
+        """Get all commits from the Delta log.
+
+        Return a list of (version, timestamp_ms) tuples sorted by version
+        ascending, or None if the log cannot be read or is empty.
+
+        The timestamps are the log's in-commit ``commitInfo.timestamp`` values,
+        the same clock the backend-recorded commit times are derived from.
+        ``DeltaTable.history()`` is deliberately NOT used here: its timestamp
+        column carries the commit-file modification time, which lags the
+        in-commit timestamp (tens to hundreds of milliseconds on HopsFS), so
+        resolving a recorded commit time against it can silently land on the
+        previous version.
+        History's modtime clock diverges for tables written by classic Spark
+        (only delta-rs and the Spark Connect writer record the in-commit clock),
+        so reading ``commitInfo.timestamp`` from the log directly is what keeps
+        resolution correct for the pyspark-driver variants too.
+        """
+        try:
+            if self._spark_session is not None:
+                from pyspark.sql import functions as F  # noqa: PLC0415
+                from pyspark.sql.types import (  # noqa: PLC0415
+                    LongType,
+                    StructField,
+                    StructType,
+                )
+
+                # explicit schema: avoids inferring/parsing the large
+                # add/remove action payloads and tolerates commitInfo rows
+                # without a timestamp
+                log_schema = StructType(
+                    [
+                        StructField(
+                            "commitInfo",
+                            StructType([StructField("timestamp", LongType())]),
+                        )
+                    ]
+                )
+                rows = (
+                    self._spark_session.read.schema(log_schema)
+                    .json(location.rstrip("/") + "/_delta_log/*.json")
+                    .withColumn("_file", F.input_file_name())
+                    .filter(F.col("commitInfo.timestamp").isNotNull())
+                    .withColumn(
+                        # anchor on the 20-digit commit basename so V2 checkpoint
+                        # manifests (<v>.checkpoint.<uuid>.json) and log-compaction
+                        # files (<x>.<y>.compacted.json) do not match and yield a
+                        # bogus version
+                        "version",
+                        F.regexp_extract(F.col("_file"), r"(\d{20})\.json$", 1).cast(
+                            "long"
+                        ),
+                    )
+                    .filter(F.col("version").isNotNull())
+                    .select("version", F.col("commitInfo.timestamp").alias("timestamp"))
+                    .collect()
+                )
+                commits = [(int(row["version"]), int(row["timestamp"])) for row in rows]
+            else:
+                # delta-rs reads the commit timestamps from the log itself, so
+                # its history() is already on the in-commit clock
+                from deltalake import DeltaTable as DeltaRsTable
+
+                history = DeltaRsTable(location, storage_options={}).history()
+                commits = [
+                    (
+                        int(commit["version"]),
+                        int(util._convert_event_time_to_timestamp(commit["timestamp"])),
+                    )
+                    for commit in history
+                ]
+            if not commits:
+                return None
+            commits.sort(key=lambda commit: commit[0])
+            return commits
+        except Exception as e:
+            _logger.debug(f"Could not read Delta log at {location}: {e}")
+            return None
+
     def _get_delta_earliest_commit(self, location: str):
         """Get earliest commit from the Delta log.
 
         Return (version, timestamp_ms) of the earliest commit in the Delta
         log at `location`, or None if the history cannot be read.
         """
-        try:
-            if self._spark_session is not None:
-                from delta.tables import DeltaTable
-
-                rows = (
-                    DeltaTable.forPath(self._spark_session, location)
-                    .history()
-                    .select("version", "timestamp")
-                    .collect()
-                )
-                if not rows:
-                    return None
-                oldest = min(rows, key=lambda r: r["version"])
-                return int(oldest["version"]), int(
-                    oldest["timestamp"].timestamp() * 1000
-                )
-
-            from deltalake import DeltaTable as DeltaRsTable
-
-            history = DeltaRsTable(location, storage_options={}).history()
-            if not history:
-                return None
-            oldest = min(history, key=lambda c: c["version"])
-            return (
-                int(oldest["version"]),
-                int(util._convert_event_time_to_timestamp(oldest["timestamp"])),
-            )
-        except Exception as e:
-            _logger.debug(f"Could not read Delta history at {location}: {e}")
-            return None
+        commits = self._get_delta_commits(location)
+        return commits[0] if commits else None
 
     def _delete_record(self, delete_df):
         partition_transforms._require_writable(self._feature_group)

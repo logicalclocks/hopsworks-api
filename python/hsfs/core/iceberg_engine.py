@@ -220,6 +220,7 @@ class IcebergEngine:
     ICEBERG_SPARK_FORMAT = "iceberg"
     ICEBERG_SPARK_CATALOG_IMPL = "org.apache.iceberg.spark.SparkCatalog"
     ICEBERG_QUERY_TIME_TRAVEL_AS_OF_TIMESTAMP = "as-of-timestamp"
+    ICEBERG_QUERY_TIME_TRAVEL_SNAPSHOT_ID = "snapshot-id"
     ICEBERG_START_SNAPSHOT_ID = "start-snapshot-id"
     ICEBERG_END_SNAPSHOT_ID = "end-snapshot-id"
     ICEBERG_DOT_PREFIX = "iceberg."
@@ -953,11 +954,9 @@ class IcebergEngine:
             and iceberg_fg_alias.left_feature_group_start_timestamp is None
         ):
             # snapshot query with end time; Iceberg expects epoch milliseconds
-            iceberg_options = {
-                self.ICEBERG_QUERY_TIME_TRAVEL_AS_OF_TIMESTAMP: str(
-                    iceberg_fg_alias.left_feature_group_end_timestamp
-                ),
-            }
+            iceberg_options = self._snapshot_read_opts_at(
+                location, iceberg_fg_alias.left_feature_group_end_timestamp
+            )
         elif iceberg_fg_alias.left_feature_group_start_timestamp is not None:
             # incremental query; Iceberg only supports snapshot-id bounds,
             # so the wallclock bounds are resolved against the snapshot log
@@ -965,19 +964,31 @@ class IcebergEngine:
                 location, iceberg_fg_alias.left_feature_group_start_timestamp
             )
             if start_snapshot_id is None:
-                raise FeatureStoreException(
-                    "Cannot run the incremental query: no Iceberg snapshot exists at or before "
-                    f"the start time {iceberg_fg_alias.left_feature_group_start_timestamp}."
+                # The window starts before the table's first snapshot (e.g. a
+                # rolling monitoring window on a fresh table). start-snapshot-id
+                # is exclusive, so the first snapshot's changes cannot be part
+                # of an incremental scan; read the table state at the end bound
+                # instead, which equals the window content when every commit is
+                # inside the window (mirrors the Delta CDF earliest-version
+                # fallback).
+                end_ts = iceberg_fg_alias.left_feature_group_end_timestamp
+                iceberg_options = (
+                    self._snapshot_read_opts_at(location, end_ts)
+                    if end_ts is not None
+                    else {}
                 )
-            iceberg_options = {
-                self.ICEBERG_START_SNAPSHOT_ID: str(start_snapshot_id),
-            }
-            if iceberg_fg_alias.left_feature_group_end_timestamp is not None:
-                end_snapshot_id = self._resolve_snapshot_id_at(
-                    location, iceberg_fg_alias.left_feature_group_end_timestamp
-                )
-                if end_snapshot_id is not None:
-                    iceberg_options[self.ICEBERG_END_SNAPSHOT_ID] = str(end_snapshot_id)
+            else:
+                iceberg_options = {
+                    self.ICEBERG_START_SNAPSHOT_ID: str(start_snapshot_id),
+                }
+                if iceberg_fg_alias.left_feature_group_end_timestamp is not None:
+                    end_snapshot_id = self._resolve_snapshot_id_at(
+                        location, iceberg_fg_alias.left_feature_group_end_timestamp
+                    )
+                    if end_snapshot_id is not None:
+                        iceberg_options[self.ICEBERG_END_SNAPSHOT_ID] = str(
+                            end_snapshot_id
+                        )
 
         if read_options:
             for key in read_options:
@@ -994,6 +1005,36 @@ class IcebergEngine:
         )
 
         return iceberg_options
+
+    def _snapshot_read_opts_at(self, location: str, end_ts: int) -> dict[str, str]:
+        """Read options pinning the table state at *end_ts* by snapshot id.
+
+        The snapshot is resolved client-side against the snapshots' own
+        ``committed_at`` clock, the clock the backend derives the recorded
+        commit time from.
+        Passing ``as-of-timestamp`` instead lets Iceberg resolve the bound
+        server-side against the snapshot-log timestamps, a different clock: a
+        recorded commit time landing just below snapshot N's log timestamp
+        would then silently read snapshot N-1.
+        Resolving here keeps registration and read on one clock, so mid-range
+        resolution is exact.
+
+        When *end_ts* precedes every snapshot the earliest snapshot is pinned.
+        That covers the fresh-insert case (commit times recorded a few ms
+        before the first snapshot) but also a window that genuinely ended
+        before the first commit, which then reads data committed after the
+        window instead of coming back empty.
+        This mirrors the Delta earliest-version fallback and is indistinguishable
+        client-side from the skew case.
+        Only a table with no snapshots at all keeps the timestamp bound.
+        """
+        snapshots = self._read_snapshots(location)
+        if not snapshots:
+            return {self.ICEBERG_QUERY_TIME_TRAVEL_AS_OF_TIMESTAMP: str(end_ts)}
+        snapshot_id = self._latest_snapshot_id_at(snapshots, end_ts)
+        if snapshot_id is None:
+            snapshot_id = snapshots[0]["snapshot_id"]
+        return {self.ICEBERG_QUERY_TIME_TRAVEL_SNAPSHOT_ID: str(snapshot_id)}
 
     @staticmethod
     def _is_catalog_identifier(address: str) -> bool:
@@ -1023,8 +1064,19 @@ class IcebergEngine:
 
     def _resolve_snapshot_id_at(self, location: str, timestamp: int) -> int | None:
         """Return the id of the latest snapshot committed at or before *timestamp*."""
+        return self._latest_snapshot_id_at(self._read_snapshots(location), timestamp)
+
+    @staticmethod
+    def _latest_snapshot_id_at(
+        snapshots: list[dict[str, Any]], timestamp: int
+    ) -> int | None:
+        """Id of the latest snapshot committed at or before *timestamp*.
+
+        Returns None when *timestamp* precedes every snapshot.
+        Expects *snapshots* ordered oldest first.
+        """
         snapshot_id = None
-        for snapshot in self._read_snapshots(location):
+        for snapshot in snapshots:
             committed_at = util._convert_event_time_to_timestamp(
                 snapshot["committed_at"]
             )
