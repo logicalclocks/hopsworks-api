@@ -498,11 +498,12 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
             + "groups is planned for a future release.");
         return commit;
       }
-      if (!FeatureGroupUtils.backendSupportsOnlineDelete()) {
-        throw new FeatureStoreException("Online delete requires a Hopsworks backend version >= "
-            + FeatureGroupUtils.minBackendVersionOnlineDelete()
-            + ". Upgrade the cluster, or omit deleteOnline to delete offline only.");
-      }
+      // Requires an OnlineFS (clusterj-onlinefs) that understands the operation: delete header
+      // (the release shipping the OnlineFS delete branch onward). Not runtime-gated: OnlineFS is
+      // not reachable from the client, and the backend version is not its proxy since backend, SDK
+      // and OnlineFS can be versioned/backported independently. A controlled deployment (helm bumps
+      // the SDK images and OnlineFS together) keeps them in sync; pair a delete-capable OnlineFS
+      // with this SDK, as an OnlineFS without the delete branch mishandles the tombstone.
       SparkEngine.getInstance().deleteOnlineDataframe(featureGroupBase, genericDataset,
           writeOptions != null ? writeOptions : new HashMap<>());
     }

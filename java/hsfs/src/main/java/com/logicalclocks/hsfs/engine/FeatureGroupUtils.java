@@ -22,7 +22,6 @@ import com.logicalclocks.hsfs.metadata.HopsworksClient;
 import com.logicalclocks.hsfs.metadata.KafkaApi;
 import com.logicalclocks.hsfs.metadata.OnlineIngestionApi;
 import com.logicalclocks.hsfs.metadata.Subject;
-import com.logicalclocks.hsfs.metadata.VariablesApi;
 import com.logicalclocks.hsfs.Feature;
 import com.logicalclocks.hsfs.FeatureGroupBase;
 import com.logicalclocks.hsfs.FeatureGroupCommit;
@@ -45,7 +44,6 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -298,31 +296,5 @@ public class FeatureGroupUtils {
     }
 
     return headerMap;
-  }
-
-  // Minimum Hopsworks backend major.minor that ships the delete-capable OnlineFS.
-  // TODO(FSTORE-2068): set to the release that includes the OnlineFS delete branch.
-  private static final int[] MIN_BACKEND_MAJOR_MINOR_ONLINE_DELETE = {5, 2};
-  private static final Pattern MAJOR_MINOR_PATTERN = Pattern.compile("(\\d+)\\.(\\d+)");
-
-  public static String minBackendVersionOnlineDelete() {
-    return MIN_BACKEND_MAJOR_MINOR_ONLINE_DELETE[0] + "." + MIN_BACKEND_MAJOR_MINOR_ONLINE_DELETE[1];
-  }
-
-  // Whether the connected backend ships the delete-capable OnlineFS.
-  public static boolean backendSupportsOnlineDelete() throws FeatureStoreException, IOException {
-    String backendVersion = new VariablesApi().getVersion("hopsworks").orElse(null);
-    if (backendVersion == null) {
-      return false;
-    }
-    Matcher matcher = MAJOR_MINOR_PATTERN.matcher(backendVersion);
-    if (!matcher.find()) {
-      return false;
-    }
-    int major = Integer.parseInt(matcher.group(1));
-    int minor = Integer.parseInt(matcher.group(2));
-    return major > MIN_BACKEND_MAJOR_MINOR_ONLINE_DELETE[0]
-        || (major == MIN_BACKEND_MAJOR_MINOR_ONLINE_DELETE[0]
-            && minor >= MIN_BACKEND_MAJOR_MINOR_ONLINE_DELETE[1]);
   }
 }

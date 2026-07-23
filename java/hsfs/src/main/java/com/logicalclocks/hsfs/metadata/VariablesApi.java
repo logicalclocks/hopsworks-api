@@ -33,8 +33,6 @@ public class VariablesApi {
   private static final String VARIABLE_PATH = "/variables/{variableName}";
   private static final Logger LOGGER = LoggerFactory.getLogger(Variable.class);
 
-  private static final String VERSIONS_PATH = "/variables/versions";
-
   public Optional<Variable> get(String variableName) throws IOException, FeatureStoreException {
     String pathTemplate = HopsworksClient.API_PATH
         + VARIABLE_PATH;
@@ -52,22 +50,4 @@ public class VariablesApi {
     }
   }
 
-  // Return the version of a software component from /variables/versions, if present.
-  public Optional<String> getVersion(String software) throws IOException, FeatureStoreException {
-    String pathTemplate = HopsworksClient.API_PATH + VERSIONS_PATH;
-    UriTemplate uriTemplate = UriTemplate.fromTemplate(pathTemplate);
-
-    HopsworksClient hopsworksClient = HopsworksClient.getInstance();
-    HttpGet getRequest = new HttpGet(uriTemplate.expand());
-    SoftwareVersion[] versions = hopsworksClient.handleRequest(getRequest, SoftwareVersion[].class);
-    if (versions == null) {
-      return Optional.empty();
-    }
-    for (SoftwareVersion entry : versions) {
-      if (software.equals(entry.getSoftware())) {
-        return Optional.ofNullable(entry.getVersion());
-      }
-    }
-    return Optional.empty();
-  }
 }

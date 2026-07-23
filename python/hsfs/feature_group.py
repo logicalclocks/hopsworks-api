@@ -18,7 +18,6 @@ from __future__ import annotations
 import copy
 import json
 import logging
-import re
 import time
 import warnings
 from datetime import date, datetime, timedelta
@@ -122,22 +121,6 @@ _logger = logging.getLogger(__name__)
 
 
 VALID_PARTITION_GRAINS = ("hour", "day", "week", "month", "year")
-
-# Minimum Hopsworks backend major.minor that ships the delete-capable OnlineFS.
-# TODO(FSTORE-2068): set to the release that includes the OnlineFS delete branch.
-_MIN_BACKEND_MAJOR_MINOR_ONLINE_DELETE = (5, 2)
-
-
-def _backend_supports_online_delete() -> bool:
-    """Return whether the connected backend ships the delete-capable OnlineFS."""
-    backend_version = VariableApi()._get_version("hopsworks")
-    if not backend_version:
-        return False
-    match = re.search(r"(\d+)\.(\d+)", backend_version)
-    if not match:
-        return False
-    major_minor = (int(match.group(1)), int(match.group(2)))
-    return major_minor >= _MIN_BACKEND_MAJOR_MINOR_ONLINE_DELETE
 
 
 def _validate_partitioned_by(
@@ -4488,7 +4471,7 @@ class FeatureGroup(FeatureGroupBase):
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
-            hopsworks.client.exceptions.FeatureStoreException: If `delete_online` is set and the feature group has an embedding index, is not online-enabled, or the backend does not support online deletes.
+            hopsworks.client.exceptions.FeatureStoreException: If `delete_online` is set and the feature group has an embedding index or is not online-enabled.
         """
         if self.time_travel_format == "HUDI" and not engine._get_type().startswith(
             "spark"
@@ -4526,12 +4509,14 @@ class FeatureGroup(FeatureGroupBase):
                     stacklevel=2,
                 )
                 return
-            if not _backend_supports_online_delete():
-                raise FeatureStoreException(
-                    "Online delete requires a Hopsworks backend version "
-                    f">= {'.'.join(str(v) for v in _MIN_BACKEND_MAJOR_MINOR_ONLINE_DELETE)}. "
-                    "Upgrade the cluster, or omit delete_online to delete offline only."
-                )
+            # Requires an OnlineFS (clusterj-onlinefs) that understands the
+            # `operation: delete` header (the release shipping the OnlineFS delete
+            # branch onward). Not runtime-gated: OnlineFS is not reachable from the
+            # client, and the backend version is not its proxy since backend, SDK and
+            # OnlineFS can be versioned/backported independently. A controlled
+            # deployment (helm bumps SDK images and OnlineFS together) keeps them in
+            # sync; against an OnlineFS without the delete branch the tombstone is a
+            # no-op-to-corrupting write, so pair a delete-capable OnlineFS with this SDK.
             self._feature_group_engine._delete_online_records(
                 self, delete_df, write_options or {}
             )
