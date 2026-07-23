@@ -1007,22 +1007,34 @@ class IcebergEngine:
         return iceberg_options
 
     def _snapshot_read_opts_at(self, location: str, end_ts: int) -> dict[str, str]:
-        """Read options pinning the table state at *end_ts*.
+        """Read options pinning the table state at *end_ts* by snapshot id.
 
-        A time before the first snapshot pins the earliest snapshot by id.
-        Fresh inserts record commit times a few ms before the first snapshot.
-        Iceberg rejects as-of-timestamp in that range.
+        The snapshot is resolved client-side against the snapshots' own
+        ``committed_at`` clock, the clock the backend derives the recorded
+        commit time from.
+        Passing ``as-of-timestamp`` instead lets Iceberg resolve the bound
+        server-side against the snapshot-log timestamps, a different clock: a
+        recorded commit time landing just below snapshot N's log timestamp
+        would then silently read snapshot N-1.
+        Resolving here keeps registration and read on one clock, so mid-range
+        resolution is exact.
+
+        When *end_ts* precedes every snapshot the earliest snapshot is pinned.
+        That covers the fresh-insert case (commit times recorded a few ms
+        before the first snapshot) but also a window that genuinely ended
+        before the first commit, which then reads data committed after the
+        window instead of coming back empty.
+        This mirrors the Delta earliest-version fallback and is indistinguishable
+        client-side from the skew case.
+        Only a table with no snapshots at all keeps the timestamp bound.
         """
         snapshots = self._read_snapshots(location)
-        if snapshots and (
-            util._convert_event_time_to_timestamp(snapshots[0]["committed_at"]) > end_ts
-        ):
-            return {
-                self.ICEBERG_QUERY_TIME_TRAVEL_SNAPSHOT_ID: str(
-                    snapshots[0]["snapshot_id"]
-                ),
-            }
-        return {self.ICEBERG_QUERY_TIME_TRAVEL_AS_OF_TIMESTAMP: str(end_ts)}
+        if not snapshots:
+            return {self.ICEBERG_QUERY_TIME_TRAVEL_AS_OF_TIMESTAMP: str(end_ts)}
+        snapshot_id = self._latest_snapshot_id_at(snapshots, end_ts)
+        if snapshot_id is None:
+            snapshot_id = snapshots[0]["snapshot_id"]
+        return {self.ICEBERG_QUERY_TIME_TRAVEL_SNAPSHOT_ID: str(snapshot_id)}
 
     @staticmethod
     def _is_catalog_identifier(address: str) -> bool:
@@ -1052,8 +1064,19 @@ class IcebergEngine:
 
     def _resolve_snapshot_id_at(self, location: str, timestamp: int) -> int | None:
         """Return the id of the latest snapshot committed at or before *timestamp*."""
+        return self._latest_snapshot_id_at(self._read_snapshots(location), timestamp)
+
+    @staticmethod
+    def _latest_snapshot_id_at(
+        snapshots: list[dict[str, Any]], timestamp: int
+    ) -> int | None:
+        """Id of the latest snapshot committed at or before *timestamp*.
+
+        Returns None when *timestamp* precedes every snapshot.
+        Expects *snapshots* ordered oldest first.
+        """
         snapshot_id = None
-        for snapshot in self._read_snapshots(location):
+        for snapshot in snapshots:
             committed_at = util._convert_event_time_to_timestamp(
                 snapshot["committed_at"]
             )

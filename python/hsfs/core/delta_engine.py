@@ -199,13 +199,15 @@ class DeltaEngine:
             # CDC query - remove duplicates for upserts and do not include deleted rows
             # to match behavior of other engines.
             #
-            # Why retry: Delta's CDF lower-bound check uses the commit file modification
-            # time, while DeltaTable.history() returns the in-commit creation timestamp.
-            # On a freshly-created table these can differ by tens of milliseconds, so a
-            # pre-flight comparison against history() cannot reliably predict whether
-            # Delta will accept the startingTimestamp. Instead we attempt the read with
-            # startingTimestamp and, if Delta rejects it with the "before the earliest
-            # version" error, retry from the earliest commit version (startingVersion).
+            # Why retry: Delta's CDF lower-bound check and DeltaTable.history()
+            # both report the commit-file modification time (without in-commit
+            # timestamps enabled), while the startingTimestamp we pass derives
+            # from the backend-recorded commit_time, which is ~200 ms earlier.
+            # A pre-flight comparison against history() therefore cannot reliably
+            # predict whether Delta will accept the startingTimestamp. Instead we
+            # attempt the read with startingTimestamp and, if Delta rejects it
+            # with the "before the earliest version" error, retry from the
+            # earliest commit version (startingVersion).
             def _do_cdf_read(opts):
                 return (
                     self._spark_session.read.format(self.DELTA_SPARK_FORMAT)
@@ -283,12 +285,21 @@ class DeltaEngine:
             end_ts = delta_fg_alias.left_feature_group_end_timestamp
             commits = self._get_delta_commits(location) if location else None
             if commits:
-                # latest version committed at or before end_ts; when end_ts
-                # predates the first history timestamp, pin the earliest version
+                # Highest version committed at or before end_ts.
+                # commitInfo timestamps are not guaranteed monotonic in version
+                # (concurrent writers / commit retries), so stop at the first
+                # commit past end_ts rather than letting a later out-of-order
+                # commit select too high a version.
+                # When end_ts predates every commit the earliest version is
+                # pinned; if the window genuinely ended before the first commit
+                # this reads post-window data instead of returning empty
+                # (indistinguishable here from clock skew, and mirrors the
+                # Iceberg earliest-snapshot fallback).
                 version = commits[0][0]
                 for commit_version, commit_ts in commits:
-                    if commit_ts <= end_ts:
-                        version = commit_version
+                    if commit_ts > end_ts:
+                        break
+                    version = commit_version
                 delta_options = {
                     self.DELTA_QUERY_TIME_TRAVEL_AS_OF_VERSION: version,
                 }
@@ -339,6 +350,10 @@ class DeltaEngine:
         in-commit timestamp (tens to hundreds of milliseconds on HopsFS), so
         resolving a recorded commit time against it can silently land on the
         previous version.
+        History's modtime clock diverges for tables written by classic Spark
+        (only delta-rs and the Spark Connect writer record the in-commit clock),
+        so reading ``commitInfo.timestamp`` from the log directly is what keeps
+        resolution correct for the pyspark-driver variants too.
         """
         try:
             if self._spark_session is not None:
@@ -366,11 +381,16 @@ class DeltaEngine:
                     .withColumn("_file", F.input_file_name())
                     .filter(F.col("commitInfo.timestamp").isNotNull())
                     .withColumn(
+                        # anchor on the 20-digit commit basename so V2 checkpoint
+                        # manifests (<v>.checkpoint.<uuid>.json) and log-compaction
+                        # files (<x>.<y>.compacted.json) do not match and yield a
+                        # bogus version
                         "version",
-                        F.regexp_extract(F.col("_file"), r"(\d+)\.json", 1).cast(
+                        F.regexp_extract(F.col("_file"), r"(\d{20})\.json$", 1).cast(
                             "long"
                         ),
                     )
+                    .filter(F.col("version").isNotNull())
                     .select("version", F.col("commitInfo.timestamp").alias("timestamp"))
                     .collect()
                 )
