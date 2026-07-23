@@ -666,7 +666,8 @@ public class SparkEngine extends EngineBase {
         .mode(SaveMode.Append)
         // write options cannot be null
         .options(writeOptions == null ? new HashMap<>() : writeOptions)
-        .partitionBy(featureGroupUtils.getPartitionColumns(featureGroup))
+        .partitionBy(JavaConverters.seqAsJavaList(featureGroupUtils.getPartitionColumns(featureGroup))
+            .toArray(new String[0]))
         .saveAsTable(featureGroupUtils.getTableName(featureGroup));
   }
 

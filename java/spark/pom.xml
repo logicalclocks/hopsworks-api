@@ -32,7 +32,7 @@
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
-            <version>2.15.2</version>
+            <version>${fasterxml.jackson.databind.version}</version>
         </dependency>
 
         <dependency>
@@ -113,34 +113,30 @@
 
         <!-- https://mvnrepository.com/artifact/org.apache.hudi/hudi-spark-bundle -->
         <dependency>
-            <groupId>io.hops.hudi</groupId>
-            <artifactId>hudi-spark3.5-bundle_${scala-short.version}</artifactId>
+            <groupId>${hudi.groupId}</groupId>
+            <artifactId>hudi-${artifact.spark.version}-bundle_${scala-short.version}</artifactId>
             <version>${hudi.version}</version>
             <scope>provided</scope>
+            <!-- The bundle is a shaded fat jar; its declared transitives (io.hops.hive,
+                 hudi-metaserver-client, ...) live in authenticated repositories and are
+                 not needed to compile or test against the bundle. -->
             <exclusions>
                 <exclusion>
-                    <groupId>org.apache.httpcomponents</groupId>
-                    <artifactId>*</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>com.fasterxml.jackson.core</groupId>
+                    <groupId>*</groupId>
                     <artifactId>*</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
 
         <dependency>
-            <groupId>io.hops.hudi</groupId>
+            <groupId>${hudi.groupId}</groupId>
             <artifactId>hudi-utilities-slim-bundle_${scala-short.version}</artifactId>
             <version>${hudi.version}</version>
             <scope>provided</scope>
+            <!-- Same as the spark bundle above: shaded jar, transitives excluded. -->
             <exclusions>
                 <exclusion>
-                    <groupId>org.apache.httpcomponents</groupId>
-                    <artifactId>*</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>com.fasterxml.jackson.core</groupId>
+                    <groupId>*</groupId>
                     <artifactId>*</artifactId>
                 </exclusion>
             </exclusions>
@@ -161,7 +157,7 @@
                 <dependency>
                     <groupId>io.hops</groupId>
                     <artifactId>hadoop-client</artifactId>
-                    <version>3.4.3.1-EE-RC0</version>
+                    <version>3.4.3.2-EE-RC0</version>
                     <scope>provided</scope>
                 </dependency>
             </dependencies>
