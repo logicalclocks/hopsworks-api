@@ -82,6 +82,7 @@ def agent_info(ctx: click.Context, name: str) -> None:
         ["Description", getattr(agent, "description", "-") or "-"],
         ["Status", _deployment_status(agent)],
     ]
+    rows.extend(_git_rows(agent))
     output.print_table(["FIELD", "VALUE"], rows)
 
 
@@ -402,8 +403,36 @@ def _deployment_status(d: Any) -> str:
     return "-"
 
 
+def _git_rows(d: Any) -> list[list[Any]]:
+    """Git source rows, omitted entirely for an agent deployed from a project file."""
+    git_url = _predictor_attr(d, "git_url", None)
+    if not git_url:
+        return []
+    # Branch is optional: with none configured the clone takes the repository's default, and the
+    # running deployment reports the name it resolved to.
+    branch = _predictor_attr(d, "git_branch", None) or _predictor_attr(
+        d, "git_resolved_branch", None
+    )
+    return [
+        ["Git URL", git_url],
+        ["Git provider", _predictor_attr(d, "git_provider", None) or "-"],
+        ["Git branch", branch or "default branch"],
+        [
+            "Auto-redeploy",
+            "Enabled" if _predictor_attr(d, "git_auto_redeploy", False) else "Disabled",
+        ],
+        ["Deployed commit", _predictor_attr(d, "git_current_commit", None) or "-"],
+    ]
+
+
 def _agent_to_dict(d: Any) -> dict[str, Any]:
     return {
+        "git_url": _predictor_attr(d, "git_url", None),
+        "git_provider": _predictor_attr(d, "git_provider", None),
+        "git_branch": _predictor_attr(d, "git_branch", None),
+        "git_resolved_branch": _predictor_attr(d, "git_resolved_branch", None),
+        "git_auto_redeploy": bool(_predictor_attr(d, "git_auto_redeploy", False)),
+        "git_current_commit": _predictor_attr(d, "git_current_commit", None),
         "id": getattr(d, "id", None),
         "name": getattr(d, "name", None),
         "environment": _predictor_attr(d, "environment", None),

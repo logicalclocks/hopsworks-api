@@ -51,6 +51,7 @@ Full CLI surface is in **Manage Apps from the CLI** below.
 
 - Does the app need **custom libraries** not in `python-app-pipeline`? If so, clone the env and install `app-requirements.txt` (see **Your App uses Custom libraries**).
 - Does the app come from **HopsFS or Git**? If Git, ask for `git_url`, `git_provider`, and (if needed) `git_branch` plus the entrypoint.
+- Should a git-backed app **auto-redeploy** on new commits (`git_auto_redeploy=True`)? It only applies to git-backed apps.
 - What **memory / cores** should the app get? Defaults are `memory=2048` MB, `cores=1.0`.
 - Does the app need a specific routing mode or readiness path? New apps should use root routing; keep legacy prefix mode only while migrating an older app that still depends on `APP_BASE_URL_PATH`. If the app is already deployed and still uses `APP_BASE_URL_PATH`, treat it as a migration task and confirm whether the code can switch to root routing. Streamlit defaults to `/_stcore/health`, custom apps default to `/`, and `readinessProbePath` can override the probe path when needed.
 - Does the app need **monitoring** narrowed to specific routes? Monitoring is enabled by default and routes are optional; `hops app info` shows the monitoring state and route list when present.
@@ -178,6 +179,7 @@ streamlit_app = apps.create_app(
     git_url="https://github.com/gibchikafa/appshopsworkstests.git",
     git_provider="GitHub",
     git_branch="main",
+    git_auto_redeploy=True,  # roll to branch HEAD on every new commit
     entrypoint_script="streamlitapp.py",
     environment="python-app-pipeline",
 )

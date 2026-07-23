@@ -85,7 +85,11 @@ def app_info(ctx: click.Context, name: str) -> None:
         ["Port", getattr(a, "app_port", None) or "-"],
         ["Git URL", getattr(a, "git_url", None) or "-"],
         ["Git provider", getattr(a, "git_provider", None) or "-"],
-        ["Git branch", getattr(a, "git_branch", None) or "-"],
+        [
+            "Git branch",
+            getattr(a, "git_branch", None) or getattr(a, "latest_branch", None) or "-",
+        ],
+        ["Auto-redeploy", _auto_redeploy_text(a)],
         ["Latest commit", getattr(a, "latest_commit", None) or "-"],
         ["Entrypoint script", getattr(a, "entrypoint_script", None) or "-"],
         ["Entrypoint", getattr(a, "entrypoint_command", None) or "-"],
@@ -271,6 +275,12 @@ def _report_running(name: str, a: Any) -> None:
     help="Optional Git branch to clone.",
 )
 @click.option(
+    "--git-auto-redeploy",
+    is_flag=True,
+    default=False,
+    help="Roll the app to the branch HEAD whenever a new commit is pushed.",
+)
+@click.option(
     "--entrypoint-script",
     default=None,
     help="Relative .py entrypoint script for Streamlit Git repository apps.",
@@ -316,6 +326,7 @@ def app_create(
     git_url: str | None,
     git_provider: str | None,
     git_branch: str | None,
+    git_auto_redeploy: bool,
     entrypoint_script: str | None,
     app_base_path: str | None,
     readiness_probe_path: str | None,
@@ -340,6 +351,7 @@ def app_create(
         git_url: Git repository URL for git-backed apps.
         git_provider: Git provider for git-backed apps.
         git_branch: Optional Git branch.
+        git_auto_redeploy: Roll the app to the branch HEAD on new commits.
         entrypoint_script: Relative entrypoint script for Streamlit git apps.
         app_base_path: Public mount path for the app.
         readiness_probe_path: Optional readiness probe path override.
@@ -403,6 +415,8 @@ def app_create(
         create_kwargs["git_provider"] = git_provider
     if git_branch is not None:
         create_kwargs["git_branch"] = git_branch
+    if git_auto_redeploy:
+        create_kwargs["git_auto_redeploy"] = True
     if entrypoint_script is not None:
         create_kwargs["entrypoint_script"] = entrypoint_script
     if app_base_path is not None:
@@ -670,6 +684,8 @@ def _app_to_dict(a: Any) -> dict[str, Any]:
         "git_url": getattr(a, "git_url", None),
         "git_provider": getattr(a, "git_provider", None),
         "git_branch": getattr(a, "git_branch", None),
+        "latest_branch": getattr(a, "latest_branch", None),
+        "git_auto_redeploy": bool(getattr(a, "git_auto_redeploy", False)),
         "latest_commit": getattr(a, "latest_commit", None),
         "entrypoint_script": getattr(a, "entrypoint_script", None),
         "app_base_path": getattr(a, "app_base_path", None),
@@ -683,6 +699,17 @@ def _app_to_dict(a: Any) -> dict[str, Any]:
         "description": getattr(a, "description", None),
         "app_url": getattr(a, "app_url", None),
     }
+
+
+def _auto_redeploy_text(a: Any) -> str:
+    """Auto-redeploy state, or "-" for an app that is not git-backed.
+
+    The backend rejects the flag without a git source, so "Disabled" there would
+    imply a setting that could be turned on.
+    """
+    if not getattr(a, "git_url", None):
+        return "-"
+    return "Enabled" if getattr(a, "git_auto_redeploy", False) else "Disabled"
 
 
 def _app_source(a: Any) -> str:

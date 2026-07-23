@@ -92,9 +92,37 @@ class TestAppApiCreate:
         assert body["gitProvider"] == "GitHub"
         assert body["gitBranch"] == "main"
         assert body["entrypointScript"] == "streamlitapp.py"
+        assert body["gitAutoRedeploy"] is False
         assert "appPath" not in body
         assert "entrypointCommand" not in body
         assert "appPort" not in body
+
+    def test_create_git_app_with_auto_redeploy(self, mock_client, api):
+        api.create_app(
+            "streamlit_git_app",
+            app_kind="STREAMLIT",
+            git_url="https://github.com/gibchikafa/appshopsworkstests.git",
+            git_provider="github",
+            git_branch="main",
+            git_auto_redeploy=True,
+            entrypoint_script="streamlitapp.py",
+        )
+
+        body = json.loads(mock_client._send_request.call_args.kwargs["data"])
+        assert body["gitAutoRedeploy"] is True
+
+    def test_create_app_rejects_auto_redeploy_without_git_source(
+        self, mock_client, api
+    ):
+        # Mirrors PythonAppJobValidator, so the caller gets the reason locally
+        # rather than a REST error.
+        with pytest.raises(ValueError, match="git_auto_redeploy is only supported"):
+            api.create_app(
+                "file_app",
+                app_kind="STREAMLIT",
+                app_path="Resources/app.py",
+                git_auto_redeploy=True,
+            )
 
     def test_create_streamlit_git_app_accepts_provider_like_object(
         self, mock_client, api
