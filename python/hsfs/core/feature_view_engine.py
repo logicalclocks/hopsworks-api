@@ -184,6 +184,19 @@ class FeatureViewEngine:
                     )
                 )
 
+        offline_only_grains = feature_view_obj._offline_only_partition_features()
+        if offline_only_grains and feature_view_obj._has_online_feature_group():
+            warnings.warn(
+                "This feature view selects partitioned_by grain column(s) "
+                f"{offline_only_grains} that are derived from event_time and stored "
+                "only offline (online_partition_columns is disabled on their feature "
+                "group). The online serving APIs (get_feature_vector / "
+                "get_feature_vectors) cannot return these columns and will raise if "
+                "called. The offline APIs (get_batch_data / training data) return "
+                "them normally.",
+                stacklevel=1,
+            )
+
         updated_fv = self._feature_view_api._post(feature_view_obj)
         print(
             "Feature view created successfully, explore it at \n"
@@ -499,6 +512,8 @@ class FeatureViewEngine:
         dataframe_type="default",
         transformation_context: dict[str, Any] = None,
         n_processes: int | None = None,
+        event_start_time=None,
+        event_end_time=None,
     ):
         # check if provided td version has already existed.
         if training_dataset_version:
@@ -528,11 +543,57 @@ class FeatureViewEngine:
             td_updated.data_format, read_options
         )
 
+        # A time-range read prunes the materialized data by its event-date
+        # partition key (see `Engine.DATE_PARTITION_COLUMN`); an in-memory
+        # training dataset has no materialized layout to prune. The bounds are
+        # converted to the keys' `YYYYMMDD` UTC date encoding.
+        event_start_time = util._get_event_date_int_from_timestamp(
+            util._convert_event_time_to_timestamp(event_start_time)
+        )
+        event_end_time = util._get_event_date_int_from_timestamp(
+            util._convert_event_time_to_timestamp(event_end_time)
+        )
+        if (event_start_time is not None or event_end_time is not None) and (
+            td_updated.training_dataset_type == td_updated.IN_MEMORY
+        ):
+            raise FeatureStoreException(
+                "`start_time`/`end_time` prune the materialized increments of "
+                "a training dataset and cannot be used with an in-memory "
+                "training dataset, which is recomputed on read."
+            )
+        # Partitions are keyed by the period start (e.g. `20260601` for June
+        # at month precision), so a start bound inside a period excludes that
+        # whole period from the read — silent data loss rather than a coarser
+        # range, hence the warning.
+        if event_start_time is not None and td_updated.partition_precision in (
+            "month",
+            "year",
+        ):
+            period_start = (
+                event_start_time % 100 == 1
+                if td_updated.partition_precision == "month"
+                else event_start_time % 10000 == 101
+            )
+            if not period_start:
+                warnings.warn(
+                    f"`start_time` does not fall on a "
+                    f"{td_updated.partition_precision} boundary, but this "
+                    f"training dataset is partitioned at "
+                    f"`{td_updated.partition_precision}` precision: the "
+                    f"period containing `start_time` is excluded entirely, "
+                    f"including its rows at or after `start_time`. Align "
+                    f"`start_time` with the start of the "
+                    f"{td_updated.partition_precision} to include them.",
+                    stacklevel=1,
+                )
+
         if td_updated.training_dataset_type != td_updated.IN_MEMORY:
             split_df = self._read_from_storage_connector(
                 td_updated,
                 td_updated.splits,
                 read_options,
+                event_start_time=event_start_time,
+                event_end_time=event_end_time,
                 with_primary_keys=primary_keys,
                 # at this stage training dataset was already written and if there was any name clash it should have
                 # already failed in creation phase, so we don't need to check it here. This is to make
@@ -693,6 +754,81 @@ class FeatureViewEngine:
         )
         return training_dataset_obj, td_job
 
+    def _insert_training_data(
+        self,
+        feature_view_obj,
+        training_dataset_version,
+        start_time,
+        end_time,
+        user_write_options,
+        overwrite=False,
+        spine=None,
+        transformation_context: dict[str, Any] = None,
+        compute_statistics=False,
+    ):
+        # Append (`overwrite=False`) works on both engines: the Spark engine
+        # writes the new `_hopsworks_event_date=<v>` partition directly, and the
+        # Python engine offloads to a backend that does the same — either the
+        # Hopsworks Feature Query Service (FlyingDuck) fast path, which is sent
+        # `overwrite=false`, or the fallback backend Spark job. Note this relies
+        # on a Hopsworks 5.1+ Query Service; older versions ignore the flag and
+        # overwrite instead (see `ArrowFlightClient._create_training_dataset`).
+        training_dataset_obj = self._get_training_dataset_metadata(
+            feature_view_obj, training_dataset_version
+        )
+
+        # Split datasets append per split: each split writes a new partition into
+        # its own subdirectory. For a random split that means the batch is split
+        # 80/10/10 (etc.) on its own, which is sound. For a time-series split the
+        # batch is bucketed by the split's fixed calendar boundaries, so a new
+        # (recent) batch lands entirely in the last split (e.g. test) while the
+        # earlier splits stay frozen — the dataset silently skews with every
+        # append, so refuse rather than warn. The supported way to grow a
+        # time-series dataset is an unsplit one read with a time range.
+        if not overwrite and any(
+            split.split_type == TrainingDatasetSplit.TIME_SERIES_SPLIT
+            for split in training_dataset_obj.splits
+        ):
+            raise FeatureStoreException(
+                "Appending to a time-series-split training dataset is not "
+                "supported. For a growing time-series training "
+                "dataset, create it without splits, append batches with "
+                "`insert_training_data`, and read the train and test sets as "
+                "time ranges with `get_training_data(start_time=..., "
+                "end_time=...)`. Alternatively pass `overwrite=True` to "
+                "rebuild the splits over the full window."
+            )
+        if training_dataset_obj.data_format != "parquet":
+            raise FeatureStoreException(
+                "Appending to a training dataset is only supported for the "
+                f"`parquet` data format, but this dataset is `{training_dataset_obj.data_format}`."
+            )
+
+        # Scope the materialization to this call's event-time window so only the
+        # new batch is read from the feature groups; the persisted create-time
+        # window is not reused for an incremental append.
+        training_dataset_obj.event_start_time = start_time
+        training_dataset_obj.event_end_time = end_time
+
+        td_job = self._compute_training_dataset(
+            feature_view_obj,
+            user_write_options,
+            training_dataset_obj=training_dataset_obj,
+            spine=spine,
+            transformation_context=transformation_context,
+            save_mode=self._OVERWRITE if overwrite else self._APPEND,
+        )
+
+        # Appends skip the automatic statistics refit (see
+        # `_compute_training_dataset`); the caller opts into paying the
+        # full-dataset read here. On overwrite the statistics were already
+        # recomputed by the materialization itself.
+        if compute_statistics and not overwrite:
+            self._recompute_training_dataset_statistics(
+                feature_view_obj, training_dataset_version
+            )
+        return training_dataset_obj, td_job
+
     def _read_from_storage_connector(
         self,
         training_data_obj,
@@ -706,7 +842,16 @@ class FeatureViewEngine:
         training_helper_columns,
         feature_view_features,
         dataframe_type,
+        event_start_time=None,
+        event_end_time=None,
     ):
+        # A time-range read ships the window to the engine as internal read
+        # options; the engine prunes the day partitions by their event-time key
+        # and strips the keys before they reach the reader.
+        if event_start_time is not None:
+            read_options = {**read_options, "event_start_time": event_start_time}
+        if event_end_time is not None:
+            read_options = {**read_options, "event_end_time": event_end_time}
         if splits:
             result = {}
             for split in splits:
@@ -842,7 +987,12 @@ class FeatureViewEngine:
         event_time=False,
         training_helper_columns=False,
         transformation_context: dict[str, Any] = None,
+        save_mode=None,
     ):
+        # Overwrite the whole dataset unless the caller asks to append (see
+        # `_insert_training_data`), in which case a new Hive partition is added.
+        if save_mode is None:
+            save_mode = self._OVERWRITE
         if training_dataset_obj:
             pass
         elif training_dataset_version:
@@ -874,12 +1024,34 @@ class FeatureViewEngine:
         user_write_options["training_helper_columns"] = training_helper_columns
         user_write_options["primary_keys"] = primary_keys
         user_write_options["event_time"] = event_time
+        # The partition precision is fixed at creation and stored in the
+        # training dataset metadata; every materialization (initial or append)
+        # rides it to the engine through the write options. `None` (in-memory,
+        # or created before the field existed) falls back to day.
+        user_write_options["partition_precision"] = (
+            training_dataset_obj.partition_precision or "day"
+        )
+        # The per-call event-time window set by `_insert_training_data` lives
+        # only on this client-side object; the `create_fv_td` job re-fetches
+        # the training dataset from backend metadata, whose window is the
+        # create-time one. Ride the window along in the write options so the
+        # job materializes the requested batch, not the create-time window.
+        event_start_time = util._convert_event_time_to_timestamp(
+            training_dataset_obj.event_start_time
+        )
+        if event_start_time is not None:
+            user_write_options["event_start_time"] = event_start_time
+        event_end_time = util._convert_event_time_to_timestamp(
+            training_dataset_obj.event_end_time
+        )
+        if event_end_time is not None:
+            user_write_options["event_end_time"] = event_end_time
 
         td_job = engine._get_instance()._write_training_dataset(
             training_dataset_obj,
             batch_query,
             user_write_options,
-            self._OVERWRITE,
+            save_mode,
             feature_view_obj=feature_view_obj,
             transformation_context=transformation_context,
         )
@@ -889,6 +1061,15 @@ class FeatureViewEngine:
             feature_view=feature_view_obj,
             training_dataset_version=training_dataset_obj.version,
         )
+
+        # On append the newly written partition is a small daily increment, but
+        # recomputing statistics reads the whole (potentially multi-TB) dataset
+        # back, so skip the read-and-refit; existing statistics are left as they
+        # were computed at create/recreate time. Users refresh them explicitly
+        # with `FeatureView.compute_training_dataset_statistics` (which calls
+        # `_recompute_training_dataset_statistics`).
+        if save_mode == self._APPEND:
+            return td_job
 
         if engine._get_type().startswith("spark"):
             # if spark engine, read td and compute stats
@@ -931,6 +1112,57 @@ class FeatureViewEngine:
             )
         return None
 
+    def _recompute_training_dataset_statistics(
+        self, feature_view_obj, training_dataset_version
+    ):
+        training_dataset_obj = self._get_training_dataset_metadata(
+            feature_view_obj, training_dataset_version
+        )
+        if training_dataset_obj.training_dataset_type == training_dataset_obj.IN_MEMORY:
+            raise FeatureStoreException(
+                "Statistics can only be recomputed for a materialized training "
+                "dataset; an in-memory training dataset has no materialized "
+                "data to compute them on."
+            )
+        if not training_dataset_obj.statistics_config.enabled:
+            raise FeatureStoreException(
+                "Statistics are disabled for this training dataset version, so "
+                "there is nothing to recompute."
+            )
+        if any(
+            tf.hopsworks_udf.statistics_required
+            for tf in feature_view_obj.transformation_functions
+        ):
+            warnings.warn(
+                "Only the descriptive statistics are recomputed: the statistics "
+                "used by the model-dependent transformation functions stay "
+                "pinned to the ones fit when the training dataset version was "
+                "created, since the materialized data was transformed with "
+                "them. To refit them, rebuild the version with "
+                "`insert_training_data(..., overwrite=True)` or create a new "
+                "training dataset version.",
+                stacklevel=1,
+            )
+        # Read the materialized data back (all increments of an incremental
+        # dataset) and recompute the descriptive statistics on it. The
+        # transformation-function statistics are deliberately not refit: the
+        # materialized data was transformed with the statistics saved at
+        # creation, so refitting them would make serving and future appends
+        # inconsistent with the data already written — to refit them, rebuild
+        # the version with `overwrite=True` or create a new version.
+        if training_dataset_obj.splits:
+            td_df = {
+                split.name: self._training_dataset_engine._read(
+                    training_dataset_obj, split.name, {}
+                )
+                for split in training_dataset_obj.splits
+            }
+        else:
+            td_df = self._training_dataset_engine._read(training_dataset_obj, None, {})
+        return self._compute_training_dataset_statistics(
+            feature_view_obj, training_dataset_obj, td_df
+        )
+
     def _get_training_dataset_metadata(
         self, feature_view_obj: feature_view.FeatureView, training_dataset_version
     ):
@@ -946,7 +1178,7 @@ class FeatureViewEngine:
         )
         # schema needs to be set for writing training data or feature serving
         for td in tds:
-            td.schema = feature_view_obj._get_training_dataset_schema(td.version)
+            td.schema = self._get_training_dataset_schema(feature_view_obj, td.version)
         return tds
 
     def _get_training_datasets(self, feature_view_obj):
@@ -954,6 +1186,15 @@ class FeatureViewEngine:
         # this is the only place we expose training dataset metadata
         # we return training dataset base classes with metadata only
         return [super(td.__class__, td) for td in tds]
+
+    def _get_training_dataset(self, feature_view_obj, training_dataset_version):
+        td = self._get_training_dataset_metadata(
+            feature_view_obj, training_dataset_version
+        )
+        # schema needs to be set for writing training data or feature serving
+        td.schema = self._get_training_dataset_schema(feature_view_obj, td.version)
+        # expose metadata only, as with `_get_training_datasets`
+        return super(td.__class__, td)
 
     def _create_training_data_metadata(self, feature_view_obj, training_dataset_obj):
         return self._feature_view_api._create_training_dataset(

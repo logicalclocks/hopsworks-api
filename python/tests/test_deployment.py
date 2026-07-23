@@ -14,6 +14,9 @@
 #   limitations under the License.
 #
 
+import copy
+
+import humps
 import pytest
 from hsml import deployment, deployment_tracing_config, predictor, resources
 from hsml.client.exceptions import ModelServingException
@@ -64,6 +67,73 @@ class TestDeployment:
         mock_pred_from_response_json.assert_called_once_with(pred)
         mock_from_predictor.assert_called_once_with(pred)
 
+    def test_from_response_json_surfaces_missing_mandatory_tags(
+        self, mocker, backend_fixtures
+    ):
+        # Arrange
+        mocker.patch(
+            "hopsworks_common.client._get_serving_num_instances_limits",
+            return_value=[-1],
+        )
+        mocker.patch(
+            "hopsworks_common.client._is_scale_to_zero_required", return_value=False
+        )
+        mocker.patch("hopsworks_common.client._is_saas_connection", return_value=False)
+        mocker.patch("hopsworks_common.client._is_kserve_installed", return_value=True)
+        serving_json = humps.camelize(
+            copy.deepcopy(
+                backend_fixtures["predictor"]["get_deployments_singleton"]["response"][
+                    "items"
+                ][0]
+            )
+        )
+        serving_json["missingMandatoryTags"] = [
+            {"name": "owner", "deploymentSpecific": True}
+        ]
+
+        # Act
+        d = deployment.Deployment.from_response_json(serving_json)
+
+        # Assert
+        assert isinstance(d, deployment.Deployment)
+        assert d.missing_mandatory_tags == [
+            {"name": "owner", "deployment_specific": True}
+        ]
+
+    def test_update_from_response_json_refreshes_missing_mandatory_tags(
+        self, mocker, backend_fixtures
+    ):
+        # Arrange
+        mocker.patch(
+            "hopsworks_common.client._get_serving_num_instances_limits",
+            return_value=[-1],
+        )
+        mocker.patch(
+            "hopsworks_common.client._is_scale_to_zero_required", return_value=False
+        )
+        mocker.patch("hopsworks_common.client._is_saas_connection", return_value=False)
+        mocker.patch("hopsworks_common.client._is_kserve_installed", return_value=True)
+        p_json = copy.deepcopy(
+            backend_fixtures["predictor"]["get_deployments_singleton"]["response"][
+                "items"
+            ][0]
+        )
+        d = deployment.Deployment.from_response_json(humps.camelize(p_json))
+        assert d.missing_mandatory_tags == []
+
+        updated_serving_json = humps.camelize(p_json)
+        updated_serving_json["missingMandatoryTags"] = [
+            {"name": "owner", "deploymentSpecific": True}
+        ]
+
+        # Act
+        d.update_from_response_json(updated_serving_json)
+
+        # Assert
+        assert d.missing_mandatory_tags == [
+            {"name": "owner", "deployment_specific": True}
+        ]
+
     # constructor
 
     def test_constructor_default(self, mocker, backend_fixtures):
@@ -109,6 +179,149 @@ class TestDeployment:
 
         # Assert
         assert "not an instance of the Predictor class" in str(e_info.value)
+
+    # tags at creation
+
+    def test_to_dict_omits_tags_when_absent(self, mocker, backend_fixtures):
+        # Arrange
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+
+        # Assert
+        assert "tags" not in d.to_dict()
+
+    def test_to_dict_serializes_tags_at_creation(self, mocker, backend_fixtures):
+        # The serving-create body is Predictor.to_dict(); tags flow through the
+        # shared Tag normalizer and land as the same TagsDTO shape as feature
+        # groups: count plus items with string values raw and dict values
+        # json-encoded, so mandatory-tag enforcement applies at deployment
+        # creation (FSTORE-2049).
+        # Arrange
+        from hopsworks_common.tag import Tag
+
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        p._tags = Tag._normalize(
+            [
+                {"name": "owner", "value": "team-a"},
+                {"name": "cost_center", "value": {"id": 42}},
+            ]
+        )
+        d = deployment.Deployment(predictor=p)
+
+        # Assert
+        assert d.to_dict()["tags"] == {
+            "count": 2,
+            "items": [
+                {"name": "owner", "value": "team-a"},
+                {"name": "cost_center", "value": '{"id": 42}'},
+            ],
+        }
+
+    def test_to_dict_serializes_tags_from_list_and_tag_forms(
+        self, mocker, backend_fixtures
+    ):
+        # tags accepts the feature-group shapes: a single name/value dict, a list
+        # of such dicts, and a Tag object. Each serializes to the identical item.
+        # Arrange
+        from hopsworks_common.tag import Tag
+
+        expected = {"count": 1, "items": [{"name": "a", "value": "1"}]}
+
+        # Act / Assert
+        for tags in (
+            [{"name": "a", "value": "1"}],
+            {"name": "a", "value": "1"},
+            Tag(name="a", value="1"),
+        ):
+            p = self._get_dummy_predictor(mocker, backend_fixtures)
+            p._tags = Tag._normalize(tags)
+            d = deployment.Deployment(predictor=p)
+            assert d.to_dict()["tags"] == expected
+
+    def test_to_dict_omits_response_tags_on_round_trip(self, mocker, backend_fixtures):
+        # The serving GET response never carries create-time tags; a predictor
+        # rebuilt from a response must therefore emit no tags key on re-save.
+        # Arrange
+        mocker.patch(
+            "hopsworks_common.client._get_serving_num_instances_limits",
+            return_value=[-1],
+        )
+        mocker.patch(
+            "hopsworks_common.client._is_scale_to_zero_required", return_value=False
+        )
+        mocker.patch("hopsworks_common.client._is_saas_connection", return_value=False)
+        mocker.patch("hopsworks_common.client._is_kserve_installed", return_value=True)
+        serving_json = humps.camelize(
+            copy.deepcopy(
+                backend_fixtures["predictor"]["get_deployments_singleton"]["response"][
+                    "items"
+                ][0]
+            )
+        )
+
+        # Act
+        d = deployment.Deployment.from_response_json(serving_json)
+
+        # Assert
+        assert "tags" not in d.to_dict()
+
+    # tags
+
+    def test_add_tag(self, mocker, backend_fixtures):
+        # Arrange
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mock_serving_engine_set_tag = mocker.patch(
+            "hsml.engine.serving_engine.ServingEngine._set_tag"
+        )
+
+        # Act
+        d.add_tag("tag_name", "tag_value")
+
+        # Assert
+        mock_serving_engine_set_tag.assert_called_once_with(d, "tag_name", "tag_value")
+
+    def test_delete_tag(self, mocker, backend_fixtures):
+        # Arrange
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mock_serving_engine_delete_tag = mocker.patch(
+            "hsml.engine.serving_engine.ServingEngine._delete_tag"
+        )
+
+        # Act
+        d.delete_tag("tag_name")
+
+        # Assert
+        mock_serving_engine_delete_tag.assert_called_once_with(d, "tag_name")
+
+    def test_get_tag(self, mocker, backend_fixtures):
+        # Arrange
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mock_serving_engine_get_tag = mocker.patch(
+            "hsml.engine.serving_engine.ServingEngine._get_tag"
+        )
+
+        # Act
+        d.get_tag("tag_name")
+
+        # Assert
+        mock_serving_engine_get_tag.assert_called_once_with(d, "tag_name")
+
+    def test_get_tags(self, mocker, backend_fixtures):
+        # Arrange
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mock_serving_engine_get_tags = mocker.patch(
+            "hsml.engine.serving_engine.ServingEngine._get_tags"
+        )
+
+        # Act
+        d.get_tags()
+
+        # Assert
+        mock_serving_engine_get_tags.assert_called_once_with(d)
 
     def test_tracing_property_delegates_to_predictor(self, mocker):
         # Arrange
@@ -168,7 +381,9 @@ class TestDeployment:
 
         # Assert
         mock_deployment_init.assert_called_once_with(
-            predictor=p, name=p._name, description=p._description
+            predictor=p,
+            name=p._name,
+            description=p._description,
         )
 
     # save
@@ -1168,6 +1383,25 @@ class TestDeployment:
         d.env_vars = {}
         assert d.env_vars == {}
         assert p.env_vars == {}
+
+    # get_monitoring_configs
+
+    def test_get_monitoring_configs_delegates_to_model(self, mocker, backend_fixtures):
+        # Arrange
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mock_fm_configs = [mocker.Mock(), mocker.Mock()]
+        mock_model = mocker.Mock()
+        mock_model.get_monitoring_configs.return_value = mock_fm_configs
+        mocker.patch.object(d, "get_model", return_value=mock_model)
+
+        # Act
+        result = d.get_monitoring_configs()
+
+        # Assert
+        assert result == mock_fm_configs
+        d.get_model.assert_called_once()
+        mock_model.get_monitoring_configs.assert_called_once()
 
     # auxiliary methods
 

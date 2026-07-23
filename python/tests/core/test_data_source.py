@@ -141,6 +141,42 @@ class TestDataSource:
         # Assert
         assert ds.format == "delta"
 
+    def test_from_response_json_items_null_is_single(self):
+        # A DTO can carry `items: null` (e.g. the data source embedded in a
+        # feature group inside a QueryDTO) — that is a single data source, not a
+        # list, and must not be iterated.
+        payload = {"items": None, "count": None, "path": "s3://bucket/path"}
+
+        # Act
+        ds = data_source.DataSource.from_response_json(payload)
+
+        # Assert
+        assert isinstance(ds, data_source.DataSource)
+        assert ds.path == "s3://bucket/path"
+
+    def test_from_response_json_items_list(self):
+        # A populated `items` collection still deserializes into a list.
+        payload = {"items": [{"path": "a"}, {"path": "b"}]}
+
+        # Act
+        result = data_source.DataSource.from_response_json(payload)
+
+        # Assert
+        assert isinstance(result, list)
+        assert [d.path for d in result] == ["a", "b"]
+
+    def test_from_response_json_items_empty_list(self):
+        # An empty `items` collection (e.g. a list endpoint with `count: 0`) is
+        # still a list payload and must deserialize to an empty list, not a
+        # single data source.
+        payload = {"items": [], "count": 0}
+
+        # Act
+        result = data_source.DataSource.from_response_json(payload)
+
+        # Assert
+        assert result == []
+
     def test_format_emitted_in_to_dict(self):
         # Arrange
         ds = data_source.DataSource(path="s3://bucket/path", format="hudi")
@@ -158,6 +194,41 @@ class TestDataSource:
         # Assert
         assert ds.format is None
         assert ds.to_dict()["format"] is None
+
+    def test_spreadsheet_id_preserved_in_constructor(self):
+        # Arrange / Act
+        ds = data_source.DataSource(table="Sheet1", spreadsheet_id="test_spreadsheet")
+
+        # Assert
+        assert ds.spreadsheet_id == "test_spreadsheet"
+
+    def test_spreadsheet_id_round_trips_via_from_response_json(self):
+        # Arrange
+        payload = {"table": "Sheet1", "spreadsheetId": "test_spreadsheet"}
+
+        # Act
+        ds = data_source.DataSource.from_response_json(payload)
+
+        # Assert
+        assert ds.spreadsheet_id == "test_spreadsheet"
+
+    def test_spreadsheet_id_emitted_in_to_dict(self):
+        # Arrange
+        ds = data_source.DataSource(table="Sheet1", spreadsheet_id="test_spreadsheet")
+
+        # Act
+        result = ds.to_dict()
+
+        # Assert
+        assert result["spreadsheetId"] == "test_spreadsheet"
+
+    def test_spreadsheet_id_none_by_default(self):
+        # Arrange / Act
+        ds = data_source.DataSource()
+
+        # Assert
+        assert ds.spreadsheet_id is None
+        assert ds.to_dict()["spreadsheetId"] is None
 
 
 class TestInferredMetadata:
@@ -351,3 +422,71 @@ class TestDataSourceApiInferMetadata:
             pytest.raises(RestAPIError),
         ):
             api._infer_metadata(sc_mock, preview_data)
+
+
+class TestDataSourceNewIngestionJob:
+    def test_new_ingestion_job_returns_empty_builder(self):
+        from hsfs.core.multi_table_ingestion import MultiTableIngestionJob
+
+        sc = storage_connector.RedshiftConnector(9, "sc", 7)
+        ds = data_source.DataSource(storage_connector=sc)
+
+        job = ds.new_ingestion_job(name="crm_ingestion", table_parallelism=2)
+
+        assert isinstance(job, MultiTableIngestionJob)
+        assert job.name == "crm_ingestion"
+        assert job.targets == []
+
+    def test_new_ingestion_job_without_storage_connector_raises(self):
+        ds = data_source.DataSource()
+        with pytest.raises(ValueError, match="storage connector"):
+            ds.new_ingestion_job(name="x")
+
+
+class TestDataSourceEstimateIngestionResources:
+    def test_estimate_builds_payload_and_returns_estimate(self):
+        sc = storage_connector.RedshiftConnector(9, "sc", 7)
+        ds = data_source.DataSource(storage_connector=sc)
+
+        fake_fg = MagicMock()
+        fake_fg.id = 33
+
+        with patch("hsfs.core.data_source_api.DataSourceApi") as MockApi:
+            api = MockApi.return_value
+            api._estimate_ingestion_resources.return_value = {
+                "recommendedMemoryMb": 4096,
+                "recommendedCpuCores": 2.0,
+            }
+
+            result = ds.estimate_ingestion_resources(
+                fake_fg, write_mode="MERGE", batch_size=200000
+            )
+
+            posted_sc, payload = api._estimate_ingestion_resources.call_args[0]
+
+        assert result["recommendedMemoryMb"] == 4096
+        assert posted_sc is sc
+        assert payload["featuregroupId"] == 33
+        assert payload["featurestoreId"] == 7
+        assert payload["writeMode"] == "MERGE"
+        assert payload["batchSize"] == 200000
+        # unset knobs are not sent, so the backend applies its own defaults
+        assert "sourceReadWorkers" not in payload
+
+    def test_estimate_accepts_feature_group_id(self):
+        sc = storage_connector.RedshiftConnector(9, "sc", 7)
+        ds = data_source.DataSource(storage_connector=sc)
+
+        with patch("hsfs.core.data_source_api.DataSourceApi") as MockApi:
+            api = MockApi.return_value
+            api._estimate_ingestion_resources.return_value = {}
+            ds.estimate_ingestion_resources(feature_group_id=5)
+            payload = api._estimate_ingestion_resources.call_args[0][1]
+
+        assert payload["featuregroupId"] == 5
+
+    def test_estimate_without_feature_group_raises(self):
+        sc = storage_connector.RedshiftConnector(9, "sc", 7)
+        ds = data_source.DataSource(storage_connector=sc)
+        with pytest.raises(ValueError, match="feature_group"):
+            ds.estimate_ingestion_resources()

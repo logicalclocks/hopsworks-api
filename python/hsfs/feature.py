@@ -51,6 +51,7 @@ class Feature:
         foreign: bool = False,
         partition: bool = False,
         hudi_precombine_key: bool = False,
+        offline_only: bool = False,
         online_type: str | None = None,
         default_value: str | None = None,
         feature_group_id: int | None = None,
@@ -72,6 +73,7 @@ class Feature:
         self._foreign = foreign
         self._partition = partition
         self._hudi_precombine_key = hudi_precombine_key
+        self._offline_only = bool(offline_only)
         self._online_type = online_type
         self._default_value = default_value
         self._use_fully_qualified_name = use_fully_qualified_name
@@ -105,6 +107,7 @@ class Feature:
             "description": self._description,
             "partition": self._partition,
             "hudiPrecombineKey": self._hudi_precombine_key,
+            "offlineOnly": self._offline_only,
             "primary": self._primary,
             "foreign": self._foreign,
             "onlineType": self._online_type,
@@ -282,6 +285,23 @@ class Feature:
     @hudi_precombine_key.setter
     def hudi_precombine_key(self, hudi_precombine_key: bool) -> None:
         self._hudi_precombine_key = hudi_precombine_key
+
+    @public
+    @property
+    def offline_only(self) -> bool:
+        """Whether this feature is excluded from the online feature store.
+
+        Defaults to `False`.
+        The backend sets this to `True` on the synthetic grain features
+        when a feature group's `partitioned_by` is set and
+        `online_partition_columns=False`, so the column lives only in the
+        offline storage.
+        """
+        return self._offline_only
+
+    @offline_only.setter
+    def offline_only(self, offline_only: bool) -> None:
+        self._offline_only = bool(offline_only)
 
     @public
     @property

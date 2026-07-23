@@ -101,8 +101,11 @@ def create_td(job_conf: dict[Any, Any]) -> None:
     feature_store = job_conf.pop("feature_store")
     fs = get_feature_store_handle(feature_store)
 
-    # Extract the query object
-    q = query.Query._hopsworks_json(job_conf.pop("query"))
+    # Extract the query object. Use the full deserializer (not _hopsworks_json)
+    # because this job reads the query locally to build the dataframe, which
+    # needs a fully-hydrated left_feature_group / joins, not the partial form
+    # that _hopsworks_json produces for send-straight-back-to-Hopsworks use.
+    q = query.Query.from_response_json(job_conf.pop("query"))
 
     td = fs.get_training_dataset(name=job_conf["name"], version=job_conf["version"])
     td.insert(
@@ -125,19 +128,49 @@ def create_fv_td(job_conf: dict[Any, Any]) -> None:
     training_helper_columns = user_write_options.get("training_helper_columns")
     primary_keys = user_write_options.get("primary_keys")
     event_time = user_write_options.get("event_time")
+
+    # `overwrite=False` means this job materializes an `insert_training_data`
+    # append: the batch becomes a new partition of the existing training
+    # dataset instead of replacing it. Absent (old backend) means overwrite.
+    overwrite = job_conf.pop("overwrite", True)
+    save_mode = fv_engine._APPEND if overwrite is False else fv_engine._OVERWRITE
+
+    # The per-call event-time window is not part of the persisted training
+    # dataset metadata (which carries the create-time window); the client
+    # sends it in the write options. Apply it to the fetched metadata so the
+    # job materializes the requested batch. Values crossed the backend's
+    # Map<String, String> job config, so they arrive as strings.
+    training_dataset_obj = None
+    event_start_time = user_write_options.get("event_start_time")
+    event_end_time = user_write_options.get("event_end_time")
+    if event_start_time is not None or event_end_time is not None:
+        training_dataset_obj = fv_engine._get_training_dataset_metadata(
+            fv, job_conf["td_version"]
+        )
+        if event_start_time is not None:
+            training_dataset_obj.event_start_time = int(event_start_time)
+        if event_end_time is not None:
+            training_dataset_obj.event_end_time = int(event_end_time)
+
     fv_engine._compute_training_dataset(
         feature_view_obj=fv,
         user_write_options=user_write_options,
         primary_keys=primary_keys,
         event_time=event_time,
         training_helper_columns=training_helper_columns,
+        training_dataset_obj=training_dataset_obj,
         training_dataset_version=job_conf["td_version"],
+        save_mode=save_mode,
     )
 
 
 def compute_stats(job_conf: dict[Any, Any]) -> None:
     """
-    Compute/Update statistics on a feature group
+    Compute/Update statistics on a feature group.
+
+    When `end_commit_time` is present in job_conf (set by the backend from the
+    POST /compute query params), statistics are scoped to that commit so they
+    are persisted against the specific batch rather than over head.
     """
     feature_store = job_conf.pop("feature_store")
     fs = get_feature_store_handle(feature_store)
@@ -158,7 +191,14 @@ def compute_stats(job_conf: dict[Any, Any]) -> None:
             training_dataset_version=job_conf["td_version"],
         )
 
-    entity.compute_statistics()
+    end_commit_time = job_conf.get("end_commit_time")
+    if end_commit_time is not None and entity_type == "fg":
+        # Commit-scoped: read the FG as-of the commit and persist stats against it.
+        entity._statistics_engine.compute_and_save_statistics(
+            entity, feature_group_commit_id=int(end_commit_time)
+        )
+    else:
+        entity.compute_statistics()
 
 
 def ge_validate(job_conf: dict[Any, Any]) -> None:
@@ -207,7 +247,9 @@ def import_fg(job_conf: dict[Any, Any]) -> None:
     fg.insert(df)
 
 
-def run_feature_monitoring(job_conf: dict[str, str]) -> None:
+def run_feature_monitoring(
+    job_conf: dict[str, str], end_commit_time: int | None = None
+) -> None:
     """
     Run feature monitoring for a given entity (feature_group or feature_view)
     based on a feature monitoring configuration.
@@ -242,15 +284,15 @@ def run_feature_monitoring(job_conf: dict[str, str]) -> None:
         monitoring_config_engine._run_feature_monitoring(
             entity=entity,
             config_name=job_conf["config_name"],
+            end_commit_time=end_commit_time,
         )
     except Exception as e:
         config = monitoring_config_engine._get_feature_monitoring_configs(
             name=job_conf["config_name"]
         )
-        monitoring_config_engine._result_engine._save_feature_monitoring_result_with_exception(
-            config_id=config.id,
+        monitoring_config_engine._result_engine._save_with_exception(
+            feature_monitoring_config_id=config.id,
             job_name=config.job_name,
-            feature_name=config.feature_name,
         )
         raise e
 
@@ -517,7 +559,7 @@ if __name__ == "__main__":
             "compute_stats",
             "ge_validate",
             "import_fg",
-            "run_feature_monitoring",
+            "run_fm",
             "delta_vacuum_fg",
             "offline_fg_materialization",
             "update_table_schema_fg",
@@ -546,6 +588,23 @@ if __name__ == "__main__":
         help="Kafka offset to start consuming from",
     )
 
+    parser.add_argument(
+        "-end_commit_time",
+        type=int,
+        default=None,
+        help="Commit timestamp (ms) that triggered this feature monitoring job",
+    )
+    parser.add_argument(
+        "-start_commit_time",
+        type=int,
+        default=None,
+        help=(
+            "Optional lower bound commit timestamp (ms). Accepted for wire compatibility "
+            "with the statistics/compute endpoint; currently not propagated into the "
+            "monitoring window engine for INGESTION configs."
+        ),
+    )
+
     args = parser.parse_args()
     job_conf = read_job_conf(args.path)
 
@@ -563,8 +622,8 @@ if __name__ == "__main__":
             ge_validate(job_conf)
         elif args.op == "import_fg":
             import_fg(job_conf)
-        elif args.op == "run_feature_monitoring":
-            run_feature_monitoring(job_conf)
+        elif args.op == "run_fm":
+            run_feature_monitoring(job_conf, end_commit_time=args.end_commit_time)
         elif args.op == "delta_vacuum_fg":
             delta_vacuum_fg(spark, job_conf)
         elif args.op == "offline_fg_materialization":

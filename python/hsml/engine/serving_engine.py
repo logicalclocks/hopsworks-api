@@ -33,6 +33,7 @@ from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
 from hopsworks_common.core import dataset_api, inode
 from hsml.core import serving_api
 from hsml.engine import local_engine
+from hsml.utils.local_paths import _resolve_serving_file
 from tqdm.auto import tqdm
 
 
@@ -69,6 +70,42 @@ class ServingEngine:
         self._dataset_api = dataset_api.DatasetApi()
 
         self._engine = local_engine.LocalEngine()
+
+    def _set_tag(self, deployment_instance, name: str, value):
+        """Attach a name/value tag to a deployment.
+
+        Parameters:
+            deployment_instance: the deployment to tag
+            name: tag name
+            value: tag value
+        """
+        self._serving_api._set_tag(deployment_instance, name, value)
+
+    def _delete_tag(self, deployment_instance, name: str):
+        """Remove a tag from a deployment.
+
+        Parameters:
+            deployment_instance: the deployment to remove the tag from
+            name: tag name to remove
+        """
+        self._serving_api._delete_tag(deployment_instance, name)
+
+    def _get_tag(self, deployment_instance, name: str):
+        """Get tag with a certain name.
+
+        Parameters:
+            deployment_instance: the deployment to get the tag from
+            name: tag name
+        """
+        return self._serving_api._get_tag(deployment_instance, name)
+
+    def _get_tags(self, deployment_instance):
+        """Get all tags for a deployment.
+
+        Parameters:
+            deployment_instance: the deployment to get tags from
+        """
+        return self._serving_api._get_tags(deployment_instance)
 
     def _poll_deployment_status(
         self, deployment_instance, status: str, await_status: int, update_progress=None
@@ -519,13 +556,56 @@ class ServingEngine:
         raise ValueError("Unknown deployment status: " + state.status)
 
     def _save(self, deployment_instance, await_update: int):
+        # Local paths on script_file / config_file are auto-uploaded under
+        # /Projects/<p>/Deployments/<name>/resources/ and rewritten to
+        # HopsFS paths in-memory. On update of a deployment fetched from the
+        # backend, these fields hold backend-managed references (e.g. a bare
+        # basename), which are left untouched; only newly-assigned local
+        # paths are re-uploaded.
+        self._upload_local_serving_files(deployment_instance)
+
         if deployment_instance.id is None:
-            # if new deployment
             self._create(deployment_instance)
             return
-
-        # if existing deployment
         self._update(deployment_instance, await_update)
+
+    def _upload_local_serving_files(self, deployment_instance):
+        """Upload local ``script_file`` / ``config_file`` paths.
+
+        Rewrites the in-memory fields to HopsFS paths. HopsFS / ``None`` are
+        left untouched. Each role uploads to its own subdirectory to avoid
+        basename collisions. On update of a persisted deployment, fields that
+        are not new local paths (e.g. backend-managed references returned by
+        ``get_deployment``) are passed through unchanged.
+        """
+        predictor = deployment_instance._predictor
+        deployment_name = deployment_instance.name
+        is_update = deployment_instance.id is not None
+
+        targets = [
+            (predictor, "script_file", "predictor", "script_file"),
+            (predictor, "config_file", "config", "config_file"),
+        ]
+        if predictor.transformer is not None:
+            targets.append(
+                (
+                    predictor.transformer,
+                    "script_file",
+                    "transformer",
+                    "transformer.script_file",
+                ),
+            )
+
+        for obj, field, subdir, field_label in targets:
+            resolved = _resolve_serving_file(
+                self._engine,
+                deployment_name,
+                getattr(obj, field),
+                field_name=field_label,
+                subdir=subdir,
+                is_update=is_update,
+            )
+            setattr(obj, field, resolved)
 
     def _delete(self, deployment_instance, force=False):
         state = deployment_instance.get_state()

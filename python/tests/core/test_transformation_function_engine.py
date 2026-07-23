@@ -286,6 +286,24 @@ class TestTransformationFunctionEngine:
             == 1
         )
 
+    def test_fit_and_transform_no_feature_view_returns_unchanged(self, mocker):
+        # A standalone training dataset (e.g. td.insert(query)) has no feature
+        # view and no transformation functions, so the dataset is returned
+        # unchanged rather than dereferencing a None feature view.
+        mocker.patch("hopsworks_common.client._get_instance")
+
+        dataset = pd.DataFrame({"id": [1, 2]})
+
+        # Act
+        result = transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
+            training_dataset=None,
+            feature_view_obj=None,
+            dataset=dataset,
+        )
+
+        # Assert
+        assert result is dataset
+
     def test_fit_and_transform_no_statistics_no_split(self, mocker):
         # Transformations without statistics fit nothing: the frame gets one
         # plain transform and the statistics engine is never touched.

@@ -85,6 +85,7 @@ def get_project(ctx: click.Context) -> Project:
                 api_key_value=cfg.api_key,
                 project=cfg.project,
                 internal=cfg.internal,
+                hostname_verification=cfg.hostname_verification,
             )
     except Exception as exc:  # noqa: BLE001 - SDK raises a mix of types
         raise click.ClickException(f"Login failed: {exc}") from exc

@@ -26,12 +26,46 @@ from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs.core.delta_engine import DeltaEngine
 from hsfs.feature_group_commit import FeatureGroupCommit
 
+from tests import util
+
+
+class _FakeType:
+    """A Spark-data-type stand-in: a struct carries `.fields`, else a leaf."""
+
+    def __init__(self, children=None):
+        if children is not None:
+            self.fields = [_FakeField(name, None) for name in children]
+
+
+class _FakeField:
+    def __init__(self, name, children):
+        self.name = name
+        self.dataType = _FakeType(children)
+
+
+class _FakeSchema:
+    def __init__(self, fields):
+        self.fields = [_FakeField(name, children) for name, children in fields]
+
+
+def _fake_schema(fields):
+    """Build a schema stand-in from (name, children) pairs.
+
+    `children=None` is a scalar leaf; a list of names is a struct with those
+    (leaf) fields, so the flattened statistics ordinal can be exercised.
+    """
+    return _FakeSchema(fields)
+
 
 def _make_fg(location: str):
     fg = mock.MagicMock()
     fg.location = location
     fg.name = "fg"
     fg.version = 1
+    # Non-partitioned and unclustered by default so grain materialization and
+    # the clustered-writer guards short-circuit; tests set these explicitly.
+    fg.partitioned_by = None
+    fg.clustered_by = None
     return fg
 
 
@@ -295,11 +329,77 @@ class TestDeltaEngine:
         mocker.patch("hsfs.util._get_delta_datestr_from_timestamp", return_value="t")
 
         # Act
-        opts = engine._setup_delta_read_opts(alias, {"k": "v"})
+        opts = engine._setup_delta_read_opts(alias, read_options={"k": "v"})
 
         # Assert
         assert opts[engine.DELTA_QUERY_TIME_TRAVEL_AS_OF_INSTANT] == "t"
         assert opts["k"] == "v"
+
+    def test_setup_delta_read_opts_cdf_always_uses_timestamp(self, mocker):
+        # The CDF branch in _setup_delta_read_opts always emits startingTimestamp
+        # regardless of how the start compares to the Delta log's earliest commit.
+        # The timestamp-comparison guard has been removed because history() returns
+        # the in-commit timestamp while Delta's CDF lower-bound uses file mtime —
+        # the two can differ by tens of milliseconds on a fresh table, making a
+        # pre-flight comparison unreliable. The retry logic is now in
+        # _register_temporary_table instead.
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        engine = DeltaEngine(1, "fs", fg, None, None)
+        alias = mock.Mock()
+        alias.left_feature_group_start_timestamp = 1000
+        alias.left_feature_group_end_timestamp = 5000
+        mocker.patch("hsfs.util._get_delta_datestr_from_timestamp", return_value="t")
+
+        # Act
+        result = engine._setup_delta_read_opts(alias, "hopsfs://nn:8020/p")
+
+        # Assert — always startingTimestamp; endingTimestamp present because end is set
+        assert result == {
+            "readChangeFeed": "true",
+            "startingTimestamp": "t",
+            "endingTimestamp": "t",
+        }
+
+    def test_setup_delta_read_opts_cdf_start_after_earliest_uses_timestamp(
+        self, mocker
+    ):
+        # CDF branch always emits startingTimestamp; no end timestamp set here.
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        engine = DeltaEngine(1, "fs", fg, None, None)
+        alias = mock.Mock()
+        alias.left_feature_group_start_timestamp = 5000
+        alias.left_feature_group_end_timestamp = None
+        mocker.patch("hsfs.util._get_delta_datestr_from_timestamp", return_value="t")
+
+        # Act
+        result = engine._setup_delta_read_opts(alias, "hopsfs://nn:8020/p")
+
+        # Assert
+        assert result == {"readChangeFeed": "true", "startingTimestamp": "t"}
+
+    def test_setup_delta_read_opts_end_before_earliest_uses_version(self, mocker):
+        # Snapshot-with-end counterpart of the same skew: an end time before the
+        # Delta log's first commit falls back to versionAsOf on the earliest commit.
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        engine = DeltaEngine(1, "fs", fg, None, None)
+        alias = mock.Mock()
+        alias.left_feature_group_start_timestamp = None
+        alias.left_feature_group_end_timestamp = 1000
+        mocker.patch.object(
+            engine, "_get_delta_earliest_commit", return_value=(3, 2000)
+        )
+
+        # Act
+        result = engine._setup_delta_read_opts(alias, "hopsfs://nn:8020/p")
+
+        # Assert
+        assert result == {engine.DELTA_QUERY_TIME_TRAVEL_AS_OF_VERSION: 3}
 
     def test_generate_merge_query_primary_key_only(self, mocker):
         # Arrange
@@ -414,6 +514,300 @@ class TestDeltaEngine:
 
         # Assert
         spark.read.format.assert_called_once_with(engine.DELTA_SPARK_FORMAT)
+
+    def _patch_pyspark_col(self, mocker):
+        """Patch pyspark.sql.functions.col so tests don't need a live SparkContext.
+
+        The CDF branch of _register_temporary_table does
+        ``from pyspark.sql.functions import col`` inside the method body, so the
+        name ``col`` is bound at call time from the real ``pyspark.sql.functions``
+        module. We replace the ``col`` attribute on that module so the import
+        resolves to a lightweight mock without touching sys.modules.
+        """
+        import pyspark.sql.functions as _psf
+
+        fake_col = mock.Mock(return_value=mock.Mock())
+        fake_col.return_value.isin.return_value = mock.Mock()
+        mocker.patch.object(_psf, "col", fake_col)
+        return fake_col
+
+    def test_register_temporary_table_cdf_retry_on_earliest_version_error(self, mocker):
+        # When the CDF .load() raises an exception whose message contains
+        # "before the earliest version", _register_temporary_table must retry
+        # with startingVersion (from _get_delta_earliest_commit) instead of
+        # startingTimestamp. The tempview must be created on the retry.
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        self._patch_pyspark_col(mocker)
+        spark = mock.Mock()
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.prepare_spark_location.return_value = "loc"
+        engine = DeltaEngine(1, "fs", fg, spark, None)
+
+        # First load raises the Delta earliest-version error; second succeeds.
+        first_load_result = mock.Mock()
+        first_load_result.filter.return_value.createOrReplaceTempView.side_effect = (
+            Exception(
+                "The provided timestamp (2026-06-16 13:29:06.164) is before the "
+                "earliest version available to this table (2026-06-16 13:29:06.38)."
+            )
+        )
+        retry_load_result = mock.Mock()
+        retry_load_result.filter.return_value.createOrReplaceTempView.return_value = (
+            None
+        )
+
+        spark.read.format.return_value.options.return_value.load.side_effect = [
+            first_load_result,
+            retry_load_result,
+        ]
+
+        mocker.patch.object(
+            engine,
+            "_get_delta_earliest_commit",
+            return_value=(0, 1718540946380),
+        )
+        mocker.patch(
+            "hsfs.util._get_delta_datestr_from_timestamp", return_value="ts_str"
+        )
+
+        alias = mock.Mock()
+        alias.alias = "tmp"
+        alias.left_feature_group_start_timestamp = 1718540946164
+        alias.left_feature_group_end_timestamp = None
+
+        # Act
+        engine._register_temporary_table(alias, read_options=None, is_cdc_query=True)
+
+        # Assert — two load calls made (first failed, second succeeded)
+        assert spark.read.format.return_value.options.return_value.load.call_count == 2
+
+        # Second call must use startingVersion, not startingTimestamp
+        second_opts_call = spark.read.format.return_value.options.call_args_list[1]
+        retry_opts = (
+            second_opts_call[1] if second_opts_call[1] else second_opts_call[0][0]
+        )
+        assert "startingVersion" in retry_opts
+        assert "startingTimestamp" not in retry_opts
+        assert retry_opts["startingVersion"] == 0
+
+        # Tempview created exactly once on the retry path
+        retry_load_result.filter.return_value.createOrReplaceTempView.assert_called_once_with(
+            "tmp"
+        )
+
+    def test_register_temporary_table_cdf_retry_both_bounds_before_earliest(
+        self, mocker
+    ):
+        # When BOTH startingTimestamp and endingTimestamp fall before the Delta
+        # log's earliest commit (the fresh-FG skew scenario), the retry must
+        # remove both timestamp keys and set startingVersion=earliest AND
+        # endingVersion=earliest so CDF reads exactly the one commit that
+        # covers the monitoring window.
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        self._patch_pyspark_col(mocker)
+        spark = mock.Mock()
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.prepare_spark_location.return_value = "loc"
+        engine = DeltaEngine(1, "fs", fg, spark, None)
+
+        earliest_version = 0
+        earliest_ts_ms = 1718540946380  # 13:29:06.380
+
+        first_load_result = mock.Mock()
+        first_load_result.filter.return_value.createOrReplaceTempView.side_effect = (
+            Exception(
+                "The provided timestamp (2026-06-16 13:29:06.164) is before the "
+                "earliest version available to this table (2026-06-16 13:29:06.38)."
+            )
+        )
+        retry_load_result = mock.Mock()
+        retry_load_result.filter.return_value.createOrReplaceTempView.return_value = (
+            None
+        )
+        spark.read.format.return_value.options.return_value.load.side_effect = [
+            first_load_result,
+            retry_load_result,
+        ]
+
+        mocker.patch.object(
+            engine,
+            "_get_delta_earliest_commit",
+            return_value=(earliest_version, earliest_ts_ms),
+        )
+        mocker.patch(
+            "hsfs.util._get_delta_datestr_from_timestamp", return_value="ts_str"
+        )
+
+        alias = mock.Mock()
+        alias.alias = "tmp"
+        alias.left_feature_group_start_timestamp = 1718540946164  # 13:29:06.164
+        alias.left_feature_group_end_timestamp = 1718540946164  # same — also before
+
+        # Act
+        engine._register_temporary_table(alias, read_options=None, is_cdc_query=True)
+
+        # Assert — two load calls: first failed, second succeeded
+        assert spark.read.format.return_value.options.return_value.load.call_count == 2
+
+        second_opts_call = spark.read.format.return_value.options.call_args_list[1]
+        retry_opts = (
+            second_opts_call[1] if second_opts_call[1] else second_opts_call[0][0]
+        )
+        assert retry_opts["startingVersion"] == earliest_version
+        assert retry_opts["endingVersion"] == earliest_version
+        assert "startingTimestamp" not in retry_opts
+        assert "endingTimestamp" not in retry_opts
+
+        retry_load_result.filter.return_value.createOrReplaceTempView.assert_called_once_with(
+            "tmp"
+        )
+
+    def test_register_temporary_table_cdf_retry_start_before_earliest_end_later(
+        self, mocker
+    ):
+        # When startingTimestamp is before the earliest commit but endingTimestamp
+        # is a genuine later bound (end > earliest[1]), the retry must use
+        # startingVersion for the start and keep the original endingTimestamp
+        # for the end (NOT switch end to endingVersion).
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        self._patch_pyspark_col(mocker)
+        spark = mock.Mock()
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.prepare_spark_location.return_value = "loc"
+        engine = DeltaEngine(1, "fs", fg, spark, None)
+
+        earliest_version = 0
+        earliest_ts_ms = 1718540946380  # 13:29:06.380
+
+        first_load_result = mock.Mock()
+        first_load_result.filter.return_value.createOrReplaceTempView.side_effect = (
+            Exception(
+                "The provided timestamp (2026-06-16 13:29:06.164) is before the "
+                "earliest version available to this table (2026-06-16 13:29:06.38)."
+            )
+        )
+        retry_load_result = mock.Mock()
+        retry_load_result.filter.return_value.createOrReplaceTempView.return_value = (
+            None
+        )
+        spark.read.format.return_value.options.return_value.load.side_effect = [
+            first_load_result,
+            retry_load_result,
+        ]
+
+        mocker.patch.object(
+            engine,
+            "_get_delta_earliest_commit",
+            return_value=(earliest_version, earliest_ts_ms),
+        )
+        # _get_delta_datestr_from_timestamp is called once for the initial opts
+        # (startingTimestamp) and then once more in the retry for endingTimestamp.
+        mocker.patch(
+            "hsfs.util._get_delta_datestr_from_timestamp", return_value="ts_str"
+        )
+
+        alias = mock.Mock()
+        alias.alias = "tmp"
+        alias.left_feature_group_start_timestamp = 1718540946164  # before earliest
+        alias.left_feature_group_end_timestamp = 1718540950000  # well after earliest
+
+        # Act
+        engine._register_temporary_table(alias, read_options=None, is_cdc_query=True)
+
+        # Assert — two load calls: first failed, second succeeded
+        assert spark.read.format.return_value.options.return_value.load.call_count == 2
+
+        second_opts_call = spark.read.format.return_value.options.call_args_list[1]
+        retry_opts = (
+            second_opts_call[1] if second_opts_call[1] else second_opts_call[0][0]
+        )
+        assert retry_opts["startingVersion"] == earliest_version
+        assert retry_opts["endingTimestamp"] == "ts_str"
+        assert "startingTimestamp" not in retry_opts
+        assert "endingVersion" not in retry_opts
+
+        retry_load_result.filter.return_value.createOrReplaceTempView.assert_called_once_with(
+            "tmp"
+        )
+
+    def test_register_temporary_table_cdf_happy_path_no_retry(self, mocker):
+        # When the CDF .load() succeeds on the first attempt, no retry occurs and
+        # _get_delta_earliest_commit is never called.
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        self._patch_pyspark_col(mocker)
+        spark = mock.Mock()
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.prepare_spark_location.return_value = "loc"
+        engine = DeltaEngine(1, "fs", fg, spark, None)
+
+        load_result = mock.Mock()
+        load_result.filter.return_value.createOrReplaceTempView.return_value = None
+        spark.read.format.return_value.options.return_value.load.return_value = (
+            load_result
+        )
+
+        earliest_mock = mocker.patch.object(engine, "_get_delta_earliest_commit")
+        mocker.patch(
+            "hsfs.util._get_delta_datestr_from_timestamp", return_value="ts_str"
+        )
+
+        alias = mock.Mock()
+        alias.alias = "tmp"
+        alias.left_feature_group_start_timestamp = 5000
+        alias.left_feature_group_end_timestamp = None
+
+        # Act
+        engine._register_temporary_table(alias, read_options=None, is_cdc_query=True)
+
+        # Assert — only one load call, no retry, no history lookup
+        spark.read.format.return_value.options.return_value.load.assert_called_once()
+        earliest_mock.assert_not_called()
+        load_result.filter.return_value.createOrReplaceTempView.assert_called_once_with(
+            "tmp"
+        )
+
+    def test_register_temporary_table_cdf_other_exception_propagates(self, mocker):
+        # An AnalysisException (or any error) whose message does NOT contain
+        # "before the earliest version" must propagate unmodified — no retry.
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        self._patch_pyspark_col(mocker)
+        spark = mock.Mock()
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.prepare_spark_location.return_value = "loc"
+        engine = DeltaEngine(1, "fs", fg, spark, None)
+
+        unrelated_error = RuntimeError("Column 'x' does not exist")
+        load_result = mock.Mock()
+        load_result.filter.return_value.createOrReplaceTempView.side_effect = (
+            unrelated_error
+        )
+        spark.read.format.return_value.options.return_value.load.return_value = (
+            load_result
+        )
+
+        earliest_mock = mocker.patch.object(engine, "_get_delta_earliest_commit")
+        mocker.patch(
+            "hsfs.util._get_delta_datestr_from_timestamp", return_value="ts_str"
+        )
+
+        alias = mock.Mock()
+        alias.alias = "tmp"
+        alias.left_feature_group_start_timestamp = 5000
+        alias.left_feature_group_end_timestamp = None
+
+        # Act & Assert — original error propagates, no retry, no history lookup
+        with pytest.raises(RuntimeError, match="Column 'x' does not exist"):
+            engine._register_temporary_table(
+                alias, read_options=None, is_cdc_query=True
+            )
+
+        earliest_mock.assert_not_called()
+        spark.read.format.return_value.options.return_value.load.assert_called_once()
 
     def test_save_delta_fg_calls_write_and_commit_spark(self, mocker):
         # Arrange
@@ -542,6 +936,500 @@ class TestDeltaEngine:
         with pytest.raises(ImportError) as e:
             engine._write_delta_rs_dataset(dataset=mock.Mock())
         assert "hops-deltalake" in str(e.value)
+
+    def test_cluster_columns_from_clustered_by(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.clustered_by = ["ts", "id"]
+        engine = DeltaEngine(1, "fs", fg, None, None)
+
+        # Act & Assert: clustering columns come straight from clustered_by
+        assert engine._cluster_columns() == ["ts", "id"]
+
+    def test_cluster_columns_empty_when_unclustered(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        engine = DeltaEngine(1, "fs", fg, None, None)
+
+        # Act & Assert: clustered_by is the only clustering source;
+        # partitioned_by no longer feeds it (Delta rejects partitioned_by)
+        assert engine._cluster_columns() == []
+        fg.partitioned_by = ["day(ts)"]
+        assert engine._cluster_columns() == []
+
+    def test_create_clustered_delta_table_builds_builder(self, mocker, monkeypatch):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        spark = mocker.MagicMock()
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.clustered_by = ["ts", "id"]
+        engine = DeltaEngine(1, "fs", fg, spark, None)
+
+        fake_delta_table_cls = mocker.MagicMock()
+        fake_delta = types.ModuleType("delta")
+        fake_delta_tables = types.ModuleType("delta.tables")
+        fake_delta_tables.DeltaTable = fake_delta_table_cls
+        monkeypatch.setitem(sys.modules, "delta", fake_delta)
+        monkeypatch.setitem(sys.modules, "delta.tables", fake_delta_tables)
+
+        dataset = mocker.MagicMock()
+        # the postcondition probe reads the clustering columns back
+        spark.sql.return_value.select.return_value.collect.return_value = [
+            (["ts", "id"],)
+        ]
+
+        # Act
+        engine._create_clustered_delta_table(
+            dataset,
+            "hopsfs://nn:8020/p",
+            {"delta.enableChangeDataFeed": "true", "mode": "append"},
+        )
+
+        # Assert: builder chain create -> location -> schema -> clusterBy
+        fake_delta_table_cls.createIfNotExists.assert_called_once_with(spark)
+        builder = fake_delta_table_cls.createIfNotExists.return_value
+        builder.location.assert_called_once_with("hopsfs://nn:8020/p")
+        builder.location.return_value.addColumns.assert_called_once_with(dataset.schema)
+        clustered = builder.location.return_value.addColumns.return_value
+        clustered.clusterBy.assert_called_once_with("ts", "id")
+        # only delta.* write options become table properties
+        clustered.clusterBy.return_value.property.assert_called_once_with(
+            "delta.enableChangeDataFeed", "true"
+        )
+        clustered.clusterBy.return_value.property.return_value.execute.assert_called_once_with()
+        # the clustering postcondition is verified through DESCRIBE DETAIL
+        spark.sql.assert_called_once_with("DESCRIBE DETAIL delta.`hopsfs://nn:8020/p`")
+
+    def test_create_clustered_delta_table_postcondition_mismatch_raises(
+        self, mocker, monkeypatch
+    ):
+        # Arrange: a table already existed at the location, so
+        # createIfNotExists was a no-op and the table stays unclustered
+        _patch_client(mocker, is_external=False)
+        spark = mocker.MagicMock()
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.clustered_by = ["ts", "id"]
+        engine = DeltaEngine(1, "fs", fg, spark, None)
+
+        fake_delta_table_cls = mocker.MagicMock()
+        fake_delta = types.ModuleType("delta")
+        fake_delta_tables = types.ModuleType("delta.tables")
+        fake_delta_tables.DeltaTable = fake_delta_table_cls
+        monkeypatch.setitem(sys.modules, "delta", fake_delta)
+        monkeypatch.setitem(sys.modules, "delta.tables", fake_delta_tables)
+
+        spark.sql.return_value.select.return_value.collect.return_value = [(None,)]
+
+        # Act & Assert
+        with pytest.raises(FeatureStoreException, match="instead of clustered_by") as e:
+            engine._create_clustered_delta_table(
+                mocker.MagicMock(), "hopsfs://nn:8020/p", {}
+            )
+        assert "createIfNotExists" in str(e.value)
+
+    def test_required_indexed_cols_flat_and_nested(self, mocker):
+        # Delta counts leaf columns for dataSkippingNumIndexedCols: it descends
+        # into structs (each nested field counted) but treats a top-level
+        # column as one leaf otherwise.
+        _patch_client(mocker, is_external=False)
+        engine = DeltaEngine(
+            1, "fs", _make_fg("hopsfs://nn:8020/p"), mocker.Mock(), None
+        )
+        flat = _fake_schema([(f"c{i}", None) for i in range(40)])  # c0..c39
+        assert engine._required_indexed_cols(flat, ["c0", "c5"]) == 6
+        assert engine._required_indexed_cols(flat, ["c31"]) == 32  # 32nd
+        assert engine._required_indexed_cols(flat, ["c32"]) == 33  # 33rd
+        assert (
+            engine._required_indexed_cols(flat, ["c5", "C34"]) == 35
+        )  # case-insensitive
+        assert engine._required_indexed_cols(flat, ["missing"]) == 0
+
+        # A scalar column after a 32-leaf struct sits at flattened ordinal 33,
+        # even though it is only the 2nd top-level column.
+        nested = _fake_schema([("s", [f"f{i}" for i in range(32)]), ("scalar", None)])
+        assert engine._required_indexed_cols(nested, ["scalar"]) == 33
+
+    def test_reconcile_indexed_cols_only_widens(self, mocker):
+        _patch_client(mocker, is_external=False)
+        engine = DeltaEngine(
+            1, "fs", _make_fg("hopsfs://nn:8020/p"), mocker.Mock(), None
+        )
+        # nothing required -> leave config alone
+        assert engine._reconcile_indexed_cols(0, None) is None
+        # within the default 32 -> leave default
+        assert engine._reconcile_indexed_cols(5, None) is None
+        # past default -> widen
+        assert engine._reconcile_indexed_cols(33, None) == 33
+        # existing value already covers -> keep it (never shrink)
+        assert engine._reconcile_indexed_cols(33, 50) is None
+        # existing value too small -> widen
+        assert engine._reconcile_indexed_cols(33, 10) == 33
+        # existing -1 (all columns) -> already sufficient
+        assert engine._reconcile_indexed_cols(33, -1) is None
+
+    def test_create_clustered_delta_table_widens_statistics(self, mocker, monkeypatch):
+        # Arrange: the clustering column is the 33rd, past Delta's default
+        # indexed range, so statistics must be widened to cover it.
+        _patch_client(mocker, is_external=False)
+        spark = mocker.MagicMock()
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.clustered_by = ["c32"]
+        engine = DeltaEngine(1, "fs", fg, spark, None)
+
+        fake_delta_table_cls = mocker.MagicMock()
+        fake_delta = types.ModuleType("delta")
+        fake_delta_tables = types.ModuleType("delta.tables")
+        fake_delta_tables.DeltaTable = fake_delta_table_cls
+        monkeypatch.setitem(sys.modules, "delta", fake_delta)
+        monkeypatch.setitem(sys.modules, "delta.tables", fake_delta_tables)
+
+        dataset = mocker.MagicMock()
+        dataset.schema = _fake_schema([(f"c{i}", None) for i in range(40)])
+        spark.sql.return_value.select.return_value.collect.return_value = [(["c32"],)]
+
+        # Act
+        engine._create_clustered_delta_table(dataset, "hopsfs://nn:8020/p", {})
+
+        # Assert: the statistics property is set to the clustering column's ordinal
+        clustered = fake_delta_table_cls.createIfNotExists.return_value.location.return_value.addColumns.return_value.clusterBy.return_value
+        clustered.property.assert_any_call("delta.dataSkippingNumIndexedCols", "33")
+
+    def test_create_clustered_delta_table_preserves_adequate_user_stats(
+        self, mocker, monkeypatch
+    ):
+        # A user-provided value that already covers the clustering column must
+        # not be overwritten (only the user's option is applied, no override).
+        _patch_client(mocker, is_external=False)
+        spark = mocker.MagicMock()
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.clustered_by = ["c32"]
+        engine = DeltaEngine(1, "fs", fg, spark, None)
+
+        fake_delta_table_cls = mocker.MagicMock()
+        fake_delta = types.ModuleType("delta")
+        fake_delta_tables = types.ModuleType("delta.tables")
+        fake_delta_tables.DeltaTable = fake_delta_table_cls
+        monkeypatch.setitem(sys.modules, "delta", fake_delta)
+        monkeypatch.setitem(sys.modules, "delta.tables", fake_delta_tables)
+
+        dataset = mocker.MagicMock()
+        dataset.schema = _fake_schema([(f"c{i}", None) for i in range(40)])
+        spark.sql.return_value.select.return_value.collect.return_value = [(["c32"],)]
+
+        # Act: user sets 50, which already covers ordinal 33
+        engine._create_clustered_delta_table(
+            dataset,
+            "hopsfs://nn:8020/p",
+            {"delta.dataSkippingNumIndexedCols": "50"},
+        )
+
+        # Assert: the user's 50 is applied and never overwritten with 33
+        clustered = fake_delta_table_cls.createIfNotExists.return_value.location.return_value.addColumns.return_value.clusterBy.return_value
+        clustered.property.assert_any_call("delta.dataSkippingNumIndexedCols", "50")
+        for call in clustered.property.mock_calls:
+            assert call.args != ("delta.dataSkippingNumIndexedCols", "33")
+
+    def test_write_delta_dataset_creates_clustered_table(self, mocker, monkeypatch):
+        # Arrange: no table at the location yet and clustering columns set
+        _patch_client(mocker, is_external=False)
+        spark = mocker.MagicMock()
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.prepare_spark_location.return_value = "hopsfs://nn:8020/p"
+        fg.clustered_by = ["ts"]
+        fg.partition_key = []
+        engine = DeltaEngine(1, "fs", fg, spark, None)
+
+        fake_delta_table_cls = mocker.MagicMock()
+        fake_delta_table_cls.isDeltaTable.return_value = False
+        fake_delta = types.ModuleType("delta")
+        fake_delta_tables = types.ModuleType("delta.tables")
+        fake_delta_tables.DeltaTable = fake_delta_table_cls
+        monkeypatch.setitem(sys.modules, "delta", fake_delta)
+        monkeypatch.setitem(sys.modules, "delta.tables", fake_delta_tables)
+
+        create_mock = mocker.patch.object(engine, "_create_clustered_delta_table")
+        mocker.patch.object(engine, "_get_last_commit_metadata", return_value="commit")
+        dataset = mocker.MagicMock()
+
+        # Act
+        result = engine._write_delta_dataset(dataset, {}, "upsert")
+
+        # Assert: clustered create first, then a plain append without
+        # partitionBy columns (clustering replaces hive-style partitioning)
+        assert result == "commit"
+        create_mock.assert_called_once_with(dataset, "hopsfs://nn:8020/p", {})
+        writer = dataset.write.format.return_value.options.return_value
+        writer.partitionBy.assert_called_once_with([])
+        writer.partitionBy.return_value.mode.assert_called_once_with("append")
+
+    def test_write_delta_dataset_unclustered_create_keeps_partition_by(
+        self, mocker, monkeypatch
+    ):
+        # Arrange: no partitioned_by -> the partition_key path is unchanged
+        _patch_client(mocker, is_external=False)
+        spark = mocker.MagicMock()
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.partition_key = ["pk"]
+        engine = DeltaEngine(1, "fs", fg, spark, None)
+
+        fake_delta_table_cls = mocker.MagicMock()
+        fake_delta_table_cls.isDeltaTable.return_value = False
+        fake_delta = types.ModuleType("delta")
+        fake_delta_tables = types.ModuleType("delta.tables")
+        fake_delta_tables.DeltaTable = fake_delta_table_cls
+        monkeypatch.setitem(sys.modules, "delta", fake_delta)
+        monkeypatch.setitem(sys.modules, "delta.tables", fake_delta_tables)
+
+        create_mock = mocker.patch.object(engine, "_create_clustered_delta_table")
+        mocker.patch.object(engine, "_get_last_commit_metadata", return_value="commit")
+        dataset = mocker.MagicMock()
+
+        # Act
+        engine._write_delta_dataset(dataset, {}, "upsert")
+
+        # Assert
+        create_mock.assert_not_called()
+        writer = dataset.write.format.return_value.options.return_value
+        writer.partitionBy.assert_called_once_with(["pk"])
+
+    def test_optimize_spark_runs_optimize_sql(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        spark = mocker.MagicMock()
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.prepare_spark_location.return_value = "hopsfs://nn:8020/p"
+        engine = DeltaEngine(1, "fs", fg, spark, None)
+
+        # Act
+        engine._optimize()
+
+        # Assert
+        spark.sql.assert_called_once_with("OPTIMIZE delta.`hopsfs://nn:8020/p`")
+
+    def test_optimize_spark_full_runs_optimize_full_sql(self, mocker):
+        # Arrange: OPTIMIZE FULL is the liquid-clustering recluster
+        # operation, so it needs a clustered feature group
+        _patch_client(mocker, is_external=False)
+        spark = mocker.MagicMock()
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.prepare_spark_location.return_value = "hopsfs://nn:8020/p"
+        fg.clustered_by = ["ts"]
+        engine = DeltaEngine(1, "fs", fg, spark, None)
+
+        # Act
+        engine._optimize(full=True)
+
+        # Assert
+        spark.sql.assert_called_once_with("OPTIMIZE delta.`hopsfs://nn:8020/p` FULL")
+
+    def test_optimize_full_requires_clustered_fg(self, mocker):
+        # Arrange: OPTIMIZE FULL reclusters; without clustered_by there is
+        # nothing to recluster
+        _patch_client(mocker, is_external=False)
+        spark = mocker.MagicMock()
+        fg = _make_fg("hopsfs://nn:8020/p")
+        engine = DeltaEngine(1, "fs", fg, spark, None)
+
+        # Act & Assert
+        with pytest.raises(
+            FeatureStoreException, match="requires a clustered feature group"
+        ):
+            engine._optimize(full=True)
+        spark.sql.assert_not_called()
+
+    def test_optimize_spark_zorder_runs_zorder_by_sql(self, mocker):
+        # Arrange: legacy OPTIMIZE ZORDER BY on an unclustered table
+        _patch_client(mocker, is_external=False)
+        spark = mocker.MagicMock()
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.prepare_spark_location.return_value = "hopsfs://nn:8020/p"
+        engine = DeltaEngine(1, "fs", fg, spark, None)
+
+        # Act
+        engine._optimize(strategy="zorder", columns=["ts", "id"])
+
+        # Assert
+        spark.sql.assert_called_once_with(
+            "OPTIMIZE delta.`hopsfs://nn:8020/p` ZORDER BY (ts, id)"
+        )
+
+    def test_optimize_zorder_rejected_on_clustered_fg(self, mocker):
+        # Arrange: Delta rejects ZORDER BY on a liquid-clustered table
+        _patch_client(mocker, is_external=False)
+        spark = mocker.MagicMock()
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.clustered_by = ["ts"]
+        engine = DeltaEngine(1, "fs", fg, spark, None)
+
+        # Act & Assert
+        with pytest.raises(FeatureStoreException, match="incompatible with liquid"):
+            engine._optimize(strategy="zorder", columns=["id"])
+
+    def test_optimize_sort_strategy_rejected_with_iceberg_pointer(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        engine = DeltaEngine(1, "fs", fg, mocker.MagicMock(), None)
+
+        # Act & Assert
+        with pytest.raises(FeatureStoreException, match="is an Iceberg rewrite"):
+            engine._optimize(strategy="sort")
+
+    def test_optimize_unknown_strategy_rejected(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        engine = DeltaEngine(1, "fs", fg, mocker.MagicMock(), None)
+
+        # Act & Assert
+        with pytest.raises(FeatureStoreException, match="not a Delta strategy"):
+            engine._optimize(strategy="binpack")
+
+    def test_optimize_columns_require_zorder_strategy(self, mocker):
+        # Arrange: liquid clustering columns change through
+        # update_clustering(), not optimize(columns=...)
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        engine = DeltaEngine(1, "fs", fg, mocker.MagicMock(), None)
+
+        # Act & Assert
+        with pytest.raises(FeatureStoreException, match="only applies to"):
+            engine._optimize(columns=["ts"])
+
+    def test_optimize_full_with_where_rejected(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.clustered_by = ["ts"]
+        engine = DeltaEngine(1, "fs", fg, mocker.MagicMock(), None)
+
+        # Act & Assert
+        with pytest.raises(
+            FeatureStoreException, match="cannot be\\s+combined with a where"
+        ):
+            engine._optimize(full=True, where="ts > 0")
+
+    def test_optimize_python_rejects_clustered_fg(self, mocker):
+        # Arrange: delta-rs does not implement the Clustering/DomainMetadata
+        # writer table features, so a clustered feature group is rejected
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.clustered_by = ["ts", "id"]
+        engine = DeltaEngine(1, "fs", fg, None, None)
+
+        # Act & Assert
+        with pytest.raises(FeatureStoreException, match="Cannot optimize") as e:
+            engine._optimize()
+        assert "without Spark" in str(e.value)
+
+    def test_optimize_python_full_requires_spark(self, mocker):
+        # Arrange: OPTIMIZE FULL needs a clustered feature group, and a
+        # clustered feature group cannot be optimized by delta-rs at all
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.clustered_by = ["ts"]
+        engine = DeltaEngine(1, "fs", fg, None, None)
+
+        # Act & Assert
+        with pytest.raises(FeatureStoreException, match="without Spark"):
+            engine._optimize(full=True)
+
+    def test_optimize_python_compacts_without_cluster_columns(
+        self, mocker, monkeypatch
+    ):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        engine = DeltaEngine(1, "fs", fg, None, None)
+        delta_table = mocker.MagicMock()
+        _patch_deltalake_modules(
+            mocker, monkeypatch, mocker.MagicMock(return_value=delta_table)
+        )
+
+        # Act
+        engine._optimize()
+
+        # Assert
+        delta_table.optimize.compact.assert_called_once_with()
+
+    def test_update_clustering_runs_alter_table_sql(self, mocker):
+        # Arrange: ts and id are early columns, so no statistics widening; the
+        # schema is read for the ordinal check and TBLPROPERTIES is probed.
+        _patch_client(mocker, is_external=False)
+        spark = mocker.MagicMock()
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.prepare_spark_location.return_value = "hopsfs://nn:8020/p"
+        engine = DeltaEngine(1, "fs", fg, spark, None)
+        spark.read.format.return_value.load.return_value.schema = _fake_schema(
+            [("ts", None), ("id", None)]
+        )
+        spark.sql.return_value.collect.return_value = []  # no existing property
+
+        # Act
+        engine._update_clustering(["ts", "id"])
+
+        # Assert: the CLUSTER BY runs and, since ts/id are within the default
+        # indexed range, no statistics-widening SET TBLPROPERTIES is issued
+        spark.sql.assert_any_call(
+            "ALTER TABLE delta.`hopsfs://nn:8020/p` CLUSTER BY (ts, id)"
+        )
+        for call in spark.sql.mock_calls:
+            assert "SET TBLPROPERTIES" not in str(call)
+
+    def test_update_clustering_none_disables(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        spark = mocker.MagicMock()
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.prepare_spark_location.return_value = "hopsfs://nn:8020/p"
+        engine = DeltaEngine(1, "fs", fg, spark, None)
+
+        # Act
+        engine._update_clustering(None)
+
+        # Assert
+        spark.sql.assert_called_once_with(
+            "ALTER TABLE delta.`hopsfs://nn:8020/p` CLUSTER BY NONE"
+        )
+
+    def test_update_clustering_requires_spark(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        engine = DeltaEngine(1, "fs", fg, None, None)
+
+        # Act & Assert
+        with pytest.raises(FeatureStoreException, match="require Spark"):
+            engine._update_clustering(["ts"])
+
+    def test_write_delta_rs_dataset_rejects_clustered_fg(self, mocker, monkeypatch):
+        # Arrange: the delta-rs write path must refuse clustered feature
+        # groups instead of silently dropping the clustering table features
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.clustered_by = ["ts"]
+        engine = DeltaEngine(1, "fs", fg, None, None)
+        fake_deltalake, _ = _patch_deltalake_modules(
+            mocker, monkeypatch, mocker.MagicMock()
+        )
+
+        # Act & Assert
+        with pytest.raises(FeatureStoreException, match="Cannot write to"):
+            engine._write_delta_rs_dataset(dataset=mocker.Mock())
+        fake_deltalake.write_deltalake.assert_not_called()
+
+    def test_delete_record_python_rejects_clustered_fg(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.clustered_by = ["ts"]
+        engine = DeltaEngine(1, "fs", fg, None, None)
+
+        # Act & Assert
+        with pytest.raises(FeatureStoreException, match="Cannot delete from"):
+            engine._delete_record(delete_df=mocker.Mock())
 
     def test_write_delta_rs_dataset_append_mode_skips_merge(self, mocker, monkeypatch):
         # Arrange
@@ -841,6 +1729,10 @@ class TestDeltaEngine:
 
     def test_get_last_commit_metadata_spark_connect(self, mocker):
         # Arrange — Connect path bypasses Hive by reading ``_delta_log/*.json``.
+        # pyspark's functions (F.col, F.input_file_name) require an active
+        # SparkContext even against mocked DataFrames; create one so the test
+        # does not depend on an earlier test having started Spark.
+        util.get_or_create_local_spark_session()
         mocker.patch(
             "hopsworks_common.spark_connect_utils._is_spark_connect_session",
             return_value=True,
@@ -1599,3 +2491,91 @@ class TestDeltaEngineConnectMode:
             "spark.sql.catalog.spark_catalog",
             "org.apache.spark.sql.delta.catalog.DeltaCatalog",
         )
+
+
+class TestDeltaEngineGlueSync:
+    def _glue_fg(self, mocker):
+        from hsfs import storage_connector
+        from hsfs.core import data_source
+
+        connector = storage_connector.GlueConnector(
+            id=2,
+            name="glue",
+            featurestore_id=1,
+            access_key="ak",
+            secret_key="sk",
+            region="eu-north-1",
+            database="hopsworks_featurestore",
+        )
+        fg = _make_fg("s3://ralfsbucket/iceberg-warehouse/ralfsglue.db/fg_1")
+        fg.data_source = data_source.DataSource(
+            storage_connector=connector, database="ralfsglue", table="fg_1"
+        )
+        fg.storage_connector = connector
+        fg.features = [
+            mock.MagicMock(name="id", type="bigint"),
+            mock.MagicMock(name="text", type="string"),
+        ]
+        # MagicMock's ``name`` kwarg names the mock; set the attribute explicitly.
+        fg.features[0].name = "id"
+        fg.features[1].name = "text"
+        return fg
+
+    def test_sync_glue_catalog_registers_table(self, mocker):
+        # Arrange
+        _patch_apis(mocker)
+        _patch_client(mocker, is_external=False)
+        spark_session = mock.MagicMock()
+        spark_context = mock.MagicMock()
+        glue_client = mock.MagicMock()
+        mocker.patch("boto3.client", return_value=glue_client)
+        engine = DeltaEngine(
+            feature_store_id=1,
+            feature_store_name="fs",
+            feature_group=self._glue_fg(mocker),
+            spark_session=spark_session,
+            spark_context=spark_context,
+        )
+
+        # Act
+        engine._sync_glue_catalog(
+            "s3://ralfsbucket/iceberg-warehouse/ralfsglue.db/fg_1"
+        )
+
+        # Assert — registers via the Glue API, not Spark SQL DDL (a named Delta
+        # catalog would NPE on its null delegate).
+        spark_session.sql.assert_not_called()
+        glue_client.create_table.assert_called_once()
+        _, kwargs = glue_client.create_table.call_args
+        assert kwargs["DatabaseName"] == "ralfsglue"
+        table_input = kwargs["TableInput"]
+        assert table_input["Name"] == "fg_1"
+        assert table_input["Parameters"]["table_type"] == "DELTA"
+        assert (
+            table_input["StorageDescriptor"]["Location"]
+            == "s3://ralfsbucket/iceberg-warehouse/ralfsglue.db/fg_1"
+        )
+        assert table_input["StorageDescriptor"]["Columns"] == [
+            {"Name": "id", "Type": "bigint"},
+            {"Name": "text", "Type": "string"},
+        ]
+
+    def test_sync_glue_catalog_noop_without_glue(self, mocker):
+        # Arrange — non-Glue feature group must not touch the catalog.
+        _patch_apis(mocker)
+        _patch_client(mocker, is_external=False)
+        spark_session = mock.MagicMock()
+        engine = DeltaEngine(
+            feature_store_id=1,
+            feature_store_name="fs",
+            feature_group=_make_fg("hopsfs://nn:8020/p"),
+            spark_session=spark_session,
+            spark_context=mock.MagicMock(),
+        )
+        spark_session.sql.reset_mock()
+
+        # Act
+        engine._sync_glue_catalog("hopsfs://nn:8020/p")
+
+        # Assert
+        spark_session.sql.assert_not_called()

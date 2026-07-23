@@ -13,7 +13,6 @@ All Python dependency declarations live in `python/pyproject.toml`.
 - `avro 1.12.0` — Avro serialization for Kafka
 - `grpcio`, `protobuf` — gRPC for Arrow Flight and the online store
 - `opensearch-py` — OpenSearch integration
-- `pyjks` — Java keystore parsing
 - `hopsworks-apigen` — `@public`, `@deprecated`, `@also_available_as` decorators
 - `fsspec` — filesystem abstraction
 - `retrying` — retry decorator for flaky operations
@@ -70,7 +69,6 @@ The `@uses_polars`, `@uses_great_expectations`, `@uses_confluent_kafka` decorato
 - `grpcio` — https://grpc.io/docs/languages/python/
 - `protobuf` — https://protobuf.dev/getting-started/pythontutorial/
 - `opensearch-py` — https://opensearch-project.github.io/opensearch-py/
-- `pyjks` — https://pyjks.readthedocs.io/en/latest/
 - `hopsworks-apigen` — https://raw.githubusercontent.com/logicalclocks/hopsworks-apigen/refs/heads/main/README.md
 - `fsspec` — https://filesystem-spec.readthedocs.io/en/latest/
 - `retrying` — https://raw.githubusercontent.com/rholder/retrying/refs/heads/master/README.rst

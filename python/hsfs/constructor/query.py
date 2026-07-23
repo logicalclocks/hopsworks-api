@@ -346,10 +346,23 @@ class Query:
                 filter=self._filter,
             )
         self.check_and_warn_ambiguous_features()
-
         if not read_options:
             read_options = {}
-        sql_query, online_conn = self._prep_read(online, read_options)
+        # When the left FG has partitioned_by set, add grain-column
+        # predicates equivalent to any event_time range filter — the grain
+        # columns are real partition columns, so every engine prunes on them.
+        # Apply the augmented filter only for the duration of SQL generation
+        # and restore the original afterwards, so reading the same Query
+        # instance repeatedly does not keep nesting AND clauses into _filter.
+        original_filter = self._filter
+        if not online:
+            from hsfs.constructor.partitioned_by_translator import _augment_filter
+
+            self._filter = _augment_filter(self._filter, self._left_feature_group)
+        try:
+            sql_query, online_conn = self._prep_read(online, read_options)
+        finally:
+            self._filter = original_filter
 
         schema = None
         if (
@@ -931,6 +944,49 @@ class Query:
         self._left_features.append(feature)
 
         return self
+
+    def _include_left_event_time(self) -> tuple[str | None, bool]:
+        """Ensure the left feature group's event-time column is selected by the query.
+
+        Used when materializing an incremental training dataset, whose Hive
+        partitions are keyed by each row's event time: the column must be
+        present in the materialized dataframe to derive the partition key
+        from, even when the user did not select it.
+
+        Returns:
+            A `(column_name, appended)` tuple: the name of the event-time
+            column in the query result (fully qualified where required) and
+            whether the feature had to be appended — in which case the caller
+            must drop the column again before the data is written.
+            `(None, False)` when the left feature group has no event time.
+        """
+        event_time = getattr(self._left_feature_group, "event_time", None)
+        if not event_time:
+            return None, False
+        existing = [
+            _feature
+            for _feature in self.features
+            if (
+                _feature.name == event_time
+                and _feature._feature_group_id == self._left_feature_group.id
+            )
+        ]
+        if existing:
+            return (
+                existing[0]._get_fully_qualified_feature_name(
+                    feature_group=self._left_feature_group
+                ),
+                False,
+            )
+        event_time_feature = self._left_feature_group.__getattr__(event_time)
+        event_time_feature.use_fully_qualified_name = True
+        self.append_feature(event_time_feature)
+        return (
+            event_time_feature._get_fully_qualified_feature_name(
+                feature_group=self._left_feature_group
+            ),
+            True,
+        )
 
     @public
     def is_time_travel(self) -> bool:

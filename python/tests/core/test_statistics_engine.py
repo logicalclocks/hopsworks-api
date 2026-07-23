@@ -881,3 +881,51 @@ class TestStatisticsEngine:
             '"value_3"]}, {"column": "column_2", "unique_values": ["value_1", "value_2", '
             '"value_3"]}], "test_name": "test_value"}'
         )
+
+    def test_compute_and_save_monitoring_statistics_empty_df(self, mocker):
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        mock_statistics_api = mocker.patch("hsfs.core.statistics_api.StatisticsApi")
+        mock_logger = mocker.patch("hsfs.core.statistics_engine.logger")
+
+        s_engine = statistics_engine.StatisticsEngine(feature_store_id, "featuregroup")
+
+        fg = feature_group.FeatureGroup(
+            name="test_fg",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            partition_key=[],
+            id=10,
+        )
+
+        feature_dataframe = mocker.Mock()
+        feature_dataframe.head.return_value = []  # empty dataframe
+
+        # Act
+        result = s_engine._compute_and_save_monitoring_statistics(
+            metadata_instance=fg,
+            feature_dataframe=feature_dataframe,
+            window_start_commit_time=1000,
+            window_end_commit_time=2000,
+            row_percentage=1.0,
+            feature_name=["amount", "loc_delta"],
+        )
+
+        # Assert: no POST was made
+        assert mock_statistics_api.return_value.post.call_count == 0
+        # Assert: returned Statistics has no id (unregistered)
+        assert not hasattr(result, "_id") or getattr(result, "_id", None) is None
+        # Assert: feature_descriptive_statistics has one stub per feature with count=0
+        assert result.feature_descriptive_statistics is not None
+        assert len(result.feature_descriptive_statistics) == 2
+        fds_by_name = {
+            fds.feature_name: fds for fds in result.feature_descriptive_statistics
+        }
+        assert fds_by_name["amount"].count == 0
+        assert fds_by_name["loc_delta"].count == 0
+        # Assert: a warning was logged
+        assert mock_logger.warning.call_count == 1

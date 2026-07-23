@@ -17,7 +17,6 @@
 from __future__ import annotations
 
 import logging
-import warnings
 from typing import TYPE_CHECKING, Any
 
 from hopsworks_common.util import (
@@ -32,6 +31,7 @@ from hopsworks_common.util import (
     VersionWarning,
     _append_feature_store_suffix,
     _autofix_feature_name,
+    _check_missing_mandatory_tags,
     _check_timestamp_format_from_date_string,
     _contains_uppercase,
     _contains_whitespace,
@@ -42,6 +42,7 @@ from hopsworks_common.util import (
     _generate_fully_qualified_feature_name,
     _get_dataset_type,
     _get_delta_datestr_from_timestamp,
+    _get_event_date_int_from_timestamp,
     _get_feature_group_url,
     _get_hostname_replaced_url,
     _get_hudi_datestr_from_timestamp,
@@ -67,13 +68,40 @@ if TYPE_CHECKING:
 FeatureStoreEncoder = Encoder
 
 
-def _check_missing_mandatory_tags(
-    missing_mandatory_tags: list[dict[str, Any]] | None,
-    message: str = "Missing mandatory tags",
-) -> None:
-    if missing_mandatory_tags:
-        tag_names = [tag.get("name", str(tag)) for tag in missing_mandatory_tags]
-        warnings.warn(f"{message}: {tag_names}", stacklevel=2)
+def _is_sub_hour_cron(cron_expression: str | None) -> bool:
+    """Return True when a Quartz cron expression fires more than once per hour.
+
+    Uses a minimal heuristic on the minute field (field index 1 in the
+    Quartz ``0 <sec> <min> <hour> ...`` layout that this SDK adopts).
+    The function intentionally errs toward False (no warning) when the
+    expression cannot be parsed — the server validates the full Quartz
+    syntax and will emit its own warning.
+
+    Parameters:
+        cron_expression: A Quartz cron string, e.g. ``"0 */15 * * * ? *"``.
+
+    Returns:
+        ``True`` if the expression fires more than once per 60 minutes.
+    """
+    if not cron_expression:
+        return False
+    parts = cron_expression.strip().split()
+    # Quartz cron: seconds minutes hours day-of-month month day-of-week [year]
+    if len(parts) < 3:
+        return False
+    minute_field = parts[1]
+    # Step expression: */N means fires every N minutes. Sub-hour when 0 < N < 60.
+    if minute_field.startswith("*/"):
+        try:
+            step = int(minute_field[2:])
+            return 0 < step < 60
+        except ValueError:
+            return False
+    # List expression: multiple explicit values, e.g. "0,15,30,45".
+    if "," in minute_field:
+        return True
+    # Range with step "0-59/15", or single value (fires once per hour at most).
+    return "/" in minute_field
 
 
 def _validate_feature(
@@ -242,6 +270,7 @@ __all__ = [
     "_loading_animation",
     "_append_feature_store_suffix",
     "_autofix_feature_name",
+    "_check_missing_mandatory_tags",
     "_check_timestamp_format_from_date_string",
     "_contains_uppercase",
     "_contains_whitespace",
@@ -252,6 +281,7 @@ __all__ = [
     "_generate_fully_qualified_feature_name",
     "_get_dataset_type",
     "_get_delta_datestr_from_timestamp",
+    "_get_event_date_int_from_timestamp",
     "_get_feature_group_url",
     "_get_hostname_replaced_url",
     "_get_hudi_datestr_from_timestamp",

@@ -134,7 +134,13 @@ class TrinoApi:
             The file path of the downloaded SSL certificate if it was downloaded.
             The original verify value if verification is handled by the caller or disabled.
         """
-        if not client._is_external() and verify is True:
+        # When verify is True, point the trino driver at the cluster's CA chain
+        # rather than the system trust store. The internal CA that signs the
+        # Trino certificate is not in the OS bundle, so external clients would
+        # otherwise fail with "unable to get local issuer certificate". The
+        # external client downloads this CA chain to disk at login (python
+        # engine), so the path resolves in both internal and external modes.
+        if verify is True:
             _client = client._get_instance()
             return _client._get_ca_chain_path()
         return verify

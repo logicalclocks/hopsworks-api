@@ -234,6 +234,169 @@ class TestHudiEngine:
             "hoodie.datasource.write.storage.type": "COPY_ON_WRITE",
         }
 
+    def _partitioned_by_fg(
+        self, mocker, partitioned_by=None, zorder_by=None, bucket_index=None
+    ):
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
+        return feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=["key1"],
+            partition_key=[],
+            event_time="event_ts",
+            time_travel_format="HUDI",
+            partitioned_by=partitioned_by,
+            zorder_by=zorder_by,
+            bucket_index=bucket_index,
+            hudi_precombine_key=None,
+        )
+
+    def test__setup_hudi_write_opts_partitioned_by(self, mocker):
+        # Arrange
+        fg = self._partitioned_by_fg(
+            mocker, partitioned_by=["year(event_ts)", "month(event_ts)"]
+        )
+
+        h_engine = hudi_engine.HudiEngine(
+            feature_store_id=99,
+            feature_store_name=None,
+            feature_group=fg,
+            spark_context=None,
+            spark_session=None,
+        )
+
+        # Act
+        result = h_engine._setup_hudi_write_opts(operation="test", write_options={})
+
+        # Assert: the grain columns partition like ordinary SIMPLE fields
+        # (they are materialized into the records before the write), with
+        # hive-style paths so the layout matches the Delta path.
+        assert (
+            result["hoodie.datasource.write.partitionpath.field"]
+            == "year:SIMPLE,month:SIMPLE"
+        )
+        assert result["hoodie.datasource.hive_sync.partition_fields"] == "year,month"
+        assert result["hoodie.datasource.write.hive_style_partitioning"] == "true"
+        assert not any("keygen.timebased" in k for k in result)
+        # no bucket transform, no bucket index injection
+        assert "hoodie.index.type" not in result
+
+    def test__setup_hudi_write_opts_partitioned_by_identity(self, mocker):
+        # Arrange
+        fg = self._partitioned_by_fg(
+            mocker, partitioned_by=["year(event_ts)", "identity(key2)"]
+        )
+
+        h_engine = hudi_engine.HudiEngine(
+            feature_store_id=99,
+            feature_store_name=None,
+            feature_group=fg,
+            spark_context=None,
+            spark_session=None,
+        )
+
+        # Act
+        result = h_engine._setup_hudi_write_opts(operation="test", write_options={})
+
+        # Assert: identity transforms partition on their source column
+        assert (
+            result["hoodie.datasource.write.partitionpath.field"]
+            == "year:SIMPLE,key2:SIMPLE"
+        )
+        assert result["hoodie.datasource.hive_sync.partition_fields"] == "year,key2"
+
+    def test__setup_hudi_write_opts_bucket_index(self, mocker):
+        # Arrange
+        fg = self._partitioned_by_fg(
+            mocker,
+            partitioned_by=["year(event_ts)"],
+            bucket_index={"field": "key1", "num_buckets": 8},
+        )
+
+        h_engine = hudi_engine.HudiEngine(
+            feature_store_id=99,
+            feature_store_name=None,
+            feature_group=fg,
+            spark_context=None,
+            spark_session=None,
+        )
+
+        # Act
+        result = h_engine._setup_hudi_write_opts(operation="test", write_options={})
+
+        # Assert: bucket_index is not a partition; it maps to the Hudi
+        # bucket index options, leaving the partition path untouched
+        assert result["hoodie.datasource.write.partitionpath.field"] == "year:SIMPLE"
+        assert result["hoodie.datasource.hive_sync.partition_fields"] == "year"
+        assert result["hoodie.index.type"] == "BUCKET"
+        assert result["hoodie.bucket.index.num.buckets"] == "8"
+        assert result["hoodie.bucket.index.hash.field"] == "key1"
+
+    def test__setup_hudi_write_opts_bucket_user_options_override(self, mocker):
+        # Arrange
+        fg = self._partitioned_by_fg(
+            mocker, bucket_index={"field": "key1", "num_buckets": 8}
+        )
+
+        h_engine = hudi_engine.HudiEngine(
+            feature_store_id=99,
+            feature_store_name=None,
+            feature_group=fg,
+            spark_context=None,
+            spark_session=None,
+        )
+
+        # Act
+        result = h_engine._setup_hudi_write_opts(
+            operation="test", write_options={"hoodie.index.type": "BLOOM"}
+        )
+
+        # Assert: user write options win over the injected bucket index
+        assert result["hoodie.index.type"] == "BLOOM"
+
+    def test__setup_hudi_write_opts_zorder_by(self, mocker):
+        # Arrange
+        fg = self._partitioned_by_fg(mocker, zorder_by=["key1", "amount"])
+
+        h_engine = hudi_engine.HudiEngine(
+            feature_store_id=99,
+            feature_store_name=None,
+            feature_group=fg,
+            spark_context=None,
+            spark_session=None,
+        )
+
+        # Act
+        result = h_engine._setup_hudi_write_opts(operation="test", write_options={})
+
+        # Assert: zorder_by maps to inline clustering with a z-order layout
+        assert result["hoodie.clustering.inline"] == "true"
+        assert result["hoodie.clustering.plan.strategy.sort.columns"] == "key1,amount"
+        assert result["hoodie.layout.optimize.strategy"] == "z-order"
+
+    def test__setup_hudi_write_opts_no_zorder_without_zorder_by(self, mocker):
+        # Arrange
+        fg = self._partitioned_by_fg(mocker, partitioned_by=["year(event_ts)"])
+
+        h_engine = hudi_engine.HudiEngine(
+            feature_store_id=99,
+            feature_store_name=None,
+            feature_group=fg,
+            spark_context=None,
+            spark_session=None,
+        )
+
+        # Act
+        result = h_engine._setup_hudi_write_opts(operation="test", write_options={})
+
+        # Assert
+        assert "hoodie.clustering.inline" not in result
+        assert "hoodie.layout.optimize.strategy" not in result
+
     def test_write_hudi_dataset_hudi_precombine_key(self, mocker):
         # Arrange
         feature_store_id = 99
@@ -363,6 +526,56 @@ class TestHudiEngine:
 
         # Assert — hive sync must be disabled for external (managed) feature groups
         assert result["hoodie.datasource.hive_sync.enable"] == "false"
+
+    def test_setup_hudi_write_opts_glue_sync(self, mocker):
+        # Arrange
+        from hsfs import storage_connector
+
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
+
+        connector = storage_connector.GlueConnector(
+            id=2,
+            name="glue",
+            featurestore_id=99,
+            # Hopsworks-internal database; the data source holds the real Glue one.
+            database="hopsworks_featurestore",
+        )
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=["key1"],
+            partition_key=[],
+            hudi_precombine_key=None,
+            data_source=data_source.DataSource(
+                storage_connector=connector, database="ralfsglue", table="fg_1"
+            ),
+        )
+
+        h_engine = hudi_engine.HudiEngine(
+            feature_store_id=99,
+            feature_store_name="hopsworks_featurestore",
+            feature_group=fg,
+            spark_context=None,
+            spark_session=None,
+        )
+
+        # Act
+        result = h_engine._setup_hudi_write_opts(operation="test", write_options=None)
+
+        # Assert — sync is enabled in Glue mode, targeting the data source's
+        # database/table, via the AWS Glue sync tool.
+        assert result["hoodie.datasource.hive_sync.enable"] == "true"
+        assert result["hoodie.datasource.hive_sync.mode"] == "glue"
+        assert result["hoodie.datasource.hive_sync.database"] == "ralfsglue"
+        assert result["hoodie.datasource.hive_sync.table"] == "fg_1"
+        assert (
+            result["hoodie.meta.sync.classes"]
+            == hudi_engine.HudiEngine.HUDI_GLUE_SYNC_TOOL
+        )
 
     def test_setup_hudi_read_opts(self, mocker, backend_fixtures):
         # Arrange

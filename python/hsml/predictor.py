@@ -15,10 +15,11 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import humps
 from hopsworks_apigen import public
-from hopsworks_common import client, util
+from hopsworks_common import client, tag, util
 from hopsworks_common.constants import (
     INFERENCE_ENDPOINTS,
     MODEL,
@@ -82,8 +83,18 @@ class Predictor(DeployableComponent):
         vllm_variant: str | None = None,
         vllm_image_tag: str | None = None,
         tracing: DeploymentTracingConfig | dict | Default | None = None,
+        git_url: str | None = None,
+        git_provider: str | None = None,
+        git_branch: str | None = None,
+        git_auto_redeploy: bool | None = None,
+        git_current_commit: str | None = None,
+        git_resolved_branch: str | None = None,
+        missing_mandatory_tags: list[dict[str, Any]] | None = None,
+        tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         **kwargs,
     ):
+        self._missing_mandatory_tags = missing_mandatory_tags or []
+        self._tags = tag.Tag._normalize(tags)
         serving_tool = (
             self._validate_serving_tool(serving_tool)
             or self._get_default_serving_tool()
@@ -131,6 +142,12 @@ class Predictor(DeployableComponent):
         self._project_name = None
         self._env_vars = env_vars
         self._tracing = util._get_obj_from_json(tracing, DeploymentTracingConfig)
+        self._git_url = git_url
+        self._git_provider = git_provider
+        self._git_branch = git_branch
+        self._git_auto_redeploy = bool(git_auto_redeploy)
+        self._git_current_commit = git_current_commit
+        self._git_resolved_branch = git_resolved_branch
         self._vllm_variant = vllm_variant
         self._vllm_image_tag = vllm_image_tag
 
@@ -328,6 +345,22 @@ class Predictor(DeployableComponent):
             ["tracing", "tracing_config"],
             as_instance_of=DeploymentTracingConfig,
         )
+        kwargs["git_url"] = util._extract_field_from_json(json_decamelized, "git_url")
+        kwargs["git_provider"] = util._extract_field_from_json(
+            json_decamelized, "git_provider"
+        )
+        kwargs["git_branch"] = util._extract_field_from_json(
+            json_decamelized, "git_branch"
+        )
+        kwargs["git_auto_redeploy"] = util._extract_field_from_json(
+            json_decamelized, "git_auto_redeploy"
+        )
+        kwargs["git_current_commit"] = util._extract_field_from_json(
+            json_decamelized, "git_current_commit"
+        )
+        kwargs["git_resolved_branch"] = util._extract_field_from_json(
+            json_decamelized, "git_resolved_branch"
+        )
         kwargs["id"] = json_decamelized.pop("id")
         kwargs["created_at"] = json_decamelized.pop("created")
         kwargs["creator"] = json_decamelized.pop("creator")
@@ -350,6 +383,9 @@ class Predictor(DeployableComponent):
         kwargs["vllm_image_tag"] = util._extract_field_from_json(
             json_decamelized, "vllm_image_tag"
         )
+        kwargs["missing_mandatory_tags"] = util._extract_field_from_json(
+            json_decamelized, "missing_mandatory_tags"
+        )
         return kwargs
 
     def update_from_response_json(self, json_dict):
@@ -362,7 +398,7 @@ class Predictor(DeployableComponent):
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
-        json = {
+        predictor_dict = {
             "id": self._id,
             "name": self._name,
             "description": self._description,
@@ -377,39 +413,58 @@ class Predictor(DeployableComponent):
             "projectNamespace": self._project_namespace,
         }
         if self._model_server == PREDICTOR.MODEL_SERVER_VLLM:
-            json = {
-                **json,
+            predictor_dict = {
+                **predictor_dict,
                 "vllmVariant": self._vllm_variant,
                 "vllmImageTag": self._vllm_image_tag,
             }
         if self.model_name is not None:
-            json = {**json, "modelName": self._model_name}
+            predictor_dict = {**predictor_dict, "modelName": self._model_name}
         if self.model_path is not None:
-            json = {**json, "modelPath": self._model_path}
+            predictor_dict = {**predictor_dict, "modelPath": self._model_path}
         if self.model_version is not None:
-            json = {**json, "modelVersion": self._model_version}
+            predictor_dict = {**predictor_dict, "modelVersion": self._model_version}
         if self.model_framework is not None:
-            json = {**json, "modelFramework": self._model_framework}
+            predictor_dict = {**predictor_dict, "modelFramework": self._model_framework}
         if self._env_vars:
-            json = {
-                **json,
+            predictor_dict = {
+                **predictor_dict,
                 "predictorEnvVars": [f"{k}={v}" for k, v in self._env_vars.items()],
             }
         if self.environment is not None:
-            json = {**json, "environmentDTO": {"name": self._environment}}
+            predictor_dict = {
+                **predictor_dict,
+                "environmentDTO": {"name": self._environment},
+            }
         if self._resources is not None:
-            json = {**json, **self._resources.to_dict()}
+            predictor_dict = {**predictor_dict, **self._resources.to_dict()}
         if self._inference_logger is not None:
-            json = {**json, **self._inference_logger.to_dict()}
+            predictor_dict = {**predictor_dict, **self._inference_logger.to_dict()}
         if self._inference_batcher is not None:
-            json = {**json, **self._inference_batcher.to_dict()}
+            predictor_dict = {**predictor_dict, **self._inference_batcher.to_dict()}
         if self._transformer is not None:
-            json = {**json, **self._transformer.to_dict()}
+            predictor_dict = {**predictor_dict, **self._transformer.to_dict()}
         if self._tracing is not None:
-            json = {**json, "tracing": self._tracing.to_dict()}
+            predictor_dict = {**predictor_dict, "tracing": self._tracing.to_dict()}
+        if self._git_url is not None:
+            predictor_dict = {**predictor_dict, "gitUrl": self._git_url}
+        if self._git_provider is not None:
+            predictor_dict = {**predictor_dict, "gitProvider": self._git_provider}
+        if self._git_branch is not None:
+            predictor_dict = {**predictor_dict, "gitBranch": self._git_branch}
+        if self._git_url is not None:
+            # Only meaningful alongside a git source, and the backend rejects it
+            # without one, so it rides with git_url rather than being sent alone.
+            predictor_dict = {
+                **predictor_dict,
+                "gitAutoRedeploy": self._git_auto_redeploy,
+            }
         if self._scaling_configuration is not None:
-            json = {**json, **self._scaling_configuration.to_dict()}
-        return json
+            predictor_dict = {**predictor_dict, **self._scaling_configuration.to_dict()}
+        tags_dict = tag.Tag._tags_to_dict(self._tags)
+        if tags_dict:
+            predictor_dict = {**predictor_dict, "tags": tags_dict}
+        return predictor_dict
 
     @public
     @property
@@ -588,6 +643,66 @@ class Predictor(DeployableComponent):
     @tracing.setter
     def tracing(self, tracing: DeploymentTracingConfig | dict | Default | None):
         self._tracing = util._get_obj_from_json(tracing, DeploymentTracingConfig)
+
+    @public
+    @property
+    def git_url(self):
+        """Configured Git repository URL for this deployment."""
+        return self._git_url
+
+    @git_url.setter
+    def git_url(self, git_url: str | None):
+        self._git_url = git_url
+
+    @public
+    @property
+    def git_provider(self):
+        """Configured Git provider for this deployment."""
+        return self._git_provider
+
+    @git_provider.setter
+    def git_provider(self, git_provider: str | None):
+        self._git_provider = git_provider
+
+    @public
+    @property
+    def git_branch(self):
+        """Configured Git branch for this deployment."""
+        return self._git_branch
+
+    @git_branch.setter
+    def git_branch(self, git_branch: str | None):
+        self._git_branch = git_branch
+
+    @public
+    @property
+    def git_auto_redeploy(self) -> bool:
+        """Whether the deployment is rolled to the branch HEAD when a new commit is pushed."""
+        return self._git_auto_redeploy
+
+    @git_auto_redeploy.setter
+    def git_auto_redeploy(self, git_auto_redeploy: bool | None):
+        self._git_auto_redeploy = bool(git_auto_redeploy)
+
+    @public
+    @property
+    def git_current_commit(self) -> str | None:
+        """Commit this deployment is currently running.
+
+        Read-only, server-managed: recorded when the deployment clones the
+        repository and when auto-redeploy rolls it to a new commit.
+        """
+        return self._git_current_commit
+
+    @public
+    @property
+    def git_resolved_branch(self) -> str | None:
+        """Branch the running clone resolved to.
+
+        Read-only. Only set when no branch was configured, in which case this
+        is the repository's default branch that the deployment checked out.
+        """
+        return self._git_resolved_branch
 
     @public
     @property
@@ -785,4 +900,13 @@ class Predictor(DeployableComponent):
             if self._description is not None
             else ""
         )
-        return f"Predictor(name: {self._name!r}" + desc + ")"
+        git = ""
+        if self._git_url is not None:
+            git += f", git_url: {self._git_url!r}"
+        if self._git_provider is not None:
+            git += f", git_provider: {self._git_provider!r}"
+        if self._git_branch is not None:
+            git += f", git_branch: {self._git_branch!r}"
+        if self._git_url is not None:
+            git += f", git_auto_redeploy: {self._git_auto_redeploy!r}"
+        return f"Predictor(name: {self._name!r}" + desc + git + ")"

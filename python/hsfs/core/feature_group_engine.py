@@ -31,10 +31,12 @@ from hsfs.core import (
     hudi_engine,
     iceberg_engine,
     job_api,
+    partition_transforms,
     transformation_execution_dag,
     transformation_function_engine,
 )
 from hsfs.core.deltastreamer_jobconf import DeltaStreamerJobConf
+from hsfs.core.multi_table_ingestion import MultiTableIngestionJob
 from hsfs.core.schema_validation import DataFrameValidator
 from hsfs.storage_connector import StorageConnector
 
@@ -297,7 +299,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             )
         else:
             # else, just verify that feature group schema matches user-provided dataframe
-            self._verify_schema_compatibility(feature_group.columns, dataframe_features)
+            self._verify_schema_compatibility(
+                self._columns_for_user_schema(feature_group), dataframe_features
+            )
 
         # ge validation on python and non stream feature groups on spark
         ge_report = feature_group._great_expectation_engine._validate(
@@ -415,6 +419,269 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             spark_session,
         )
         return hudi_engine_instance._delete_record(delete_df, write_options)
+
+    @staticmethod
+    def _optimize(
+        feature_group,
+        full=False,
+        strategy=None,
+        columns=None,
+        rewrite_all=None,
+        target_file_size_mb=None,
+        where=None,
+    ):
+        if strategy not in (None, "zorder", "sort", "binpack"):
+            raise exceptions.FeatureStoreException(
+                f"Unknown optimize strategy {strategy!r}; expected "
+                "'zorder', 'sort', or 'binpack'."
+            )
+        spark_session, spark_context = (
+            FeatureGroupEngine._get_spark_session_and_context()
+        )
+        if feature_group.time_travel_format == "ICEBERG":
+            if full:
+                raise exceptions.FeatureStoreException(
+                    "optimize(full=...) is a Delta operation (OPTIMIZE FULL "
+                    "reclustering); on ICEBERG use rewrite_all=True to rewrite "
+                    "every file."
+                )
+            iceberg_engine_instance = iceberg_engine.IcebergEngine(
+                feature_group.feature_store_id,
+                feature_group.feature_store_name,
+                feature_group,
+                spark_session,
+                spark_context,
+            )
+            return iceberg_engine_instance._optimize(
+                strategy=strategy,
+                columns=columns,
+                rewrite_all=rewrite_all,
+                target_file_size_mb=target_file_size_mb,
+                where=where,
+            )
+        if feature_group.time_travel_format == "DELTA":
+            if rewrite_all is not None or target_file_size_mb is not None:
+                raise exceptions.FeatureStoreException(
+                    "optimize(rewrite_all=...) and "
+                    "optimize(target_file_size_mb=...) are Iceberg rewrite "
+                    "options; on DELTA use full=True or where=..."
+                )
+            delta_engine_instance = delta_engine.DeltaEngine(
+                feature_group.feature_store_id,
+                feature_group.feature_store_name,
+                feature_group,
+                spark_session,
+                spark_context,
+            )
+            return delta_engine_instance._optimize(
+                full=full, strategy=strategy, columns=columns, where=where
+            )
+        raise exceptions.FeatureStoreException(
+            "optimize() supports ICEBERG and DELTA feature groups. HUDI "
+            "layout maintenance runs through inline clustering on writes."
+        )
+
+    @staticmethod
+    def _describe_layout(feature_group):
+        spark_session, spark_context = (
+            FeatureGroupEngine._get_spark_session_and_context()
+        )
+        layout = {
+            "stored": {
+                "partitioned_by": feature_group.partitioned_by,
+                "clustered_by": feature_group.clustered_by,
+                "bucket_index": feature_group.bucket_index,
+                "zorder_by": feature_group.zorder_by,
+                "sort_order": feature_group.sort_order,
+            },
+            "partition_spec": None,
+            "partition_specs": None,
+            "clustering_columns": None,
+            "sort_order": None,
+        }
+        if feature_group.time_travel_format == "ICEBERG":
+            iceberg_engine_instance = iceberg_engine.IcebergEngine(
+                feature_group.feature_store_id,
+                feature_group.feature_store_name,
+                feature_group,
+                spark_session,
+                spark_context,
+            )
+            layout.update(iceberg_engine_instance._describe_layout())
+        elif feature_group.time_travel_format == "DELTA":
+            delta_engine_instance = delta_engine.DeltaEngine(
+                feature_group.feature_store_id,
+                feature_group.feature_store_name,
+                feature_group,
+                spark_session,
+                spark_context,
+            )
+            layout.update(delta_engine_instance._describe_layout())
+        return layout
+
+    def _update_partition_spec(self, feature_group, add, remove):
+        if feature_group.time_travel_format != "ICEBERG":
+            raise exceptions.FeatureStoreException(
+                "update_partition_spec() is Iceberg partition evolution and "
+                "requires an ICEBERG feature group. HUDI partitions are "
+                "physical directories and cannot evolve; DELTA clustering "
+                "changes go through update_clustering()."
+            )
+        if feature_group.partition_key:
+            # The identity partitions of a partition_key feature group live
+            # as partition flags on the features themselves; an evolved
+            # partitioned_by list next to them is rejected by the backend,
+            # which would leave the already-committed table change orphaned.
+            raise exceptions.FeatureStoreException(
+                "update_partition_spec() requires a feature group created "
+                "with partitioned_by; this feature group uses partition_key. "
+                "Recreate it with partitioned_by=[<column>, ...] (identity "
+                "transforms) to make the partition spec evolvable."
+            )
+        partition_transforms._require_writable(feature_group)
+        add_transforms = partition_transforms._parse(add) if add else []
+        remove_transforms = partition_transforms._parse(remove) if remove else []
+        partition_transforms._validate_for_format(
+            add_transforms,
+            feature_group.time_travel_format,
+            feature_group.primary_key,
+            feature_group.event_time,
+        )
+        spark_session, spark_context = (
+            FeatureGroupEngine._get_spark_session_and_context()
+        )
+        if spark_session is None:
+            raise exceptions.FeatureStoreException(
+                "update_partition_spec() requires the Spark engine (the "
+                "evolution commits through the Iceberg Java API). Run it "
+                "from a Spark job or notebook."
+            )
+        iceberg_engine_instance = iceberg_engine.IcebergEngine(
+            feature_group.feature_store_id,
+            feature_group.feature_store_name,
+            feature_group,
+            spark_session,
+            spark_context,
+        )
+        # The committed spec is read back from the table rather than
+        # recomputed from the stored metadata, so external evolutions are
+        # absorbed instead of overwritten; with no add/remove this is a pure
+        # metadata re-sync (reconciliation).
+        new_spec = iceberg_engine_instance._update_partition_spec(
+            add_transforms, remove_transforms
+        )
+        self._persist_layout_metadata(
+            feature_group,
+            partitioned_by=new_spec,
+            retry_hint=(
+                "run update_partition_spec() with no arguments to retry the "
+                "metadata sync"
+            ),
+        )
+
+    def _update_clustering(self, feature_group, columns):
+        if feature_group.time_travel_format != "DELTA":
+            raise exceptions.FeatureStoreException(
+                "update_clustering() / disable_clustering() change Delta "
+                "liquid clustering and require a DELTA feature group. On "
+                "ICEBERG evolve the partition spec with "
+                "update_partition_spec() instead."
+            )
+        if columns is not None:
+            if not columns:
+                raise exceptions.FeatureStoreException(
+                    "update_clustering() needs a non-empty list of distinct "
+                    "column names; use disable_clustering() to turn "
+                    "clustering off."
+                )
+            # Feature names are sanitized (lower case, spaces to
+            # underscores), so the clustering columns are canonicalized with
+            # the same rule and deduplicated case-insensitively to match the
+            # stored names and the actual Delta columns.
+            canonical = [
+                util._autofix_feature_name(c)
+                for c in columns
+                if isinstance(c, str) and c
+            ]
+            if len(canonical) != len(columns) or len(set(canonical)) != len(canonical):
+                raise exceptions.FeatureStoreException(
+                    "update_clustering() needs a non-empty list of distinct "
+                    "column names; use disable_clustering() to turn "
+                    "clustering off."
+                )
+            if len(canonical) > partition_transforms.MAX_CLUSTER_COLUMNS:
+                raise exceptions.FeatureStoreException(
+                    "update_clustering() supports at most "
+                    f"{partition_transforms.MAX_CLUSTER_COLUMNS} columns "
+                    "(the Delta liquid clustering limit)."
+                )
+            columns = canonical
+        spark_session, spark_context = (
+            FeatureGroupEngine._get_spark_session_and_context()
+        )
+        if spark_session is None:
+            raise exceptions.FeatureStoreException(
+                "update_clustering() / disable_clustering() require the "
+                "Spark engine: Delta liquid clustering uses writer table "
+                "features that delta-rs does not support. Run them from a "
+                "Spark job or notebook."
+            )
+        delta_engine_instance = delta_engine.DeltaEngine(
+            feature_group.feature_store_id,
+            feature_group.feature_store_name,
+            feature_group,
+            spark_session,
+            spark_context,
+        )
+        delta_engine_instance._update_clustering(columns)
+        self._persist_layout_metadata(
+            feature_group,
+            clustered_by=list(columns) if columns else [],
+            retry_hint=(
+                "re-run the same call once the error is resolved (re-applying "
+                "the same clustering is a storage-side no-op)"
+            ),
+        )
+
+    def _persist_layout_metadata(
+        self, feature_group, partitioned_by=None, clustered_by=None, retry_hint=""
+    ):
+        """Persist an evolved layout to the backend metadata.
+
+        The storage-level change already happened; the stored expression
+        list must reflect it so read-back matches the table. An empty
+        `clustered_by` list clears the stored clustering. A persistence
+        failure is reported explicitly (the two systems cannot commit
+        atomically): the table keeps the new layout, the stored metadata is
+        stale, and `retry_hint` tells the caller how to reconcile without
+        blindly retrying the non-idempotent storage step.
+        """
+        copy_feature_group = fg.FeatureGroup.from_response_json(feature_group.to_dict())
+        if partitioned_by is not None:
+            copy_feature_group._partitioned_by = partitioned_by
+        if clustered_by is not None:
+            copy_feature_group._clustered_by = clustered_by
+        try:
+            self._feature_group_api._update_metadata(
+                feature_group, copy_feature_group, "updateMetadata"
+            )
+        except Exception as e:
+            applied = (
+                f"partitioned_by={partitioned_by}"
+                if partitioned_by is not None
+                else f"clustered_by={clustered_by or None}"
+            )
+            hint = f"; {retry_hint}" if retry_hint else ""
+            raise exceptions.FeatureStoreException(
+                "The storage-level layout change was committed but "
+                f"persisting it to Hopsworks failed: {e}. The table now has "
+                f"{applied} while the stored Hopsworks metadata is stale"
+                f"{hint}."
+            ) from e
+        if partitioned_by is not None:
+            feature_group._partitioned_by = partitioned_by or None
+        if clustered_by is not None:
+            feature_group._clustered_by = clustered_by or None
 
     @staticmethod
     def _delta_vacuum(feature_group, retention_hours):
@@ -619,7 +886,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 )
         else:
             # else, just verify that feature group schema matches user-provided dataframe
-            self._verify_schema_compatibility(feature_group.columns, dataframe_features)
+            self._verify_schema_compatibility(
+                self._columns_for_user_schema(feature_group), dataframe_features
+            )
 
         if not feature_group.stream:
             warnings.warn(
@@ -655,7 +924,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group._features = dataframe_features
         elif dataframe_features:
             # User provided a schema; check if it is compatible with dataframe.
-            self._verify_schema_compatibility(feature_group.columns, dataframe_features)
+            self._verify_schema_compatibility(
+                self._columns_for_user_schema(feature_group), dataframe_features
+            )
 
         # set primary, foreign and partition key columns
         # we should move this to the backend
@@ -709,6 +980,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             )
         is_new_feature_group = feature_group.id is None
         requested_sink_job_conf = feature_group.sink_job_conf
+        requested_sink_job = feature_group.sink_job
         pre_save_features = list(feature_group.columns) if feature_group.columns else []
         pre_save_rest_endpoint = (
             feature_group.data_source.rest_endpoint
@@ -722,15 +994,30 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             and not new_fg.data_source.rest_endpoint
         ):
             new_fg.data_source.rest_endpoint = pre_save_rest_endpoint
-        self._create_sink_job_if_needed(
-            new_fg,
-            is_new_feature_group,
-            sink_job_conf=requested_sink_job_conf,
-            source_features=pre_save_features,
-        )
+        if feature_group.sink_enabled and isinstance(
+            requested_sink_job, MultiTableIngestionJob
+        ):
+            # Shared multi-table job: register this feature group as a target
+            # locally; the job itself is created when the user saves the job.
+            self._attach_to_shared_ingestion_job(
+                new_fg,
+                requested_sink_job,
+                requested_sink_job_conf,
+                pre_save_features,
+            )
+        else:
+            self._create_sink_job_if_needed(
+                new_fg,
+                is_new_feature_group,
+                sink_job_conf=requested_sink_job_conf,
+                source_features=pre_save_features,
+            )
 
         if feature_schema_available:
-            # create empty table to write feature schema to table path
+            # create empty table to write feature schema to table path. The
+            # engines apply the feature group's partitioned_by at creation
+            # (Iceberg partition spec, Delta liquid clustering, Hudi grain
+            # columns).
             self._save_empty_table(feature_group, write_options=write_options)
 
         print(
@@ -740,6 +1027,25 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 feature_group_id=feature_group.id,
             )
         )
+
+    @staticmethod
+    def _columns_for_user_schema(feature_group):
+        """Return the feature-group columns the user is expected to supply in their dataframe.
+
+        On HUDI, `partitioned_by` temporal transforms create synthetic grain
+        columns on the FG schema (appended by the backend, derived from
+        event_time by the write path), so the user dataframe must not carry
+        them. The other formats add no columns.
+        """
+        if (feature_group.time_travel_format or "").upper() != "HUDI":
+            return feature_group.columns
+        transforms = partition_transforms._try_parse(
+            getattr(feature_group, "partitioned_by", None)
+        )
+        grain_set = set(partition_transforms._temporal_grains(transforms or []))
+        if not grain_set:
+            return feature_group.columns
+        return [c for c in feature_group.columns if c.name not in grain_set]
 
     def _update_ttl(
         self,
@@ -812,6 +1118,35 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
                 # materialization job creates the table on first write instead.
                 return
             iceberg_engine_instance._save_empty_table(write_options=write_options)
+
+    def _attach_to_shared_ingestion_job(
+        self,
+        feature_group: fg.FeatureGroup,
+        shared_job: MultiTableIngestionJob,
+        sink_job_conf: SinkJobConfiguration | None,
+        source_features: list[feature.Feature] | None,
+    ) -> None:
+        """Register a feature group as a target of a shared multi-table job.
+
+        The job is created later when the user saves it; here we only build the
+        per-target config, mirroring the single-table sink job: default column
+        mappings so the SDK's sanitized feature names map back to their source
+        columns, and the REST endpoint from the data source for REST connectors.
+        """
+        target_conf = sink_job_conf or SinkJobConfiguration()
+        target_conf = self._merge_default_sink_column_mappings(
+            source_features or feature_group.columns,
+            target_conf,
+        )
+        if (
+            feature_group.storage_connector is not None
+            and feature_group.storage_connector.type == StorageConnector.REST
+            and feature_group.data_source is not None
+            and feature_group.data_source.rest_endpoint is not None
+        ):
+            target_conf._endpoint_config = feature_group.data_source.rest_endpoint
+        shared_job._attach_feature_group(feature_group, target_conf)
+        feature_group._sink_job = shared_job
 
     def _create_sink_job_if_needed(
         self,

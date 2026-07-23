@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-import os
+import os  # noqa: I001
 import zipfile
 
 import build  # noqa: F401  # eagerly load so test patches resolve build.ProjectBuilder
@@ -86,6 +86,66 @@ class TestTracingForwarding:
         # Assert
         assert mock_for_model.call_args.kwargs["tracing"] is tracing
 
+    def test_create_predictor_forwards_tags(self, ms, mocker):
+        # Arrange
+        model = mocker.Mock()
+        model._get_default_serving_name.return_value = "my_model"
+        mock_for_model = mocker.patch("hsml.model_serving.Predictor.for_model")
+        tags = {"owner": "team-a"}
+
+        # Act
+        ms.create_predictor(model, tags=tags)
+
+        # Assert
+        assert mock_for_model.call_args.kwargs["tags"] == tags
+
+    def test_create_deployment_sets_tags_on_predictor(self, ms, mocker):
+        # create_deployment normalizes the tags through the shared Tag helper and
+        # stashes the resulting list[Tag] on the predictor so Predictor.to_dict
+        # serializes them into the serving-create body (FSTORE-2049).
+        # Arrange
+        from hopsworks_common.tag import Tag
+
+        predictor = mocker.Mock()
+        mock_deployment = mocker.patch("hsml.model_serving.Deployment")
+        tags = {"name": "owner", "value": "team-a"}
+
+        # Act
+        ms.create_deployment(predictor, tags=tags)
+
+        # Assert
+        assert Tag._tags_to_dict(predictor._tags) == {
+            "count": 1,
+            "items": [{"name": "owner", "value": "team-a"}],
+        }
+        mock_deployment.assert_called_once_with(predictor=predictor, name=None)
+
+    def test_get_deployment_warns_on_missing_mandatory_tags(self, ms, mocker):
+        # Arrange
+        d = mocker.Mock()
+        d.missing_mandatory_tags = [{"name": "owner"}]
+        mocker.patch.object(ms._serving_api, "_get", return_value=d)
+
+        # Act / Assert
+        with pytest.warns(UserWarning, match="Missing mandatory tags"):
+            ms.get_deployment("my_deployment")
+
+    def test_get_deployment_no_warning_when_tags_present(self, ms, mocker):
+        # Arrange
+        import warnings
+
+        d = mocker.Mock()
+        d.missing_mandatory_tags = []
+        mocker.patch.object(ms._serving_api, "_get", return_value=d)
+
+        # Act
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            ms.get_deployment("my_deployment")
+
+        # Assert
+        assert not [w for w in caught if "Missing mandatory tags" in str(w.message)]
+
     def test_create_endpoint_forwards_tracing(self, ms, mocker):
         # Arrange
         tracing = deployment_tracing_config.DeploymentTracingConfig(
@@ -103,6 +163,56 @@ class TestTracingForwarding:
 
         # Assert
         assert mock_for_server.call_args.kwargs["tracing"] is tracing
+
+    def test_create_endpoint_forwards_git_source(self, ms, mocker):
+        # Arrange
+        mock_for_server = mocker.patch("hsml.model_serving.Predictor.for_server")
+
+        # Act
+        ms.create_endpoint(
+            name="endpoint",
+            script_file="src/endpoint.py",
+            git_url="https://github.com/example/repo.git",
+            git_provider="github",
+            git_branch="main",
+        )
+
+        # Assert
+        kwargs = mock_for_server.call_args.kwargs
+        assert kwargs["script_file"] == "src/endpoint.py"
+        assert kwargs["git_url"] == "https://github.com/example/repo.git"
+        assert kwargs["git_provider"] == "GitHub"
+        assert kwargs["git_branch"] == "main"
+
+    def test_create_endpoint_forwards_git_auto_redeploy(self, ms, mocker):
+        # Arrange
+        mock_for_server = mocker.patch("hsml.model_serving.Predictor.for_server")
+
+        # Act
+        ms.create_endpoint(
+            name="endpoint",
+            script_file="src/endpoint.py",
+            git_url="https://github.com/example/repo.git",
+            git_provider="github",
+            git_auto_redeploy=True,
+        )
+
+        # Assert
+        assert mock_for_server.call_args.kwargs["git_auto_redeploy"] is True
+
+    def test_create_endpoint_rejects_git_auto_redeploy_without_git_url(
+        self, ms, mocker
+    ):
+        # Mirrors ServingUtil: the backend rejects the flag without a git source, so fail
+        # locally rather than after a round trip.
+        mocker.patch("hsml.model_serving.Predictor.for_server")
+
+        with pytest.raises(ValueError, match="git_auto_redeploy requires git_url"):
+            ms.create_endpoint(
+                name="endpoint",
+                script_file="src/endpoint.py",
+                git_auto_redeploy=True,
+            )
 
 
 class TestDeployAgentIdentifierValidation:
@@ -326,6 +436,61 @@ class TestDeployAgentScript:
         # Assert
         ds_api.upload.assert_called_once()
         assert mock_for_server.call_args.kwargs["tracing"] is tracing
+
+    def test_git_source_uses_relative_entry_without_upload(self, ms, mocker, stub_apis):
+        # Arrange
+        ds_api, env_api, _ = stub_apis
+        mocker.patch.object(ms, "get_deployment", return_value=None)
+        mock_for_server = mocker.patch("hsml.model_serving.Predictor.for_server")
+        deployed = mocker.MagicMock(name="deployment")
+        mock_for_server.return_value.deploy.return_value = deployed
+
+        # Act
+        result = ms.deploy_agent(
+            entry="src/agents/my_agent.py",
+            git_url="https://github.com/example/repo.git",
+            git_provider="github",
+            git_branch="main",
+        )
+
+        # Assert
+        assert result is deployed
+        ds_api.upload.assert_not_called()
+        ds_api.exists.assert_not_called()
+        env_api.get_environment.assert_called_once_with("my_agent")
+        kwargs = mock_for_server.call_args.kwargs
+        assert kwargs["name"] == "my_agent"
+        assert kwargs["script_file"] == "src/agents/my_agent.py"
+        assert kwargs["git_url"] == "https://github.com/example/repo.git"
+        assert kwargs["git_provider"] == "GitHub"
+        assert kwargs["git_branch"] == "main"
+
+    def test_git_source_forwards_git_auto_redeploy(self, ms, mocker, stub_apis):
+        # Arrange
+        mocker.patch.object(ms, "get_deployment", return_value=None)
+        mock_for_server = mocker.patch("hsml.model_serving.Predictor.for_server")
+
+        # Act
+        ms.deploy_agent(
+            entry="src/agents/my_agent.py",
+            git_url="https://github.com/example/repo.git",
+            git_provider="github",
+            git_auto_redeploy=True,
+        )
+
+        # Assert
+        assert mock_for_server.call_args.kwargs["git_auto_redeploy"] is True
+
+    def test_rejects_git_auto_redeploy_without_git_source(
+        self, ms, mocker, stub_apis, tmp_path
+    ):
+        # The flag is only meaningful for a git-backed agent; the backend rejects it otherwise.
+        mocker.patch.object(ms, "get_deployment", return_value=None)
+        script = tmp_path / "my_agent.py"
+        script.write_text("")
+
+        with pytest.raises(ValueError, match="git_auto_redeploy requires git_url"):
+            ms.deploy_agent(entry=str(script), git_auto_redeploy=True)
 
 
 class TestDeployAgentPackage:

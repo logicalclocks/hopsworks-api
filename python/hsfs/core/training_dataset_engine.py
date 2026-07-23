@@ -110,11 +110,14 @@ class TrainingDatasetEngine:
         # Here we register those tables before returning the query to the user
         # In this way, if they execute the query, it will be valid
         fs_query._register_external()
-        fs_query._register_hudi_tables(
-            self._feature_store_id,
-            None,  # No need to provide the feature store name for read operations
-            {},
+        # No need to provide the feature store name for read operations
+        fs_query._register_hudi_tables(self._feature_store_id, None, {})
+        fs_query._register_delta_tables(
+            feature_store_id=self._feature_store_id,
+            feature_store_name=None,
+            read_options={},
         )
+        fs_query._register_iceberg_tables(self._feature_store_id, None, {})
         if fs_query.pit_query is not None:
             return fs_query.pit_query
 
@@ -164,4 +167,14 @@ class TrainingDatasetEngine:
         """
         self._training_dataset_api._update_metadata(
             training_dataset, training_dataset, "updateStatsConfig"
+        )
+
+    def _update_metadata(self, training_dataset):
+        """Update the metadata (e.g. description) of a training dataset.
+
+        Parameters:
+            training_dataset: The training dataset whose metadata to update.
+        """
+        self._training_dataset_api._update_metadata(
+            training_dataset, training_dataset, "updateMetadata"
         )

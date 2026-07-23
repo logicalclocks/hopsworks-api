@@ -29,6 +29,7 @@ from hopsworks_common.client.exceptions import ModelRegistryException, RestAPIEr
 from hopsworks_common.core import dataset_api, inode
 from hsml.core import model_api
 from hsml.engine import local_engine
+from hsml.utils.local_paths import _normalize_hopsfs_mount_path
 from tqdm.auto import tqdm
 
 
@@ -190,22 +191,6 @@ class ModelEngine:
             n_files += 1
             update_upload_progress(n_dirs=n_dirs, n_files=n_files)
 
-    def _normalize_hopsfs_mount_path(self, model_path):
-        if model_path.startswith(constants.MODEL_REGISTRY.HOPSFS_MOUNT_PREFIX):
-            return model_path.replace(
-                constants.MODEL_REGISTRY.HOPSFS_MOUNT_PREFIX, "", 1
-            )
-        # /mnt/hopsfs/ is rooted at /Projects/, so the on-disk path is
-        # /mnt/hopsfs/<projectName>/<rest> — strip the project segment too
-        # so the result is project-relative, matching the /hopsfs/ branch.
-        base = constants.MODEL_REGISTRY.HOPSFS_MOUNT_PREFIX_BASE
-        if model_path.startswith(base + "/"):
-            rest = model_path[len(base) + 1 :]
-            first_slash = rest.find("/")
-            if first_slash != -1 and first_slash + 1 < len(rest):
-                return rest[first_slash + 1 :]
-        return None
-
     def _download_model_from_hopsfs_recursive(
         self,
         from_hdfs_model_path: str,
@@ -311,7 +296,7 @@ class ModelEngine:
     ):
         """Save model files from a local path. The local path can be on hopsfs mount."""
         # check hopsfs mount
-        from_hdfs_model_path = self._normalize_hopsfs_mount_path(model_path)
+        from_hdfs_model_path = _normalize_hopsfs_mount_path(model_path)
         if from_hdfs_model_path is not None:
             self._copy_or_move_hopsfs_model(
                 from_hdfs_model_path=from_hdfs_model_path,
@@ -918,6 +903,15 @@ class ModelEngine:
 
     def _delete(self, model_instance):
         self._engine._delete(model_instance)
+
+    def _update_framework(self, model_instance, framework):
+        """Update the framework of a model version via the model registry API.
+
+        Parameters:
+            model_instance: the model whose framework to update
+            framework: the new framework value
+        """
+        return self._model_api._patch(model_instance, {"framework": framework})
 
     def _set_tag(self, model_instance, name, value):
         """Attach a name/value tag to a model.

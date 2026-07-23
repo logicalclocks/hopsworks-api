@@ -78,8 +78,12 @@ class App:
         git_url=None,
         git_provider=None,
         git_branch=None,
+        git_auto_redeploy=None,
         latest_commit=None,
+        latest_branch=None,
         entrypoint_script=None,
+        app_base_path=None,
+        readiness_probe_path=None,
         public_access=None,
         public_token=None,
         **kwargs,
@@ -108,8 +112,12 @@ class App:
         self._git_url = git_url
         self._git_provider = git_provider
         self._git_branch = git_branch
+        self._git_auto_redeploy = bool(git_auto_redeploy)
         self._latest_commit = latest_commit
+        self._latest_branch = latest_branch
         self._entrypoint_script = entrypoint_script
+        self._app_base_path = app_base_path
+        self._readiness_probe_path = readiness_probe_path
         self._public_access = public_access or False
         self._public_token = public_token
         # Runtime env-var override; set by AppApi.create_app() and applied on run().
@@ -167,7 +175,13 @@ class App:
         """
         if self._serving and self._app_url:
             _client = client._get_instance()
-            return _client._base_url.rstrip("/") + "/hopsworks-api/" + self._app_url
+            base_url = _client._base_url.rstrip("/")
+            app_url = self._app_url.lstrip("/")
+            if app_url.startswith(("http://", "https://")):
+                return app_url
+            if app_url.startswith("hopsworks-api/"):
+                return base_url + "/" + app_url
+            return base_url + "/hopsworks-api/" + app_url
         return None
 
     @public
@@ -220,15 +234,43 @@ class App:
 
     @public
     @property
+    def git_auto_redeploy(self) -> bool:
+        """Whether the app is rolled to the branch HEAD when a new commit is pushed."""
+        return self._git_auto_redeploy
+
+    @public
+    @property
     def latest_commit(self) -> str | None:
         """Latest deployed Git commit."""
         return self._latest_commit
 
     @public
     @property
+    def latest_branch(self) -> str | None:
+        """Branch the running clone resolved to.
+
+        Only set when no branch was configured, in which case this is the
+        repository's default branch that the app actually checked out.
+        """
+        return self._latest_branch
+
+    @public
+    @property
     def entrypoint_script(self) -> str | None:
         """Configured Git-backed Streamlit entrypoint script."""
         return self._entrypoint_script
+
+    @public
+    @property
+    def app_base_path(self) -> str | None:
+        """Configured app base path."""
+        return self._app_base_path
+
+    @public
+    @property
+    def readiness_probe_path(self) -> str | None:
+        """Configured readiness probe path."""
+        return self._readiness_probe_path
 
     @public
     @property
@@ -471,7 +513,9 @@ class App:
         self._git_url = updated._git_url
         self._git_provider = updated._git_provider
         self._git_branch = updated._git_branch
+        self._git_auto_redeploy = updated._git_auto_redeploy
         self._latest_commit = updated._latest_commit
+        self._latest_branch = updated._latest_branch
         self._entrypoint_script = updated._entrypoint_script
         self._public_access = updated._public_access
         self._public_token = updated._public_token

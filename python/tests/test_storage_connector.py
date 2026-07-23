@@ -145,6 +145,175 @@ class TestS3Connector:
         assert result == "s3://test-bucket/abc/def/some/location"
 
 
+class TestGlueConnector:
+    def test_from_response_json(self, backend_fixtures):
+        # Arrange
+        json = backend_fixtures["storage_connector"]["get_glue"]["response"]
+
+        # Act
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        # Assert
+        assert isinstance(sc, storage_connector.GlueConnector)
+        assert sc.id == 2
+        assert sc.name == "test_glue"
+        assert sc._featurestore_id == 67
+        assert sc.description == "Glue connector description"
+        assert sc.access_key == "test_access_key"
+        assert sc.secret_key == "test_secret_key"
+        assert sc.session_token == "test_session_token"
+        assert sc.iam_role == "test_iam_role"
+        assert sc.region == "eu-north-1"
+        assert sc.database == "test_database"
+        assert sc.table == "test_table"
+        assert sc.arguments == {"test_name": "test_value"}
+
+    def test_from_response_json_basic_info(self, backend_fixtures):
+        # Arrange
+        json = backend_fixtures["storage_connector"]["get_glue_basic_info"]["response"]
+
+        # Act
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        # Assert
+        assert isinstance(sc, storage_connector.GlueConnector)
+        assert sc.id == 2
+        assert sc.name == "test_glue"
+        assert sc._featurestore_id == 67
+        assert sc.description is None
+        assert sc.access_key is None
+        assert sc.secret_key is None
+        assert sc.session_token is None
+        assert sc.iam_role is None
+        assert sc.region is None
+        assert sc.database is None
+        assert sc.table is None
+        assert sc.arguments == {}
+
+    def test_to_dict_roundtrip(self, backend_fixtures):
+        # Arrange
+        json = backend_fixtures["storage_connector"]["get_glue"]["response"]
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        # Act
+        payload = sc.to_dict()
+
+        # Assert
+        assert payload["storageConnectorType"] == "GLUE"
+        assert payload["type"] == "featurestoreGlueConnectorDTO"
+        assert payload["accessKey"] == "test_access_key"
+        assert payload["region"] == "eu-north-1"
+        assert payload["database"] == "test_database"
+        assert payload["table"] == "test_table"
+        assert payload["arguments"] == [{"name": "test_name", "value": "test_value"}]
+
+    def test_setup_spark_reuses_s3_conf(self, mocker, backend_fixtures):
+        # Arrange
+        mocker.patch("hsfs.engine._get_instance", return_value=spark.Engine())
+        mock_set_hadoop_conf = mocker.patch("hsfs.engine.spark.Engine._set_hadoop_conf")
+        json = backend_fixtures["storage_connector"]["get_glue"]["response"]
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        # Act
+        result = spark.Engine()._setup_storage_connector(
+            sc, "s3://ralfsbucket/iceberg-warehouse/ralfsglue.db/fg_1"
+        )
+
+        # Assert
+        assert result == "s3a://ralfsbucket/iceberg-warehouse/ralfsglue.db/fg_1"
+        conf_keys = {call.args[0] for call in mock_set_hadoop_conf.call_args_list}
+        assert "fs.s3a.access.key" in conf_keys
+        assert "fs.s3a.secret.key" in conf_keys
+        # No fixed bucket -> only the global level is configured.
+        assert not any(k.startswith("fs.s3a.bucket.") for k in conf_keys)
+
+    def test_catalog_options(self):
+        # Arrange
+        sc = storage_connector.GlueConnector(
+            id=2,
+            name="test_glue",
+            featurestore_id=67,
+            region="eu-north-1",
+        )
+
+        # Act
+        options = sc.catalog_options(warehouse="s3://ralfsbucket/iceberg-warehouse")
+
+        # Assert
+        assert options["catalog-impl"] == sc.GLUE_CATALOG_IMPL
+        assert options["io-impl"] == sc.GLUE_IO_IMPL
+        assert options["client.region"] == "eu-north-1"
+        assert options["warehouse"] == "s3://ralfsbucket/iceberg-warehouse"
+
+    def test_pyiceberg_catalog_options(self):
+        # Arrange
+        sc = storage_connector.GlueConnector(
+            id=2,
+            name="test_glue",
+            featurestore_id=67,
+            access_key="ak",
+            secret_key="sk",
+            region="eu-north-1",
+        )
+
+        # Act
+        options = sc.pyiceberg_catalog_options(
+            warehouse="s3://ralfsbucket/iceberg-warehouse"
+        )
+
+        # Assert — PyIceberg identifies the catalog by type, not impl class.
+        assert options["type"] == "glue"
+        assert "catalog-impl" not in options
+        assert options["glue.region"] == "eu-north-1"
+        assert options["s3.region"] == "eu-north-1"
+        assert options["s3.access-key-id"] == "ak"
+        assert options["warehouse"] == "s3://ralfsbucket/iceberg-warehouse"
+
+    def test_get_tables_defaults_to_connector_database(self, mocker):
+        # Arrange — get_tables() with no argument uses the connector's database.
+        sc = storage_connector.GlueConnector(
+            id=2,
+            name="test_glue",
+            featurestore_id=67,
+            database="ralfsglue",
+        )
+        mock_get_tables = mocker.patch.object(
+            sc._data_source_api, "_get_tables", return_value=[]
+        )
+
+        # Act
+        sc.get_tables()
+
+        # Assert
+        mock_get_tables.assert_called_once_with(sc, "ralfsglue")
+
+    def test_get_tables_explicit_database_overrides_default(self, mocker):
+        # Arrange
+        sc = storage_connector.GlueConnector(
+            id=2,
+            name="test_glue",
+            featurestore_id=67,
+            database="ralfsglue",
+        )
+        mock_get_tables = mocker.patch.object(
+            sc._data_source_api, "_get_tables", return_value=[]
+        )
+
+        # Act
+        sc.get_tables("otherdb")
+
+        # Assert
+        mock_get_tables.assert_called_once_with(sc, "otherdb")
+
+    def test_get_tables_without_database_raises(self):
+        # Arrange — no database on the connector and none passed.
+        sc = storage_connector.GlueConnector(id=2, name="test_glue", featurestore_id=67)
+
+        # Act & Assert
+        with pytest.raises(ValueError, match="Database name is required for Glue"):
+            sc.get_tables()
+
+
 class TestUnityCatalogConnector:
     def test_from_response_json(self, backend_fixtures):
         # Arrange
@@ -1081,6 +1250,68 @@ class TestGcsConnector:
         assert mock_engine_read.call_args[0][3] == "gs://test-bucket"
 
 
+class TestGoogleSheetsConnector:
+    def test_from_response_json(self, backend_fixtures):
+        # Arrange
+        json = backend_fixtures["storage_connector"]["get_google_sheets"]["response"]
+
+        # Act
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        # Assert
+        assert isinstance(sc, storage_connector.GoogleSheetsConnector)
+        assert sc.id == 1
+        assert sc.name == "test_google_sheets"
+        assert sc._featurestore_id == 67
+        assert sc.description == "Google Sheets connector description"
+        assert sc.key_path == "test_key_path"
+        assert sc.spreadsheet_id == "test_spreadsheet_id"
+
+    def test_from_response_json_basic_info(self, backend_fixtures):
+        # Arrange
+        json = backend_fixtures["storage_connector"]["get_google_sheets_basic_info"][
+            "response"
+        ]
+
+        # Act
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        # Assert
+        assert isinstance(sc, storage_connector.GoogleSheetsConnector)
+        assert sc.id == 1
+        assert sc.name == "test_google_sheets"
+        assert sc._featurestore_id == 67
+        assert sc.description is None
+        assert sc.key_path is None
+        assert sc.spreadsheet_id is None
+
+    def test_to_dict(self, backend_fixtures):
+        # Arrange
+        json = backend_fixtures["storage_connector"]["get_google_sheets"]["response"]
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        # Act
+        payload = sc.to_dict()
+
+        # Assert
+        assert payload["id"] == 1
+        assert payload["name"] == "test_google_sheets"
+        assert payload["featurestoreId"] == 67
+        assert payload["storageConnectorType"] == "GOOGLE_SHEETS"
+        assert payload["type"] == "featurestoreGoogleSheetsConnectorDTO"
+        assert payload["keyPath"] == "test_key_path"
+        assert payload["spreadsheetId"] == "test_spreadsheet_id"
+
+    def test_spark_options_empty(self):
+        # Arrange
+        sc = storage_connector.GoogleSheetsConnector(
+            id=1, name="test_google_sheets", featurestore_id=67
+        )
+
+        # Act / Assert
+        assert sc.spark_options() == {}
+
+
 class TestBigQueryConnector:
     def test_from_response_json(self, backend_fixtures):
         # Arrange
@@ -1510,6 +1741,47 @@ class TestOracleConnector:
         )
         opts = sc.spark_options()
         assert opts["url"] == "jdbc:oracle:thin:@mydb_high"
+
+    def test_inline_tns_url_prefers_configured_database_alias(self, tmp_path):
+        """The database alias wins over _tp and its descriptor is inlined.
+
+        Matching is case-insensitive; a bare alias URL is not a hostname.
+        """
+        (tmp_path / "tnsnames.ora").write_text(
+            "mydb_low = (description=(address=(host=low.example.com)))\n"
+            "mydb_tp = (description=(address=(host=tp.example.com)))\n"
+        )
+        sc = storage_connector.SqlConnector(
+            id=1,
+            name="test",
+            featurestore_id=1,
+            database_type="ORACLE",
+            database="MYDB_low",  # TNS alias, different case than tnsnames.ora
+            user="scott",
+            password="tiger",
+            wallet_path="/Projects/myproj/Resources/wallet.zip",
+        )
+        url = sc._inline_tns_url(str(tmp_path))
+        assert url == "jdbc:oracle:thin:@(description=(address=(host=low.example.com)))"
+
+    def test_inline_tns_url_falls_back_to_tp_alias(self, tmp_path):
+        """When the database is not an alias, prefer the _tp alias."""
+        (tmp_path / "tnsnames.ora").write_text(
+            "mydb_low = (description=(address=(host=low.example.com)))\n"
+            "mydb_tp = (description=(address=(host=tp.example.com)))\n"
+        )
+        sc = storage_connector.SqlConnector(
+            id=1,
+            name="test",
+            featurestore_id=1,
+            database_type="ORACLE",
+            database="not_an_alias",
+            user="scott",
+            password="tiger",
+            wallet_path="/Projects/myproj/Resources/wallet.zip",
+        )
+        url = sc._inline_tns_url(str(tmp_path))
+        assert url == "jdbc:oracle:thin:@(description=(address=(host=tp.example.com)))"
 
     def test_spark_options_no_host_no_wallet_raises(self):
         """Oracle connector without host/port AND without wallet is invalid."""

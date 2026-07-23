@@ -19,7 +19,7 @@ import json
 from typing import TYPE_CHECKING
 
 import humps
-from hopsworks_apigen import public
+from hopsworks_apigen import deprecated, public
 from hsfs import util
 
 
@@ -40,7 +40,8 @@ class FeatureDescriptiveStatistics:
         "max",
         "sum",
         "mean",
-        "stddev",
+        "std_dev",
+        "stddev",  # deprecated alias for std_dev, kept for backward compatibility
         "distinctness",
         "entropy",
         "uniqueness",
@@ -62,7 +63,7 @@ class FeatureDescriptiveStatistics:
         max: float | None = None,
         sum: float | None = None,
         mean: float | None = None,
-        stddev: float | None = None,
+        std_dev: float | None = None,
         percentiles: Mapping[str, float] | None = None,
         # with exact uniqueness
         distinctness: float | None = None,
@@ -85,7 +86,9 @@ class FeatureDescriptiveStatistics:
         self._max = max
         self._sum = sum
         self._mean = mean
-        self._stddev = stddev
+        # Accept the legacy lowercase ``stddev`` key (e.g. from backend payloads
+        # or older callers) so the rename to ``std_dev`` stays backward compatible.
+        self._std_dev = std_dev if std_dev is not None else kwargs.get("stddev")
         self._percentiles = percentiles
         self._distinctness = distinctness
         self._entropy = entropy
@@ -164,7 +167,7 @@ class FeatureDescriptiveStatistics:
         if "mean" in json_dict:
             stats_dict["mean"] = json_dict["mean"]
         if "stdDev" in json_dict:
-            stats_dict["stddev"] = json_dict["stdDev"]
+            stats_dict["std_dev"] = json_dict["stdDev"]
         if "approxPercentiles" in json_dict:
             stats_dict["percentiles"] = json_dict["approxPercentiles"]
 
@@ -193,7 +196,7 @@ class FeatureDescriptiveStatistics:
             "max": self._max,
             "sum": self._sum,
             "mean": self._mean,
-            "stddev": self._stddev,
+            "stdDev": self._std_dev,
             "completeness": self._completeness,
             "numNonNullValues": self._num_non_null_values,
             "numNullValues": self._num_null_values,
@@ -215,7 +218,7 @@ class FeatureDescriptiveStatistics:
         return self.json()
 
     def __repr__(self) -> str:
-        return json.dumps(humps.decamelize(self.to_dict()), indent=2)
+        return f"FeatureDescriptiveStatistics({self._feature_name!r})"
 
     @public
     @property
@@ -291,9 +294,21 @@ class FeatureDescriptiveStatistics:
 
     @public
     @property
-    def stddev(self) -> float | None:
+    def std_dev(self) -> float | None:
         """Standard deviation of the feature values."""
-        return self._stddev
+        return self._std_dev
+
+    @public
+    @property
+    @deprecated(
+        "hsfs.core.feature_descriptive_statistics.FeatureDescriptiveStatistics.std_dev"
+    )
+    def stddev(self) -> float | None:
+        """Standard deviation of the feature values.
+
+        Deprecated alias for [`std_dev`][hsfs.core.feature_descriptive_statistics.FeatureDescriptiveStatistics.std_dev].
+        """
+        return self._std_dev
 
     @public
     @property

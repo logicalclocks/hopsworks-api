@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Any
 
 import humps
 from hopsworks_apigen import public
-from hopsworks_common import client, usage, util
+from hopsworks_common import client, tag, usage, util
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
 from hopsworks_common.constants import MODEL_REGISTRY
 from hsml.core import explicit_provenance
@@ -37,7 +37,8 @@ from hsml.schema import Schema
 
 if TYPE_CHECKING:
     from hsfs import feature_view
-    from hsml import deployment, tag
+    from hsfs.core.feature_monitoring_config import FeatureMonitoringConfig
+    from hsml import deployment
     from hsml.inference_batcher import InferenceBatcher
     from hsml.inference_logger import InferenceLogger
     from hsml.resources import PredictorResources
@@ -70,16 +71,18 @@ class Model:
         input_example=None,
         framework=None,
         model_registry_id=None,
-        # unused, but needed since they come in the backend response
-        tags=None,
+        tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         href=None,
         feature_view=None,
         training_dataset_version=None,
+        missing_mandatory_tags: list[dict[str, Any]] | None = None,
         **kwargs,
     ):
         self._id = id
         self._name = name
         self._version = version
+        self._missing_mandatory_tags = missing_mandatory_tags or []
+        self._tags = tag.Tag._normalize(tags)
 
         if description is None:
             self._description = "A collection of models for " + name
@@ -379,6 +382,7 @@ class Model:
         env_vars: dict | None = None,
         vllm_variant: str | None = None,
         vllm_image_tag: str | None = None,
+        tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
     ) -> deployment.Deployment:
         """Deploy the model.
 
@@ -403,8 +407,8 @@ class Model:
             artifact_version: **Deprecated**. Version number of the model artifact to deploy, `CREATE` to create a new model artifact
             or `MODEL-ONLY` to reuse the shared artifact containing only the model files.
             serving_tool: Serving tool used to deploy the model server.
-            script_file: Path to a custom predictor script implementing the Predict class.
-            config_file: Model server configuration file to be passed to the model deployment.
+            script_file: Path to a custom predictor script implementing the Predict class, either local or already uploaded to HopsFS.
+            config_file: Model server configuration file to be passed to the model deployment, either local or already uploaded to HopsFS.
                 It can be accessed via `CONFIG_FILE_PATH` environment variable from a predictor or transformer script.
                 For LLM deployments without a predictor script, this file is used to configure the vLLM engine.
             resources: Resources to be allocated for the predictor.
@@ -417,6 +421,9 @@ class Model:
             env_vars: Environment variables to set on the predictor.
             vllm_variant: vLLM image variant for vLLM deployments. One of `'VLLM'` or `'VLLM_OMNI'`. Ignored for non-vLLM model servers.
             vllm_image_tag: vLLM image tag override. `None` uses the cluster default; if set, it should match one of the tags made available by a cluster administrator. Ignored for non-vLLM model servers.
+            tags: Optionally the tags to attach to the deployment when it is created, in the same shapes accepted by feature groups.
+                A single [`Tag`][hopsworks.tag.Tag], a `{"name": "owner", "value": "team-a"}` dict, or a list of either, for example `[{"name": "owner", "value": "team-a"}]`.
+                The tags ride the create request, so any mandatory deployment tags missing from them cause the backend to reject the creation.
 
         Returns:
             The deployment metadata object of a new or existing deployment.
@@ -444,13 +451,14 @@ class Model:
             env_vars=env_vars,
             vllm_variant=vllm_variant,
             vllm_image_tag=vllm_image_tag,
+            tags=tags,
         )
 
         return predictor.deploy()
 
     @public
     @usage._method_logger
-    def add_tag(self, name: str, value: str | dict):
+    def add_tag(self, name: str, value: Any):
         """Attach a tag to a model.
 
         A tag consists of a <name,value> pair. Tag names are unique identifiers across the whole cluster.
@@ -467,7 +475,7 @@ class Model:
 
     @public
     @usage._method_logger
-    def set_tag(self, name: str, value: str | dict):
+    def set_tag(self, name: str, value: Any):
         """Deprecated: Use add_tag instead.
 
         Parameters:
@@ -494,15 +502,20 @@ class Model:
         """
         self._model_engine._delete_tag(model_instance=self, name=name)
 
+    def _update_framework(self, framework: str) -> Model:
+        """Update the model's framework."""
+        self._model_engine._update_framework(self, framework)
+        return self
+
     @public
-    def get_tag(self, name: str) -> str | None:
-        """Get the tags of a model.
+    def get_tag(self, name: str) -> Any | None:
+        """Get the value of a tag attached to a model.
 
         Parameters:
             name: Name of the tag to get.
 
         Returns:
-            tag value or `None` if it does not exist.
+            tag value, or `None` if it does not exist.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the tag.
@@ -510,16 +523,26 @@ class Model:
         return self._model_engine._get_tag(model_instance=self, name=name)
 
     @public
-    def get_tags(self) -> dict[str, tag.Tag]:
-        """Retrieves all tags attached to a model.
+    def get_tags(self) -> dict[str, Any]:
+        """Retrieve all tags attached to a model.
 
         Returns:
-            Dictionary of tags.
+            Dictionary of tag name/values.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case of a server error.
         """
         return self._model_engine._get_tags(model_instance=self)
+
+    @public
+    @property
+    def missing_mandatory_tags(self) -> list[dict[str, Any]]:
+        """Mandatory tags configured for models that this model is missing.
+
+        Populated from the backend response.
+        Empty when all mandatory model tags are set.
+        """
+        return self._missing_mandatory_tags
 
     @public
     def get_url(self):
@@ -602,6 +625,116 @@ class Model:
         """
         return self._model_engine._get_training_dataset_provenance(model_instance=self)
 
+    @public
+    def get_monitoring_configs(self) -> list[FeatureMonitoringConfig]:
+        """Get the feature monitoring configurations for this model version.
+
+        Example:
+            ```python
+
+            import hopsworks
+
+            project = hopsworks.login()
+
+            mr = project.get_model_registry()
+            my_model = mr.get_model("my_model", version=1)
+
+            fm_configs = my_model.get_monitoring_configs()
+            ```
+
+        Returns:
+            List of `FeatureMonitoringConfig` objects for this model version.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
+        """
+        try:
+            from hsfs.core.feature_monitoring_config_api import (
+                FeatureMonitoringConfigApi,
+            )
+        except ModuleNotFoundError as err:
+            from hopsworks_common.client.exceptions import FeatureStoreException
+
+            raise FeatureStoreException(
+                "Feature monitoring requires the hsfs library, which is not installed. "
+                "Install hsfs before fetching model monitoring configurations."
+            ) from err
+
+        return FeatureMonitoringConfigApi._get_by_model(
+            model_registry_id=self._model_registry_id,
+            model_id=self._id,
+        )
+
+    @public
+    def create_model_monitoring(
+        self,
+        name: str,
+        description: str | None = None,
+        start_date_time: int | str | None = None,
+        end_date_time: int | str | None = None,
+        cron_expression: str | None = "0 0 12 ? * * *",
+    ) -> FeatureMonitoringConfig:
+        """Create a model monitoring config for this model.
+
+        Resolves this model's parent feature view via provenance and delegates to
+        ``feature_view.create_model_monitoring`` with this model's ``name`` and
+        ``version`` already filled in. The resulting config targets the FV's
+        logging feature group, filters by this model + version, and defaults the
+        reference training dataset to the version that was used to train the model.
+
+        Experimental:
+            Public API is subject to change, this feature is not suitable for production use-cases.
+
+        Example:
+            ```python3
+            mr = project.get_model_registry()
+            my_model = mr.get_model("my_model", version=1)
+
+            my_model.create_model_monitoring(
+                name="psi_drift",
+            ).with_detection_window(
+                time_offset="1d", window_length="1d",
+            ).with_reference_training_dataset(  # defaults to model's TD version
+            ).compare_on_distribution(
+                feature_name="amount", metric="PSI", threshold=0.2,
+            ).save()
+            ```
+
+        Parameters:
+            name: Name of the feature monitoring configuration.
+            description: Description of the feature monitoring configuration.
+            start_date_time: Start date and time from which to start computing statistics.
+            end_date_time: End date and time at which to stop computing statistics.
+            cron_expression: Cron expression scheduling the FM job (UTC, Quartz).
+
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException: If this model has no
+                parent feature view recorded in its provenance, or if downstream
+                FV validation fails (no logging enabled, no recorded TD version, ...).
+
+        Returns:
+            A ``FeatureMonitoringConfig`` builder. Call ``with_detection_window``,
+            ``with_reference_*``, ``compare_on`` / ``compare_on_distribution``,
+            and ``save()`` to register it.
+        """
+        fv = self.get_feature_view(init=False)
+        if fv is None:
+            from hopsworks_common.client.exceptions import FeatureStoreException
+
+            raise FeatureStoreException(
+                f"Cannot create model monitoring for model '{self.name}' "
+                f"v{self.version}: no parent feature view recorded in its provenance."
+            )
+        return fv.create_model_monitoring(
+            name=name,
+            model_name=self.name,
+            model_version=self.version,
+            description=description,
+            start_date_time=start_date_time,
+            end_date_time=end_date_time,
+            cron_expression=cron_expression,
+        )
+
     def _get_default_serving_name(self):
         return re.sub(r"[^a-zA-Z0-9]", "", self._name)
 
@@ -618,6 +751,8 @@ class Model:
         json_decamelized = humps.decamelize(json_dict)
         if "type" in json_decamelized:  # backwards compatibility
             _ = json_decamelized.pop("type")
+        if "tags" in json_decamelized:
+            _ = json_decamelized.pop("tags")
         self.__init__(**json_decamelized)
         return self
 
@@ -625,7 +760,7 @@ class Model:
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
-        return {
+        model_dict = {
             "id": self._name + "_" + str(self._version),
             "projectName": self._project_name,
             "name": self._name,
@@ -640,6 +775,10 @@ class Model:
             "featureView": util._feature_view_to_json(self._feature_view),
             "trainingDatasetVersion": self._training_dataset_version,
         }
+        tags_dict = tag.Tag._tags_to_dict(self._tags)
+        if tags_dict:
+            model_dict["tags"] = tags_dict
+        return model_dict
 
     @public
     @property

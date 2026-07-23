@@ -14,7 +14,7 @@
 #   limitations under the License.
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from hopsworks_apigen import public
 from hopsworks_common import client, usage, util
@@ -28,6 +28,7 @@ from hsml.engine import serving_engine
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from hsfs.core.feature_monitoring_config import FeatureMonitoringConfig
     from hsml.client.istio.utils.infer_type import InferInput
     from hsml.deployment_tracing_config import DeploymentTracingConfig
     from hsml.inference_batcher import InferenceBatcher
@@ -162,6 +163,74 @@ class Deployment:
         self._serving_engine._delete(self, force)
 
     @public
+    @usage._method_logger
+    def add_tag(self, name: str, value: Any):
+        """Attach a tag to a deployment.
+
+        A tag consists of a <name,value> pair.
+        Tag names are unique identifiers across the whole cluster.
+        The value of a tag can be any valid json - primitives, arrays or json objects.
+
+        Parameters:
+            name: Name of the tag to be added.
+            value: Value of the tag to be added.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to add the tag.
+        """
+        self._serving_engine._set_tag(self, name, value)
+
+    @public
+    @usage._method_logger
+    def delete_tag(self, name: str):
+        """Delete a tag attached to a deployment.
+
+        Parameters:
+            name: Name of the tag to be removed.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to delete the tag.
+        """
+        self._serving_engine._delete_tag(self, name)
+
+    @public
+    def get_tag(self, name: str) -> Any | None:
+        """Get the value of a tag attached to a deployment.
+
+        Parameters:
+            name: Name of the tag to get.
+
+        Returns:
+            tag value, or `None` if it does not exist.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the tag.
+        """
+        return self._serving_engine._get_tag(self, name)
+
+    @public
+    def get_tags(self) -> dict[str, Any]:
+        """Retrieve all tags attached to a deployment.
+
+        Returns:
+            Dictionary of tag name/values.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the tags.
+        """
+        return self._serving_engine._get_tags(self)
+
+    @public
+    @property
+    def missing_mandatory_tags(self) -> list[dict[str, Any]]:
+        """Mandatory tags configured for deployments that this deployment is missing.
+
+        Populated from the backend response.
+        Empty when all mandatory deployment tags are set.
+        """
+        return self._predictor._missing_mandatory_tags
+
+    @public
     def get_state(self) -> PredictorState:
         """Get the current state of the deployment.
 
@@ -281,6 +350,101 @@ class Deployment:
         """Retrieve the metadata object for the model being used by this deployment."""
         return self._model_api._get(
             self.model_name, self.model_version, self.model_registry_id
+        )
+
+    @public
+    def get_monitoring_configs(self) -> list[FeatureMonitoringConfig]:
+        """Get the feature monitoring configurations for the model deployed by this deployment.
+
+        Delegates to the underlying model's ``get_monitoring_configs`` method.
+
+        Example:
+            ```python
+
+            import hopsworks
+
+            project = hopsworks.login()
+
+            ms = project.get_model_serving()
+            my_deployment = ms.get_deployment("my_deployment")
+
+            fm_configs = my_deployment.get_monitoring_configs()
+            ```
+
+        Returns:
+            List of `FeatureMonitoringConfig` objects for the deployed model version.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
+        """
+        return self.get_model().get_monitoring_configs()
+
+    @public
+    def create_model_monitoring(
+        self,
+        name: str,
+        description: str | None = None,
+        start_date_time: int | str | None = None,
+        end_date_time: int | str | None = None,
+        cron_expression: str | None = "0 0 12 ? * * *",
+    ) -> FeatureMonitoringConfig:
+        """Create a model monitoring config bound to this deployment's model.
+
+        Resolves the model's parent feature view from the registered provenance and
+        delegates to ``feature_view.create_model_monitoring`` with this deployment's
+        ``model_name`` and ``model_version`` already filled in. The resulting config
+        targets the FV's logging feature group, filters by this model+version, and
+        defaults the reference training dataset to the version that was used to train
+        the model.
+
+        Experimental:
+            Public API is subject to change, this feature is not suitable for production use-cases.
+
+        Example:
+            ```python3
+            my_deployment = ms.get_deployment(name="my_deployment")
+            my_deployment.create_model_monitoring(
+                name="psi_drift",
+            ).with_detection_window(
+                time_offset="1d", window_length="1d",
+            ).with_reference_training_dataset(  # defaults to model's TD version
+            ).compare_on_distribution(
+                feature_name="amount", metric="PSI", threshold=0.2,
+            ).save()
+            ```
+
+        Parameters:
+            name: Name of the feature monitoring configuration.
+            description: Description of the feature monitoring configuration.
+            start_date_time: Start date and time from which to start computing statistics.
+            end_date_time: End date and time at which to stop computing statistics.
+            cron_expression: Cron expression scheduling the FM job (UTC, Quartz).
+
+        Raises:
+            hopsworks.client.exceptions.ModelServingException: If the deployment's
+                model has no parent feature view recorded in its provenance.
+
+        Returns:
+            A ``FeatureMonitoringConfig`` builder. Call ``with_detection_window``,
+            ``with_reference_*``, ``compare_on``/``compare_on_distribution``, and
+            ``save()`` to register it.
+        """
+        model_meta = self.get_model()
+        fv = model_meta.get_feature_view(init=False)
+        if fv is None:
+            raise ModelServingException(
+                f"Cannot create model monitoring for deployment '{self.name}': "
+                f"model '{self.model_name}' v{self.model_version} has no parent "
+                "feature view recorded in its provenance."
+            )
+        return fv.create_model_monitoring(
+            name=name,
+            model_name=self.model_name,
+            model_version=self.model_version,
+            description=description,
+            start_date_time=start_date_time,
+            end_date_time=end_date_time,
+            cron_expression=cron_expression,
         )
 
     @public

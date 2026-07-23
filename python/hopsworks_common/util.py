@@ -285,6 +285,17 @@ def _get_delta_datestr_from_timestamp(timestamp: int) -> str:
     )
 
 
+@also_available_as("hopsworks.util._get_event_date_int_from_timestamp")
+def _get_event_date_int_from_timestamp(timestamp: int | None) -> int | None:
+    # Convert an epoch-millisecond timestamp to the `YYYYMMDD` UTC date integer
+    # used as the event-date partition key of materialized training datasets.
+    if timestamp is None:
+        return None
+    return int(
+        datetime.fromtimestamp(timestamp / 1000, timezone.utc).strftime("%Y%m%d")
+    )
+
+
 @also_available_as("hopsworks.util._convert_event_time_to_timestamp")
 def _convert_event_time_to_timestamp(
     event_time: str
@@ -450,6 +461,60 @@ def _get_feature_group_url(feature_store_id: int, feature_group_id: int) -> str:
         + "/fg/"
         + str(feature_group_id)
     )
+    return _get_hostname_replaced_url(sub_path)
+
+
+@also_available_as("hopsworks.util._get_feature_monitoring_url")
+def _get_feature_monitoring_url(
+    feature_store_id: int,
+    feature_monitoring_config_id: int,
+    feature_group_id: int | None = None,
+    feature_view_name: str | None = None,
+    feature_view_version: int | None = None,
+) -> str:
+    """Build the public URL for a feature monitoring config detail page.
+
+    Dispatches on the parent entity: feature group configs land on the FG's
+    feature-monitoring page, feature view configs land on the FV's page.
+
+    Parameters:
+        feature_store_id: Id of the feature store owning the config.
+        feature_monitoring_config_id: Id of the feature monitoring config.
+        feature_group_id: Id of the parent feature group, if any.
+        feature_view_name: Name of the parent feature view, if any.
+        feature_view_version: Version of the parent feature view, if any.
+
+    Returns:
+        The public URL, or an empty string if the config is not associated
+        with either parent.
+    """
+    project_id = client._get_instance()._project_id
+    if feature_group_id is not None:
+        sub_path = (
+            "/p/"
+            + str(project_id)
+            + "/fs/"
+            + str(feature_store_id)
+            + "/fg/"
+            + str(feature_group_id)
+            + "/feature-monitoring/"
+            + str(feature_monitoring_config_id)
+        )
+    elif feature_view_name is not None and feature_view_version is not None:
+        sub_path = (
+            "/p/"
+            + str(project_id)
+            + "/fs/"
+            + str(feature_store_id)
+            + "/fv/"
+            + str(feature_view_name)
+            + "/version/"
+            + str(feature_view_version)
+            + "/feature-monitoring/"
+            + str(feature_monitoring_config_id)
+        )
+    else:
+        return ""
     return _get_hostname_replaced_url(sub_path)
 
 
@@ -838,6 +903,25 @@ def _generate_fully_qualified_feature_name(
         The fully qualified feature name.
     """
     return f"{feature_group._get_project_name()}_{feature_group.name}_{feature_group.version}_{feature_name}"
+
+
+def _check_missing_mandatory_tags(
+    missing_mandatory_tags: list[dict[str, Any]] | None,
+    message: str = "Missing mandatory tags",
+) -> None:
+    """Warn about mandatory tags that a fetched entity has not set.
+
+    Shared across feature store, model registry, and model serving so every
+    artifact type surfaces missing mandatory tags the same way on retrieval.
+    No-op when the list is empty, so callers can invoke it unconditionally.
+
+    Parameters:
+        missing_mandatory_tags: Backend-reported tags that are mandatory for the entity but not set.
+        message: Prefix for the emitted warning.
+    """
+    if missing_mandatory_tags:
+        tag_names = [tag.get("name", str(tag)) for tag in missing_mandatory_tags]
+        warnings.warn(f"{message}: {tag_names}", stacklevel=2)
 
 
 class AsyncTask:

@@ -14,6 +14,7 @@
 #   limitations under the License.
 #
 
+import json
 from unittest.mock import MagicMock
 
 import pytest
@@ -101,3 +102,31 @@ class TestDatasetApiUploadChunk:
         # Sanity-check the constant value matches the backend enum:
         # DatasetErrorCode range=110000, UPLOAD_DISK_SPACE_ERROR code=55
         assert DatasetApi.DATASET_ERROR_CODE_UPLOAD_DISK_SPACE == 110055
+
+
+class TestDatasetApiTags:
+    def _patch_client(self, mocker, send_request_return) -> MagicMock:
+        client_instance = MagicMock()
+        client_instance._project_id = 1
+        client_instance._send_request.return_value = send_request_return
+        mocker.patch(
+            "hopsworks_common.core.dataset_api.client._get_instance",
+            return_value=client_instance,
+        )
+        return client_instance
+
+    @pytest.mark.parametrize("value", [{"a": 1}, 7, ["x"], True, "plain string"])
+    def test_get_tags_does_not_double_decode(self, mocker, value):
+        # Arrange
+        api = DatasetApi()
+        response = {
+            "count": 1,
+            "items": [{"name": "meta", "value": json.dumps(value)}],
+        }
+        self._patch_client(mocker, response)
+
+        # Act
+        result = api.get_tags("/Projects/p/Resources/file")
+
+        # Assert
+        assert result == {"meta": value}

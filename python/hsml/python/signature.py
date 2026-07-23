@@ -15,7 +15,7 @@
 #
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from hopsworks_apigen import public
 from hopsworks_common import usage
@@ -25,6 +25,7 @@ from hsml.python.model import Model
 if TYPE_CHECKING:
     import numpy
     import pandas
+    from hopsworks_common import tag
     from hsfs.feature_view import FeatureView
     from hsml.model_schema import ModelSchema
 
@@ -47,6 +48,7 @@ def create_model(
     model_schema: ModelSchema | None = None,
     feature_view: FeatureView | None = None,
     training_dataset_version: int | None = None,
+    tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
 ) -> Model:
     """Create a generic Python model metadata object.
 
@@ -67,6 +69,9 @@ def create_model(
         model_schema: Optionally a model schema for the model inputs and/or outputs.
         feature_view: Optionally a feature view object returned by querying the feature store. If the feature view is not provided, the model will not have access to provenance.
         training_dataset_version: Optionally a training dataset version. If training dataset version is not provided, but the feature view is provided, the training dataset version used will be the last accessed training dataset of the feature view, within the code/notebook that reads the feature view and training dataset and then creates the model.
+        tags: Optionally the tags to attach to the model when it is saved, in the same shapes accepted by feature groups.
+            A single [`Tag`][hopsworks.tag.Tag], a `{"name": "owner", "value": "team-a"}` dict, or a list of either, for example `[{"name": "owner", "value": "team-a"}]`.
+            The tags ride the create request, so any mandatory model tags missing from them cause the backend to reject the save.
 
     Returns:
         The model metadata object.
@@ -81,6 +86,7 @@ def create_model(
         model_schema=model_schema,
         feature_view=feature_view,
         training_dataset_version=training_dataset_version,
+        tags=tags,
     )
     model._shared_registry_project_name = _mr.shared_registry_project_name
     model._model_registry_id = _mr.model_registry_id

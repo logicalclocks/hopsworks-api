@@ -163,6 +163,312 @@ class TestFeatureStore:
         assert fg_res.feature_store == fs
         assert fg_res._feature_store == fs
 
+    def test_create_feature_group_passes_partitioned_by_and_zorder_by(
+        self, backend_fixtures, mocker
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_pyiceberg", return_value=True
+        )
+        json = backend_fixtures["feature_store"]["get"]["response"]
+        fs = feature_store_mod.FeatureStore.from_response_json(json)
+
+        # Act
+        fg_res = fs.create_feature_group(
+            "test_feature_group_name",
+            version=1,
+            primary_key=["cc_num"],
+            event_time="ts",
+            time_travel_format="ICEBERG",
+            partitioned_by=["day(ts)", "bucket(16, cc_num)"],
+            zorder_by=["merchant_id", "amount"],
+        )
+
+        # Assert: both specs land on the object, partitioned_by canonicalized
+        assert fg_res.partitioned_by == ["day(ts)", "bucket(16,cc_num)"]
+        assert fg_res.zorder_by == ["merchant_id", "amount"]
+
+    def test_create_feature_group_passes_clustered_by(self, backend_fixtures, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
+        json = backend_fixtures["feature_store"]["get"]["response"]
+        fs = feature_store_mod.FeatureStore.from_response_json(json)
+
+        # Act: stream=True satisfies the Spark-writers requirement for
+        # liquid clustering on the python engine
+        fg_res = fs.create_feature_group(
+            "test_feature_group_name",
+            version=1,
+            primary_key=["cc_num"],
+            time_travel_format="DELTA",
+            clustered_by=["merchant_id", "amount"],
+            stream=True,
+        )
+
+        # Assert
+        assert fg_res.clustered_by == ["merchant_id", "amount"]
+
+    def test_create_feature_group_passes_bucket_index(self, backend_fixtures, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        json = backend_fixtures["feature_store"]["get"]["response"]
+        fs = feature_store_mod.FeatureStore.from_response_json(json)
+
+        # Act
+        fg_res = fs.create_feature_group(
+            "test_feature_group_name",
+            version=1,
+            primary_key=["cc_num"],
+            time_travel_format="HUDI",
+            bucket_index={"field": "cc_num", "num_buckets": 16},
+        )
+
+        # Assert
+        assert fg_res.bucket_index == {"field": "cc_num", "num_buckets": 16}
+
+    def test_create_feature_group_normalizes_tags(self, backend_fixtures, mocker):
+        # Arrange
+        from hopsworks_common.tag import Tag
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
+        json = backend_fixtures["feature_store"]["get"]["response"]
+        fs = feature_store_mod.FeatureStore.from_response_json(json)
+
+        # Act: a dict tag is accepted and normalized to a Tag object.
+        fg_res = fs.create_feature_group(
+            "test_feature_group_name",
+            version=1,
+            tags={"name": "team", "value": "fraud"},
+        )
+
+        # Assert
+        assert len(fg_res._tags) == 1
+        assert isinstance(fg_res._tags[0], Tag)
+        assert fg_res._tags[0].name == "team"
+        assert fg_res._tags[0].value == "fraud"
+
+    def test_get_or_create_feature_group_forwards_tags_when_missing(
+        self, backend_fixtures, mocker
+    ):
+        # Arrange
+        from hopsworks_common.tag import Tag
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
+        json = backend_fixtures["feature_store"]["get"]["response"]
+        fs = feature_store_mod.FeatureStore.from_response_json(json)
+        # The feature group does not exist yet, so it is constructed with tags.
+        mocker.patch.object(fs._feature_group_api, "_get", return_value=None)
+
+        # Act
+        fg_res = fs.get_or_create_feature_group(
+            "test_feature_group_name",
+            version=1,
+            tags=[Tag(name="team", value="fraud"), {"name": "tier", "value": "gold"}],
+        )
+
+        # Assert: mixed Tag/dict input is normalized onto the constructed group.
+        assert [(t.name, t.value) for t in fg_res._tags] == [
+            ("team", "fraud"),
+            ("tier", "gold"),
+        ]
+
+    def test_get_or_create_feature_group_attaches_existing_to_shared_job(
+        self, backend_fixtures, mocker
+    ):
+        # Arrange
+        from hsfs import feature as feature_mod
+        from hsfs.core.data_source import DataSource
+        from hsfs.storage_connector import RedshiftConnector
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
+        json = backend_fixtures["feature_store"]["get"]["response"]
+        fs = feature_store_mod.FeatureStore.from_response_json(json)
+
+        sc = RedshiftConnector(9, "sc", fs.id)
+        ds = DataSource(storage_connector=sc)
+        shared_job = ds.new_ingestion_job("crm_ingestion")
+
+        # An already-existing feature group returned by the backend.
+        existing = feature_group_mod.FeatureGroup(
+            name="accounts",
+            version=1,
+            featurestore_id=fs.id,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            features=[feature_mod.Feature("id", "int")],
+            sink_enabled=True,
+            data_source=ds,
+        )
+        existing._id = 55
+        mocker.patch.object(fs._feature_group_api, "_get", return_value=existing)
+
+        # Act
+        fg_res = fs.get_or_create_feature_group(
+            "accounts", version=1, sink_job=shared_job
+        )
+
+        # Assert: the existing feature group is registered as a target so a rerun
+        # is not left with an empty multi-table job.
+        assert fg_res is existing
+        assert [t._feature_group_id for t in shared_job.targets] == [55]
+
+    def test_get_or_create_feature_view_forwards_tags_when_missing(
+        self, backend_fixtures, mocker
+    ):
+        # Arrange
+        from hopsworks_common.tag import Tag
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        json = backend_fixtures["feature_store"]["get"]["response"]
+        fs = feature_store_mod.FeatureStore.from_response_json(json)
+        # The feature view does not exist yet, so create_feature_view is invoked.
+        mocker.patch.object(fs._feature_view_engine, "_get", return_value=None)
+        create_feature_view = mocker.patch.object(
+            fs, "create_feature_view", return_value="created_fv"
+        )
+        tags = [Tag(name="team", value="fraud")]
+
+        # Act
+        fv_res = fs.get_or_create_feature_view(
+            name="test_feature_view_name",
+            query=mocker.Mock(),
+            version=1,
+            tags=tags,
+        )
+
+        # Assert: tags are forwarded verbatim to create_feature_view.
+        assert fv_res == "created_fv"
+        assert create_feature_view.call_args.kwargs["tags"] == tags
+
+    def test_create_feature_group_time_travel_format_defaults_to_delta(
+        self, backend_fixtures, mocker
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
+        json = backend_fixtures["feature_store"]["get"]["response"]
+        fs = feature_store_mod.FeatureStore.from_response_json(json)
+
+        # Act
+        fg_res = fs.create_feature_group("test_feature_group_name", version=1)
+
+        # Assert: no format and no data source format falls back to DELTA.
+        assert fg_res.time_travel_format == "DELTA"
+
+    def test_create_feature_group_time_travel_format_from_data_source(
+        self, backend_fixtures, mocker
+    ):
+        # Arrange
+        from hsfs.core.data_source import DataSource
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_pyiceberg", return_value=True
+        )
+        json = backend_fixtures["feature_store"]["get"]["response"]
+        fs = feature_store_mod.FeatureStore.from_response_json(json)
+
+        # Act
+        fg_res = fs.create_feature_group(
+            "test_feature_group_name",
+            version=1,
+            data_source=DataSource(format="ICEBERG"),
+        )
+
+        # Assert: the data source format is used when no format is given.
+        assert fg_res.time_travel_format == "ICEBERG"
+
+    def test_create_feature_group_explicit_time_travel_format_wins(
+        self, backend_fixtures, mocker
+    ):
+        # Arrange
+        from hsfs.core.data_source import DataSource
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
+        json = backend_fixtures["feature_store"]["get"]["response"]
+        fs = feature_store_mod.FeatureStore.from_response_json(json)
+
+        # Act
+        fg_res = fs.create_feature_group(
+            "test_feature_group_name",
+            version=1,
+            time_travel_format="DELTA",
+            data_source=DataSource(format="ICEBERG"),
+        )
+
+        # Assert: an explicitly requested format wins over the data source.
+        assert fg_res.time_travel_format == "DELTA"
+
+    def test_create_external_feature_group_data_format_from_data_source(
+        self, backend_fixtures, mocker
+    ):
+        # Arrange
+        from hsfs.core.data_source import DataSource
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        json = backend_fixtures["feature_store"]["get"]["response"]
+        fs = feature_store_mod.FeatureStore.from_response_json(json)
+
+        # Act
+        fg_res = fs.create_external_feature_group(
+            "test_external_fg_name",
+            data_source=DataSource(format="parquet"),
+        )
+
+        # Assert: the data source format is used when no data_format is given.
+        assert fg_res.data_format == "PARQUET"
+
+    def test_create_external_feature_group_explicit_data_format_wins(
+        self, backend_fixtures, mocker
+    ):
+        # Arrange
+        from hsfs.core.data_source import DataSource
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        json = backend_fixtures["feature_store"]["get"]["response"]
+        fs = feature_store_mod.FeatureStore.from_response_json(json)
+
+        # Act
+        fg_res = fs.create_external_feature_group(
+            "test_external_fg_name",
+            data_format="csv",
+            data_source=DataSource(format="parquet"),
+        )
+
+        # Assert: an explicitly requested data_format wins over the data source.
+        assert fg_res.data_format == "CSV"
+
     def test_get_feature_view_by_name_not_found(self, backend_fixtures, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")

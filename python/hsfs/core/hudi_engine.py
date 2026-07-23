@@ -20,7 +20,12 @@ import os
 from urllib.parse import unquote, urlsplit
 
 from hsfs import feature_group_commit, util
-from hsfs.core import dataset_api, feature_group_api
+from hsfs.core import (
+    dataset_api,
+    feature_group_api,
+    partition_grains,
+    partition_transforms,
+)
 
 
 class HudiEngine:
@@ -40,6 +45,7 @@ class HudiEngine:
     HUDI_TABLE_OPERATION = "hoodie.datasource.write.operation"
     HUDI_WRITE_RECORD_KEY = "hoodie.datasource.write.recordkey.field"
     HUDI_PARTITION_FIELD = "hoodie.datasource.write.partitionpath.field"
+    HUDI_HIVE_STYLE_PARTITIONING = "hoodie.datasource.write.hive_style_partitioning"
     HUDI_WRITE_PRECOMBINE_FIELD = "hoodie.datasource.write.precombine.field"
 
     HUDI_HIVE_SYNC_ENABLE = "hoodie.datasource.hive_sync.enable"
@@ -47,6 +53,9 @@ class HudiEngine:
     HUDI_HIVE_SYNC_DB = "hoodie.datasource.hive_sync.database"
     HUDI_HIVE_SYNC_MODE = "hoodie.datasource.hive_sync.mode"
     HUDI_HIVE_SYNC_MODE_VAL = "hms"  # Connect directly with the Hive Metastore
+    HUDI_HIVE_SYNC_MODE_GLUE_VAL = "glue"  # Sync to the AWS Glue Data Catalog
+    HUDI_META_SYNC_CLASSES = "hoodie.meta.sync.classes"
+    HUDI_GLUE_SYNC_TOOL = "org.apache.hudi.aws.sync.AwsGlueCatalogSyncTool"
     HUDI_HIVE_SYNC_PARTITION_FIELDS = "hoodie.datasource.hive_sync.partition_fields"
     HUDI_HIVE_SYNC_SUPPORT_TIMESTAMP = "hoodie.datasource.hive_sync.support_timestamp"
 
@@ -88,6 +97,16 @@ class HudiEngine:
     HUDI_HIVE_SYNC_AUTO_CREATE_DATABASE = (
         "hoodie.datasource.hive_sync.auto_create_database"
     )
+
+    HUDI_INDEX_TYPE = "hoodie.index.type"
+    HUDI_INDEX_TYPE_BUCKET_VAL = "BUCKET"
+    HUDI_BUCKET_INDEX_NUM_BUCKETS = "hoodie.bucket.index.num.buckets"
+    HUDI_BUCKET_INDEX_HASH_FIELD = "hoodie.bucket.index.hash.field"
+    HUDI_BUCKET_INDEX_ENGINE = "hoodie.index.bucket.engine"
+    HUDI_CLUSTERING_INLINE = "hoodie.clustering.inline"
+    HUDI_CLUSTERING_SORT_COLUMNS = "hoodie.clustering.plan.strategy.sort.columns"
+    HUDI_LAYOUT_OPTIMIZE_STRATEGY = "hoodie.layout.optimize.strategy"
+    HUDI_LAYOUT_OPTIMIZE_ZORDER_VAL = "z-order"
 
     def __init__(
         self,
@@ -132,8 +151,16 @@ class HudiEngine:
         ).load(location).createOrReplaceTempView(hudi_fg_alias.alias)
 
     def _write_hudi_dataset(self, dataset, save_mode, operation, write_options):
+        partition_transforms._require_writable(self._feature_group)
         location = self._feature_group.prepare_spark_location()
 
+        # partitioned_by grain columns are derived from event_time into the
+        # records before the write, so the key generator partitions on them
+        # like ordinary columns (and delete payloads resolve their partition
+        # path the same way).
+        dataset = partition_grains._materialize_grains_spark(
+            self._feature_group, dataset
+        )
         hudi_options = self._setup_hudi_write_opts(operation, write_options)
         self._migrate_table(self._spark_context, hudi_options, location)
         dataset.write.format(HudiEngine.HUDI_SPARK_FORMAT).options(**hudi_options).mode(
@@ -151,15 +178,24 @@ class HudiEngine:
         if self._feature_group.event_time is not None:
             primary_key = primary_key + "," + self._feature_group.event_time
 
-        partition_key = (
-            ",".join(self._feature_group.partition_key)
-            if len(self._feature_group.partition_key) >= 1
-            else ""
+        # When `partitioned_by` is set, its transforms map onto Hudi as:
+        # temporal grains become materialized INT columns (added to the
+        # records by `_write_hudi_dataset`) and identity transforms partition
+        # on their source column directly, all via SIMPLE key types with
+        # hive-style paths (year=2026/month=04/...).
+        transforms = partition_transforms._try_parse(
+            getattr(self._feature_group, "partitioned_by", None)
         )
+        if transforms:
+            partition_cols = [
+                t.source if t.name == partition_transforms.IDENTITY else t.name
+                for t in transforms
+            ]
+        else:
+            partition_cols = list(self._feature_group.partition_key or [])
+        partition_key = ",".join(partition_cols)
         partition_path = (
-            ":SIMPLE,".join(self._feature_group.partition_key) + ":SIMPLE"
-            if len(self._feature_group.partition_key) >= 1
-            else ""
+            ":SIMPLE,".join(partition_cols) + ":SIMPLE" if partition_cols else ""
         )
         pre_combine_key = (
             self._feature_group.hudi_precombine_key
@@ -167,14 +203,34 @@ class HudiEngine:
             else self._feature_group.primary_key[0]
         )
 
-        # only enable hive sync when using a Spark engine with a metastore and no storage connector,
-        # as the storage connector means data is saved in an external storage
+        # Enable catalog sync when using a Spark engine and either:
+        #   - there is no storage connector, so the data lives on the default
+        #     HopsFS warehouse synced to the Hopsworks Hive Metastore, or
+        #   - the connector is Glue, so the external table is registered in the
+        #     AWS Glue Data Catalog for discoverability.
+        # Other connectors keep sync disabled: the data is external and there is
+        # no catalog to register it in.
+        from hsfs.core.glue_catalog import GlueCatalog
         from hsfs.engine import _get_type
 
-        hive_sync = (
+        is_spark = _get_type() == "spark"
+        glue = GlueCatalog._for_feature_group(self._feature_group)
+        hive_sync = is_spark and (
             self._feature_group.data_source.storage_connector is None
-            and _get_type() == "spark"
+            or glue is not None
         )
+
+        # Default sync target: the Hopsworks Hive Metastore with the feature
+        # store database and the versioned feature group table.
+        sync_db = self._feature_store_name
+        sync_table = table_name
+        sync_mode = self.HUDI_HIVE_SYNC_MODE_VAL
+        if glue is not None:
+            # Register in the Glue Data Catalog under the data source's database
+            # and table; the on-path Hudi timeline stays authoritative.
+            sync_db, sync_table = glue.database_and_table
+            sync_mode = self.HUDI_HIVE_SYNC_MODE_GLUE_VAL
+            glue._set_jvm_credentials(self._spark_context)
 
         hudi_options = {
             self.HUDI_KEY_GENERATOR_OPT_KEY: self.HUDI_COMPLEX_KEY_GENERATOR_OPT_VAL,
@@ -194,9 +250,9 @@ class HudiEngine:
                 else self.HIVE_NON_PARTITION_EXTRACTOR_CLASS_OPT_VAL
             ),
             self.HUDI_HIVE_SYNC_ENABLE: str(hive_sync).lower(),
-            self.HUDI_HIVE_SYNC_MODE: self.HUDI_HIVE_SYNC_MODE_VAL,
-            self.HUDI_HIVE_SYNC_DB: self._feature_store_name,
-            self.HUDI_HIVE_SYNC_TABLE: table_name,
+            self.HUDI_HIVE_SYNC_MODE: sync_mode,
+            self.HUDI_HIVE_SYNC_DB: sync_db,
+            self.HUDI_HIVE_SYNC_TABLE: sync_table,
             self.HUDI_HIVE_SYNC_PARTITION_FIELDS: partition_key,
             self.HUDI_TABLE_OPERATION: operation,
             self.HUDI_HIVE_SYNC_SUPPORT_TIMESTAMP: "true",
@@ -204,7 +260,37 @@ class HudiEngine:
             self.HUDI_HIVE_SYNC_USE_JDBC: "false",
             self.HUDI_HIVE_SYNC_AUTO_CREATE_DATABASE: "false",
         }
+        if glue is not None:
+            # The AWS Glue sync tool registers and updates the table in Glue.
+            hudi_options[self.HUDI_META_SYNC_CLASSES] = self.HUDI_GLUE_SYNC_TOOL
         hudi_options.update(HudiEngine.HUDI_DEFAULT_PARALLELISM)
+
+        if transforms:
+            hudi_options[self.HUDI_HIVE_STYLE_PARTITIONING] = "true"
+
+        bucket_index = getattr(self._feature_group, "bucket_index", None)
+        if bucket_index:
+            # bucket_index configures the Hudi bucket index, not a partition;
+            # the same options can equally be set by the user through
+            # write_options (which override these).
+            hudi_options[self.HUDI_INDEX_TYPE] = self.HUDI_INDEX_TYPE_BUCKET_VAL
+            hudi_options[self.HUDI_BUCKET_INDEX_NUM_BUCKETS] = str(
+                bucket_index["num_buckets"]
+            )
+            hudi_options[self.HUDI_BUCKET_INDEX_HASH_FIELD] = bucket_index["field"]
+            if bucket_index.get("engine"):
+                hudi_options[self.HUDI_BUCKET_INDEX_ENGINE] = bucket_index[
+                    "engine"
+                ].upper()
+
+        zorder_by = getattr(self._feature_group, "zorder_by", None)
+        if zorder_by:
+            # z-ordering runs through Hudi inline clustering on writes.
+            hudi_options[self.HUDI_CLUSTERING_INLINE] = "true"
+            hudi_options[self.HUDI_CLUSTERING_SORT_COLUMNS] = ",".join(zorder_by)
+            hudi_options[self.HUDI_LAYOUT_OPTIMIZE_STRATEGY] = (
+                self.HUDI_LAYOUT_OPTIMIZE_ZORDER_VAL
+            )
 
         if write_options:
             hudi_options.update(write_options)

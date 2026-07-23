@@ -84,9 +84,6 @@ import org.apache.spark.sql.types.StructType;
 import org.apache.spark.sql.types.TimestampType;
 import org.json.JSONObject;
 
-import com.amazon.deequ.profiles.ColumnProfilerRunBuilder;
-import com.amazon.deequ.profiles.ColumnProfilerRunner;
-import com.amazon.deequ.profiles.ColumnProfiles;
 import com.google.common.base.Strings;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -115,6 +112,7 @@ import com.logicalclocks.hsfs.spark.StreamFeatureGroup;
 import com.logicalclocks.hsfs.spark.TrainingDataset;
 import com.logicalclocks.hsfs.spark.constructor.Query;
 import com.logicalclocks.hsfs.spark.engine.hudi.HudiEngine;
+import com.logicalclocks.hsfs.spark.engine.profile.ColumnProfiler;
 import com.logicalclocks.hsfs.spark.util.StorageConnectorUtils;
 import com.logicalclocks.hsfs.util.Constants;
 
@@ -501,9 +499,15 @@ public class SparkEngine extends EngineBase {
 
     setupConnectorHadoopConf(storageConnector);
 
+    // Table formats that handle their own directory layout/partitioning are read from the
+    // location directly; appending a /** glob would make the reader look for a non-existent
+    // sub-path. Everything else (plain file formats) reads the partition glob.
+    boolean selfPartitioning = Arrays.asList("delta", "parquet", "hudi", "iceberg", "orc")
+        .contains(dataFormat.toLowerCase());
+
     String path = "";
     if (location != null) {
-      path = new Path(location, "**").toString();
+      path = selfPartitioning ? location : new Path(location, "**").toString();
     } else {
       // path is null for jdbc kind of on demand fgs
       path = null;
@@ -667,27 +671,21 @@ public class SparkEngine extends EngineBase {
   }
 
   public String profile(Dataset<Row> df, List<String> restrictToColumns, Boolean correlation,
+      Boolean histogram, Boolean exactUniqueness, Boolean kll, Integer histogramBins) {
+    // defaults aligned with the prior Deequ-backed implementation; preserved for training-dataset
+    // callers where the backend doesn't set them.
+    boolean correlationFlag = correlation == null ? true : correlation;
+    boolean histogramFlag = histogram == null ? true : histogram;
+    boolean exactUniquenessFlag = exactUniqueness == null ? true : exactUniqueness;
+    boolean kllFlag = kll != null && kll;
+    int binCount = histogramBins != null ? histogramBins : 20;
+    return new ColumnProfiler().profile(df, restrictToColumns, correlationFlag, histogramFlag,
+        binCount, exactUniquenessFlag, kllFlag);
+  }
+
+  public String profile(Dataset<Row> df, List<String> restrictToColumns, Boolean correlation,
       Boolean histogram, Boolean exactUniqueness) {
-    // only needed for training datasets, as the backend is not setting the defaults
-    if (correlation == null) {
-      correlation = true;
-    }
-    if (histogram == null) {
-      histogram = true;
-    }
-    if (exactUniqueness == null) {
-      exactUniqueness = true;
-    }
-    ColumnProfilerRunBuilder runner = new ColumnProfilerRunner()
-                                            .onData(df)
-                                            .withCorrelation(correlation, 100)
-                                            .withHistogram(histogram, 20)
-                                            .withExactUniqueness(exactUniqueness);
-    if (restrictToColumns != null && !restrictToColumns.isEmpty()) {
-      runner.restrictToColumns(JavaConverters.asScalaIteratorConverter(restrictToColumns.iterator()).asScala().toSeq());
-    }
-    ColumnProfiles result = runner.run();
-    return ColumnProfiles.toJson(result.profiles().values().toSeq(), result.numRecords());
+    return profile(df, restrictToColumns, correlation, histogram, exactUniqueness, null, null);
   }
 
   public String profile(Dataset<Row> df, List<String> restrictToColumns, Boolean correlation, Boolean histogram) {
@@ -715,6 +713,9 @@ public class SparkEngine extends EngineBase {
     switch (storageConnector.getStorageConnectorType()) {
       case S3:
         setupS3ConnectorHadoopConf((StorageConnector.S3Connector) storageConnector);
+        break;
+      case GLUE:
+        setupGlueConnectorHadoopConf((StorageConnector.GlueConnector) storageConnector);
         break;
       case ADLS:
         setupAdlsConnectorHadoopConf((StorageConnector.AdlsConnector) storageConnector);
@@ -776,6 +777,42 @@ public class SparkEngine extends EngineBase {
       sparkSession.sparkContext().hadoopConfiguration()
           .set(Constants.S3_CONNECTION_USE_SSL,
           storageConnector.sparkOptions().get(Constants.S3_CONNECTION_USE_SSL));
+    }
+  }
+
+  private void setupGlueConnectorHadoopConf(StorageConnector.GlueConnector storageConnector)
+      throws IOException, FeatureStoreException {
+    // Glue tables are backed by S3, so reading them needs the same S3 Hadoop configuration as the
+    // S3 connector: AWS credentials (with the temporary-credentials provider when a session token
+    // is present) plus the endpoint/path-style/SSL fs.s3a.* options the S3 connector forwards.
+    if (!Strings.isNullOrEmpty(storageConnector.getAccessKey())) {
+      sparkSession.sparkContext().hadoopConfiguration()
+          .set(Constants.S3_ACCESS_KEY_ENV, storageConnector.getAccessKey());
+    }
+    if (!Strings.isNullOrEmpty(storageConnector.getSecretKey())) {
+      sparkSession.sparkContext().hadoopConfiguration()
+          .set(Constants.S3_SECRET_KEY_ENV, storageConnector.getSecretKey());
+    }
+    if (!Strings.isNullOrEmpty(storageConnector.getSessionToken())) {
+      sparkSession.sparkContext().hadoopConfiguration()
+          .set(Constants.S3_CREDENTIAL_PROVIDER_ENV, Constants.S3_TEMPORARY_CREDENTIAL_PROVIDER);
+      sparkSession.sparkContext().hadoopConfiguration()
+          .set(Constants.S3_SESSION_KEY_ENV, storageConnector.getSessionToken());
+    }
+    // Forward the S3-compatible endpoint/path-style/SSL options the same way the S3 connector does,
+    // so Glue reads work against S3-compatible stores (MinIO, Wasabi, Tigris, ...) too.
+    Map<String, String> sparkOptions = storageConnector.sparkOptions();
+    if (sparkOptions.containsKey(Constants.S3_ENDPOINT)) {
+      sparkSession.sparkContext().hadoopConfiguration()
+          .set(Constants.S3_ENDPOINT, sparkOptions.get(Constants.S3_ENDPOINT));
+    }
+    if (sparkOptions.containsKey(Constants.S3_PATH_STYLE_ACCESS)) {
+      sparkSession.sparkContext().hadoopConfiguration()
+          .set(Constants.S3_PATH_STYLE_ACCESS, sparkOptions.get(Constants.S3_PATH_STYLE_ACCESS));
+    }
+    if (sparkOptions.containsKey(Constants.S3_CONNECTION_USE_SSL)) {
+      sparkSession.sparkContext().hadoopConfiguration()
+          .set(Constants.S3_CONNECTION_USE_SSL, sparkOptions.get(Constants.S3_CONNECTION_USE_SSL));
     }
   }
 
