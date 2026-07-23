@@ -292,17 +292,28 @@ class PlatformIntelligenceException(Exception):
     """Raised when a platform-intelligence call cannot be served.
 
     Either the cluster's LLM is not configured (admin has not set
-    `PLATFORM_INTELLIGENCE_LLM_API_KEY`) or the LLM call itself failed.
+    `PLATFORM_INTELLIGENCE_LLM_API_KEY`), the requested capability is
+    disabled, or the LLM call itself failed.
     Inspect the ``reason`` attribute, which is set to one of the constants
     below, to disambiguate.
 
     Attributes:
         NOT_CONFIGURED: Reason value when the cluster has no LLM API key configured.
         INFERENCE_FAILED: Reason value when the LLM call itself failed.
+        DUPLICATE_CHECK_FAILED: Reason value when the duplicate feature group check failed on the backend.
+        DUPLICATE_CHECK_DISABLED: Reason value when a duplicate check was requested but the check is disabled or unconfigured on the cluster.
+        DUPLICATE_CHECK_NOT_FOUND: Reason value when no duplicate check result exists for the feature group.
+        DUPLICATE_CHECK_ALREADY_RUNNING: Reason value when a recheck was rejected because a check is already in flight for the feature group.
+        DUPLICATE_CHECK_NOT_OWNER: Reason value when a recheck was rejected because the caller's project does not own the feature group.
     """
 
     NOT_CONFIGURED = "not_configured"
     INFERENCE_FAILED = "inference_failed"
+    DUPLICATE_CHECK_FAILED = "duplicate_check_failed"
+    DUPLICATE_CHECK_DISABLED = "duplicate_check_disabled"
+    DUPLICATE_CHECK_NOT_FOUND = "duplicate_check_not_found"
+    DUPLICATE_CHECK_ALREADY_RUNNING = "duplicate_check_already_running"
+    DUPLICATE_CHECK_NOT_OWNER = "duplicate_check_not_owner"
 
     def __init__(self, reason: str, message: str) -> None:
         self.reason = reason
