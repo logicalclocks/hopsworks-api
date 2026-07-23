@@ -32,7 +32,7 @@ from urllib.parse import urlparse
 import avro.schema
 import hsfs.expectation_suite
 import humps
-from hopsworks_apigen import deprecation, public
+from hopsworks_apigen import deprecated, deprecation, public
 from hopsworks_common import client, job
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
 from hopsworks_common.core import alerts_api
@@ -4525,7 +4525,7 @@ class FeatureGroup(FeatureGroupBase):
                 self, delete_df, write_options or {}
             )
 
-    @deprecation.deprecated("hsfs.feature_group.FeatureGroup.remove_rows")
+    @deprecated("hsfs.feature_group.FeatureGroup.remove_rows")
     def commit_delete_record(
         self,
         delete_df: TypeVar("pyspark.sql.DataFrame"),  # noqa: F821

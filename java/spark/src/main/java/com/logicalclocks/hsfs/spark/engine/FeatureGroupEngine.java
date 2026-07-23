@@ -29,7 +29,6 @@ import com.logicalclocks.hsfs.OnlineConfig;
 import com.logicalclocks.hsfs.Storage;
 import com.logicalclocks.hsfs.TimeTravelFormat;
 import com.logicalclocks.hsfs.engine.FeatureGroupEngineBase;
-import com.logicalclocks.hsfs.engine.FeatureGroupUtils;
 import com.logicalclocks.hsfs.FeatureGroupBase;
 import com.logicalclocks.hsfs.StatisticsConfig;
 import com.logicalclocks.hsfs.spark.ExternalFeatureGroup;
