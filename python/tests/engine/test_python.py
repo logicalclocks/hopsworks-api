@@ -2005,6 +2005,31 @@ class TestPython:
             "count": 100,
         }
 
+    def test_convert_pandas_statistics_all_null_column(self):
+        # Arrange: pandas describe() emits NaN for every statistic of an
+        # all-null column
+        python_engine = python.Engine()
+
+        stat = {
+            "25%": float("nan"),
+            "50%": float("nan"),
+            "75%": float("nan"),
+            "mean": float("nan"),
+            "count": 0,
+            "max": float("nan"),
+            "std": float("nan"),
+            "min": float("nan"),
+        }
+
+        # Act
+        result = python_engine._convert_pandas_statistics(stat=stat, dataType="Float")
+
+        # Assert: NaN values are skipped entirely
+        assert result == {
+            "dataType": "Float",
+            "count": 0,
+        }
+
     def test_validate(self):
         # Arrange
         python_engine = python.Engine()

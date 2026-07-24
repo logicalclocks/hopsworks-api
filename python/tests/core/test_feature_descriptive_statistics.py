@@ -383,3 +383,45 @@ class TestFeatureDescriptiveStatistics:
         assert kll.get("kllFormat") == "datasketches-native-v1"
         assert kll.get("bytes") == "AgEAAIAAAAAAAAAAAAAAAA=="
         assert "buckets" in kll
+
+    def test_to_dict_scrubs_non_finite_values(self):
+        # NaN/Infinity are not valid JSON and abort the statistics
+        # registration on the backend
+        fds = FeatureDescriptiveStatistics(
+            feature_name="constant_col",
+            count=10,
+            min=1.0,
+            max=float("inf"),
+            sum=float("-inf"),
+            mean=float("nan"),
+            std_dev=float("nan"),
+            completeness=float("nan"),
+            distinctness=float("nan"),
+            entropy=float("inf"),
+            uniqueness=0.5,
+            percentiles=[1.0, float("nan"), 3.0],
+        )
+
+        result = fds.to_dict()
+
+        assert result["min"] == 1.0
+        assert result["max"] is None
+        assert result["sum"] is None
+        assert result["mean"] is None
+        assert result["stdDev"] is None
+        assert result["completeness"] is None
+        assert result["distinctness"] is None
+        assert result["entropy"] is None
+        assert result["uniqueness"] == 0.5
+        assert result["percentiles"] == [1.0, None, 3.0]
+
+    def test_to_dict_scrubs_non_finite_percentiles_mapping(self):
+        fds = FeatureDescriptiveStatistics(
+            feature_name="amount",
+            count=10,
+            percentiles={"25%": 0.4, "50%": float("nan"), "75%": 0.86},
+        )
+
+        result = fds.to_dict()
+
+        assert result["percentiles"] == {"25%": 0.4, "50%": None, "75%": 0.86}

@@ -929,3 +929,46 @@ class TestStatisticsEngine:
         assert fds_by_name["loc_delta"].count == 0
         # Assert: a warning was logged
         assert mock_logger.warning.call_count == 1
+
+    def test_parse_deequ_statistics_exact_uniqueness(self, mocker):
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hopsworks_common.client._get_instance")
+
+        s_engine = statistics_engine.StatisticsEngine(feature_store_id, "featuregroup")
+
+        # the deequ profiler emits uniqueness-family metrics (as 0.0) even when
+        # the Uniqueness analyzer was not requested
+        stats_str = json.dumps(
+            {
+                "columns": [
+                    {
+                        "column": "col_1",
+                        "dataType": "Integral",
+                        "numRecordsNull": 0,
+                        "numRecordsNonNull": 4,
+                        "uniqueness": 0.0,
+                        "distinctness": 0.0,
+                        "entropy": 0.0,
+                        "exactNumDistinctValues": 0,
+                    }
+                ]
+            }
+        )
+
+        # Act
+        with_uniqueness = s_engine._parse_deequ_statistics(stats_str, True)
+        without_uniqueness = s_engine._parse_deequ_statistics(stats_str, False)
+
+        # Assert
+        assert with_uniqueness[0].uniqueness == 0.0
+        assert with_uniqueness[0].distinctness == 0.0
+        assert with_uniqueness[0].entropy == 0.0
+        assert with_uniqueness[0].exact_num_distinct_values == 0
+        assert without_uniqueness[0].uniqueness is None
+        assert without_uniqueness[0].distinctness is None
+        assert without_uniqueness[0].entropy is None
+        assert without_uniqueness[0].exact_num_distinct_values is None
+        # non-uniqueness metrics are untouched
+        assert without_uniqueness[0].num_non_null_values == 4
