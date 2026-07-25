@@ -1584,13 +1584,25 @@ class SnowflakeConnector(StorageConnector):
     @public
     @property
     def password(self) -> str | None:
-        """Password of the Snowflake storage connector."""
+        """Password or programmatic access token (PAT) of the Snowflake storage connector.
+
+        Snowflake is removing single-factor password sign-ins, so a plain account
+        password will stop working. A PAT is supplied through this same field: the
+        JDBC driver behind the Spark connector has no PAT authenticator and expects
+        the token in the password position. Do not use `token` for a PAT, that field
+        sets `authenticator=oauth`, which Snowflake rejects for PATs.
+        """
         return self._password
 
     @public
     @property
     def token(self) -> str | None:
-        """OAuth token of the Snowflake storage connector."""
+        """OAuth token of the Snowflake storage connector.
+
+        This is an OAuth access token only. It renders as `authenticator=oauth`.
+        Programmatic access tokens (PATs) are not OAuth tokens and are rejected
+        here with `390303 Invalid OAuth access token`, pass them via `password`.
+        """
         return self._token
 
     @public
