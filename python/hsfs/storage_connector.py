@@ -1708,11 +1708,15 @@ class SnowflakeConnector(StorageConnector):
             "account": self.account,
             "database": self._database + "/" + self._schema,
         }
+        # Same precedence as `spark_options`. The backend guarantees exactly one
+        # of the three is set, so no branch means no credential to send.
         if self._password:
             props["password"] = self._password
-        else:
+        elif self._token:
             props["authenticator"] = "oauth"
             props["token"] = self._token
+        elif self._private_key:
+            props["private_key"] = self._read_private_key_der()
         if self._warehouse:
             props["warehouse"] = self._warehouse
         if self._application:
@@ -1745,6 +1749,24 @@ class SnowflakeConnector(StorageConnector):
             props["dbtable"] = self._table
 
         return props
+
+    def _read_private_key_der(self) -> bytes:
+        """Loads the private key as DER bytes for the `snowflake.connector` library.
+
+        The Spark connector takes the key as a header-stripped PEM string, see
+        `_read_private_key`, while `snowflake.connector` expects DER bytes on its
+        `private_key` argument.
+        """
+        p_key = serialization.load_pem_private_key(
+            self._private_key.encode(),
+            password=self._passphrase.encode() if self._passphrase else None,
+            backend=default_backend(),
+        )
+        return p_key.private_bytes(
+            encoding=serialization.Encoding.DER,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        )
 
     def _read_private_key(self) -> str | None:
         """Reads the private key from the specified key path."""
