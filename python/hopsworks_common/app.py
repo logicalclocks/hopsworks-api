@@ -78,7 +78,9 @@ class App:
         git_url=None,
         git_provider=None,
         git_branch=None,
+        git_auto_redeploy=None,
         latest_commit=None,
+        latest_branch=None,
         entrypoint_script=None,
         app_base_path=None,
         readiness_probe_path=None,
@@ -110,7 +112,9 @@ class App:
         self._git_url = git_url
         self._git_provider = git_provider
         self._git_branch = git_branch
+        self._git_auto_redeploy = bool(git_auto_redeploy)
         self._latest_commit = latest_commit
+        self._latest_branch = latest_branch
         self._entrypoint_script = entrypoint_script
         self._app_base_path = app_base_path
         self._readiness_probe_path = readiness_probe_path
@@ -230,9 +234,25 @@ class App:
 
     @public
     @property
+    def git_auto_redeploy(self) -> bool:
+        """Whether the app is rolled to the branch HEAD when a new commit is pushed."""
+        return self._git_auto_redeploy
+
+    @public
+    @property
     def latest_commit(self) -> str | None:
         """Latest deployed Git commit."""
         return self._latest_commit
+
+    @public
+    @property
+    def latest_branch(self) -> str | None:
+        """Branch the running clone resolved to.
+
+        Only set when no branch was configured, in which case this is the
+        repository's default branch that the app actually checked out.
+        """
+        return self._latest_branch
 
     @public
     @property
@@ -493,7 +513,9 @@ class App:
         self._git_url = updated._git_url
         self._git_provider = updated._git_provider
         self._git_branch = updated._git_branch
+        self._git_auto_redeploy = updated._git_auto_redeploy
         self._latest_commit = updated._latest_commit
+        self._latest_branch = updated._latest_branch
         self._entrypoint_script = updated._entrypoint_script
         self._public_access = updated._public_access
         self._public_token = updated._public_token
