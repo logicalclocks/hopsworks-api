@@ -1071,8 +1071,16 @@ class FeatureViewEngine:
         if save_mode == self._APPEND:
             return td_job
 
-        if engine._get_type().startswith("spark"):
-            # if spark engine, read td and compute stats
+        if (
+            engine._get_type().startswith("spark")
+            and training_dataset_obj.statistics_config.enabled
+        ):
+            # The read-back exists only to feed statistics, so it is gated on the
+            # same flag. `_compute_training_dataset_statistics` checks `enabled`
+            # itself, but checking only there meant `statistics_config=False`
+            # still re-read every split of the freshly written dataset and then
+            # threw the dataframes away, which on a large training dataset is the
+            # most expensive step of creation.
             if training_dataset_obj.splits:
                 td_df = {
                     split.name: self._training_dataset_engine._read(
