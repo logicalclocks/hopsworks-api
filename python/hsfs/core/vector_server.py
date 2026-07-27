@@ -15,6 +15,7 @@
 #
 from __future__ import annotations
 
+import collections
 import concurrent.futures
 import decimal
 import itertools
@@ -415,6 +416,10 @@ class VectorServer:
         ):
             if hasattr(self, stale):
                 delattr(self, stale)
+        # the process-wide verdict cache describes the previous server too; a reset
+        # is rare, so clearing everything is cheaper than per-endpoint bookkeeping
+        with VectorServer._RONSQL_EXPLAIN_PROCESS_CACHE_LOCK:
+            VectorServer._RONSQL_EXPLAIN_PROCESS_CACHE.clear()
         # This logic needs to move to the above engine init
         online_store_rest_client._init_or_reset_online_store_rest_client(
             optional_config=config_rest_client,
@@ -769,6 +774,14 @@ class VectorServer:
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug("get_batch_feature_vector Online REST client")
             self._raise_if_collect_metadata_known_unservable()
+            # v3 online path: collect/aggregate feature groups are served via RonSQL.
+            # The grouped wave is SUBMITTED before the base read so the two overlap
+            # (review SQL-PERF-4); the base read runs on this thread, never on the
+            # pool. Rejected statements count too: the overlay serves them via /scan
+            # or fails loudly instead of silently omitting their features.
+            overlay_begun = None
+            if self._get_ronsql_statements() or getattr(self, "_ronsql_rejected", []):
+                overlay_begun = self._begin_overlay_ronsql_collect_batch(rondb_entries)
             try:
                 batch_results = self.rest_client_engine._get_batch_feature_vectors(
                     entries=rondb_entries,
@@ -778,13 +791,9 @@ class VectorServer:
             except exceptions.RestAPIError as err:
                 self._raise_if_collect_unservable_metadata(err)
                 raise
-            # v3 online path: collect/aggregate feature groups are served via RonSQL,
-            # one statement per entry (batching via IN is a later optimization).
-            # Rejected statements count too: the overlay serves them via /scan or
-            # fails loudly instead of silently omitting their features.
-            if self._get_ronsql_statements() or getattr(self, "_ronsql_rejected", []):
-                batch_results = self._overlay_ronsql_collect_batch(
-                    batch_results, rondb_entries
+            if overlay_begun is not None:
+                batch_results = self._finish_overlay_ronsql_collect_batch(
+                    overlay_begun, batch_results, rondb_entries
                 )
         elif len(rondb_entries) > 0:
             # get result row
@@ -802,9 +811,11 @@ class VectorServer:
 
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug("Assembling feature vectors from batch results")
-        next_skipped = (
-            skipped_empty_entries.pop(0) if len(skipped_empty_entries) > 0 else None
-        )
+        # iterators, not list.pop(0): popping the head shifts every remaining element,
+        # making assembly O(batch_size^2) (review SQL-PERF-6)
+        skipped_iter = iter(skipped_empty_entries)
+        results_iter = iter(batch_results)
+        next_skipped = next(skipped_iter, None)
         vectors = []
 
         # If request parameter is a dictionary then copy it to list with the same length as that of entires
@@ -837,14 +848,10 @@ class VectorServer:
             if next_skipped == idx:
                 if _logger.isEnabledFor(logging.DEBUG):
                     _logger.debug("Entry %d was skipped, setting to empty dict.", idx)
-                next_skipped = (
-                    skipped_empty_entries.pop(0)
-                    if len(skipped_empty_entries) > 0
-                    else None
-                )
+                next_skipped = next(skipped_iter, None)
                 result_dict = {}
             else:
-                result_dict = batch_results.pop(0)
+                result_dict = next(results_iter)
 
             vector = self._assemble_feature_vector(
                 result_dict=result_dict,
@@ -1544,7 +1551,9 @@ class VectorServer:
         its other templates returned.
         """
         reclassified = {
-            id(spec[1]) for spec, rows in outcomes if rows is None and spec[0] != "rejected"
+            id(spec[1])
+            for spec, rows in outcomes
+            if rows is None and spec[0] != "rejected"
         }
         served_rejected: set[int] = set()
         for spec, rows in outcomes:
@@ -1799,12 +1808,10 @@ class VectorServer:
             if feature.name != collect_name:
                 continue
             type_str = (feature.type or "").strip().lower()
-            if not (
-                type_str.startswith("array<struct<") and type_str.endswith(">>")
-            ):
+            if not (type_str.startswith("array<struct<") and type_str.endswith(">>")):
                 return {}
             fields: dict[str, str] = {}
-            body = type_str[len("array<struct<"):-2]
+            body = type_str[len("array<struct<") : -2]
             depth = 0
             part = []
             parts = []
@@ -2128,12 +2135,56 @@ class VectorServer:
         grouped wave did not cover — every (entry, statement, template) round trip
         overlaps instead of multiplying into entries x statements sequential calls.
         """
+        return self._finish_overlay_ronsql_collect_batch(
+            self._begin_overlay_ronsql_collect_batch(entries), results, entries
+        )
+
+    def _begin_overlay_ronsql_collect_batch(
+        self, entries: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        """Prepare and SUBMIT the grouped RonSQL wave without awaiting it.
+
+        The grouped chunks execute on the shared pool while the caller performs
+        the base `/batch_feature_store` read, so the two overlap instead of
+        running in series (review SQL-PERF-4). Submission happens on the caller
+        thread, never from a pool task, preserving the nested-pool safety rule.
+        Returns the handle `_finish_overlay_ronsql_collect_batch` consumes.
+        """
         if len(entries) <= 1:
+            return {"inline": True}
+        now = datetime.now(timezone.utc)
+        contexts, tasks = self._build_batch_aggregate_tasks(entries)
+        finish = (
+            self._start_ronsql_tasks(
+                lambda task: self._run_batch_chunk(task, now), tasks
+            )
+            if tasks
+            else None
+        )
+        return {
+            "inline": False,
+            "now": now,
+            "contexts": contexts,
+            "tasks": tasks,
+            "finish": finish,
+        }
+
+    def _finish_overlay_ronsql_collect_batch(
+        self,
+        begun: dict[str, Any],
+        results: list[dict[str, Any]],
+        entries: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Await the grouped wave, then run the per-entry wave for what it missed."""
+        if begun["inline"]:
             return [
                 self._overlay_ronsql_collect(result, entry)
                 for result, entry in zip(results, entries, strict=True)
             ]
-        covered = self._overlay_batch_aggregates(results, entries)
+        raw = begun["finish"]() if begun["finish"] is not None else []
+        covered = self._apply_batch_aggregate_results(
+            begun["contexts"], begun["tasks"], raw, results, entries
+        )
         now = datetime.now(timezone.utc)
         tasks: list[tuple[int, tuple[str, Any, str | None]]] = []
         for idx in range(len(entries)):
@@ -2155,30 +2206,35 @@ class VectorServer:
     def _overlay_batch_aggregates(
         self, results: list[dict[str, Any]], entries: list[dict[str, Any]]
     ) -> dict[int, frozenset[tuple[int, str | None]]]:
-        """Serve batchable grouped statements: aggregations and snowflake subtrees.
+        """Serve batchable grouped statements in one step: build, run, apply.
+
+        The batch path proper splits this into `_begin_overlay_ronsql_collect_batch`
+        (submit) and `_finish_overlay_ronsql_collect_batch` (await + apply) so the
+        grouped wave overlaps the base read (review SQL-PERF-4).
+        """
+        now = datetime.now(timezone.utc)
+        contexts, tasks = self._build_batch_aggregate_tasks(entries)
+        raw = (
+            self._run_ronsql_tasks(
+                lambda task: self._run_batch_chunk(task, now), tasks
+            )
+            if tasks
+            else []
+        )
+        return self._apply_batch_aggregate_results(
+            contexts, tasks, raw, results, entries
+        )
+
+    def _build_batch_aggregate_tasks(
+        self, entries: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, Any]], list[tuple[dict[str, Any], str, list[str]]]]:
+        """Prepare the grouped-statement contexts and (context, template, chunk) tasks.
 
         The batch template is keyed `... WHERE key IN (...) GROUP BY key`. The IN
         list is deduplicated (one literal serves every entry sharing the key value)
         and chunked by count and by literal bytes; all (statement, template, chunk)
-        round trips run concurrently on the shared pool. Returned rows are mapped
-        back to entries by the entity-key value, with the statement's prefix applied
-        to aggregation output names (snowflake outputs arrive already aliased to
-        their prefixed feature-view names).
-        Returns per-entry coverage: the (feature_group_id, prefix) pairs served for
-        each entry index, which the per-entry pass then skips. An aggregation entry
-        missing from the grouped result is NOT covered (no rows in its window: GROUP
-        BY omits it); only that entry reruns through the per-entry single statement,
-        which computes the correct empty-window row. Snowflake misses are legitimate
-        hop misses (the per-entry chain would miss identically), so snowflake
-        statements cover every entry.
-        A read-time planner refusal quietly drops the statement's grouped templates
-        for the call; the per-entry singles cover its feature group.
-        Consistency contract: every chunk is a separate committed read; a large
-        batch can observe different versions of the same tables across chunks (no
-        cross-chunk snapshot), which matches online-serving expectations but
-        differs from a single SQL batch statement.
+        round trips run concurrently on the shared pool.
         """
-        now = datetime.now(timezone.utc)
         contexts: list[dict[str, Any]] = []
         tasks: list[tuple[dict[str, Any], str, list[str]]] = []
         for statement in self._get_ronsql_batch_statements():
@@ -2219,11 +2275,41 @@ class VectorServer:
             for template in templates:
                 for chunk in self._chunk_ronsql_literals(literals):
                     tasks.append((context, template, chunk))
+        return contexts, tasks
+
+    def _apply_batch_aggregate_results(
+        self,
+        contexts: list[dict[str, Any]],
+        tasks: list[tuple[dict[str, Any], str, list[str]]],
+        raw: list,
+        results: list[dict[str, Any]],
+        entries: list[dict[str, Any]],
+    ) -> dict[int, frozenset[tuple[int, str | None]]]:
+        """Map grouped rows back to entries and compute per-entry coverage.
+
+        Returned rows are mapped back to entries by the entity-key value, with the
+        statement's prefix applied to aggregation output names (snowflake outputs
+        arrive already aliased to their prefixed feature-view names).
+        Returns per-entry coverage: the (feature_group_id, prefix) pairs served for
+        each entry index, which the per-entry pass then skips. An aggregation entry
+        missing from the grouped result has NO rows in its window (GROUP BY omits
+        it): its exact empty-window row is synthesized from the statement's
+        `aggregate_feature_names` (count outputs 0, every other function NULL) —
+        the values the per-entry single statement would compute — so a sparse batch
+        sends no per-entry retries (review SQL-PERF-2). Only a statement from an
+        old backend without `aggregate_feature_names` still reruns its misses
+        through the per-entry pass. Snowflake misses are legitimate hop misses (the
+        per-entry chain would miss identically), so snowflake statements cover
+        every entry.
+        A read-time planner refusal quietly drops the statement's grouped templates
+        for the call; the per-entry singles cover its feature group.
+        Consistency contract: every chunk is a separate committed read; a large
+        batch can observe different versions of the same tables across chunks (no
+        cross-chunk snapshot), which matches online-serving expectations but
+        differs from a single SQL batch statement.
+        """
         if not contexts:
             return {}
-        raw = self._run_ronsql_tasks(
-            lambda task: self._run_batch_chunk(task, now), tasks
-        )
         for (context, _, _), rows in zip(tasks, raw, strict=True):
             if rows is None:
                 context["refused"] = True
@@ -2254,8 +2340,20 @@ class VectorServer:
                         }
                     )
             key = (statement.feature_group_id, statement.prefix)
+            aggregate_names = getattr(statement, "aggregate_feature_names", None) or []
             for idx in range(len(entries)):
                 if context["snowflake"] or idx in row_hits:
+                    covered_sets.setdefault(idx, set()).add(key)
+                elif aggregate_names:
+                    # no rows in this entry's window: synthesize the exact
+                    # empty-window row instead of a per-entry retry (SQL-PERF-2)
+                    for name in aggregate_names:
+                        default = (
+                            0
+                            if name == prefix + "count" or name.endswith("_count")
+                            else None
+                        )
+                        results[idx].setdefault(name, default)
                     covered_sets.setdefault(idx, set()).add(key)
         for idx, keys in covered_sets.items():
             covered[idx] = frozenset(keys)
@@ -2271,8 +2369,10 @@ class VectorServer:
             statement, template, ", ".join(chunk), now=now
         )
         try:
-            return online_store_rest_client_api.OnlineStoreRestClientApi()._execute_ronsql(
-                query, statement.ronsql_database
+            return (
+                online_store_rest_client_api.OnlineStoreRestClientApi()._execute_ronsql(
+                    query, statement.ronsql_database
+                )
             )
         except exceptions.RestAPIError as err:
             if not self._is_ronsql_planner_error(err):
@@ -2542,6 +2642,13 @@ class VectorServer:
         for statement, _, probes, _ in specs:
             for probe in probes or []:
                 key = (statement.ronsql_database, probe)
+                if key not in cache:
+                    # another VectorServer instance may have planned this exact
+                    # template already (review SQL-PERF-9)
+                    found, verdict = self._process_explain_cache_get(key)
+                    if found:
+                        cache[key] = verdict
+                        continue
                 if key not in cache and key not in seen:
                     seen.add(key)
                     to_probe.append(key)
@@ -2560,6 +2667,7 @@ class VectorServer:
             if verdict is None or self._is_definitive_ronsql_refusal(verdict):
                 # only proofs are cached; transient failures retry next validation
                 cache[key] = verdict
+                self._process_explain_cache_put(key, verdict)
         valid = []
         for statement, kind, probes, rejected_by in specs:
             transient = None
@@ -2693,9 +2801,7 @@ class VectorServer:
         )
 
     @staticmethod
-    def _order_scan_rows(
-        rows: list[dict[str, Any]], statement
-    ) -> list[dict[str, Any]]:
+    def _order_scan_rows(rows: list[dict[str, Any]], statement) -> list[dict[str, Any]]:
         """Establish the output order of /scan rows without re-sorting them.
 
         The scan reads the primary index descending with the entity keys fixed, so
@@ -2829,17 +2935,89 @@ class VectorServer:
                 )
             return cls._RONSQL_POOL
 
+    # at most this many futures per request may be outstanding on the shared pool: a
+    # small multiple of the 16 workers keeps them saturated while bounding queued-task
+    # memory and stopping one large batch from owning the process-wide FIFO queue
+    # (review SQL-PERF-5)
+    _RONSQL_MAX_OUTSTANDING = 64
+
+    # process-wide EXPLAIN verdict cache shared by every VectorServer instance
+    # (review SQL-PERF-9): a new feature-view object re-validates identical templates
+    # without re-planning on the server. Only proofs are stored (a pass or a
+    # definitive planner refusal — never auth or transient failures); bounded LRU;
+    # cleared by a rest-client reset, which also covers repointing at another server.
+    _RONSQL_EXPLAIN_PROCESS_CACHE: collections.OrderedDict = collections.OrderedDict()
+    _RONSQL_EXPLAIN_PROCESS_CACHE_MAX = 512
+    _RONSQL_EXPLAIN_PROCESS_CACHE_LOCK = threading.Lock()
+
+    @classmethod
+    def _process_explain_cache_get(cls, key: tuple[str, str]) -> tuple[bool, Any]:
+        with cls._RONSQL_EXPLAIN_PROCESS_CACHE_LOCK:
+            if key in cls._RONSQL_EXPLAIN_PROCESS_CACHE:
+                cls._RONSQL_EXPLAIN_PROCESS_CACHE.move_to_end(key)
+                return True, cls._RONSQL_EXPLAIN_PROCESS_CACHE[key]
+        return False, None
+
+    @classmethod
+    def _process_explain_cache_put(cls, key: tuple[str, str], verdict: Any) -> None:
+        with cls._RONSQL_EXPLAIN_PROCESS_CACHE_LOCK:
+            cls._RONSQL_EXPLAIN_PROCESS_CACHE[key] = verdict
+            cls._RONSQL_EXPLAIN_PROCESS_CACHE.move_to_end(key)
+            while (
+                len(cls._RONSQL_EXPLAIN_PROCESS_CACHE)
+                > cls._RONSQL_EXPLAIN_PROCESS_CACHE_MAX
+            ):
+                cls._RONSQL_EXPLAIN_PROCESS_CACHE.popitem(last=False)
+
     def _run_ronsql_tasks(self, fn: Callable, items: list) -> list:
         """Run `fn` over items on the shared pool, preserving item order.
 
         A single item runs inline (no thread hop); exceptions surface in item order
-        regardless of completion order.
+        regardless of completion order. Submission is BOUNDED: at most
+        `_RONSQL_MAX_OUTSTANDING` futures exist at once, submitted as earlier ones
+        complete, and a failure stops further submission (the queued tail is never
+        created), so a 100k-item batch cannot enqueue 100k futures up front.
+        """
+        return self._start_ronsql_tasks(fn, items)()
+
+    def _start_ronsql_tasks(self, fn: Callable, items: list) -> Callable[[], list]:
+        """Begin a bounded task wave; returns a finisher yielding ordered results.
+
+        Up to `_RONSQL_MAX_OUTSTANDING` items are submitted immediately WITHOUT
+        awaiting any result, so the caller can overlap other I/O (e.g. the batch
+        base read) before calling the finisher (review SQL-PERF-4). The finisher
+        drains completions, submits the remaining items as slots free (bounded
+        queue — review SQL-PERF-5), and cancels the unstarted tail on the first
+        fatal error. Single-item waves run inline at finish time.
         """
         if len(items) <= 1:
-            return [fn(item) for item in items]
+            return lambda: [fn(item) for item in items]
         pool = self._ronsql_pool()
-        futures = [pool.submit(fn, item) for item in items]
-        return [future.result() for future in futures]
+        window: collections.deque = collections.deque()
+        submitted = 0
+        while submitted < len(items) and len(window) < self._RONSQL_MAX_OUTSTANDING:
+            window.append((submitted, pool.submit(fn, items[submitted])))
+            submitted += 1
+
+        def finish() -> list:
+            nonlocal submitted
+            results: list = [None] * len(items)
+            try:
+                while window:
+                    oldest_index, oldest_future = window.popleft()
+                    results[oldest_index] = oldest_future.result()
+                    if submitted < len(items):
+                        window.append((submitted, pool.submit(fn, items[submitted])))
+                        submitted += 1
+            except BaseException:
+                # first fatal error: cancel whatever has not started; running
+                # futures finish on the pool but their results are discarded
+                for _, future in window:
+                    future.cancel()
+                raise
+            return results
+
+        return finish
 
     @staticmethod
     def _ronsql_literal(value: Any, feature_type: str | None = None) -> str:
@@ -3062,9 +3240,7 @@ class VectorServer:
             _logger.debug(
                 f"Retrieve inference helper values for batch entries via {default_client.upper()} client."
             )
-            _logger.debug(
-                "%d entries as return type: %s", len(entries), return_type
-            )
+            _logger.debug("%d entries as return type: %s", len(entries), return_type)
 
         if default_client == self.DEFAULT_REST_CLIENT:
             batch_results = self.rest_client_engine._get_batch_feature_vectors(

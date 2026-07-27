@@ -22,6 +22,14 @@ from hsfs.constructor.serving_prepared_statement import ServingPreparedStatement
 from hsfs.core.vector_server import VectorServer
 
 
+@pytest.fixture(autouse=True)
+def _isolate_process_explain_cache():
+    """The process-wide EXPLAIN verdict cache (SQL-PERF-9) must not leak between tests."""
+    VectorServer._RONSQL_EXPLAIN_PROCESS_CACHE.clear()
+    yield
+    VectorServer._RONSQL_EXPLAIN_PROCESS_CACHE.clear()
+
+
 TEMPLATE = (
     "WITH t AS (SELECT `amount`, `event_time` FROM `transactions_1` "
     "WHERE `user_id` = ? ORDER BY `event_time` DESC LIMIT 100) "
@@ -151,9 +159,10 @@ class TestCollectStructDecode:
         assert VectorServer._decode_collect_field(
             "2026-06-21 10:00:00", "timestamp"
         ) == datetime(2026, 6, 21, 10, 0, 0)
-        assert VectorServer._decode_collect_field(
-            "2026-06-21", "date"
-        ) == datetime(2026, 6, 21).date()
+        assert (
+            VectorServer._decode_collect_field("2026-06-21", "date")
+            == datetime(2026, 6, 21).date()
+        )
         assert VectorServer._decode_collect_field(
             "1.50", "decimal(10,2)"
         ) == decimal.Decimal("1.50")
@@ -212,7 +221,9 @@ class TestRonsqlCollectOverlay:
         server._rest_client_engine = _StubRestEngine(
             {1: ["user_id", "amount", "event_time"]}
         )
-        server._execute_ronsql_statement = lambda stmt, entry, template=None, now=None: rows
+        server._execute_ronsql_statement = lambda stmt, entry, template=None, now=None: (
+            rows
+        )
         return server
 
     def test_overlay_folds_rows_into_struct_array(self):
@@ -483,8 +494,8 @@ class TestSortCollectRows:
     def test_scan_rows_are_sorted(self):
         server = make_server()
         server._ronsql_statements = [make_statement()]
-        server._execute_ronsql_statement = lambda stmt, entry, template=None, now=None: list(
-            self.ROWS
+        server._execute_ronsql_statement = lambda stmt, entry, template=None, now=None: (
+            list(self.ROWS)
         )
         rows = server._scan_rows_ronsql({"user_id": 7})
         assert [r["event_time"] for r in rows] == ["t3", "t2", "t1"]
@@ -566,9 +577,7 @@ class TestRonsqlTemplateValidation:
         rejected = []
         with warnings_module.catch_warnings():
             warnings_module.simplefilter("error")
-            statements = server._validate_ronsql_templates(
-                [make_statement()], rejected
-            )
+            statements = server._validate_ronsql_templates([make_statement()], rejected)
         assert statements == []
         assert len(rejected) == 1
         assert calls == []
@@ -1373,9 +1382,9 @@ class TestBatchAggregateGrouping:
         assert results[0] == {"txn_amount_sum": 10.0}
 
     def test_missing_entity_defers_to_per_entry_pass(self, monkeypatch):
-        # GROUP BY omits entities with no rows: ONLY those entries stay uncovered,
-        # so the per-entry pass computes their empty-window aggregates without
-        # re-fetching the entries the grouped read already served
+        # LEGACY backend only (no aggregate_feature_names on the statement): GROUP BY
+        # omits entities with no rows and the client cannot synthesize their outputs,
+        # so ONLY those entries stay uncovered for the per-entry pass
         rows = [{"user_id": 1, "amount_sum": 10.0}]
         server, _ = self.make_grouping_server(monkeypatch, rows)
         results = [{}, {}]
@@ -1384,6 +1393,44 @@ class TestBatchAggregateGrouping:
         )
         assert results[0]["amount_sum"] == 10.0
         assert served == {0: {(1, None)}}
+
+    def test_missing_entity_synthesizes_empty_row(self, monkeypatch):
+        # SQL-PERF-2: with aggregate_feature_names on the statement, an entity the
+        # grouped result omits gets its exact empty-window row synthesized (count
+        # outputs 0, everything else NULL) and is covered — a sparse batch sends
+        # ZERO per-entry retries
+        statement = make_batch_aggregate_statement(
+            prefix="txn_",
+            aggregate_feature_names=["txn_amount_sum", "txn_count"],
+        )
+        rows = [{"user_id": 1, "amount_sum": 10.0, "count": 3}]
+        server, calls = self.make_grouping_server(monkeypatch, rows, statement)
+        results = [{}, {}]
+        served = server._overlay_batch_aggregates(
+            results, [{"user_id": 1}, {"user_id": 2}]
+        )
+        assert results[0] == {"txn_amount_sum": 10.0, "txn_count": 3}
+        assert results[1] == {"txn_amount_sum": None, "txn_count": 0}
+        assert served == {0: {(1, "txn_")}, 1: {(1, "txn_")}}
+        assert len(calls) == 1  # the grouped chunk; no per-entry retries
+
+    def test_begin_finish_matches_direct_overlay(self, monkeypatch):
+        # SQL-PERF-4: the split submit/finish path used to overlap the base batch
+        # read must produce exactly what the one-step overlay produces
+        statement = make_batch_aggregate_statement(
+            aggregate_feature_names=["amount_sum"],
+        )
+        rows = [{"user_id": 1, "amount_sum": 10.0}]
+        entries = [{"user_id": 1}, {"user_id": 2}]
+        server, _ = self.make_grouping_server(monkeypatch, rows, statement)
+        begun = server._begin_overlay_ronsql_collect_batch(entries)
+        split_results = server._finish_overlay_ronsql_collect_batch(
+            begun, [{}, {}], entries
+        )
+        server2, _ = self.make_grouping_server(monkeypatch, rows, statement)
+        direct_results = [{}, {}]
+        server2._overlay_batch_aggregates(direct_results, entries)
+        assert split_results == direct_results
 
     def test_planner_refusal_falls_back_to_per_entry(self, monkeypatch):
         error = _rest_error(500)
@@ -1463,9 +1510,7 @@ class TestScanFilterTree:
     def test_decimal_literal_stays_an_exact_string(self):
         # a decimal filter must not lose precision through a binary float; it is
         # validated and sent as a decimal string
-        value = VectorServer._scan_filter_value(
-            "1234567890.123456789", "decimal(19,9)"
-        )
+        value = VectorServer._scan_filter_value("1234567890.123456789", "decimal(19,9)")
         assert value == "1234567890.123456789"
 
     def test_invalid_decimal_literal_refused(self):
@@ -1634,9 +1679,7 @@ class TestUnservableSnowflakeInitGate:
 
     def test_old_backend_statement_without_marker_passes(self):
         # an old backend never sets the marker without templates: no false failures
-        VectorServer._raise_if_unservable_snowflake(
-            [make_statement(query_ronsql=None)]
-        )
+        VectorServer._raise_if_unservable_snowflake([make_statement(query_ronsql=None)])
 
 
 class TestSharedRonsqlPool:
@@ -1671,3 +1714,40 @@ class TestSharedRonsqlPool:
 
         with pytest.raises(KeyError):
             make_server()._run_ronsql_tasks(fail_on_two, [0, 1, 2])
+
+
+class TestBoundedRonsqlSubmission:
+    """SQL-PERF-5: task waves keep at most a bounded window of futures outstanding."""
+
+    def test_order_preserved_beyond_outstanding_bound(self):
+        server = make_server()
+        items = list(range(VectorServer._RONSQL_MAX_OUTSTANDING * 3 + 7))
+        results = server._run_ronsql_tasks(lambda item: item * 2, items)
+        assert results == [item * 2 for item in items]
+
+    def test_failure_stops_the_wave(self):
+        server = make_server()
+
+        def boom(item):
+            if item == 5:
+                raise ValueError("boom")
+            return item
+
+        with pytest.raises(ValueError, match="boom"):
+            server._run_ronsql_tasks(boom, list(range(200)))
+
+
+class TestProcessWideExplainCache:
+    """SQL-PERF-9: EXPLAIN verdicts are shared across VectorServer instances."""
+
+    def test_verdicts_shared_across_instances(self, monkeypatch):
+        validation = TestRonsqlTemplateValidation()
+        server1, calls1 = validation.make_validating_server(monkeypatch, [])
+        first = server1._validate_ronsql_templates([validation.probed_statement()], [])
+        assert len(first) == 1
+        assert len(calls1) == 1
+
+        server2, calls2 = validation.make_validating_server(monkeypatch, [])
+        second = server2._validate_ronsql_templates([validation.probed_statement()], [])
+        assert len(second) == 1
+        assert calls2 == []  # planned once per process, not per instance

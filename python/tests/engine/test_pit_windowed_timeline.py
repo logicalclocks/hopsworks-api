@@ -46,6 +46,8 @@ Covered semantics, on both engines:
 
 from __future__ import annotations
 
+import math
+
 import pytest
 
 
@@ -276,3 +278,79 @@ class TestPitWindowedExtremumGoldenSql:
             key=str,
         )
         assert got == EXTREMUM_EXPECTED, got
+
+
+# adversarial floating-point fixtures (review ENT-PIT-1), executed against the SAME
+# sum/count golden statement: the former signed expiry-delta plan computed
+# (1e16 + 1.0) - 1e16 = 0.0 at the second marker and let an expired NaN poison every
+# later window; the non-subtractive two-bucket merge must return the exact values
+FP_SOURCE = [
+    (1, 0.0, 1e16),
+    (1, 1e-06, 1.0),
+    (1, 10.0, float("nan")),
+    (1, 3600.5, 2.0),
+]
+FP_SPINE = [
+    # window [-2600, 1000]: 1e16, 1.0, NaN -> sum NaN, count 3
+    (1, 1000.0, 0.0),
+    # window [1e-6, 3600.000001]: 1e16 expired, 1.0 and NaN inside -> the delta plan
+    # returned (1e16 + 1.0) - 1e16 = 0.0 for the NaN-free variant of this shape;
+    # correct is sum NaN, count 2
+    (1, 3600.000001, 0.0),
+    # window [10.000001, 3610.000001]: 1e16, 1.0, and the NaN all expired -> the
+    # delta plan returned NaN forever; correct is sum 2.0, count 1
+    (1, 3610.000001, 0.0),
+    # window [1.000001, 3601.000001]: NaN and 2.0 inside -> sum NaN, count 2
+    (1, 3601.000001, 0.0),
+]
+
+
+def _fp_normalize(rows):
+    normalized = []
+    for pk, ts, is_fraud, amount_sum, cnt in rows:
+        if amount_sum is not None and math.isnan(amount_sum):
+            amount_sum = "NaN"
+        normalized.append((pk, ts.timestamp(), is_fraud, amount_sum, cnt))
+    return sorted(normalized, key=str)
+
+
+FP_EXPECTED = sorted(
+    [
+        (1, 1000.0, 0.0, "NaN", 3),
+        (1, 3600.000001, 0.0, "NaN", 2),
+        (1, 3610.000001, 0.0, 2.0, 1),
+        (1, 3601.000001, 0.0, "NaN", 2),
+    ],
+    key=str,
+)
+
+
+class TestPitWindowedTimelineFloatSafety:
+    """Catastrophic cancellation and NaN confinement on the executed goldens.
+
+    Only values genuinely inside [marker - w, marker] may influence a result:
+    a small active value must survive a huge expired neighbour, and NaN must
+    stop poisoning results once it leaves the window.
+    """
+
+    def test_spark_float_safety(self, tmp_path):
+        pytest.importorskip("pyspark")
+        spark = _spark_session(tmp_path, "pit-windowed-timeline-fp")
+        try:
+            rows = _spark_run_golden(
+                spark, "pit_windowed_timeline_spark.sql", FP_SOURCE, FP_SPINE
+            )
+            got = _fp_normalize(
+                (r["pk"], r["ts"], r["is_fraud"], r["amount_sum"], r["count"])
+                for r in rows
+            )
+            assert got == FP_EXPECTED, got
+        finally:
+            spark.stop()
+
+    def test_duckdb_float_safety(self):
+        rows = _duckdb_run_golden(
+            "pit_windowed_timeline_duckdb.sql", FP_SOURCE, FP_SPINE
+        )
+        got = _fp_normalize(rows)
+        assert got == FP_EXPECTED, got
