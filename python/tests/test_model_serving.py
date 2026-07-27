@@ -184,6 +184,36 @@ class TestTracingForwarding:
         assert kwargs["git_provider"] == "GitHub"
         assert kwargs["git_branch"] == "main"
 
+    def test_create_endpoint_forwards_git_auto_redeploy(self, ms, mocker):
+        # Arrange
+        mock_for_server = mocker.patch("hsml.model_serving.Predictor.for_server")
+
+        # Act
+        ms.create_endpoint(
+            name="endpoint",
+            script_file="src/endpoint.py",
+            git_url="https://github.com/example/repo.git",
+            git_provider="github",
+            git_auto_redeploy=True,
+        )
+
+        # Assert
+        assert mock_for_server.call_args.kwargs["git_auto_redeploy"] is True
+
+    def test_create_endpoint_rejects_git_auto_redeploy_without_git_url(
+        self, ms, mocker
+    ):
+        # Mirrors ServingUtil: the backend rejects the flag without a git source, so fail
+        # locally rather than after a round trip.
+        mocker.patch("hsml.model_serving.Predictor.for_server")
+
+        with pytest.raises(ValueError, match="git_auto_redeploy requires git_url"):
+            ms.create_endpoint(
+                name="endpoint",
+                script_file="src/endpoint.py",
+                git_auto_redeploy=True,
+            )
+
 
 class TestDeployAgentIdentifierValidation:
     @pytest.fixture
@@ -434,6 +464,33 @@ class TestDeployAgentScript:
         assert kwargs["git_url"] == "https://github.com/example/repo.git"
         assert kwargs["git_provider"] == "GitHub"
         assert kwargs["git_branch"] == "main"
+
+    def test_git_source_forwards_git_auto_redeploy(self, ms, mocker, stub_apis):
+        # Arrange
+        mocker.patch.object(ms, "get_deployment", return_value=None)
+        mock_for_server = mocker.patch("hsml.model_serving.Predictor.for_server")
+
+        # Act
+        ms.deploy_agent(
+            entry="src/agents/my_agent.py",
+            git_url="https://github.com/example/repo.git",
+            git_provider="github",
+            git_auto_redeploy=True,
+        )
+
+        # Assert
+        assert mock_for_server.call_args.kwargs["git_auto_redeploy"] is True
+
+    def test_rejects_git_auto_redeploy_without_git_source(
+        self, ms, mocker, stub_apis, tmp_path
+    ):
+        # The flag is only meaningful for a git-backed agent; the backend rejects it otherwise.
+        mocker.patch.object(ms, "get_deployment", return_value=None)
+        script = tmp_path / "my_agent.py"
+        script.write_text("")
+
+        with pytest.raises(ValueError, match="git_auto_redeploy requires git_url"):
+            ms.deploy_agent(entry=str(script), git_auto_redeploy=True)
 
 
 class TestDeployAgentPackage:

@@ -110,9 +110,54 @@ class TestIcebergEngine:
         assert options == {}
 
     def test_setup_iceberg_read_opts_time_travel_query(self, mocker):
-        # Arrange
+        # Arrange: end timestamp falls between two snapshots. Resolution must
+        # pin the latest snapshot committed at or before it (11), not defer to
+        # Iceberg's server-side timestamp resolution which, on a different
+        # clock, could read the wrong side of the boundary.
         iceberg_engine = _make_engine(mocker)
         fg_alias = _make_alias(end_timestamp=1234567890000)
+        mocker.patch.object(
+            iceberg_engine,
+            "_read_snapshots",
+            return_value=[
+                {"committed_at": 1234567880000, "snapshot_id": 11},
+                {"committed_at": 1234567895000, "snapshot_id": 22},
+            ],
+        )
+
+        # Act
+        options = iceberg_engine._setup_iceberg_read_opts(fg_alias, "location")
+
+        # Assert
+        assert options == {"snapshot-id": "11"}
+
+    def test_setup_iceberg_read_opts_time_travel_query_before_first_snapshot(
+        self, mocker
+    ):
+        # Arrange: the end timestamp predates the first snapshot (fresh insert),
+        # so the read falls back to the earliest snapshot id
+        iceberg_engine = _make_engine(mocker)
+        fg_alias = _make_alias(end_timestamp=1234567890000)
+        mocker.patch.object(
+            iceberg_engine,
+            "_read_snapshots",
+            return_value=[
+                {"committed_at": 1234567890123, "snapshot_id": 11},
+                {"committed_at": 1234567891000, "snapshot_id": 22},
+            ],
+        )
+
+        # Act
+        options = iceberg_engine._setup_iceberg_read_opts(fg_alias, "location")
+
+        # Assert
+        assert options == {"snapshot-id": "11"}
+
+    def test_setup_iceberg_read_opts_time_travel_query_no_snapshots(self, mocker):
+        # Arrange: table without snapshots keeps the timestamp bound
+        iceberg_engine = _make_engine(mocker)
+        fg_alias = _make_alias(end_timestamp=1234567890000)
+        mocker.patch.object(iceberg_engine, "_read_snapshots", return_value=[])
 
         # Act
         options = iceberg_engine._setup_iceberg_read_opts(fg_alias, "location")
@@ -135,6 +180,56 @@ class TestIcebergEngine:
         assert options == {"start-snapshot-id": "11", "end-snapshot-id": "22"}
 
     def test_setup_iceberg_read_opts_incremental_query_no_start_snapshot(self, mocker):
+        # The window starts before the first snapshot (rolling monitoring window
+        # on a fresh table): fall back to the table state at the end bound,
+        # pinned by snapshot id (the snapshot at or before end_ts).
+        # Arrange
+        iceberg_engine = _make_engine(mocker)
+        fg_alias = _make_alias(
+            start_timestamp=1234567890000, end_timestamp=1234567892500
+        )
+        mocker.patch.object(
+            iceberg_engine, "_resolve_snapshot_id_at", return_value=None
+        )
+        mocker.patch.object(
+            iceberg_engine,
+            "_read_snapshots",
+            return_value=[{"committed_at": 1234567892000, "snapshot_id": 11}],
+        )
+
+        # Act
+        options = iceberg_engine._setup_iceberg_read_opts(fg_alias, "location")
+
+        # Assert
+        assert options == {"snapshot-id": "11"}
+
+    def test_setup_iceberg_read_opts_incremental_query_no_snapshots_at_all(
+        self, mocker
+    ):
+        # Unresolvable start AND end before the first snapshot: pin the earliest
+        # snapshot, matching the end-only fresh-insert fallback.
+        # Arrange
+        iceberg_engine = _make_engine(mocker)
+        fg_alias = _make_alias(
+            start_timestamp=1234567890000, end_timestamp=1234567891500
+        )
+        mocker.patch.object(
+            iceberg_engine, "_resolve_snapshot_id_at", return_value=None
+        )
+        mocker.patch.object(
+            iceberg_engine,
+            "_read_snapshots",
+            return_value=[{"committed_at": 1234567892000, "snapshot_id": 11}],
+        )
+
+        # Act
+        options = iceberg_engine._setup_iceberg_read_opts(fg_alias, "location")
+
+        # Assert
+        assert options == {"snapshot-id": "11"}
+
+    def test_setup_iceberg_read_opts_incremental_query_no_start_no_end(self, mocker):
+        # Unresolvable start without an end bound reads the latest table state.
         # Arrange
         iceberg_engine = _make_engine(mocker)
         fg_alias = _make_alias(start_timestamp=1000)
@@ -143,11 +238,10 @@ class TestIcebergEngine:
         )
 
         # Act
-        with pytest.raises(FeatureStoreException) as e_info:
-            iceberg_engine._setup_iceberg_read_opts(fg_alias, "location")
+        options = iceberg_engine._setup_iceberg_read_opts(fg_alias, "location")
 
         # Assert
-        assert "no Iceberg snapshot exists" in str(e_info.value)
+        assert options == {}
 
     def test_setup_iceberg_read_opts_merges_options(self, mocker):
         # Arrange
