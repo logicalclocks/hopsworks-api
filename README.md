@@ -307,7 +307,7 @@
 | python/hsfs/core/monitoring\_window\_config.py                                   |      130 |       29 |     78% |49, 53-55, 63, 67, 70, 152-153, 168-169, 174, 177, 180, 186, 197, 203-214, 231, 236-240, 257, 280, 289 |
 | python/hsfs/core/monitoring\_window\_config\_engine.py                           |      189 |       46 |     76% |49, 69, 78, 123, 160, 224, 237-245, 258, 335-382, 501-512, 543-557, 653, 696, 714 |
 | python/hsfs/core/multi\_table\_ingestion.py                                      |      152 |        7 |     95% |72, 258-259, 268, 315, 331, 407 |
-| python/hsfs/core/online\_ingestion.py                                            |       84 |       35 |     58% |97, 102, 105-110, 115-116, 124, 132, 144, 153, 161, 167, 181-219, 229-256 |
+| python/hsfs/core/online\_ingestion.py                                            |       86 |       37 |     57% |97, 102, 105-110, 115-116, 124, 132, 144, 153, 161, 167, 181-221, 231-258 |
 | python/hsfs/core/online\_ingestion\_api.py                                       |       14 |        7 |     50% |52-64, 93-104 |
 | python/hsfs/core/online\_ingestion\_result.py                                    |       40 |       18 |     55% |48-50, 64-75, 83, 95, 101, 107, 113 |
 | python/hsfs/core/online\_store\_rest\_client\_api.py                             |       58 |       31 |     47% |38-53, 97-101, 142-146, 161-168, 187-192 |
@@ -467,7 +467,7 @@
 | python/hsml/utils/schema/tensor.py                                               |        8 |        0 |    100% |           |
 | python/hsml/utils/schema/tensor\_schema.py                                       |       34 |        0 |    100% |           |
 | python/hsml/version.py                                                           |        2 |        2 |      0% |     17-22 |
-| **TOTAL**                                                                        | **41025** | **12524** | **69%** |           |
+| **TOTAL**                                                                        | **41027** | **12526** | **69%** |           |
 
 
 ## Setup coverage badge
