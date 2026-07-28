@@ -3104,9 +3104,7 @@ class TestSpark:
         )
         assert mock_spark_engine_write_training_dataset_single.call_count == 1
         assert (
-            mock_spark_engine_write_training_dataset_single.call_args.kwargs[
-                "coalesce"
-            ]
+            mock_spark_engine_write_training_dataset_single.call_args.kwargs["coalesce"]
             is True
         )
         assert mock_spark_engine_write_training_dataset_splits.call_count == 0
@@ -3255,9 +3253,7 @@ class TestSpark:
         assert m.coalesce.call_count == 0
         assert mock_spark_engine_write_training_dataset_splits.call_count == 1
         assert (
-            mock_spark_engine_write_training_dataset_splits.call_args.kwargs[
-                "coalesce"
-            ]
+            mock_spark_engine_write_training_dataset_splits.call_args.kwargs["coalesce"]
             is True
         )
 
