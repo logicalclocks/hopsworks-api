@@ -337,11 +337,12 @@ class TrainingDatasetBase:
         """Whether to reduce each split to one Spark writer task before writing.
 
         Applies to Spark materialization only, and is ignored when the training
-        dataset is materialized by the Feature Query Service. Where it applies, the
-        result is one data file per occupied materialized partition in the split,
-        which equals one file per split only when the split occupies a single
-        partition: since FSTORE-2055 a materialized training dataset is
-        Hive-partitioned, by event date when the feature group has an event time and
+        dataset is materialized by the Feature Query Service.
+        Where it applies, the result is one data file per occupied materialized
+        partition in the split, which equals one file per split only when the
+        split occupies a single partition: since FSTORE-2055 a materialized
+        training dataset is Hive-partitioned, by event date when the feature
+        group has an event time and
         by an append counter otherwise.
         """
         return self._coalesce

@@ -1847,10 +1847,10 @@ class FeatureView:
                 Where it applies, coalescing reduces the split to one Spark writer
                 task before the Hive-partitioned write, producing one data file for
                 each occupied materialized partition in the split, so one file per
-                split only when the split occupies a single partition. Training
-                datasets built from a feature group with an event time use date
-                partitions controlled by `partition_precision`; those without an
-                event time use an append-counter partition instead.
+                split only when the split occupies a single partition.
+                Training datasets built from a feature group with an event time
+                use date partitions controlled by `partition_precision`; those
+                without an event time use an append-counter partition instead.
             seed: Optionally, define a seed to create the random splits with, in order to guarantee reproducability.
             statistics_config:
                 A configuration object, or a dictionary with keys:
@@ -2154,10 +2154,10 @@ class FeatureView:
                 Where it applies, coalescing reduces the split to one Spark writer
                 task before the Hive-partitioned write, producing one data file for
                 each occupied materialized partition in the split, so one file per
-                split only when the split occupies a single partition. Training
-                datasets built from a feature group with an event time use date
-                partitions controlled by `partition_precision`; those without an
-                event time use an append-counter partition instead. Default False.
+                split only when the split occupies a single partition.
+                Training datasets built from a feature group with an event time
+                use date partitions controlled by `partition_precision`; those
+                without an event time use an append-counter partition instead. Default False.
             seed: Optionally, define a seed to create the random splits with, in order
                 to guarantee reproducability, defaults to `None`.
             statistics_config: A configuration object, or a dictionary with keys
@@ -2455,10 +2455,10 @@ class FeatureView:
                 Where it applies, coalescing reduces the split to one Spark writer
                 task before the Hive-partitioned write, producing one data file for
                 each occupied materialized partition in the split, so one file per
-                split only when the split occupies a single partition. Training
-                datasets built from a feature group with an event time use date
-                partitions controlled by `partition_precision`; those without an
-                event time use an append-counter partition instead. Default False.
+                split only when the split occupies a single partition.
+                Training datasets built from a feature group with an event time
+                use date partitions controlled by `partition_precision`; those
+                without an event time use an append-counter partition instead. Default False.
             seed: Optionally, define a seed to create the random splits with, in order
                 to guarantee reproducability, defaults to `None`.
             statistics_config: A configuration object, or a dictionary with keys

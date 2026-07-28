@@ -2808,12 +2808,12 @@ class TestFeatureViewEngine:
             assert td_feature.label == expected_td_feature.label
 
     def test_compute_training_dataset_statistics_disabled_skips_read(self, mocker):
-        # The split read-back exists only to feed statistics. With
-        # statistics_config=False the previous behaviour still re-read every
-        # split of the freshly written dataset and then discarded the
+        # The split read-back exists only to feed statistics.
+        # With statistics_config=False the previous behaviour still re-read
+        # every split of the freshly written dataset and then discarded the
         # dataframes, which on a large training dataset is the most expensive
-        # step of creation. The gate has to suppress the read, not only the
-        # statistics call.
+        # step of creation.
+        # The gate has to suppress the read, not only the statistics call.
         # Arrange
         feature_store_id = 99
 
@@ -2874,8 +2874,8 @@ class TestFeatureViewEngine:
         )
 
     def test_compute_training_dataset_statistics_enabled_reads(self, mocker):
-        # The twin of the disabled test: the gate must not over-suppress. With
-        # statistics enabled (the default) the read-back and the statistics
+        # The twin of the disabled test: the gate must not over-suppress.
+        # With statistics enabled (the default) the read-back and the statistics
         # computation both still happen on the Spark engine.
         # Arrange
         feature_store_id = 99
