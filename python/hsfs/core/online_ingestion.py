@@ -195,9 +195,11 @@ class OnlineIngestion:
                 # Get total number of rows processed
                 rows_processed = sum(result.rows for result in self.results)
 
-                # Update progress bar
-                if any(result.status != "UPSERTED" for result in self.results):
+                # Update progress bar colour based on the worst status seen so far
+                if any(result.status == "FAILED" for result in self.results):
                     progress_bar.colour = "RED"
+                elif any(result.status == "IGNORED" for result in self.results):
+                    progress_bar.colour = "YELLOW"
                 progress_bar.n = rows_processed
                 progress_bar.refresh()
 
