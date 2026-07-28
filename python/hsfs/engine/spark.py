@@ -1108,7 +1108,7 @@ class Engine:
         # version must use the same precision for time-range reads to stay
         # sound.
         user_write_options = dict(user_write_options or {})
-        partition_precision = user_write_options.pop("partition_precision", "day")
+        partition_precision = user_write_options.pop("partition_precision", "month")
         if partition_precision not in self.PARTITION_PRECISIONS:
             raise FeatureStoreException(
                 f"Invalid partition precision `{partition_precision}`; "
@@ -1153,8 +1153,6 @@ class Engine:
                 ),
             )
 
-            if training_dataset.coalesce:
-                dataset = dataset.coalesce(1)
             path = training_dataset.location + "/" + training_dataset.name
             return self._write_training_dataset_single(
                 dataset,
@@ -1167,14 +1165,12 @@ class Engine:
                 event_time_column=event_time_column,
                 drop_event_time=drop_event_time,
                 partition_precision=partition_precision,
+                coalesce=training_dataset.coalesce,
             )
         split_dataset = self._split_df(
             query_obj, training_dataset, read_options=read_options
         )
         for key in split_dataset:
-            if training_dataset.coalesce:
-                split_dataset[key] = split_dataset[key].coalesce(1)
-
             split_dataset[key] = split_dataset[key].cache()
 
         # On append, bind the transformation statistics saved when the version
@@ -1200,6 +1196,7 @@ class Engine:
             event_time_column=event_time_column,
             drop_event_time=drop_event_time,
             partition_precision=partition_precision,
+            coalesce=training_dataset.coalesce,
         )
 
     def _split_df(self, query_obj, training_dataset, read_options=None):
@@ -1371,7 +1368,8 @@ class Engine:
         to_df=False,
         event_time_column=None,
         drop_event_time=False,
-        partition_precision="day",
+        partition_precision="month",
+        coalesce=False,
     ):
         for split_name, feature_dataframe in feature_dataframes.items():
             split_path = training_dataset.location + "/" + str(split_name)
@@ -1386,6 +1384,7 @@ class Engine:
                 event_time_column=event_time_column,
                 drop_event_time=drop_event_time,
                 partition_precision=partition_precision,
+                coalesce=coalesce,
             )
 
         if to_df:
@@ -1403,7 +1402,8 @@ class Engine:
         to_df=False,
         event_time_column=None,
         drop_event_time=False,
-        partition_precision="day",
+        partition_precision="month",
+        coalesce=False,
     ):
         # The dataframe arrives fully transformed (see
         # TransformationFunctionEngine._fit_and_transform); this method only
@@ -1462,6 +1462,17 @@ class Engine:
             feature_dataframe = feature_dataframe.withColumn(
                 partition_column, lit(partition_value)
             )
+        # `partitionBy` alone only controls the output layout, not which
+        # tasks write which rows, so without co-locating rows by partition
+        # value first, every upstream task fans out into every partition
+        # directory. `coalesce` overrides this with a single output file for
+        # the whole dataset; otherwise hash-partitioning by the partition
+        # column keeps each partition value in one task, one file per
+        # directory.
+        if coalesce:
+            feature_dataframe = feature_dataframe.coalesce(1)
+        else:
+            feature_dataframe = feature_dataframe.repartition(partition_column)
         feature_dataframe.write.format(data_format).options(**write_options).mode(
             save_mode
         ).partitionBy(partition_column).save(path)

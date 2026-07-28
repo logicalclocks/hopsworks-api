@@ -558,7 +558,7 @@ class ArrowFlightClient:
         overwrite=True,
         event_time_column=None,
         drop_event_time=False,
-        partition_precision="day",
+        partition_precision="month",
     ):
         training_dataset = {}
         training_dataset["project_name"] = self._client._project_name

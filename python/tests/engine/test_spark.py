@@ -2638,19 +2638,19 @@ class TestSpark:
         mock_query._include_left_event_time.assert_called_once_with()
         assert mock_write_single.call_args[1]["event_time_column"] == "fg1_event_time"
         assert mock_write_single.call_args[1]["drop_event_time"] is True
-        assert mock_write_single.call_args[1]["partition_precision"] == "day"
+        assert mock_write_single.call_args[1]["partition_precision"] == "month"
 
         # Act: the precision rides in the write options (popped before they
         # reach the Spark writer)
         spark_engine._write_training_dataset(
             training_dataset=td,
             query_obj=mock_query,
-            user_write_options={"partition_precision": "month"},
+            user_write_options={"partition_precision": "day"},
             save_mode=spark_engine.APPEND,
         )
 
         # Assert
-        assert mock_write_single.call_args[1]["partition_precision"] == "month"
+        assert mock_write_single.call_args[1]["partition_precision"] == "day"
 
     def test_write_training_dataset_invalid_partition_precision(self, mocker):
         # Arrange
@@ -3096,12 +3096,19 @@ class TestSpark:
             to_df=None,
         )
 
-        # Assert
+        # Assert: coalescing to a single output file happens inside the
+        # writer (after the partition column exists), not on the raw dataset.
         assert (
             mock_spark_engine_convert_to_default_dataframe.return_value.coalesce.call_count
-            == 1
+            == 0
         )
         assert mock_spark_engine_write_training_dataset_single.call_count == 1
+        assert (
+            mock_spark_engine_write_training_dataset_single.call_args.kwargs[
+                "coalesce"
+            ]
+            is True
+        )
         assert mock_spark_engine_write_training_dataset_splits.call_count == 0
 
     def test_write_training_dataset_td_splits(self, mocker):
@@ -3238,14 +3245,21 @@ class TestSpark:
             to_df=None,
         )
 
-        # Assert
+        # Assert: coalescing to a single output file happens inside the
+        # writer (after the partition column exists), not on the raw split.
         assert (
             mock_spark_engine_convert_to_default_dataframe.return_value.coalesce.call_count
             == 0
         )
         assert mock_spark_engine_write_training_dataset_single.call_count == 0
-        assert m.coalesce.call_count == 1
+        assert m.coalesce.call_count == 0
         assert mock_spark_engine_write_training_dataset_splits.call_count == 1
+        assert (
+            mock_spark_engine_write_training_dataset_splits.call_args.kwargs[
+                "coalesce"
+            ]
+            is True
+        )
 
     def test_split_df(self, mocker):
         # Arrange
@@ -3911,14 +3925,20 @@ class TestSpark:
             == spark_engine.COUNTER_PARTITION_COLUMN
         )
         partitioned_df = feature_dataframe.withColumn.return_value
-        assert partitioned_df.write.format.call_args[0][0] == "csv"
+        # Rows are hash-partitioned by the partition column before the write
+        # so each partition value lands in a single output file.
+        partitioned_df.repartition.assert_called_once_with(
+            spark_engine.COUNTER_PARTITION_COLUMN
+        )
+        written_df = partitioned_df.repartition.return_value
+        assert written_df.write.format.call_args[0][0] == "csv"
         assert (
-            partitioned_df.write.format.return_value.options.return_value.mode.return_value.partitionBy.call_args[
+            written_df.write.format.return_value.options.return_value.mode.return_value.partitionBy.call_args[
                 0
             ][0]
             == spark_engine.COUNTER_PARTITION_COLUMN
         )
-        assert partitioned_df.unpersist.call_count == 1
+        assert written_df.unpersist.call_count == 1
 
     def test_write_training_dataset_single_tsv(self, mocker):
         # Arrange
@@ -3944,7 +3964,8 @@ class TestSpark:
         # Assert: tsv is written as csv, on the partitioned writer.
         assert mock_spark_engine_setup_storage_connector.call_count == 1
         partitioned_df = feature_dataframe.withColumn.return_value
-        assert partitioned_df.write.format.call_args[0][0] == "csv"
+        written_df = partitioned_df.repartition.return_value
+        assert written_df.write.format.call_args[0][0] == "csv"
 
     def test_write_training_dataset_single_append(self, mocker):
         # Arrange
@@ -3984,8 +4005,9 @@ class TestSpark:
         )
         # ...and the write partitions by it in append mode.
         partitioned_df = feature_dataframe.withColumn.return_value
+        written_df = partitioned_df.repartition.return_value
         assert (
-            partitioned_df.write.format.return_value.options.return_value.mode.return_value.partitionBy.call_args[
+            written_df.write.format.return_value.options.return_value.mode.return_value.partitionBy.call_args[
                 0
             ][0]
             == spark_engine.COUNTER_PARTITION_COLUMN
@@ -4123,7 +4145,7 @@ class TestSpark:
         mock_validate.assert_called_once_with(
             "path", spark_engine.DATE_PARTITION_COLUMN
         )
-        mock_partition_date.assert_called_once_with(feature_dataframe, "et", "day")
+        mock_partition_date.assert_called_once_with(feature_dataframe, "et", "month")
         assert feature_dataframe.withColumn.call_args[0][0] == (
             spark_engine.DATE_PARTITION_COLUMN
         )

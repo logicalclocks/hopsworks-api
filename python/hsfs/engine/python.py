@@ -1721,7 +1721,7 @@ class Engine:
                 event_time_column=event_time_column,
                 drop_event_time=drop_event_time,
                 partition_precision=user_write_options.get(
-                    "partition_precision", "day"
+                    "partition_precision", "month"
                 ),
             )
 
