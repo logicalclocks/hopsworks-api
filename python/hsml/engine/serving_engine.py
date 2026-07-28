@@ -508,13 +508,21 @@ class ServingEngine:
             f"under {archives_path}. Log archives are written when a deployment "
             "is stopped or deleted."
         )
-        if not self._dataset_api.path_exists(archives_path):
+        if not self._dataset_api.exists(archives_path):
             raise ModelServingException(no_archives_msg)
 
         _, items = self._dataset_api._list_dataset_path(
             archives_path, inode.Inode, sort_by="NAME:desc"
         )
-        archive_paths = [entry.path for entry in items if not entry.dir]
+        # Inode paths are absolute (/Projects/<project>/...), and download() interpolates the path
+        # straight into the request, so passing them through yields a //Projects/... segment. The
+        # archives are flat files directly under archives_path, so rebuilding project-relative paths
+        # from the basename avoids having to strip a project prefix.
+        archive_paths = [
+            f"{archives_path}/{os.path.basename(entry.path)}"
+            for entry in items
+            if not entry.dir
+        ]
         if latest and archive_paths:
             # File names start with the UTC stop timestamp, so the
             # lexicographically greatest prefix is the most recent stop.

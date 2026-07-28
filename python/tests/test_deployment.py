@@ -1424,7 +1424,7 @@ class TestDeployment:
         archives_dir = f"/Projects/demo/Logs/Serving/{d.name}"
         inodes = [self._make_inode(f"{archives_dir}/{f}") for f in file_names]
         mocker.patch(
-            "hopsworks_common.core.dataset_api.DatasetApi.path_exists",
+            "hopsworks_common.core.dataset_api.DatasetApi.exists",
             return_value=True,
         )
         mock_list = mocker.patch(
@@ -1457,6 +1457,11 @@ class TestDeployment:
         # project's Logs dataset.
         assert mock_list.call_args.args[0] == f"Logs/Serving/{d.name}"
         assert mock_download.call_count == 3
+        # Project-relative, not the absolute inode path: download() interpolates the path into the
+        # request, so an absolute one produces a //Projects/... segment.
+        downloaded = [c.args[0] for c in mock_download.call_args_list]
+        assert downloaded == [f"Logs/Serving/{d.name}/{f}" for f in file_names]
+        assert not any(pth.startswith("/") for pth in downloaded)
         assert [os.path.basename(lp) for lp in local_paths] == file_names
         assert all(lp.startswith(str(tmp_path)) for lp in local_paths)
 
@@ -1498,7 +1503,7 @@ class TestDeployment:
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
         mocker.patch(
-            "hopsworks_common.core.dataset_api.DatasetApi.path_exists",
+            "hopsworks_common.core.dataset_api.DatasetApi.exists",
             return_value=False,
         )
         mock_list = mocker.patch(

@@ -589,10 +589,11 @@ class Deployment:
         Only the live pods are followed; the archived logs of a stopped
         deployment are retrieved with :py:meth:`download_logs`.
 
-        Example::
-
-            for chunk in dep.tail_logs(timeout=120):
+        Example: Following a deployment's live logs
+            ```python
+            for chunk in deployment.tail_logs(timeout=120):
                 print(chunk, end="")
+            ```
 
         Parameters:
             component: ``predictor`` or ``transformer``.
