@@ -618,6 +618,129 @@ class TestSpark:
         # Assert
         assert mock_sc_read.return_value.createOrReplaceTempView.call_count == 1
 
+    def test_register_external_temporary_table_backfills_missing_default_value_column(
+        self, mocker
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        mock_sc_read = mocker.patch("hsfs.storage_connector.JdbcConnector.read")
+        mock_sc_read.return_value.columns = ["id"]
+        mock_lit = mocker.patch("hsfs.engine.spark.lit")
+
+        spark_engine = spark.Engine()
+
+        jdbc_connector = storage_connector.JdbcConnector(
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
+            connection_string="",
+            arguments="",
+        )
+
+        external_fg = feature_group.ExternalFeatureGroup(
+            id=10,
+            location="test_location",
+            data_source=ds.DataSource(storage_connector=jdbc_connector),
+            features=[
+                feature.Feature(name="id", type="int"),
+                feature.Feature(name="name", type="string", default_value="testMe"),
+            ],
+        )
+
+        # Act
+        spark_engine._register_external_temporary_table(
+            external_fg=external_fg,
+            alias=None,
+        )
+
+        # Assert: "id" already exists, so only the missing "name" feature is backfilled
+        mock_lit.assert_called_once_with(None)
+        mock_lit.return_value.cast.assert_called_once_with("string")
+        mock_sc_read.return_value.withColumn.assert_called_once_with(
+            "name", mock_lit.return_value.cast.return_value
+        )
+
+    def test_register_external_temporary_table_missing_column_without_default_untouched(
+        self, mocker
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        mock_sc_read = mocker.patch("hsfs.storage_connector.JdbcConnector.read")
+        mock_sc_read.return_value.columns = ["id"]
+
+        spark_engine = spark.Engine()
+
+        jdbc_connector = storage_connector.JdbcConnector(
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
+            connection_string="",
+            arguments="",
+        )
+
+        external_fg = feature_group.ExternalFeatureGroup(
+            id=10,
+            location="test_location",
+            data_source=ds.DataSource(storage_connector=jdbc_connector),
+            features=[
+                feature.Feature(name="id", type="int"),
+                feature.Feature(name="name", type="string"),
+            ],
+        )
+
+        # Act
+        spark_engine._register_external_temporary_table(
+            external_fg=external_fg,
+            alias=None,
+        )
+
+        # Assert: no default_value set, so the missing column is left alone
+        mock_sc_read.return_value.withColumn.assert_not_called()
+
+    def test_register_external_temporary_table_present_under_column_name_not_backfilled(
+        self, mocker
+    ):
+        # A feature whose source column differs from its name (column_name) and isn't
+        # renamed for this connector (only Mongo renames above) must not be mistaken
+        # for missing and overwritten with a NULL default.
+        mocker.patch("hopsworks_common.client._get_instance")
+        mock_sc_read = mocker.patch("hsfs.storage_connector.JdbcConnector.read")
+        mock_sc_read.return_value.columns = ["id", "raw_col"]
+
+        spark_engine = spark.Engine()
+
+        jdbc_connector = storage_connector.JdbcConnector(
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
+            connection_string="",
+            arguments="",
+        )
+
+        external_fg = feature_group.ExternalFeatureGroup(
+            id=10,
+            location="test_location",
+            data_source=ds.DataSource(storage_connector=jdbc_connector),
+            features=[
+                feature.Feature(name="id", type="int"),
+                feature.Feature(
+                    name="feat",
+                    type="string",
+                    default_value="testMe",
+                    column_name="raw_col",
+                ),
+            ],
+        )
+
+        # Act
+        spark_engine._register_external_temporary_table(
+            external_fg=external_fg,
+            alias=None,
+        )
+
+        # Assert: "raw_col" is present, so "feat" is not treated as missing
+        mock_sc_read.return_value.withColumn.assert_not_called()
+
     def test_register_hudi_temporary_table(self, mocker):
         # Arrange
         mock_hudi_engine = mocker.patch("hsfs.core.hudi_engine.HudiEngine")

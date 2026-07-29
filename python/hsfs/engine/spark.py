@@ -333,6 +333,30 @@ class Engine:
                         external_dataset = external_dataset.withColumnRenamed(
                             feat.column_name, feat.name
                         )
+
+            # A registered feature (e.g. appended via append_features) can be absent
+            # from the physical source entirely — not just NULL-valued — if it was
+            # added after the external source was created. Add it as a typed NULL
+            # column so the query built downstream can resolve it; that query already
+            # substitutes `default_value` for a NULL feature value
+            # (ConstructorController#caseWhenDefault), so only features with a
+            # default are back-filled here. Without one, the missing column is left
+            # alone and still surfaces its original binder/analysis error.
+            existing_columns = set(external_dataset.columns)
+            for feat in external_fg.columns:
+                # Only S3/GCS query construction and the Mongo rename above resolve
+                # column_name to name; other connectors may still expose the raw
+                # source name here. Check both so a present-but-unrenamed column
+                # isn't mistaken for missing and overwritten with NULL.
+                source_column = feat.column_name or feat.name
+                if (
+                    feat.name not in existing_columns
+                    and source_column not in existing_columns
+                    and feat.default_value is not None
+                ):
+                    external_dataset = external_dataset.withColumn(
+                        feat.name, lit(None).cast(feat.type)
+                    )
         else:
             external_dataset = external_fg.dataframe
 
