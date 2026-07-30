@@ -484,7 +484,7 @@ class Deployment:
         """Prints the deployment logs of the predictor or transformer.
 
         Only the live pods of a running deployment are read. Logs of a
-        stopped or deleted deployment are archived to HopsFS and retrieved
+        a stopped deployment are whatever was saved to HopsFS beforehand, retrieved
         with :py:meth:`download_logs` or the "Log history" section in the UI.
 
         .. note::
@@ -529,7 +529,7 @@ class Deployment:
         Programmatic counterpart to :py:meth:`get_logs`. Suitable for
         agents and scripts: never prints, never short-circuits on
         deployment state. The default ``source="kubernetes"`` reads the
-        live pods only; logs of a stopped or deleted deployment are
+        live pods only; logs of a stopped deployment are whatever was saved beforehand and are
         archived to HopsFS and retrieved with :py:meth:`download_logs`
         or the "Log history" section in the UI.
 
@@ -630,15 +630,46 @@ class Deployment:
 
     @public
     @usage._method_logger
+    def save_logs(self, component: str | None = None) -> list[str]:
+        """Save this running deployment's logs to HopsFS.
+
+        Kubernetes pod logs vanish with the pods, so this keeps a copy while the deployment is
+        still running. Files land in the project's ``Logs`` dataset under
+        ``Logs/Serving/<deployment_name>/`` and are retrieved later with
+        :py:meth:`download_logs`. Stopping or deleting a deployment saves nothing on its own.
+
+        Example: Keeping the logs of a deployment you are debugging
+            ```python
+            paths = deployment.save_logs()
+            print("saved:", paths)
+            ```
+
+        Parameters:
+            component: ``predictor`` or ``transformer``; omitted saves every component the
+                deployment has.
+
+        Returns:
+            The HopsFS paths written.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the deployment has no running pods with
+                readable logs, or the archive could not be written.
+        """
+        return self._serving_engine._save_logs(self, component)
+
+    @public
+    @usage._method_logger
     def download_logs(self, path: str | None = None, latest: bool = False) -> list[str]:
         """Download the archived logs of this deployment from HopsFS.
 
-        When a deployment is stopped or deleted, the backend archives the
-        logs of each of its pods to the project's ``Logs`` dataset under
-        ``Logs/Serving/<deployment_name>/``, one file per pod and component
-        named ``<UTC yyyyMMdd-HHmmss>_<pod>_<component>[.previous].log``.
-        The ``.previous`` variant holds the log of the crashed instance of
-        a restarted container.
+        Archives are written by :py:meth:`save_logs` while the deployment is
+        running; stopping or deleting one archives nothing, so there is
+        nothing to download unless it was saved first. Files live in the
+        project's ``Logs`` dataset under ``Logs/Serving/<deployment_name>/``,
+        one per pod and component, named
+        ``<UTC yyyyMMdd-HHmmss>_<pod>_<component>[.previous].log``. The
+        ``.previous`` variant holds the log of the crashed instance of a
+        restarted container.
 
         Example: Downloading the archives written by the most recent stop
             ```python

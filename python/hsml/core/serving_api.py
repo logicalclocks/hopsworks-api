@@ -274,6 +274,30 @@ class ServingApi:
         query_params = {"action": action}
         return _client._send_request("POST", path_params, query_params=query_params)
 
+    def _save_logs(
+        self, deployment_instance: deployment.Deployment, component: str | None = None
+    ) -> list[str]:
+        """Archive a running deployment's logs to the project's Logs dataset.
+
+        Parameters:
+            deployment_instance: Metadata object of the deployment.
+            component: Component to save, or None for all of the deployment's components.
+
+        Returns:
+            The HopsFS paths written.
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "serving",
+            deployment_instance.id,
+            "logs",
+            "archive",
+        ]
+        query_params = {"component": component} if component is not None else None
+        return _client._send_request("POST", path_params, query_params=query_params)
+
     def _delete(self, deployment_instance: deployment.Deployment):
         """Delete the deployment and metadata.
 

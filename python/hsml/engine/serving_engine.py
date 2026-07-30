@@ -478,12 +478,16 @@ class ServingEngine:
 
         return local_path
 
+    def _save_logs(self, deployment_instance, component=None):
+        return self._serving_api._save_logs(deployment_instance, component)
+
     def _download_logs(self, deployment_instance, path=None, latest=False):
         """Download the HopsFS log archives of a deployment.
 
-        The backend archives the pod logs of a deployment to the project's
-        ``Logs`` dataset when the deployment is stopped or deleted, one file
-        per pod and component under ``Logs/Serving/<deployment_name>/`` named
+        Archives are created on request by ``save_logs`` while the deployment
+        runs; nothing is archived when it stops. They live in the project's
+        ``Logs`` dataset, one file per pod and component under
+        ``Logs/Serving/<deployment_name>/`` named
         ``<UTC yyyyMMdd-HHmmss>_<pod>_<component>[.previous].log``.
 
         Parameters:
@@ -505,8 +509,8 @@ class ServingEngine:
         archives_path = f"{MODEL_SERVING.LOGS_DATASET}/{MODEL_SERVING.ARCHIVED_LOGS_DIR}/{deployment_instance.name}"
         no_archives_msg = (
             f"No archived logs found for deployment '{deployment_instance.name}' "
-            f"under {archives_path}. Log archives are written when a deployment "
-            "is stopped or deleted."
+            f"under {archives_path}. Use save_logs() while the deployment is "
+            "running to create one."
         )
         if not self._dataset_api.exists(archives_path):
             raise ModelServingException(no_archives_msg)
