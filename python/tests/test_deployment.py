@@ -1439,50 +1439,6 @@ class TestDeployment:
         )
         return mock_list, mock_download
 
-    def _mock_send_request(self, mocker, return_value):
-        class MockClient:
-            _project_id = "project_id"
-
-            def __init__(self, result):
-                self.result = result
-                self.calls = []
-
-            def _send_request(self, method, path_params, query_params=None, **kwargs):
-                self.calls.append((method, path_params, query_params))
-                return self.result
-
-        mock_client = MockClient(return_value)
-        # serving_api resolves the client through hsml.client, not hopsworks_common.client.
-        mocker.patch("hsml.client._get_instance", return_value=mock_client)
-        return mock_client
-
-    def test_save_logs_posts_to_the_archive_endpoint(self, mocker, backend_fixtures):
-        p = self._get_dummy_predictor(mocker, backend_fixtures)
-        d = deployment.Deployment(predictor=p)
-        mock_client = self._mock_send_request(
-            mocker,
-            ["/Projects/demo/Logs/Serving/d/20260601-120000_pod-a_predictor.log"],
-        )
-
-        paths = d.save_logs()
-
-        assert len(paths) == 1
-        method, path_params, query_params = mock_client.calls[0]
-        assert method == "POST"
-        # Archiving is a sub-resource of the deployment's logs, not a lifecycle action, so it must
-        # not go through the ?action= path that start and stop use.
-        assert path_params[-2:] == ["logs", "archive"]
-        assert query_params is None
-
-    def test_save_logs_passes_the_component_when_given(self, mocker, backend_fixtures):
-        p = self._get_dummy_predictor(mocker, backend_fixtures)
-        d = deployment.Deployment(predictor=p)
-        mock_client = self._mock_send_request(mocker, [])
-
-        d.save_logs(component="transformer")
-
-        assert mock_client.calls[0][2] == {"component": "transformer"}
-
     def test_download_logs_downloads_all_archives(
         self, mocker, backend_fixtures, tmp_path
     ):

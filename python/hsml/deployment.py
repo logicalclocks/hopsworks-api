@@ -630,48 +630,17 @@ class Deployment:
 
     @public
     @usage._method_logger
-    def save_logs(self, component: str | None = None) -> list[str]:
-        """Save this running deployment's logs to HopsFS.
-
-        Kubernetes pod logs vanish with the pods, so this keeps a copy while the deployment is
-        still running. Files land in the project's ``Logs`` dataset under
-        ``Logs/Serving/<deployment_name>/`` and are retrieved later with
-        :py:meth:`download_logs`. Stopping or deleting a deployment saves nothing on its own.
-
-        Example: Keeping the logs of a deployment you are debugging
-            ```python
-            paths = deployment.save_logs()
-            print("saved:", paths)
-            ```
-
-        Parameters:
-            component: ``predictor`` or ``transformer``; omitted saves every component the
-                deployment has.
-
-        Returns:
-            The HopsFS paths written.
-
-        Raises:
-            hopsworks.client.exceptions.RestAPIError: If the deployment has no running pods with
-                readable logs, or the archive could not be written.
-        """
-        return self._serving_engine._save_logs(self, component)
-
-    @public
-    @usage._method_logger
     def download_logs(self, path: str | None = None, latest: bool = False) -> list[str]:
         """Download the archived logs of this deployment from HopsFS.
 
-        Archives are written by :py:meth:`save_logs` while the deployment is
-        running; stopping or deleting one archives nothing, so there is
-        nothing to download unless it was saved first. Files live in the
-        project's ``Logs`` dataset under ``Logs/Serving/<deployment_name>/``,
-        one per pod and component, named
-        ``<UTC yyyyMMdd-HHmmss>_<pod>_<component>[.previous].log``. The
-        ``.previous`` variant holds the log of the crashed instance of a
-        restarted container.
+        Each running instance archives its own output to the project's ``Logs``
+        dataset without being asked: the container copies its log to
+        ``Logs/Serving/<deployment_name>/`` when it exits, is restarted, or is
+        stopped, so a pod removed by scale-to-zero still leaves its output
+        behind. Files are named
+        ``<UTC yyyyMMdd-HHmmss>_<pod>_<component>.log``, one per instance run.
 
-        Example: Downloading the archives written by the most recent stop
+        Example: Downloading the most recent archives
             ```python
             local_paths = deployment.download_logs(latest=True)
             for local_path in local_paths:
@@ -680,7 +649,7 @@ class Deployment:
 
         Parameters:
             path: Local directory to download the archives into; the current working directory is used when unset.
-            latest: Download only the archives of the most recent stop instead of all of them.
+            latest: Download only the most recent archives instead of all of them.
 
         Returns:
             The local paths of the downloaded archive files.

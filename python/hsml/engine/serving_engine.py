@@ -478,22 +478,18 @@ class ServingEngine:
 
         return local_path
 
-    def _save_logs(self, deployment_instance, component=None):
-        return self._serving_api._save_logs(deployment_instance, component)
-
     def _download_logs(self, deployment_instance, path=None, latest=False):
         """Download the HopsFS log archives of a deployment.
 
-        Archives are created on request by ``save_logs`` while the deployment
-        runs; nothing is archived when it stops. They live in the project's
-        ``Logs`` dataset, one file per pod and component under
-        ``Logs/Serving/<deployment_name>/`` named
-        ``<UTC yyyyMMdd-HHmmss>_<pod>_<component>[.previous].log``.
+        Each instance archives its own output when it exits, restarts, or is
+        stopped. Archives live in the project's ``Logs`` dataset, one file per
+        instance run under ``Logs/Serving/<deployment_name>/`` named
+        ``<UTC yyyyMMdd-HHmmss>_<pod>_<component>.log``.
 
         Parameters:
             deployment_instance: The deployment whose archived logs to download.
             path: Local directory to download into; the current working directory when unset.
-            latest: Download only the archives of the most recent stop instead of all of them.
+            latest: Download only the most recent archives instead of all of them.
 
         Returns:
             The local paths of the downloaded archive files.
@@ -509,8 +505,8 @@ class ServingEngine:
         archives_path = f"{MODEL_SERVING.LOGS_DATASET}/{MODEL_SERVING.ARCHIVED_LOGS_DIR}/{deployment_instance.name}"
         no_archives_msg = (
             f"No archived logs found for deployment '{deployment_instance.name}' "
-            f"under {archives_path}. Use save_logs() while the deployment is "
-            "running to create one."
+            f"under {archives_path}. Instances archive their logs when they "
+            "exit, restart, or are stopped."
         )
         if not self._dataset_api.exists(archives_path):
             raise ModelServingException(no_archives_msg)
