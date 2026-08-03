@@ -1675,6 +1675,28 @@ class FeatureViewEngine:
 
         # FSTORE-1871 combines the untransformed and transformed logging feature groups.
         # Transformed and untransformed logging features groups are retrived here to maintain backwards compatibility.
+        # Legacy rows (still carrying both feature groups) route per data kind like the
+        # pre-FSTORE-1871 client did: the transformed feature group only receives rows when
+        # transformed data was actually supplied, instead of a copy of every logged row.
+        if feature_logging._is_legacy:
+            logging_meta_data = getattr(logs, "hopsworks_logging_metadata", None)
+            has_transformed_data = transformed_features is not None or (
+                logging_meta_data is not None
+                and bool(logging_meta_data.transformed_features)
+            )
+            has_untransformed_data = (
+                logs is not None
+                or untransformed_features is not None
+                or (
+                    logging_meta_data is not None
+                    and bool(logging_meta_data.untransformed_features)
+                )
+                or not has_transformed_data
+            )
+        else:
+            has_untransformed_data = True
+            has_transformed_data = True
+
         if logger:
             logger.log(
                 **{
@@ -1698,28 +1720,30 @@ class FeatureViewEngine:
                             model_version=model_version,
                             return_list=True,
                         )
-                        if fg
+                        if fg and has_data
                         else None
                     )
-                    for key, fg in [
+                    for key, fg, has_data in [
                         (
                             constants.FEATURE_LOGGING.UNTRANSFORMED_FEATURES,
                             feature_logging.untransformed_features,
+                            has_untransformed_data,
                         ),
                         (
                             constants.FEATURE_LOGGING.TRANSFORMED_FEATURES,
                             feature_logging.transformed_features,
+                            has_transformed_data,
                         ),
                     ]
                 }
             )
 
         else:
-            for fg in [
-                feature_logging.untransformed_features,
-                feature_logging.transformed_features,
+            for fg, has_data in [
+                (feature_logging.untransformed_features, has_untransformed_data),
+                (feature_logging.transformed_features, has_transformed_data),
             ]:
-                if fg:
+                if fg and has_data:
                     logging_df = self._get_feature_logging_data(
                         fv=fv,
                         logging_feature_group=fg,
@@ -1869,11 +1893,6 @@ class FeatureViewEngine:
         logging_feature_group_feature_names = [
             feature.name for feature in logging_feature_group_features
         ]
-        logging_features = [
-            feature_name
-            for feature_name in logging_feature_group_feature_names
-            if feature_name not in constants.FEATURE_LOGGING.LOGGING_METADATA_COLUMNS
-        ]
         model_name = (
             model_name if model_name else hsml_model.name if hsml_model else None
         )
@@ -1884,6 +1903,29 @@ class FeatureViewEngine:
             if hsml_model
             else None
         )
+
+        # Logging feature groups created before FSTORE-1871 store the model identity in a single
+        # hsml_model column instead of model_name/model_version. Write that column (with the
+        # concatenated value the old schema used) so the model identity is not silently dropped.
+        model_col_name = constants.FEATURE_LOGGING.MODEL_COLUMN_NAME
+        if FeatureLogging._uses_legacy_model_column(
+            logging_feature_group_feature_names
+        ):
+            model_col_name = constants.FEATURE_LOGGING.LEGACY_MODEL_COLUMN_NAME
+            if model_name is not None:
+                model_name = (
+                    f"{model_name}_{model_version}"
+                    if model_version is not None
+                    else model_name
+                )
+
+        metadata_column_names = set(constants.FEATURE_LOGGING.LOGGING_METADATA_COLUMNS)
+        metadata_column_names.add(model_col_name)
+        logging_features = [
+            feature_name
+            for feature_name in logging_feature_group_feature_names
+            if feature_name not in metadata_column_names
+        ]
 
         if return_list:
             logging_data, additional_logging_features, missing_logging_features = (
@@ -1935,7 +1977,7 @@ class FeatureViewEngine:
                     ),
                     td_col_name=constants.FEATURE_LOGGING.TRAINING_DATASET_VERSION_COLUMN_NAME,
                     time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
-                    model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
+                    model_col_name=model_col_name,
                     training_dataset_version=training_dataset_version,
                     model_name=model_name,
                     model_version=model_version,
@@ -1991,7 +2033,7 @@ class FeatureViewEngine:
                     ),
                     td_col_name=constants.FEATURE_LOGGING.TRAINING_DATASET_VERSION_COLUMN_NAME,
                     time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
-                    model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
+                    model_col_name=model_col_name,
                     training_dataset_version=training_dataset_version,
                     model_name=model_name,
                     model_version=model_version,
@@ -2041,27 +2083,62 @@ class FeatureViewEngine:
                 )
                 == training_dataset_version
             )
+        # Logging feature groups created before FSTORE-1871 store the model identity in a single
+        # hsml_model column ("<name>_<version>") instead of model_name/model_version.
+        legacy_model_column = FeatureLogging._uses_legacy_model_column(
+            {feature.name for feature in fg.columns}
+        )
         if hsml_model:
-            query = query.filter(
-                (
-                    fg.get_feature(constants.FEATURE_LOGGING.MODEL_COLUMN_NAME)
-                    == hsml_model.name
+            if legacy_model_column:
+                query = query.filter(
+                    fg.get_feature(constants.FEATURE_LOGGING.LEGACY_MODEL_COLUMN_NAME)
+                    == self._get_hsml_model_value(hsml_model)
                 )
-                and (
-                    fg.get_feature(constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME)
-                    == hsml_model.version
+            else:
+                query = query.filter(
+                    (
+                        fg.get_feature(constants.FEATURE_LOGGING.MODEL_COLUMN_NAME)
+                        == hsml_model.name
+                    )
+                    & (
+                        fg.get_feature(
+                            constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME
+                        )
+                        == hsml_model.version
+                    )
                 )
-            )
         if model_name:
-            query = query.filter(
-                fg.get_feature(constants.FEATURE_LOGGING.MODEL_COLUMN_NAME)
-                == model_name
-            )
+            if legacy_model_column:
+                if model_version:
+                    query = query.filter(
+                        fg.get_feature(
+                            constants.FEATURE_LOGGING.LEGACY_MODEL_COLUMN_NAME
+                        )
+                        == f"{model_name}_{model_version}"
+                    )
+                else:
+                    query = query.filter(
+                        fg.get_feature(
+                            constants.FEATURE_LOGGING.LEGACY_MODEL_COLUMN_NAME
+                        ).like(f"{model_name}_%")
+                    )
+            else:
+                query = query.filter(
+                    fg.get_feature(constants.FEATURE_LOGGING.MODEL_COLUMN_NAME)
+                    == model_name
+                )
         if model_version:
-            query = query.filter(
-                fg.get_feature(constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME)
-                == model_version
-            )
+            if legacy_model_column:
+                if not model_name and not hsml_model:
+                    raise FeatureStoreException(
+                        "This logging feature group predates the model_name/model_version columns, so "
+                        "filtering by model_version alone is not supported. Pass `model` or `model_name` as well."
+                    )
+            else:
+                query = query.filter(
+                    fg.get_feature(constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME)
+                    == model_version
+                )
         if filter:
             query = query.filter(
                 self._convert_to_log_fg_filter(fg, fv, filter, fv_feat_name_map)

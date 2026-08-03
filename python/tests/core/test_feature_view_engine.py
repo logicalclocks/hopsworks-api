@@ -38,7 +38,7 @@ from hsfs.core import (
 )
 from hsfs.core import data_source as ds
 from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
-from hsfs.core.feature_logging import LoggingMetaData
+from hsfs.core.feature_logging import FeatureLogging, LoggingMetaData
 from hsfs.hopsworks_udf import udf
 from hsfs.serving_key import ServingKey
 from hsfs.storage_connector import BigQueryConnector, StorageConnector
@@ -4838,6 +4838,263 @@ class TestFeatureViewEngine:
         transformed_names.assert_called_once_with(5)
         untransformed_names.assert_called_once_with(5)
         label_names.assert_called_once_with(5)
+
+    def test_feature_logging_legacy_classification(self):
+        legacy_fg = MagicMock()
+        combined_fg = MagicMock()
+
+        assert FeatureLogging(1, legacy_fg, combined_fg)._is_legacy
+        assert not FeatureLogging(1, None, combined_fg)._is_legacy
+
+        legacy_names = ["log_id", "td_version", "log_time", "hsml_model", "label"]
+        new_names = ["log_id", "model_name", "model_version", "predicted_label"]
+        corrupted_names = ["log_id", "model_name", "model_version", "hsml_model"]
+        assert FeatureLogging._uses_legacy_model_column(legacy_names)
+        assert not FeatureLogging._uses_legacy_model_column(new_names)
+        # Fail closed: a feature group with both model columns is treated as current schema.
+        assert not FeatureLogging._uses_legacy_model_column(corrupted_names)
+
+        assert FeatureLogging._prediction_column_names(["label"], legacy_names) == {
+            "label": "label"
+        }
+        assert FeatureLogging._prediction_column_names(["label"], new_names) == {
+            "label": "predicted_label"
+        }
+        # Fail closed: both the bare and prefixed columns present resolves to the prefixed name.
+        assert FeatureLogging._prediction_column_names(
+            ["label"], ["label", "predicted_label"]
+        ) == {"label": "predicted_label"}
+
+    def _legacy_logging_fg(self):
+        return feature_group.FeatureGroup(
+            name="fv_name_1_logging_untransformed",
+            version=1,
+            featurestore_id=99,
+            primary_key=["log_id"],
+            partition_key=[],
+            features=[
+                feature.Feature("log_id", primary=True, type="string"),
+                feature.Feature("td_version", type="bigint"),
+                feature.Feature("log_time", type="timestamp"),
+                feature.Feature("hsml_model", type="string"),
+                feature.Feature("feature_1", type="double"),
+                feature.Feature("feature_2", type="double"),
+                feature.Feature("label", type="bigint"),
+            ],
+            id=12,
+            stream=False,
+            featurestore_name="test_fs",
+        )
+
+    def test_get_feature_logging_data_legacy_model_column(self, mocker):
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mocked_engine = mocker.Mock()
+        mocker.patch("hsfs.engine._get_instance", return_value=mocked_engine)
+        mocked_engine._get_feature_logging_df.return_value = (pd.DataFrame, None, None)
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=["primary_key"],
+            event_time="event_time",
+            partition_key=[],
+            features=[
+                feature.Feature("primary_key", primary=True, type="bigint"),
+                feature.Feature("event_time", type="timestamp"),
+                feature.Feature("feature_1", type="float"),
+                feature.Feature("feature_2", type="float"),
+            ],
+            id=11,
+            stream=False,
+            featurestore_name="test_fs",
+        )
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=fg.select_all(),
+        )
+        fv.schema = [
+            TrainingDatasetFeature("feature_1", type="double"),
+            TrainingDatasetFeature("feature_2", type="double"),
+            TrainingDatasetFeature(name="label", type="bigint", label=True),
+        ]
+        fv._serving_keys = []
+        fv._FeatureView__extra_logging_column_names = []
+
+        legacy_logging_fg = self._legacy_logging_fg()
+
+        # Act
+        fv_engine._get_feature_logging_data(
+            fv=fv,
+            logging_feature_group=legacy_logging_fg,
+            untransformed_features=pd.DataFrame(
+                {"feature_1": [0.1], "feature_2": [0.2]}
+            ),
+            predictions=pd.DataFrame({"label": [1]}),
+            model_name="test_model",
+            model_version=1,
+            return_list=False,
+        )
+
+        # Assert: the legacy hsml_model column receives the concatenated model identity.
+        call_args = mocked_engine._get_feature_logging_df.call_args
+        assert call_args[1]["model_col_name"] == "hsml_model"
+        assert call_args[1]["model_name"] == "test_model_1"
+        # hsml_model is metadata, not an expected user data column.
+        assert "hsml_model" not in call_args[1]["logging_features"]
+
+    def test_log_features_legacy_per_kind_targeting_untransformed(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        fv_engine = feature_view_engine.FeatureViewEngine(feature_store_id=99)
+        mocker.patch.object(
+            fv_engine, "_get_feature_logging_data", return_value=pd.DataFrame()
+        )
+        untransformed_fg = MagicMock()
+        transformed_fg = MagicMock()
+        legacy_feature_logging = FeatureLogging(1, transformed_fg, untransformed_fg)
+
+        # Act: only untransformed-kind data supplied.
+        fv_engine._log_features(
+            fv=mocker.Mock(),
+            feature_logging=legacy_feature_logging,
+            untransformed_features=pd.DataFrame({"feature_1": [0.1]}),
+        )
+
+        # Assert: the transformed feature group receives no row.
+        assert untransformed_fg.insert.call_count == 1
+        transformed_fg.insert.assert_not_called()
+
+    def test_log_features_legacy_per_kind_targeting_transformed(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        fv_engine = feature_view_engine.FeatureViewEngine(feature_store_id=99)
+        mocker.patch.object(
+            fv_engine, "_get_feature_logging_data", return_value=pd.DataFrame()
+        )
+        untransformed_fg = MagicMock()
+        transformed_fg = MagicMock()
+        legacy_feature_logging = FeatureLogging(1, transformed_fg, untransformed_fg)
+
+        # Act: only transformed data supplied.
+        fv_engine._log_features(
+            fv=mocker.Mock(),
+            feature_logging=legacy_feature_logging,
+            transformed_features=pd.DataFrame({"min_max_scaler_feature_1": [0.1]}),
+        )
+
+        # Assert: the untransformed feature group receives no row.
+        transformed_fg.insert.assert_called_once()
+        untransformed_fg.insert.assert_not_called()
+
+    def test_log_features_combined_fg_unaffected_by_targeting(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        fv_engine = feature_view_engine.FeatureViewEngine(feature_store_id=99)
+        mocker.patch.object(
+            fv_engine, "_get_feature_logging_data", return_value=pd.DataFrame()
+        )
+        combined_fg = MagicMock()
+        combined_feature_logging = FeatureLogging(1, None, combined_fg)
+
+        # Act: transformed-only data on a combined feature group still lands there.
+        fv_engine._log_features(
+            fv=mocker.Mock(),
+            feature_logging=combined_feature_logging,
+            transformed_features=pd.DataFrame({"min_max_scaler_feature_1": [0.1]}),
+        )
+
+        # Assert
+        combined_fg.insert.assert_called_once()
+
+    def test_read_feature_logs_legacy_model_filter(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mocked_engine = mocker.Mock()
+        mocker.patch("hsfs.engine._get_instance", return_value=mocked_engine)
+        fv_engine = feature_view_engine.FeatureViewEngine(feature_store_id=99)
+
+        legacy_logging_fg = self._legacy_logging_fg()
+        mocker.patch.object(
+            fv_engine, "_get_logging_fg", return_value=legacy_logging_fg
+        )
+        mocker.patch.object(fv_engine, "_get_fv_feature_name_map", return_value={})
+        query = MagicMock()
+        query.filter.return_value = query
+        mocker.patch.object(
+            feature_group.FeatureGroup, "select_all", return_value=query
+        )
+
+        # Act: model object filters on the concatenated hsml_model value.
+        mock_hsml_model = mocker.Mock()
+        mock_hsml_model.name = "test_model"
+        mock_hsml_model.version = 2
+        fv_engine._read_feature_logs(fv=mocker.Mock(), hsml_model=mock_hsml_model)
+
+        # Assert
+        applied_filter = query.filter.call_args[0][0]
+        assert applied_filter._feature.name == "hsml_model"
+        assert applied_filter._condition == "EQUALS"
+        assert applied_filter._value == "test_model_2"
+
+    def test_read_feature_logs_legacy_model_name_like_filter(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mocked_engine = mocker.Mock()
+        mocker.patch("hsfs.engine._get_instance", return_value=mocked_engine)
+        fv_engine = feature_view_engine.FeatureViewEngine(feature_store_id=99)
+
+        legacy_logging_fg = self._legacy_logging_fg()
+        mocker.patch.object(
+            fv_engine, "_get_logging_fg", return_value=legacy_logging_fg
+        )
+        mocker.patch.object(fv_engine, "_get_fv_feature_name_map", return_value={})
+        query = MagicMock()
+        query.filter.return_value = query
+        mocker.patch.object(
+            feature_group.FeatureGroup, "select_all", return_value=query
+        )
+
+        # Act: name-only filter falls back to a prefix match on the concatenated value.
+        fv_engine._read_feature_logs(fv=mocker.Mock(), model_name="test_model")
+
+        # Assert
+        applied_filter = query.filter.call_args[0][0]
+        assert applied_filter._feature.name == "hsml_model"
+        assert applied_filter._condition == "LIKE"
+        assert applied_filter._value == "test_model_%"
+
+    def test_read_feature_logs_legacy_model_version_only_raises(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mocked_engine = mocker.Mock()
+        mocker.patch("hsfs.engine._get_instance", return_value=mocked_engine)
+        fv_engine = feature_view_engine.FeatureViewEngine(feature_store_id=99)
+
+        legacy_logging_fg = self._legacy_logging_fg()
+        mocker.patch.object(
+            fv_engine, "_get_logging_fg", return_value=legacy_logging_fg
+        )
+        mocker.patch.object(fv_engine, "_get_fv_feature_name_map", return_value={})
+        query = MagicMock()
+        query.filter.return_value = query
+        mocker.patch.object(
+            feature_group.FeatureGroup, "select_all", return_value=query
+        )
+
+        # Act + Assert
+        with pytest.raises(FeatureStoreException, match="model_version alone"):
+            fv_engine._read_feature_logs(fv=mocker.Mock(), model_version=2)
 
 
 class TestFeatureLoggingWithoutEventTime:

@@ -10208,3 +10208,175 @@ class TestPython:
                 self._get_val_multi(result, {"user_id": 1, "item_id": 10}, "val")
                 == "new"
             )
+
+    @staticmethod
+    def _legacy_logging_fg_features():
+        return [
+            feature.Feature(
+                constants.FEATURE_LOGGING.LOG_ID_COLUMN_NAME,
+                primary=True,
+                type="string",
+            ),
+            feature.Feature(
+                constants.FEATURE_LOGGING.TRAINING_DATASET_VERSION_COLUMN_NAME,
+                type="int",
+            ),
+            feature.Feature(
+                constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME, type="timestamp"
+            ),
+            feature.Feature(
+                constants.FEATURE_LOGGING.LEGACY_MODEL_COLUMN_NAME, type="string"
+            ),
+            feature.Feature("feature_1", type="double"),
+            feature.Feature("feature_2", type="double"),
+            feature.Feature("label", type="string"),
+        ]
+
+    @staticmethod
+    def _legacy_logging_arguments(logging_feature_group_features, **data_kwargs):
+        column_names = {
+            "untransformed_features": ["feature_1", "feature_2"],
+            "transformed_features": ["feature_1", "feature_2"],
+            "predictions": ["label"],
+            "serving_keys": [],
+            "helper_columns": [],
+            "request_parameters": [],
+            "event_time": [],
+            "request_id": [],
+            "extra_logging_features": [],
+        }
+        args = TestPython.get_logging_arguments(
+            column_names=column_names,
+            logging_feature_group_features=logging_feature_group_features,
+            **data_kwargs,
+        )
+        # Mirror the shared layer's legacy handling: hsml_model is the metadata model
+        # column and never an expected user data column.
+        args["model_col_name"] = constants.FEATURE_LOGGING.LEGACY_MODEL_COLUMN_NAME
+        args["model_name"] = "test_model_1"
+        args["logging_features"] = [
+            name
+            for name in args["logging_features"]
+            if name != constants.FEATURE_LOGGING.LEGACY_MODEL_COLUMN_NAME
+        ]
+        return args
+
+    def test_get_feature_logging_df_legacy_feature_group(self, mocker):
+        # Prepare
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        python_engine = python.Engine()
+
+        logging_feature_group_features = TestPython._legacy_logging_fg_features()
+        untransformed_df = pd.DataFrame(
+            {"feature_1": [0.1, 0.2], "feature_2": [0.3, 0.4]}
+        )
+        predictions_df = pd.DataFrame({"label": ["a", "b"]})
+        args = TestPython._legacy_logging_arguments(
+            logging_feature_group_features,
+            untransformed_features=untransformed_df,
+            predictions=predictions_df,
+        )
+
+        # Act
+        logging_dataframe, _, _ = python_engine._get_feature_logging_df(**args)
+
+        # Assert: predictions stay under the bare label name and the model identity
+        # lands in the legacy hsml_model column.
+        assert list(logging_dataframe.columns) == [
+            feat.name for feat in logging_feature_group_features
+        ]
+        assert logging_dataframe["label"].tolist() == ["a", "b"]
+        assert logging_dataframe[
+            constants.FEATURE_LOGGING.LEGACY_MODEL_COLUMN_NAME
+        ].tolist() == ["test_model_1", "test_model_1"]
+
+    def test_get_feature_logging_df_corrupted_feature_group_fails_closed(self, mocker):
+        # Prepare
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        python_engine = python.Engine()
+
+        # A combined feature group polluted with a stray hsml_model column: predictions
+        # must still be written to predicted_<label> (current schema wins).
+        logging_feature_group_features = [
+            feature.Feature(
+                constants.FEATURE_LOGGING.LOG_ID_COLUMN_NAME,
+                primary=True,
+                type="string",
+            ),
+            feature.Feature(
+                constants.FEATURE_LOGGING.TRAINING_DATASET_VERSION_COLUMN_NAME,
+                type="int",
+            ),
+            feature.Feature(
+                constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME, type="timestamp"
+            ),
+            feature.Feature(constants.FEATURE_LOGGING.MODEL_COLUMN_NAME, type="string"),
+            feature.Feature(
+                constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME, type="string"
+            ),
+            feature.Feature(
+                constants.FEATURE_LOGGING.LEGACY_MODEL_COLUMN_NAME, type="string"
+            ),
+            feature.Feature("feature_1", type="double"),
+            feature.Feature("feature_2", type="double"),
+            feature.Feature(
+                constants.FEATURE_LOGGING.PREFIX_PREDICTIONS + "label", type="string"
+            ),
+        ]
+        column_names = {
+            "untransformed_features": ["feature_1", "feature_2"],
+            "transformed_features": ["feature_1", "feature_2"],
+            "predictions": ["label"],
+            "serving_keys": [],
+            "helper_columns": [],
+            "request_parameters": [],
+            "event_time": [],
+            "request_id": [],
+            "extra_logging_features": [],
+        }
+        args = TestPython.get_logging_arguments(
+            column_names=column_names,
+            logging_feature_group_features=logging_feature_group_features,
+            untransformed_features=pd.DataFrame(
+                {"feature_1": [0.1, 0.2], "feature_2": [0.3, 0.4]}
+            ),
+            predictions=pd.DataFrame({"label": ["a", "b"]}),
+        )
+
+        # Act
+        logging_dataframe, _, _ = python_engine._get_feature_logging_df(**args)
+
+        # Assert
+        assert logging_dataframe[
+            constants.FEATURE_LOGGING.PREFIX_PREDICTIONS + "label"
+        ].tolist() == ["a", "b"]
+        assert (
+            logging_dataframe[constants.FEATURE_LOGGING.LEGACY_MODEL_COLUMN_NAME]
+            .isna()
+            .all()
+        )
+
+    def test_get_feature_logging_list_legacy_feature_group(self, mocker):
+        # Prepare
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        python_engine = python.Engine()
+
+        logging_feature_group_features = TestPython._legacy_logging_fg_features()
+        args = TestPython._legacy_logging_arguments(
+            logging_feature_group_features,
+            untransformed_features=[[0.1, 0.3], [0.2, 0.4]],
+            predictions=[["a"], ["b"]],
+        )
+
+        # Act
+        log_vectors, _, _ = python_engine._get_feature_logging_list(**args)
+
+        # Assert: rows keep the bare label key instead of predicted_<label>.
+        assert [row["label"] for row in log_vectors] == ["a", "b"]
+        assert all(
+            constants.FEATURE_LOGGING.PREFIX_PREDICTIONS + "label" not in row
+            for row in log_vectors
+        )

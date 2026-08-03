@@ -95,7 +95,7 @@ from hsfs.core.constants import (
     HAS_PYARROW,
     HAS_SQLALCHEMY,
 )
-from hsfs.core.feature_logging import LoggingMetaData
+from hsfs.core.feature_logging import FeatureLogging, LoggingMetaData
 from hsfs.core.type_systems import PYARROW_HOPSWORKS_DTYPE_MAPPING
 from hsfs.core.vector_db_client import VectorDbClient
 from hsfs.feature_group import ExternalFeatureGroup, FeatureGroup
@@ -2552,16 +2552,20 @@ class Engine:
                         # Higher precedence is given if the user explicitly passed the logging component.
                         logging_df[col] = df[col]
 
-        # Rename prediction columns
+        # Rename prediction columns to the name they take in the logging feature group
+        # (predicted_<label>, or the bare label name for legacy pre-FSTORE-1871 feature groups).
         _, predictions_feature_names, _ = predictions
         if predictions_feature_names:
-            for feature_name in predictions_feature_names:
-                logging_df = logging_df.rename(
-                    columns={
-                        feature_name: constants.FEATURE_LOGGING.PREFIX_PREDICTIONS
-                        + feature_name
-                    }
-                )
+            prediction_column_names = FeatureLogging._prediction_column_names(
+                predictions_feature_names, logging_feature_group_feature_names
+            )
+            logging_df = logging_df.rename(
+                columns={
+                    feature_name: target_name
+                    for feature_name, target_name in prediction_column_names.items()
+                    if target_name != feature_name
+                }
+            )
 
         # Creating a json column for request parameters
         request_parameter_data, request_parameter_columns, _ = request_parameters
@@ -2797,6 +2801,11 @@ class Engine:
             A list of dictionaries with all the logging components
         """
         _, label_columns, _ = predictions
+        # Name each label column takes in the logging feature group (predicted_<label>, or the bare
+        # label name for legacy pre-FSTORE-1871 feature groups).
+        prediction_column_names = FeatureLogging._prediction_column_names(
+            label_columns or [], logging_feature_group_feature_names
+        )
         # If any of the logging components is a dataframe, we use the _get_feature_logging_df function to get a dataframe and then _convert it to a list of dictionaries.
         if any(
             (HAS_PANDAS and isinstance(data, pd.DataFrame))
@@ -2861,7 +2870,9 @@ class Engine:
             if not data:
                 if log_component_name == constants.FEATURE_LOGGING.PREDICTIONS:
                     feature_names = [
-                        constants.FEATURE_LOGGING.PREFIX_PREDICTIONS + name
+                        prediction_column_names.get(
+                            name, constants.FEATURE_LOGGING.PREFIX_PREDICTIONS + name
+                        )
                         for name in feature_names
                     ]
                 all_missing_columns.update(set(feature_names))
@@ -2891,7 +2902,7 @@ class Engine:
                             else {
                                 col
                                 if col not in label_columns
-                                else constants.FEATURE_LOGGING.PREFIX_PREDICTIONS + col
+                                else prediction_column_names[col]
                                 for col in row
                             }
                         )
@@ -2957,10 +2968,9 @@ class Engine:
         if predictions_feature_names:
             for log_vector in log_vectors:
                 for feature_name in predictions_feature_names:
-                    if feature_name in log_vector:
-                        log_vector[
-                            constants.FEATURE_LOGGING.PREFIX_PREDICTIONS + feature_name
-                        ] = log_vector.pop(feature_name)
+                    target_name = prediction_column_names[feature_name]
+                    if feature_name in log_vector and target_name != feature_name:
+                        log_vector[target_name] = log_vector.pop(feature_name)
 
         # Create a json column for request parameters
         request_parameter_data, request_parameter_names, _ = request_parameters
