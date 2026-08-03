@@ -369,7 +369,9 @@ class JobSearchResult(SearchResultItem):
         """
         from hopsworks_common.core import job_api
 
-        return job_api.JobApi(project_id=self.project.id).get_job(self.name)
+        return job_api.JobApi(
+            project_id=self.project.id, project_name=self.project.name
+        ).get_job(self.name)
 
     def json(self) -> dict:
         """Convert to JSON-serializable dictionary.
@@ -399,9 +401,15 @@ class DatasetSearchResult(SearchResultItem):
     def _dataset_api(self) -> DatasetApi:
         from hopsworks_common.core import dataset_api
 
+        # Fail closed. Falling back to the connection's project would answer about a same-named
+        # dataset of the wrong project, which reads as success; a hit without project metadata is a
+        # hit nothing can be done with.
+        if self.project is None:
+            raise ValueError(
+                "this search result carries no project, so its dataset cannot be resolved"
+            )
         return dataset_api.DatasetApi(
-            project_id=self.project.id if self.project else None,
-            project_name=self.project.name if self.project else None,
+            project_id=self.project.id, project_name=self.project.name
         )
 
     @public

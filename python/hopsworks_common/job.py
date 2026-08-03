@@ -74,9 +74,21 @@ class Job:
 
         self._execution_engine = execution_engine.ExecutionEngine()
         self._execution_api = execution_api.ExecutionApi()
-        self._execution_engine = execution_engine.ExecutionEngine()
         self._job_api = job_api.JobApi()
         self._alerts_api = alerts_api.AlertsApi()
+        self._project_id = None
+        self._project_name = None
+
+    def _bind_project(self, project_id: int, project_name: str) -> None:
+        """Address the project this job actually belongs to.
+
+        Everything a Job does afterwards goes through the handle rebuilt here: update, delete,
+        schedule, executions, tags. Without it a job fetched from another authorized project would
+        be mutated in the login project, which is the same defect dataset search results had.
+        """
+        self._project_id = project_id
+        self._project_name = project_name
+        self._job_api = job_api.JobApi(project_id=project_id, project_name=project_name)
 
     @classmethod
     def from_response_json(cls, json_dict):

@@ -719,3 +719,48 @@ class TestJobTags:
 
         assert j.get_tags_metadata() == {"meta": tag_obj}
         api._get_tags_metadata.assert_called_once_with(j)
+
+
+class TestJobProjectBinding:
+    """A job addresses the project it came from, not the connection's."""
+
+    def _job(self):
+        from hopsworks_common.job import Job
+
+        return Job(
+            id=7,
+            name="nightly",
+            creation_time="2026-08-03T00:00:00Z",
+            config={"type": "sparkJobConfiguration"},
+            job_type="SPARK",
+            creator=None,
+        )
+
+    def test_unbound_job_uses_the_connection(self):
+        job = self._job()
+        assert job._project_id is None
+        assert job._job_api._project_id is None
+
+    def test_binding_rebuilds_the_handle(self):
+        job = self._job()
+        job._bind_project(42, "other_project")
+        # Every later operation goes through this handle: update, delete,
+        # schedule, executions, tags.
+        assert job._job_api._project_id == 42
+        assert job._job_api._project_name == "other_project"
+
+    def test_job_api_stamps_the_jobs_it_returns(self, mocker):
+        from hopsworks_common.core import job_api
+
+        api = job_api.JobApi(project_id=42, project_name="other_project")
+        job = self._job()
+        assert api._bind(job) is job
+        assert job._job_api._project_id == 42
+
+    def test_bind_tolerates_a_list_and_none(self):
+        from hopsworks_common.core import job_api
+
+        api = job_api.JobApi(project_id=9, project_name="p")
+        jobs = [self._job(), None]
+        api._bind(jobs)
+        assert jobs[0]._job_api._project_id == 9

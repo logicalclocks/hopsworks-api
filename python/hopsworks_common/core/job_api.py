@@ -47,19 +47,42 @@ from hopsworks_apigen import public
     "hsfs.core.job_api.JobApi",
 )
 class JobApi:
-    def __init__(self, project_id: int | None = None):
+    def __init__(
+        self, project_id: int | None = None, project_name: str | None = None
+    ) -> None:
         """Jobs endpoint for a project.
 
         Parameters:
             project_id: The project to resolve jobs against; the connection's project if omitted.
                 A search hit can come from another authorized project, whose jobs are not reachable through the login project's paths.
+            project_name: Name of the same project, used where a job configuration path has to be
+                expanded to an absolute one. Resolved from the connection when omitted.
         """
         self._project_id = project_id
+        self._project_name = project_name
 
     def _get_project_id(self) -> int:
         if self._project_id is not None:
             return self._project_id
         return client._get_instance()._project_id
+
+    def _get_project_name(self) -> str:
+        if self._project_name is not None:
+            return self._project_name
+        return client._get_instance()._project_name
+
+    def _bind(self, result):
+        """Stamp this api's project onto the jobs it just built.
+
+        A Job builds its own JobApi for update, delete, schedule, executions and tags. Left
+        unbound, all of those address the connection's project, so a job fetched from another
+        authorized project would be mutated in the login project instead.
+        """
+        jobs = result if isinstance(result, list) else [result]
+        for j in jobs:
+            if j is not None:
+                j._bind_project(self._get_project_id(), self._get_project_name())
+        return result
 
     @public
     @usage._method_logger
@@ -92,7 +115,7 @@ class JobApi:
         """
         _client = client._get_instance()
 
-        config = util._validate_job_conf(config, _client._project_name)
+        config = util._validate_job_conf(config, self._get_project_name())
 
         path_params = ["project", self._get_project_id(), "jobs", name]
 
@@ -128,8 +151,10 @@ class JobApi:
             name,
         ]
         query_params = {"expand": ["creator"]}
-        return job.Job.from_response_json(
-            _client._send_request("GET", path_params, query_params=query_params)
+        return self._bind(
+            job.Job.from_response_json(
+                _client._send_request("GET", path_params, query_params=query_params)
+            )
         )
 
     @public
@@ -150,8 +175,10 @@ class JobApi:
             "jobs",
         ]
         query_params = {"expand": ["creator"]}
-        return job.Job.from_response_json(
-            _client._send_request("GET", path_params, query_params=query_params)
+        return self._bind(
+            job.Job.from_response_json(
+                _client._send_request("GET", path_params, query_params=query_params)
+            )
         )
 
     @public
@@ -227,14 +254,16 @@ class JobApi:
         """
         _client = client._get_instance()
 
-        config = util._validate_job_conf(config, _client._project_name)
+        config = util._validate_job_conf(config, self._get_project_name())
 
         path_params = ["project", self._get_project_id(), "jobs", name]
 
         headers = {"content-type": "application/json"}
-        return job.Job.from_response_json(
-            _client._send_request(
-                "PUT", path_params, headers=headers, data=json.dumps(config)
+        return self._bind(
+            job.Job.from_response_json(
+                _client._send_request(
+                    "PUT", path_params, headers=headers, data=json.dumps(config)
+                )
             )
         )
 
@@ -289,9 +318,11 @@ class JobApi:
         path_params = ["project", self._get_project_id(), "jobs", name]
 
         headers = {"content-type": "application/json"}
-        return job.Job.from_response_json(
-            _client._send_request(
-                "PUT", path_params, headers=headers, data=job_conf.json()
+        return self._bind(
+            job.Job.from_response_json(
+                _client._send_request(
+                    "PUT", path_params, headers=headers, data=job_conf.json()
+                )
             )
         )
 
