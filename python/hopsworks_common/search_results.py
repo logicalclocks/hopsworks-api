@@ -30,6 +30,8 @@ if TYPE_CHECKING:
     from hsfs.feature_group import FeatureGroup
     from hsfs.feature_view import FeatureView
     from hsfs.training_dataset import TrainingDataset
+    from hsml.deployment import Deployment
+    from hsml.model import Model
 
 
 @public("hopsworks.core.search_api.Project")
@@ -455,6 +457,131 @@ class DatasetSearchResult(SearchResultItem):
         return self._dataset_api().get_tags_metadata(self.path)
 
 
+@public("hopsworks.core.search_api.ModelSearchResult")
+class ModelSearchResult(SearchResultItem):
+    """Search result for a Model.
+
+    A model resolves in the registry project the hit belongs to, which for a shared
+    registry is not the login project.
+    """
+
+    def __init__(self, data: dict):
+        super().__init__(data)
+        self._framework = data.get("framework")
+
+    @public
+    @property
+    def framework(self) -> str | None:
+        """Framework the model was trained with, e.g. `PYTHON` or `TORCH`."""
+        return self._framework
+
+    @public
+    def get(self) -> Model | None:
+        """Retrieve the full Model object.
+
+        The model is fetched from the registry project this search result belongs to.
+        For that to work the registry has to be shared with the login project, which is
+        the same condition under which the hit was visible.
+
+        Returns:
+            The full Model object corresponding to this search result, or `None` if it no longer exists.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        # Fail closed, for the reason given on DatasetSearchResult._dataset_api.
+        if self.project is None:
+            raise ValueError(
+                "this search result carries no project, so its model cannot be resolved"
+            )
+        mr = client._get_connection()._get_model_registry(self.project.name)
+        return mr.get_model(self.name, version=self.version)
+
+    def json(self) -> dict:
+        """Convert to JSON-serializable dictionary.
+
+        Returns:
+            A dictionary representation of the search result item.
+        """
+        return {**super().json(), "framework": self._framework}
+
+
+@public("hopsworks.core.search_api.DeploymentSearchResult")
+class DeploymentSearchResult(SearchResultItem):
+    """Search result for a Deployment."""
+
+    def __init__(self, data: dict):
+        super().__init__(data)
+        self._serving_tool = data.get("servingTool")
+        self._model_name = data.get("modelName")
+        self._model_version = data.get("modelVersion")
+        self._model_framework = data.get("modelFramework")
+
+    @public
+    @property
+    def serving_tool(self) -> str | None:
+        """Tool serving the deployment, e.g. `KSERVE`."""
+        return self._serving_tool
+
+    @public
+    @property
+    def model_name(self) -> str | None:
+        """Name of the model the deployment serves, `None` when it serves no registered model."""
+        return self._model_name
+
+    @public
+    @property
+    def model_version(self) -> int | None:
+        """Version of the model the deployment serves, `None` when it serves no registered model."""
+        return self._model_version
+
+    @public
+    @property
+    def model_framework(self) -> str | None:
+        """Framework of the model the deployment serves."""
+        return self._model_framework
+
+    @public
+    def get(self) -> Deployment | None:
+        """Retrieve the full Deployment object.
+
+        Returns:
+            The full Deployment object corresponding to this search result, or `None` if it no longer exists.
+
+        Raises:
+            ValueError: If the deployment belongs to another project.
+                Deployments are project-local, so there is no way to read one from outside its project.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        if self.project is None:
+            raise ValueError(
+                "this search result carries no project, so its deployment cannot be resolved"
+            )
+        login_project = client._get_instance()._project_name
+        if self.project.name != login_project:
+            raise ValueError(
+                f"deployment '{self.name}' belongs to project '{self.project.name}', "
+                f"and deployments cannot be read from outside their own project; "
+                f"log in to '{self.project.name}' to fetch it"
+            )
+        ms = client._get_connection()._get_model_serving()
+        return ms.get_deployment(self.name)
+
+    def json(self) -> dict:
+        """Convert to JSON-serializable dictionary.
+
+        Returns:
+            A dictionary representation of the search result item.
+        """
+        return {
+            **super().json(),
+            "serving_tool": self._serving_tool,
+            "model_name": self._model_name,
+            "model_version": self._model_version,
+            "model_framework": self._model_framework,
+        }
+
+
 @public("hopsworks.core.search_api.FeaturestoreSearchResult")
 class FeaturestoreSearchResult:
     """Container for all featurestore search results."""
@@ -479,6 +606,10 @@ class FeaturestoreSearchResult:
         self._datasets = [
             DatasetSearchResult(d) for d in response_data.get("datasets", [])
         ]
+        self._models = [ModelSearchResult(m) for m in response_data.get("models", [])]
+        self._deployments = [
+            DeploymentSearchResult(d) for d in response_data.get("deployments", [])
+        ]
 
         # Store metadata about result counts
         self._feature_groups_offset = response_data.get("featuregroupsFrom", 0)
@@ -493,6 +624,10 @@ class FeaturestoreSearchResult:
         self._jobs_total = response_data.get("jobsTotal", 0)
         self._datasets_offset = response_data.get("datasetsFrom", 0)
         self._datasets_total = response_data.get("datasetsTotal", 0)
+        self._models_offset = response_data.get("modelsFrom", 0)
+        self._models_total = response_data.get("modelsTotal", 0)
+        self._deployments_offset = response_data.get("deploymentsFrom", 0)
+        self._deployments_total = response_data.get("deploymentsTotal", 0)
 
     @public
     @property
@@ -602,6 +737,42 @@ class FeaturestoreSearchResult:
         """Total number of Datasets matching the search."""
         return self._datasets_total
 
+    @public
+    @property
+    def models(self) -> list[ModelSearchResult]:
+        """List of Model search results."""
+        return self._models
+
+    @public
+    @property
+    def models_offset(self) -> int:
+        """Total offset for the returned list of models within the whole result."""
+        return self._models_offset
+
+    @public
+    @property
+    def models_total(self) -> int:
+        """Total number of Models matching the search."""
+        return self._models_total
+
+    @public
+    @property
+    def deployments(self) -> list[DeploymentSearchResult]:
+        """List of Deployment search results."""
+        return self._deployments
+
+    @public
+    @property
+    def deployments_offset(self) -> int:
+        """Total offset for the returned list of deployments within the whole result."""
+        return self._deployments_offset
+
+    @public
+    @property
+    def deployments_total(self) -> int:
+        """Total number of Deployments matching the search."""
+        return self._deployments_total
+
     def json(self) -> dict:
         """Convert to JSON-serializable dictionary.
 
@@ -627,6 +798,12 @@ class FeaturestoreSearchResult:
             "datasets": [d.json() for d in self._datasets],
             "datasetsFrom": self._datasets_offset,
             "datasetsTotal": self._datasets_total,
+            "models": [m.json() for m in self._models],
+            "modelsFrom": self._models_offset,
+            "modelsTotal": self._models_total,
+            "deployments": [d.json() for d in self._deployments],
+            "deploymentsFrom": self._deployments_offset,
+            "deploymentsTotal": self._deployments_total,
         }
 
     def __repr__(self):
@@ -637,5 +814,7 @@ class FeaturestoreSearchResult:
             f"training_datasets={len(self._training_datasets)}/{self._training_datasets_total}, "
             f"features={len(self._features)}/{self._features_total}, "
             f"jobs={len(self._jobs)}/{self._jobs_total}, "
-            f"datasets={len(self._datasets)}/{self._datasets_total})"
+            f"datasets={len(self._datasets)}/{self._datasets_total}, "
+            f"models={len(self._models)}/{self._models_total}, "
+            f"deployments={len(self._deployments)}/{self._deployments_total})"
         )
