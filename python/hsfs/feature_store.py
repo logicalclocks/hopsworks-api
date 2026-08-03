@@ -40,6 +40,7 @@ from hsfs.core import (
     feature_group_api,
     feature_group_engine,
     feature_view_engine,
+    keywords_api,
     search_api,
     storage_connector_api,
     training_dataset_api,
@@ -3001,3 +3002,18 @@ class FeatureStore:
             limit=limit,
             global_search=global_search,
         )
+
+    @public
+    @usage._method_logger
+    def get_all_keywords(self) -> list[str]:
+        """Retrieve the keyword vocabulary in use across the whole cluster.
+
+        Despite being accessed through a feature store, the vocabulary is cluster-wide, not project-scoped: it contains every keyword attached to any artifact in any project.
+
+        Returns:
+            List of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return keywords_api.KeywordsApi()._get_all()

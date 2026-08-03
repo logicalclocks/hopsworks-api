@@ -25,6 +25,7 @@ from hopsworks_common import (
     execution,
     job,
     job_schedule,
+    tag,
     usage,
     util,
 )
@@ -46,6 +47,20 @@ from hopsworks_apigen import public
     "hsfs.core.job_api.JobApi",
 )
 class JobApi:
+    def __init__(self, project_id: int | None = None):
+        """Jobs endpoint for a project.
+
+        Parameters:
+            project_id: The project to resolve jobs against; the connection's project if omitted.
+                A search hit can come from another authorized project, whose jobs are not reachable through the login project's paths.
+        """
+        self._project_id = project_id
+
+    def _get_project_id(self) -> int:
+        if self._project_id is not None:
+            return self._project_id
+        return client._get_instance()._project_id
+
     @public
     @usage._method_logger
     def create_job(self, name: str, config: dict) -> job.Job:
@@ -79,7 +94,7 @@ class JobApi:
 
         config = util._validate_job_conf(config, _client._project_name)
 
-        path_params = ["project", _client._project_id, "jobs", name]
+        path_params = ["project", self._get_project_id(), "jobs", name]
 
         headers = {"content-type": "application/json"}
         created_job = job.Job.from_response_json(
@@ -108,7 +123,7 @@ class JobApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._get_project_id(),
             "jobs",
             name,
         ]
@@ -131,7 +146,7 @@ class JobApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._get_project_id(),
             "jobs",
         ]
         query_params = {"expand": ["creator"]}
@@ -176,7 +191,7 @@ class JobApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._get_project_id(),
             "jobs",
             type.lower(),
             "configuration",
@@ -194,7 +209,7 @@ class JobApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._get_project_id(),
             "jobs",
             str(job.name),
         ]
@@ -214,7 +229,7 @@ class JobApi:
 
         config = util._validate_job_conf(config, _client._project_name)
 
-        path_params = ["project", _client._project_id, "jobs", name]
+        path_params = ["project", self._get_project_id(), "jobs", name]
 
         headers = {"content-type": "application/json"}
         return job.Job.from_response_json(
@@ -226,7 +241,14 @@ class JobApi:
     def _schedule_job(self, name, schedule_config):
         """Attach the `schedule_config` to the job with the given `name`."""
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "jobs", name, "schedule", "v2"]
+        path_params = [
+            "project",
+            self._get_project_id(),
+            "jobs",
+            name,
+            "schedule",
+            "v2",
+        ]
         headers = {"content-type": "application/json"}
         method = "PUT" if schedule_config.get("id") else "POST"
 
@@ -238,7 +260,14 @@ class JobApi:
 
     def _delete_schedule_job(self, name):
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "jobs", name, "schedule", "v2"]
+        path_params = [
+            "project",
+            self._get_project_id(),
+            "jobs",
+            name,
+            "schedule",
+            "v2",
+        ]
 
         return _client._send_request(
             "DELETE",
@@ -257,7 +286,7 @@ class JobApi:
         ),
     ) -> job.Job:
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "jobs", name]
+        path_params = ["project", self._get_project_id(), "jobs", name]
 
         headers = {"content-type": "application/json"}
         return job.Job.from_response_json(
@@ -270,7 +299,7 @@ class JobApi:
     @usage._method_logger
     def launch(self, name: str, args: str = None) -> None:
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "jobs", name, "executions"]
+        path_params = ["project", self._get_project_id(), "jobs", name, "executions"]
 
         # The backend has two @POST handlers on this path (text/plain for legacy
         # args and application/json for logical-time params); without an explicit
@@ -282,7 +311,7 @@ class JobApi:
     @usage._method_logger
     def get(self, name: str) -> job.Job:
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "jobs", name]
+        path_params = ["project", self._get_project_id(), "jobs", name]
 
         return job.Job.from_response_json(_client._send_request("GET", path_params))
 
@@ -290,7 +319,13 @@ class JobApi:
     @usage._method_logger
     def last_execution(self, job: job.Job) -> execution.Execution:
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "jobs", job.name, "executions"]
+        path_params = [
+            "project",
+            self._get_project_id(),
+            "jobs",
+            job.name,
+            "executions",
+        ]
 
         query_params = {"limit": 1, "sort_by": "submissiontime:desc"}
 
@@ -313,7 +348,14 @@ class JobApi:
         # dict this endpoint expects.
         if not isinstance(schedule_config, dict):
             schedule_config = schedule_config.to_dict()
-        path_params = ["project", _client._project_id, "jobs", name, "schedule", "v2"]
+        path_params = [
+            "project",
+            self._get_project_id(),
+            "jobs",
+            name,
+            "schedule",
+            "v2",
+        ]
         headers = {"content-type": "application/json"}
         method = "PUT" if schedule_config.get("id") else "POST"
 
@@ -327,9 +369,144 @@ class JobApi:
     @usage._method_logger
     def delete_schedule_job(self, name: str) -> None:
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "jobs", name, "schedule", "v2"]
+        path_params = [
+            "project",
+            self._get_project_id(),
+            "jobs",
+            name,
+            "schedule",
+            "v2",
+        ]
 
         return _client._send_request(
             "DELETE",
             path_params,
         )
+
+    def _add_tag(self, job: job.Job, name: str, value: Any) -> None:
+        """Attach a name/value tag to a job.
+
+        A tag consists of a name/value pair. Tag names are unique identifiers.
+        The value of a tag can be any valid json - primitives, arrays or json objects.
+
+        Parameters:
+            job: The job to attach the tag to.
+            name: Name of the tag to be added.
+            value: Value of the tag to be added.
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            self._get_project_id(),
+            "jobs",
+            job.name,
+            "tags",
+            name,
+        ]
+        headers = {"content-type": "application/json"}
+        json_value = json.dumps(value)
+        _client._send_request("PUT", path_params, headers=headers, data=json_value)
+
+    def _delete_tag(self, job: job.Job, name: str) -> None:
+        """Delete a tag from a job.
+
+        Tag names are unique identifiers.
+
+        Parameters:
+            job: The job to remove the tag from.
+            name: Name of the tag to be removed.
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            self._get_project_id(),
+            "jobs",
+            job.name,
+            "tags",
+            name,
+        ]
+        _client._send_request("DELETE", path_params)
+
+    @decorators._catch_not_found("hopsworks_common.tag.Tag", fallback_return={})
+    def _get_tags(self, job: job.Job) -> dict[str, Any]:
+        """Get all tags attached to a job.
+
+        Parameters:
+            job: The job to get the tags from.
+
+        Returns:
+            Dict of tag name/values.
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            self._get_project_id(),
+            "jobs",
+            job.name,
+            "tags",
+        ]
+        # from_response_json already returns deserialized values.
+        return {
+            t._name: t._value
+            for t in tag.Tag.from_response_json(
+                _client._send_request("GET", path_params)
+            )
+        }
+
+    @decorators._catch_not_found("hopsworks_common.tag.Tag", fallback_return=None)
+    def _get_tag(self, job: job.Job, name: str) -> Any | None:
+        """Get the value of a tag attached to a job.
+
+        Parameters:
+            job: The job to get the tag from.
+            name: Tag name.
+
+        Returns:
+            The value of the tag with the specified name, or `None` if it does not exist.
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            self._get_project_id(),
+            "jobs",
+            job.name,
+            "tags",
+            name,
+        ]
+        tags = {
+            t._name: t._value
+            for t in tag.Tag.from_response_json(
+                _client._send_request("GET", path_params)
+            )
+        }
+        return tags.get(name)
+
+    @decorators._catch_not_found("hopsworks_common.tag.Tag", fallback_return={})
+    def _get_tags_metadata(
+        self, job: job.Job, name: str | None = None
+    ) -> dict[str, tag.Tag]:
+        """Get the tags of a job as Tag objects, keeping metadata such as created_on.
+
+        Parameters:
+            job: The job to get the tags from.
+            name: Tag name; all tags if omitted.
+
+        Returns:
+            Dict of tag name to Tag object.
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            self._get_project_id(),
+            "jobs",
+            job.name,
+            "tags",
+        ]
+        if name is not None:
+            path_params.append(name)
+        return {
+            t._name: t
+            for t in tag.Tag.from_response_json(
+                _client._send_request("GET", path_params)
+            )
+        }

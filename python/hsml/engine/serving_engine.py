@@ -107,6 +107,14 @@ class ServingEngine:
         """
         return self._serving_api._get_tags(deployment_instance)
 
+    def _get_tag_metadata(self, deployment_instance, name: str):
+        """Get the tag with a certain name as a Tag object, or None if it does not exist."""
+        return self._serving_api._get_tags_metadata(deployment_instance, name).get(name)
+
+    def _get_tags_metadata(self, deployment_instance):
+        """Get all tags for a deployment as Tag objects."""
+        return self._serving_api._get_tags_metadata(deployment_instance)
+
     def _poll_deployment_status(
         self, deployment_instance, status: str, await_status: int, update_progress=None
     ):

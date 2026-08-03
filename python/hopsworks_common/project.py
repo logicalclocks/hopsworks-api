@@ -82,10 +82,15 @@ class Project:
         self._app_api = app_api.AppApi()
         self._opensearch_api = opensearch_api.OpenSearchApi()
         self._kafka_api = kafka_api.KafkaApi()
-        self._job_api = job_api.JobApi()
+        # Bound to THIS project, not to the connection's. A Project object for another authorized
+        # project would otherwise hand out handles that address the login project, which is how a
+        # cross-project search result ends up reading the wrong artifact.
+        self._job_api = job_api.JobApi(project_id=project_id)
         self._jobs_api = self._job_api  # deprecated
         self._git_api = git_api.GitApi()
-        self._dataset_api = dataset_api.DatasetApi()
+        self._dataset_api = dataset_api.DatasetApi(
+            project_id=project_id, project_name=project_name
+        )
         self._environment_api = environment_api.EnvironmentApi()
         self._alerts_api = alerts_api.AlertsApi()
         self._search_api = search_api.SearchApi()

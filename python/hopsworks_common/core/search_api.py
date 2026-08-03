@@ -23,17 +23,19 @@ from urllib.parse import quote
 from hopsworks_apigen import public
 from hopsworks_common import client
 from hopsworks_common.search_results import (
+    DatasetSearchResult,
     FeatureGroupSearchResult,
     FeatureSearchResult,
     FeaturestoreSearchResult,
     FeatureViewSearchResult,
+    JobSearchResult,
     TrainingDatasetSearchResult,
 )
 from hopsworks_common.util import Encoder
 
 
 DOC_TYPE_ARG = Literal[
-    "FEATUREGROUP", "FEATUREVIEW", "TRAININGDATASET", "FEATURE", "ALL"
+    "FEATUREGROUP", "FEATUREVIEW", "TRAININGDATASET", "FEATURE", "JOB", "DATASET", "ALL"
 ]
 
 
@@ -155,7 +157,7 @@ class SearchApi:
         limit: int = 100,
         global_search: bool = False,
     ) -> FeaturestoreSearchResult:
-        """Search for feature groups, feature views, training datasets and features.
+        """Search for feature groups, feature views, training datasets, features, jobs, and datasets.
 
         Parameters:
             search_term: The term to search for.
@@ -173,7 +175,7 @@ class SearchApi:
                 If `True`, search over all projects.
 
         Returns:
-            The search results containing lists of metadata objects for feature groups, feature views, training datasets, and features.
+            The search results containing lists of metadata objects for feature groups, feature views, training datasets, features, jobs, and datasets.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
@@ -492,6 +494,137 @@ class SearchApi:
             global_search=global_search,
         )
         return result.features
+
+    @public
+    def jobs(
+        self,
+        search_term: str | None = None,
+        keyword_filter: str | list[str] | None = None,
+        tag_filter: dict[str, str]
+        | list[dict[str, str] | TagSearchFilter]
+        | None = None,
+        offset: int = 0,
+        limit: int = 100,
+        global_search: bool = False,
+    ) -> list[JobSearchResult]:
+        """Search for jobs only.
+
+        The search covers the job's name, description, and tags.
+        Results are scoped by the cluster's cross-project search policy: with `global_search` the caller sees jobs from other projects only where the policy allows it.
+        Jobs carry no keywords, so a `keyword_filter` never matches a job.
+
+        Parameters:
+            search_term: The term to search for.
+            keyword_filter:
+                Filter results by keywords.
+                Jobs carry no keywords, so any keyword filter returns no jobs.
+            tag_filter:
+                Filter results by tags.
+                Can be a single dictionary, an array of dictionaries, or an array of TagSearchFilter objects.
+                Each tag filter requires: ``name`` (the tag schema name as defined by Hopsworks Admin), ``key`` (the property within that tag schema), and ``value`` (the value to match).
+            offset: The number of results to skip.
+            limit: The number of search results to return.
+            global_search:
+                If `False`, search in current project only.
+                If `True`, search over all projects.
+
+        Returns:
+            A list of metadata objects for jobs matching the search criteria.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+            search_api = project.get_search_api()
+
+            # Search for jobs
+            job_metas = search_api.jobs("ingestion")
+
+            for job_meta in job_metas:
+                print(f"Job: {job_meta.name} ({job_meta.job_type})")
+
+                # Get the same Job object as returned by the job api
+                job = job_meta.get()
+            ```
+        """
+        result = self._search(
+            doc_type="JOB",
+            search_term=search_term,
+            keyword_filter=keyword_filter,
+            tag_filter=tag_filter,
+            offset=offset,
+            limit=limit,
+            global_search=global_search,
+        )
+        return result.jobs
+
+    @public
+    def datasets(
+        self,
+        search_term: str | None = None,
+        keyword_filter: str | list[str] | None = None,
+        tag_filter: dict[str, str]
+        | list[dict[str, str] | TagSearchFilter]
+        | None = None,
+        offset: int = 0,
+        limit: int = 100,
+        global_search: bool = False,
+    ) -> list[DatasetSearchResult]:
+        """Search for datasets only.
+
+        The search covers the dataset's name, description, and tags.
+        Results are scoped by the cluster's cross-project search policy: with `global_search` the caller sees datasets from other projects only where the policy allows it.
+        Datasets carry no keywords, so a `keyword_filter` never matches a dataset.
+
+        Parameters:
+            search_term: The term to search for.
+            keyword_filter:
+                Filter results by keywords.
+                Datasets carry no keywords, so any keyword filter returns no datasets.
+            tag_filter:
+                Filter results by tags.
+                Can be a single dictionary, an array of dictionaries, or an array of TagSearchFilter objects.
+                Each tag filter requires: ``name`` (the tag schema name as defined by Hopsworks Admin), ``key`` (the property within that tag schema), and ``value`` (the value to match).
+            offset: The number of results to skip.
+            limit: The number of search results to return.
+            global_search:
+                If `False`, search in current project only.
+                If `True`, search over all projects.
+
+        Returns:
+            A list of metadata objects for datasets matching the search criteria.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+            search_api = project.get_search_api()
+
+            # Search for datasets
+            dataset_metas = search_api.datasets("reports")
+
+            for dataset_meta in dataset_metas:
+                print(f"Dataset: {dataset_meta.name}")
+            ```
+        """
+        result = self._search(
+            doc_type="DATASET",
+            search_term=search_term,
+            keyword_filter=keyword_filter,
+            tag_filter=tag_filter,
+            offset=offset,
+            limit=limit,
+            global_search=global_search,
+        )
+        return result.datasets
 
     def _parse_keyword_filter(
         self, keyword_filter: str | list[str] | None

@@ -16,13 +16,17 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from hopsworks_apigen import public
 from hopsworks_common import client
+from hopsworks_common.client.exceptions import RestAPIError
 
 
 if TYPE_CHECKING:
+    from hopsworks_common.core.dataset_api import DatasetApi
+    from hopsworks_common.job import Job
+    from hopsworks_common.tag import Tag
     from hsfs.feature_group import FeatureGroup
     from hsfs.feature_view import FeatureView
     from hsfs.training_dataset import TrainingDataset
@@ -336,6 +340,113 @@ class FeatureSearchResult(SearchResultItem):
     """Search result for a Feature."""
 
 
+@public("hopsworks.core.search_api.JobSearchResult")
+class JobSearchResult(SearchResultItem):
+    """Search result for a Job."""
+
+    def __init__(self, data: dict):
+        super().__init__(data)
+        self._job_type = data.get("jobType")
+
+    @public
+    @property
+    def job_type(self) -> str | None:
+        """Type of the job, e.g. `SPARK` or `PYTHON`."""
+        return self._job_type
+
+    @public
+    def get(self) -> Job | None:
+        """Retrieve the full Job object.
+
+        The job is fetched from the project this search result belongs to,
+        which is not necessarily the login project.
+
+        Returns:
+            The full Job object corresponding to this search result, or `None` if it no longer exists.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        from hopsworks_common.core import job_api
+
+        return job_api.JobApi(project_id=self.project.id).get_job(self.name)
+
+    def json(self) -> dict:
+        """Convert to JSON-serializable dictionary.
+
+        Returns:
+            A dictionary representation of the search result item.
+        """
+        return {**super().json(), "job_type": self._job_type}
+
+
+@public("hopsworks.core.search_api.DatasetSearchResult")
+class DatasetSearchResult(SearchResultItem):
+    """Search result for a Dataset.
+
+    Every method here resolves in the project the hit belongs to, which is not
+    necessarily the login project: a cross-project hit is the case dataset
+    search exists to serve, and reading it against the login project would
+    either 404 or, worse, answer about a same-named dataset of another project.
+    """
+
+    @public
+    @property
+    def path(self) -> str:
+        """Path of the dataset within its project, which for a dataset root is its name."""
+        return self._name
+
+    def _dataset_api(self) -> DatasetApi:
+        from hopsworks_common.core import dataset_api
+
+        return dataset_api.DatasetApi(
+            project_id=self.project.id if self.project else None,
+            project_name=self.project.name if self.project else None,
+        )
+
+    @public
+    def get(self) -> dict | None:
+        """Retrieve the dataset's metadata.
+
+        Returns:
+            The dataset metadata, or `None` if it no longer exists.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        try:
+            return self._dataset_api()._get(self.path)
+        except RestAPIError as e:
+            if getattr(e.response, "status_code", None) == 404:
+                return None
+            raise
+
+    @public
+    def get_tags(self) -> dict[str, Any]:
+        """Tags attached to the dataset, as name to value.
+
+        Returns:
+            Dictionary of tag names to values, empty when the dataset carries none.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._dataset_api().get_tags(self.path)
+
+    @public
+    def get_tags_metadata(self) -> dict[str, Tag]:
+        """Tags attached to the dataset, with the time each was attached.
+
+        Returns:
+            Dictionary of tag names to [`Tag`][hopsworks.tag.Tag] objects, whose
+                [`Tag.created_on`][hopsworks.tag.Tag.created_on] is the attachment time.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._dataset_api().get_tags_metadata(self.path)
+
+
 @public("hopsworks.core.search_api.FeaturestoreSearchResult")
 class FeaturestoreSearchResult:
     """Container for all featurestore search results."""
@@ -356,6 +467,10 @@ class FeaturestoreSearchResult:
         self._features = [
             FeatureSearchResult(f) for f in response_data.get("features", [])
         ]
+        self._jobs = [JobSearchResult(j) for j in response_data.get("jobs", [])]
+        self._datasets = [
+            DatasetSearchResult(d) for d in response_data.get("datasets", [])
+        ]
 
         # Store metadata about result counts
         self._feature_groups_offset = response_data.get("featuregroupsFrom", 0)
@@ -366,6 +481,10 @@ class FeaturestoreSearchResult:
         self._training_datasets_total = response_data.get("trainingdatasetsTotal", 0)
         self._features_offset = response_data.get("featuresFrom", 0)
         self._features_total = response_data.get("featuresTotal", 0)
+        self._jobs_offset = response_data.get("jobsFrom", 0)
+        self._jobs_total = response_data.get("jobsTotal", 0)
+        self._datasets_offset = response_data.get("datasetsFrom", 0)
+        self._datasets_total = response_data.get("datasetsTotal", 0)
 
     @public
     @property
@@ -390,6 +509,18 @@ class FeaturestoreSearchResult:
     def features(self) -> list[FeatureSearchResult]:
         """List of Feature search results."""
         return self._features
+
+    @public
+    @property
+    def jobs(self) -> list[JobSearchResult]:
+        """List of Job search results."""
+        return self._jobs
+
+    @public
+    @property
+    def datasets(self) -> list[DatasetSearchResult]:
+        """List of Dataset search results."""
+        return self._datasets
 
     @public
     @property
@@ -439,6 +570,30 @@ class FeaturestoreSearchResult:
         """Total number of Features matching the search."""
         return self._features_total
 
+    @public
+    @property
+    def jobs_offset(self) -> int:
+        """Total offset for the returned list of jobs within the whole result."""
+        return self._jobs_offset
+
+    @public
+    @property
+    def jobs_total(self) -> int:
+        """Total number of Jobs matching the search."""
+        return self._jobs_total
+
+    @public
+    @property
+    def datasets_offset(self) -> int:
+        """Total offset for the returned list of datasets within the whole result."""
+        return self._datasets_offset
+
+    @public
+    @property
+    def datasets_total(self) -> int:
+        """Total number of Datasets matching the search."""
+        return self._datasets_total
+
     def json(self) -> dict:
         """Convert to JSON-serializable dictionary.
 
@@ -458,6 +613,12 @@ class FeaturestoreSearchResult:
             "features": [f.json() for f in self._features],
             "featuresFrom": self._features_offset,
             "featuresTotal": self._features_total,
+            "jobs": [j.json() for j in self._jobs],
+            "jobsFrom": self._jobs_offset,
+            "jobsTotal": self._jobs_total,
+            "datasets": [d.json() for d in self._datasets],
+            "datasetsFrom": self._datasets_offset,
+            "datasetsTotal": self._datasets_total,
         }
 
     def __repr__(self):
@@ -466,5 +627,7 @@ class FeaturestoreSearchResult:
             f"feature_groups={len(self._feature_groups)}/{self._feature_groups_total}, "
             f"feature_views={len(self._feature_views)}/{self._feature_views_total}, "
             f"training_datasets={len(self._training_datasets)}/{self._training_datasets_total}, "
-            f"features={len(self._features)}/{self._features_total})"
+            f"features={len(self._features)}/{self._features_total}, "
+            f"jobs={len(self._jobs)}/{self._jobs_total}, "
+            f"datasets={len(self._datasets)}/{self._datasets_total})"
         )

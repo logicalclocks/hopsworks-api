@@ -221,6 +221,36 @@ class ServingApi:
         }
         return tags.get(name)
 
+    @decorators._catch_not_found("hopsworks_common.tag.Tag", fallback_return={})
+    def _get_tags_metadata(
+        self, deployment_instance: deployment.Deployment, name: str | None = None
+    ) -> dict[str, tag.Tag]:
+        """Get the tags as Tag objects, keeping metadata such as created_on.
+
+        Parameters:
+            deployment_instance: deployment instance to get the tags from
+            name: tag name; all tags if omitted
+
+        Returns:
+            dict of tag name to Tag object
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "serving",
+            str(deployment_instance.id),
+            "tags",
+        ]
+        if name is not None:
+            path_params.append(name)
+        return {
+            t._name: t
+            for t in tag.Tag.from_response_json(
+                _client._send_request("GET", path_params)
+            )
+        }
+
     def _get_inference_endpoints(self) -> list[inference_endpoint.InferenceEndpoint]:
         """Get inference endpoints.
 

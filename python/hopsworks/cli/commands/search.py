@@ -15,7 +15,15 @@ import click
 from hopsworks.cli import output, session
 
 
-_DOC_TYPES = ["all", "feature_group", "feature_view", "training_dataset", "feature"]
+_DOC_TYPES = [
+    "all",
+    "feature_group",
+    "feature_view",
+    "training_dataset",
+    "feature",
+    "job",
+    "dataset",
+]
 
 
 @click.group("search")
@@ -70,8 +78,9 @@ def search_ls(
             is given (the SDK requires at least one of the three).
         global_search: When True, search across all projects.
         doc_type: One of ``all``, ``feature_group``, ``feature_view``,
-            ``training_dataset``, ``feature``.
-        keywords: Repeatable ``--keyword`` filter.
+            ``training_dataset``, ``feature``, ``job``, ``dataset``.
+        keywords: Repeatable ``--keyword`` filter. Jobs and datasets carry
+            no keywords, so a keyword filter never matches them.
         tags: Repeatable ``--tag name:key=value`` filter.
         limit: Page size cap.
     """
@@ -101,6 +110,8 @@ def search_ls(
                 + [_row("feature_view", r) for r in result.feature_views]
                 + [_row("training_dataset", r) for r in result.training_datasets]
                 + [_row("feature", r) for r in result.features]
+                + [_row("job", r) for r in result.jobs]
+                + [_row("dataset", r) for r in result.datasets]
             )
         elif doc_type == "feature_group":
             rows = [
@@ -113,6 +124,10 @@ def search_ls(
                 _row("training_dataset", r)
                 for r in api.training_datasets(**common_kwargs)
             ]
+        elif doc_type == "job":
+            rows = [_row("job", r) for r in api.jobs(**common_kwargs)]
+        elif doc_type == "dataset":
+            rows = [_row("dataset", r) for r in api.datasets(**common_kwargs)]
         else:  # feature
             rows = [_row("feature", r) for r in api.features(**common_kwargs)]
     except Exception as exc:  # noqa: BLE001
