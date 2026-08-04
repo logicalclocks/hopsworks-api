@@ -60,6 +60,17 @@ class UsersApi:
     def get_users(self) -> list[AdminUser]:
         """Get all registered platform users.
 
+        Example:
+            ```python
+            import hopsworks
+
+            hopsworks.login()
+            users_api = hopsworks.get_users_api()
+
+            for user in users_api.get_users():
+                print(user.email, user.roles)
+            ```
+
         Returns:
             List of all platform users known to this Hopsworks instance.
 
@@ -75,6 +86,16 @@ class UsersApi:
     @public
     def get_user(self, user_id: int) -> AdminUser | None:
         """Get a single platform user by id.
+
+        Example:
+            ```python
+            import hopsworks
+
+            hopsworks.login()
+            users_api = hopsworks.get_users_api()
+
+            user = users_api.get_user(42)
+            ```
 
         Parameters:
             user_id: Id of the platform user, as returned on `AdminUser.id`.
@@ -110,6 +131,24 @@ class UsersApi:
 
         Only email/password accounts are supported; SSO/remote account
         registration is not exposed through this method.
+
+        Example:
+            ```python
+            import hopsworks
+
+            hopsworks.login()
+            users_api = hopsworks.get_users_api()
+
+            new_user = users_api.register_user(
+                email="alice@example.com",
+                first_name="Alice",
+                last_name="Smith",
+                role="HOPS_USER",
+                status="ACTIVATED_ACCOUNT",
+            )
+            if new_user.password:
+                print("temporary password:", new_user.password)
+            ```
 
         Parameters:
             email: Email address of the new user, used as their login.
@@ -161,6 +200,16 @@ class UsersApi:
     def set_role(self, user_id: int, role: _ROLE_ARG) -> AdminUser:
         """Change a platform user's role.
 
+        Example:
+            ```python
+            import hopsworks
+
+            hopsworks.login()
+            users_api = hopsworks.get_users_api()
+
+            users_api.set_role(42, "HOPS_ADMIN")
+            ```
+
         Parameters:
             user_id: Id of the platform user.
             role: New platform role, one of `HOPS_ADMIN`, `HOPS_USER`, `HOPS_SERVICE_USER`.
@@ -182,6 +231,16 @@ class UsersApi:
     @public
     def update_user(self, user_id: int, max_num_projects: int) -> AdminUser:
         """Change the maximum number of projects a platform user is allowed to own.
+
+        Example:
+            ```python
+            import hopsworks
+
+            hopsworks.login()
+            users_api = hopsworks.get_users_api()
+
+            users_api.update_user(42, max_num_projects=10)
+            ```
 
         Parameters:
             user_id: Id of the platform user to update.
@@ -208,6 +267,16 @@ class UsersApi:
 
         If the account has no platform role assigned yet, it is granted `HOPS_USER`.
 
+        Example:
+            ```python
+            import hopsworks
+
+            hopsworks.login()
+            users_api = hopsworks.get_users_api()
+
+            users_api.activate_user(42)
+            ```
+
         Parameters:
             user_id: Id of the platform user to activate.
 
@@ -231,6 +300,16 @@ class UsersApi:
 
         Marks the account as spam; the user is no longer able to log in.
 
+        Example:
+            ```python
+            import hopsworks
+
+            hopsworks.login()
+            users_api = hopsworks.get_users_api()
+
+            users_api.reject_user(42)
+            ```
+
         Parameters:
             user_id: Id of the platform user to reject.
 
@@ -251,6 +330,16 @@ class UsersApi:
 
         Only works while the account is still in its initial unconfirmed state;
         it does not change the status of an already-confirmed account.
+
+        Example:
+            ```python
+            import hopsworks
+
+            hopsworks.login()
+            users_api = hopsworks.get_users_api()
+
+            users_api.resend_confirmation_email(42)
+            ```
 
         Parameters:
             user_id: Id of the platform user.
@@ -274,6 +363,16 @@ class UsersApi:
             This permanently removes the user account. The backend rejects the
             request if the user still owns any projects; remove or transfer
             those projects first.
+
+        Example:
+            ```python
+            import hopsworks
+
+            hopsworks.login()
+            users_api = hopsworks.get_users_api()
+
+            users_api.delete_user(42)
+            ```
 
         Parameters:
             user_id: Id of the platform user to delete.

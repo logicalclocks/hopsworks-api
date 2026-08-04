@@ -626,6 +626,17 @@ def get_users_api() -> users_api.UsersApi:
     This is an admin-only capability; the logged-in account must hold the
     `HOPS_ADMIN` platform role for its methods to succeed.
 
+    Example:
+        ```python
+        import hopsworks
+
+        hopsworks.login()
+        users_api = hopsworks.get_users_api()
+
+        for user in users_api.get_users():
+            print(user.email, user.roles)
+        ```
+
     Returns:
         The Users API handle.
     """

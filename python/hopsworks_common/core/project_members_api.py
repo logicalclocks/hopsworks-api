@@ -49,6 +49,16 @@ class ProjectMembersApi:
     def get_members(self) -> list[project_member_mod.ProjectMember]:
         """Get all members of the project.
 
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+
+            for member in project.get_members_api().get_members():
+                print(member.email, member.role)
+            ```
+
         Returns:
             List of `ProjectMember` objects, one per user who has access to the project.
 
@@ -145,6 +155,15 @@ class ProjectMembersApi:
     ) -> project_member_mod.ProjectMember | None:
         """Change a project member's role by email.
 
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+
+            project.get_members_api().update_role("alice@example.com", "Observer")
+            ```
+
         Parameters:
             email: Email address of the member to update.
             role: The new project role, one of `Data owner`, `Data scientist`,
@@ -171,6 +190,15 @@ class ProjectMembersApi:
         Danger: Deletes the member's project files when `delete_home_dir=True`
             All files under this member's home directory in the project are
             permanently deleted and cannot be recovered.
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+
+            project.get_members_api().remove_member("alice@example.com")
+            ```
 
         Parameters:
             email: Email address of the member to remove.

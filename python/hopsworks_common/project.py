@@ -331,6 +331,16 @@ class Project:
     def get_members(self) -> list[project_member.ProjectMember]:
         """Get all members of the project.
 
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+
+            for member in project.get_members():
+                print(member.email, member.role)
+            ```
+
         Returns:
             List of `ProjectMember` objects, one per user who has access to the project.
 
@@ -373,6 +383,15 @@ class Project:
         Danger: Deletes the member's project files when `delete_home_dir=True`
             All files under this member's home directory in the project are
             permanently deleted and cannot be recovered.
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+
+            project.remove_member("alice@example.com")
+            ```
 
         Parameters:
             email: Email address of the member to remove.

@@ -1285,6 +1285,13 @@ class FeatureGroupBase:
     def revoke_restricted_access(self, user_email: str) -> None:
         """Revoke a previously-granted restricted-access grant.
 
+        Example:
+            ```python
+            fg = fs.get_feature_group("transactions", version=1)
+
+            fg.revoke_restricted_access("restricted_user@example.com")
+            ```
+
         Parameters:
             user_email: Email of the project member whose access is revoked.
 
@@ -1307,6 +1314,14 @@ class FeatureGroupBase:
         `grantedEntirely` (`False` when only specific columns were
         granted), and `features` (the column whitelist when not granted
         entirely; empty/null otherwise).
+
+        Example:
+            ```python
+            fg = fs.get_feature_group("transactions", version=1)
+
+            for grant in fg.get_restricted_access():
+                print(grant["grantedToUser"], grant["grantedEntirely"])
+            ```
 
         Returns:
             A list of dicts as returned by the backend.

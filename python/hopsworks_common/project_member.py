@@ -103,6 +103,16 @@ class ProjectMember:
     def update_role(self, role: str) -> ProjectMember:
         """Change this member's role in the project.
 
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+
+            member = next(m for m in project.get_members() if m.email == "alice@example.com")
+            member.update_role("Observer")
+            ```
+
         Parameters:
             role: The new project role, one of `Data owner`, `Data scientist`,
                 `Observer`, `Feature store restricted`.
@@ -125,6 +135,16 @@ class ProjectMember:
         Danger: Deletes the member's project files when `delete_home_dir=True`
             All files under this member's home directory in the project are
             permanently deleted and cannot be recovered.
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+
+            member = next(m for m in project.get_members() if m.email == "alice@example.com")
+            member.remove()
+            ```
 
         Parameters:
             delete_home_dir: Whether to also delete the member's home directory in the project.
