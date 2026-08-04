@@ -120,9 +120,13 @@ class JobApi:
         path_params = ["project", self._get_project_id(), "jobs", name]
 
         headers = {"content-type": "application/json"}
-        created_job = job.Job.from_response_json(
-            _client._send_request(
-                "PUT", path_params, headers=headers, data=json.dumps(config)
+        # Bound before the URL is built, not after: get_url reads the job's project, so printing
+        # first named the login project even when this handle addresses another one.
+        created_job = self._bind(
+            job.Job.from_response_json(
+                _client._send_request(
+                    "PUT", path_params, headers=headers, data=json.dumps(config)
+                )
             )
         )
         print(f"Job created successfully, explore it at {created_job.get_url()}")
@@ -344,7 +348,9 @@ class JobApi:
         _client = client._get_instance()
         path_params = ["project", self._get_project_id(), "jobs", name]
 
-        return job.Job.from_response_json(_client._send_request("GET", path_params))
+        return self._bind(
+            job.Job.from_response_json(_client._send_request("GET", path_params))
+        )
 
     @public
     @usage._method_logger

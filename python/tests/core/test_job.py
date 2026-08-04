@@ -741,13 +741,63 @@ class TestJobProjectBinding:
         assert job._project_id is None
         assert job._job_api._project_id is None
 
-    def test_binding_rebuilds_the_handle(self):
+    def test_binding_rebuilds_every_handle(self):
         job = self._job()
         job._bind_project(42, "other_project")
-        # Every later operation goes through this handle: update, delete,
-        # schedule, executions, tags.
+        # All of them, not only the job handle: tags used to be bound while
+        # executions, alerts and the URL still addressed the login project.
         assert job._job_api._project_id == 42
         assert job._job_api._project_name == "other_project"
+        assert job._execution_api._project_id == 42
+        assert job._alerts_api._project_id == 42
+
+    def test_executions_address_the_bound_project(self, mocker):
+        job = self._job()
+        job._bind_project(42, "other_project")
+        instance = mocker.Mock(_project_id=5, _project_name="login_project")
+        mocker.patch("hopsworks_common.client._get_instance", return_value=instance)
+        instance._send_request.return_value = {"count": 0, "items": []}
+
+        job._execution_api._get_all(job)
+
+        path_params = instance._send_request.call_args[0][1]
+        assert path_params[:2] == ["project", 42], path_params
+
+    def test_alerts_address_the_bound_project(self, mocker):
+        job = self._job()
+        job._bind_project(42, "other_project")
+        instance = mocker.Mock(_project_id=5, _project_name="login_project")
+        mocker.patch("hopsworks_common.client._get_instance", return_value=instance)
+        instance._send_request.return_value = {"count": 0, "items": []}
+
+        job._alerts_api.get_job_alerts(job.name)
+
+        path_params = instance._send_request.call_args[0][1]
+        assert path_params[:2] == ["project", 42], path_params
+
+    def test_url_points_at_the_bound_project(self, mocker):
+        job = self._job()
+        job._bind_project(42, "other_project")
+        mocker.patch(
+            "hopsworks_common.client._get_instance",
+            return_value=mocker.Mock(_project_id=5, _project_name="login_project"),
+        )
+        mocker.patch(
+            "hopsworks_common.util._get_hostname_replaced_url", side_effect=lambda p: p
+        )
+
+        assert job.get_url() == "/p/42/jobs/named/nightly"
+
+    def test_an_unbound_job_still_uses_the_connection(self, mocker):
+        job = self._job()
+        instance = mocker.Mock(_project_id=5, _project_name="login_project")
+        mocker.patch("hopsworks_common.client._get_instance", return_value=instance)
+        instance._send_request.return_value = {"count": 0, "items": []}
+
+        job._execution_api._get_all(job)
+
+        path_params = instance._send_request.call_args[0][1]
+        assert path_params[:2] == ["project", 5], path_params
 
     def test_job_api_stamps_the_jobs_it_returns(self, mocker):
         from hopsworks_common.core import job_api

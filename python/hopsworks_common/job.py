@@ -82,13 +82,16 @@ class Job:
     def _bind_project(self, project_id: int, project_name: str) -> None:
         """Address the project this job actually belongs to.
 
-        Everything a Job does afterwards goes through the handle rebuilt here: update, delete,
-        schedule, executions, tags. Without it a job fetched from another authorized project would
-        be mutated in the login project, which is the same defect dataset search results had.
+        Every handle a Job holds is rebuilt here, not only the job one. Rebinding the job API alone
+        left a job obtained from another project able to update its tags there while starting an
+        execution, manipulating an alert, or opening a URL in the login project instead: same class of
+        defect, one layer down.
         """
         self._project_id = project_id
         self._project_name = project_name
         self._job_api = job_api.JobApi(project_id=project_id, project_name=project_name)
+        self._execution_api = execution_api.ExecutionApi(project_id=project_id)
+        self._alerts_api = alerts_api.AlertsApi(project_id=project_id)
 
     @classmethod
     def from_response_json(cls, json_dict):
@@ -737,6 +740,12 @@ class Job:
     @public
     def get_url(self):
         """Get url to the job in Hopsworks."""
-        _client = client._get_instance()
-        path = "/p/" + str(_client._project_id) + "/jobs/named/" + self.name
+        # The job's own project, so a link to a job from another project opens that job rather than
+        # whatever the login project happens to have under the same name.
+        project_id = (
+            self._project_id
+            if self._project_id is not None
+            else client._get_instance()._project_id
+        )
+        path = "/p/" + str(project_id) + "/jobs/named/" + self.name
         return util._get_hostname_replaced_url(path)

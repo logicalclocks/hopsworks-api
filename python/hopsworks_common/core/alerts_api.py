@@ -150,8 +150,25 @@ class AlertsApi:
     To obtain an object of this type, use [`project.get_alerts_api`][hopsworks_common.project.Project.get_alerts_api].
     """
 
-    def __init__(self):
+    def __init__(self, project_id: int | None = None) -> None:
+        """Alerts of one project.
+
+        Parameters:
+            project_id:
+                The project whose alerts this handle addresses.
+                Defaults to the project of the connection. A Job obtained from another project passes
+                its own project here, so that manipulating its alerts does not reach a same-named job
+                of the login project.
+        """
         self._log = logging.getLogger(__name__)
+        self._project_id = project_id
+
+    def _pid(self) -> int:
+        return (
+            self._project_id
+            if self._project_id is not None
+            else client._get_instance()._project_id
+        )
 
     @public
     @usage._method_logger
@@ -243,7 +260,7 @@ class AlertsApi:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "jobs", job_name, "alerts"]
+        path_params = ["project", self._pid(), "jobs", job_name, "alerts"]
         headers = {"content-type": "application/json"}
         return alert.JobAlert.from_response_json(
             _client._send_request("GET", path_params, headers=headers)
@@ -281,7 +298,7 @@ class AlertsApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "jobs",
             job_name,
             "alerts",
@@ -788,7 +805,7 @@ class AlertsApi:
         receiver = self._fix_receiver_name(receiver, _client._project_name)
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "jobs",
             job_name,
             "alerts",
