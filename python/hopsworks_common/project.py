@@ -189,7 +189,11 @@ class Project:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return client._get_connection()._get_feature_store(name)
+        # This project's own feature store when the caller did not name one. A Project object for
+        # another project used to hand back the CONNECTION's feature store here, which is the same
+        # defect the job and dataset handles carried: a foreign Project quietly answering for the
+        # login project.
+        return client._get_connection()._get_feature_store(name or self._shared_name())
 
     @public
     def get_model_registry(self) -> ModelRegistry:
@@ -210,7 +214,20 @@ class Project:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return client._get_connection()._get_model_registry()
+        return client._get_connection()._get_model_registry(self._shared_name())
+
+    def _shared_name(self) -> str | None:
+        """This project's name when it is NOT the connection's, otherwise None.
+
+        The feature store and model registry APIs take a project name to open a SHARED one, and
+        refuse a name that is the connection's own project. So a foreign Project has to pass its
+        name and the connection's own must not, and neither can be hard-coded here.
+        """
+        try:
+            connected = client._get_instance()._project_name
+        except Exception:
+            return None
+        return self._name if self._name and self._name != connected else None
 
     @public
     def get_model_serving(self) -> ModelServing:
