@@ -86,6 +86,14 @@ class TestProjectMembersApi:
             ]
         }
 
+    def test_add_member_raises_runtime_error_when_not_found_after_add(self, mocker):
+        api = ProjectMembersApi()
+        client_instance = _patch_client(mocker, None)
+        client_instance._send_request.side_effect = [None, []]
+
+        with pytest.raises(RuntimeError, match="could not be found"):
+            api.add_member("bob@example.com", "Data scientist")
+
     def test_add_member_invalid_role_raises_without_request(self, mocker):
         api = ProjectMembersApi()
         client_instance = _patch_client(mocker, None)

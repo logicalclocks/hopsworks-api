@@ -146,8 +146,16 @@ class ProjectMembersApi:
         Raises:
             ValueError: If `role` is not a settable project role.
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if the caller is not a project owner.
+            RuntimeError: If the add succeeded but `email` could not be found
+                in the project's member list immediately afterwards.
         """
-        return self.add_members({email: role})[0]
+        added = self.add_members({email: role})
+        if not added:
+            raise RuntimeError(
+                f"'{email}' was added to the project but could not be found in "
+                "the member list immediately afterwards; call get_members() to check."
+            )
+        return added[0]
 
     @public
     def update_role(

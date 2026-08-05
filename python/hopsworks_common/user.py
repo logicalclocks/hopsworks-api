@@ -121,7 +121,7 @@ class AdminUser:
 
     @classmethod
     def from_response_json_list(
-        cls, json_dict: dict[str, Any] | None
+        cls, json_dict: dict[str, Any] | list[dict[str, Any]] | None
     ) -> list[AdminUser]:
         if not json_dict:
             return []

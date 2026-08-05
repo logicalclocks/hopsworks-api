@@ -147,7 +147,8 @@ class UsersApi:
                 status="ACTIVATED_ACCOUNT",
             )
             if new_user.password:
-                print("temporary password:", new_user.password)
+                # Hand this off securely (e.g. a secrets manager); never log or print it.
+                temporary_password = new_user.password
             ```
 
         Parameters:

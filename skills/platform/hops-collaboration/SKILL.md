@@ -51,7 +51,8 @@ new_user = users_api.register_user(
     email="alice@example.com", first_name="Alice", last_name="Smith", role="HOPS_USER"
 )
 if new_user.password:
-    print("temp password:", new_user.password)  # only set when no password was supplied
+    # Only set when no password was supplied; hand it off securely, never log or print it.
+    temporary_password = new_user.password
 
 users_api.activate_user(new_user.id)      # or reject_user / resend_confirmation_email
 users_api.set_role(new_user.id, "HOPS_ADMIN")
