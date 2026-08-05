@@ -34,9 +34,19 @@ if TYPE_CHECKING:
 
 @also_available_as("hopsworks.engine.execution_engine.ExecutionEngine")
 class ExecutionEngine:
-    def __init__(self):
-        self._dataset_api = dataset_api.DatasetApi()
-        self._execution_api = execution_api.ExecutionApi()
+    def __init__(
+        self, project_id: int | None = None, project_name: str | None = None
+    ) -> None:
+        """Waiting, log aggregation and log download for one project's executions.
+
+        Parameters:
+            project_id: The project the executions belong to; the connection's project if omitted.
+            project_name: Name of the same project, for the dataset paths the logs are read from.
+        """
+        self._dataset_api = dataset_api.DatasetApi(
+            project_id=project_id, project_name=project_name
+        )
+        self._execution_api = execution_api.ExecutionApi(project_id=project_id)
         self._log = logging.getLogger(__name__)
 
     def _download_logs(

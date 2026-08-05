@@ -85,14 +85,20 @@ class Project:
         # Bound to THIS project, not to the connection's. A Project object for another authorized
         # project would otherwise hand out handles that address the login project, which is how a
         # cross-project search result ends up reading the wrong artifact.
-        self._job_api = job_api.JobApi(project_id=project_id)
+        # The NAME as well as the id. A job configuration carries paths, and expanding a relative
+        # application path uses the project name: bound by id alone, a job created for project B went
+        # to B's REST endpoint carrying /Projects/A/... paths from the login project.
+        self._job_api = job_api.JobApi(project_id=project_id, project_name=project_name)
         self._jobs_api = self._job_api  # deprecated
         self._git_api = git_api.GitApi()
         self._dataset_api = dataset_api.DatasetApi(
             project_id=project_id, project_name=project_name
         )
         self._environment_api = environment_api.EnvironmentApi()
-        self._alerts_api = alerts_api.AlertsApi()
+        # Alert receivers are qualified by project name, so this handle needs both too.
+        self._alerts_api = alerts_api.AlertsApi(
+            project_id=project_id, project_name=project_name
+        )
         self._search_api = search_api.SearchApi()
         self._project_namespace = project_namespace
         self._trino_api = None

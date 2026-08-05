@@ -91,7 +91,15 @@ class Job:
         self._project_name = project_name
         self._job_api = job_api.JobApi(project_id=project_id, project_name=project_name)
         self._execution_api = execution_api.ExecutionApi(project_id=project_id)
-        self._alerts_api = alerts_api.AlertsApi(project_id=project_id)
+        self._alerts_api = alerts_api.AlertsApi(
+            project_id=project_id, project_name=project_name
+        )
+        # The engine too. It owns the dataset and execution handles that await, stop and log download
+        # go through, so leaving it built against the connection meant a bound job still waited on,
+        # and downloaded logs from, the login project.
+        self._execution_engine = execution_engine.ExecutionEngine(
+            project_id=project_id, project_name=project_name
+        )
 
     @classmethod
     def from_response_json(cls, json_dict):

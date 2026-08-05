@@ -63,8 +63,15 @@ class Execution:
         self._hdfs_user = hdfs_user
         self._job = job
 
-        self._execution_engine = execution_engine.ExecutionEngine()
-        self._execution_api = execution_api.ExecutionApi()
+        # An execution belongs to its job's project, which is not always the connection's: a job
+        # obtained from another authorized project hands out executions, and awaiting, stopping,
+        # deleting or reading the logs of one has to address the same project the job does.
+        self._project_id = getattr(job, "_project_id", None)
+        self._project_name = getattr(job, "_project_name", None)
+        self._execution_engine = execution_engine.ExecutionEngine(
+            project_id=self._project_id, project_name=self._project_name
+        )
+        self._execution_api = execution_api.ExecutionApi(project_id=self._project_id)
 
     @classmethod
     def from_response_json(cls, json_dict, job):
@@ -77,7 +84,9 @@ class Execution:
 
     def update_from_response_json(self, json_dict):
         json_decamelized = humps.decamelize(json_dict)
-        self.__init__(**json_decamelized)
+        # The job is carried over. Re-initialising without it dropped it, which broke job_name and
+        # job_type outright and silently rebound every handle to the login project.
+        self.__init__(**json_decamelized, job=self._job)
         return self
 
     @public
@@ -338,12 +347,10 @@ class Execution:
     @public
     def get_url(self):
         """Get url to view execution details in Hopsworks UI."""
-        _client = client._get_instance()
-        path = (
-            "/p/"
-            + str(_client._project_id)
-            + "/jobs/named/"
-            + self.job_name
-            + "/executions"
+        project_id = (
+            self._project_id
+            if self._project_id is not None
+            else client._get_instance()._project_id
         )
+        path = "/p/" + str(project_id) + "/jobs/named/" + self.job_name + "/executions"
         return util._get_hostname_replaced_url(path)

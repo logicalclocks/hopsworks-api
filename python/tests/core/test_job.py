@@ -750,6 +750,46 @@ class TestJobProjectBinding:
         assert job._job_api._project_name == "other_project"
         assert job._execution_api._project_id == 42
         assert job._alerts_api._project_id == 42
+        assert job._alerts_api._project_name == "other_project"
+        # The engine owns the handles that awaiting and log download go through.
+        assert job._execution_engine._execution_api._project_id == 42
+        assert job._execution_engine._dataset_api._project_id == 42
+        assert job._execution_engine._dataset_api._project_name == "other_project"
+
+    def test_executions_of_a_bound_job_stay_bound(self, mocker):
+        job = self._job()
+        job._bind_project(42, "other_project")
+        instance = mocker.Mock(_project_id=5, _project_name="login_project")
+        mocker.patch("hopsworks_common.client._get_instance", return_value=instance)
+        mocker.patch(
+            "hopsworks_common.util._get_hostname_replaced_url", side_effect=lambda p: p
+        )
+        instance._send_request.return_value = {
+            "count": 1,
+            "items": [{"id": 3, "state": "RUNNING"}],
+        }
+
+        execution = job.get_executions()[0]
+
+        assert execution._project_id == 42
+        assert execution._execution_api._project_id == 42
+        assert execution._execution_engine._execution_api._project_id == 42
+        assert execution.get_url() == "/p/42/jobs/named/nightly/executions"
+
+    def test_refreshing_an_execution_keeps_its_project(self, mocker):
+        job = self._job()
+        job._bind_project(42, "other_project")
+        from hopsworks_common.execution import Execution
+
+        execution = Execution.from_response_json({"id": 3, "state": "RUNNING"}, job)
+
+        execution.update_from_response_json({"id": 3, "state": "FINISHED"})
+
+        # Re-initialising used to drop the job entirely, which rebound every handle to the login
+        # project and left job_name raising.
+        assert execution.job_name == "nightly"
+        assert execution._project_id == 42
+        assert execution._execution_api._project_id == 42
 
     def test_executions_address_the_bound_project(self, mocker):
         job = self._job()
