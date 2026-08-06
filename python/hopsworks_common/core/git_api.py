@@ -53,11 +53,11 @@ class GitApi:
             project_name: Name of the same project, for the paths that carry it. Resolved from the
                 connection when omitted.
         """
-        self._git_engine = git_engine.GitEngine()
-        self._git_provider_api = git_provider_api.GitProviderApi()
-        self._log = logging.getLogger(__name__)
         self._project_id = project_id
         self._project_name = project_name
+        self._git_engine = git_engine.GitEngine(project_id, project_name)
+        self._git_provider_api = git_provider_api.GitProviderApi()
+        self._log = logging.getLogger(__name__)
 
     def _pid(self) -> int:
         return (
@@ -72,6 +72,17 @@ class GitApi:
             if self._project_name is not None
             else client._get_instance()._project_name
         )
+
+    def _stamp(self, repos):
+        """Bind the repositories this handle returns to the project it addresses.
+
+        A GitRepo builds its own handles, so one read out of another project would check out,
+        commit and delete files through the login project.
+        """
+        for repo in repos if isinstance(repos, list) else [repos]:
+            if repo is not None:
+                repo._bind_project(self._pid(), self._pname())
+        return repos
 
     @public
     @usage._method_logger
@@ -164,8 +175,10 @@ class GitApi:
             "git",
         ]
         query_params = {"expand": "creator"}
-        return git_repo.GitRepo.from_response_json(
-            _client._send_request("GET", path_params, query_params=query_params)
+        return self._stamp(
+            git_repo.GitRepo.from_response_json(
+                _client._send_request("GET", path_params, query_params=query_params)
+            )
         )
 
     @public
@@ -258,8 +271,10 @@ class GitApi:
         ]
         query_params = {"expand": "creator"}
 
-        repos = git_repo.GitRepo.from_response_json(
-            _client._send_request("GET", path_params, query_params=query_params)
+        repos = self._stamp(
+            git_repo.GitRepo.from_response_json(
+                _client._send_request("GET", path_params, query_params=query_params)
+            )
         )
 
         if path is not None:

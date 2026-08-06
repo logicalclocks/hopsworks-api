@@ -36,8 +36,33 @@ from hsml.constants import INFERENCE_ENDPOINTS as IE
 
 
 class ServingApi:
-    def __init__(self):
-        pass
+    def __init__(
+        self, project_id: int | None = None, project_name: str | None = None
+    ) -> None:
+        """Address one project's deployments.
+
+        Parameters:
+            project_id: The project this handle addresses, and project_name its name.
+                Both default to the connection's project, which is what a login-project
+                handle wants. A ModelServing for another project passes that project's,
+                so that its deployments are not read out of the login project.
+        """
+        self._project_id = project_id
+        self._project_name = project_name
+
+    def _pid(self) -> int:
+        return (
+            self._project_id
+            if self._project_id is not None
+            else client._get_instance()._project_id
+        )
+
+    def _pname(self) -> str:
+        return (
+            self._project_name
+            if self._project_name is not None
+            else client._get_instance()._project_name
+        )
 
     @decorators._catch_not_found("hsml.deployment.Deployment", fallback_return=None)
     def _get_by_id(self, id: int) -> deployment.Deployment | None:
@@ -52,7 +77,7 @@ class ServingApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "serving",
             str(id),
         ]
@@ -62,8 +87,8 @@ class ServingApi:
             "GET", path_params, query_params=query_params
         )
         deployment_instance = deployment.Deployment.from_response_json(deployment_json)
-        deployment_instance.model_registry_id = _client._project_id
-        deployment_instance.project_name = _client._project_name
+        deployment_instance.model_registry_id = self._pid()
+        deployment_instance.project_name = self._pname()
         return deployment_instance
 
     @decorators._catch_not_found("hsml.deployment.Deployment", fallback_return=None)
@@ -77,15 +102,15 @@ class ServingApi:
             Deployment metadata object.
         """
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "serving"]
+        path_params = ["project", self._pid(), "serving"]
         query_params = {"name": name, "expand": ["mandatorytags"]}
 
         deployment_json = _client._send_request(
             "GET", path_params, query_params=query_params
         )
         deployment_instance = deployment.Deployment.from_response_json(deployment_json)
-        deployment_instance.model_registry_id = _client._project_id
-        deployment_instance.project_name = _client._project_name
+        deployment_instance.model_registry_id = self._pid()
+        deployment_instance.project_name = self._pname()
         return deployment_instance
 
     def _get_all(
@@ -101,7 +126,7 @@ class ServingApi:
             List of deployment metadata objects.
         """
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "serving"]
+        path_params = ["project", self._pid(), "serving"]
         query_params = {
             "model": model_name,
             "status": status.capitalize() if status is not None else None,
@@ -113,8 +138,8 @@ class ServingApi:
             deployments_json
         )
         for deployment_instance in deployment_instances:
-            deployment_instance.model_registry_id = _client._project_id
-            deployment_instance.project_name = _client._project_name
+            deployment_instance.model_registry_id = self._pid()
+            deployment_instance.project_name = self._pname()
         return deployment_instances
 
     def _set_tag(
@@ -134,7 +159,7 @@ class ServingApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "serving",
             str(deployment_instance.id),
             "tags",
@@ -158,7 +183,7 @@ class ServingApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "serving",
             str(deployment_instance.id),
             "tags",
@@ -179,7 +204,7 @@ class ServingApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "serving",
             str(deployment_instance.id),
             "tags",
@@ -207,7 +232,7 @@ class ServingApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "serving",
             str(deployment_instance.id),
             "tags",
@@ -237,7 +262,7 @@ class ServingApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "serving",
             str(deployment_instance.id),
             "tags",
@@ -258,7 +283,7 @@ class ServingApi:
             Inference endpoints for the current project.
         """
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "inference", "endpoints"]
+        path_params = ["project", self._pid(), "inference", "endpoints"]
         endpoints_json = _client._send_request("GET", path_params)
         return inference_endpoint.InferenceEndpoint.from_response_json(endpoints_json)
 
@@ -272,7 +297,7 @@ class ServingApi:
             Updated metadata object of the deployment.
         """
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "serving"]
+        path_params = ["project", self._pid(), "serving"]
         headers = {"content-type": "application/json"}
 
         deployment_instance = deployment_instance.update_from_response_json(
@@ -283,8 +308,8 @@ class ServingApi:
                 data=deployment_instance.json(),
             )
         )
-        deployment_instance.model_registry_id = _client._project_id
-        deployment_instance.project_name = _client._project_name
+        deployment_instance.model_registry_id = self._pid()
+        deployment_instance.project_name = self._pname()
         return deployment_instance
 
     def _post(self, deployment_instance: deployment.Deployment, action: str):
@@ -297,7 +322,7 @@ class ServingApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "serving",
             deployment_instance.id,
         ]
@@ -313,7 +338,7 @@ class ServingApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "serving",
             deployment_instance.id,
         ]
@@ -333,7 +358,7 @@ class ServingApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "serving",
             str(deployment_instance.id),
         ]
@@ -352,15 +377,15 @@ class ServingApi:
             Deployment with reset values.
         """
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "serving"]
+        path_params = ["project", self._pid(), "serving"]
         query_params = {"name": deployment_instance.name}
         deployment_json = _client._send_request(
             "GET", path_params, query_params=query_params
         )
         deployment_aux = deployment_instance.update_from_response_json(deployment_json)
         # TODO: remove when model_registry_id is added properly to deployments in backend
-        deployment_aux.model_registry_id = _client._project_id
-        deployment_aux.project_name = _client._project_name
+        deployment_aux.model_registry_id = self._pid()
+        deployment_aux.project_name = self._pname()
         return deployment_aux
 
     def _send_inference_request(
@@ -398,7 +423,7 @@ class ServingApi:
             # use Hopsworks client
             _client = client._get_instance()
             path_params = self._get_hopsworks_inference_path(
-                _client._project_id, deployment_instance
+                self._pid(), deployment_instance
             )
             with_base_path_params = True
         else:
@@ -411,7 +436,7 @@ class ServingApi:
                 # fallback to Hopsworks client
                 _client = client._get_instance()
                 path_params = self._get_hopsworks_inference_path(
-                    _client._project_id, deployment_instance
+                    self._pid(), deployment_instance
                 )
                 with_base_path_params = True
 
@@ -535,7 +560,7 @@ class ServingApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "serving",
             deployment_instance.id,
             "logs",

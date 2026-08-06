@@ -66,6 +66,17 @@ class AppApi:
             else client._get_instance()._project_name
         )
 
+    def _stamp(self, apps):
+        """Bind the apps this handle returns to the project it addresses.
+
+        An App builds its own handle, so one read out of another project would be started,
+        stopped and deleted in the login project.
+        """
+        for one in apps if isinstance(apps, list) else [apps]:
+            if one is not None:
+                one._bind_project(self._pid(), self._pname())
+        return apps
+
     @public
     @usage._method_logger
     def get_apps(self) -> list[app.App]:
@@ -80,7 +91,7 @@ class AppApi:
         path_params = ["project", self._pid(), "apps"]
         headers = {"content-type": "application/json"}
         response = _client._send_request("GET", path_params, headers=headers)
-        return app.App.from_response_json_list(response)
+        return self._stamp(app.App.from_response_json_list(response))
 
     @public
     @usage._method_logger
@@ -111,7 +122,7 @@ class AppApi:
             ):
                 return None
             raise
-        return app.App.from_response_json(response)
+        return self._stamp(app.App.from_response_json(response))
 
     @public
     @usage._method_logger

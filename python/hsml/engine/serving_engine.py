@@ -65,9 +65,20 @@ class ServingEngine:
         PREDICTOR_STATE.CONDITION_TYPE_STOPPED,
     ]
 
-    def __init__(self):
-        self._serving_api = serving_api.ServingApi()
-        self._dataset_api = dataset_api.DatasetApi()
+    def __init__(
+        self, project_id: int | None = None, project_name: str | None = None
+    ) -> None:
+        """Operate on the deployments of one project.
+
+        Parameters:
+            project_id: The project that owns the deployments this engine acts on, and
+                project_name its name. Both default to the connection's project. A
+                deployment read out of another project binds them to that project, so
+                that starting it, reading its logs or downloading its artifacts does not
+                address the login project instead.
+        """
+        self._serving_api = serving_api.ServingApi(project_id, project_name)
+        self._dataset_api = dataset_api.DatasetApi(project_id, project_name)
 
         self._engine = local_engine.LocalEngine()
 

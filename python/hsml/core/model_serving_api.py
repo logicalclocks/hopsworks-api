@@ -48,8 +48,11 @@ class ModelServingApi:
         project_name = project_name or _client._project_name
         project_id = project_id if project_id is not None else _client._project_id
 
-        # Validate that there is a Models dataset in the connected project
-        if not self._dataset_api.path_exists("Models"):
+        # Validate that there is a Models dataset in THAT project. Asking the connection's
+        # dataset API answers for the login project, which for a foreign handle is a check of
+        # the wrong project: it passes when the login project has serving enabled and the
+        # named one does not, and the failure then surfaces later as an empty deployment list.
+        if not dataset_api.DatasetApi(project_id, project_name).exists("Models"):
             raise ModelRegistryException(
                 f"No Models dataset exists in project {project_name}, Please enable the Serving service or create the dataset manually."
             )

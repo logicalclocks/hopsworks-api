@@ -124,7 +124,15 @@ class App:
         # Not part of the persisted app config — the backend has no field for it.
         self._env_vars: dict[str, str] | None = None
 
+        self._project_id = None
+        self._project_name = None
         self._app_api = app_api.AppApi()
+
+    def _bind_project(self, project_id, project_name):
+        """Address the project this app runs in."""
+        self._project_id = project_id
+        self._project_name = project_name
+        self._app_api = app_api.AppApi(project_id=project_id, project_name=project_name)
 
     @classmethod
     def from_response_json(cls, json_dict):

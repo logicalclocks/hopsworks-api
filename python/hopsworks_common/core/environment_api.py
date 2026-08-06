@@ -34,9 +34,11 @@ class EnvironmentApi:
             project_name: Name of the same project, for the paths that carry it. Resolved from the
                 connection when omitted.
         """
-        self._environment_engine = environment_engine.EnvironmentEngine()
         self._project_id = project_id
         self._project_name = project_name
+        self._environment_engine = environment_engine.EnvironmentEngine(
+            project_id, project_name
+        )
 
     def _pid(self) -> int:
         return (
@@ -51,6 +53,17 @@ class EnvironmentApi:
             if self._project_name is not None
             else client._get_instance()._project_name
         )
+
+    def _stamp(self, envs):
+        """Bind the environments this handle returns to the project it addresses.
+
+        An Environment builds its own handles, so one read out of another project installs and
+        deletes in the login project unless it is told which project it came from.
+        """
+        for env in envs if isinstance(envs, list) else [envs]:
+            if env is not None:
+                env._bind_project(self._pid(), self._pname())
+        return envs
 
     @public
     @usage._method_logger
@@ -99,9 +112,11 @@ class EnvironmentApi:
             "name": name,
             "baseImage": {"name": base_environment_name, "description": description},
         }
-        env = environment.Environment.from_response_json(
-            _client._send_request(
-                "POST", path_params, headers=headers, data=json.dumps(data)
+        env = self._stamp(
+            environment.Environment.from_response_json(
+                _client._send_request(
+                    "POST", path_params, headers=headers, data=json.dumps(data)
+                )
             )
         )
 
@@ -136,9 +151,11 @@ class EnvironmentApi:
         path_params = ["project", self._pid(), "python", "environments"]
         query_params = {"expand": ["libraries", "commands"]}
         headers = {"content-type": "application/json"}
-        return environment.Environment.from_response_json(
-            _client._send_request(
-                "GET", path_params, query_params=query_params, headers=headers
+        return self._stamp(
+            environment.Environment.from_response_json(
+                _client._send_request(
+                    "GET", path_params, query_params=query_params, headers=headers
+                )
             )
         )
 
@@ -174,9 +191,11 @@ class EnvironmentApi:
         path_params = ["project", self._pid(), "python", "environments", name]
         query_params = {"expand": ["libraries", "commands"]}
         headers = {"content-type": "application/json"}
-        return environment.Environment.from_response_json(
-            _client._send_request(
-                "GET", path_params, query_params=query_params, headers=headers
+        return self._stamp(
+            environment.Environment.from_response_json(
+                _client._send_request(
+                    "GET", path_params, query_params=query_params, headers=headers
+                )
             )
         )
 

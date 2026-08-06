@@ -78,6 +78,24 @@ class Deployment:
         self._grpc_channel = None
         self._model_registry_id = None
 
+    def _rebind(self):
+        """Point this deployment's API and engine at the project that owns it.
+
+        A deployment read out of another project carries that project's id and name, and every
+        call it then makes has to go there: an engine left on the connection's project starts,
+        stops and reads the logs of whatever the login project holds under the same id.
+        Rebinding happens as the two attributes are set, which is how the deployment learns
+        which project it came from.
+        """
+        self._serving_api = serving_api.ServingApi(
+            self._model_registry_id, self._predictor._project_name
+        )
+        self._serving_engine = serving_engine.ServingEngine(
+            self._model_registry_id, self._predictor._project_name
+        )
+        # The predictor builds the inference URLs, and the Hopsworks one carries a project id.
+        self._predictor._project_id = self._model_registry_id
+
     @public
     @usage._method_logger
     def save(self, await_update: int | None = 600):
@@ -966,6 +984,7 @@ class Deployment:
     @model_registry_id.setter
     def model_registry_id(self, model_registry_id: int):
         self._model_registry_id = model_registry_id
+        self._rebind()
 
     @public
     @property
@@ -1028,6 +1047,7 @@ class Deployment:
     @project_name.setter
     def project_name(self, project_name: str):
         self._predictor._project_name = project_name
+        self._rebind()
 
     @public
     @property

@@ -28,6 +28,7 @@ from hopsworks_common import (
     kafka_topic,
     usage,
 )
+from hopsworks_common.client.exceptions import KafkaException
 
 
 @public("hopsworks.core.kafka_api.KafkaApi", "hsfs.core.kafka_api.KafkaApi")
@@ -58,6 +59,17 @@ class KafkaApi:
             if self._project_name is not None
             else client._get_instance()._project_name
         )
+
+    def _stamp(self, items):
+        """Bind the topics and schemas this handle returns to the project it addresses.
+
+        Each one builds its own handle, so a topic read out of another project would be
+        deleted, and its schema read, in the login project.
+        """
+        for item in items if isinstance(items, list) else [items]:
+            if item is not None:
+                item._bind_project(self._pid(), self._pname())
+        return items
 
     @public
     @usage._method_logger
@@ -106,9 +118,11 @@ class KafkaApi:
         }
 
         headers = {"content-type": "application/json"}
-        return kafka_topic.KafkaTopic.from_response_json(
-            _client._send_request(
-                "POST", path_params, headers=headers, data=json.dumps(data)
+        return self._stamp(
+            kafka_topic.KafkaTopic.from_response_json(
+                _client._send_request(
+                    "POST", path_params, headers=headers, data=json.dumps(data)
+                )
             )
         )
 
@@ -210,8 +224,10 @@ class KafkaApi:
         _client = client._get_instance()
         path_params = ["project", self._pid(), "kafka", "topics"]
 
-        return kafka_topic.KafkaTopic.from_response_json(
-            _client._send_request("GET", path_params)
+        return self._stamp(
+            kafka_topic.KafkaTopic.from_response_json(
+                _client._send_request("GET", path_params)
+            )
         )
 
     def _delete_topic(self, name: str):
@@ -340,8 +356,10 @@ class KafkaApi:
             str(version),
         ]
 
-        return kafka_schema.KafkaSchema.from_response_json(
-            _client._send_request("GET", path_params)
+        return self._stamp(
+            kafka_schema.KafkaSchema.from_response_json(
+                _client._send_request("GET", path_params)
+            )
         )
 
     def _get_broker_endpoints(self, externalListeners: bool = False):
@@ -394,6 +412,18 @@ class KafkaApi:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         _client = client._get_instance()
+        # The certificate the client materialized belongs to the project it logged into, and it
+        # is the Kafka identity: a producer built from it authenticates as that project, so
+        # returning this configuration for another one would read and write under the wrong
+        # identity and look like it had worked. Materializing a second project's certificate is
+        # not something this connection can do, so the honest answer is to refuse.
+        if self._project_id is not None and self._project_id != _client._project_id:
+            raise KafkaException(
+                f"This handle addresses project {self._pname()}, but the client holds the "
+                f"certificate of project {_client._project_name}, which is the identity a "
+                "Kafka client authenticates with. Log in to "
+                f"{self._pname()} to produce to or consume from it."
+            )
         config = {
             constants.KAFKA_SSL_CONFIG.SECURITY_PROTOCOL_CONFIG: self._get_security_protocol(),
             constants.KAFKA_SSL_CONFIG.SSL_CA_LOCATION_CONFIG: _client._get_ca_chain_path(),

@@ -21,14 +21,31 @@ from hopsworks_common.engine import git_engine
 
 @also_available_as("hopsworks.core.git_remote_api.GitRemoteApi")
 class GitRemoteApi:
-    def __init__(self):
-        self._git_engine = git_engine.GitEngine()
+    def __init__(self, project_id=None, project_name=None):
+        """Git remotes of one project's repositories.
+
+        Parameters:
+            project_id: The project whose repositories this addresses, and project_name its
+                name. Both default to the connection's project. A GitRepo obtained from
+                another project passes that project's, since a repository id means nothing
+                outside the project that holds it.
+        """
+        self._project_id = project_id
+        self._project_name = project_name
+        self._git_engine = git_engine.GitEngine(project_id, project_name)
+
+    def _pid(self):
+        return (
+            self._project_id
+            if self._project_id is not None
+            else client._get_instance()._project_id
+        )
 
     def _get(self, repo_id, name: str):
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "git",
             "repository",
             str(repo_id),
@@ -46,7 +63,7 @@ class GitRemoteApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "git",
             "repository",
             str(repo_id),
@@ -64,7 +81,7 @@ class GitRemoteApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "git",
             "repository",
             str(repo_id),
@@ -91,7 +108,7 @@ class GitRemoteApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "git",
             "repository",
             str(repo_id),

@@ -54,9 +54,34 @@ class Environment:
             command.Command.from_response_json(commands) if commands else None
         )
 
+        self._project_id = None
+        self._project_name = None
         self._environment_engine = environment_engine.EnvironmentEngine()
         self._library_api = library_api.LibraryApi()
         self._environment_api = environment_api.EnvironmentApi()
+
+    def _bind_project(self, project_id, project_name):
+        """Address the project this environment belongs to.
+
+        Every handle is rebuilt, engine included: an environment read out of another project
+        otherwise installs a library into an identically named environment in the login
+        project, waits for that project's commands, and deletes the wrong environment.
+        """
+        self._project_id = project_id
+        self._project_name = project_name
+        self._environment_engine = environment_engine.EnvironmentEngine(
+            project_id, project_name
+        )
+        self._library_api = library_api.LibraryApi(project_id, project_name)
+        self._environment_api = environment_api.EnvironmentApi(project_id, project_name)
+
+    def _pname(self):
+        """The project whose Resources a library path is resolved against."""
+        return (
+            self._project_name
+            if self._project_name is not None
+            else client._get_instance()._project_name
+        )
 
     @classmethod
     def from_response_json(cls, json_dict):
@@ -116,8 +141,7 @@ class Environment:
 
         library_name = os.path.basename(path)
 
-        _client = client._get_instance()
-        path = util._convert_to_abs(path, _client._project_name)
+        path = util._convert_to_abs(path, self._pname())
 
         library_spec = {
             "dependencyUrl": path,
@@ -163,8 +187,7 @@ class Environment:
 
         library_name = os.path.basename(path)
 
-        _client = client._get_instance()
-        path = util._convert_to_abs(path, _client._project_name)
+        path = util._convert_to_abs(path, self._pname())
 
         library_spec = {
             "dependencyUrl": path,

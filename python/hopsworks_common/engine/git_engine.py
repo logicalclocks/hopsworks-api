@@ -30,8 +30,18 @@ if TYPE_CHECKING:
 
 @also_available_as("hopsworks.engine.git_engine.GitEngine")
 class GitEngine:
-    def __init__(self):
-        self._git_op_execution_api = git_op_execution_api.GitOpExecutionApi()
+    def __init__(self, project_id=None, project_name=None):
+        """Poll the git executions of one project.
+
+        Parameters:
+            project_id: The project whose executions this waits on, and project_name its name.
+                Both default to the connection's project. A GitApi bound to another project
+                passes that project's, so that an operation started there is not waited on in
+                the login project.
+        """
+        self._git_op_execution_api = git_op_execution_api.GitOpExecutionApi(
+            project_id, project_name
+        )
         self._log = logging.getLogger(__name__)
 
     def _execute_op_blocking(

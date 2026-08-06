@@ -20,11 +20,31 @@ from hopsworks_common import client, git_op_execution
 
 @also_available_as("hopsworks.core.git_op_execution_api.GitOpExecutionApi")
 class GitOpExecutionApi:
+    def __init__(self, project_id=None, project_name=None):
+        """Git executions of one project.
+
+        Parameters:
+            project_id: The project whose executions this polls, and project_name its name.
+                Both default to the connection's project. A GitEngine driving a repository in
+                another project passes that project's, because an unbound handle polls an
+                execution id in the login project, where it is either absent or someone
+                else's.
+        """
+        self._project_id = project_id
+        self._project_name = project_name
+
+    def _pid(self):
+        return (
+            self._project_id
+            if self._project_id is not None
+            else client._get_instance()._project_id
+        )
+
     def _get_execution(self, repo_id, execution_id):
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "git",
             "repository",
             str(repo_id),

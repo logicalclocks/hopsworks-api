@@ -63,9 +63,24 @@ class GitRepo:
         self._items = items
         self._count = count
 
+        self._project_id = None
+        self._project_name = None
         self._git_api = git_api.GitApi()
         self._git_remote_api = git_remote_api.GitRemoteApi()
         self._dataset_api = dataset_api.DatasetApi()
+
+    def _bind_project(self, project_id, project_name):
+        """Address the project this repository lives in.
+
+        A repository id is only meaningful inside its project, so every handle is rebuilt:
+        the git API that checks out and commits, the remote API, and the dataset API that
+        deletes the repository's files.
+        """
+        self._project_id = project_id
+        self._project_name = project_name
+        self._git_api = git_api.GitApi(project_id, project_name)
+        self._git_remote_api = git_remote_api.GitRemoteApi(project_id, project_name)
+        self._dataset_api = dataset_api.DatasetApi(project_id, project_name)
 
     @classmethod
     def from_response_json(cls, json_dict):
