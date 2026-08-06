@@ -448,8 +448,7 @@ class DatasetSearchResult(SearchResultItem):
         """Tags attached to the dataset, with the time each was attached.
 
         Returns:
-            Dictionary of tag names to [`Tag`][hopsworks.tag.Tag] objects, whose
-                [`Tag.created_on`][hopsworks.tag.Tag.created_on] is the attachment time.
+            Dictionary of tag names to [`Tag`][hopsworks.tag.Tag] objects, each carrying the time it was attached.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
