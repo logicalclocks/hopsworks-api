@@ -129,7 +129,6 @@ class App:
         self._app_api = app_api.AppApi()
 
     def _bind_project(self, project_id, project_name):
-        """Address the project this app runs in."""
         self._project_id = project_id
         self._project_name = project_name
         self._app_api = app_api.AppApi(project_id=project_id, project_name=project_name)

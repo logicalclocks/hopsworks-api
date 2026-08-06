@@ -67,7 +67,6 @@ class KafkaTopic:
         self._kafka_api = kafka_api.KafkaApi()
 
     def _bind_project(self, project_id, project_name):
-        """Address the project this topic belongs to."""
         self._project_id = project_id
         self._project_name = project_name
         self._kafka_api = kafka_api.KafkaApi(
