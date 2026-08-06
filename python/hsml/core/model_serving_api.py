@@ -14,6 +14,8 @@
 #   limitations under the License.
 #
 
+from __future__ import annotations
+
 import socket
 
 from hopsworks_common.client.exceptions import ModelRegistryException
@@ -29,21 +31,30 @@ class ModelServingApi:
         self._dataset_api = dataset_api.DatasetApi()
         self._serving_api = serving_api.ServingApi()
 
-    def _get(self) -> ModelServing:
-        """Get model serving for specific project.
+    def _get(
+        self, project_name: str | None = None, project_id: int | None = None
+    ) -> ModelServing:
+        """Get model serving for a specific project.
+
+        Parameters:
+            project_name: The project whose serving this handle addresses, and project_id its id.
+                Both default to the connection's project. A Project object for another project
+                passes its own, so that its deployments are not the login project's.
 
         Returns:
             the model serving metadata
         """
         _client = client._get_instance()
+        project_name = project_name or _client._project_name
+        project_id = project_id if project_id is not None else _client._project_id
 
         # Validate that there is a Models dataset in the connected project
         if not self._dataset_api.path_exists("Models"):
             raise ModelRegistryException(
-                f"No Models dataset exists in project {_client._project_name}, Please enable the Serving service or create the dataset manually."
+                f"No Models dataset exists in project {project_name}, Please enable the Serving service or create the dataset manually."
             )
 
-        return ModelServing(_client._project_name, _client._project_id)
+        return ModelServing(project_name, project_id)
 
     def _load_default_configuration(self):
         """Load default configuration and set istio client for model serving."""

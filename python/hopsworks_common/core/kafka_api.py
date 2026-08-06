@@ -32,6 +32,33 @@ from hopsworks_common import (
 
 @public("hopsworks.core.kafka_api.KafkaApi", "hsfs.core.kafka_api.KafkaApi")
 class KafkaApi:
+    def __init__(
+        self, project_id: int | None = None, project_name: str | None = None
+    ) -> None:
+        """Kafka topics, schemas and clusters of one project.
+
+        Parameters:
+            project_id: The project this handle addresses; the connection's project if omitted.
+            project_name: Name of the same project, for the paths that carry it. Resolved from the
+                connection when omitted.
+        """
+        self._project_id = project_id
+        self._project_name = project_name
+
+    def _pid(self) -> int:
+        return (
+            self._project_id
+            if self._project_id is not None
+            else client._get_instance()._project_id
+        )
+
+    def _pname(self) -> str:
+        return (
+            self._project_name
+            if self._project_name is not None
+            else client._get_instance()._project_name
+        )
+
     @public
     @usage._method_logger
     def create_topic(
@@ -69,7 +96,7 @@ class KafkaApi:
         """
         _client = client._get_instance()
 
-        path_params = ["project", _client._project_id, "kafka", "topics"]
+        path_params = ["project", self._pid(), "kafka", "topics"]
         data = {
             "name": name,
             "schemaName": schema,
@@ -129,7 +156,7 @@ class KafkaApi:
 
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "kafka",
             "subjects",
             subject,
@@ -181,7 +208,7 @@ class KafkaApi:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "kafka", "topics"]
+        path_params = ["project", self._pid(), "kafka", "topics"]
 
         return kafka_topic.KafkaTopic.from_response_json(
             _client._send_request("GET", path_params)
@@ -196,7 +223,7 @@ class KafkaApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "kafka",
             "topics",
             name,
@@ -213,7 +240,7 @@ class KafkaApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "kafka",
             "subjects",
             subject,
@@ -259,7 +286,7 @@ class KafkaApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "kafka",
             "subjects",
             subject,
@@ -305,7 +332,7 @@ class KafkaApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "kafka",
             "subjects",
             subject,
@@ -321,7 +348,7 @@ class KafkaApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "kafka",
             "clusterinfo",
         ]
@@ -399,7 +426,7 @@ class KafkaApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "featurestores",
             feature_store_id,
             "kafka",

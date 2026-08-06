@@ -24,8 +24,33 @@ from hopsworks_common.engine import environment_engine
 
 @public("hopsworks.core.environment_api.EnvironmentApi")
 class EnvironmentApi:
-    def __init__(self):
+    def __init__(
+        self, project_id: int | None = None, project_name: str | None = None
+    ) -> None:
+        """Python environments of one project.
+
+        Parameters:
+            project_id: The project this handle addresses; the connection's project if omitted.
+            project_name: Name of the same project, for the paths that carry it. Resolved from the
+                connection when omitted.
+        """
         self._environment_engine = environment_engine.EnvironmentEngine()
+        self._project_id = project_id
+        self._project_name = project_name
+
+    def _pid(self) -> int:
+        return (
+            self._project_id
+            if self._project_id is not None
+            else client._get_instance()._project_id
+        )
+
+    def _pname(self) -> str:
+        return (
+            self._project_name
+            if self._project_name is not None
+            else client._get_instance()._project_name
+        )
 
     @public
     @usage._method_logger
@@ -64,7 +89,7 @@ class EnvironmentApi:
 
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "python",
             "environments",
             name,
@@ -108,7 +133,7 @@ class EnvironmentApi:
         """
         _client = client._get_instance()
 
-        path_params = ["project", _client._project_id, "python", "environments"]
+        path_params = ["project", self._pid(), "python", "environments"]
         query_params = {"expand": ["libraries", "commands"]}
         headers = {"content-type": "application/json"}
         return environment.Environment.from_response_json(
@@ -146,7 +171,7 @@ class EnvironmentApi:
         """
         _client = client._get_instance()
 
-        path_params = ["project", _client._project_id, "python", "environments", name]
+        path_params = ["project", self._pid(), "python", "environments", name]
         query_params = {"expand": ["libraries", "commands"]}
         headers = {"content-type": "application/json"}
         return environment.Environment.from_response_json(
@@ -165,7 +190,7 @@ class EnvironmentApi:
 
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "python",
             "environments",
             name,

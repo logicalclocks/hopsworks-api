@@ -79,9 +79,14 @@ class Project:
         self._description = description
         self._created = created
 
-        self._app_api = app_api.AppApi()
-        self._opensearch_api = opensearch_api.OpenSearchApi()
-        self._kafka_api = kafka_api.KafkaApi()
+        # Every handle carries THIS project, not the connection's. A Project object for another
+        # authorized project that handed out connection-scoped handles answered successfully for the
+        # wrong project, which is the defect class this whole constructor exists to close.
+        self._app_api = app_api.AppApi(project_id=project_id, project_name=project_name)
+        self._opensearch_api = opensearch_api.OpenSearchApi(
+            project_id=project_id, project_name=project_name
+        )
+        self._kafka_api = kafka_api.KafkaApi(project_id=project_id, project_name=project_name)
         # Bound to THIS project, not to the connection's. A Project object for another authorized
         # project would otherwise hand out handles that address the login project, which is how a
         # cross-project search result ends up reading the wrong artifact.
@@ -90,16 +95,18 @@ class Project:
         # to B's REST endpoint carrying /Projects/A/... paths from the login project.
         self._job_api = job_api.JobApi(project_id=project_id, project_name=project_name)
         self._jobs_api = self._job_api  # deprecated
-        self._git_api = git_api.GitApi()
+        self._git_api = git_api.GitApi(project_id=project_id, project_name=project_name)
         self._dataset_api = dataset_api.DatasetApi(
             project_id=project_id, project_name=project_name
         )
-        self._environment_api = environment_api.EnvironmentApi()
+        self._environment_api = environment_api.EnvironmentApi(
+            project_id=project_id, project_name=project_name
+        )
         # Alert receivers are qualified by project name, so this handle needs both too.
         self._alerts_api = alerts_api.AlertsApi(
             project_id=project_id, project_name=project_name
         )
-        self._search_api = search_api.SearchApi()
+        self._search_api = search_api.SearchApi(project_id=project_id, project_name=project_name)
         self._project_namespace = project_namespace
         self._trino_api = None
         self._superset_api = None
@@ -248,7 +255,9 @@ class Project:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return client._get_connection()._get_model_serving()
+        # This project's serving, not the connection's, for the same reason every other handle here
+        # carries its own project.
+        return client._get_connection()._get_model_serving(self._name, self._id)
 
     @public
     def get_kafka_api(self) -> kafka_api.KafkaApi:

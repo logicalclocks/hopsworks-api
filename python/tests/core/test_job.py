@@ -756,6 +756,36 @@ class TestJobProjectBinding:
         assert job._execution_engine._dataset_api._project_id == 42
         assert job._execution_engine._dataset_api._project_name == "other_project"
 
+    def test_every_project_handle_addresses_that_project(self, mocker):
+        """Every getter on a foreign Project, not only the ones a review happened to name.
+
+        The defect is always the same shape: a handle built with no project reads the connection's
+        when it is called, and answers successfully for the wrong project.
+        """
+        from hopsworks_common.project import Project
+
+        mocker.patch(
+            "hopsworks_common.client._get_instance",
+            return_value=mocker.Mock(_project_id=5, _project_name="login_project"),
+        )
+        b = Project(project_id=42, project_name="project_b")
+
+        for handle in (
+            b.get_job_api(),
+            b.get_dataset_api(),
+            b.get_alerts_api(),
+            b.get_app_api(),
+            b.get_git_api(),
+            b.get_environment_api(),
+            b.get_kafka_api(),
+            b.get_opensearch_api(),
+            b.get_search_api(),
+        ):
+            assert handle._pid() == 42, f"{type(handle).__name__} addresses the wrong project"
+            assert handle._pname() == "project_b", (
+                f"{type(handle).__name__} carries the wrong project name"
+            )
+
     def test_executions_of_a_bound_job_stay_bound(self, mocker):
         job = self._job()
         job._bind_project(42, "other_project")

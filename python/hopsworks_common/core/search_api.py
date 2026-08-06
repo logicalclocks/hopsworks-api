@@ -152,8 +152,33 @@ class KeywordSearchFilter:
 
 @public("hopsworks.core.search_api.SearchApi")
 class SearchApi:
-    def __init__(self):
+    def __init__(
+        self, project_id: int | None = None, project_name: str | None = None
+    ) -> None:
+        """Search over one project's artifacts.
+
+        Parameters:
+            project_id: The project whose artifacts the project-scoped searches address; the
+                connection's project if omitted.
+            project_name: Name of the same project. Resolved from the connection when omitted.
+        """
         self._log = logging.getLogger(__name__)
+        self._project_id = project_id
+        self._project_name = project_name
+
+    def _pid(self) -> int:
+        return (
+            self._project_id
+            if self._project_id is not None
+            else client._get_instance()._project_id
+        )
+
+    def _pname(self) -> str:
+        return (
+            self._project_name
+            if self._project_name is not None
+            else client._get_instance()._project_name
+        )
 
     @public
     def feature_store(
@@ -871,7 +896,7 @@ class SearchApi:
         if global_search:
             path_params = ["elastic", "featurestore"]
         else:
-            path_params = ["project", _client._project_id, "elastic", "featurestore"]
+            path_params = ["project", self._pid(), "elastic", "featurestore"]
 
         headers = {"content-type": "application/json"}
         query_params = {

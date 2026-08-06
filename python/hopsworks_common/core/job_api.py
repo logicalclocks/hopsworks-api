@@ -61,12 +61,12 @@ class JobApi:
         self._project_id = project_id
         self._project_name = project_name
 
-    def _get_project_id(self) -> int:
+    def _pid(self) -> int:
         if self._project_id is not None:
             return self._project_id
         return client._get_instance()._project_id
 
-    def _get_project_name(self) -> str:
+    def _pname(self) -> str:
         if self._project_name is not None:
             return self._project_name
         return client._get_instance()._project_name
@@ -81,7 +81,7 @@ class JobApi:
         jobs = result if isinstance(result, list) else [result]
         for j in jobs:
             if j is not None:
-                j._bind_project(self._get_project_id(), self._get_project_name())
+                j._bind_project(self._pid(), self._pname())
         return result
 
     @public
@@ -115,9 +115,9 @@ class JobApi:
         """
         _client = client._get_instance()
 
-        config = util._validate_job_conf(config, self._get_project_name())
+        config = util._validate_job_conf(config, self._pname())
 
-        path_params = ["project", self._get_project_id(), "jobs", name]
+        path_params = ["project", self._pid(), "jobs", name]
 
         headers = {"content-type": "application/json"}
         # Bound before the URL is built, not after: get_url reads the job's project, so printing
@@ -150,7 +150,7 @@ class JobApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            self._get_project_id(),
+            self._pid(),
             "jobs",
             name,
         ]
@@ -175,7 +175,7 @@ class JobApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            self._get_project_id(),
+            self._pid(),
             "jobs",
         ]
         query_params = {"expand": ["creator"]}
@@ -222,7 +222,7 @@ class JobApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            self._get_project_id(),
+            self._pid(),
             "jobs",
             type.lower(),
             "configuration",
@@ -240,7 +240,7 @@ class JobApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            self._get_project_id(),
+            self._pid(),
             "jobs",
             str(job.name),
         ]
@@ -258,9 +258,9 @@ class JobApi:
         """
         _client = client._get_instance()
 
-        config = util._validate_job_conf(config, self._get_project_name())
+        config = util._validate_job_conf(config, self._pname())
 
-        path_params = ["project", self._get_project_id(), "jobs", name]
+        path_params = ["project", self._pid(), "jobs", name]
 
         headers = {"content-type": "application/json"}
         return self._bind(
@@ -276,7 +276,7 @@ class JobApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            self._get_project_id(),
+            self._pid(),
             "jobs",
             name,
             "schedule",
@@ -295,7 +295,7 @@ class JobApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            self._get_project_id(),
+            self._pid(),
             "jobs",
             name,
             "schedule",
@@ -319,7 +319,7 @@ class JobApi:
         ),
     ) -> job.Job:
         _client = client._get_instance()
-        path_params = ["project", self._get_project_id(), "jobs", name]
+        path_params = ["project", self._pid(), "jobs", name]
 
         headers = {"content-type": "application/json"}
         return self._bind(
@@ -334,7 +334,7 @@ class JobApi:
     @usage._method_logger
     def launch(self, name: str, args: str = None) -> None:
         _client = client._get_instance()
-        path_params = ["project", self._get_project_id(), "jobs", name, "executions"]
+        path_params = ["project", self._pid(), "jobs", name, "executions"]
 
         # The backend has two @POST handlers on this path (text/plain for legacy
         # args and application/json for logical-time params); without an explicit
@@ -346,7 +346,7 @@ class JobApi:
     @usage._method_logger
     def get(self, name: str) -> job.Job:
         _client = client._get_instance()
-        path_params = ["project", self._get_project_id(), "jobs", name]
+        path_params = ["project", self._pid(), "jobs", name]
 
         return self._bind(
             job.Job.from_response_json(_client._send_request("GET", path_params))
@@ -358,7 +358,7 @@ class JobApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            self._get_project_id(),
+            self._pid(),
             "jobs",
             job.name,
             "executions",
@@ -387,7 +387,7 @@ class JobApi:
             schedule_config = schedule_config.to_dict()
         path_params = [
             "project",
-            self._get_project_id(),
+            self._pid(),
             "jobs",
             name,
             "schedule",
@@ -408,7 +408,7 @@ class JobApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            self._get_project_id(),
+            self._pid(),
             "jobs",
             name,
             "schedule",
@@ -434,7 +434,7 @@ class JobApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            self._get_project_id(),
+            self._pid(),
             "jobs",
             job.name,
             "tags",
@@ -456,7 +456,7 @@ class JobApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            self._get_project_id(),
+            self._pid(),
             "jobs",
             job.name,
             "tags",
@@ -477,7 +477,7 @@ class JobApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            self._get_project_id(),
+            self._pid(),
             "jobs",
             job.name,
             "tags",
@@ -504,7 +504,7 @@ class JobApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            self._get_project_id(),
+            self._pid(),
             "jobs",
             job.name,
             "tags",
@@ -534,7 +534,7 @@ class JobApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            self._get_project_id(),
+            self._pid(),
             "jobs",
             job.name,
             "tags",
