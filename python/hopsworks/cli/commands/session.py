@@ -114,6 +114,19 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def _local_away(slug: str) -> dict[str, str]:
+    """Return ``{session_id: project}`` for sessions handed off from this
+    directory, read from the ``<id>.away.json`` markers push leaves behind."""
+    out: dict[str, str] = {}
+    d = _CLAUDE_PROJECTS / slug
+    if d.is_dir():
+        for m in d.glob("*.away.json"):
+            with contextlib.suppress(Exception):
+                sid = m.name[: -len(".away.json")]
+                out[sid] = json.loads(m.read_text()).get("project", "?")
+    return out
+
+
 def _is_active_session(jsonl: Path) -> bool:
     """Heuristic for "the session you are currently in": the newest transcript
     for this directory, written to within the last two minutes. A live `claude`
@@ -396,15 +409,18 @@ def list_sessions(ctx: click.Context) -> None:
     local_ids = sorted(p.stem for p in local_dir.glob("*.jsonl")) if (
         local_dir.is_dir()
     ) else []
+    away = _local_away(slug)
 
     project = conn.get_project(ctx)
     remote_ids = sorted(_remote_session_ids(project.get_dataset_api(), slug))
 
     def _where(sid: str) -> str:
+        if sid in away:
+            return f"away → {away[sid]}"
         here, there = sid in local_ids, sid in remote_ids
         return "local+remote" if here and there else "local" if here else "remote"
 
-    all_ids = sorted(set(local_ids) | set(remote_ids))
+    all_ids = sorted(set(local_ids) | set(remote_ids) | set(away))
     if output.JSON_MODE:
         output.print_json(
             {

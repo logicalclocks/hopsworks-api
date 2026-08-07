@@ -77,3 +77,10 @@ def test_is_active_session_stale_is_not_active(sessions_dir):
     only.write_text("{}")
     os.utime(only, (1, 1))  # newest but written long ago
     assert session._is_active_session(only) is False
+
+
+def test_local_away_reads_markers(sessions_dir):
+    (sessions_dir / "abc.away.json").write_text('{"project": "feast_bench"}')
+    (sessions_dir / "def.away.json").write_text('{"project": "fraud"}')
+    away = session._local_away("-Users-lex-proj")
+    assert away == {"abc": "feast_bench", "def": "fraud"}
