@@ -86,7 +86,9 @@ class Project:
         self._opensearch_api = opensearch_api.OpenSearchApi(
             project_id=project_id, project_name=project_name
         )
-        self._kafka_api = kafka_api.KafkaApi(project_id=project_id, project_name=project_name)
+        self._kafka_api = kafka_api.KafkaApi(
+            project_id=project_id, project_name=project_name
+        )
         # Bound to THIS project, not to the connection's. A Project object for another authorized
         # project would otherwise hand out handles that address the login project, which is how a
         # cross-project search result ends up reading the wrong artifact.
@@ -106,7 +108,9 @@ class Project:
         self._alerts_api = alerts_api.AlertsApi(
             project_id=project_id, project_name=project_name
         )
-        self._search_api = search_api.SearchApi(project_id=project_id, project_name=project_name)
+        self._search_api = search_api.SearchApi(
+            project_id=project_id, project_name=project_name
+        )
         self._project_namespace = project_namespace
         self._trino_api = None
         self._superset_api = None

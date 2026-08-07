@@ -781,7 +781,9 @@ class TestJobProjectBinding:
             b.get_opensearch_api(),
             b.get_search_api(),
         ):
-            assert handle._pid() == 42, f"{type(handle).__name__} addresses the wrong project"
+            assert handle._pid() == 42, (
+                f"{type(handle).__name__} addresses the wrong project"
+            )
             assert handle._pname() == "project_b", (
                 f"{type(handle).__name__} carries the wrong project name"
             )

@@ -93,7 +93,9 @@ def project_ids(paths):
 
 def _deployment_body(backend_fixtures):
     """One deployment, as the single-deployment endpoints return it."""
-    return backend_fixtures["predictor"]["get_deployments_singleton"]["response"]["items"][0]
+    return backend_fixtures["predictor"]["get_deployments_singleton"]["response"][
+        "items"
+    ][0]
 
 
 class TestEnvironmentBinding:
@@ -117,7 +119,10 @@ class TestEnvironmentBinding:
         """An Environment builds its own handles, and used to build them unbound."""
         from hopsworks_common.core import environment_api
 
-        environment_body = {"name": "env", "commands": {"items": [{"status": "SUCCESS"}]}}
+        environment_body = {
+            "name": "env",
+            "commands": {"items": [{"status": "SUCCESS"}]},
+        }
         library_body = {
             "channel": "requirements_txt",
             "package_source": "REQUIREMENTS_TXT",
@@ -127,7 +132,9 @@ class TestEnvironmentBinding:
         rec = recorder(
             lambda path: library_body if "libraries" in path else environment_body
         )
-        env = environment_api.EnvironmentApi(OTHER_ID, OTHER_NAME).get_environment("env")
+        env = environment_api.EnvironmentApi(OTHER_ID, OTHER_NAME).get_environment(
+            "env"
+        )
 
         env.install_requirements("Resources/requirements.txt", await_installation=False)
 
@@ -139,7 +146,9 @@ class TestEnvironmentBinding:
         from hopsworks_common.core import environment_api
 
         rec = recorder({"name": "env"})
-        env = environment_api.EnvironmentApi(OTHER_ID, OTHER_NAME).get_environment("env")
+        env = environment_api.EnvironmentApi(OTHER_ID, OTHER_NAME).get_environment(
+            "env"
+        )
 
         env.delete()
 
@@ -219,7 +228,9 @@ class TestKafkaBinding:
 
         assert topic._kafka_api._project_id == OTHER_ID
 
-    def test_default_config_refuses_a_project_the_certificate_is_not_for(self, recorder):
+    def test_default_config_refuses_a_project_the_certificate_is_not_for(
+        self, recorder
+    ):
         """The certificate is the Kafka identity, and it belongs to the login project.
 
         Returning this configuration for another project would produce and consume as the
