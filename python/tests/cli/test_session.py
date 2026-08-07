@@ -84,3 +84,58 @@ def test_local_away_reads_markers(sessions_dir):
     (sessions_dir / "def.away.json").write_text('{"project": "fraud"}')
     away = session._local_away("-Users-lex-proj")
     assert away == {"abc": "feast_bench", "def": "fraud"}
+
+
+# --- baton reclaim on pull ---------------------------------------------------
+
+
+def test_transcript_relation_same():
+    lines = ["a", "b", "c"]
+    assert session._transcript_relation(lines, list(lines), baseline=1) == "same"
+
+
+def test_transcript_relation_fast_forward():
+    # local is a strict prefix of remote -> the pod advanced, take remote.
+    assert session._transcript_relation(
+        ["a", "b"], ["a", "b", "c", "d"], baseline=2
+    ) == "fast_forward"
+
+
+def test_transcript_relation_local_ahead():
+    # remote is a strict prefix of local -> we advanced locally, keep local.
+    assert session._transcript_relation(
+        ["a", "b", "c"], ["a", "b"], baseline=2
+    ) == "local_ahead"
+
+
+def test_transcript_relation_diverged_past_baseline():
+    # Shared prefix through the baseline (2), tails differ beyond it.
+    assert session._transcript_relation(
+        ["a", "b", "x"], ["a", "b", "y"], baseline=2
+    ) == "diverged"
+
+
+def test_transcript_relation_baseline_mismatch():
+    # They already differ inside the handed-off prefix: not one lineage.
+    assert session._transcript_relation(
+        ["a", "X", "c"], ["a", "b", "c"], baseline=3
+    ) == "baseline_mismatch"
+
+
+def test_pod_alive_true_when_session_present(monkeypatch):
+    monkeypatch.setattr(session.terminal_api, "get_session", lambda pid: {"id": "s"})
+    assert session._pod_alive(1) is True
+
+
+def test_pod_alive_false_only_on_definitive_none(monkeypatch):
+    monkeypatch.setattr(session.terminal_api, "get_session", lambda pid: None)
+    assert session._pod_alive(1) is False
+
+
+def test_pod_alive_failsafe_alive_on_error(monkeypatch):
+    def boom(pid):
+        raise RuntimeError("terminal feature disabled")
+
+    monkeypatch.setattr(session.terminal_api, "get_session", boom)
+    # Unknown liveness must not silently authorise a steal.
+    assert session._pod_alive(1) is True

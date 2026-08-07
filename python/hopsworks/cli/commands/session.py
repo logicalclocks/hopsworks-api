@@ -161,6 +161,70 @@ def _write_baton(dataset_api, dest_dir: str, sid: str, holder: str,
             dataset_api.upload(local_path=str(p), upload_path=dest_dir, overwrite=True)
 
 
+def _read_baton(dataset_api, dest_dir: str, sid: str) -> dict | None:
+    """Return the baton for ``sid`` staged under ``dest_dir``, or None.
+
+    None means no baton exists (a ``--fork`` push, or a legacy transfer), which
+    the caller treats as batonless copy semantics — not an error.
+    """
+    remote = f"{dest_dir}/{sid}.baton.json"
+    with tempfile.TemporaryDirectory() as tmp:
+        local = Path(tmp) / f"{sid}.baton.json"
+        with contextlib.suppress(Exception):
+            dataset_api.download(remote, local_path=str(local), overwrite=True)
+            return json.loads(local.read_text())
+    return None
+
+
+def _pod_alive(project_id: int) -> bool:
+    """Whether the pod still holds a live terminal session for this project.
+
+    Only a definitive ``None`` from the backend counts as dead. A raised call
+    (feature disabled, network) is treated as alive on purpose: liveness we
+    cannot confirm must not silently authorise stealing the baton, so an
+    unknown state still forces ``--force``.
+    """
+    try:
+        return terminal_api.get_session(project_id) is not None
+    except Exception:  # noqa: BLE001 - unknown liveness is fail-safe "alive"
+        return True
+
+
+def _transcript_relation(local: list[str], remote: list[str],
+                         baseline: int) -> str:
+    """Classify how two append-only transcripts relate.
+
+    A Claude Code JSONL only ever grows (lines are appended, never rewritten),
+    so the relationship is decided by the common line prefix. ``baseline`` is
+    the line count recorded in the baton at the last hand-off.
+
+    Returns one of ``same``, ``fast_forward`` (local is a strict prefix of
+    remote, take remote), ``local_ahead`` (remote is a strict prefix of local,
+    keep local), ``baseline_mismatch`` (they already differ inside the handed-off
+    prefix, so they are not one lineage), or ``diverged`` (shared prefix past the
+    baseline, tails differ).
+    """
+    common = 0
+    for a, b in zip(local, remote, strict=False):
+        if a != b:
+            break
+        common += 1
+    if common == len(local) == len(remote):
+        return "same"
+    if common == len(local):
+        return "fast_forward"
+    if common == len(remote):
+        return "local_ahead"
+    if common < baseline:
+        return "baseline_mismatch"
+    return "diverged"
+
+
+def _stamp() -> str:
+    """Compact UTC timestamp for parked-transcript sidecar filenames."""
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
 @click.group("session")
 def session_group() -> None:
     """Move a Claude Code session between this machine and a terminal pod."""
@@ -327,24 +391,51 @@ def push(ctx: click.Context, session_id: str | None, overwrite: bool,
     "for this directory.",
 )
 @click.option(
-    "--overwrite",
+    "--ours",
     is_flag=True,
-    help="Overwrite the local session JSONL if it already exists.",
+    help="On divergence, keep the local transcript (the pod's copy is parked "
+    "aside, never lost).",
+)
+@click.option(
+    "--theirs",
+    is_flag=True,
+    help="On divergence, take the pod's transcript (your local copy is parked "
+    "aside, never lost).",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Steal the baton from a live pod or another machine. Without it, "
+    "pull refuses to reclaim a session a live holder is still writing.",
 )
 @click.pass_context
-def pull(ctx: click.Context, session_id: str | None, overwrite: bool) -> None:
-    """Pull a session staged in HopsFS back onto this machine.
+def pull(ctx: click.Context, session_id: str | None, ours: bool, theirs: bool,
+         force: bool) -> None:
+    """Pull a session staged in HopsFS back onto this machine and take the baton.
 
     Downloads the transcript from ``Resources/teleport/<slug>/`` into
     ``~/.claude/projects/<slug>/`` and prints the resume command. Run it from a
     directory that hashes to the same slug as the source, or ``claude
     --resume`` will not find the session.
 
+    Reclaiming is baton-aware. If the pod still holds a live terminal session,
+    pull refuses unless ``--force`` (you would be stealing from a process that
+    is still writing). If both sides advanced the transcript since the hand-off,
+    pull refuses until you pick ``--ours`` or ``--theirs``; the losing side is
+    parked to a sidecar, never destroyed. A successful pull flips the baton to
+    this machine as the very last step, so an interrupted pull leaves the pod
+    canonical rather than orphaning the claim here.
+
     Args:
         ctx: Click context.
         session_id: Explicit session id, or None to pick the only staged one.
-        overwrite: Overwrite the local JSONL if it already exists.
+        ours: On divergence, keep local.
+        theirs: On divergence, take the pod's copy.
+        force: Steal the baton from a live pod or another machine.
     """
+    if ours and theirs:
+        raise click.ClickException("--ours and --theirs are mutually exclusive.")
+
     slug = _cwd_slug()
     project = conn.get_project(ctx)
     dataset_api = project.get_dataset_api()
@@ -363,17 +454,132 @@ def pull(ctx: click.Context, session_id: str | None, overwrite: bool) -> None:
             )
         session_id = staged[0]
 
-    remote_jsonl = f"{_TELEPORT_DATASET}/{slug}/{session_id}.jsonl"
+    dest_dir = f"{_TELEPORT_DATASET}/{slug}"
+    remote_jsonl = f"{dest_dir}/{session_id}.jsonl"
     local_dir = _CLAUDE_PROJECTS / slug
     local_dir.mkdir(parents=True, exist_ok=True)
     local_jsonl = local_dir / f"{session_id}.jsonl"
-    try:
-        dataset_api.download(
-            remote_jsonl, local_path=str(local_jsonl), overwrite=overwrite
-        )
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Failed to pull session: {exc}") from exc
+    away = local_dir / f"{session_id}.jsonl.away"
+
+    baton = _read_baton(dataset_api, dest_dir, session_id)
+    host = socket.gethostname()
+    me = f"laptop:{host}"
+
+    # --- Ownership gate: --force is required only to take the baton from a
+    # holder that may still be writing (a live pod, or another laptop we have
+    # no liveness oracle for). A dead pod, or a baton we already hold, is a
+    # frictionless reclaim.
+    if baton:
+        holder = baton.get("holder", "")
+        if holder.startswith("pod:"):
+            if _pod_alive(project.id) and not force:
+                raise click.ClickException(
+                    f"The pod still holds a live terminal session for "
+                    f"{holder}. Close it there first, or `pull --force` to take "
+                    f"the baton anyway (the pod's later writes become orphans)."
+                )
+        elif holder.startswith("laptop:") and holder != me and not force:
+            raise click.ClickException(
+                f"Another machine holds this session ({holder}). "
+                f"`pull --force` to steal the baton."
+            )
+
+    # --- Download the remote transcript to a scratch file so we can compare
+    # before touching anything local.
+    with tempfile.TemporaryDirectory() as tmp:
+        scratch = Path(tmp) / f"{session_id}.jsonl"
+        try:
+            dataset_api.download(remote_jsonl, local_path=str(scratch), overwrite=True)
+        except Exception as exc:  # noqa: BLE001
+            raise click.ClickException(f"Failed to pull session: {exc}") from exc
+        remote_text = scratch.read_text(errors="ignore")
+    remote_lines = remote_text.splitlines()
+
+    # The local candidate is the resumable copy if present, else the transcript
+    # push renamed aside on hand-off.
+    local_src = (
+        local_jsonl if local_jsonl.is_file()
+        else away if away.is_file()
+        else None
+    )
+    local_text = local_src.read_text(errors="ignore") if local_src else ""
+    local_lines = local_text.splitlines() if local_src else None
+
+    # --- Decide which content wins (axis: divergence).
+    parked: Path | None = None
+    take_remote: bool
+    if baton is None:
+        # Fork / legacy: a batonless copy. Overwrite only when told to, and
+        # never mint a baton (the --fork pusher opted out of ownership).
+        if local_lines is not None and local_lines != remote_lines and not theirs:
+            raise click.ClickException(
+                "A different local copy of this session exists. `pull --theirs` "
+                "to replace it (your copy is parked aside)."
+            )
+        if theirs and local_src and local_lines != remote_lines:
+            parked = local_dir / f"{session_id}.jsonl.diverged-{_stamp()}"
+        take_remote = True
+    else:
+        baseline = baton.get("transferred_lines") or 0
+        if local_lines is None:
+            take_remote = True
+        else:
+            rel = _transcript_relation(local_lines, remote_lines, baseline)
+            if rel == "same":
+                take_remote = False
+            elif rel == "fast_forward":
+                take_remote = True
+            elif rel == "local_ahead":
+                take_remote = False
+            elif rel == "diverged":
+                if not (ours or theirs):
+                    raise click.ClickException(
+                        f"Local and pod transcripts diverged since the hand-off "
+                        f"(local +{len(local_lines) - baseline}, pod "
+                        f"+{len(remote_lines) - baseline} lines). Re-run with "
+                        f"--ours to keep yours or --theirs to take the pod's; "
+                        f"the other side is parked aside, never lost."
+                    )
+                take_remote = bool(theirs)
+                parked = local_dir / (
+                    f"{session_id}.jsonl.diverged-{_stamp()}" if theirs
+                    else f"{session_id}.jsonl.remote-{_stamp()}"
+                )
+            else:  # baseline_mismatch
+                if not theirs:
+                    raise click.ClickException(
+                        "Local and pod transcripts share no common history "
+                        "(they differ within the handed-off prefix). `pull "
+                        "--theirs` overwrites with the pod's copy; your local "
+                        "copy is parked aside."
+                    )
+                take_remote = True
+                parked = local_dir / f"{session_id}.jsonl.diverged-{_stamp()}"
+
+    # --- Apply the decision, then flip the baton LAST (so a crash before the
+    # flip leaves the pod canonical instead of orphaning the claim here).
+    # The parked sidecar always holds the losing side: local when we take the
+    # pod's copy, the pod's copy when we keep local.
+    if parked is not None:
+        parked.write_text(local_text if take_remote else remote_text)
+    if take_remote:
+        local_jsonl.write_text(remote_text)
+    elif local_src == away:
+        away.rename(local_jsonl)
+
+    # The session is resumable locally again: drop the away markers push left.
+    for marker in (away, local_dir / f"{session_id}.away.json"):
+        with contextlib.suppress(FileNotFoundError):
+            marker.unlink()
+
+    if baton is not None:
+        final_lines = sum(1 for _ in local_jsonl.open(errors="ignore"))
+        _write_baton(dataset_api, dest_dir, session_id, holder=me,
+                     prev_holder=baton.get("holder", "?"), lines=final_lines)
+
     output.success("✓ Pulled session %s to %s", session_id, local_dir)
+    if parked is not None:
+        output.info("Parked the other side at %s", parked.name)
 
     resume = f"claude --resume {session_id}"
     if output.JSON_MODE:
@@ -383,6 +589,9 @@ def pull(ctx: click.Context, session_id: str | None, overwrite: bool) -> None:
                 "slug": slug,
                 "project": project.name,
                 "pulled_to": str(local_jsonl),
+                "took": "remote" if take_remote else "local",
+                "parked": parked.name if parked else None,
+                "baton": me if baton is not None else None,
                 "resume_step": resume,
             }
         )
