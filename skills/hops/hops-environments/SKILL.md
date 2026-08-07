@@ -15,19 +15,34 @@ workload at the clone.
 ## Contract
 - **Input:** a base environment name + a `requirements.txt` (or a `.whl`).
 - **Output:** a cloned environment with the dependencies installed.
-- **Pre-condition:** the requirements file / wheel **already exists inside the
-  project filesystem** at a project-relative path such as
-  `Users/<username>/app-requirements.txt`. Neither the SDK nor the CLI uploads
-  it for you — see *Requirements-file paths* below. Writing the file into the
-  project FUSE mount (`/hopsfs/...`) is how you put it there.
+- **Pre-condition (SDK only):** the requirements file / wheel **already exists
+  inside the project filesystem** at a project-relative path such as
+  `Users/<username>/app-requirements.txt`. The SDK does not upload it for you —
+  see *Requirements-file paths* below. The CLI does: `hops env install -f` takes
+  a local file and uploads it before installing.
 
 ## Requirements-file paths (read this before running `install`)
 
-**The path is always a project path, for both the SDK and the CLI.** The CLI's
-`-f/--file` flag does **not** upload a local file; `hops env install` passes the
-string straight to `env.install_requirements()`, and the backend resolves it
-against the project root `/Projects/<project>/`. Getting this wrong is the most
-common failure:
+**The CLI uploads; the SDK does not.** `hops env install <env> -f <file>`
+accepts either a local file, which it uploads to
+`Resources/environments/<env>/` first (`--upload-dir` overrides the
+destination), or a path that already exists in the project:
+
+```bash
+printf 'ibis-framework\n' > requirements.txt
+hops env install my_env -f requirements.txt          # local file: uploaded, then installed
+hops env install my_env -f Users/me/requirements.txt # no such local file: passed through as a project path
+```
+
+The passthrough rule is `os.path.isfile`: a string that names a local file is
+uploaded, anything else is handed to the backend as a project path. So run the
+CLI from a directory where the string means what you intend — a local
+`Users/me/requirements.txt` relative to the cwd would be uploaded rather than
+treated as the project path of the same name.
+
+**The SDK takes project paths only.** `env.install_requirements()` forwards the
+string to the backend, which resolves it against the project root
+`/Projects/<project>/`. A local-only path fails with:
 
 ```
 Error: Install failed: ... HTTP code: 404 ...
@@ -36,36 +51,8 @@ Error: Install failed: ... HTTP code: 404 ...
 ```
 
 That means the backend looked at the project root and found nothing — the file
-existed only on the local disk.
-
-There is a second trap layered on top: the CLI declares `-f` as
-`click.Path(exists=True)`, so the path must **also** resolve locally from the
-current working directory. A bare project path fails Click's check before any
-request is sent:
-
-```
-Error: Invalid value for '-f' / '--file': File 'Users/me/requirements.txt' does not exist.
-```
-
-**Both constraints are satisfied at once by writing the file into the project
-FUSE mount and invoking the CLI from the project root**, so that one relative
-path is simultaneously a valid local path and the correct project path:
-
-```bash
-# /hopsfs is the FUSE mount of the project root (/Projects/<project>).
-# Confirm with: ls /hopsfs   ->   Users/ Models/ Resources/ Jupyter/ Logs/ ...
-printf 'ibis-framework\n' > /hopsfs/Users/<username>/requirements.txt
-
-cd /hopsfs                                    # cwd == project root
-hops env install my_env -f Users/<username>/requirements.txt
-```
-
-Rule of thumb: **`cd` to the project root mount first, then pass a
-project-relative path.** Absolute local paths (`/tmp/...`, or even
-`/hopsfs/Users/...`) pass Click's check and then 404 on the backend, because the
-backend prepends the project root to whatever string it receives.
-
-With the SDK there is no local-existence check, so only the project path matters:
+existed only on the local disk. Writing the file into the project FUSE mount
+(`/hopsfs/...`, where mounted) is one way to put it there:
 
 ```python
 env.install_requirements("Users/<username>/requirements.txt", await_installation=True)
@@ -84,7 +71,7 @@ env.install_requirements("Users/<username>/requirements.txt", await_installation
 ```bash
 hops env list                                          # base + cloned environments
 hops env clone my_env --from pandas-training-pipeline  # provisions the clone
-cd /hopsfs && hops env install my_env -f Users/<username>/requirements.txt
+hops env install my_env -f requirements.txt            # uploads the local file, then installs
 ```
 
 ## Base environments (pick by workload)
@@ -160,10 +147,11 @@ env.delete()                               # remove the environment
   never delete an environment a job, app, or deployment still references.
 
 ## Caveats
-- **The requirements path is a project path for BOTH the SDK and the CLI.** The
-  CLI does not upload; it only adds a local-existence check on top. `cd /hopsfs`
-  first and pass a project-relative path. This is the single most common failure
-  mode — see *Requirements-file paths*.
+- **The SDK takes project paths only; the CLI uploads local files.** With the
+  SDK, put the file in the project first (FUSE mount or `dataset.upload`) and
+  pass the project path. With the CLI, a local `-f` is uploaded to
+  `Resources/environments/<env>/` and anything that is not a local file is
+  passed through as a project path — see *Requirements-file paths*.
 - **Clone and install block.** Use `await_creation=False` /
   `await_installation=False` to fire-and-forget, but then you must poll before the
   workload can use the env.
@@ -173,9 +161,9 @@ env.delete()                               # remove the environment
   `spark-feature-pipeline-v1`) so a pinned env travels with the code version.
 
 ## Toolset
-- **CLI:** `hops env list`, `hops env clone <new> --from <base> [--description]`, `hops env install <env> -f <project-relative-requirements.txt>` (run from `/hopsfs`).
+- **CLI:** `hops env list`, `hops env clone <new> --from <base> [--description]`, `hops env install <env> -f <local-file-or-project-path> [--upload-dir] [--no-overwrite]`.
 - **SDK:** `project.get_environment_api()` → `create_environment(base_environment_name=, await_creation=)`, `env.install_requirements()`, `env.install_wheel()`, `env.uninstall()`, `env.delete()`.
-- **Source:** `python/hopsworks_common/core/environment_api.py`, `python/hopsworks_common/environment.py`, `python/hopsworks/cli/commands/env.py` (see `env_install` — it forwards the path unchanged, confirming the no-upload behaviour).
+- **Source:** `python/hopsworks_common/core/environment_api.py`, `python/hopsworks_common/environment.py`, `python/hopsworks/cli/commands/env.py` (see `env_install` — a local `-f` is uploaded, any other string is passed through as a project path).
 
 ## Next steps
 - [hops-job](../hops-job/SKILL.md) — run a job in the cloned environment.
