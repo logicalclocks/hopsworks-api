@@ -1220,7 +1220,7 @@ class DatasetApi:
     def get_tag_metadata(self, path: str, name: str) -> tag.Tag | None:
         """Get a dataset tag with its metadata, including the time it was attached.
 
-        Unlike [`DatasetApi.get_tags`][hopsworks.core.dataset_api.DatasetApi.get_tags], which returns only tag values, this returns the [`Tag`][hopsworks.tag.Tag] object, whose [`Tag.created_on`][hopsworks.tag.Tag.created_on] is the attachment time.
+        Unlike [`DatasetApi.get_tags`][hopsworks.core.dataset_api.DatasetApi.get_tags], which returns only tag values, this returns the [`Tag`][hopsworks.tag.Tag] object, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
 
         Parameters:
             path: Path of the dataset the tag is attached to.
@@ -1241,7 +1241,7 @@ class DatasetApi:
     ) -> dict[str, tag.Tag]:
         """Get all tags attached to a dataset, with their metadata.
 
-        Unlike [`DatasetApi.get_tags`][hopsworks.core.dataset_api.DatasetApi.get_tags], which returns only tag values, this keeps the [`Tag`][hopsworks.tag.Tag] objects, whose [`Tag.created_on`][hopsworks.tag.Tag.created_on] is the attachment time.
+        Unlike [`DatasetApi.get_tags`][hopsworks.core.dataset_api.DatasetApi.get_tags], which returns only tag values, this keeps the [`Tag`][hopsworks.tag.Tag] objects, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
 
         Parameters:
             path: Path of the dataset to get the tags for.

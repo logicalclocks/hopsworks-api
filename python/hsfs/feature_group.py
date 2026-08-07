@@ -1015,7 +1015,7 @@ class FeatureGroupBase:
     def get_tag_metadata(self, name: str) -> tag.Tag | None:
         """Get a tag with its metadata, including the time it was attached.
 
-        Unlike [`FeatureGroupBase.get_tag`][hsfs.feature_group.FeatureGroupBase.get_tag], which returns only the tag's value, this returns the [`Tag`][hopsworks.tag.Tag] object, whose [`Tag.created_on`][hopsworks.tag.Tag.created_on] is the attachment time.
+        Unlike [`FeatureGroupBase.get_tag`][hsfs.feature_group.FeatureGroupBase.get_tag], which returns only the tag's value, this returns the [`Tag`][hopsworks.tag.Tag] object, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
 
         Example:
             ```python
@@ -1038,7 +1038,7 @@ class FeatureGroupBase:
     def get_tags_metadata(self) -> dict[str, tag.Tag]:
         """Retrieves all tags attached to a feature group, with their metadata.
 
-        Unlike [`FeatureGroupBase.get_tags`][hsfs.feature_group.FeatureGroupBase.get_tags], which returns only the tag values, this keeps the [`Tag`][hopsworks.tag.Tag] objects, whose [`Tag.created_on`][hopsworks.tag.Tag.created_on] is the attachment time.
+        Unlike [`FeatureGroupBase.get_tags`][hsfs.feature_group.FeatureGroupBase.get_tags], which returns only the tag values, this keeps the [`Tag`][hopsworks.tag.Tag] objects, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
 
         Returns:
             The dictionary of tag names to tag objects.

@@ -877,7 +877,7 @@ class TrainingDataset(TrainingDatasetBase):
     def get_tag_metadata(self, name: str) -> tag.Tag | None:
         """Get a tag with its metadata, including the time it was attached.
 
-        Unlike [`TrainingDataset.get_tag`][hsfs.training_dataset.TrainingDataset.get_tag], which returns only the tag's value, this returns the [`Tag`][hopsworks.tag.Tag] object, whose [`Tag.created_on`][hopsworks.tag.Tag.created_on] is the attachment time.
+        Unlike [`TrainingDataset.get_tag`][hsfs.training_dataset.TrainingDataset.get_tag], which returns only the tag's value, this returns the [`Tag`][hopsworks.tag.Tag] object, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
 
         Parameters:
             name: Name of the tag to get.
@@ -894,7 +894,7 @@ class TrainingDataset(TrainingDatasetBase):
     def get_tags_metadata(self) -> dict[str, tag.Tag]:
         """Returns all tags attached to a training dataset, with their metadata.
 
-        Unlike [`TrainingDataset.get_tags`][hsfs.training_dataset.TrainingDataset.get_tags], which returns only the tag values, this keeps the [`Tag`][hopsworks.tag.Tag] objects, whose [`Tag.created_on`][hopsworks.tag.Tag.created_on] is the attachment time.
+        Unlike [`TrainingDataset.get_tags`][hsfs.training_dataset.TrainingDataset.get_tags], which returns only the tag values, this keeps the [`Tag`][hopsworks.tag.Tag] objects, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
 
         Returns:
             Dictionary of tag names to tag objects.
