@@ -25,12 +25,14 @@ import re
 import socket
 import tempfile
 import time
+import webbrowser
 from datetime import datetime, timezone
 from pathlib import Path
 
 import click
 from hopsworks.cli import output, terminal_api
 from hopsworks.cli import session as conn
+from hopsworks_common import client
 
 
 # Where Claude Code keeps per-directory session transcripts on this machine.
@@ -225,6 +227,17 @@ def _stamp() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
+def _terminal_ui_url(project_id: int) -> str:
+    """Deep link that opens the terminal dock on the project's page.
+
+    The web terminal is a route-less dock panel; the front-end reads the
+    ``?terminal=open`` query param on load and opens it, so this is the URL
+    that lands a teleported session straight in the terminal.
+    """
+    base = client._get_instance()._base_url.rstrip("/")
+    return f"{base}/p/{project_id}?terminal=open"
+
+
 @click.group("session")
 def session_group() -> None:
     """Move a Claude Code session between this machine and a terminal pod."""
@@ -253,14 +266,21 @@ def session_group() -> None:
     help="Model the pod should resume the session with (passed to "
     "`claude --resume --model`).",
 )
+@click.option(
+    "--open/--no-open",
+    "open_ui",
+    default=True,
+    help="Open the terminal in the browser after pushing (default). "
+    "--no-open just prints the URL.",
+)
 @click.pass_context
 def push(ctx: click.Context, session_id: str | None, overwrite: bool,
-         fork: bool, model: str | None) -> None:
+         fork: bool, model: str | None, open_ui: bool) -> None:
     """Push the current Claude Code session onto a Hopsworks terminal pod.
 
     Resolves the active session for this directory, uploads its transcript into
     the project's HopsFS, starts the terminal pod (when the feature is enabled
-    on the cluster), and prints how to resume it there. By default this is a
+    on the cluster), and opens the terminal in the browser. By default this is a
     baton hand-off: the pod becomes the canonical copy and the local transcript
     is renamed aside (unless it is the session you are currently in, which stays
     live locally). `--fork` keeps a live local copy instead.
@@ -271,6 +291,7 @@ def push(ctx: click.Context, session_id: str | None, overwrite: bool,
         overwrite: Re-upload even if a JSONL for this slug already exists.
         fork: Copy instead of hand off; leave the local session canonical.
         model: Model the pod resumes with.
+        open_ui: Open the terminal in the browser after pushing.
     """
     slug = _cwd_slug()
     jsonl = _resolve_local_session(slug, session_id)
@@ -359,6 +380,13 @@ def push(ctx: click.Context, session_id: str | None, overwrite: bool,
         f"claude --resume {resolved_id}",
     ]
 
+    terminal_url = _terminal_ui_url(project.id)
+    # Open the browser only in interactive use: JSON mode is for machines, so it
+    # just carries the URL. Best-effort — a headless box has no browser.
+    if open_ui and not output.JSON_MODE:
+        with contextlib.suppress(Exception):
+            webbrowser.open(terminal_url)
+
     if output.JSON_MODE:
         output.print_json(
             {
@@ -367,12 +395,15 @@ def push(ctx: click.Context, session_id: str | None, overwrite: bool,
                 "project": project.name,
                 "shipped_to": f"{dest_dir}/{resolved_id}.jsonl",
                 "ws_url": ws_url,
+                "terminal_url": terminal_url,
                 "marker": marker,
                 "landing_steps": landing,
             }
         )
         return
 
+    output.info("")
+    output.info("Terminal: %s", terminal_url)
     output.info("")
     output.info("Landing kit — run these in the Hopsworks terminal:")
     for step in landing:
