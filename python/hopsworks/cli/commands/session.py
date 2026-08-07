@@ -24,6 +24,7 @@ import json
 import re
 import socket
 import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -109,6 +110,44 @@ def _remote_session_ids(dataset_api, slug: str) -> list[str]:
     return []
 
 
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _is_active_session(jsonl: Path) -> bool:
+    """Heuristic for "the session you are currently in": the newest transcript
+    for this directory, written to within the last two minutes. A live `claude`
+    holds that file open, so pushing it cannot rename it out from under the
+    running process; the baton is recorded but the local copy is left in place.
+    """
+    proj_dir = jsonl.parent
+    newest = max(
+        proj_dir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, default=None
+    )
+    return newest == jsonl and (time.time() - jsonl.stat().st_mtime) < 120
+
+
+def _write_baton(dataset_api, dest_dir: str, sid: str, holder: str,
+                 prev_holder: str, lines: int) -> None:
+    """Write the baton sidecar recording where a session's canonical copy lives.
+
+    Both the laptop CLI and the pod read it; it is the commit point of a
+    hand-off. Best-effort upload; a failure surfaces on the next read.
+    """
+    baton = {
+        "session_id": sid,
+        "holder": holder,
+        "since": _now(),
+        "prev_holder": prev_holder,
+        "transferred_lines": lines,
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        p = Path(tmp) / f"{sid}.baton.json"
+        p.write_text(json.dumps(baton))
+        with contextlib.suppress(Exception):
+            dataset_api.upload(local_path=str(p), upload_path=dest_dir, overwrite=True)
+
+
 @click.group("session")
 def session_group() -> None:
     """Move a Claude Code session between this machine and a terminal pod."""
@@ -126,19 +165,35 @@ def session_group() -> None:
     is_flag=True,
     help="Overwrite a session JSONL already staged for this slug.",
 )
+@click.option(
+    "--fork",
+    is_flag=True,
+    help="Copy the session instead of handing it off: the local copy stays "
+    "canonical, no baton is written. Default is a baton hand-off.",
+)
+@click.option(
+    "--model",
+    help="Model the pod should resume the session with (passed to "
+    "`claude --resume --model`).",
+)
 @click.pass_context
-def push(ctx: click.Context, session_id: str | None, overwrite: bool) -> None:
+def push(ctx: click.Context, session_id: str | None, overwrite: bool,
+         fork: bool, model: str | None) -> None:
     """Push the current Claude Code session onto a Hopsworks terminal pod.
 
     Resolves the active session for this directory, uploads its transcript into
     the project's HopsFS, starts the terminal pod (when the feature is enabled
-    on the cluster), and prints how to resume it there. The local session is
-    left untouched.
+    on the cluster), and prints how to resume it there. By default this is a
+    baton hand-off: the pod becomes the canonical copy and the local transcript
+    is renamed aside (unless it is the session you are currently in, which stays
+    live locally). `--fork` keeps a live local copy instead.
 
     Args:
         ctx: Click context.
         session_id: Explicit session id, or None for the active one.
         overwrite: Re-upload even if a JSONL for this slug already exists.
+        fork: Copy instead of hand off; leave the local session canonical.
+        model: Model the pod resumes with.
     """
     slug = _cwd_slug()
     jsonl = _resolve_local_session(slug, session_id)
@@ -173,7 +228,9 @@ def push(ctx: click.Context, session_id: str | None, overwrite: bool) -> None:
         "slug": slug,
         "cwd": str(Path.cwd()),
         "host": socket.gethostname(),
-        "pushed_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "pushed_at": _now(),
+        "mode": "fork" if fork else "push",
+        "model": model,
     }
     with tempfile.TemporaryDirectory() as tmp:
         mpath = Path(tmp) / f"{resolved_id}.teleport.json"
@@ -182,6 +239,28 @@ def push(ctx: click.Context, session_id: str | None, overwrite: bool) -> None:
             dataset_api.upload(
                 local_path=str(mpath), upload_path=dest_dir, overwrite=True
             )
+
+    # Baton hand-off: record that the canonical copy now lives on the pod, and
+    # rename the local transcript aside so it is not resumed by accident. Skip
+    # both for --fork (deliberate copy), and skip the rename for the session
+    # you are in (its file is held open by a live `claude`).
+    if not fork:
+        host = socket.gethostname()
+        lines = sum(1 for _ in jsonl.open(errors="ignore"))
+        _write_baton(dataset_api, dest_dir, resolved_id,
+                     holder=f"pod:{project.name}", prev_holder=f"laptop:{host}",
+                     lines=lines)
+        if _is_active_session(jsonl):
+            output.warn(
+                "This looks like the session you are in, so it stays live on "
+                "this machine. The baton points to %s; close it here, then "
+                "`hops session pull` to reclaim it.", project.name)
+        else:
+            away = jsonl.parent / (jsonl.name + ".away")
+            with contextlib.suppress(Exception):
+                jsonl.rename(away)
+                (jsonl.parent / f"{resolved_id}.away.json").write_text(json.dumps(
+                    {"project": project.name, "host": host, "pushed_at": _now()}))
 
     ws_url = None
     try:

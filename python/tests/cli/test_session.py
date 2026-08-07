@@ -56,3 +56,24 @@ def test_resolve_session_no_dir_errors(tmp_path, monkeypatch):
     monkeypatch.setattr(session, "_CLAUDE_PROJECTS", tmp_path)
     with pytest.raises(Exception, match="No Claude Code sessions"):
         session._resolve_local_session("-nope", None)
+
+
+def test_is_active_session_newest_and_recent(sessions_dir):
+    import os
+
+    old = sessions_dir / "old.jsonl"
+    new = sessions_dir / "new.jsonl"
+    old.write_text("{}")
+    new.write_text("{}")
+    os.utime(old, (1, 1))  # ancient
+    assert session._is_active_session(new) is True  # newest, just written
+    assert session._is_active_session(old) is False  # not the newest
+
+
+def test_is_active_session_stale_is_not_active(sessions_dir):
+    import os
+
+    only = sessions_dir / "only.jsonl"
+    only.write_text("{}")
+    os.utime(only, (1, 1))  # newest but written long ago
+    assert session._is_active_session(only) is False
