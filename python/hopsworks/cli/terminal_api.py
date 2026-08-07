@@ -7,7 +7,7 @@ call the REST side of that resource (``/project/{id}/terminal/...``); the
 WebSocket side (typing into ``tmux``) is a separate, later concern.
 
 Kept under ``cli/`` rather than ``core/`` on purpose: this is CLI-only
-plumbing for ``hops teleport``, not a sanctioned SDK surface, so it must not
+plumbing for ``hops session``, not a sanctioned SDK surface, so it must not
 grow a ``@public`` annotation until that decision is made deliberately.
 """
 
