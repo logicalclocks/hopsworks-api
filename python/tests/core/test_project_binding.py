@@ -66,6 +66,9 @@ class Recorder:
     def _get_client_key_path(self):
         return "/tmp/client_key.pem"
 
+    def _replace_public_host(self, url_parsed):
+        return url_parsed
+
 
 @pytest.fixture
 def recorder(mocker):
@@ -322,3 +325,45 @@ class TestModelServingBinding:
         url = deployment.predictor.get_inference_url()
 
         assert f"/project/{OTHER_ID}/inference/" in url
+
+    def test_a_deployment_stays_bound_across_a_refresh(
+        self, recorder, backend_fixtures
+    ):
+        """A refresh must not unbind the deployment.
+
+        update_from_response_json rebuilds the object through __init__, which reset the api and
+        the engine to the login project. The duplicate-create recovery in ServingEngine._create
+        refreshes exactly there, so the deployment it hands back operated on the wrong project.
+        """
+        from hsml.model_serving import ModelServing
+
+        recorder(_deployment_body(backend_fixtures))
+        deployment = ModelServing(OTHER_NAME, OTHER_ID).get_deployment_by_id(1)
+
+        deployment.update_from_response_json(_deployment_body(backend_fixtures))
+
+        assert deployment.model_registry_id == OTHER_ID
+        assert deployment.project_name == OTHER_NAME
+        assert deployment._serving_api._project_id == OTHER_ID
+        assert deployment._serving_engine._serving_api._project_id == OTHER_ID
+
+
+class TestAppBinding:
+    def test_a_bound_apps_urls_name_its_project(self, recorder):
+        from hopsworks_common.app import App
+
+        recorder({})
+        app = App(name="my_app", public_access=True, public_token="tok")
+        app._bind_project(OTHER_ID, OTHER_NAME)
+
+        assert f"/{OTHER_NAME}/" in app.public_url
+        assert f"/p/{OTHER_ID}/apps" in app.get_url()
+
+    def test_an_unbound_app_still_uses_the_connection(self, recorder):
+        from hopsworks_common.app import App
+
+        recorder({})
+        app = App(name="my_app", public_access=True, public_token="tok")
+
+        assert f"/{LOGIN_NAME}/" in app.public_url
+        assert f"/p/{LOGIN_ID}/apps" in app.get_url()

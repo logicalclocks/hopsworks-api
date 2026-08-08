@@ -749,12 +749,23 @@ class Deployment:
         )
 
     def update_from_response_json(self, json_dict):
+        # The refresh rebuilds this object through __init__, which resets the api and the engine to
+        # the connection's project, and the predictor's refresh does the same to its project name. A
+        # deployment bound to a foreign project must stay bound across a refresh: the
+        # duplicate-create recovery in ServingEngine._create refreshes exactly here, and an unbound
+        # result would start, stop and read the logs of the login project's deployment instead.
+        model_registry_id = self._model_registry_id
+        project_name = self._predictor._project_name
         self._predictor.update_from_response_json(json_dict)
         self.__init__(
             predictor=self._predictor,
             name=self._predictor._name,
             description=self._predictor._description,
         )
+        if model_registry_id is not None or project_name is not None:
+            self._model_registry_id = model_registry_id
+            self._predictor._project_name = project_name
+            self._rebind()
         return self
 
     def json(self):

@@ -380,7 +380,10 @@ class App:
         if not token:
             return None
         _client = client._get_instance()
-        project = urllib.parse.quote(_client._project_name, safe="")
+        # The bound project when this app was read through a foreign Project; the login project
+        # otherwise. The connection's name built a share URL into the wrong project for a bound app.
+        project_name = self._project_name or _client._project_name
+        project = urllib.parse.quote(project_name, safe="")
         name = urllib.parse.quote(self._name, safe="")
         return (
             _client._base_url.rstrip("/")
@@ -491,9 +494,12 @@ class App:
             The URL to the app page in the Hopsworks UI.
         """
         _client = client._get_instance()
-        return util._get_hostname_replaced_url(
-            "/p/" + str(_client._project_id) + "/apps"
+        # The bound project when this app was read through a foreign Project; the login project
+        # otherwise. The connection's id pointed the UI link at the wrong project for a bound app.
+        project_id = (
+            self._project_id if self._project_id is not None else _client._project_id
         )
+        return util._get_hostname_replaced_url("/p/" + str(project_id) + "/apps")
 
     def _refresh(self) -> App:
         """Re-fetch app state from the backend."""
