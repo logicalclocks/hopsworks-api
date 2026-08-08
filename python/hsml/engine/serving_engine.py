@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 import time
 import uuid
@@ -787,13 +788,14 @@ class ServingEngine:
     ):
         """Yield only newly observed log chunks as plain text.
 
-        v1 streaming is client-side polling: each tick calls
-        :py:meth:`read_logs` with a moving ``since`` cursor and yields the
-        portion not already seen. Deduplication is by (timestamp, doc_id)
-        on the OpenSearch path (old backends). The Kubernetes path has
-        neither field: each poll returns a whole tail window per pod, so
-        the previous window is kept per pod and only the suffix not
-        overlapping it is emitted. The generator stops when:
+        v1 streaming is client-side polling: each tick fetches with a moving
+        ``since`` cursor and yields the portion not already seen.
+        Deduplication is by (timestamp, doc_id) on the OpenSearch path (old
+        backends). On the Kubernetes path lines are requested with kubelet
+        timestamps and a per-pod cursor advances past what was yielded, so a
+        poll transfers only the news; against an old backend that ignores
+        those params, the previous tail window is kept per pod and only the
+        non-overlapping suffix is emitted. The generator stops when:
 
         - ``timeout`` (seconds, optional) elapses,
         - ``stop_on_status`` matches the current ``deployment.get_state().status``, or
@@ -816,9 +818,14 @@ class ServingEngine:
         # successive overlapping windows.
         seen_doc_ids: set[str] = set()
         last_timestamp: str | None = since if (since and since != "now") else None
-        # Kubernetes chunks carry no doc id / timestamp: each poll returns
-        # the current tail window of each pod. Keep the previous window per
-        # pod (keyed by instance name) for overlap-suffix dedup.
+        # Kubernetes path: lines are requested with kubelet timestamps and a
+        # per-pod cursor advances past what was already yielded, so each poll
+        # transfers only what is new. ``since`` is applied by the kubelet at
+        # second granularity, so the cursor comparison below is what actually
+        # dedupes the overlap it re-sends. Old backends ignore both params and
+        # return unprefixed tail windows; the previous window is kept per pod
+        # (keyed by instance name) for overlap-suffix dedup as a fallback.
+        cursor_by_pod: dict[str, str] = {}
         previous_lines_by_pod: dict[str, list[str]] = {}
 
         # ``since="now"`` is a UX shorthand: start streaming brand-new lines
@@ -834,17 +841,27 @@ class ServingEngine:
         deadline = (time.monotonic() + timeout) if timeout else None
 
         while True:
+            # since is an absolute instant, so one value covers every pod: the
+            # earliest cursor lags without losing, and each pod trims its own
+            # overlap. A pod that disappeared must not keep pinning the value,
+            # which is why cursors are only kept for pods present last poll.
+            if cursor_by_pod:
+                since_param = min(cursor_by_pod.values())
+            else:
+                since_param = last_timestamp
             chunks = (
                 self._serving_api._get_logs(
                     deployment_instance,
                     component,
-                    # Bounded per-poll fetch. Larger values just mean more work
-                    # for the dedupe pass; the SDK still yields only what's new.
+                    # Bounded first fetch; dropped by the API layer on a
+                    # resume, where a tail bound would discard exactly the
+                    # lines being resumed.
                     tail=200,
                     source=source,
-                    since=last_timestamp,
+                    since=since_param,
                     until=None,
                     pod=None,
+                    timestamps=True,
                 )
                 or []
             )
@@ -860,12 +877,14 @@ class ServingEngine:
                         last_timestamp is None or chunk.timestamp > last_timestamp
                     ):
                         last_timestamp = chunk.timestamp
-                else:
-                    # Kubernetes path: the chunk holds this pod's current
-                    # tail window; emit only the lines not already covered
-                    # by the previous window of the same pod.
-                    pod = chunk.instance_name or ""
-                    new_lines = (chunk.content or "").splitlines()
+                    continue
+                pod = chunk.instance_name or ""
+                new_lines = (chunk.content or "").splitlines()
+                remainder = self._advance_pod_cursor(cursor_by_pod, pod, new_lines)
+                if remainder is None:
+                    # No kubelet timestamps: an old backend that ignored the
+                    # request param. Fall back to overlap-suffix dedup of the
+                    # rolling tail windows.
                     previous_lines = previous_lines_by_pod.get(pod)
                     remainder = (
                         new_lines
@@ -873,15 +892,15 @@ class ServingEngine:
                         else self._overlap_remainder(previous_lines, new_lines)
                     )
                     previous_lines_by_pod[pod] = new_lines
-                    if remainder:
-                        # ``content`` is read-only on the DTO, so build a
-                        # new chunk holding only the unseen lines.
-                        new_chunks.append(
-                            deployable_component_logs.DeployableComponentLogs(
-                                instance_name=chunk.instance_name,
-                                content="\n".join(remainder),
-                            )
+                if remainder:
+                    # ``content`` is read-only on the DTO, so build a
+                    # new chunk holding only the unseen lines.
+                    new_chunks.append(
+                        deployable_component_logs.DeployableComponentLogs(
+                            instance_name=chunk.instance_name,
+                            content="\n".join(remainder),
                         )
+                    )
 
             if new_chunks:
                 yield self._format_log_chunks(new_chunks)
@@ -895,6 +914,44 @@ class ServingEngine:
                 return
 
             time.sleep(interval)
+
+    # Matches the kubelet's RFC 3339 line prefix requested via timestamps=true,
+    # e.g. "2026-08-07T12:34:56.123456789Z log text".
+    _K8S_TS_PREFIX = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})) ?")
+
+    @classmethod
+    def _advance_pod_cursor(
+        cls, cursor_by_pod: dict[str, str], pod: str, lines: list[str]
+    ) -> list[str] | None:
+        """Strip kubelet timestamp prefixes and return the lines after this pod's cursor.
+
+        Returns ``None`` when the lines carry no timestamps, signalling the
+        caller to use the rolling-window fallback instead. Timestamps compare
+        lexicographically: the kubelet emits them in one fixed UTC format. A
+        line without a prefix (a continuation of a long line) follows the
+        keep-or-drop decision of the timestamped line before it.
+        """
+        if not any(cls._K8S_TS_PREFIX.match(line) for line in lines):
+            return None
+        cursor = cursor_by_pod.get(pod)
+        fresh: list[str] = []
+        keep_continuation = cursor is None
+        max_seen = cursor
+        for line in lines:
+            match = cls._K8S_TS_PREFIX.match(line)
+            if match is None:
+                if keep_continuation:
+                    fresh.append(line)
+                continue
+            ts = match.group(1)
+            keep_continuation = cursor is None or ts > cursor
+            if keep_continuation:
+                fresh.append(line[match.end():])
+            if max_seen is None or ts > max_seen:
+                max_seen = ts
+        if max_seen is not None:
+            cursor_by_pod[pod] = max_seen
+        return fresh
 
     @staticmethod
     def _overlap_remainder(

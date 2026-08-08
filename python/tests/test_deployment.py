@@ -1343,6 +1343,97 @@ class TestDeployment:
         # Second poll: pod-B contributed nothing, so no block headers.
         assert chunks[1] == "a3\n"
 
+    def test_tail_logs_kubernetes_cursor_advances_and_strips_timestamps(
+        self, mocker, backend_fixtures
+    ):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch("hopsworks_common.util._get_members", return_value=["predictor"])
+        # A new backend honoring since + timestamps: the second poll re-sends
+        # the whole second the cursor sits in (kubelet sinceTime is
+        # second-granular), and the client-side cursor must drop that overlap.
+        first = [
+            self._make_chunk(
+                content=(
+                    "2026-08-07T10:00:01.100000000Z boot\n"
+                    "2026-08-07T10:00:01.200000000Z ready\n"
+                )
+            )
+        ]
+        second = [
+            self._make_chunk(
+                content=(
+                    "2026-08-07T10:00:01.200000000Z ready\n"
+                    "2026-08-07T10:00:02.000000000Z serving\n"
+                )
+            )
+        ]
+        mock_api = mocker.patch(
+            "hsml.core.serving_api.ServingApi._get_logs",
+            side_effect=[first, second],
+        )
+        mocker.patch("time.sleep")
+        monot = mocker.patch("time.monotonic")
+        monot.side_effect = [0.0, 1.0, 99.0]
+
+        chunks = list(d.tail_logs(source="kubernetes", timeout=10.0, since=None))
+
+        assert chunks == ["boot\nready\n", "serving\n"]
+        assert mock_api.call_args_list[0].kwargs["timestamps"] is True
+        # The second poll resumes from the newest timestamp of the first, so
+        # polling can never stall on a fixed prefix and never re-transfers
+        # the whole history.
+        assert (
+            mock_api.call_args_list[1].kwargs["since"]
+            == "2026-08-07T10:00:01.200000000Z"
+        )
+
+    def test_tail_logs_kubernetes_cursor_tracks_pods_independently(
+        self, mocker, backend_fixtures
+    ):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch("hopsworks_common.util._get_members", return_value=["predictor"])
+        first = [
+            self._make_chunk(
+                instance_name="pod-A", content="2026-08-07T10:00:05.000000000Z a1\n"
+            ),
+            self._make_chunk(
+                instance_name="pod-B", content="2026-08-07T10:00:01.000000000Z b1\n"
+            ),
+        ]
+        second = [
+            # since is the earliest cursor across pods (pod-B's), so pod-A
+            # gets its own line re-sent and must trim it locally.
+            self._make_chunk(
+                instance_name="pod-A",
+                content=(
+                    "2026-08-07T10:00:05.000000000Z a1\n"
+                    "2026-08-07T10:00:06.000000000Z a2\n"
+                ),
+            ),
+            self._make_chunk(
+                instance_name="pod-B", content="2026-08-07T10:00:01.000000000Z b1\n"
+            ),
+        ]
+        mock_api = mocker.patch(
+            "hsml.core.serving_api.ServingApi._get_logs",
+            side_effect=[first, second],
+        )
+        mocker.patch("time.sleep")
+        monot = mocker.patch("time.monotonic")
+        monot.side_effect = [0.0, 1.0, 99.0]
+
+        chunks = list(d.tail_logs(source="kubernetes", timeout=10.0, since=None))
+
+        assert len(chunks) == 2
+        assert "a1" in chunks[0] and "b1" in chunks[0]
+        assert chunks[1] == "a2\n"
+        assert (
+            mock_api.call_args_list[1].kwargs["since"]
+            == "2026-08-07T10:00:01.000000000Z"
+        )
+
     def test_tail_logs_defaults_to_kubernetes_source(self, mocker, backend_fixtures):
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)
