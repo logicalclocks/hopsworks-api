@@ -187,8 +187,15 @@ def test_build_manifest_carries_owner_mode_and_cwd(monkeypatch):
     assert m["slug"] == "-Users-lex-p"
     assert m["mode"] == "new"
     assert m["model"] is None
+    assert m["prompt"] is None
     assert m["cwd"] == "/Users/lex/p"
     assert m["user"] == "lex@x.com"
+
+
+def test_build_manifest_carries_prompt(monkeypatch):
+    monkeypatch.setattr(session, "_current_user_email", lambda: None)
+    m = session._build_manifest("s", "-p", "new", None, "summarize the project")
+    assert m["prompt"] == "summarize the project"
 
 
 def test_upload_manifest_uploads_last_write_to_dest(tmp_path):

@@ -264,13 +264,14 @@ def _current_user_email() -> str | None:
 
 
 def _build_manifest(session_id: str, slug: str, mode: str,
-                    model: str | None) -> dict:
+                    model: str | None, prompt: str | None = None) -> dict:
     """The manifest the pod's landing hook reads to self-resume.
 
     Carries the original cwd (the slug alone cannot reconstruct it, and the pod
     recreates a path that hashes to the same slug for ``claude --resume``), the
-    ``mode`` (``push`` / ``fork`` / ``new``), and the owner so a multi-tenant pod
-    only lands its own sessions.
+    ``mode`` (``push`` / ``fork`` / ``new``), the owner so a multi-tenant pod
+    only lands its own sessions, and an optional ``prompt`` the pod feeds to
+    ``claude`` as the session's first instruction.
     """
     return {
         "session_id": session_id,
@@ -280,6 +281,7 @@ def _build_manifest(session_id: str, slug: str, mode: str,
         "pushed_at": _now(),
         "mode": mode,
         "model": model,
+        "prompt": prompt,
         "user": _current_user_email(),
     }
 
@@ -381,6 +383,11 @@ def session_group() -> None:
     "`claude --resume --model`).",
 )
 @click.option(
+    "--prompt",
+    help="An instruction to feed the resumed session as its first input "
+    "(passed to `claude` as the prompt).",
+)
+@click.option(
     "--open/--no-open",
     "open_ui",
     default=True,
@@ -389,7 +396,8 @@ def session_group() -> None:
 )
 @click.pass_context
 def push(ctx: click.Context, session_id: str | None, overwrite: bool,
-         fork: bool, model: str | None, open_ui: bool) -> None:
+         fork: bool, model: str | None, prompt: str | None,
+         open_ui: bool) -> None:
     """Push the current Claude Code session onto a Hopsworks terminal pod.
 
     Resolves the active session for this directory, uploads its transcript into
@@ -405,6 +413,7 @@ def push(ctx: click.Context, session_id: str | None, overwrite: bool,
         overwrite: Re-upload even if a JSONL for this slug already exists.
         fork: Copy instead of hand off; leave the local session canonical.
         model: Model the pod resumes with.
+        prompt: First instruction fed to the resumed session, or None.
         open_ui: Open the terminal in the browser after pushing.
     """
     slug = _cwd_slug()
@@ -460,7 +469,8 @@ def push(ctx: click.Context, session_id: str | None, overwrite: bool,
     # (transcript, baton) must already be staged when it appears. The upload is a
     # hard error, not best-effort — a dropped manifest strands the session
     # (staged, but never landed).
-    manifest = _build_manifest(resolved_id, slug, "fork" if fork else "push", model)
+    manifest = _build_manifest(
+        resolved_id, slug, "fork" if fork else "push", model, prompt)
     _upload_manifest(dataset_api, dest_dir, resolved_id, manifest)
 
     pod_session_dir = f"~/.claude/projects/{slug}"
@@ -511,6 +521,11 @@ def push(ctx: click.Context, session_id: str | None, overwrite: bool,
     help="Model the pod should start Claude with (passed to `claude --model`).",
 )
 @click.option(
+    "--prompt",
+    help="An instruction to start the session on (passed to `claude` as the "
+    "prompt), so the session begins on its task without typing into the tab.",
+)
+@click.option(
     "--open/--no-open",
     "open_ui",
     default=True,
@@ -518,17 +533,21 @@ def push(ctx: click.Context, session_id: str | None, overwrite: bool,
     "--no-open just prints the URL.",
 )
 @click.pass_context
-def new(ctx: click.Context, model: str | None, open_ui: bool) -> None:
+def new(ctx: click.Context, model: str | None, prompt: str | None,
+        open_ui: bool) -> None:
     """Start a fresh Claude Code session directly on a terminal pod.
 
     Unlike ``push`` there is nothing to ship: this stages a ``mode=new`` manifest
     (no transcript) so the pod's landing hook opens a brand-new ``claude`` in a
     directory that hashes to this one's slug, then opens the terminal in the
-    browser. Use it to begin work on the pod straight from the laptop.
+    browser. Use it to begin work on the pod straight from the laptop. ``--prompt``
+    seeds the session with a first instruction, so several `new --prompt` calls
+    launch parallel sessions each already working on its own task.
 
     Args:
         ctx: Click context.
         model: Model the pod starts Claude with.
+        prompt: First instruction the session starts on, or None.
         open_ui: Open the terminal in the browser after starting.
     """
     slug = _cwd_slug()
