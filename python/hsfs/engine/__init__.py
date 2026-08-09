@@ -82,7 +82,8 @@ def _get_type() -> str:
 
 def _stop() -> None:
     global _engine
-    from hsfs.core import arrow_flight_client
+    from hsfs.core import arrow_flight_client, kafka_engine
 
     _engine = None
     arrow_flight_client._close()
+    kafka_engine._close()

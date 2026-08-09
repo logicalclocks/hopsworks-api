@@ -136,6 +136,9 @@ class Engine:
 
         # cache the sql engine which contains the connection pool
         self._mysql_online_fs_engine = None
+        # Online topics already observed to exist, so that repeated writes do not
+        # each pay a Kafka metadata round trip to find that out again.
+        self._known_online_topics: set[str] = set()
         _logger.info("Python Engine initialized.")
 
     def _sql(
@@ -1989,15 +1992,27 @@ class Engine:
         storage: str | None,
     ) -> job.Job | None:
         initial_check_point = ""
+        topic_name = feature_group._online_topic_name
 
-        if not feature_group._multi_part_insert:
+        # Reading the offsets is a Kafka metadata round trip, and it serves two
+        # purposes: seeding the materialization job, and revealing a topic that does
+        # not exist yet. An insert that starts no job and writes to a topic already
+        # seen needs neither, which is the steady state for frequent small writes
+        # such as feature logging.
+        read_offsets = not feature_group._multi_part_insert and (
+            self._start_offline_materialization(offline_write_options)
+            or topic_name not in self._known_online_topics
+        )
+        if read_offsets:
             # set initial_check_point to the current offset
             initial_check_point = kafka_engine._kafka_get_offsets(
-                topic_name=feature_group._online_topic_name,
+                topic_name=topic_name,
                 feature_store_id=feature_group.feature_store_id,
                 offline_write_options=offline_write_options,
                 high=True,
             )
+            if initial_check_point:
+                self._known_online_topics.add(topic_name)
 
         self._write_dataframe_kafka(
             feature_group, dataframe, offline_write_options, storage
@@ -2007,7 +2022,7 @@ class Engine:
         if isinstance(feature_group, ExternalFeatureGroup):
             return None
         # if topic didn't exist, always run the materialization job to reset the offsets except if it's a multi insert
-        if not initial_check_point and not feature_group._multi_part_insert:
+        if read_offsets and not initial_check_point and not feature_group._multi_part_insert:
             if self._start_offline_materialization(offline_write_options):
                 warnings.warn(
                     "This is the first ingestion after an upgrade or backup/restore, running materialization job even though `start_offline_materialization` was set to `False`.",
