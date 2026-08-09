@@ -57,10 +57,6 @@ if TYPE_CHECKING:
     from hsfs.feature_group import ExternalFeatureGroup, FeatureGroup
 
 
-# Keyed on (feature store id, external). Cleared when the connection closes.
-_kafka_connector_cache: dict[tuple[int, bool], Any] = {}
-
-
 @_uses_confluent_kafka
 def _init_kafka_consumer(
     feature_store_id: int,
@@ -276,31 +272,6 @@ def _encode_row(complex_feature_writers, writer, row):
         return outf.getvalue()
 
 
-def _get_kafka_connector(feature_store_id: int, external: bool):
-    """Kafka storage connector for this feature store, fetched at most once.
-
-    Building one is expensive twice over: fetching it is a REST round trip, and
-    turning it into confluent options materialises the PEM files, which parses the
-    client's private key. Together that costs more than writing the rows. The
-    connector is valid for the life of the client, and `create_pem_files` is
-    idempotent per instance, so a fresh instance per call re-paid both. Frequent
-    small writes, feature logging above all, spent most of their time here.
-    """
-    key = (feature_store_id, external)
-    connector = _kafka_connector_cache.get(key)
-    if connector is None:
-        connector = storage_connector_api.StorageConnectorApi()._get_kafka_connector(
-            feature_store_id, external
-        )
-        _kafka_connector_cache[key] = connector
-    return connector
-
-
-def _close() -> None:
-    """Drop cached Kafka resources. Called when the connection is closed."""
-    _kafka_connector_cache.clear()
-
-
 def _get_kafka_config(
     feature_store_id: int,
     write_options: dict[str, Any] | None = None,
@@ -310,7 +281,11 @@ def _get_kafka_config(
         write_options = {}
     external = client._is_external() and not write_options.get("internal_kafka", False)
 
-    storage_connector = _get_kafka_connector(feature_store_id, external)
+    storage_connector = (
+        storage_connector_api.StorageConnectorApi()._get_kafka_connector(
+            feature_store_id, external
+        )
+    )
 
     if engine == "spark":
         config = storage_connector.spark_options()

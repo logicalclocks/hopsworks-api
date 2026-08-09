@@ -1659,17 +1659,11 @@ class FeatureViewEngine:
                         model_version=model_version,
                     )
                     # Schema validation is disabled for logging feature groups to always allow logging data to be ingested.
-                    # A logging feature group carries no expectation suite, so fetching
-                    # one is a REST round trip per logged batch for nothing.
                     results.append(
                         fg.insert(
                             logging_df,
                             write_options=default_write_options,
-                            validation_options={
-                                "schema_validation": False,
-                                "run_validation": False,
-                                "fetch_expectation_suite": False,
-                            },
+                            validation_options={"schema_validation": False},
                         )
                     )
         return results
