@@ -57,6 +57,7 @@ dependencies = [
     "packaging",                     # ^21.0
     "hopsworks-apigen>=1.0.4,<2.0.0",
     "click>=8.1",
+    "websockets>=13",
     "tomli>=2.0; python_version < '3.11'",
     "tomli-w>=1.0",
     "build",

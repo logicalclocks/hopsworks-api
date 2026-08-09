@@ -21,16 +21,28 @@ the manual landing steps as a fallback.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import json
+import os
 import re
+import shutil
 import socket
+import ssl
+import sys
 import tempfile
 import time
 import uuid
 import webbrowser
 from datetime import datetime, timezone
 from pathlib import Path
+
+try:
+    import termios
+    import tty
+except ImportError:  # non-POSIX (Windows): raw stdin / --write is unavailable
+    termios = None
+    tty = None
 
 import click
 from hopsworks.cli import output, terminal_api
@@ -917,3 +929,225 @@ def list_sessions(ctx: click.Context, all_slugs: bool) -> None:
     output.info("Sessions for slug %s:", slug)
     for sid in all_ids:
         output.info("  %-40s %s", sid, _where(sid))
+
+
+# Detach key for `session mirror`: Ctrl-] (GS, 0x1d), the telnet/ssh escape.
+_MIRROR_DETACH = b"\x1d"
+# Bounded reconnects when the WebSocket drops (proxy idle timeout, token expiry).
+_MIRROR_MAX_RETRIES = 5
+
+
+class _Detach(Exception):
+    """Raised to unwind the mirror loop when the user presses the detach key."""
+
+
+def _ws_url(ws_path: str) -> str:
+    """Build the ``wss://`` terminal URL from the REST ``wsUrl`` path.
+
+    The session descriptor carries a host-relative path (``/hopsworks-api/
+    terminal/<id>/ws``); the WebSocket host is the same as the REST client's.
+    """
+    base = client._get_instance()._base_url  # e.g. https://host:port
+    scheme, rest = base.split("://", 1)
+    ws_scheme = "wss" if scheme == "https" else "ws"
+    return f"{ws_scheme}://{rest}{ws_path}"
+
+
+def _ws_ssl_context(url: str) -> ssl.SSLContext | None:
+    """SSL context for the ``wss`` leg, mirroring the REST client's verify mode.
+
+    Returns None for a plain ``ws://`` URL. Honors the client's ``_verify``:
+    False disables verification (``--no-verify``), a path loads it as the CA
+    bundle, True keeps the system default.
+    """
+    if not url.startswith("wss://"):
+        return None
+    ctx = ssl.create_default_context()
+    verify = client._get_instance()._verify
+    if verify is False:
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+    elif isinstance(verify, str):
+        ctx.load_verify_locations(verify)
+    return ctx
+
+
+def _maybe_warn_size(msg: dict, warned: list[bool]) -> None:
+    """Warn once (to stderr) when the pod session is larger than the local tty.
+
+    A mirror never resizes the shared session, so if the writer's terminal is
+    bigger than ours the output wraps. We say so once instead of silently
+    rendering garbled lines.
+    """
+    if warned[0]:
+        return
+    cols, rows = shutil.get_terminal_size((80, 24))
+    scols, srows = int(msg.get("cols", 0)), int(msg.get("rows", 0))
+    if scols > cols or srows > rows:
+        warned[0] = True
+        sys.stderr.write(
+            f"\r\n[mirror] session is {scols}x{srows}, your terminal is "
+            f"{cols}x{rows}; output may wrap. Resize for a clean view.\r\n"
+        )
+        sys.stderr.flush()
+
+
+async def _pump(ws, warned: list[bool]) -> None:
+    """Stream server frames to stdout until the socket closes or the shell exits.
+
+    Output frames are written raw (they carry ANSI); ``size`` drives the wrap
+    warning; every other control frame (``clients``/``windows``/``pong``) is
+    ignored — a mirror only renders the byte stream.
+    """
+    async for message in ws:
+        frame = message if isinstance(message, str) else message.decode("utf-8", "replace")
+        try:
+            msg = json.loads(frame)
+        except ValueError:
+            sys.stdout.buffer.write(frame.encode("utf-8", "replace"))
+            sys.stdout.buffer.flush()
+            continue
+        kind = msg.get("type")
+        if kind == "output":
+            sys.stdout.buffer.write(msg.get("data", "").encode("utf-8", "replace"))
+            sys.stdout.buffer.flush()
+        elif kind == "size":
+            _maybe_warn_size(msg, warned)
+        elif kind == "exit":
+            break
+
+
+async def _drive(ws, mode: str) -> None:
+    """Run one attached mirror session: init, pump output, forward input.
+
+    Sends the init frame (size + role), then races the output pump against the
+    detach key. In ``rw`` mode the local tty is put in raw mode and its bytes are
+    forwarded as input frames; Ctrl-] raises :class:`_Detach`. The tty is always
+    restored on exit.
+    """
+    cols, rows = shutil.get_terminal_size((80, 24))
+    await ws.send(json.dumps({"cols": cols, "rows": rows, "mode": mode}))
+
+    loop = asyncio.get_running_loop()
+    detached = asyncio.Event()
+    warned = [False]
+    fd = sys.stdin.fileno()
+    old_attrs = None
+    reader_added = False
+
+    def _read_stdin() -> None:
+        try:
+            data = os.read(fd, 4096)
+        except OSError:
+            return
+        if not data or _MIRROR_DETACH in data:
+            detached.set()
+            return
+        loop.create_task(
+            ws.send(json.dumps({"type": "input", "data": data.decode("utf-8", "replace")}))
+        )
+
+    can_write = mode == "rw" and termios is not None and sys.stdin.isatty()
+    if can_write:
+        old_attrs = termios.tcgetattr(fd)
+        tty.setraw(fd)
+        loop.add_reader(fd, _read_stdin)
+        reader_added = True
+
+    try:
+        recv_task = loop.create_task(_pump(ws, warned))
+        detach_task = loop.create_task(detached.wait())
+        done, pending = await asyncio.wait(
+            {recv_task, detach_task}, return_when=asyncio.FIRST_COMPLETED
+        )
+        for t in pending:
+            t.cancel()
+        if detach_task in done:
+            raise _Detach()
+        recv_task.result()  # re-raise a ConnectionClosed so the caller reconnects
+    finally:
+        if reader_added:
+            loop.remove_reader(fd)
+        if old_attrs is not None:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_attrs)
+
+
+async def _mirror_session(project_id: int, write: bool) -> None:
+    """Connect to the project's terminal WS and mirror it, reconnecting on drop.
+
+    Mints a fresh proxy token per connect (they are short-lived and
+    non-renewable), so an expiry-driven close just reconnects with a new one.
+    A clean detach returns; a lost connection retries with backoff up to
+    :data:`_MIRROR_MAX_RETRIES` before giving up.
+    """
+    # The asyncio client (websockets >= 13) is explicit about the connector and
+    # takes additional_headers; the top-level websockets.connect is the legacy
+    # asyncio impl with a different header kwarg, so import the new one directly.
+    from websockets.asyncio.client import connect
+    from websockets.exceptions import ConnectionClosed
+
+    mode = "rw" if write else "ro"
+    attempts = 0
+    while True:
+        sess = terminal_api.get_session(project_id)
+        if not sess or not sess.get("running"):
+            raise click.ClickException(
+                "No running terminal session for this project. Start one with "
+                "`hops session new`, or open the Terminal tab in the Hopsworks UI."
+            )
+        url = _ws_url(sess["wsUrl"])
+        ssl_ctx = _ws_ssl_context(url)
+        token = terminal_api.get_proxy_token(project_id)
+        try:
+            async with connect(
+                url,
+                ssl=ssl_ctx,
+                additional_headers={"Cookie": f"proxy_session={token}"},
+                max_size=None,
+                open_timeout=20,
+            ) as ws:
+                attempts = 0
+                await _drive(ws, mode)
+            return
+        except (ConnectionClosed, OSError) as exc:
+            attempts += 1
+            if attempts > _MIRROR_MAX_RETRIES:
+                raise click.ClickException(f"Mirror connection lost: {exc}") from exc
+            await asyncio.sleep(min(2**attempts, 8))
+
+
+@session_group.command("mirror")
+@click.option(
+    "--write",
+    is_flag=True,
+    help="Attach read-write (type into the session). Default is read-only: you "
+    "see the live output but cannot send input.",
+)
+@click.pass_context
+def mirror(ctx: click.Context, write: bool) -> None:
+    """Mirror this project's live terminal session on your laptop.
+
+    Attaches to the running pod terminal over its WebSocket and streams it here
+    in real time: read-only by default (observe the driver), or ``--write`` to
+    also type. Several clients can attach at once — the terminal header shows a
+    presence badge. Detach with Ctrl-]; the session keeps running on the pod.
+
+    Args:
+        ctx: Click context.
+        write: Attach read-write instead of read-only.
+    """
+    project = conn.get_project(ctx)
+    if output.JSON_MODE:
+        raise click.ClickException("`session mirror` is interactive; --json is not supported.")
+    role = "read-write" if write else "read-only"
+    if write and (termios is None or not sys.stdin.isatty()):
+        output.warn("No interactive tty; --write falls back to read-only.")
+        role = "read-only (no tty)"
+    output.info("Mirroring %s terminal (%s). Detach with Ctrl-].", project.name, role)
+    try:
+        asyncio.run(_mirror_session(project.id, write))
+    except _Detach:
+        pass
+    except KeyboardInterrupt:
+        pass
+    output.success("Detached from %s terminal.", project.name)
