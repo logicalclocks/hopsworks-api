@@ -249,6 +249,8 @@ class FeatureView:
         self._transformation_n_processes: int | None = None
 
         # Lazy initialization for column names used in feature logging.
+        self.__training_dataset_schema = None
+        self.__training_dataset_schema_version = None
         self.__label_column_names = None
         self.__transformed_feature_names = None
         self.__untransformed_feature_names = None
@@ -5715,11 +5717,52 @@ class FeatureView:
             )
         return self.__fully_qualified_event_time
 
+    def _schema_training_dataset_version(self) -> int | None:
+        """Training dataset version the transformed schema should be resolved against.
+
+        A one_hot_encoder makes the transformed schema depend on the training
+        statistics, so `get_training_dataset_schema` cannot answer without a version.
+        Serving and batch scoring each record the version they were initialised with;
+        otherwise fall back to the last version this feature view accessed.
+        """
+        batch_scoring_server = self.__batch_scoring_server
+        return (
+            self._serving_training_dataset_version
+            or (
+                batch_scoring_server.training_dataset_version
+                if batch_scoring_server
+                else None
+            )
+            or self.get_last_accessed_training_dataset()
+        )
+
+    def _cached_training_dataset_schema(
+        self,
+    ) -> list[training_dataset_feature.TrainingDatasetFeature]:
+        """Training dataset schema for the version currently in use.
+
+        Cached because feature logging asks for it on every logged row, and keyed on
+        the version so that re-initialising serving against a different training
+        dataset does not keep serving the previous schema.
+        """
+        training_dataset_version = self._schema_training_dataset_version()
+        if (
+            self.__training_dataset_schema is None
+            or self.__training_dataset_schema_version != training_dataset_version
+        ):
+            self.__training_dataset_schema = self.get_training_dataset_schema(
+                training_dataset_version
+            )
+            self.__training_dataset_schema_version = training_dataset_version
+            self.__label_column_names = None
+            self.__transformed_feature_names = None
+        return self.__training_dataset_schema
+
     @property
     def _label_column_names(self) -> set[str]:
         """Get label column names."""
         if self.__label_column_names is None:
-            training_dataset_schema = self.get_training_dataset_schema()
+            training_dataset_schema = self._cached_training_dataset_schema()
             self.__label_column_names = {
                 feature.name for feature in training_dataset_schema if feature.label
             }
@@ -5729,7 +5772,7 @@ class FeatureView:
     def _transformed_feature_names(self) -> list[str]:
         """Get transformed feature names."""
         if self.__transformed_feature_names is None:
-            training_dataset_schema = self.get_training_dataset_schema()
+            training_dataset_schema = self._cached_training_dataset_schema()
             self.__transformed_feature_names = [
                 feature.name
                 for feature in training_dataset_schema
