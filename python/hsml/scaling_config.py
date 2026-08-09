@@ -46,6 +46,45 @@ class ScaleMetric(Enum):
 
 
 @public
+class LogPersistence(Enum):
+    """Whether a component archives its logs to HopsFS when an instance stops.
+
+    Only Python model deployments support archiving: it attaches a privileged HopsFS
+    sidecar, and on clusters enforcing the restricted pod security standards only
+    Python serving pods carry the policy exception that admits it. The backend
+    rejects `ALL_REPLICAS` for any other model server.
+    """
+
+    NONE = "NONE"
+    ALL_REPLICAS = "ALL_REPLICAS"
+
+    @classmethod
+    def _has_value(cls, value):
+        return any(member.value == value for member in cls)
+
+    def __str__(self):
+        return self.value
+
+
+def _coerce_log_persistence(
+    log_persistence: LogPersistence | str | Default | None,
+) -> LogPersistence | None:
+    if log_persistence is None:
+        return None
+    if isinstance(log_persistence, LogPersistence):
+        return log_persistence
+    if isinstance(log_persistence, str):
+        if not LogPersistence._has_value(log_persistence.upper()):
+            raise ValueError(
+                f"Invalid log_persistence: {log_persistence}. Must be one of {[e.value for e in LogPersistence]}"
+            )
+        return LogPersistence(log_persistence.upper())
+    raise ValueError(
+        f"log_persistence must be a string or LogPersistence, got {type(log_persistence)}"
+    )
+
+
+@public
 class ComponentScalingConfig(ABC):
     """Scaling configuration for a predictor or transformer."""
 
@@ -59,6 +98,7 @@ class ComponentScalingConfig(ABC):
         panic_threshold_percentage: float | None = None,
         stable_window_seconds: int | None = None,
         scale_to_zero_retention_seconds: int | None = None,
+        log_persistence: LogPersistence | str | Default | None = None,
         **kwargs,
     ):
         """Initialize a ComponentScalingConfig instance.
@@ -72,6 +112,9 @@ class ComponentScalingConfig(ABC):
             panic_threshold_percentage: Percentage of the scale metric threshold to trigger scaling.
             stable_window_seconds: Interval in seconds for calculating the average metric.
             scale_to_zero_retention_seconds: Time in seconds to retain the last instance before scaling to zero.
+            log_persistence: Whether instances archive their logs to HopsFS when they stop.
+                Unset means the backend default: `ALL_REPLICAS` for a Python predictor,
+                `NONE` for everything else.
         """
         scale_metric = scale_metric
         if scale_metric:
@@ -97,6 +140,7 @@ class ComponentScalingConfig(ABC):
         self._panic_threshold_percentage = panic_threshold_percentage
         self._stable_window_seconds = stable_window_seconds
         self._scale_to_zero_retention_seconds = scale_to_zero_retention_seconds
+        self._log_persistence = _coerce_log_persistence(log_persistence)
 
     @public
     def describe(self):
@@ -195,6 +239,13 @@ class ComponentScalingConfig(ABC):
         kwargs["scale_to_zero_retention_seconds"] = util._extract_field_from_json(
             json_decamelized, "scale_to_zero_retention_seconds"
         )
+        # Round-tripped rather than dropped: reading a deployment and saving it back must not
+        # silently reset the stored choice to the backend default.
+        log_persistence = util._extract_field_from_json(
+            json_decamelized, "log_persistence"
+        )
+        if log_persistence:
+            kwargs["log_persistence"] = LogPersistence(log_persistence)
         if kwargs["min_instances"] is None:
             expected_location = (
                 f"'{scaling_key}' or 'scaling_configuration'"
@@ -236,6 +287,8 @@ class ComponentScalingConfig(ABC):
             json["scale_to_zero_retention_seconds"] = (
                 self._scale_to_zero_retention_seconds
             )
+        if self._log_persistence is not None:
+            json["log_persistence"] = str(self._log_persistence)
         return json
 
     @classmethod
@@ -334,8 +387,18 @@ class ComponentScalingConfig(ABC):
     def scale_to_zero_retention_seconds(self, scale_to_zero_retention_seconds: int):
         self._scale_to_zero_retention_seconds = scale_to_zero_retention_seconds
 
+    @public
+    @property
+    def log_persistence(self):
+        """Whether every instance archives its logs to HopsFS when it stops. 'ALL_REPLICAS' or 'NONE'. Only Python model deployments support 'ALL_REPLICAS'; the backend rejects it for TensorFlow Serving and vLLM, whose pods cannot carry the privileged HopsFS sidecar on a hardened cluster. Unset means the backend default: on for a Python predictor, off for everything else."""
+        return self._log_persistence
+
+    @log_persistence.setter
+    def log_persistence(self, log_persistence: LogPersistence | str):
+        self._log_persistence = _coerce_log_persistence(log_persistence)
+
     def __repr__(self):
-        return f"ComponentScalingConfig(min_instances: {self._min_instances!r}, max_instances: {self._max_instances!r}, scale_metric: {self._scale_metric!r}, target: {self._target!r}, panic_window_percentage: {self._panic_window_percentage!r}, panic_threshold_percentage: {self._panic_threshold_percentage!r}, stable_window_seconds: {self._stable_window_seconds!r}, scale_to_zero_retention_seconds: {self._scale_to_zero_retention_seconds!r})"
+        return f"ComponentScalingConfig(min_instances: {self._min_instances!r}, max_instances: {self._max_instances!r}, scale_metric: {self._scale_metric!r}, target: {self._target!r}, panic_window_percentage: {self._panic_window_percentage!r}, panic_threshold_percentage: {self._panic_threshold_percentage!r}, stable_window_seconds: {self._stable_window_seconds!r}, scale_to_zero_retention_seconds: {self._scale_to_zero_retention_seconds!r}, log_persistence: {self._log_persistence!r})"
 
 
 @public
@@ -356,6 +419,7 @@ class PredictorScalingConfig(ComponentScalingConfig):
             panic_threshold_percentage (float | None, optional): Percentage of the scale metric threshold to trigger scaling.
             stable_window_seconds (int | None, optional): Interval in seconds for calculating the average metric.
             scale_to_zero_retention_seconds (int | None, optional): Time in seconds to retain the last instance before scaling to zero.
+            log_persistence (LogPersistence | str | Default | None, optional): Whether instances archive their logs to HopsFS when they stop.
 
         Raises:
             ValueError: If `min_instances` is not provided.
@@ -397,6 +461,7 @@ class TransformerScalingConfig(ComponentScalingConfig):
             panic_threshold_percentage (float | None, optional): Percentage of the scale metric threshold to trigger scaling.
             stable_window_seconds (int | None, optional): Interval in seconds for calculating the average metric.
             scale_to_zero_retention_seconds (int | None, optional): Time in seconds to retain the last instance before scaling to zero.
+            log_persistence (LogPersistence | str | Default | None, optional): Whether instances archive their logs to HopsFS when they stop.
 
         Raises:
             ValueError: If `min_instances` is not provided.

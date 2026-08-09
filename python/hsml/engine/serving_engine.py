@@ -785,6 +785,7 @@ class ServingEngine:
         since: str | None = "now",
         timeout: float | None = None,
         stop_on_status=None,
+        pod: str | None = None,
     ):
         """Yield only newly observed log chunks as plain text.
 
@@ -822,10 +823,14 @@ class ServingEngine:
         # per-pod cursor advances past what was already yielded, so each poll
         # transfers only what is new. ``since`` is applied by the kubelet at
         # second granularity, so the cursor comparison below is what actually
-        # dedupes the overlap it re-sends. Old backends ignore both params and
-        # return unprefixed tail windows; the previous window is kept per pod
-        # (keyed by instance name) for overlap-suffix dedup as a fallback.
-        cursor_by_pod: dict[str, str] = {}
+        # dedupes the overlap it re-sends. A cursor is (timestamp, ordinal):
+        # the ordinal counts the lines already delivered bearing exactly that
+        # timestamp, because coarse-clock runtimes can emit several lines per
+        # timestamp and a timestamp-only cursor would drop the later ones.
+        # Old backends ignore both params and return unprefixed tail windows;
+        # the previous window is kept per pod (keyed by instance name) for
+        # overlap-suffix dedup as a fallback.
+        cursor_by_pod: dict[str, tuple[str, int]] = {}
         previous_lines_by_pod: dict[str, list[str]] = {}
 
         # ``since="now"`` is a UX shorthand: start streaming brand-new lines
@@ -843,10 +848,9 @@ class ServingEngine:
         while True:
             # since is an absolute instant, so one value covers every pod: the
             # earliest cursor lags without losing, and each pod trims its own
-            # overlap. A pod that disappeared must not keep pinning the value,
-            # which is why cursors are only kept for pods present last poll.
+            # overlap.
             if cursor_by_pod:
-                since_param = min(cursor_by_pod.values())
+                since_param = min(ts for ts, _ in cursor_by_pod.values())
             else:
                 since_param = last_timestamp
             chunks = (
@@ -860,13 +864,15 @@ class ServingEngine:
                     source=source,
                     since=since_param,
                     until=None,
-                    pod=None,
+                    pod=pod,
                     timestamps=True,
                 )
                 or []
             )
 
             new_chunks = []
+            pods_in_response: set[str] = set()
+            saw_kubernetes_chunk = False
             for chunk in chunks:
                 if chunk.doc_id is not None:
                     if chunk.doc_id in seen_doc_ids:
@@ -878,20 +884,24 @@ class ServingEngine:
                     ):
                         last_timestamp = chunk.timestamp
                     continue
-                pod = chunk.instance_name or ""
+                saw_kubernetes_chunk = True
+                chunk_pod = chunk.instance_name or ""
+                pods_in_response.add(chunk_pod)
                 new_lines = (chunk.content or "").splitlines()
-                remainder = self._advance_pod_cursor(cursor_by_pod, pod, new_lines)
+                remainder = self._advance_pod_cursor(
+                    cursor_by_pod, chunk_pod, new_lines
+                )
                 if remainder is None:
                     # No kubelet timestamps: an old backend that ignored the
                     # request param. Fall back to overlap-suffix dedup of the
                     # rolling tail windows.
-                    previous_lines = previous_lines_by_pod.get(pod)
+                    previous_lines = previous_lines_by_pod.get(chunk_pod)
                     remainder = (
                         new_lines
                         if previous_lines is None
                         else self._overlap_remainder(previous_lines, new_lines)
                     )
-                    previous_lines_by_pod[pod] = new_lines
+                    previous_lines_by_pod[chunk_pod] = new_lines
                 if remainder:
                     # ``content`` is read-only on the DTO, so build a
                     # new chunk holding only the unseen lines.
@@ -901,6 +911,14 @@ class ServingEngine:
                             content="\n".join(remainder),
                         )
                     )
+
+            # A replaced or scaled-away pod must not keep pinning since to its
+            # last position, or every later poll re-transfers a growing history
+            # for the pods that are still alive.
+            if saw_kubernetes_chunk:
+                for known_pod in list(cursor_by_pod):
+                    if known_pod not in pods_in_response:
+                        del cursor_by_pod[known_pod]
 
             if new_chunks:
                 yield self._format_log_chunks(new_chunks)
@@ -921,22 +939,27 @@ class ServingEngine:
 
     @classmethod
     def _advance_pod_cursor(
-        cls, cursor_by_pod: dict[str, str], pod: str, lines: list[str]
+        cls, cursor_by_pod: dict[str, tuple[str, int]], pod: str, lines: list[str]
     ) -> list[str] | None:
         """Strip kubelet timestamp prefixes and return the lines after this pod's cursor.
 
         Returns ``None`` when the lines carry no timestamps, signalling the
         caller to use the rolling-window fallback instead. Timestamps compare
-        lexicographically: the kubelet emits them in one fixed UTC format. A
-        line without a prefix (a continuation of a long line) follows the
-        keep-or-drop decision of the timestamped line before it.
+        lexicographically: the kubelet emits them in one fixed UTC format.
+        Lines sharing the cursor's exact timestamp are skipped only up to the
+        cursor's ordinal, so a runtime emitting several lines per timestamp
+        does not lose the later ones. A line without a prefix (a continuation
+        of a long line) follows the keep-or-drop decision of the timestamped
+        line before it.
         """
         if not any(cls._K8S_TS_PREFIX.match(line) for line in lines):
             return None
-        cursor = cursor_by_pod.get(pod)
+        cursor_ts, cursor_ordinal = cursor_by_pod.get(pod, (None, 0))
         fresh: list[str] = []
-        keep_continuation = cursor is None
-        max_seen = cursor
+        keep_continuation = cursor_ts is None
+        max_ts = cursor_ts
+        max_ts_count = 0
+        equal_seen = 0
         for line in lines:
             match = cls._K8S_TS_PREFIX.match(line)
             if match is None:
@@ -944,13 +967,28 @@ class ServingEngine:
                     fresh.append(line)
                 continue
             ts = match.group(1)
-            keep_continuation = cursor is None or ts > cursor
+            if cursor_ts is not None and ts < cursor_ts:
+                keep_continuation = False
+            elif ts == cursor_ts:
+                equal_seen += 1
+                keep_continuation = equal_seen > cursor_ordinal
+            else:
+                keep_continuation = True
             if keep_continuation:
                 fresh.append(line[match.end():])
-            if max_seen is None or ts > max_seen:
-                max_seen = ts
-        if max_seen is not None:
-            cursor_by_pod[pod] = max_seen
+            if max_ts is None or ts > max_ts:
+                max_ts = ts
+                max_ts_count = 1
+            elif ts == max_ts:
+                max_ts_count += 1
+        if max_ts is not None:
+            if max_ts == cursor_ts:
+                # A since-bounded window re-sends the whole cursor second, so the
+                # in-window count subsumes the previous ordinal; max() guards the
+                # case where a byte cap cut the window short of it.
+                cursor_by_pod[pod] = (max_ts, max(cursor_ordinal, equal_seen))
+            else:
+                cursor_by_pod[pod] = (max_ts, max_ts_count)
         return fresh
 
     @staticmethod

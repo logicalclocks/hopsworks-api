@@ -1434,6 +1434,89 @@ class TestDeployment:
             == "2026-08-07T10:00:01.000000000Z"
         )
 
+    def test_tail_logs_kubernetes_equal_timestamps_are_not_dropped(
+        self, mocker, backend_fixtures
+    ):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch("hopsworks_common.util._get_members", return_value=["predictor"])
+        # A coarse-clock runtime emits several lines per timestamp. The second
+        # poll re-sends the cursor second with one more line at the SAME
+        # timestamp; a timestamp-only cursor would drop it forever.
+        first = [self._make_chunk(content="2026-08-07T10:00:01Z a\n")]
+        second = [
+            self._make_chunk(
+                content=("2026-08-07T10:00:01Z a\n2026-08-07T10:00:01Z b\n")
+            )
+        ]
+        mocker.patch(
+            "hsml.core.serving_api.ServingApi._get_logs",
+            side_effect=[first, second],
+        )
+        mocker.patch("time.sleep")
+        monot = mocker.patch("time.monotonic")
+        monot.side_effect = [0.0, 1.0, 99.0]
+
+        chunks = list(d.tail_logs(source="kubernetes", timeout=10.0, since=None))
+
+        assert chunks == ["a\n", "b\n"]
+
+    def test_tail_logs_kubernetes_prunes_cursors_of_disappeared_pods(
+        self, mocker, backend_fixtures
+    ):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch("hopsworks_common.util._get_members", return_value=["predictor"])
+        # pod-B terminates after the first poll. Its stale cursor must not keep
+        # pinning since, or every later poll re-transfers pod-A's history.
+        first = [
+            self._make_chunk(
+                instance_name="pod-A", content="2026-08-07T10:00:09Z a1\n"
+            ),
+            self._make_chunk(
+                instance_name="pod-B", content="2026-08-07T10:00:01Z b1\n"
+            ),
+        ]
+        second = [
+            self._make_chunk(
+                instance_name="pod-A", content="2026-08-07T10:00:10Z a2\n"
+            ),
+        ]
+        third = [
+            self._make_chunk(
+                instance_name="pod-A", content="2026-08-07T10:00:11Z a3\n"
+            ),
+        ]
+        mock_api = mocker.patch(
+            "hsml.core.serving_api.ServingApi._get_logs",
+            side_effect=[first, second, third],
+        )
+        mocker.patch("time.sleep")
+        monot = mocker.patch("time.monotonic")
+        monot.side_effect = [0.0, 1.0, 2.0, 99.0]
+
+        list(d.tail_logs(source="kubernetes", timeout=10.0, since=None))
+
+        # Second poll still resumes from pod-B's cursor (it was present last
+        # poll); by the third poll pod-B is pruned and since follows pod-A.
+        assert mock_api.call_args_list[1].kwargs["since"] == "2026-08-07T10:00:01Z"
+        assert mock_api.call_args_list[2].kwargs["since"] == "2026-08-07T10:00:10Z"
+
+    def test_tail_logs_forwards_the_pod_filter(self, mocker, backend_fixtures):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch("hopsworks_common.util._get_members", return_value=["predictor"])
+        mock_api = mocker.patch(
+            "hsml.core.serving_api.ServingApi._get_logs", return_value=[]
+        )
+        mocker.patch("time.sleep")
+        monot = mocker.patch("time.monotonic")
+        monot.side_effect = [0.0, 99.0]
+
+        list(d.tail_logs(timeout=10.0, since=None, pod="pod-7"))
+
+        assert mock_api.call_args.kwargs["pod"] == "pod-7"
+
     def test_tail_logs_defaults_to_kubernetes_source(self, mocker, backend_fixtures):
         p = self._get_dummy_predictor(mocker, backend_fixtures)
         d = deployment.Deployment(predictor=p)

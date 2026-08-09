@@ -578,6 +578,7 @@ class Deployment:
         since: str | None = "now",
         timeout: float | None = None,
         stop_on_status: str | None = None,
+        pod: str | None = None,
     ) -> Iterator[str]:
         """Yield only newly observed log chunks as plain text.
 
@@ -605,6 +606,10 @@ class Deployment:
             timeout: Stop after this many seconds. ``None`` runs forever.
             stop_on_status: Stop when ``deployment.get_state().status``
                 matches this string (e.g. ``"Stopped"``).
+            pod: Follow one specific instance by name.
+                The backend reads the first eight replicas of a component per
+                request, so a deployment scaled beyond that needs the later
+                instances tailed one by one.
 
         Yields:
             Plain-text log chunks containing only newly observed content.
@@ -626,6 +631,7 @@ class Deployment:
             since=since,
             timeout=timeout,
             stop_on_status=stop_on_status,
+            pod=pod,
         )
 
     @public
