@@ -7,6 +7,7 @@ project-directory slug from the cwd, and resolving which session JSONL to push
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -139,3 +140,102 @@ def test_pod_alive_failsafe_alive_on_error(monkeypatch):
     monkeypatch.setattr(session.terminal_api, "get_session", boom)
     # Unknown liveness must not silently authorise a steal.
     assert session._pod_alive(1) is True
+
+
+# --- new / manifest / owner --------------------------------------------------
+
+
+class _FakeDataset:
+    """Minimal dataset_api stand-in: directory listings + JSON downloads."""
+
+    def __init__(self, dirs: dict[str, list[str]], files: dict[str, dict]):
+        self._dirs = dirs
+        self._files = files
+
+    def list(self, path: str) -> list[str]:
+        if path not in self._dirs:
+            raise RuntimeError(f"no such dir: {path}")
+        return self._dirs[path]
+
+    def download(self, remote: str, local_path: str, overwrite: bool = False):
+        if remote not in self._files:
+            raise RuntimeError(f"404: {remote}")
+        Path(local_path).write_text(json.dumps(self._files[remote]))
+
+
+def test_current_user_email_reads_client_stash(monkeypatch):
+    class _Client:
+        _user_email = "lex@logicalclocks.com"
+
+    monkeypatch.setattr(session.client, "_get_instance", lambda: _Client())
+    assert session._current_user_email() == "lex@logicalclocks.com"
+
+
+def test_current_user_email_none_when_unavailable(monkeypatch):
+    def boom():
+        raise RuntimeError("no client")
+
+    monkeypatch.setattr(session.client, "_get_instance", boom)
+    assert session._current_user_email() is None
+
+
+def test_build_manifest_carries_owner_mode_and_cwd(monkeypatch):
+    monkeypatch.setattr(session, "_current_user_email", lambda: "lex@x.com")
+    monkeypatch.setattr(Path, "cwd", classmethod(lambda cls: Path("/Users/lex/p")))
+    m = session._build_manifest("sid1", "-Users-lex-p", "new", None)
+    assert m["session_id"] == "sid1"
+    assert m["slug"] == "-Users-lex-p"
+    assert m["mode"] == "new"
+    assert m["model"] is None
+    assert m["cwd"] == "/Users/lex/p"
+    assert m["user"] == "lex@x.com"
+
+
+def test_upload_manifest_uploads_last_write_to_dest(tmp_path):
+    seen: dict = {}
+
+    class _DS:
+        def upload(self, local_path, upload_path, overwrite):
+            seen["upload_path"] = upload_path
+            seen["overwrite"] = overwrite
+            seen["content"] = json.loads(Path(local_path).read_text())
+
+    session._upload_manifest(_DS(), "Resources/teleport/slug", "sid", {"mode": "new"})
+    assert seen["upload_path"] == "Resources/teleport/slug"
+    assert seen["overwrite"] is True
+    assert seen["content"] == {"mode": "new"}
+
+
+def test_upload_manifest_raises_on_failure():
+    class _DS:
+        def upload(self, **kwargs):
+            raise RuntimeError("nope")
+
+    with pytest.raises(Exception, match="Failed to upload teleport manifest"):
+        session._upload_manifest(_DS(), "dest", "sid", {"a": 1})
+
+
+def _teleport_tree():
+    root = session._TELEPORT_DATASET
+    dirs = {
+        root: [f"{root}/-Users-lex-a", f"{root}/-Users-lex-b/"],
+        f"{root}/-Users-lex-a": [f"{root}/-Users-lex-a/s1.jsonl"],
+        f"{root}/-Users-lex-b": [f"{root}/-Users-lex-b/s2.jsonl"],
+    }
+    files = {f"{root}/-Users-lex-b/s2.teleport.json": {"cwd": "/Users/lex/b"}}
+    return _FakeDataset(dirs, files)
+
+
+def test_scan_slugs_lists_subdirs():
+    assert session._scan_slugs(_teleport_tree()) == ["-Users-lex-a", "-Users-lex-b"]
+
+
+def test_locate_session_finds_slug_and_origin_cwd():
+    ds = _teleport_tree()
+    assert session._locate_session(ds, "s2") == ("-Users-lex-b", "/Users/lex/b")
+    # A session with no manifest still resolves its slug (cwd unknown).
+    assert session._locate_session(ds, "s1") == ("-Users-lex-a", None)
+
+
+def test_locate_session_none_when_absent():
+    assert session._locate_session(_teleport_tree(), "missing") is None

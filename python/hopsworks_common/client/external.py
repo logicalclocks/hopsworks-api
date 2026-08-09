@@ -395,7 +395,12 @@ class Client(base.Client):
         _logger.debug("Getting username of logged in user")
         project_teams = self._send_request("GET", ["project"])
         if project_teams:
-            return project_teams[0]["user"]["username"]
+            user = project_teams[0]["user"]
+            # Stashed for `hops session`: manifests carry the owner's email so a
+            # multi-tenant terminal pod only auto-lands its own user's sessions.
+            self._user_email = user.get("email")
+            return user["username"]
+        self._user_email = None
         return None
 
     def _write_b64_cert_to_bytes(self, b64_string: str, path: str) -> None:

@@ -4,7 +4,8 @@ You are in a Claude Code session on your laptop. ``hops session push`` ships it
 onto a Hopsworks terminal pod (Claude Code is pre-installed in that image), so
 you can close the laptop and drive it later from the browser terminal tab.
 ``hops session pull`` is the mirror: it brings a session that ran on the pod
-back down to this machine. ``hops session list`` shows what is staged where.
+back down to this machine. ``hops session new`` starts a fresh session straight
+on a pod, and ``hops session list`` shows what is staged where.
 
 The transport is symmetric. Each session is a JSONL that Claude Code stores at
 ``~/.claude/projects/<cwd-slug>/<session-id>.jsonl``; push uploads it into the
@@ -12,9 +13,10 @@ project's HopsFS under ``Resources/teleport/<slug>/`` and pull downloads it
 back. Resume is scoped to the working-directory slug, so both ends must run
 from a path that hashes to the same slug for ``claude --resume`` to load.
 
-Typing ``claude --resume`` into the pod's ``tmux`` over the WebSocket, and the
-keep-alive past the 4h reaper, are a later slice; for now push prints the exact
-landing steps to run in the terminal.
+Every push/new also stages a ``<id>.teleport.json`` manifest. The pod carries a
+landing hook that watches the teleport dataset and, when a manifest appears,
+resumes the pushed session (or opens a new one) on its own; push still prints
+the manual landing steps as a fallback.
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ import re
 import socket
 import tempfile
 import time
+import uuid
 import webbrowser
 from datetime import datetime, timezone
 from pathlib import Path
@@ -163,19 +166,27 @@ def _write_baton(dataset_api, dest_dir: str, sid: str, holder: str,
             dataset_api.upload(local_path=str(p), upload_path=dest_dir, overwrite=True)
 
 
+def _read_remote_json(dataset_api, remote_path: str) -> dict | None:
+    """Download a small JSON sidecar from HopsFS and parse it, or None.
+
+    None means the file is absent or unreadable; callers treat that as "no such
+    sidecar", not an error.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        local = Path(tmp) / "sidecar.json"
+        with contextlib.suppress(Exception):
+            dataset_api.download(remote_path, local_path=str(local), overwrite=True)
+            return json.loads(local.read_text())
+    return None
+
+
 def _read_baton(dataset_api, dest_dir: str, sid: str) -> dict | None:
     """Return the baton for ``sid`` staged under ``dest_dir``, or None.
 
     None means no baton exists (a ``--fork`` push, or a legacy transfer), which
     the caller treats as batonless copy semantics — not an error.
     """
-    remote = f"{dest_dir}/{sid}.baton.json"
-    with tempfile.TemporaryDirectory() as tmp:
-        local = Path(tmp) / f"{sid}.baton.json"
-        with contextlib.suppress(Exception):
-            dataset_api.download(remote, local_path=str(local), overwrite=True)
-            return json.loads(local.read_text())
-    return None
+    return _read_remote_json(dataset_api, f"{dest_dir}/{sid}.baton.json")
 
 
 def _pod_alive(project_id: int) -> bool:
@@ -236,6 +247,109 @@ def _terminal_ui_url(project_id: int) -> str:
     """
     base = client._get_instance()._base_url.rstrip("/")
     return f"{base}/p/{project_id}?terminal=open"
+
+
+def _current_user_email() -> str | None:
+    """The logged-in user's email, stashed on the client at login.
+
+    Manifests carry it so a pod only auto-lands its own owner's sessions: the
+    teleport dir is project-wide, so without it every member's pod would race to
+    claim any push (see ``tp_user_ok`` in the terminal image). ``None`` is safe —
+    a manifest with no ``user`` lands regardless of owner, the pre-multi-tenant
+    behaviour.
+    """
+    with contextlib.suppress(Exception):
+        return getattr(client._get_instance(), "_user_email", None)
+    return None
+
+
+def _build_manifest(session_id: str, slug: str, mode: str,
+                    model: str | None) -> dict:
+    """The manifest the pod's landing hook reads to self-resume.
+
+    Carries the original cwd (the slug alone cannot reconstruct it, and the pod
+    recreates a path that hashes to the same slug for ``claude --resume``), the
+    ``mode`` (``push`` / ``fork`` / ``new``), and the owner so a multi-tenant pod
+    only lands its own sessions.
+    """
+    return {
+        "session_id": session_id,
+        "slug": slug,
+        "cwd": str(Path.cwd()),
+        "host": socket.gethostname(),
+        "pushed_at": _now(),
+        "mode": mode,
+        "model": model,
+        "user": _current_user_email(),
+    }
+
+
+def _upload_manifest(dataset_api, dest_dir: str, session_id: str,
+                     manifest: dict) -> None:
+    """Upload the teleport manifest — the last write of a push/new.
+
+    Not best-effort: the manifest is the pod watcher's trigger, so a silent drop
+    would stage a session that never lands. A failure is surfaced loudly.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        mpath = Path(tmp) / f"{session_id}.teleport.json"
+        mpath.write_text(json.dumps(manifest))
+        try:
+            dataset_api.upload(
+                local_path=str(mpath), upload_path=dest_dir, overwrite=True
+            )
+        except Exception as exc:  # noqa: BLE001
+            raise click.ClickException(
+                f"Failed to upload teleport manifest: {exc}"
+            ) from exc
+
+
+def _launch_pod(project) -> str | None:
+    """Start (or reuse) the project's terminal pod; return its ``wsUrl``.
+
+    Best-effort: the terminal feature may be disabled on the cluster, in which
+    case we warn and return None (the caller still stages the session and prints
+    the manual landing path).
+    """
+    try:
+        started = terminal_api.start_session(project.id)
+        output.success("✓ Terminal pod ready for %s", project.name)
+        return (started or {}).get("wsUrl")
+    except Exception as exc:  # noqa: BLE001 - feature may be disabled on cluster
+        output.warn(
+            "Terminal pod not started (%s). Open the Terminal tab in the "
+            "Hopsworks UI to start it.", exc,
+        )
+        return None
+
+
+def _scan_slugs(dataset_api) -> list[str]:
+    """Return every directory slug staged under the teleport dataset.
+
+    Each push/new writes under ``Resources/teleport/<slug>/``; this lists those
+    subdirectories so project-wide commands (``list --all``, ``pull <id>``) can
+    reach sessions that came from a different working directory.
+    """
+    with contextlib.suppress(Exception):
+        return [Path(p.rstrip("/")).name for p in dataset_api.list(_TELEPORT_DATASET)]
+    return []
+
+
+def _locate_session(dataset_api, session_id: str) -> tuple[str, str | None] | None:
+    """Find which slug holds ``session_id`` project-wide.
+
+    Returns ``(slug, origin_cwd)`` for the first slug that stages this id, with
+    ``origin_cwd`` read from its manifest when present, or None when no staged
+    slug holds it.
+    """
+    for slug in _scan_slugs(dataset_api):
+        if session_id in _remote_session_ids(dataset_api, slug):
+            manifest = _read_remote_json(
+                dataset_api,
+                f"{_TELEPORT_DATASET}/{slug}/{session_id}.teleport.json",
+            )
+            return slug, (manifest or {}).get("cwd")
+    return None
 
 
 @click.group("session")
@@ -318,26 +432,6 @@ def push(ctx: click.Context, session_id: str | None, overwrite: bool,
         f"at {datetime.now(timezone.utc).isoformat(timespec='seconds')}"
     )
 
-    # Manifest the pod's landing hook reads to self-resume: it carries the
-    # original cwd, which the slug alone cannot reconstruct, so the pod can
-    # recreate a path that hashes to the same slug for `claude --resume`.
-    manifest = {
-        "session_id": resolved_id,
-        "slug": slug,
-        "cwd": str(Path.cwd()),
-        "host": socket.gethostname(),
-        "pushed_at": _now(),
-        "mode": "fork" if fork else "push",
-        "model": model,
-    }
-    with tempfile.TemporaryDirectory() as tmp:
-        mpath = Path(tmp) / f"{resolved_id}.teleport.json"
-        mpath.write_text(json.dumps(manifest))
-        with contextlib.suppress(Exception):
-            dataset_api.upload(
-                local_path=str(mpath), upload_path=dest_dir, overwrite=True
-            )
-
     # Baton hand-off: record that the canonical copy now lives on the pod, and
     # rename the local transcript aside so it is not resumed by accident. Skip
     # both for --fork (deliberate copy), and skip the rename for the session
@@ -360,17 +454,14 @@ def push(ctx: click.Context, session_id: str | None, overwrite: bool,
                 (jsonl.parent / f"{resolved_id}.away.json").write_text(json.dumps(
                     {"project": project.name, "host": host, "pushed_at": _now()}))
 
-    ws_url = None
-    try:
-        started = terminal_api.start_session(project.id)
-        ws_url = (started or {}).get("wsUrl")
-        output.success("✓ Terminal pod ready for %s", project.name)
-    except Exception as exc:  # noqa: BLE001 - feature may be disabled on cluster
-        output.warn(
-            "Terminal pod not started (%s). Open the Terminal tab in the "
-            "Hopsworks UI to start it, then run the landing steps below.",
-            exc,
-        )
+    ws_url = _launch_pod(project)
+
+    # Manifest LAST: it is the pod watcher's trigger, so everything it depends on
+    # (transcript, baton) must already be staged when it appears. The upload is a
+    # hard error, not best-effort — a dropped manifest strands the session
+    # (staged, but never landed).
+    manifest = _build_manifest(resolved_id, slug, "fork" if fork else "push", model)
+    _upload_manifest(dataset_api, dest_dir, resolved_id, manifest)
 
     pod_session_dir = f"~/.claude/projects/{slug}"
     pod_jsonl = f"/hopsfs/{_TELEPORT_DATASET}/{slug}/{resolved_id}.jsonl"
@@ -414,13 +505,74 @@ def push(ctx: click.Context, session_id: str | None, overwrite: bool,
         output.info("WebSocket: %s", ws_url)
 
 
-@session_group.command("pull")
+@session_group.command("new")
 @click.option(
-    "--session",
-    "session_id",
-    help="Session id to pull; required when more than one session is staged "
-    "for this directory.",
+    "--model",
+    help="Model the pod should start Claude with (passed to `claude --model`).",
 )
+@click.option(
+    "--open/--no-open",
+    "open_ui",
+    default=True,
+    help="Open the terminal in the browser after starting (default). "
+    "--no-open just prints the URL.",
+)
+@click.pass_context
+def new(ctx: click.Context, model: str | None, open_ui: bool) -> None:
+    """Start a fresh Claude Code session directly on a terminal pod.
+
+    Unlike ``push`` there is nothing to ship: this stages a ``mode=new`` manifest
+    (no transcript) so the pod's landing hook opens a brand-new ``claude`` in a
+    directory that hashes to this one's slug, then opens the terminal in the
+    browser. Use it to begin work on the pod straight from the laptop.
+
+    Args:
+        ctx: Click context.
+        model: Model the pod starts Claude with.
+        open_ui: Open the terminal in the browser after starting.
+    """
+    slug = _cwd_slug()
+    session_id = str(uuid.uuid4())
+
+    project = conn.get_project(ctx)
+    dataset_api = project.get_dataset_api()
+
+    dest_dir = f"{_TELEPORT_DATASET}/{slug}"
+    with contextlib.suppress(Exception):
+        dataset_api.mkdir(dest_dir)
+
+    ws_url = _launch_pod(project)
+
+    manifest = _build_manifest(session_id, slug, "new", model)
+    _upload_manifest(dataset_api, dest_dir, session_id, manifest)
+    output.success("✓ Staged a new session for %s", project.name)
+
+    terminal_url = _terminal_ui_url(project.id)
+    if open_ui and not output.JSON_MODE:
+        with contextlib.suppress(Exception):
+            webbrowser.open(terminal_url)
+
+    if output.JSON_MODE:
+        output.print_json(
+            {
+                "session_id": session_id,
+                "slug": slug,
+                "project": project.name,
+                "mode": "new",
+                "ws_url": ws_url,
+                "terminal_url": terminal_url,
+            }
+        )
+        return
+    output.info("")
+    output.info("Terminal: %s", terminal_url)
+    output.info("A fresh Claude session will open in the terminal.")
+    if ws_url:
+        output.info("WebSocket: %s", ws_url)
+
+
+@session_group.command("pull")
+@click.argument("session_id", required=False)
 @click.option(
     "--ours",
     is_flag=True,
@@ -445,9 +597,11 @@ def pull(ctx: click.Context, session_id: str | None, ours: bool, theirs: bool,
     """Pull a session staged in HopsFS back onto this machine and take the baton.
 
     Downloads the transcript from ``Resources/teleport/<slug>/`` into
-    ``~/.claude/projects/<slug>/`` and prints the resume command. Run it from a
-    directory that hashes to the same slug as the source, or ``claude
-    --resume`` will not find the session.
+    ``~/.claude/projects/<slug>/`` and prints the resume command. Given a
+    ``SESSION_ID`` the source slug is found project-wide, so you can pull a
+    session staged from another directory from anywhere; resume still needs a
+    path that hashes to that slug, so the original cwd is printed to ``cd`` into.
+    Without an id, pulls this directory's single staged session.
 
     Reclaiming is baton-aware. If the pod still holds a live terminal session,
     pull refuses unless ``--force`` (you would be stealing from a process that
@@ -459,7 +613,8 @@ def pull(ctx: click.Context, session_id: str | None, ours: bool, theirs: bool,
 
     Args:
         ctx: Click context.
-        session_id: Explicit session id, or None to pick the only staged one.
+        session_id: Explicit session id (located project-wide), or None to pick
+            this directory's only staged one.
         ours: On divergence, keep local.
         theirs: On divergence, take the pod's copy.
         force: Steal the baton from a live pod or another machine.
@@ -471,7 +626,15 @@ def pull(ctx: click.Context, session_id: str | None, ours: bool, theirs: bool,
     project = conn.get_project(ctx)
     dataset_api = project.get_dataset_api()
 
-    if not session_id:
+    # A positional id may name a session staged from another directory: find its
+    # slug project-wide so `pull <id>` works from anywhere. Without an id we pull
+    # this directory's single staged session.
+    origin_cwd: str | None = None
+    if session_id:
+        located = _locate_session(dataset_api, session_id)
+        if located:
+            slug, origin_cwd = located
+    else:
         staged = _remote_session_ids(dataset_api, slug)
         if not staged:
             raise click.ClickException(
@@ -480,7 +643,7 @@ def pull(ctx: click.Context, session_id: str | None, ours: bool, theirs: bool,
             )
         if len(staged) > 1:
             raise click.ClickException(
-                "Multiple sessions staged for this directory; pass --session "
+                "Multiple sessions staged for this directory; pass a session id "
                 "to choose one: " + ", ".join(staged)
             )
         session_id = staged[0]
@@ -613,6 +776,10 @@ def pull(ctx: click.Context, session_id: str | None, ours: bool, theirs: bool,
         output.info("Parked the other side at %s", parked.name)
 
     resume = f"claude --resume {session_id}"
+    # The transcript landed under its origin slug; resume only resolves it from a
+    # path that hashes to that slug, so when we pulled a session from another
+    # directory point the user at its original cwd instead of "here".
+    elsewhere = slug != _cwd_slug()
     if output.JSON_MODE:
         output.print_json(
             {
@@ -623,27 +790,83 @@ def pull(ctx: click.Context, session_id: str | None, ours: bool, theirs: bool,
                 "took": "remote" if take_remote else "local",
                 "parked": parked.name if parked else None,
                 "baton": me if baton is not None else None,
+                "origin_cwd": origin_cwd,
                 "resume_step": resume,
             }
         )
         return
     output.info("")
-    output.info("Resume it here with:")
-    output.info("  %s", resume)
+    if elsewhere:
+        output.info("This session came from another directory. Resume it from:")
+        if origin_cwd:
+            output.info("  cd %s && %s", origin_cwd, resume)
+        else:
+            output.info("  a path whose slug is %s, then: %s", slug, resume)
+    else:
+        output.info("Resume it here with:")
+        output.info("  %s", resume)
+
+
+def _list_all(dataset_api, project) -> None:
+    """Print every teleported session in the project, across all slugs.
+
+    The teleport dir is project-wide; this walks each slug subdirectory and
+    reads each manifest for the originating cwd, so a machine that never staged
+    a given session can still see it and where it came from.
+    """
+    rows = []
+    for slug in sorted(_scan_slugs(dataset_api)):
+        for sid in sorted(_remote_session_ids(dataset_api, slug)):
+            manifest = _read_remote_json(
+                dataset_api, f"{_TELEPORT_DATASET}/{slug}/{sid}.teleport.json"
+            )
+            rows.append(
+                {
+                    "session_id": sid,
+                    "slug": slug,
+                    "cwd": (manifest or {}).get("cwd"),
+                    "mode": (manifest or {}).get("mode"),
+                }
+            )
+    if output.JSON_MODE:
+        output.print_json({"project": project.name, "sessions": rows})
+        return
+    if not rows:
+        output.info("No teleported sessions in project %s.", project.name)
+        return
+    output.info("Teleported sessions in %s:", project.name)
+    for r in rows:
+        output.info("  %-40s %s", r["session_id"], r["cwd"] or r["slug"])
 
 
 @session_group.command("list")
+@click.option(
+    "--all",
+    "all_slugs",
+    is_flag=True,
+    help="List every teleported session in the project, across all "
+    "directories, not just this one.",
+)
 @click.pass_context
-def list_sessions(ctx: click.Context) -> None:
+def list_sessions(ctx: click.Context, all_slugs: bool) -> None:
     """List sessions for this directory and where each one lives.
 
     Shows the session ids present locally under ``~/.claude/projects/<slug>/``
     and those staged in the project's HopsFS, so you can tell what is here,
-    what is on the pod side, and what exists in both places.
+    what is on the pod side, and what exists in both places. ``--all`` widens
+    the view to every teleported session in the project, across all directories.
 
     Args:
         ctx: Click context.
+        all_slugs: List project-wide instead of just this directory.
     """
+    project = conn.get_project(ctx)
+    dataset_api = project.get_dataset_api()
+
+    if all_slugs:
+        _list_all(dataset_api, project)
+        return
+
     slug = _cwd_slug()
     local_dir = _CLAUDE_PROJECTS / slug
     local_ids = sorted(p.stem for p in local_dir.glob("*.jsonl")) if (
@@ -651,8 +874,7 @@ def list_sessions(ctx: click.Context) -> None:
     ) else []
     away = _local_away(slug)
 
-    project = conn.get_project(ctx)
-    remote_ids = sorted(_remote_session_ids(project.get_dataset_api(), slug))
+    remote_ids = sorted(_remote_session_ids(dataset_api, slug))
 
     def _where(sid: str) -> str:
         if sid in away:
