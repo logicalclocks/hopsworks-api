@@ -58,7 +58,7 @@ import java.util.stream.Collectors;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class FeatureGroup extends FeatureGroupBase<Dataset<Row>> {
 
-  private final FeatureGroupEngine featureGroupEngine = new FeatureGroupEngine();
+  protected FeatureGroupEngine featureGroupEngine = new FeatureGroupEngine();
   protected StatisticsEngine statisticsEngine = new StatisticsEngine(EntityEndpointType.FEATURE_GROUP);
 
   @Builder
@@ -883,9 +883,12 @@ public class FeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    *        // get feature group handle
    *        FeatureGroup fg = fs.getFeatureGroup("electricity_prices", 1);
    *        // Drops records of feature data and commit
-   *        fg.commitDeleteRecord(featureData);
+   *        fg.removeRows(featureData);
    * }
    * </pre>
+   *
+   * <p>When the feature group is online-enabled the records are deleted from the online store as
+   * well. Use {@link #removeRows(Dataset, Storage)} with {@link Storage#OFFLINE} to delete offline only.
    *
    * @param featureData Spark DataFrame, RDD. Feature data to be deleted.
    * @throws FeatureStoreException If Client is not connected to Hopsworks and/or no commit information was found for
@@ -893,9 +896,11 @@ public class FeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    * @throws IOException Generic IO exception.
    * @throws ParseException In case it's unable to parse HUDI commit date string to date type.
    */
-  public void commitDeleteRecord(Dataset<Row> featureData)
+  public void removeRows(Dataset<Row> featureData)
       throws FeatureStoreException, IOException, ParseException {
-    featureGroupEngine.commitDelete(this, featureData, null);
+    // Null storage follows the feature group, so this overload works on one without an
+    // online store instead of throwing.
+    featureGroupEngine.commitDelete(this, featureData, null, null);
   }
 
   /**
@@ -915,9 +920,12 @@ public class FeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    *                           put("hoodie.upsert.shuffle.parallelism", "5");}
    *                           };
    *        // Drops records of feature data and commit
-   *        fg.commitDeleteRecord(featureData, writeOptions);
+   *        fg.removeRows(featureData, writeOptions);
    * }
    * </pre>
+   *
+   * <p>When the feature group is online-enabled the records are deleted from the online store as
+   * well. Use {@link #removeRows(Dataset, Map, Storage)} with {@link Storage#OFFLINE} to delete offline only.
    *
    * @param featureData Spark DataFrame, RDD. Feature data to be deleted.
    * @param writeOptions Additional write options as key-value pairs.
@@ -926,9 +934,97 @@ public class FeatureGroup extends FeatureGroupBase<Dataset<Row>> {
    * @throws IOException Generic IO exception.
    * @throws ParseException In case it's unable to parse HUDI commit date string to date type.
    */
+  public void removeRows(Dataset<Row> featureData, Map<String, String> writeOptions)
+      throws FeatureStoreException, IOException, ParseException {
+    // Follows the feature group, as above.
+    featureGroupEngine.commitDelete(this, featureData, writeOptions, null);
+  }
+
+  /**
+   * Drops records present in the provided DataFrame from the offline table, and optionally from the online
+   * store of an online-enabled feature group. This method can only be used on time travel enabled feature
+   * groups.
+   *
+   * <p>{@code featureData} needs to carry the key columns the offline delete matches on: the primary key,
+   * plus the event time and any partition columns when the feature group has them. The online delete
+   * matches on the primary key alone and ignores every other column, so a value passed for a non-key
+   * feature has no effect on it.
+   *
+   * @param featureData Spark DataFrame, RDD. Feature data to be deleted.
+   * @param storage The storage to delete from. Null follows the feature group: both stores when it is
+   *                online-enabled, offline alone when it is not. {@link Storage#OFFLINE} deletes from the
+   *                offline table only and {@link Storage#ONLINE} from the online store only, as on insert.
+   *                A single-store delete is not reconciled later: the rows stay in the other store until
+   *                they are deleted there too.
+   * @throws FeatureStoreException If storage is {@link Storage#ONLINE} and the feature group is not
+   *                               online-enabled; or on other client/commit errors.
+   * @throws IOException Generic IO exception.
+   * @throws ParseException In case it's unable to parse HUDI commit date string to date type.
+   */
+  public void removeRows(Dataset<Row> featureData, Storage storage)
+      throws FeatureStoreException, IOException, ParseException {
+    featureGroupEngine.commitDelete(this, featureData, null, storage);
+  }
+
+  /**
+   * Drops records present in the provided DataFrame from the offline table, and optionally from the online
+   * store of an online-enabled feature group. This method can only be used on time travel enabled feature
+   * groups.
+   *
+   * <p>{@code featureData} needs to carry the key columns the offline delete matches on: the primary key,
+   * plus the event time and any partition columns when the feature group has them. The online delete
+   * matches on the primary key alone and ignores every other column, so a value passed for a non-key
+   * feature has no effect on it.
+   *
+   * @param featureData Spark DataFrame, RDD. Feature data to be deleted.
+   * @param writeOptions Additional write options as key-value pairs.
+   * @param storage The storage to delete from. Null follows the feature group: both stores when it is
+   *                online-enabled, offline alone when it is not. {@link Storage#OFFLINE} deletes from the
+   *                offline table only and {@link Storage#ONLINE} from the online store only, as on insert.
+   *                A single-store delete is not reconciled later: the rows stay in the other store until
+   *                they are deleted there too.
+   * @throws FeatureStoreException If storage is {@link Storage#ONLINE} and the feature group is not
+   *                               online-enabled; or on other client/commit errors.
+   * @throws IOException Generic IO exception.
+   * @throws ParseException In case it's unable to parse HUDI commit date string to date type.
+   */
+  public void removeRows(Dataset<Row> featureData, Map<String, String> writeOptions, Storage storage)
+      throws FeatureStoreException, IOException, ParseException {
+    featureGroupEngine.commitDelete(this, featureData, writeOptions, storage);
+  }
+
+  /**
+   * Drops records present in the provided DataFrame.
+   *
+   * @param featureData Spark DataFrame, RDD. Feature data to be deleted.
+   * @throws FeatureStoreException on client/commit errors.
+   * @throws IOException Generic IO exception.
+   * @throws ParseException In case it's unable to parse HUDI commit date string to date type.
+   * @deprecated use {@link #removeRows(Dataset)} instead.
+   */
+  @Deprecated
+  public void commitDeleteRecord(Dataset<Row> featureData)
+      throws FeatureStoreException, IOException, ParseException {
+    // Offline only: removeRows deletes from the online store too, this signature keeps the
+    // behaviour it had before the online delete existed.
+    removeRows(featureData, Storage.OFFLINE);
+  }
+
+  /**
+   * Drops records present in the provided DataFrame.
+   *
+   * @param featureData Spark DataFrame, RDD. Feature data to be deleted.
+   * @param writeOptions Additional write options as key-value pairs.
+   * @throws FeatureStoreException on client/commit errors.
+   * @throws IOException Generic IO exception.
+   * @throws ParseException In case it's unable to parse HUDI commit date string to date type.
+   * @deprecated use {@link #removeRows(Dataset, Map)} instead.
+   */
+  @Deprecated
   public void commitDeleteRecord(Dataset<Row> featureData, Map<String, String> writeOptions)
       throws FeatureStoreException, IOException, ParseException {
-    featureGroupEngine.commitDelete(this, featureData, writeOptions);
+    // Offline only, as above.
+    removeRows(featureData, writeOptions, Storage.OFFLINE);
   }
 
   /**
