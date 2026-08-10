@@ -717,10 +717,31 @@ class FeatureMonitoringConfigEngine:
                 and detection_window_commit_time is not None
                 else None
             )
+            # A model-monitoring config is attached to the logging feature group, so that
+            # is the entity the job runs with. Only a feature view can resolve a
+            # TRAINING_DATASET reference; handed anything else,
+            # _run_single_window_monitoring falls through to the entity's own registered
+            # statistics, which compares the inference log against itself and reports no
+            # drift whatever the data does. Resolve the feature view the config names.
+            from hsfs import feature_view as _fv_mod
+
+            reference_entity = entity
+            if ref_window_type == _mwc.WindowConfigType.TRAINING_DATASET and not isinstance(
+                entity, _fv_mod.FeatureView
+            ):
+                if config.feature_view_name is None:
+                    raise FeatureStoreException(
+                        "A training dataset reference window needs a feature view, but "
+                        f"monitoring config '{config_name}' names none."
+                    )
+                reference_entity = entity.feature_store.get_feature_view(
+                    name=config.feature_view_name,
+                    version=config.feature_view_version,
+                )
             try:
                 reference_statistics = (
                     self._monitoring_window_config_engine._run_single_window_monitoring(
-                        entity=entity,
+                        entity=reference_entity,
                         monitoring_window_config=config.reference_window_config,
                         feature_names=feature_names,
                         profile_flags=profile_flags,
