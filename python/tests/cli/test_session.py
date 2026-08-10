@@ -146,7 +146,10 @@ def test_pod_alive_failsafe_alive_on_error(monkeypatch):
     assert session._pod_alive(1) is True
 
 
-# --- new / manifest / owner --------------------------------------------------
+# --- teleport root / manifest ------------------------------------------------
+
+# The per-user private HopsFS home the transcripts are staged under.
+_ROOT = "Users/lex/teleport"
 
 
 class _FakeDataset:
@@ -167,24 +170,24 @@ class _FakeDataset:
         Path(local_path).write_text(json.dumps(self._files[remote]))
 
 
-def test_current_user_email_reads_client_stash(monkeypatch):
+def test_teleport_root_is_the_users_private_home(monkeypatch):
     class _Client:
-        _user_email = "lex@logicalclocks.com"
+        _username = "lex"
 
     monkeypatch.setattr(session.client, "_get_instance", lambda: _Client())
-    assert session._current_user_email() == "lex@logicalclocks.com"
+    assert session._teleport_root() == "Users/lex/teleport"
 
 
-def test_current_user_email_none_when_unavailable(monkeypatch):
-    def boom():
-        raise RuntimeError("no client")
+def test_teleport_root_errors_without_username(monkeypatch):
+    class _Client:
+        _username = None
 
-    monkeypatch.setattr(session.client, "_get_instance", boom)
-    assert session._current_user_email() is None
+    monkeypatch.setattr(session.client, "_get_instance", lambda: _Client())
+    with pytest.raises(Exception, match="username"):
+        session._teleport_root()
 
 
-def test_build_manifest_carries_owner_mode_and_cwd(monkeypatch):
-    monkeypatch.setattr(session, "_current_user_email", lambda: "lex@x.com")
+def test_build_manifest_carries_mode_and_cwd(monkeypatch):
     monkeypatch.setattr(Path, "cwd", classmethod(lambda cls: Path("/Users/lex/p")))
     m = session._build_manifest("sid1", "-Users-lex-p", "new", None)
     assert m["session_id"] == "sid1"
@@ -193,11 +196,12 @@ def test_build_manifest_carries_owner_mode_and_cwd(monkeypatch):
     assert m["model"] is None
     assert m["prompt"] is None
     assert m["cwd"] == "/Users/lex/p"
-    assert m["user"] == "lex@x.com"
+    # The owner filter is gone: isolation is structural (per-user 0700 home), so
+    # the manifest no longer carries a `user` field.
+    assert "user" not in m
 
 
-def test_build_manifest_carries_prompt(monkeypatch):
-    monkeypatch.setattr(session, "_current_user_email", lambda: None)
+def test_build_manifest_carries_prompt():
     m = session._build_manifest("s", "-p", "new", None, "summarize the project")
     assert m["prompt"] == "summarize the project"
 
@@ -211,8 +215,8 @@ def test_upload_manifest_uploads_last_write_to_dest(tmp_path):
             seen["overwrite"] = overwrite
             seen["content"] = json.loads(Path(local_path).read_text())
 
-    session._upload_manifest(_DS(), "Resources/teleport/slug", "sid", {"mode": "new"})
-    assert seen["upload_path"] == "Resources/teleport/slug"
+    session._upload_manifest(_DS(), f"{_ROOT}/slug", "sid", {"mode": "new"})
+    assert seen["upload_path"] == f"{_ROOT}/slug"
     assert seen["overwrite"] is True
     assert seen["content"] == {"mode": "new"}
 
@@ -227,26 +231,31 @@ def test_upload_manifest_raises_on_failure():
 
 
 def _teleport_tree():
-    root = session._TELEPORT_DATASET
     dirs = {
-        root: [f"{root}/-Users-lex-a", f"{root}/-Users-lex-b/"],
-        f"{root}/-Users-lex-a": [f"{root}/-Users-lex-a/s1.jsonl"],
-        f"{root}/-Users-lex-b": [f"{root}/-Users-lex-b/s2.jsonl"],
+        _ROOT: [f"{_ROOT}/-Users-lex-a", f"{_ROOT}/-Users-lex-b/"],
+        f"{_ROOT}/-Users-lex-a": [f"{_ROOT}/-Users-lex-a/s1.jsonl"],
+        f"{_ROOT}/-Users-lex-b": [f"{_ROOT}/-Users-lex-b/s2.jsonl"],
     }
-    files = {f"{root}/-Users-lex-b/s2.teleport.json": {"cwd": "/Users/lex/b"}}
+    files = {f"{_ROOT}/-Users-lex-b/s2.teleport.json": {"cwd": "/Users/lex/b"}}
     return _FakeDataset(dirs, files)
 
 
-def test_scan_slugs_lists_subdirs():
+@pytest.fixture
+def _fixed_root(monkeypatch):
+    """Pin ``_teleport_root`` so the dataset helpers need no live client."""
+    monkeypatch.setattr(session, "_teleport_root", lambda: _ROOT)
+
+
+def test_scan_slugs_lists_subdirs(_fixed_root):
     assert session._scan_slugs(_teleport_tree()) == ["-Users-lex-a", "-Users-lex-b"]
 
 
-def test_locate_session_finds_slug_and_origin_cwd():
+def test_locate_session_finds_slug_and_origin_cwd(_fixed_root):
     ds = _teleport_tree()
     assert session._locate_session(ds, "s2") == ("-Users-lex-b", "/Users/lex/b")
     # A session with no manifest still resolves its slug (cwd unknown).
     assert session._locate_session(ds, "s1") == ("-Users-lex-a", None)
 
 
-def test_locate_session_none_when_absent():
+def test_locate_session_none_when_absent(_fixed_root):
     assert session._locate_session(_teleport_tree(), "missing") is None
