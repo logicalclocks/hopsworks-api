@@ -178,11 +178,25 @@ def test_teleport_root_is_the_users_private_home(monkeypatch):
     assert session._teleport_root() == "Users/lex/teleport"
 
 
+def test_teleport_root_falls_back_to_hdfs_user_inside_a_pod(monkeypatch):
+    # The internal client (terminal pod / job) has no _username; the username is
+    # the tail of the project__username hdfs identity in the env.
+    class _InternalClient:
+        pass
+
+    monkeypatch.setattr(session.client, "_get_instance", lambda: _InternalClient())
+    monkeypatch.delenv("HDFS_USER", raising=False)
+    monkeypatch.setenv("HADOOP_USER_NAME", "myproj__lex")
+    assert session._teleport_root() == "Users/lex/teleport"
+
+
 def test_teleport_root_errors_without_username(monkeypatch):
     class _Client:
         _username = None
 
     monkeypatch.setattr(session.client, "_get_instance", lambda: _Client())
+    monkeypatch.delenv("HADOOP_USER_NAME", raising=False)
+    monkeypatch.delenv("HDFS_USER", raising=False)
     with pytest.raises(Exception, match="username"):
         session._teleport_root()
 
