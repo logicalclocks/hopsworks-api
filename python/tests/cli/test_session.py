@@ -195,7 +195,9 @@ def test_build_manifest_carries_mode_and_cwd(monkeypatch):
     assert m["mode"] == "new"
     assert m["model"] is None
     assert m["prompt"] is None
-    assert m["cwd"] == "/Users/lex/p"
+    # str(Path.cwd()); rendered with the platform separator (backslashes on
+    # Windows), so compare against the same rather than a hardcoded POSIX path.
+    assert m["cwd"] == str(Path("/Users/lex/p"))
     # The owner filter is gone: isolation is structural (per-user 0700 home), so
     # the manifest no longer carries a `user` field.
     assert "user" not in m
