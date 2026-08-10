@@ -97,30 +97,34 @@ def test_transcript_relation_same():
 
 def test_transcript_relation_fast_forward():
     # local is a strict prefix of remote -> the pod advanced, take remote.
-    assert session._transcript_relation(
-        ["a", "b"], ["a", "b", "c", "d"], baseline=2
-    ) == "fast_forward"
+    assert (
+        session._transcript_relation(["a", "b"], ["a", "b", "c", "d"], baseline=2)
+        == "fast_forward"
+    )
 
 
 def test_transcript_relation_local_ahead():
     # remote is a strict prefix of local -> we advanced locally, keep local.
-    assert session._transcript_relation(
-        ["a", "b", "c"], ["a", "b"], baseline=2
-    ) == "local_ahead"
+    assert (
+        session._transcript_relation(["a", "b", "c"], ["a", "b"], baseline=2)
+        == "local_ahead"
+    )
 
 
 def test_transcript_relation_diverged_past_baseline():
     # Shared prefix through the baseline (2), tails differ beyond it.
-    assert session._transcript_relation(
-        ["a", "b", "x"], ["a", "b", "y"], baseline=2
-    ) == "diverged"
+    assert (
+        session._transcript_relation(["a", "b", "x"], ["a", "b", "y"], baseline=2)
+        == "diverged"
+    )
 
 
 def test_transcript_relation_baseline_mismatch():
     # They already differ inside the handed-off prefix: not one lineage.
-    assert session._transcript_relation(
-        ["a", "X", "c"], ["a", "b", "c"], baseline=3
-    ) == "baseline_mismatch"
+    assert (
+        session._transcript_relation(["a", "X", "c"], ["a", "b", "c"], baseline=3)
+        == "baseline_mismatch"
+    )
 
 
 def test_pod_alive_true_when_session_present(monkeypatch):
