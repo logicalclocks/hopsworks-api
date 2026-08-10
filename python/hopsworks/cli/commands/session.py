@@ -57,6 +57,26 @@ from hopsworks_common import client
 _CLAUDE_PROJECTS = Path.home() / ".claude" / "projects"
 
 
+def _resolve_username() -> str | None:
+    """The logged-in user's Hopsworks username, for the ``Users/<username>`` home.
+
+    The external client (a laptop) resolves it at login and stashes it as
+    ``_username``. The internal client (running inside a terminal pod or a job)
+    does not, but its hdfs identity is ``project__username`` in
+    ``HADOOP_USER_NAME`` / ``HDFS_USER``, so peel the project prefix the same way
+    the SDK does for the project name. This is what lets ``hops session`` work
+    from the pod terminal (re-push, list, pull the baton back), not only the
+    laptop.
+    """
+    username = getattr(client._get_instance(), "_username", None)
+    if username:
+        return username
+    hops_user = os.environ.get("HADOOP_USER_NAME") or os.environ.get("HDFS_USER")
+    if hops_user and "__" in hops_user:
+        return hops_user.split("__", 1)[1]
+    return None
+
+
 def _teleport_root() -> str:
     """HopsFS dir the session JSONLs are staged under, one subdir per slug.
 
@@ -66,7 +86,7 @@ def _teleport_root() -> str:
     project members. The terminal pod mounts the same home, so its landing hook
     reads the manifests from there without a project-wide scan.
     """
-    username = getattr(client._get_instance(), "_username", None)
+    username = _resolve_username()
     if not username:
         raise click.ClickException(
             "Could not resolve your Hopsworks username; log in first."
@@ -360,8 +380,11 @@ def _scan_slugs(dataset_api) -> list[str]:
     those subdirectories so cross-directory commands (``list --all``, ``pull
     <id>``) can reach sessions this user staged from a different working dir.
     """
+    # Resolve the root before the suppress so a real username-resolution failure
+    # surfaces, rather than masquerading as an empty (no-sessions) listing.
+    root = _teleport_root()
     with contextlib.suppress(Exception):
-        return [Path(p.rstrip("/")).name for p in dataset_api.list(_teleport_root())]
+        return [Path(p.rstrip("/")).name for p in dataset_api.list(root)]
     return []
 
 
