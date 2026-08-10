@@ -94,6 +94,35 @@ class TestUsersApi:
         with pytest.raises(RestAPIError):
             api.get_user(999)
 
+    def test_get_user_by_email_returns_matching_user(self, mocker):
+        api = UsersApi()
+        _patch_client(
+            mocker,
+            {
+                "items": [
+                    _profile(1, "alice@example.com"),
+                    _profile(2, "bob@example.com"),
+                ],
+                "count": 2,
+            },
+        )
+
+        user = api.get_user_by_email("bob@example.com")
+
+        assert user.id == 2
+
+    def test_get_user_by_email_ignores_case(self, mocker):
+        api = UsersApi()
+        _patch_client(mocker, {"items": [_profile(1, "Alice@Example.com")], "count": 1})
+
+        assert api.get_user_by_email("alice@example.COM").id == 1
+
+    def test_get_user_by_email_returns_none_when_absent(self, mocker):
+        api = UsersApi()
+        _patch_client(mocker, {"items": [_profile(1, "alice@example.com")], "count": 1})
+
+        assert api.get_user_by_email("nobody@example.com") is None
+
     def test_register_user_sends_expected_query_params(self, mocker):
         api = UsersApi()
         client_instance = _patch_client(mocker, _profile())
@@ -149,6 +178,35 @@ class TestUsersApi:
             api.set_role(1, "OWNER")
 
         client_instance._send_request.assert_not_called()
+
+    def test_set_role_accepts_any_case_and_sends_canonical(self, mocker):
+        api = UsersApi()
+        client_instance = _patch_client(mocker, _profile())
+
+        api.set_role(1, "hops_admin")
+
+        # the backend is given the canonical casing regardless of what the caller typed
+        assert client_instance._send_request.call_args_list[0].kwargs["data"] == (
+            "HOPS_ADMIN"
+        )
+
+    def test_register_user_accepts_any_case_role_and_status(self, mocker):
+        api = UsersApi()
+        client_instance = _patch_client(mocker, _profile())
+
+        api.register_user(
+            "alice@example.com",
+            "Alice",
+            "Smith",
+            role="hops_user",
+            status="activated_account",
+        )
+
+        query_params = client_instance._send_request.call_args_list[0].kwargs[
+            "query_params"
+        ]
+        assert query_params["role"] == "HOPS_USER"
+        assert query_params["status"] == "ACTIVATED_ACCOUNT"
 
     def test_update_user_sends_max_num_projects(self, mocker):
         api = UsersApi()

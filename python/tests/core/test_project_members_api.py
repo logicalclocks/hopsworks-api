@@ -133,6 +133,36 @@ class TestProjectMembersApi:
 
         client_instance._send_request.assert_not_called()
 
+    def test_add_member_accepts_any_case_and_sends_canonical(self, mocker):
+        api = ProjectMembersApi()
+        client_instance = _patch_client(mocker, None)
+        client_instance._send_request.side_effect = [
+            None,
+            [_member("bob@example.com", "Data owner")],
+        ]
+
+        api.add_member("bob@example.com", "data OWNER")
+
+        # the backend is given the canonical casing regardless of what the caller typed
+        body = json.loads(
+            client_instance._send_request.call_args_list[0].kwargs["data"]
+        )
+        assert body["projectTeam"][0]["teamRole"] == "Data owner"
+
+    def test_update_role_accepts_any_case_and_sends_canonical(self, mocker):
+        api = ProjectMembersApi()
+        client_instance = _patch_client(mocker, None)
+        client_instance._send_request.side_effect = [
+            None,
+            [_member("bob@example.com", "Feature store restricted")],
+        ]
+
+        api.update_role("bob@example.com", "feature store restricted")
+
+        assert client_instance._send_request.call_args_list[0].kwargs["data"] == {
+            "role": "Feature store restricted"
+        }
+
     def test_remove_member_sends_delete_with_query_params(self, mocker):
         api = ProjectMembersApi()
         client_instance = _patch_client(mocker, None)

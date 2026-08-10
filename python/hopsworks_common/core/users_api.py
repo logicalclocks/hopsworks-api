@@ -40,9 +40,29 @@ _REGISTER_STATUS_ARG = Literal[
 _REGISTER_STATUSES = get_args(_REGISTER_STATUS_ARG)
 
 
-def _validate_role(role: str) -> None:
-    if role not in _ROLES:
+def _normalize(value: str, allowed: tuple[str, ...]) -> str | None:
+    """Match a value against the allowed ones case-insensitively, in their canonical casing."""
+    if isinstance(value, str):
+        for canonical in allowed:
+            if value.casefold() == canonical.casefold():
+                return canonical
+    return None
+
+
+def _normalize_role(role: str) -> str:
+    """Match a platform role case-insensitively, as project roles are matched."""
+    normalized = _normalize(role, _ROLES)
+    if normalized is None:
         raise ValueError(f"Role must be one of the following: {_ROLES}.")
+    return normalized
+
+
+def _normalize_status(status: str) -> str:
+    """Match an account status case-insensitively, as roles are matched."""
+    normalized = _normalize(status, _REGISTER_STATUSES)
+    if normalized is None:
+        raise ValueError(f"Status must be one of the following: {_REGISTER_STATUSES}.")
+    return normalized
 
 
 @public("hopsworks.core.users_api.UsersApi")
@@ -117,6 +137,39 @@ class UsersApi:
         return AdminUser.from_response_json(response)
 
     @public
+    def get_user_by_email(self, email: str) -> AdminUser | None:
+        """Get a single platform user by email address.
+
+        An email address is usually what you know about a user, whereas the id has to be looked up
+        first.
+        The backend has no lookup by email, so this scans the full user list; prefer
+        [`get_user`][hopsworks_common.core.users_api.UsersApi.get_user] when the id is at hand.
+
+        Example:
+            ```python
+            import hopsworks
+
+            hopsworks.login()
+            users_api = hopsworks.get_users_api()
+
+            user = users_api.get_user_by_email("alice@example.com")
+            ```
+
+        Parameters:
+            email: Email address of the platform user, matched regardless of case.
+
+        Returns:
+            The AdminUser object, or `None` if no user with this email exists.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if the caller is not a platform admin.
+        """
+        for user in self.get_users():
+            if user.email and user.email.casefold() == email.casefold():
+                return user
+        return None
+
+    @public
     def register_user(
         self,
         email: str,
@@ -174,11 +227,9 @@ class UsersApi:
             ValueError: If `role` or `status` is not one of the supported values.
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if the email is already registered.
         """
-        _validate_role(role)
-        if status is not None and status not in _REGISTER_STATUSES:
-            raise ValueError(
-                f"Status must be one of the following: {_REGISTER_STATUSES}."
-            )
+        role = _normalize_role(role)
+        if status is not None:
+            status = _normalize_status(status)
         _client = client._get_instance()
         query_params = {
             "accountType": "M_ACCOUNT_TYPE",
@@ -222,7 +273,7 @@ class UsersApi:
             ValueError: If `role` is not one of the supported values.
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if a platform admin tries to change their own role.
         """
-        _validate_role(role)
+        role = _normalize_role(role)
         _client = client._get_instance()
         path_params = ["admin", "users", user_id, "role"]
         headers = {"content-type": "text/plain"}

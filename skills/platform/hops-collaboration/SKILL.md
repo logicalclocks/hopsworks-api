@@ -19,6 +19,8 @@ Manage collaboration and access control in Hopsworks: who is a member of a proje
 
 A brand-new platform user has no project role until someone adds them to a project.
 
+Role names are matched case-insensitively, so `data owner` and `Data owner` (or `hops_admin` and `HOPS_ADMIN`) are both accepted; the canonical casing above is what reaches the backend.
+
 ## Managing project members
 
 ```python
@@ -60,7 +62,7 @@ users_api.update_user(new_user.id, max_num_projects=10)
 users_api.delete_user(new_user.id)        # fails if the user still owns projects
 ```
 
-`get_users()` / `get_user(id)` return `AdminUser` objects (`id`, `email`, `roles`, `status`, ...) — distinct from the lightweight `User` class used elsewhere (e.g. as a feature group's `creator`).
+`get_users()` / `get_user(id)` / `get_user_by_email(email)` return `AdminUser` objects (`id`, `email`, `roles`, `status`, ...) — distinct from the lightweight `User` class used elsewhere (e.g. as a feature group's `creator`). Look a user up by email when you don't already have their id; it scans the full user list, so pass the id when you have it.
 
 ## Sharing feature store data across projects
 
