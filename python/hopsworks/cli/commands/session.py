@@ -317,6 +317,15 @@ def _upload_manifest(dataset_api, dest_dir: str, session_id: str,
                 f"Failed to upload teleport manifest: {exc}"
             ) from exc
 
+    # A prior land wrote a `<id>.teleport.json.consumed` marker next to the
+    # manifest in the project HopsFS. It survives across pods, and the pod
+    # watcher skips any manifest that still carries it, so this fresh upload (a
+    # re-push) would silently never re-land. Uploading a manifest is the intent
+    # to land, so the marker is stale by definition: clear it. Best-effort — it
+    # is absent for a first push / a brand-new session id.
+    with contextlib.suppress(Exception):
+        dataset_api.remove(f"{dest_dir}/{session_id}.teleport.json.consumed")
+
 
 def _launch_pod(project) -> str | None:
     """Start (or reuse) the project's terminal pod; return its ``wsUrl``.
@@ -574,7 +583,7 @@ def new(ctx: click.Context, model: str | None, prompt: str | None,
 
     ws_url = _launch_pod(project)
 
-    manifest = _build_manifest(session_id, slug, "new", model)
+    manifest = _build_manifest(session_id, slug, "new", model, prompt)
     _upload_manifest(dataset_api, dest_dir, session_id, manifest)
     output.success("✓ Staged a new session for %s", project.name)
 
