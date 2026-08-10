@@ -951,7 +951,7 @@ class FeatureGroupBase:
         """
         from hsfs.core import share_api
 
-        share_api.ShareApi(self._feature_store_id)._share_feature_group(
+        share_api.ShareApi()._share_feature_group(
             self._id, target_project, features=features
         )
 
@@ -973,9 +973,7 @@ class FeatureGroupBase:
         """
         from hsfs.core import share_api
 
-        return share_api.ShareApi(self._feature_store_id)._list_feature_group_shares(
-            self._id
-        )
+        return share_api.ShareApi()._list_feature_group_shares(self._id)
 
     @public
     def unshare(self, target_project: str | int) -> None:
@@ -994,9 +992,105 @@ class FeatureGroupBase:
         """
         from hsfs.core import share_api
 
-        share_api.ShareApi(self._feature_store_id)._unshare_feature_group(
-            self._id, target_project
-        )
+        share_api.ShareApi()._unshare_feature_group(self._id, target_project)
+
+    @public
+    def grant_restricted_access(
+        self,
+        user_email: str,
+        features: list[str] | None = None,
+    ) -> None:
+        """Grant a `Feature store restricted` project member access to this feature group.
+
+        Unlike ``share``, which exposes data to *another project*, this
+        grants access to an individual member *within this project* who
+        otherwise has no feature store access at all under the `Feature
+        store restricted` role. The target user must already hold that
+        role in the project.
+
+        Requires the **Data Owner** role in the project.
+
+        Example:
+            ```python
+            fg = fs.get_feature_group("transactions", version=1)
+
+            # Grant access to the whole feature group
+            fg.grant_restricted_access("restricted_user@example.com")
+
+            # Grant access to selected columns only (PK + event_time always included)
+            fg.grant_restricted_access("restricted_user@example.com", features=["amount", "country"])
+            ```
+
+        Parameters:
+            user_email: Email of the project member to grant access to.
+            features: Optional whitelist of feature names. `None` grants
+                access to the whole feature group.
+
+        Raises:
+            PermissionError: If the caller lacks Data Owner in the project.
+            hopsworks.client.exceptions.RestAPIError: If the target user
+                doesn't exist, doesn't hold the `Feature store restricted`
+                role, or already has restricted access to this feature group.
+        """
+        from hsfs.core import restricted_access_api
+
+        restricted_access_api.RestrictedAccessApi(
+            self._feature_store_id
+        )._grant_restricted_access(self._id, user_email, features=features)
+
+    @public
+    def revoke_restricted_access(self, user_email: str) -> None:
+        """Revoke a previously-granted restricted-access grant.
+
+        Example:
+            ```python
+            fg = fs.get_feature_group("transactions", version=1)
+
+            fg.revoke_restricted_access("restricted_user@example.com")
+            ```
+
+        Parameters:
+            user_email: Email of the project member whose access is revoked.
+
+        Raises:
+            PermissionError: If the caller lacks Data Owner in the project.
+            hopsworks.client.exceptions.RestAPIError: If the user doesn't
+                exist or has no restricted-access grant on this feature group.
+        """
+        from hsfs.core import restricted_access_api
+
+        restricted_access_api.RestrictedAccessApi(
+            self._feature_store_id
+        )._revoke_restricted_access(self._id, user_email)
+
+    @public
+    def get_restricted_access(self) -> list[dict]:
+        """List the restricted members granted access to this feature group.
+
+        Each entry has `grantedToUser`, `grantedBy`, `grantedOn`,
+        `grantedEntirely` (`False` when only specific columns were
+        granted), and `features` (the column whitelist when not granted
+        entirely; empty/null otherwise).
+
+        Example:
+            ```python
+            fg = fs.get_feature_group("transactions", version=1)
+
+            for grant in fg.get_restricted_access():
+                print(grant["grantedToUser"], grant["grantedEntirely"])
+            ```
+
+        Returns:
+            A list of dicts as returned by the backend.
+
+        Raises:
+            PermissionError: If the caller lacks Data Owner in the project.
+        """
+        from hsfs.core import restricted_access_api
+
+        return restricted_access_api.RestrictedAccessApi(
+            self._feature_store_id
+        )._get_restricted_access(self._id)
 
     @public
     def get_feature(self, name: str) -> feature.Feature | None:
