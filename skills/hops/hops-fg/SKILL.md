@@ -467,7 +467,11 @@ results = fg.find_neighbors(
 
 ## Deleting Rows from a Feature Group
 
-Pass a DataFrame identifying the rows to remove. For an **offline (Delta) FG with an `event_time`**, the merge key is the primary key **plus** the `event_time` column (plus any partition columns) — a primary-key-only DataFrame fails with `DeltaError: No field named <event_time>`. Include every key column:
+Pass a DataFrame identifying the rows to remove.
+Both stores of an online-enabled FG are affected by default; an FG without an online store is deleted from offline only.
+
+For an **offline (Delta) FG with an `event_time`**, the merge key is the primary key **plus** the `event_time` column (plus any partition columns).
+A primary-key-only DataFrame fails with `DeltaError: No field named <event_time>`, so include every key column:
 
 ```python
 import polars as pl
@@ -478,10 +482,33 @@ rows_to_delete = pl.DataFrame({
     "event_ts": ["2026-01-01", "2026-01-02", "2026-01-03"],
 })
 
-fg.commit_delete_record(rows_to_delete)
+fg.remove_rows(rows_to_delete)
 ```
 
 Only rows matching on all key columns are deleted.
+
+`fg.commit_delete_record(...)` is the deprecated name for the same method, and it deletes offline only unless you pass `delete_online=True`.
+
+### The online leg
+
+An online-enabled FG has its rows removed from the online store as well, with no argument needed:
+
+```python
+fg.remove_rows(rows_to_delete)
+```
+
+Pass `delete_online=False` to leave the online store untouched and delete offline only.
+
+The online delete matches on the primary key alone, so every non-key column in the DataFrame is ignored for the online leg, `event_time` included.
+The key columns the offline merge requires are still required; they just do not affect which online rows are removed.
+
+Stream FGs are included: the online delete works for both DELTA and HUDI.
+The one thing to know is that a stream FG's inserts reach the offline table through its materialization job, while the delete is applied to that table directly.
+Deleting a row whose insert has not been materialized yet removes it online but finds nothing offline, and the materialization job then writes the row.
+Run the materialization job before the delete, or re-run the delete after it, to keep the two stores in step.
+
+Deleting online is not supported on an FG with an embedding index, whose online data lives in the vector database.
+Such an FG is deleted from offline only, and passing `delete_online=True` on one raises.
 
 ---
 
@@ -587,7 +614,8 @@ derived_fg.materialization_job.run(await_termination=True)
 | Read (filtered) | `fg.filter(fg.col > X).read(dataframe_type="polars")` |
 | Preview rows | `print(fg.show(n=10))` (returns a DataFrame) |
 | Similarity search | `fg.find_neighbors(vector, k=5, filter=...)` |
-| Delete rows | `fg.commit_delete_record(df)` (df = primary_key cols + event_time) |
+| Delete rows | `fg.remove_rows(df)` (df = primary_key cols + event_time) |
+| Delete rows online too | `fg.remove_rows(df, delete_online=True)` (matches on primary key only) |
 | Add a column (same version) | `fg.append_features([Feature("c", "double")])` / `hops fg append-features <name> --features "c:double"` |
 | Drop/retype a column | not in place: create a new FG version |
 | Disable statistics | `statistics_config=False` |

@@ -361,6 +361,18 @@ def offline_fg_materialization(
         == str(entity.subject["id"])
     )
 
+    # A delete tombstone is on the topic for OnlineFS only: remove_rows has already applied the
+    # offline delete directly to the table, so materializing the tombstone re-inserts the key it
+    # deleted.
+    # The header is absent on inserts, so null means keep.
+    # Exact match on the value, as in OnlineFsHandler.getRow.
+    operation_header = expr(
+        "CAST(filter(headers, header -> header.key = 'operation')[0].value AS STRING)"
+    )
+    filtered_df = filtered_df.filter(
+        operation_header.isNull() | (operation_header != "delete")
+    )
+
     # limit the number of records ingested
     # default limit is 5M
     limit = 5000000
