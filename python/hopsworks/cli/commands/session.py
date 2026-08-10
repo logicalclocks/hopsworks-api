@@ -37,6 +37,7 @@ import webbrowser
 from datetime import datetime, timezone
 from pathlib import Path
 
+
 try:
     import termios
     import tty
@@ -121,9 +122,7 @@ def _remote_session_ids(dataset_api, slug: str) -> list[str]:
     remote_dir = f"{_TELEPORT_DATASET}/{slug}"
     with contextlib.suppress(Exception):
         entries = dataset_api.list(remote_dir)
-        return [
-            Path(p).stem for p in entries if str(p).endswith(".jsonl")
-        ]
+        return [Path(p).stem for p in entries if str(p).endswith(".jsonl")]
     return []
 
 
@@ -132,8 +131,10 @@ def _now() -> str:
 
 
 def _local_away(slug: str) -> dict[str, str]:
-    """Return ``{session_id: project}`` for sessions handed off from this
-    directory, read from the ``<id>.away.json`` markers push leaves behind."""
+    """Return ``{session_id: project}`` for sessions handed off from this directory.
+
+    Read from the ``<id>.away.json`` markers push leaves behind.
+    """
     out: dict[str, str] = {}
     d = _CLAUDE_PROJECTS / slug
     if d.is_dir():
@@ -145,10 +146,12 @@ def _local_away(slug: str) -> dict[str, str]:
 
 
 def _is_active_session(jsonl: Path) -> bool:
-    """Heuristic for "the session you are currently in": the newest transcript
-    for this directory, written to within the last two minutes. A live `claude`
-    holds that file open, so pushing it cannot rename it out from under the
-    running process; the baton is recorded but the local copy is left in place.
+    """Heuristic for "the session you are currently in".
+
+    The newest transcript for this directory, written to within the last two
+    minutes. A live `claude` holds that file open, so pushing it cannot rename
+    it out from under the running process; the baton is recorded but the local
+    copy is left in place.
     """
     proj_dir = jsonl.parent
     newest = max(
@@ -157,8 +160,9 @@ def _is_active_session(jsonl: Path) -> bool:
     return newest == jsonl and (time.time() - jsonl.stat().st_mtime) < 120
 
 
-def _write_baton(dataset_api, dest_dir: str, sid: str, holder: str,
-                 prev_holder: str, lines: int) -> None:
+def _write_baton(
+    dataset_api, dest_dir: str, sid: str, holder: str, prev_holder: str, lines: int
+) -> None:
     """Write the baton sidecar recording where a session's canonical copy lives.
 
     Both the laptop CLI and the pod read it; it is the commit point of a
@@ -215,8 +219,7 @@ def _pod_alive(project_id: int) -> bool:
         return True
 
 
-def _transcript_relation(local: list[str], remote: list[str],
-                         baseline: int) -> str:
+def _transcript_relation(local: list[str], remote: list[str], baseline: int) -> str:
     """Classify how two append-only transcripts relate.
 
     A Claude Code JSONL only ever grows (lines are appended, never rewritten),
@@ -275,8 +278,9 @@ def _current_user_email() -> str | None:
     return None
 
 
-def _build_manifest(session_id: str, slug: str, mode: str,
-                    model: str | None, prompt: str | None = None) -> dict:
+def _build_manifest(
+    session_id: str, slug: str, mode: str, model: str | None, prompt: str | None = None
+) -> dict:
     """The manifest the pod's landing hook reads to self-resume.
 
     Carries the original cwd (the slug alone cannot reconstruct it, and the pod
@@ -298,8 +302,9 @@ def _build_manifest(session_id: str, slug: str, mode: str,
     }
 
 
-def _upload_manifest(dataset_api, dest_dir: str, session_id: str,
-                     manifest: dict) -> None:
+def _upload_manifest(
+    dataset_api, dest_dir: str, session_id: str, manifest: dict
+) -> None:
     """Upload the teleport manifest — the last write of a push/new.
 
     Not best-effort: the manifest is the pod watcher's trigger, so a silent drop
@@ -341,7 +346,8 @@ def _launch_pod(project) -> str | None:
     except Exception as exc:  # noqa: BLE001 - feature may be disabled on cluster
         output.warn(
             "Terminal pod not started (%s). Open the Terminal tab in the "
-            "Hopsworks UI to start it.", exc,
+            "Hopsworks UI to start it.",
+            exc,
         )
         return None
 
@@ -416,9 +422,15 @@ def session_group() -> None:
     "--no-open just prints the URL.",
 )
 @click.pass_context
-def push(ctx: click.Context, session_id: str | None, overwrite: bool,
-         fork: bool, model: str | None, prompt: str | None,
-         open_ui: bool) -> None:
+def push(
+    ctx: click.Context,
+    session_id: str | None,
+    overwrite: bool,
+    fork: bool,
+    model: str | None,
+    prompt: str | None,
+    open_ui: bool,
+) -> None:
     """Push the current Claude Code session onto a Hopsworks terminal pod.
 
     Resolves the active session for this directory, uploads its transcript into
@@ -469,20 +481,30 @@ def push(ctx: click.Context, session_id: str | None, overwrite: bool,
     if not fork:
         host = socket.gethostname()
         lines = sum(1 for _ in jsonl.open(errors="ignore"))
-        _write_baton(dataset_api, dest_dir, resolved_id,
-                     holder=f"pod:{project.name}", prev_holder=f"laptop:{host}",
-                     lines=lines)
+        _write_baton(
+            dataset_api,
+            dest_dir,
+            resolved_id,
+            holder=f"pod:{project.name}",
+            prev_holder=f"laptop:{host}",
+            lines=lines,
+        )
         if _is_active_session(jsonl):
             output.warn(
                 "This looks like the session you are in, so it stays live on "
                 "this machine. The baton points to %s; close it here, then "
-                "`hops session pull` to reclaim it.", project.name)
+                "`hops session pull` to reclaim it.",
+                project.name,
+            )
         else:
             away = jsonl.parent / (jsonl.name + ".away")
             with contextlib.suppress(Exception):
                 jsonl.rename(away)
-                (jsonl.parent / f"{resolved_id}.away.json").write_text(json.dumps(
-                    {"project": project.name, "host": host, "pushed_at": _now()}))
+                (jsonl.parent / f"{resolved_id}.away.json").write_text(
+                    json.dumps(
+                        {"project": project.name, "host": host, "pushed_at": _now()}
+                    )
+                )
 
     ws_url = _launch_pod(project)
 
@@ -491,7 +513,8 @@ def push(ctx: click.Context, session_id: str | None, overwrite: bool,
     # hard error, not best-effort — a dropped manifest strands the session
     # (staged, but never landed).
     manifest = _build_manifest(
-        resolved_id, slug, "fork" if fork else "push", model, prompt)
+        resolved_id, slug, "fork" if fork else "push", model, prompt
+    )
     _upload_manifest(dataset_api, dest_dir, resolved_id, manifest)
 
     pod_session_dir = f"~/.claude/projects/{slug}"
@@ -554,8 +577,9 @@ def push(ctx: click.Context, session_id: str | None, overwrite: bool,
     "--no-open just prints the URL.",
 )
 @click.pass_context
-def new(ctx: click.Context, model: str | None, prompt: str | None,
-        open_ui: bool) -> None:
+def new(
+    ctx: click.Context, model: str | None, prompt: str | None, open_ui: bool
+) -> None:
     """Start a fresh Claude Code session directly on a terminal pod.
 
     Unlike ``push`` there is nothing to ship: this stages a ``mode=new`` manifest
@@ -632,8 +656,9 @@ def new(ctx: click.Context, model: str | None, prompt: str | None,
     "pull refuses to reclaim a session a live holder is still writing.",
 )
 @click.pass_context
-def pull(ctx: click.Context, session_id: str | None, ours: bool, theirs: bool,
-         force: bool) -> None:
+def pull(
+    ctx: click.Context, session_id: str | None, ours: bool, theirs: bool, force: bool
+) -> None:
     """Pull a session staged in HopsFS back onto this machine and take the baton.
 
     Downloads the transcript from ``Resources/teleport/<slug>/`` into
@@ -732,9 +757,7 @@ def pull(ctx: click.Context, session_id: str | None, ours: bool, theirs: bool,
     # The local candidate is the resumable copy if present, else the transcript
     # push renamed aside on hand-off.
     local_src = (
-        local_jsonl if local_jsonl.is_file()
-        else away if away.is_file()
-        else None
+        local_jsonl if local_jsonl.is_file() else away if away.is_file() else None
     )
     local_text = local_src.read_text(errors="ignore") if local_src else ""
     local_lines = local_text.splitlines() if local_src else None
@@ -776,7 +799,8 @@ def pull(ctx: click.Context, session_id: str | None, ours: bool, theirs: bool,
                     )
                 take_remote = bool(theirs)
                 parked = local_dir / (
-                    f"{session_id}.jsonl.diverged-{_stamp()}" if theirs
+                    f"{session_id}.jsonl.diverged-{_stamp()}"
+                    if theirs
                     else f"{session_id}.jsonl.remote-{_stamp()}"
                 )
             else:  # baseline_mismatch
@@ -808,8 +832,14 @@ def pull(ctx: click.Context, session_id: str | None, ours: bool, theirs: bool,
 
     if baton is not None:
         final_lines = sum(1 for _ in local_jsonl.open(errors="ignore"))
-        _write_baton(dataset_api, dest_dir, session_id, holder=me,
-                     prev_holder=baton.get("holder", "?"), lines=final_lines)
+        _write_baton(
+            dataset_api,
+            dest_dir,
+            session_id,
+            holder=me,
+            prev_holder=baton.get("holder", "?"),
+            lines=final_lines,
+        )
 
     output.success("✓ Pulled session %s to %s", session_id, local_dir)
     if parked is not None:
@@ -909,9 +939,11 @@ def list_sessions(ctx: click.Context, all_slugs: bool) -> None:
 
     slug = _cwd_slug()
     local_dir = _CLAUDE_PROJECTS / slug
-    local_ids = sorted(p.stem for p in local_dir.glob("*.jsonl")) if (
-        local_dir.is_dir()
-    ) else []
+    local_ids = (
+        sorted(p.stem for p in local_dir.glob("*.jsonl"))
+        if (local_dir.is_dir())
+        else []
+    )
     away = _local_away(slug)
 
     remote_ids = sorted(_remote_session_ids(dataset_api, slug))
@@ -1009,7 +1041,9 @@ async def _pump(ws, warned: list[bool]) -> None:
     ignored — a mirror only renders the byte stream.
     """
     async for message in ws:
-        frame = message if isinstance(message, str) else message.decode("utf-8", "replace")
+        frame = (
+            message if isinstance(message, str) else message.decode("utf-8", "replace")
+        )
         try:
             msg = json.loads(frame)
         except ValueError:
@@ -1053,7 +1087,9 @@ async def _drive(ws, mode: str) -> None:
             detached.set()
             return
         loop.create_task(
-            ws.send(json.dumps({"type": "input", "data": data.decode("utf-8", "replace")}))
+            ws.send(
+                json.dumps({"type": "input", "data": data.decode("utf-8", "replace")})
+            )
         )
 
     can_write = mode == "rw" and termios is not None and sys.stdin.isatty()
@@ -1072,7 +1108,7 @@ async def _drive(ws, mode: str) -> None:
         for t in pending:
             t.cancel()
         if detach_task in done:
-            raise _Detach()
+            raise _Detach
         recv_task.result()  # re-raise a ConnectionClosed so the caller reconnects
     finally:
         if reader_added:
@@ -1147,7 +1183,9 @@ def mirror(ctx: click.Context, write: bool) -> None:
     """
     project = conn.get_project(ctx)
     if output.JSON_MODE:
-        raise click.ClickException("`session mirror` is interactive; --json is not supported.")
+        raise click.ClickException(
+            "`session mirror` is interactive; --json is not supported."
+        )
     role = "read-write" if write else "read-only"
     if write and (termios is None or not sys.stdin.isatty()):
         output.warn("No interactive tty; --write falls back to read-only.")
