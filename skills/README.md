@@ -22,6 +22,7 @@ into bucket folders:
 
 ## platform/ — cross-cutting platform knowledge
 - [hops-ui-navigation](platform/hops-ui-navigation/SKILL.md) — where things live in the Hopsworks UI (project sidebar map).
+- [hops-collaboration](platform/hops-collaboration/SKILL.md) — project members, platform user admin, and feature store/dataset sharing.
 
 ## hops/ — feature store, training, inference, jobs, apps, agents
 - [hops-fg](hops/hops-fg/SKILL.md) — feature groups.
