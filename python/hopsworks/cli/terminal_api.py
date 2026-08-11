@@ -75,3 +75,21 @@ def get_session(project_id: int) -> dict | None:
     """
     _client = client._get_instance()
     return _client._send_request("GET", ["project", project_id, "terminal", "session"])
+
+
+def stop_session(project_id: int) -> None:
+    """Force-stop the caller's terminal for the project.
+
+    A DELETE on the terminal resource root: it tears down the terminal pod (and
+    every session tab in it) regardless of DB state, so a user can close their
+    terminal from the CLI without Kubernetes access.
+
+    Args:
+        project_id: The target project's numeric id.
+
+    Raises:
+        hopsworks.client.exceptions.RestAPIError: When the terminal feature is
+            disabled on the cluster, or the caller lacks access.
+    """
+    _client = client._get_instance()
+    _client._send_request("DELETE", ["project", project_id, "terminal"])
