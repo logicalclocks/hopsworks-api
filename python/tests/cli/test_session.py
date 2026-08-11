@@ -146,6 +146,20 @@ def test_pod_alive_failsafe_alive_on_error(monkeypatch):
     assert session._pod_alive(1) is True
 
 
+def test_stop_session_force_stops_via_delete_on_terminal_root(monkeypatch):
+    seen = {}
+
+    class _Client:
+        def _send_request(self, method, path_params, **kwargs):
+            seen["method"] = method
+            seen["path"] = path_params
+
+    monkeypatch.setattr(session.terminal_api.client, "_get_instance", lambda: _Client())
+    session.terminal_api.stop_session(119)
+    assert seen["method"] == "DELETE"
+    assert seen["path"] == ["project", 119, "terminal"]
+
+
 # --- teleport root / manifest ------------------------------------------------
 
 # The per-user private HopsFS home the transcripts are staged under.

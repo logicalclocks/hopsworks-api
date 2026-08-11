@@ -996,6 +996,40 @@ def list_sessions(ctx: click.Context, all_slugs: bool) -> None:
         output.info("  %-40s %s", sid, _where(sid))
 
 
+@session_group.command("stop")
+@click.pass_context
+def stop(ctx: click.Context) -> None:
+    """Stop this project's terminal pod (and every session tab in it).
+
+    Closes the running terminal from the laptop, so you never need Kubernetes
+    access to shut it down. A no-op when nothing is running.
+
+    Args:
+        ctx: Click context.
+    """
+    project = conn.get_project(ctx)
+
+    running = None
+    with contextlib.suppress(Exception):
+        running = terminal_api.get_session(project.id)
+    if not running:
+        if output.JSON_MODE:
+            output.print_json({"project": project.name, "stopped": False})
+            return
+        output.info("No terminal running for %s.", project.name)
+        return
+
+    try:
+        terminal_api.stop_session(project.id)
+    except Exception as exc:  # noqa: BLE001 - feature may be disabled on cluster
+        raise click.ClickException(f"Failed to stop the terminal: {exc}") from exc
+
+    if output.JSON_MODE:
+        output.print_json({"project": project.name, "stopped": True})
+        return
+    output.success("✓ Stopped the terminal for %s", project.name)
+
+
 # Detach key for `session mirror`: Ctrl-] (GS, 0x1d), the telnet/ssh escape.
 _MIRROR_DETACH = b"\x1d"
 # Bounded reconnects when the WebSocket drops (proxy idle timeout, token expiry).
