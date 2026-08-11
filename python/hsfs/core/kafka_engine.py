@@ -370,10 +370,12 @@ def _delivery_error(err: KafkaError, msg: Any) -> FeatureStoreException:
     never ingest it.
     Reporting it is what keeps a partially delivered insert from looking like a successful one.
 
-    `confluent_kafka.KafkaError` is raisable but is not a `BaseException` subclass, so raising it
-    directly produces an error that a caller's `except Exception` cannot catch.
-    It is wrapped in a `KafkaException` cause instead, which preserves the original error code for
-    callers that need to branch on it.
+    `confluent_kafka.KafkaError` is an odd type to raise: CPython accepts it as the operand of
+    `raise`, yet it does not subclass `BaseException`, so `except Exception` never matches it and
+    only an explicit `except KafkaError` would.
+    Raising it directly would therefore slip past a caller's error handling, so it is wrapped in a
+    `KafkaException` cause, which is an ordinary exception and keeps the original error code
+    reachable for callers that need to branch on it.
     """
     location = ""
     # The message handle may be unusable; the error itself is still worth reporting.

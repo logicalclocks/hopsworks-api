@@ -261,12 +261,12 @@ class OnlineIngestion:
         return response["hits"]["hits"]
 
     @public
-    def print_logs(self, priority: str = "error", size: int = 20):
+    def print_logs(self, priority: str = "error", size: int = 20) -> None:
         """Print logs related to the online ingestion operation from OpenSearch.
 
         Parameters:
-            priority: Log priority to filter by (default: "error").
-            size: Number of log entries to retrieve (default: 20).
+            priority: Log priority to filter by.
+            size: Maximum number of log entries to retrieve.
         """
         for hit in self._search_logs([{"match": {"priority": priority}}], size):
             print(hit["_source"]["error"]["data"])

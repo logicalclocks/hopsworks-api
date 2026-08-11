@@ -39,14 +39,14 @@ class OnlineIngestionFailure:
 
     def __init__(
         self,
-        failure_type: str = None,
-        failure_reason: str = None,
-        topic: str = None,
-        partition: int = None,
-        offset: int = None,
-        record_key: str = None,
-        feature_group_id: int = None,
-        online_ingestion_id: int = None,
+        failure_type: str | None = None,
+        failure_reason: str | None = None,
+        topic: str | None = None,
+        partition: int | None = None,
+        offset: int | None = None,
+        record_key: str | None = None,
+        feature_group_id: int | None = None,
+        online_ingestion_id: int | None = None,
         **kwargs,
     ):
         """Initialize an OnlineIngestionFailure object.
@@ -103,11 +103,11 @@ class OnlineIngestionFailure:
             online_ingestion_id=as_int(log_arguments.get("online_ingestion_id")),
         )
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, Any]:
         """Convert the OnlineIngestionFailure object to a dictionary.
 
         Returns:
-            dict: Dictionary representation of the object.
+            The failure's fields, keyed as the backend names them.
         """
         return {
             "failureType": self._failure_type,
@@ -120,15 +120,15 @@ class OnlineIngestionFailure:
             "onlineIngestionId": self._online_ingestion_id,
         }
 
-    def json(self):
+    def json(self) -> str:
         """Serialize the OnlineIngestionFailure object to a JSON string.
 
         Returns:
-            str: JSON string representation of the object.
+            The failure as JSON.
         """
         return json.dumps(self, cls=util.Encoder)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (
             f"OnlineIngestionFailure({self._topic}[{self._partition}]@{self._offset}: "
             f"{self._failure_type} - {self._failure_reason})"
