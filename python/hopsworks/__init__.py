@@ -39,7 +39,7 @@ from hopsworks_common.constants import CLIENT
 # PEP 562 ``__getattr__`` below. This keeps ``import hopsworks`` cheap for
 # entry points (the ``hops`` CLI, dependent libraries' import-time checks)
 # that don't need the full feature-store / model-registry surface area.
-from hopsworks_common.core import env_var_api, project_api, secret_api
+from hopsworks_common.core import env_var_api, project_api, secret_api, users_api
 from hopsworks_common.decorators import NoHopsworksConnectionError
 from requests.exceptions import SSLError
 
@@ -56,6 +56,7 @@ _connected_project = None
 _secrets_api = None
 _env_vars_api = None
 _project_api = None
+_users_api = None
 
 
 def hw_formatwarning(message, category, filename, lineno, line=None):
@@ -503,6 +504,7 @@ def logout():
     global _project_api
     global _secrets_api
     global _env_vars_api
+    global _users_api
 
     if _is_connection_active():
         _hw_connection._close()
@@ -511,6 +513,7 @@ def logout():
     _project_api = None
     _secrets_api = None
     _env_vars_api = None
+    _users_api = None
     _hw_connection = _make_connection
 
 
@@ -545,9 +548,11 @@ def _initialize_module_apis():
     global _project_api
     global _secrets_api
     global _env_vars_api
+    global _users_api
     _project_api = project_api.ProjectApi()
     _secrets_api = secret_api.SecretsApi()
     _env_vars_api = env_var_api.EnvVarsApi()
+    _users_api = users_api.UsersApi()
 
 
 @public
@@ -612,6 +617,33 @@ def get_secrets_api() -> secret_api.SecretsApi:
     if not _is_connection_active():
         raise NoHopsworksConnectionError
     return _secrets_api
+
+
+@public
+def get_users_api() -> users_api.UsersApi:
+    """Get the platform users administration api.
+
+    This is an admin-only capability; the logged-in account must hold the
+    `HOPS_ADMIN` platform role for its methods to succeed.
+
+    Example:
+        ```python
+        import hopsworks
+
+        hopsworks.login()
+        users_api = hopsworks.get_users_api()
+
+        for user in users_api.get_users():
+            print(user.email, user.roles)
+        ```
+
+    Returns:
+        The Users API handle.
+    """
+    global _users_api
+    if not _is_connection_active():
+        raise NoHopsworksConnectionError
+    return _users_api
 
 
 @public
