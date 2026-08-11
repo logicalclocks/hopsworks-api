@@ -95,3 +95,38 @@ class TestProject:
 
         assert project.get_model_serving() == "MS"
         conn._get_model_serving.assert_called_once()
+
+    def test_get_members_delegates_to_members_api(self, mocker):
+        project = Project(project_name="my_project")
+        project._project_members_api = mocker.MagicMock()
+        project._project_members_api.get_members.return_value = ["m1"]
+
+        assert project.get_members() == ["m1"]
+        project._project_members_api.get_members.assert_called_once()
+
+    def test_add_member_delegates_to_members_api(self, mocker):
+        project = Project(project_name="my_project")
+        project._project_members_api = mocker.MagicMock()
+        project._project_members_api.add_member.return_value = "member"
+
+        result = project.add_member("alice@example.com", "Data scientist")
+
+        assert result == "member"
+        project._project_members_api.add_member.assert_called_once_with(
+            "alice@example.com", "Data scientist"
+        )
+
+    def test_remove_member_delegates_to_members_api(self, mocker):
+        project = Project(project_name="my_project")
+        project._project_members_api = mocker.MagicMock()
+
+        project.remove_member("alice@example.com", delete_home_dir=True)
+
+        project._project_members_api.remove_member.assert_called_once_with(
+            "alice@example.com", delete_home_dir=True
+        )
+
+    def test_get_members_api_returns_the_members_api(self, mocker):
+        project = Project(project_name="my_project")
+
+        assert project.get_members_api() is project._project_members_api

@@ -468,14 +468,54 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
   public FeatureGroupCommit commitDelete(FeatureGroupBase featureGroupBase, Dataset<Row> genericDataset,
                                          Map<String, String> writeOptions)
       throws IOException, FeatureStoreException, ParseException {
+    return commitDelete(featureGroupBase, genericDataset, writeOptions, Storage.OFFLINE);
+  }
+
+  /**
+   * Deletes the records in {@code genericDataset} from the storage named by {@code storage}.
+   *
+   * <p>{@code null} follows the feature group: both stores when it is online-enabled, offline alone
+   * when it is not. {@link Storage#OFFLINE} deletes from the offline table only. {@link
+   * Storage#ONLINE} keeps the meaning it has on insert, online alone, and is not supported yet:
+   * it would leave the offline table holding rows the caller asked to remove.
+   */
+  public FeatureGroupCommit commitDelete(FeatureGroupBase featureGroupBase, Dataset<Row> genericDataset,
+                                         Map<String, String> writeOptions, Storage storage)
+      throws IOException, FeatureStoreException, ParseException {
     if (!((featureGroupBase instanceof FeatureGroup && featureGroupBase.getTimeTravelFormat() == TimeTravelFormat.HUDI)
         || featureGroupBase instanceof StreamFeatureGroup)) {
       // operation is only valid for time travel enabled feature group
       throw new FeatureStoreException("delete function is only valid for "
           + "time travel enabled feature group");
     }
-    return HudiEngine.getInstance().deleteRecord(SparkEngine.getInstance().getSparkSession(), featureGroupBase,
-        genericDataset, writeOptions);
+    // Validate before either leg runs, so an unsupported request fails without mutating a
+    // store. Online-only on a feature group with no online store would delete nothing.
+    if (storage == Storage.ONLINE && !Boolean.TRUE.equals(featureGroupBase.getOnlineEnabled())) {
+      throw new FeatureStoreException("Storage.ONLINE was set but this feature group is not online-enabled.");
+    }
+    boolean deleteOffline = storage != Storage.ONLINE;
+    boolean deleteOnline = storage != Storage.OFFLINE && Boolean.TRUE.equals(featureGroupBase.getOnlineEnabled());
+
+    // The online delete is routed as a Kafka tombstone consumed by OnlineFS, which deletes
+    // the row from RonDB by primary key. Null on an online-only delete: there is no offline
+    // commit to describe.
+    FeatureGroupCommit commit = null;
+    if (deleteOffline) {
+      commit = HudiEngine.getInstance().deleteRecord(
+          SparkEngine.getInstance().getSparkSession(), featureGroupBase, genericDataset, writeOptions);
+    }
+
+    if (deleteOnline) {
+      // Requires an OnlineFS (clusterj-onlinefs) that understands the operation: delete header
+      // (the release shipping the OnlineFS delete branch onward). Not runtime-gated: OnlineFS is
+      // not reachable from the client, and the backend version is not its proxy since backend, SDK
+      // and OnlineFS can be versioned/backported independently. A controlled deployment (helm bumps
+      // the SDK images and OnlineFS together) keeps them in sync; pair a delete-capable OnlineFS
+      // with this SDK, as an OnlineFS without the delete branch mishandles the tombstone.
+      SparkEngine.getInstance().deleteOnlineDataframe(featureGroupBase, genericDataset,
+          writeOptions != null ? writeOptions : new HashMap<>());
+    }
+    return commit;
   }
 
   public ExternalFeatureGroup saveExternalFeatureGroup(ExternalFeatureGroup externalFeatureGroup)
