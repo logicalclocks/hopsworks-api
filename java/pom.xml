@@ -16,6 +16,7 @@
     </modules>
 
     <properties>
+        <maven-scala-plugin.version>2.15.2</maven-scala-plugin.version>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
         <guava.version>30.1.1-jre</guava.version>
@@ -157,6 +158,15 @@
             <plugin>
                 <groupId>org.scala-tools</groupId>
                 <artifactId>maven-scala-plugin</artifactId>
+                <!-- Pinned because an unversioned plugin is resolved from
+                     Central's metadata on every build, so the build depends on
+                     a network round trip it does not need. Central answered 429
+                     Too Many Requests and the whole reactor failed at
+                     hsfs-parent with "Plugin not found in any plugin
+                     repository", which reads as a missing plugin rather than a
+                     rate limit. 2.15.2 is the last release of this plugin, and
+                     it is what the unversioned resolution selected anyway. -->
+                <version>${maven-scala-plugin.version}</version>
                 <configuration>
                     <scalaVersion>${scala.version}</scalaVersion>
                 </configuration>
