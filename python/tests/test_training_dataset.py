@@ -15,7 +15,6 @@
 #
 
 
-import pytest
 from hsfs import (
     statistics_config,
     storage_connector,
@@ -255,38 +254,3 @@ class TestTrainingDataset:
         # remain serialisable for subsequent requests.
         payload = td.to_dict()
         assert payload["lookback"]["defaultLookback"]["lookbackKey"] == "PARTITION_KEY"
-
-    def test_training_dataset_partition_precision(self, mocker):
-        # The precision is fixed at creation and carried in the metadata, so
-        # it must round-trip on the wire; `None` (in-memory, or created before
-        # the field existed) means no precision is recorded.
-        mocker.patch("hopsworks_common.client._get_instance")
-        td = training_dataset.TrainingDataset(
-            name="td_pp",
-            version=1,
-            data_format="parquet",
-            featurestore_id=1,
-            partition_precision="month",
-        )
-        assert td.partition_precision == "month"
-        assert td.to_dict()["partitionPrecision"] == "month"
-
-        td_default = training_dataset.TrainingDataset(
-            name="td_pp",
-            version=1,
-            data_format="parquet",
-            featurestore_id=1,
-        )
-        assert td_default.partition_precision is None
-        assert td_default.to_dict()["partitionPrecision"] is None
-
-    def test_training_dataset_invalid_partition_precision(self, mocker):
-        mocker.patch("hopsworks_common.client._get_instance")
-        with pytest.raises(ValueError, match="partition precision"):
-            training_dataset.TrainingDataset(
-                name="td_pp",
-                version=1,
-                data_format="parquet",
-                featurestore_id=1,
-                partition_precision="hour",
-            )

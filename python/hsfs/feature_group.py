@@ -32,7 +32,7 @@ from urllib.parse import urlparse
 import avro.schema
 import hsfs.expectation_suite
 import humps
-from hopsworks_apigen import deprecation, public
+from hopsworks_apigen import deprecated, deprecation, public
 from hopsworks_common import client, job
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
 from hopsworks_common.core import alerts_api
@@ -1194,7 +1194,7 @@ class FeatureGroupBase:
         """
         from hsfs.core import share_api
 
-        share_api.ShareApi(self._feature_store_id)._share_feature_group(
+        share_api.ShareApi()._share_feature_group(
             self._id, target_project, features=features
         )
 
@@ -1216,9 +1216,7 @@ class FeatureGroupBase:
         """
         from hsfs.core import share_api
 
-        return share_api.ShareApi(self._feature_store_id)._list_feature_group_shares(
-            self._id
-        )
+        return share_api.ShareApi()._list_feature_group_shares(self._id)
 
     @public
     def unshare(self, target_project: str | int) -> None:
@@ -1237,9 +1235,105 @@ class FeatureGroupBase:
         """
         from hsfs.core import share_api
 
-        share_api.ShareApi(self._feature_store_id)._unshare_feature_group(
-            self._id, target_project
-        )
+        share_api.ShareApi()._unshare_feature_group(self._id, target_project)
+
+    @public
+    def grant_restricted_access(
+        self,
+        user_email: str,
+        features: list[str] | None = None,
+    ) -> None:
+        """Grant a `Feature store restricted` project member access to this feature group.
+
+        Unlike ``share``, which exposes data to *another project*, this
+        grants access to an individual member *within this project* who
+        otherwise has no feature store access at all under the `Feature
+        store restricted` role. The target user must already hold that
+        role in the project.
+
+        Requires the **Data Owner** role in the project.
+
+        Example:
+            ```python
+            fg = fs.get_feature_group("transactions", version=1)
+
+            # Grant access to the whole feature group
+            fg.grant_restricted_access("restricted_user@example.com")
+
+            # Grant access to selected columns only (PK + event_time always included)
+            fg.grant_restricted_access("restricted_user@example.com", features=["amount", "country"])
+            ```
+
+        Parameters:
+            user_email: Email of the project member to grant access to.
+            features: Optional whitelist of feature names. `None` grants
+                access to the whole feature group.
+
+        Raises:
+            PermissionError: If the caller lacks Data Owner in the project.
+            hopsworks.client.exceptions.RestAPIError: If the target user
+                doesn't exist, doesn't hold the `Feature store restricted`
+                role, or already has restricted access to this feature group.
+        """
+        from hsfs.core import restricted_access_api
+
+        restricted_access_api.RestrictedAccessApi(
+            self._feature_store_id
+        )._grant_restricted_access(self._id, user_email, features=features)
+
+    @public
+    def revoke_restricted_access(self, user_email: str) -> None:
+        """Revoke a previously-granted restricted-access grant.
+
+        Example:
+            ```python
+            fg = fs.get_feature_group("transactions", version=1)
+
+            fg.revoke_restricted_access("restricted_user@example.com")
+            ```
+
+        Parameters:
+            user_email: Email of the project member whose access is revoked.
+
+        Raises:
+            PermissionError: If the caller lacks Data Owner in the project.
+            hopsworks.client.exceptions.RestAPIError: If the user doesn't
+                exist or has no restricted-access grant on this feature group.
+        """
+        from hsfs.core import restricted_access_api
+
+        restricted_access_api.RestrictedAccessApi(
+            self._feature_store_id
+        )._revoke_restricted_access(self._id, user_email)
+
+    @public
+    def get_restricted_access(self) -> list[dict]:
+        """List the restricted members granted access to this feature group.
+
+        Each entry has `grantedToUser`, `grantedBy`, `grantedOn`,
+        `grantedEntirely` (`False` when only specific columns were
+        granted), and `features` (the column whitelist when not granted
+        entirely; empty/null otherwise).
+
+        Example:
+            ```python
+            fg = fs.get_feature_group("transactions", version=1)
+
+            for grant in fg.get_restricted_access():
+                print(grant["grantedToUser"], grant["grantedEntirely"])
+            ```
+
+        Returns:
+            A list of dicts as returned by the backend.
+
+        Raises:
+            PermissionError: If the caller lacks Data Owner in the project.
+        """
+        from hsfs.core import restricted_access_api
+
+        return restricted_access_api.RestrictedAccessApi(
+            self._feature_store_id
+        )._get_restricted_access(self._id)
 
     @public
     def get_feature(self, name: str) -> feature.Feature | None:
@@ -4051,6 +4145,7 @@ class FeatureGroup(FeatureGroupBase):
                     - `mark_online_rows`: `True` or `False` to filter rows for online ingestion based on event time and primary key deduplication, defaults to `True`.
                     - `disable_online_ingestion_count`: `True` or `False` to disable sending the total number of entries to the online ingestion tracking system, defaults to `False`.
                       When `True`, no batch size is known to the ingestion tracker so `wait_for_online_ingestion` will wait until `timeout` is reached.
+                      Combining it with `timeout` `0` waits forever, since neither the entry count nor the timeout can end the wait.
                 - key `start_offline_backfill` and value `True` or `False` to configure whether or not to start the materialization job to write data to the offline storage. `start_offline_backfill` is deprecated.
                   Use `start_offline_materialization` instead.
                 - key `start_offline_materialization` and value `True` or `False` to configure whether or not to start the materialization job to write data to the offline storage.
@@ -4292,6 +4387,7 @@ class FeatureGroup(FeatureGroupBase):
                     - `mark_online_rows`: `True` or `False` to filter rows for online ingestion based on event time and primary key deduplication, defaults to `True`.
                     - `disable_online_ingestion_count`: `True` or `False` to disable sending the total number of entries to the online ingestion tracking system, defaults to `False`.
                       When `True`, no batch size is known to the ingestion tracker so `wait_for_online_ingestion` will wait until `timeout` is reached.
+                      Combining it with `timeout` `0` waits forever, since neither the entry count nor the timeout can end the wait.
                 - key `start_offline_backfill` and value `True` or `False` to configure whether or not to start the materialization job to write data to the offline storage.
                   `start_offline_backfill` is deprecated.
                   Use `start_offline_materialization` instead.
@@ -4695,38 +4791,156 @@ class FeatureGroup(FeatureGroupBase):
         return self._feature_group_engine._commit_details(self, wallclock_time, limit)
 
     @public
-    def commit_delete_record(
+    def remove_rows(
         self,
         delete_df: TypeVar("pyspark.sql.DataFrame"),  # noqa: F821
         write_options: dict[Any, Any] | None = None,
+        storage: str | None = None,
     ) -> None:
         """Drops records present in the provided DataFrame and commits it as update to this Feature group.
 
         This method can only be used on feature groups stored as HUDI, DELTA, or ICEBERG.
 
+        Both stores of an online-enabled feature group are affected, mirroring [`insert`][hsfs.feature_group.FeatureGroup.insert], which writes to both.
+        A feature group without an online store is deleted from offline only.
+        Set `storage` to `"offline"` or `"online"` to delete from one store alone.
+
+        Danger: A single-store delete leaves the two stores disagreeing
+            Deleting from one store only is not reconciled by anything later: the rows stay in the other store until they are deleted there too.
+            Reads served from the two stores return different results for those keys from then on.
+        `delete_df` needs to carry the key columns the offline delete matches on: the primary key, plus `event_time` and any partition columns when the feature group has them.
+        The online delete matches on the primary key alone and ignores every other column, so a value passed for a non-key feature has no effect on it.
+        The online delete is tracked by the same online-ingestion record as an insert, and reported under its `DELETED` status, so the removed rows are counted apart from written ones.
+
+        Warning: Deleting a row a stream feature group has not materialized yet
+            The offline delete is applied to the offline table directly, while a stream feature group's inserts reach that table through the materialization job.
+            Deleting a row whose insert has not been materialized yet deletes nothing offline, and the materialization job then writes the row, so it stays in the offline table while the online store has it deleted.
+            Re-run the delete after the materialization job to reconcile the two stores.
+
         Parameters:
-            delete_df: dataFrame containing records to be deleted.
+            delete_df: DataFrame containing records to be deleted.
             write_options: User provided write options.
+                - key `wait_for_online_ingestion` and value `True` or `False` to configure whether or not the call should return only after the online delete has been applied.
+                  By default it does not wait.
+                  Applies only when the online store is deleted from.
+                - key `online_ingestion_options` and value a dict to configure online ingestion behaviour.
+                  Supported keys:
+                    - `timeout`: seconds to wait for the online delete to complete, default `60`, set to `0` for indefinite.
+                      Applies only when `wait_for_online_ingestion` is `True`.
+                    - `period`: polling interval in seconds, default `1`.
+                      Applies only when `wait_for_online_ingestion` is `True`.
+                    - `disable_online_ingestion_count`: `True` or `False` to disable sending the total number of entries to the online ingestion tracking system, defaults to `False`.
+                      Use it to skip counting a large `delete_df` on the Spark engine, where the count is a separate pass over the data.
+                      When `True`, no batch size is known to the ingestion tracker so `wait_for_online_ingestion` will wait until `timeout` is reached.
+                      Combining it with `timeout` `0` waits forever, since neither the entry count nor the timeout can end the wait.
+                - key `internal_kafka` and value `True` or `False` in case you established connectivity from your Python environment to the internal advertised listeners of the Hopsworks Kafka Cluster.
+            storage: The storage to delete from, `"offline"` or `"online"`, mirroring [`insert`][hsfs.feature_group.FeatureGroup.insert].
+                Left unset it follows the feature group: both stores when it is online-enabled, offline alone when it is not or when its online data lives in the vector database behind an embedding index.
+                Set it to `"offline"` to delete from the offline table only, or `"online"` to delete from the online store only.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+            hopsworks.client.exceptions.FeatureStoreException: If `storage` is not one of `"offline"`, `"online"` or unset; or is `"online"` on a feature group that is not online-enabled or has an embedding index.
         """
-        if self.time_travel_format == "HUDI" and not engine._get_type().startswith(
-            "spark"
-        ):
-            raise NotImplementedError(
-                "commit_delete_record is only supported for HUDI feature groups when using the Spark engine."
+        # Validate before either leg runs, so an unsupported request fails without
+        # mutating a store.
+        storage = storage.lower() if storage is not None else None
+        if storage is not None and storage not in ("offline", "online"):
+            raise FeatureStoreException(
+                f"Invalid storage: {storage}. Use 'offline', 'online', or leave it unset."
             )
-        if (
-            self.time_travel_format == "ICEBERG"
-            and not engine._get_type().startswith("spark")
-            and not HAS_PYICEBERG
-        ):
-            raise NotImplementedError(
-                "commit_delete_record on ICEBERG feature groups without Spark requires pyiceberg. "
-                "Install 'pyiceberg' to enable it."
+
+        # Unset follows the feature group, so a plain remove_rows works on every feature
+        # group: it deletes online where there is an online store this release can delete
+        # from, and offline-only everywhere else.
+        delete_offline = storage != "online"
+        delete_online = storage != "offline" and bool(self.online_enabled)
+
+        if storage == "online":
+            # Online-only, so a feature group this release cannot delete online from would
+            # delete nothing at all. Refuse rather than no-op, unlike the unset case below
+            # where the offline delete still happens.
+            if not self.online_enabled:
+                raise FeatureStoreException(
+                    "storage='online' was set but this feature group is not online-enabled."
+                )
+            if self.embedding_index is not None:
+                raise FeatureStoreException(
+                    "storage='online' is not supported for feature groups with an embedding index; "
+                    "their online data lives in the vector database, which this release does not "
+                    "delete from, so nothing would be deleted."
+                )
+        elif delete_online and self.embedding_index is not None:
+            # An embedding index keeps its online data in the vector database, which this
+            # release cannot delete from. Skip the online leg rather than refuse the whole
+            # call, since the offline delete is still what the caller asked for, but say so:
+            # the two stores are left diverged.
+            warnings.warn(
+                "The online store was not deleted from: this feature group's online data lives in the "
+                "vector database behind an embedding index, which this release does not delete from. "
+                "The offline delete was applied, so the two stores now differ for the removed rows.",
+                stacklevel=2,
             )
-        self._feature_group_engine._commit_delete(self, delete_df, write_options or {})
+            delete_online = False
+
+        if delete_offline:
+            # Both guards are properties of the offline delete: a HUDI delete needs Spark,
+            # and an ICEBERG one needs pyiceberg without it. An online-only delete goes to
+            # Kafka and needs neither, so it stays available on those feature groups.
+            if self.time_travel_format == "HUDI" and not engine._get_type().startswith(
+                "spark"
+            ):
+                raise NotImplementedError(
+                    "Deleting rows is only supported for HUDI feature groups when using the Spark engine."
+                )
+            if (
+                self.time_travel_format == "ICEBERG"
+                and not engine._get_type().startswith("spark")
+                and not HAS_PYICEBERG
+            ):
+                raise NotImplementedError(
+                    "Deleting rows from ICEBERG feature groups without Spark requires pyiceberg. "
+                    "Install 'pyiceberg' to enable it."
+                )
+
+            self._feature_group_engine._commit_delete(
+                self, delete_df, write_options or {}
+            )
+
+        if delete_online:
+            # Requires an OnlineFS (clusterj-onlinefs) that understands the
+            # `operation: delete` header (the release shipping the OnlineFS delete
+            # branch onward). Not runtime-gated: OnlineFS is not reachable from the
+            # client, and the backend version is not its proxy since backend, SDK and
+            # OnlineFS can be versioned/backported independently. A controlled
+            # deployment (helm bumps SDK images and OnlineFS together) keeps them in
+            # sync; against an OnlineFS without the delete branch the tombstone is a
+            # no-op-to-corrupting write, so pair a delete-capable OnlineFS with this SDK.
+            self._feature_group_engine._delete_online_records(
+                self, delete_df, write_options or {}
+            )
+
+    @deprecated("hsfs.feature_group.FeatureGroup.remove_rows")
+    @public
+    def commit_delete_record(
+        self,
+        delete_df: TypeVar("pyspark.sql.DataFrame"),  # noqa: F821
+        write_options: dict[Any, Any] | None = None,
+    ) -> None:
+        """**Deprecated**, use [`remove_rows`][hsfs.feature_group.FeatureGroup.remove_rows] instead.
+
+        Unlike `remove_rows`, this method leaves the online store untouched, keeping the behaviour it
+        had before the online delete existed.
+        Pass `storage` to [`remove_rows`][hsfs.feature_group.FeatureGroup.remove_rows] to choose which
+        stores a delete affects.
+
+        Parameters:
+            delete_df: DataFrame containing records to be deleted.
+            write_options: User provided write options.
+        """
+        # Offline only, whatever the feature group: this exists for callers written before
+        # the online delete, and remove_rows is where the choice lives now.
+        return self.remove_rows(delete_df, write_options, "offline")
 
     @public
     def delta_vacuum(
@@ -5955,6 +6169,7 @@ class ExternalFeatureGroup(FeatureGroupBase):
                     - `mark_online_rows`: `True` or `False` to filter rows for online ingestion based on event time and primary key deduplication, defaults to `True`.
                     - `disable_online_ingestion_count`: `True` or `False` to disable sending the total number of entries to the online ingestion tracking system, defaults to `False`.
                       When `True`, no batch size is known to the ingestion tracker so `wait_for_online_ingestion` will wait until `timeout` is reached.
+                      Combining it with `timeout` `0` waits forever, since neither the entry count nor the timeout can end the wait.
                 - key `kafka_producer_config` and value an object of type [properties](https://docs.confluent.io/platform/current/clients/librdkafka/html/md_CONFIGURATION.htmln) used to configure the Kafka client.
                   To optimize for throughput in high latency connection consider changing [producer properties](https://docs.confluent.io/cloud/current/client-apps/optimizing/throughput.html#producer).
                 - key `internal_kafka` and value `True` or `False` in case you established connectivity from you Python environment to the internal advertised listeners of the Hopsworks Kafka Cluster.

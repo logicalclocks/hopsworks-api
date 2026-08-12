@@ -593,7 +593,7 @@ class FeatureStore:
         """
         from hsfs.core import share_api
 
-        share_api.ShareApi(self._id)._share_feature_store(target_project)
+        share_api.ShareApi()._share_feature_store(target_project)
 
     @public
     @usage._method_logger
@@ -621,7 +621,7 @@ class FeatureStore:
         """
         from hsfs.core import share_api
 
-        return share_api.ShareApi(self._id)._list_feature_store_shares()
+        return share_api.ShareApi()._list_feature_store_shares()
 
     @public
     @usage._method_logger
@@ -641,7 +641,7 @@ class FeatureStore:
         """
         from hsfs.core import share_api
 
-        share_api.ShareApi(self._id)._unshare_feature_store(target_project)
+        share_api.ShareApi()._unshare_feature_store(target_project)
 
     @public
     def sql(
