@@ -1908,9 +1908,9 @@ class FeatureStore:
             coalesce:
                 Applies to Spark materialization only, and is ignored when the training dataset is
                 materialized by the Feature Query Service.
-                Where it applies, coalescing reduces the split to one Spark writer task before the
-                Hive-partitioned write, producing one data file per occupied materialized partition
-                in the split, so one file per split only when the split occupies a single partition.
+                Where it applies, the training dataset data will be coalesced into a single
+                partition before writing, and the resulting training dataset will be a single file
+                per split.
             storage_connector:
                 Storage connector defining the sink location for the training dataset, defaults to `None`, and materializes training dataset on HopsFS. **[DEPRECATED: Use `data_source` instead.]**
             splits:
