@@ -487,7 +487,7 @@ fg.remove_rows(rows_to_delete)
 
 Only rows matching on all key columns are deleted.
 
-`fg.commit_delete_record(...)` is the deprecated name for the same method, and it deletes offline only unless you pass `delete_online=True`.
+`fg.commit_delete_record(...)` is the deprecated name for the same method, and it always deletes offline only.
 
 ### The online leg
 
@@ -497,7 +497,8 @@ An online-enabled FG has its rows removed from the online store as well, with no
 fg.remove_rows(rows_to_delete)
 ```
 
-Pass `delete_online=False` to leave the online store untouched and delete offline only.
+Pass `storage="offline"` to leave the online store untouched, or `storage="online"` to delete from the online store alone and skip the offline commit.
+A single-store delete is not reconciled later: the rows stay in the other store until they are deleted there too.
 
 The online delete matches on the primary key alone, so every non-key column in the DataFrame is ignored for the online leg, `event_time` included.
 The key columns the offline merge requires are still required; they just do not affect which online rows are removed.
@@ -508,7 +509,7 @@ Deleting a row whose insert has not been materialized yet removes it online but 
 Run the materialization job before the delete, or re-run the delete after it, to keep the two stores in step.
 
 Deleting online is not supported on an FG with an embedding index, whose online data lives in the vector database.
-Such an FG is deleted from offline only, and passing `delete_online=True` on one raises.
+Such an FG is deleted from offline only, with a warning that the two stores now differ, and passing `storage="online"` on one raises.
 
 ---
 
@@ -614,8 +615,8 @@ derived_fg.materialization_job.run(await_termination=True)
 | Read (filtered) | `fg.filter(fg.col > X).read(dataframe_type="polars")` |
 | Preview rows | `print(fg.show(n=10))` (returns a DataFrame) |
 | Similarity search | `fg.find_neighbors(vector, k=5, filter=...)` |
-| Delete rows | `fg.remove_rows(df)` (df = primary_key cols + event_time) |
-| Delete rows online too | `fg.remove_rows(df, delete_online=True)` (matches on primary key only) |
+| Delete rows (both stores) | `fg.remove_rows(df)` (df = primary_key cols + event_time; online matches on primary key only) |
+| Delete rows from one store | `fg.remove_rows(df, storage="offline")` or `storage="online"` |
 | Add a column (same version) | `fg.append_features([Feature("c", "double")])` / `hops fg append-features <name> --features "c:double"` |
 | Drop/retype a column | not in place: create a new FG version |
 | Disable statistics | `statistics_config=False` |
