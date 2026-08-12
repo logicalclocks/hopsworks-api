@@ -1,11 +1,12 @@
 """``hops session`` — move a Claude Code session between this machine and a pod.
 
-You are in a Claude Code session on your laptop. ``hops session push`` ships it
-onto a Hopsworks terminal pod (Claude Code is pre-installed in that image), so
-you can close the laptop and drive it later from the browser terminal tab.
-``hops session pull`` is the mirror: it brings a session that ran on the pod
-back down to this machine. ``hops session new`` starts a fresh session straight
-on a pod, and ``hops session list`` shows what is staged where.
+The mental model is a hand-off. ``push`` hands the session you are in to a
+Hopsworks terminal pod (Claude Code is pre-installed in that image); the pod
+lands it on its own, so you can close the laptop and keep driving it from the
+browser Terminal tab. ``pull`` reclaims it back onto this machine. ``new``
+starts a fresh session straight on the pod, ``list`` shows where things are,
+``stop`` kills the terminal pod, and ``mirror`` (alias ``attach``) streams the
+live pod terminal to your laptop.
 
 The transport is symmetric. Each session is a JSONL that Claude Code stores at
 ``~/.claude/projects/<cwd-slug>/<session-id>.jsonl``; push uploads it into the
@@ -17,8 +18,9 @@ same slug for ``claude --resume`` to load.
 
 Every push/new also stages a ``<id>.teleport.json`` manifest. The pod carries a
 landing hook that watches the teleport dataset and, when a manifest appears,
-resumes the pushed session (or opens a new one) on its own; push still prints
-the manual landing steps as a fallback.
+resumes the pushed session (or opens a new one) on its own and acks with a
+``<id>.landed.json`` sidecar; push waits briefly for that ack and prints the
+manual landing steps only when it does not arrive.
 """
 
 from __future__ import annotations
@@ -31,6 +33,7 @@ import re
 import shutil
 import socket
 import ssl
+import subprocess
 import sys
 import tempfile
 import time
@@ -51,6 +54,7 @@ import click
 from hopsworks.cli import output, terminal_api
 from hopsworks.cli import session as conn
 from hopsworks_common import client
+from hopsworks_common.client.exceptions import RestAPIError
 
 
 # Where Claude Code keeps per-directory session transcripts on this machine.
@@ -145,6 +149,17 @@ def _resolve_local_session(slug: str, session_id: str | None) -> Path:
     return sessions[0]
 
 
+def _is_missing_path(exc: RestAPIError) -> bool:
+    """Whether a dataset-API failure means "that path does not exist".
+
+    A never-pushed slug has no teleport directory, which the backend reports as
+    a client error (400/404); callers treat that as an empty listing. Anything
+    else (auth, network, server error) is a real failure and must surface.
+    """
+    status = getattr(getattr(exc, "response", None), "status_code", None)
+    return status in (400, 404)
+
+
 def _remote_session_ids(dataset_api, slug: str) -> list[str]:
     """Return the session ids staged in HopsFS for ``slug``, newest-listed last.
 
@@ -154,13 +169,18 @@ def _remote_session_ids(dataset_api, slug: str) -> list[str]:
 
     Returns:
         Session ids (JSONL stems) under ``Users/<username>/teleport/<slug>/``.
-        Empty when the directory does not exist or holds no transcripts.
+        Empty when the directory does not exist or holds no transcripts. Any
+        other failure (auth, network) surfaces instead of masquerading as
+        "nothing staged" and inviting a duplicate push.
     """
     remote_dir = f"{_teleport_root()}/{slug}"
-    with contextlib.suppress(Exception):
+    try:
         entries = dataset_api.list(remote_dir)
-        return [Path(p).stem for p in entries if str(p).endswith(".jsonl")]
-    return []
+    except RestAPIError as exc:
+        if _is_missing_path(exc):
+            return []
+        raise
+    return [Path(p).stem for p in entries if str(p).endswith(".jsonl")]
 
 
 def _now() -> str:
@@ -182,19 +202,46 @@ def _local_away(slug: str) -> dict[str, str]:
     return out
 
 
+def _held_open(path: Path) -> bool | None:
+    """Whether a live process holds ``path`` open, or None when undeterminable.
+
+    Asks ``lsof -t`` (pids only, quiet). None when ``lsof`` is absent or fails,
+    so the caller can fall back to its mtime heuristic; an empty pid list means
+    definitively "no process has it open".
+    """
+    lsof = shutil.which("lsof")
+    if not lsof:
+        return None
+    try:
+        proc = subprocess.run(
+            [lsof, "-t", "--", str(path)],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return bool(proc.stdout.strip())
+
+
 def _is_active_session(jsonl: Path) -> bool:
     """Heuristic for "the session you are currently in".
 
-    The newest transcript for this directory, written to within the last two
-    minutes. A live `claude` holds that file open, so pushing it cannot rename
-    it out from under the running process; the baton is recorded but the local
-    copy is left in place.
+    Active when it is the newest transcript written within the last two minutes,
+    or when a live process still holds it open (``lsof``) regardless of recency.
+    The open-fd check is what keeps push from renaming a ``claude`` session out
+    from under the running process, newest or not; the mtime window covers hosts
+    without ``lsof``. When active, the baton is recorded but the local copy is
+    left in place.
     """
     proj_dir = jsonl.parent
     newest = max(
         proj_dir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, default=None
     )
-    return newest == jsonl and (time.time() - jsonl.stat().st_mtime) < 120
+    if newest == jsonl and (time.time() - jsonl.stat().st_mtime) < 120:
+        return True
+    return _held_open(jsonl) is True
 
 
 def _write_baton(
@@ -353,6 +400,26 @@ def _upload_manifest(
         dataset_api.remove(f"{dest_dir}/{session_id}.teleport.json.consumed")
 
 
+# How long push/new waits for the pod's landing ack before falling back to the
+# manual landing steps.
+_LANDING_POLLS = 5
+_LANDING_POLL_SECONDS = 2.0
+
+
+def _await_landing(dataset_api, dest_dir: str, session_id: str) -> bool:
+    """Poll for the pod's ``<id>.landed.json`` ack, for roughly ten seconds.
+
+    The pod's landing hook writes the sidecar right after it resumes (or opens)
+    the session; seeing it means the manual landing kit is unnecessary.
+    """
+    for attempt in range(_LANDING_POLLS):
+        if attempt:
+            time.sleep(_LANDING_POLL_SECONDS)
+        if _read_remote_json(dataset_api, f"{dest_dir}/{session_id}.landed.json"):
+            return True
+    return False
+
+
 def _launch_pod(project) -> str | None:
     """Start (or reuse) the project's terminal pod; return its ``wsUrl``.
 
@@ -380,12 +447,16 @@ def _scan_slugs(dataset_api) -> list[str]:
     those subdirectories so cross-directory commands (``list --all``, ``pull
     <id>``) can reach sessions this user staged from a different working dir.
     """
-    # Resolve the root before the suppress so a real username-resolution failure
-    # surfaces, rather than masquerading as an empty (no-sessions) listing.
     root = _teleport_root()
-    with contextlib.suppress(Exception):
-        return [Path(p.rstrip("/")).name for p in dataset_api.list(root)]
-    return []
+    try:
+        entries = dataset_api.list(root)
+    except RestAPIError as exc:
+        # No teleport root yet just means nothing was ever staged; any other
+        # failure (auth, network) surfaces instead of reading as "no sessions".
+        if _is_missing_path(exc):
+            return []
+        raise
+    return [Path(p.rstrip("/")).name for p in entries]
 
 
 def _locate_session(dataset_api, session_id: str) -> tuple[str, str | None] | None:
@@ -405,18 +476,17 @@ def _locate_session(dataset_api, session_id: str) -> tuple[str, str | None] | No
     return None
 
 
-@click.group("session")
+@click.group(
+    "session",
+    epilog="Example: hops session push  →  work in the browser Terminal tab  →  "
+    "hops session pull",
+)
 def session_group() -> None:
     """Move a Claude Code session between this machine and a terminal pod."""
 
 
 @session_group.command("push")
-@click.option(
-    "--session",
-    "session_id",
-    help="Session id to push; defaults to the most recently active one for "
-    "this directory.",
-)
+@click.argument("session_id", required=False)
 @click.option(
     "--overwrite",
     is_flag=True,
@@ -457,12 +527,13 @@ def push(
 ) -> None:
     """Push the current Claude Code session onto a Hopsworks terminal pod.
 
-    Resolves the active session for this directory, uploads its transcript into
-    the project's HopsFS, starts the terminal pod (when the feature is enabled
-    on the cluster), and opens the terminal in the browser. By default this is a
-    baton hand-off: the pod becomes the canonical copy and the local transcript
-    is renamed aside (unless it is the session you are currently in, which stays
-    live locally). `--fork` keeps a live local copy instead.
+    Resolves the active session for this directory (or the ``SESSION_ID`` given
+    as an argument), uploads its transcript into the project's HopsFS, starts
+    the terminal pod (when the feature is enabled on the cluster), and opens the
+    terminal in the browser. By default this is a baton hand-off: the pod
+    becomes the canonical copy and the local transcript is renamed aside (unless
+    it is the session you are currently in, which stays live locally). `--fork`
+    keeps a live local copy instead.
 
     Args:
         ctx: Click context.
@@ -490,13 +561,13 @@ def push(
             local_path=str(jsonl), upload_path=dest_dir, overwrite=overwrite
         )
     except Exception as exc:  # noqa: BLE001
+        if "already exists" in str(exc):
+            raise click.ClickException(
+                "Session already staged for this directory — pass --overwrite "
+                "to replace it."
+            ) from exc
         raise click.ClickException(f"Failed to ship session: {exc}") from exc
-    output.success("✓ Pushed session %s to %s/", resolved_id, dest_dir)
-
-    marker = (
-        f"this session has been pushed from {socket.gethostname()} "
-        f"at {datetime.now(timezone.utc).isoformat(timespec='seconds')}"
-    )
+    output.success("✓ Pushed session %s to %s", resolved_id, project.name)
 
     # Baton hand-off: record that the canonical copy now lives on the pod, and
     # rename the local transcript aside so it is not resumed by accident. Skip
@@ -552,11 +623,18 @@ def push(
     terminal_url = _terminal_ui_url(project.id)
     # Open the browser only in interactive use: JSON mode is for machines, so it
     # just carries the URL. Best-effort — a headless box has no browser.
+    opened = False
     if open_ui and not output.JSON_MODE:
         with contextlib.suppress(Exception):
-            webbrowser.open(terminal_url)
+            opened = webbrowser.open(terminal_url)
 
     if output.JSON_MODE:
+        # No poll in machine mode: one instant ack check, the caller re-lists
+        # if it wants to wait.
+        landed = (
+            _read_remote_json(dataset_api, f"{dest_dir}/{resolved_id}.landed.json")
+            is not None
+        )
         output.print_json(
             {
                 "session_id": resolved_id,
@@ -565,22 +643,25 @@ def push(
                 "shipped_to": f"{dest_dir}/{resolved_id}.jsonl",
                 "ws_url": ws_url,
                 "terminal_url": terminal_url,
-                "marker": marker,
+                "landed": landed,
                 "landing_steps": landing,
             }
         )
         return
 
-    output.info("")
-    output.info("Terminal: %s", terminal_url)
-    output.info("")
-    output.info("Landing kit — run these in the Hopsworks terminal:")
-    for step in landing:
-        output.info("  %s", step)
-    output.info("")
-    output.info("Push marker: %s", marker)
-    if ws_url:
-        output.info("WebSocket: %s", ws_url)
+    if not opened:
+        output.info("Terminal: %s", terminal_url)
+    # The landing kit only matters when the pod did NOT self-land, so wait
+    # briefly for its ack and keep the happy path to the three ✓ lines. No pod
+    # (feature disabled) means no ack will ever come: skip straight to the kit.
+    if ws_url and _await_landing(dataset_api, dest_dir, resolved_id):
+        output.success(
+            "✓ Landed on pod %s — open the Terminal tab to resume", project.name
+        )
+    else:
+        output.info("Not landed yet — the pod will pick it up, or land it manually:")
+        for step in landing:
+            output.info("  %s", step)
 
 
 @session_group.command("new")
@@ -636,11 +717,18 @@ def new(
     output.success("✓ Staged a new session for %s", project.name)
 
     terminal_url = _terminal_ui_url(project.id)
+    opened = False
     if open_ui and not output.JSON_MODE:
         with contextlib.suppress(Exception):
-            webbrowser.open(terminal_url)
+            opened = webbrowser.open(terminal_url)
 
     if output.JSON_MODE:
+        # No poll in machine mode: one instant ack check, the caller re-lists
+        # if it wants to wait.
+        landed = (
+            _read_remote_json(dataset_api, f"{dest_dir}/{session_id}.landed.json")
+            is not None
+        )
         output.print_json(
             {
                 "session_id": session_id,
@@ -649,14 +737,20 @@ def new(
                 "mode": "new",
                 "ws_url": ws_url,
                 "terminal_url": terminal_url,
+                "landed": landed,
             }
         )
         return
-    output.info("")
-    output.info("Terminal: %s", terminal_url)
-    output.info("A fresh Claude session will open in the terminal.")
-    if ws_url:
-        output.info("WebSocket: %s", ws_url)
+    if not opened:
+        output.info("Terminal: %s", terminal_url)
+    if ws_url and _await_landing(dataset_api, dest_dir, session_id):
+        output.success(
+            "✓ Landed on pod %s — open the Terminal tab to resume", project.name
+        )
+    else:
+        output.info(
+            "Not landed yet — a fresh Claude session will open in the terminal shortly."
+        )
 
 
 @session_group.command("pull")
@@ -727,8 +821,9 @@ def pull(
         staged = _remote_session_ids(dataset_api, slug)
         if not staged:
             raise click.ClickException(
-                f"No sessions staged in HopsFS for this directory "
-                f"({_teleport_root()}/{slug})."
+                "No sessions staged for this directory. Sessions are staged "
+                "per directory — run from the directory you pushed from, or "
+                "`hops session list --all`."
             )
         if len(staged) > 1:
             raise click.ClickException(
@@ -989,9 +1084,13 @@ def list_sessions(ctx: click.Context, all_slugs: bool) -> None:
         )
         return
     if not all_ids:
-        output.info("No sessions for this directory (slug %s).", slug)
+        output.info(
+            "No sessions for this directory. Sessions are staged per directory "
+            "— run from the directory you pushed from, or `hops session list "
+            "--all`."
+        )
         return
-    output.info("Sessions for slug %s:", slug)
+    output.info("Sessions for this directory:")
     for sid in all_ids:
         output.info("  %-40s %s", sid, _where(sid))
 
@@ -1009,9 +1108,14 @@ def stop(ctx: click.Context) -> None:
     """
     project = conn.get_project(ctx)
 
-    running = None
-    with contextlib.suppress(Exception):
+    # A failed check must not read as "nothing running": surface it instead of
+    # skipping the stop on an auth/network error.
+    try:
         running = terminal_api.get_session(project.id)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(
+            f"Could not check the terminal session: {exc}"
+        ) from exc
     if not running:
         if output.JSON_MODE:
             output.print_json({"project": project.name, "stopped": False})
@@ -1122,9 +1226,10 @@ async def _drive(ws, mode: str) -> None:
     """Run one attached mirror session: init, pump output, forward input.
 
     Sends the init frame (size + role), then races the output pump against the
-    detach key. In ``rw`` mode the local tty is put in raw mode and its bytes are
-    forwarded as input frames; Ctrl-] raises :class:`_Detach`. The tty is always
-    restored on exit.
+    detach key. Whenever a raw tty is available the stdin reader is registered
+    so Ctrl-] detaches in both modes; in ``ro`` mode every other keystroke is
+    discarded, in ``rw`` mode the bytes are forwarded as input frames. The tty
+    is always restored on exit.
     """
     cols, rows = shutil.get_terminal_size((80, 24))
     await ws.send(json.dumps({"cols": cols, "rows": rows, "mode": mode}))
@@ -1136,6 +1241,9 @@ async def _drive(ws, mode: str) -> None:
     old_attrs = None
     reader_added = False
 
+    has_tty = termios is not None and sys.stdin.isatty()
+    can_write = mode == "rw" and has_tty
+
     def _read_stdin() -> None:
         try:
             data = os.read(fd, 4096)
@@ -1144,14 +1252,17 @@ async def _drive(ws, mode: str) -> None:
         if not data or _MIRROR_DETACH in data:
             detached.set()
             return
+        if not can_write:
+            return  # read-only: only the detach key means anything
         loop.create_task(
             ws.send(
                 json.dumps({"type": "input", "data": data.decode("utf-8", "replace")})
             )
         )
 
-    can_write = mode == "rw" and termios is not None and sys.stdin.isatty()
-    if can_write:
+    # Raw mode even read-only, so the documented Ctrl-] detach actually fires
+    # without waiting for a newline.
+    if has_tty:
         old_attrs = termios.tcgetattr(fd)
         tty.setraw(fd)
         loop.add_reader(fd, _read_stdin)
@@ -1186,8 +1297,15 @@ async def _mirror_session(project_id: int, write: bool) -> None:
     # The asyncio client (websockets >= 13) is explicit about the connector and
     # takes additional_headers; the top-level websockets.connect is the legacy
     # asyncio impl with a different header kwarg, so import the new one directly.
-    from websockets.asyncio.client import connect
-    from websockets.exceptions import ConnectionClosed
+    # Lazy on purpose: websockets is the optional `terminal` extra, only mirror
+    # needs it.
+    try:
+        from websockets.asyncio.client import connect
+        from websockets.exceptions import ConnectionClosed
+    except ImportError as exc:
+        raise click.ClickException(
+            "hops session mirror requires websockets: pip install 'hopsworks[terminal]'"
+        ) from exc
 
     mode = "rw" if write else "ro"
     attempts = 0
@@ -1233,22 +1351,28 @@ def mirror(ctx: click.Context, write: bool) -> None:
     Attaches to the running pod terminal over its WebSocket and streams it here
     in real time: read-only by default (observe the driver), or ``--write`` to
     also type. Several clients can attach at once — the terminal header shows a
-    presence badge. Detach with Ctrl-]; the session keeps running on the pod.
+    presence badge. Detach with Ctrl-] (Ctrl-C without a tty); the session keeps
+    running on the pod.
 
     Args:
         ctx: Click context.
         write: Attach read-write instead of read-only.
     """
-    project = conn.get_project(ctx)
+    # Fail before logging in: there is nothing machine-readable to produce.
     if output.JSON_MODE:
         raise click.ClickException(
             "`session mirror` is interactive; --json is not supported."
         )
+    project = conn.get_project(ctx)
+    has_tty = termios is not None and sys.stdin.isatty()
     role = "read-write" if write else "read-only"
-    if write and (termios is None or not sys.stdin.isatty()):
+    if write and not has_tty:
         output.warn("No interactive tty; --write falls back to read-only.")
         role = "read-only (no tty)"
-    output.info("Mirroring %s terminal (%s). Detach with Ctrl-].", project.name, role)
+    detach_key = "Ctrl-]" if has_tty else "Ctrl-C"
+    output.info(
+        "Mirroring %s terminal (%s). Detach with %s.", project.name, role, detach_key
+    )
     try:
         asyncio.run(_mirror_session(project.id, write))
     except _Detach:
@@ -1256,3 +1380,7 @@ def mirror(ctx: click.Context, write: bool) -> None:
     except KeyboardInterrupt:
         pass
     output.success("Detached from %s terminal.", project.name)
+
+
+# The tmux/docker verb people reach for first; same command, second name.
+session_group.add_command(mirror, name="attach")
