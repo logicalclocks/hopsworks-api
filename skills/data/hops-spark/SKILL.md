@@ -81,16 +81,12 @@ This works for Hopsworks feature group reads/writes, plain Delta paths under Hop
 
 🔹 Filter and select early. The cheapest data to process is the data you never read. But verify with .explain(), Catalyst often pushes filters for you, except across outer joins and inside UDFs.
 🔹 Combine aggregations into one groupBy. Two separate groupBys on the same key = two shuffles for no reason.
-
 🔹 Never orderBy without limit on large data. orderBy().limit(10) is optimized together, a global sort IS NOT.
-
 🔹 default cache() is MEMORY_AND_DISK for DataFrames, not MEMORY_ONLY. And your cache is a tenant, not an owner: execution memory evicts it whenever it needs room.
-
 🔹 A cached DataFrame is an optimization barrier. Filter BEFORE caching: the order of two lines decides whether you cache 5% of your data or all of it.
-
 🔹 Broadcast joins kill the shuffle. Under 10 MB Spark does it automatically; for slightly bigger reference tables, do it explicitly.
-
 🔹 200 default shuffle partitions is wrong for almost everyone. Tune it to your data size or let AQE do it.
+🔹 Scan once on hopsfs or S3 if possible
 
 ## Related skills
 
