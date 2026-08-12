@@ -361,9 +361,23 @@ def offline_fg_materialization(
         == str(entity.subject["id"])
     )
 
+    # The storage header names the consumer a record is meant for: "online" is for OnlineFS
+    # alone, because whoever produced it already wrote the offline leg itself (or has none),
+    # so materializing it would write the same rows to the table a second time.
+    # Anything else belongs here: the header is absent when both consumers read the record,
+    # "offline" when this job is the only one that should, and "1"/"0" from clients that
+    # predate this contract meant "ingest online"/"skip online" without ever excluding the
+    # offline table.
+    storage_header = expr(
+        "CAST(filter(headers, header -> header.key = 'storage')[0].value AS STRING)"
+    )
+    filtered_df = filtered_df.filter(
+        storage_header.isNull() | (storage_header != "online")
+    )
+
     # A delete tombstone is on the topic for OnlineFS only: remove_rows has already applied the
     # offline delete directly to the table, so materializing the tombstone re-inserts the key it
-    # deleted.
+    # deleted. New clients mark it "online" above, so this covers the ones that do not.
     # The header is absent on inserts, so null means keep.
     # Exact match on the value, as in OnlineFsHandler.getRow.
     operation_header = expr(

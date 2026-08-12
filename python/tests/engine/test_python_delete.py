@@ -299,9 +299,11 @@ class TestDeleteDataframeKafka:
 
         assert produced["key"] == "7"
         assert produced["headers"]["operation"] == b"delete"
-        # No storage header. It gates the online leg alone ("0" makes OnlineFS skip the
-        # row), so it cannot mark a record online-only, and absent already ingests.
-        assert "storage" not in produced["headers"]
+        # The tombstone is for OnlineFS alone: remove_rows already applied the offline delete
+        # to the table, so the materialization job must skip the record rather than
+        # re-insert the key the delete removed. _get_headers is mocked out here, so assert
+        # on the destination it was asked for.
+        assert kafka_engine._get_headers.call_args[1]["storage"] == "online"
 
         with BytesIO(produced["encoded_row"]) as outf:
             record = fastavro.schemaless_reader(

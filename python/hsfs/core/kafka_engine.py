@@ -57,6 +57,26 @@ if TYPE_CHECKING:
     from hsfs.feature_group import ExternalFeatureGroup, FeatureGroup
 
 
+# region Storage header
+# The `storage` header names which of the two consumers of the online topic is meant to
+# ingest a record, mirroring the `storage` argument of
+# [`FeatureGroup.insert`][hsfs.feature_group.FeatureGroup.insert]:
+#
+#   absent      both OnlineFS and the offline materialization job ingest the record
+#   b"online"   OnlineFS only; the materialization job skips the record
+#   b"offline"  the materialization job only; OnlineFS skips the record
+#
+# Older clients wrote a per-row flag into the same header instead: b"0" meant "skip
+# online" (equivalent to b"offline") and b"1" meant "ingest online" while the record was
+# still materialized offline (equivalent to absent). Both consumers keep reading b"0" as
+# b"offline"; the producers here no longer emit either value.
+# Only set the header when the record has a single destination: leaving it out is both the
+# default and the cheapest option on the wire, which matters per record at ingestion scale.
+_STORAGE_ONLINE = "online"
+_STORAGE_OFFLINE = "offline"
+# endregion
+
+
 @_uses_confluent_kafka
 def _init_kafka_consumer(
     feature_store_id: int,
@@ -74,6 +94,7 @@ def _get_kafka_resources(
     feature_group: FeatureGroup | ExternalFeatureGroup,
     offline_write_options: dict[str, Any],
     num_entries: int | None = None,
+    storage: str | None = None,
 ) -> tuple[
     Producer, dict[str, bytes], dict[str, Callable[..., bytes]], Callable[..., bytes] :
 ]:
@@ -86,7 +107,7 @@ def _get_kafka_resources(
             feature_group._writer,
         )
     producer, headers, feature_writers, writer = _init_kafka_resources(
-        feature_group, offline_write_options, num_entries
+        feature_group, offline_write_options, num_entries, storage
     )
     if feature_group._multi_part_insert:
         feature_group._kafka_producer = producer
@@ -100,6 +121,7 @@ def _init_kafka_resources(
     feature_group: FeatureGroup | ExternalFeatureGroup,
     offline_write_options: dict[str, Any],
     num_entries: int | None = None,
+    storage: str | None = None,
 ) -> tuple[
     Producer, dict[str, bytes], dict[str, Callable[..., bytes]], Callable[..., bytes] :
 ]:
@@ -108,7 +130,9 @@ def _init_kafka_resources(
         feature_group.feature_store_id, offline_write_options
     )
     # setup headers
-    headers = _get_headers(feature_group, num_entries, offline_write_options)
+    headers = _get_headers(
+        feature_group, num_entries, offline_write_options, storage=storage
+    )
     # setup writers
     feature_writers, writer = _get_writer_function(feature_group)
 
@@ -151,7 +175,15 @@ def _get_headers(
     num_entries: int | None = None,
     options: dict[str, Any] | None = None,
     operation: str | None = None,
+    storage: str | None = None,
 ) -> dict[str, bytes]:
+    """Kafka headers for the records of one write to the online topic.
+
+    `storage` is the destination of this write: `"online"` for records only OnlineFS
+    should ingest, `"offline"` for records only the offline materialization job should
+    ingest, `None` when both consume them.
+    See the storage header contract at the top of this module.
+    """
     # custom headers for hopsworks onlineFS
     headers = {
         "projectId": str(feature_group.feature_store.project_id).encode("utf8"),
@@ -164,13 +196,18 @@ def _get_headers(
     if operation is not None:
         headers["operation"] = operation.encode("utf8")
 
+    if storage is not None:
+        headers["storage"] = storage.encode("utf8")
+
     online_ingestion_options = (
         options.get("online_ingestion_options") if options else None
     )
     if online_ingestion_options and online_ingestion_options.get("upsert_if_newer"):
         headers["upsertIfNewer"] = b"1"
 
-    if feature_group.online_enabled:
+    # An offline-only write reaches no online store, so it gets no online ingestion to
+    # report progress against: creating one would leave it forever short of its entries.
+    if feature_group.online_enabled and storage != _STORAGE_OFFLINE:
         # setup online ingestion id
         online_ingestion_instance = (
             online_ingestion_api.OnlineIngestionApi()._create_online_ingestion(

@@ -588,6 +588,79 @@ class TestKafkaEngine:
             "subjectId": b"823",
         }
 
+    def test_get_headers_storage_online(self, mocker, backend_fixtures):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        mock_online_ingestion_api = mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi"
+        )
+        json = backend_fixtures["online_ingestion"]["get"]["response"]
+        oi = online_ingestion.OnlineIngestion.from_response_json(json)
+        mock_online_ingestion_api.return_value._create_online_ingestion.return_value = (
+            oi
+        )
+
+        fg = feature_group.FeatureGroup(
+            id=111,
+            name="test",
+            version=1,
+            featurestore_id=99,
+            online_enabled=True,
+        )
+        fg.feature_store = mocker.Mock()
+        fg.feature_store.project_id = 234
+
+        fg._subject = {"id": 823}
+
+        # Act
+        results = kafka_engine._get_headers(fg, num_entries=10, storage="online")
+
+        # Assert
+        assert results == {
+            "featureGroupId": b"111",
+            "onlineIngestionId": b"1",
+            "projectId": b"234",
+            "storage": b"online",
+            "subjectId": b"823",
+        }
+
+    def test_get_headers_storage_offline(self, mocker, backend_fixtures):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        mock_online_ingestion_api = mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi"
+        )
+        json = backend_fixtures["online_ingestion"]["get"]["response"]
+        oi = online_ingestion.OnlineIngestion.from_response_json(json)
+        mock_online_ingestion_api.return_value._create_online_ingestion.return_value = (
+            oi
+        )
+
+        fg = feature_group.FeatureGroup(
+            id=111,
+            name="test",
+            version=1,
+            featurestore_id=99,
+            online_enabled=True,
+        )
+        fg.feature_store = mocker.Mock()
+        fg.feature_store.project_id = 234
+
+        fg._subject = {"id": 823}
+
+        # Act
+        results = kafka_engine._get_headers(fg, num_entries=10, storage="offline")
+
+        # Assert: an offline-only write reaches no online store, so it gets no online
+        # ingestion to report progress against.
+        assert results == {
+            "featureGroupId": b"111",
+            "projectId": b"234",
+            "storage": b"offline",
+            "subjectId": b"823",
+        }
+        mock_online_ingestion_api.return_value._create_online_ingestion.assert_not_called()
+
     def test_get_headers_upsert_if_newer_true(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
