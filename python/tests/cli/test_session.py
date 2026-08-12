@@ -71,13 +71,70 @@ def test_is_active_session_newest_and_recent(sessions_dir):
     assert session._is_active_session(old) is False  # not the newest
 
 
-def test_is_active_session_stale_is_not_active(sessions_dir):
+def test_is_active_session_stale_is_not_active(sessions_dir, monkeypatch):
     import os
 
     only = sessions_dir / "only.jsonl"
     only.write_text("{}")
     os.utime(only, (1, 1))  # newest but written long ago
+    monkeypatch.setattr(session, "_held_open", lambda p: False)
     assert session._is_active_session(only) is False
+
+
+def test_is_active_session_stale_but_held_open_is_active(sessions_dir, monkeypatch):
+    # The rename-race fix: an idle-but-open claude session must stay live.
+    import os
+
+    only = sessions_dir / "only.jsonl"
+    only.write_text("{}")
+    os.utime(only, (1, 1))  # newest but written long ago
+    monkeypatch.setattr(session, "_held_open", lambda p: True)
+    assert session._is_active_session(only) is True
+
+
+def test_is_active_session_no_lsof_falls_back_to_mtime(sessions_dir, monkeypatch):
+    import os
+
+    only = sessions_dir / "only.jsonl"
+    only.write_text("{}")
+    os.utime(only, (1, 1))
+    monkeypatch.setattr(session, "_held_open", lambda p: None)  # lsof absent
+    assert session._is_active_session(only) is False
+
+
+def test_is_active_session_non_newest_but_held_open_is_active(
+    sessions_dir, monkeypatch
+):
+    # A file a live process holds open is never renamed, even when it is not the
+    # newest transcript (an explicit push of an older, still-running session).
+    import os
+
+    old = sessions_dir / "old.jsonl"
+    new = sessions_dir / "new.jsonl"
+    old.write_text("{}")
+    new.write_text("{}")
+    os.utime(old, (1, 1))
+    os.utime(new, (2, 2))  # new is the newest
+    monkeypatch.setattr(session, "_held_open", lambda p: True)
+    assert session._is_active_session(old) is True
+
+
+def test_held_open_none_without_lsof(monkeypatch):
+    monkeypatch.setattr(session.shutil, "which", lambda name: None)
+    assert session._held_open(Path("/tmp/x.jsonl")) is None
+
+
+def test_held_open_true_on_pids_false_on_empty(monkeypatch):
+    monkeypatch.setattr(session.shutil, "which", lambda name: "/usr/bin/lsof")
+
+    class _Proc:
+        def __init__(self, out):
+            self.stdout = out
+
+    monkeypatch.setattr(session.subprocess, "run", lambda *a, **k: _Proc("123\n456\n"))
+    assert session._held_open(Path("/tmp/x.jsonl")) is True
+    monkeypatch.setattr(session.subprocess, "run", lambda *a, **k: _Proc(""))
+    assert session._held_open(Path("/tmp/x.jsonl")) is False
 
 
 def test_local_away_reads_markers(sessions_dir):
@@ -289,3 +346,166 @@ def test_locate_session_finds_slug_and_origin_cwd(_fixed_root):
 
 def test_locate_session_none_when_absent(_fixed_root):
     assert session._locate_session(_teleport_tree(), "missing") is None
+
+
+# --- hidden failures must surface --------------------------------------------
+
+
+def _rest_error(status: int):
+    """A RestAPIError carrying only the pieces the CLI inspects."""
+    from hopsworks_common.client.exceptions import RestAPIError
+
+    class _Resp:
+        status_code = status
+        reason = "err"
+        content = b""
+
+        def json(self):
+            raise ValueError
+
+    return RestAPIError("http://cluster/x", _Resp())
+
+
+def test_remote_session_ids_missing_dir_is_empty(_fixed_root):
+    class _DS:
+        def list(self, path):
+            raise _rest_error(400)
+
+    assert session._remote_session_ids(_DS(), "-slug") == []
+
+
+def test_remote_session_ids_real_failure_surfaces(_fixed_root):
+    # An auth/network failure must not read as "nothing staged".
+    class _DS:
+        def list(self, path):
+            raise _rest_error(500)
+
+    with pytest.raises(Exception, match="500"):
+        session._remote_session_ids(_DS(), "-slug")
+
+
+def test_scan_slugs_missing_root_is_empty(_fixed_root):
+    class _DS:
+        def list(self, path):
+            raise _rest_error(404)
+
+    assert session._scan_slugs(_DS()) == []
+
+
+def test_scan_slugs_real_failure_surfaces(_fixed_root):
+    class _DS:
+        def list(self, path):
+            raise _rest_error(500)
+
+    with pytest.raises(Exception, match="500"):
+        session._scan_slugs(_DS())
+
+
+# --- push golden output -------------------------------------------------------
+
+
+class _PushDataset:
+    """Dataset stub for push: records uploads, serves JSON sidecar downloads."""
+
+    def __init__(self, files: dict[str, dict]):
+        self._files = files
+        self.uploads: list[str] = []
+
+    def mkdir(self, path: str) -> None:
+        pass
+
+    def upload(self, local_path, upload_path, overwrite=False) -> None:
+        self.uploads.append(Path(local_path).name)
+
+    def remove(self, path: str) -> None:
+        pass
+
+    def download(self, remote, local_path, overwrite=False) -> None:
+        if remote not in self._files:
+            raise RuntimeError(f"404: {remote}")
+        Path(local_path).write_text(json.dumps(self._files[remote]))
+
+
+class _FakeProject:
+    id = 7
+    name = "demo"
+
+    def __init__(self, ds):
+        self._ds = ds
+
+    def get_dataset_api(self):
+        return self._ds
+
+
+def _push_setup(tmp_path, monkeypatch, landed: bool):
+    """Wire a full fake push environment; return (runner, dataset, slug)."""
+    from click.testing import CliRunner
+
+    workdir = tmp_path / "proj"
+    workdir.mkdir()
+    monkeypatch.setattr(Path, "cwd", classmethod(lambda cls: workdir))
+    slug = session._cwd_slug()
+
+    claude_root = tmp_path / "claude"
+    slug_dir = claude_root / slug
+    slug_dir.mkdir(parents=True)
+    jsonl = slug_dir / "sid1.jsonl"
+    jsonl.write_text('{"line": 1}\n')
+    import os
+
+    os.utime(jsonl, (1, 1))  # stale: not the session we are in
+    monkeypatch.setattr(session, "_CLAUDE_PROJECTS", claude_root)
+    monkeypatch.setattr(session, "_held_open", lambda p: False)
+
+    monkeypatch.setattr(session, "_teleport_root", lambda: _ROOT)
+    files = {f"{_ROOT}/{slug}/sid1.landed.json": {"landed_at": "now"}} if landed else {}
+    ds = _PushDataset(files)
+    monkeypatch.setattr(session.conn, "get_project", lambda ctx: _FakeProject(ds))
+    monkeypatch.setattr(
+        session.terminal_api, "start_session", lambda pid: {"wsUrl": "/terminal/ws"}
+    )
+    monkeypatch.setattr(session.webbrowser, "open", lambda url: True)
+    monkeypatch.setattr(session.time, "sleep", lambda s: None)
+
+    class _Client:
+        _base_url = "https://hops:8182"
+
+    monkeypatch.setattr(session.client, "_get_instance", lambda: _Client())
+    return CliRunner(), ds, slug
+
+
+def _all_output(result) -> str:
+    try:
+        return result.output + result.stderr
+    except ValueError:  # stderr mixed into output on this click version
+        return result.output
+
+
+def test_push_happy_path_is_three_check_lines(tmp_path, monkeypatch):
+    runner, ds, slug = _push_setup(tmp_path, monkeypatch, landed=True)
+    result = runner.invoke(session.session_group, ["push"], catch_exceptions=False)
+    assert result.exit_code == 0
+    text = _all_output(result)
+    assert "✓ Pushed session sid1 to demo" in text
+    assert "✓ Terminal pod ready for demo" in text
+    assert "✓ Landed on pod demo" in text
+    # The landed ack makes the manual kit and the old noise unnecessary.
+    assert "mkdir -p" not in text
+    assert "Push marker" not in text
+    assert "WebSocket" not in text
+    assert slug not in text  # human output never leaks the raw slug
+    assert "sid1.jsonl" in ds.uploads
+    assert "sid1.teleport.json" in ds.uploads
+
+
+def test_push_prints_landing_kit_when_not_landed(tmp_path, monkeypatch):
+    runner, ds, slug = _push_setup(tmp_path, monkeypatch, landed=False)
+    # SESSION_ID is positional now.
+    result = runner.invoke(
+        session.session_group, ["push", "sid1"], catch_exceptions=False
+    )
+    assert result.exit_code == 0
+    text = _all_output(result)
+    assert "Not landed yet" in text
+    assert "claude --resume sid1" in text
+    assert "Push marker" not in text
