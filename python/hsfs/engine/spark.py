@@ -794,12 +794,19 @@ class Engine:
 
         return dataframe
 
-    def _save_online_dataframe(self, feature_group, dataframe, write_options):
+    def _save_online_dataframe(
+        self, feature_group, dataframe, write_options, operation=None
+    ):
         write_options = kafka_engine._get_kafka_config(
             feature_group.feature_store_id, write_options, engine="spark"
         )
 
-        if write_options.get("online_ingestion_options", {}).get(
+        if operation == "delete":
+            # `dataframe` needs to carry only the primary key: non-key columns are filled
+            # with null so the record serializes against the feature group schema. OnlineFS
+            # deletes by primary key and ignores the values.
+            dataframe = self._pad_online_delete_dataframe(feature_group, dataframe)
+        elif write_options.get("online_ingestion_options", {}).get(
             "mark_online_rows", True
         ):
             dataframe = self._filter_online_dataframe(feature_group, dataframe)
@@ -816,6 +823,7 @@ class Engine:
                     )
                     else dataframe.count(),
                     write_options,
+                    operation=operation,
                 ),
             )
             .write.format(self.KAFKA_FORMAT)
@@ -824,7 +832,8 @@ class Engine:
             .save()
         )
 
-        # wait for online ingestion
+        # wait for online ingestion. On a delete this keeps callers that set
+        # wait_for_online_ingestion from returning before OnlineFS has applied it.
         if feature_group.online_enabled and write_options.get(
             "wait_for_online_ingestion", False
         ):
@@ -832,17 +841,45 @@ class Engine:
                 options=write_options.get("online_ingestion_options", {})
             )
 
+    def _delete_online_dataframe(self, feature_group, dataframe, write_options):
+        # Produce an online delete tombstone for every row in `dataframe`. Each message
+        # carries the row encoded against the feature group Avro schema plus an
+        # `operation: delete` header, which is what makes OnlineFS delete rather than upsert.
+        return self._save_online_dataframe(
+            feature_group, dataframe, write_options, operation="delete"
+        )
+
+    def _pad_online_delete_dataframe(self, feature_group, dataframe):
+        # Build the tombstone from the primary key only: keep the caller's primary-key
+        # columns and force every other feature group column to a typed null. Non-key
+        # columns are ignored for the online delete (OnlineFS deletes by primary key
+        # and discards the values), so overriding them here honors the remove_rows
+        # contract and prevents a stale or type-incompatible caller value from failing
+        # Avro serialization after the offline delete has already committed.
+        # The nulls have to be typed because _serialize_to_avro encodes complex
+        # features against their Avro schema, which an untyped null cannot satisfy.
+        primary_key = set(feature_group.primary_key)
+        return dataframe.select(
+            *[col(name) for name in feature_group.primary_key],
+            *[
+                lit(None).cast(_feature.type).alias(_feature.name)
+                for _feature in feature_group.columns
+                if _feature.name not in primary_key
+            ],
+        )
+
     def _get_headers(
         self,
         feature_group: fg_mod.FeatureGroup | fg_mod.ExternalFeatureGroup,
         num_entries: int | None = None,
         options: dict | None = None,
+        operation: str | None = None,
     ) -> array:
         return array(
             *[
                 struct(lit(key).alias("key"), lit(value).alias("value"))
                 for key, value in kafka_engine._get_headers(
-                    feature_group, num_entries, options
+                    feature_group, num_entries, options, operation
                 ).items()
             ]
         )

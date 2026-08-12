@@ -106,6 +106,9 @@ public class DeltaStreamerAvroDeserializer implements Deserializer<GenericRecord
   public GenericRecord deserialize(String topic, Headers headers, byte[] data) {
     if (subjectId.equals(getHeader(headers, "subjectId"))
         && featureGroupId.equals(getHeader(headers, "featureGroupId"))) {
+      if (skipOfflineMaterialization(headers)) {
+        return null;
+      }
       return deserialize(topic, data);
     }
     return null; // this job doesn't care about this entry, no point in deserializing
@@ -157,6 +160,22 @@ public class DeltaStreamerAvroDeserializer implements Deserializer<GenericRecord
       }
     }
     return finalResult;
+  }
+
+  /**
+   * Whether this record belongs in the offline table at all.
+   *
+   * <p>A delete tombstone does not. It is on the topic for OnlineFS, while removeRows has already
+   * applied the offline delete directly to the table, so materializing the tombstone would
+   * re-insert the key it deleted. The operation header is a proxy for the destination here: it is
+   * the only header that distinguishes a tombstone, and dropping the record is the whole of what
+   * this job does with one today. When the offline delete moves onto the topic, this becomes a
+   * branch that emits a Hudi delete rather than dropping the record.
+   *
+   * <p>Exact match, as in OnlineFsHandler.getRow. Any other value is an upsert.
+   */
+  private boolean skipOfflineMaterialization(Headers headers) {
+    return "delete".equals(getHeader(headers, "operation"));
   }
 
   private static String getHeader(Headers headers, String headerKey) {

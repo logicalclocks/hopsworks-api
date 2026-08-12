@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Literal
 
 import humps
 from hopsworks_apigen import deprecated, public
-from hopsworks_common import alert, client, util
+from hopsworks_common import alert, client, project_member, util
 from hopsworks_common.core import (
     alerts_api,
     app_api,
@@ -30,6 +30,7 @@ from hopsworks_common.core import (
     job_api,
     kafka_api,
     opensearch_api,
+    project_members_api,
     search_api,
     superset_api,
     trino_api,
@@ -107,6 +108,9 @@ class Project:
         # Alert receivers are qualified by project name, so this handle needs both too.
         self._alerts_api = alerts_api.AlertsApi(
             project_id=project_id, project_name=project_name
+        )
+        self._project_members_api = project_members_api.ProjectMembersApi(
+            project_id=project_id
         )
         self._search_api = search_api.SearchApi(
             project_id=project_id, project_name=project_name
@@ -354,6 +358,92 @@ class Project:
             The Alerts Api handle.
         """
         return self._alerts_api
+
+    @public
+    def get_members_api(self) -> project_members_api.ProjectMembersApi:
+        """Get the project members API for the project.
+
+        Use this to manage who has access to the project and at which role.
+
+        Returns:
+            The Project Members Api handle.
+        """
+        return self._project_members_api
+
+    @public
+    def get_members(self) -> list[project_member.ProjectMember]:
+        """Get all members of the project.
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+
+            for member in project.get_members():
+                print(member.email, member.role)
+            ```
+
+        Returns:
+            List of `ProjectMember` objects, one per user who has access to the project.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._project_members_api.get_members()
+
+    @public
+    def add_member(self, email: str, role: str) -> project_member.ProjectMember:
+        """Add a user to the project.
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+
+            project.add_member("alice@example.com", "Data scientist")
+            ```
+
+        Parameters:
+            email: Email address of the user to add.
+            role: The project role to grant, one of `Data owner`, `Data scientist`,
+                `Observer`, `Feature store restricted`.
+
+        Returns:
+            The newly added `ProjectMember`.
+
+        Raises:
+            ValueError: If `role` is not a settable project role.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if the caller is not a project owner.
+        """
+        return self._project_members_api.add_member(email, role)
+
+    @public
+    def remove_member(self, email: str, delete_home_dir: bool = False) -> None:
+        """Remove a user from the project.
+
+        Danger: Deletes the member's project files when `delete_home_dir=True`
+            All files under this member's home directory in the project are
+            permanently deleted and cannot be recovered.
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+
+            project.remove_member("alice@example.com")
+            ```
+
+        Parameters:
+            email: Email address of the member to remove.
+            delete_home_dir: Whether to also delete the member's home directory in the project.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if a data scientist tries to remove someone other than themselves.
+        """
+        self._project_members_api.remove_member(email, delete_home_dir=delete_home_dir)
 
     @public
     def get_search_api(self) -> search_api.SearchApi:
