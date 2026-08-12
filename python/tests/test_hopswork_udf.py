@@ -1639,3 +1639,102 @@ def test_function():
         assert add_statistics_data.executor(
             statistics={"feature": {"mean": 100}}, context={"test_value": 10}
         ).execute(data).values.tolist() == [111, 112, 113]
+
+
+class TestUdfSourceExtraction:
+    """Source extraction for UDFs defined inside another function.
+
+    `inspect.getsource` locates a function by scanning backwards from its first
+    line for something that opens a block, and returns the block it lands on.
+    With several same-shaped UDFs defined in a loop inside an enclosing
+    function, that scan could land on the enclosing function and return its
+    whole body, which then broke wrapper generation with an IndentationError
+    naming a line in a string nobody could see.
+    """
+
+    def test_udf_defined_in_a_loop_extracts_only_itself(self):
+        # The shape that failed: several UDFs, same enclosing scope, in a loop.
+        # A single UDF per loop does not reproduce it.
+        udfs = []
+        for mode in ["default", "pandas", "python"]:
+
+            @udf(int, drop=["feature"], mode=mode)
+            def add_one(feature):
+                return feature + 1
+
+            @udf([int, int], drop=["feature"], mode=mode)
+            def add_two(feature):
+                return feature + 1, feature + 2
+
+            udfs.extend([add_one, add_two])
+
+        for extracted in udfs:
+            source = extracted._function_source
+            assert (
+                "def test_udf_defined_in_a_loop_extracts_only_itself" not in source
+            ), "extraction captured the enclosing test function, not the UDF"
+            assert "for mode in" not in source, (
+                "extraction captured the enclosing loop, whose body is then cut "
+                "off at the first decorator and cannot compile"
+            )
+
+    def test_udf_defined_in_a_loop_generates_compilable_source(self):
+        # The failure was not a bad message, it was a UDF that could not be
+        # built, so assert on the thing that actually broke.
+        for mode in ["default", "pandas"]:
+
+            @udf(int, drop=["feature"], mode=mode)
+            def add_one(feature):
+                return feature + 1
+
+            @udf([int, int], drop=["feature"], mode=mode)
+            def add_two(feature):
+                return feature + 1, feature + 2
+
+            for built in (add_one, add_two):
+                # One output name per declared return type; the wrapper renames
+                # its columns to these.
+                built._output_column_names = [
+                    f"out_{i}" for i in range(len(built.return_types))
+                ]
+                built._pandas_udf_wrapper()  # raised IndentationError before
+
+    def test_nested_udf_source_is_dedented(self):
+        # A UDF defined inside a function must yield the same source as one at
+        # module level, or the generated wrapper mixes indentation levels.
+        @udf(int, drop=["feature"])
+        def add_three(feature):
+            return feature + 3
+
+        first_line = add_three._function_source.split("\n")[-3]
+        assert not first_line.startswith(" "), (
+            f"nested UDF source kept its enclosing indentation: {first_line!r}"
+        )
+
+    def test_imports_never_carry_a_fragment_of_an_enclosing_scope(self):
+        """The shape captured from a real run that failed 42 nodes.
+
+        The source handed to the formatter contained an enclosing function, so
+        splitting it on the first "@" kept everything up to the decorator: the
+        imports *plus* a `for` statement with no body. The generated wrapper
+        then failed to compile with an IndentationError naming a line in a
+        string the caller never sees.
+        """
+        source = (
+            "import pandas as pd\n"
+            "from hsfs.transformation_statistics import TransformationStatistics\n"
+            "def enclosing_test(fs):\n"
+            "    df = pd.DataFrame()\n"
+            "    for mode in ['default', 'pandas', 'python']:\n"
+            "\n"
+            "        @udf(int, drop=['feature'], mode=mode)\n"
+            "        def add_one(feature):\n"
+            "            return feature + 1\n"
+        )
+        _, module_imports = HopsworksUdf._format_source_code(source)
+
+        assert "for mode in" not in module_imports, (
+            f"imports carried a fragment of the enclosing scope: {module_imports!r}"
+        )
+        # The real symptom: the imports block on its own must compile.
+        compile(module_imports + "\nimport pandas as pd\n", "<test>", "exec")
