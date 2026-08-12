@@ -1737,6 +1737,149 @@ class TestBoundedRonsqlSubmission:
             server._run_ronsql_tasks(boom, list(range(200)))
 
 
+class TestRonsqlWaveOverlap:
+    """PERF-2026-08-7: a wave submits before the finisher, one item included."""
+
+    def test_single_item_starts_before_finish(self):
+        import threading as threading_module
+
+        started = threading_module.Event()
+        release = threading_module.Event()
+
+        def task(item):
+            started.set()
+            release.wait(5)
+            return item * 3
+
+        finish = make_server()._start_ronsql_tasks(task, [7])
+        # The ordinary batch shape is exactly one grouped task. It has to be running
+        # while the caller does its base read, not waiting for finish().
+        assert started.wait(5), "single-item wave did not start before finish()"
+        release.set()
+        assert finish() == [21]
+
+    def test_wave_runs_off_the_calling_thread(self):
+        import threading as threading_module
+
+        caller = threading_module.current_thread().name
+        seen = []
+        finish = make_server()._start_ronsql_tasks(
+            lambda item: seen.append(threading_module.current_thread().name), [1]
+        )
+        finish()
+        assert seen and seen[0] != caller
+
+
+class TestRonsqlCompletionDrivenReplenishment:
+    """PERF-2026-08-8: a slow early call must not idle the workers behind it."""
+
+    def test_later_items_are_submitted_before_a_slow_first_completes(self):
+        import threading as threading_module
+
+        server = make_server()
+        release_first = threading_module.Event()
+        tail_reached = threading_module.Event()
+        # one more item than the outstanding window, so the last one can only be
+        # submitted after some earlier item completes
+        items = list(range(server._RONSQL_MAX_OUTSTANDING + 1))
+        last = items[-1]
+
+        def task(item):
+            if item == 0:
+                # Blocks until the test releases it. No timeout: a timeout here would
+                # let item 0 finish on its own and the tail be submitted late, which
+                # makes the assertion below a race rather than a proof.
+                release_first.wait(60)
+            elif item == last:
+                tail_reached.set()
+            return item
+
+        finish = server._start_ronsql_tasks(task, items)
+        drain = threading_module.Thread(target=finish)
+        drain.start()
+        try:
+            # With submission-order draining the tail waits on item 0, which is still
+            # blocked; with completion-driven replenishment the fast items free a slot
+            # immediately and the tail runs.
+            assert tail_reached.wait(5), "tail task never submitted while item 0 ran"
+        finally:
+            release_first.set()
+            drain.join(30)
+
+    def test_lowest_failing_index_is_raised_not_the_first_observed(self):
+        import threading as threading_module
+
+        server = make_server()
+        late = threading_module.Event()
+
+        def task(item):
+            if item == 0:
+                # completes last, but owns the lowest index
+                late.wait(5)
+                raise KeyError("zero")
+            if item == 3:
+                late.set()
+                raise ValueError("three")
+            return item
+
+        with pytest.raises(KeyError):
+            server._start_ronsql_tasks(task, [0, 1, 2, 3])()
+
+
+class TestRonsqlProcessWideAdmission:
+    """PERF-2026-08-10: queued-or-running calls are bounded across the process."""
+
+    def test_concurrent_waves_cannot_exceed_the_process_bound(self, monkeypatch):
+        import threading as threading_module
+
+        server = make_server()
+        monkeypatch.setattr(VectorServer, "_RONSQL_MAX_INFLIGHT", 8, raising=False)
+        monkeypatch.setattr(
+            VectorServer,
+            "_RONSQL_INFLIGHT_SLOTS",
+            threading_module.BoundedSemaphore(8),
+            raising=False,
+        )
+        release = threading_module.Event()
+        saturated = threading_module.Event()
+        live = {"now": 0, "peak": 0}
+        guard = threading_module.Lock()
+
+        def task(item):
+            with guard:
+                live["now"] += 1
+                live["peak"] = max(live["peak"], live["now"])
+                if live["now"] >= 8:
+                    saturated.set()
+            release.wait(10)
+            with guard:
+                live["now"] -= 1
+            return item
+
+        waves = [server._start_ronsql_tasks(task, list(range(40))) for _ in range(3)]
+        try:
+            # Wait for the bound to be reached, so the assertion is not trivially true
+            # before any task has run. Admission is process-wide, so three waves of 40
+            # cannot put more than the bound in flight between them.
+            assert saturated.wait(10), f"never saturated, peak={live['peak']}"
+            assert live["peak"] == 8
+        finally:
+            release.set()
+            for wave in waves:
+                wave()
+
+    def test_slots_are_released_when_a_task_raises(self):
+        server = make_server()
+        before = server._RONSQL_INFLIGHT_SLOTS._value
+
+        def boom(item):
+            raise ValueError("boom")
+
+        with pytest.raises(ValueError, match="boom"):
+            server._start_ronsql_tasks(boom, [1, 2, 3])()
+        assert server._RONSQL_INFLIGHT_SLOTS._value == before
+
+
 class TestProcessWideExplainCache:
     """SQL-PERF-9: EXPLAIN verdicts are shared across VectorServer instances."""
 
@@ -1751,3 +1894,58 @@ class TestProcessWideExplainCache:
         second = server2._validate_ronsql_templates([validation.probed_statement()], [])
         assert len(second) == 1
         assert calls2 == []  # planned once per process, not per instance
+
+    def test_windowed_template_reuses_its_verdict(self, monkeypatch):
+        # PERF-2026-08-9: the trailing window bound is `now - window`. Substituting the
+        # real clock put a fresh microsecond in the cache key, so a windowed template
+        # was re-planned on every validation.
+        validation = TestRonsqlTemplateValidation()
+        windowed = validation.probed_statement(
+            query_ronsql=TEMPLATE + " AND `event_time` >= ?",
+            aggregate_window=3600,
+        )
+
+        server1, calls1 = validation.make_validating_server(monkeypatch, [])
+        assert len(server1._validate_ronsql_templates([windowed], [])) == 1
+        assert len(calls1) == 1
+
+        server2, calls2 = validation.make_validating_server(monkeypatch, [])
+        assert len(server2._validate_ronsql_templates([windowed], [])) == 1
+        assert calls2 == []
+
+    def test_rest_setup_keeps_verdicts_and_a_reset_drops_them(self, monkeypatch):
+        # PERF-2026-08-9: the cache was cleared by _setup_rest_client_and_engine on
+        # every call, so a second feature-view object discarded the first's proofs even
+        # though the endpoint had not changed. Only a real reset may clear it.
+        from hsfs.client import online_store_rest_client
+
+        validation = TestRonsqlTemplateValidation()
+        server, calls = validation.make_validating_server(monkeypatch, [])
+        assert len(
+            server._validate_ronsql_templates([validation.probed_statement()], [])
+        )
+        assert len(calls) == 1
+
+        monkeypatch.setattr(
+            online_store_rest_client,
+            "_init_or_reset_online_store_rest_client",
+            lambda **kwargs: None,
+        )
+
+        class _Entity:
+            name = "fv"
+            version = 1
+            features = []
+
+        setup_server = make_server()
+        setup_server._feature_store_name = "proj_featurestore"
+
+        setup_server._setup_rest_client_and_engine(_Entity())
+        assert VectorServer._RONSQL_EXPLAIN_PROCESS_CACHE, (
+            "an ordinary REST setup must not discard other feature views' proofs"
+        )
+
+        setup_server._setup_rest_client_and_engine(_Entity(), reset_rest_client=True)
+        assert not VectorServer._RONSQL_EXPLAIN_PROCESS_CACHE, (
+            "a real reset must drop verdicts describing the previous server"
+        )

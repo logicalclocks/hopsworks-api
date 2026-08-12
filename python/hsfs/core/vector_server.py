@@ -416,10 +416,14 @@ class VectorServer:
         ):
             if hasattr(self, stale):
                 delattr(self, stale)
-        # the process-wide verdict cache describes the previous server too; a reset
-        # is rare, so clearing everything is cheaper than per-endpoint bookkeeping
-        with VectorServer._RONSQL_EXPLAIN_PROCESS_CACHE_LOCK:
-            VectorServer._RONSQL_EXPLAIN_PROCESS_CACHE.clear()
+        # The process-wide verdict cache describes the previous server too, but only a
+        # real reset can repoint at a different one. Clearing it on every setup threw
+        # away the proofs of every other feature view in the process, so a second
+        # feature-view object re-planned templates the first had already proven
+        # (review PERF-2026-08-9).
+        if reset_rest_client:
+            with VectorServer._RONSQL_EXPLAIN_PROCESS_CACHE_LOCK:
+                VectorServer._RONSQL_EXPLAIN_PROCESS_CACHE.clear()
         # This logic needs to move to the above engine init
         online_store_rest_client._init_or_reset_online_store_rest_client(
             optional_config=config_rest_client,
@@ -2215,9 +2219,7 @@ class VectorServer:
         now = datetime.now(timezone.utc)
         contexts, tasks = self._build_batch_aggregate_tasks(entries)
         raw = (
-            self._run_ronsql_tasks(
-                lambda task: self._run_batch_chunk(task, now), tasks
-            )
+            self._run_ronsql_tasks(lambda task: self._run_batch_chunk(task, now), tasks)
             if tasks
             else []
         )
@@ -2628,6 +2630,7 @@ class VectorServer:
                         statement,
                         self._ronsql_placeholder_entry(statement),
                         template=template,
+                        now=self._RONSQL_VALIDATION_NOW,
                     )
                     for template in templates
                 ]
@@ -2941,6 +2944,21 @@ class VectorServer:
     # (review SQL-PERF-5)
     _RONSQL_MAX_OUTSTANDING = 64
 
+    # and at most this many queued-or-running calls may exist across the whole process
+    # (review PERF-2026-08-10). The per-request window alone let `Q` concurrent batches
+    # queue `64Q` calls behind 16 workers. This caps process memory and queue depth; it
+    # is not a fair scheduler, so it does not by itself bound another tenant's wait.
+    _RONSQL_MAX_INFLIGHT = 128
+    _RONSQL_INFLIGHT_SLOTS = threading.BoundedSemaphore(_RONSQL_MAX_INFLIGHT)
+
+    # A windowed template's trailing bound is `now - window`, so substituting the real
+    # clock put a fresh microsecond into the probe SQL and therefore into the cache key:
+    # two probes milliseconds apart never shared a verdict (review PERF-2026-08-9). The
+    # literal value is irrelevant to what a probe establishes (parse, index and plan
+    # conformance), so validation substitutes one fixed instant and the key becomes
+    # stable for a given template and parameter type vector.
+    _RONSQL_VALIDATION_NOW = datetime(2000, 1, 1, tzinfo=timezone.utc)
+
     # process-wide EXPLAIN verdict cache shared by every VectorServer instance
     # (review SQL-PERF-9): a new feature-view object re-validates identical templates
     # without re-planning on the server. Only proofs are stored (a pass or a
@@ -2972,49 +2990,92 @@ class VectorServer:
     def _run_ronsql_tasks(self, fn: Callable, items: list) -> list:
         """Run `fn` over items on the shared pool, preserving item order.
 
-        A single item runs inline (no thread hop); exceptions surface in item order
-        regardless of completion order. Submission is BOUNDED: at most
-        `_RONSQL_MAX_OUTSTANDING` futures exist at once, submitted as earlier ones
-        complete, and a failure stops further submission (the queued tail is never
-        created), so a 100k-item batch cannot enqueue 100k futures up front.
+        This caller has nothing to overlap, so a single item runs inline: no thread
+        hop and no admission slot. Otherwise the wave is begun and finished at once.
         """
+        if len(items) <= 1:
+            return [fn(item) for item in items]
         return self._start_ronsql_tasks(fn, items)()
+
+    def _ronsql_admit(self, blocking: bool) -> bool:
+        """Take a process-wide slot for one queued-or-running RonSQL call.
+
+        The per-request window bounds one request; this bounds the process (review
+        PERF-2026-08-10), where `Q` concurrent batches would otherwise queue
+        `Q * _RONSQL_MAX_OUTSTANDING` calls behind the workers. Slots are released by
+        the worker, never by the finisher, so a caller that never finishes cannot
+        deadlock the pool.
+        """
+        return self._RONSQL_INFLIGHT_SLOTS.acquire(blocking=blocking)
+
+    @classmethod
+    def _ronsql_run_admitted(cls, fn: Callable, item: Any) -> Any:
+        try:
+            return fn(item)
+        finally:
+            cls._RONSQL_INFLIGHT_SLOTS.release()
 
     def _start_ronsql_tasks(self, fn: Callable, items: list) -> Callable[[], list]:
         """Begin a bounded task wave; returns a finisher yielding ordered results.
 
-        Up to `_RONSQL_MAX_OUTSTANDING` items are submitted immediately WITHOUT
-        awaiting any result, so the caller can overlap other I/O (e.g. the batch
-        base read) before calling the finisher (review SQL-PERF-4). The finisher
-        drains completions, submits the remaining items as slots free (bounded
-        queue — review SQL-PERF-5), and cancels the unstarted tail on the first
-        fatal error. Single-item waves run inline at finish time.
+        Items are submitted immediately WITHOUT awaiting any result, so the caller can
+        overlap other I/O (the batch base read) before calling the finisher (review
+        SQL-PERF-4). One item is submitted too: the ordinary batch shape is exactly one
+        grouped task, and running it at finish time serialised it behind the base read
+        (review PERF-2026-08-7).
+
+        The finisher drains by COMPLETION, not submission order (review
+        PERF-2026-08-8): one slow early call no longer idles workers while later calls
+        have finished. Results still land in item order, and the raised error is the
+        one belonging to the lowest failing item index so failures stay deterministic;
+        submission stops as soon as any failure is observed.
         """
-        if len(items) <= 1:
-            return lambda: [fn(item) for item in items]
+        if not items:
+            return list
         pool = self._ronsql_pool()
-        window: collections.deque = collections.deque()
-        submitted = 0
-        while submitted < len(items) and len(window) < self._RONSQL_MAX_OUTSTANDING:
-            window.append((submitted, pool.submit(fn, items[submitted])))
-            submitted += 1
+        inflight: dict[concurrent.futures.Future, int] = {}
+        next_index = 0
+
+        def submit_while_possible(blocking: bool) -> None:
+            nonlocal next_index
+            while (
+                next_index < len(items)
+                and len(inflight) < self._RONSQL_MAX_OUTSTANDING
+                and self._ronsql_admit(blocking)
+            ):
+                try:
+                    future = pool.submit(
+                        self._ronsql_run_admitted, fn, items[next_index]
+                    )
+                except BaseException:
+                    self._RONSQL_INFLIGHT_SLOTS.release()
+                    raise
+                inflight[future] = next_index
+                next_index += 1
+
+        # Begin: never block the caller here, or the I/O this wave is meant to overlap
+        # would wait on admission. Whatever is not admitted now is submitted by the
+        # finisher, where blocking is the intended backpressure.
+        submit_while_possible(blocking=False)
 
         def finish() -> list:
-            nonlocal submitted
             results: list = [None] * len(items)
-            try:
-                while window:
-                    oldest_index, oldest_future = window.popleft()
-                    results[oldest_index] = oldest_future.result()
-                    if submitted < len(items):
-                        window.append((submitted, pool.submit(fn, items[submitted])))
-                        submitted += 1
-            except BaseException:
-                # first fatal error: cancel whatever has not started; running
-                # futures finish on the pool but their results are discarded
-                for _, future in window:
-                    future.cancel()
-                raise
+            failure: tuple[int, BaseException] | None = None
+            while inflight:
+                done, _ = concurrent.futures.wait(
+                    inflight, return_when=concurrent.futures.FIRST_COMPLETED
+                )
+                for future in done:
+                    index = inflight.pop(future)
+                    try:
+                        results[index] = future.result()
+                    except BaseException as error:  # noqa: BLE001 - reraised below
+                        if failure is None or index < failure[0]:
+                            failure = (index, error)
+                if failure is None:
+                    submit_while_possible(blocking=True)
+            if failure is not None:
+                raise failure[1]
             return results
 
         return finish
