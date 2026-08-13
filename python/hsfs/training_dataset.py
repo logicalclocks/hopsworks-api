@@ -309,9 +309,11 @@ class TrainingDatasetBase:
 
     @property
     def coalesce(self) -> bool:
-        """If true the training dataset data will be coalesced into a single partition before writing.
+        """Whether to coalesce each split into a single partition before writing.
 
-        The resulting training dataset will be a single file per split.
+        Applies to Spark materialization only, and is ignored when the training
+        dataset is materialized by the Feature Query Service.
+        Where it applies, the resulting training dataset is a single file per split.
         """
         return self._coalesce
 
