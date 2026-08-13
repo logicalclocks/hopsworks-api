@@ -165,17 +165,26 @@ public class DeltaStreamerAvroDeserializer implements Deserializer<GenericRecord
   /**
    * Whether this record belongs in the offline table at all.
    *
-   * <p>A delete tombstone does not. It is on the topic for OnlineFS, while removeRows has already
-   * applied the offline delete directly to the table, so materializing the tombstone would
-   * re-insert the key it deleted. The operation header is a proxy for the destination here: it is
-   * the only header that distinguishes a tombstone, and dropping the record is the whole of what
-   * this job does with one today. When the offline delete moves onto the topic, this becomes a
-   * branch that emits a Hudi delete rather than dropping the record.
+   * <p>The storage header names the consumer the record is meant for.
+   * "online" is for OnlineFS alone, because whoever produced it already wrote the offline leg
+   * itself (or has none), so materializing it would write the same rows to the table a second
+   * time.
+   * Anything else belongs here: the header is absent when both consumers read the record,
+   * "offline" when this job is the only one that should, and "1"/"0" from clients that predate
+   * this contract meant "ingest online"/"skip online" without ever excluding the offline table.
    *
-   * <p>Exact match, as in OnlineFsHandler.getRow. Any other value is an upsert.
+   * <p>A delete tombstone does not belong here either.
+   * It is on the topic for OnlineFS, while removeRows has already applied the offline delete
+   * directly to the table, so materializing the tombstone would re-insert the key it deleted.
+   * New clients mark it "online", so the operation header covers the ones that do not.
+   * When the offline delete moves onto the topic, this becomes a branch that emits a Hudi delete
+   * rather than dropping the record.
+   *
+   * <p>Exact match on both values, as in OnlineFsHandler.getRow.
    */
   private boolean skipOfflineMaterialization(Headers headers) {
-    return "delete".equals(getHeader(headers, "operation"));
+    return "online".equals(getHeader(headers, "storage"))
+        || "delete".equals(getHeader(headers, "operation"));
   }
 
   private static String getHeader(Headers headers, String headerKey) {

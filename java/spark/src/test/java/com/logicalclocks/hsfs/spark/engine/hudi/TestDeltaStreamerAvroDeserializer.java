@@ -71,11 +71,18 @@ public class TestDeltaStreamerAvroDeserializer {
   }
 
   private Headers headers(String subjectId, String featureGroupId, String operation) {
+    return headers(subjectId, featureGroupId, operation, null);
+  }
+
+  private Headers headers(String subjectId, String featureGroupId, String operation, String storage) {
     RecordHeaders headers = new RecordHeaders();
     headers.add("subjectId", subjectId.getBytes(StandardCharsets.UTF_8));
     headers.add("featureGroupId", featureGroupId.getBytes(StandardCharsets.UTF_8));
     if (operation != null) {
       headers.add("operation", operation.getBytes(StandardCharsets.UTF_8));
+    }
+    if (storage != null) {
+      headers.add("storage", storage.getBytes(StandardCharsets.UTF_8));
     }
     return headers;
   }
@@ -107,6 +114,27 @@ public class TestDeltaStreamerAvroDeserializer {
 
     Assertions.assertNotNull(record);
     Assertions.assertEquals(2L, record.get("id"));
+  }
+
+  @Test
+  void testOnlineOnlyRecordIsDropped() throws IOException {
+    Headers headers = headers(SUBJECT, FEATURE_GROUP, null, "online");
+
+    Assertions.assertNull(deserializer().deserialize(TOPIC, headers, encodedRow(2L)));
+  }
+
+  @Test
+  void testStorageHeaderOtherThanOnlineIsMaterialized() throws IOException {
+    // "offline" is for this job alone, and "1"/"0" are what clients that predate the storage
+    // header sent for "ingest online"/"skip online" — neither ever excluded the offline table.
+    for (String storage : new String[] {"offline", "1", "0", "Online", "ONLINE", " online"}) {
+      Headers headers = headers(SUBJECT, FEATURE_GROUP, null, storage);
+
+      GenericRecord record = deserializer().deserialize(TOPIC, headers, encodedRow(2L));
+
+      Assertions.assertNotNull(record, "storage header " + storage + " must be materialized");
+      Assertions.assertEquals(2L, record.get("id"));
+    }
   }
 
   @Test

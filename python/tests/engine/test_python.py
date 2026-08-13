@@ -4074,6 +4074,241 @@ class TestPython:
             await_termination=False,
         )
 
+    def _setup_storage_header_mocks(self, mocker):
+        """Mock everything between _run_materialization_job and the Kafka producer."""
+        mocker.patch("hsfs.core.kafka_engine._get_kafka_config", return_value={})
+        mocker.patch("hsfs.feature_group.FeatureGroup._get_encoded_avro_schema")
+        mocker.patch("hsfs.core.kafka_engine._get_encoder_func")
+        mocker.patch("hsfs.core.kafka_engine._encode_complex_features")
+        mocker.patch("hsfs.util._get_job_url")
+        mocker.patch(
+            "hsfs.core.kafka_engine._kafka_get_offsets",
+            return_value=" tests_offsets",
+        )
+        mocker.patch(
+            "hsfs.core.job_api.JobApi.last_execution",
+            return_value=["", ""],
+        )
+        mocker.patch("hopsworks_common.client._get_instance")
+        mock_create_online_ingestion = mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi._create_online_ingestion",
+            return_value=online_ingestion.OnlineIngestion(id=123),
+        )
+        mock_kafka_produce = mocker.patch("hsfs.core.kafka_engine._kafka_produce")
+        return mock_kafka_produce, mock_create_online_ingestion
+
+    def _make_storage_header_fg(self, mocker):
+        """An online-enabled stream feature group with a primary key, plus a duplicate-key df."""
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            id=10,
+            stream=True,
+            online_enabled=True,
+        )
+        # an id makes the feature group backend-initialized, which derives the primary key
+        # from the (here empty) feature list
+        fg.primary_key = ["col1"]
+        fg.feature_store = mocker.Mock()
+        fg.feature_store.project_id = 234
+        fg._subject = {"id": 823}
+        fg._online_topic_name = "test_topic"
+        job_mock = mocker.MagicMock()
+        job_mock.config = {"defaultArgs": "defaults"}
+        fg._materialization_job = job_mock
+        # col1 = 2 twice: the first occurrence is superseded online, but still belongs offline.
+        df = pd.DataFrame(data={"col1": [1, 2, 2, 3]})
+        return fg, df, job_mock
+
+    def test_materialization_kafka_marks_superseded_rows_offline(self, mocker):
+        # Arrange
+        mock_kafka_produce, _ = self._setup_storage_header_mocks(mocker)
+        python_engine = python.Engine()
+        fg, df, job_mock = self._make_storage_header_fg(mocker)
+
+        # Act
+        python_engine._run_materialization_job(
+            feature_group=fg,
+            dataframe=df,
+            offline_write_options={"start_offline_materialization": True},
+            storage=None,
+        )
+
+        # Assert: both consumers read the rows that go online, so they carry no storage
+        # header; the superseded row is for the materialization job alone.
+        headers = [call.kwargs["headers"] for call in mock_kafka_produce.call_args_list]
+        assert len(headers) == 4
+        assert [header.get("storage") for header in headers] == [
+            None,
+            b"offline",
+            None,
+            None,
+        ]
+        job_mock.run.assert_called_once()
+
+    def test_materialization_kafka_storage_online(self, mocker):
+        # Arrange
+        mock_kafka_produce, mock_create_online_ingestion = (
+            self._setup_storage_header_mocks(mocker)
+        )
+        python_engine = python.Engine()
+        fg, df, job_mock = self._make_storage_header_fg(mocker)
+
+        # Act
+        python_engine._run_materialization_job(
+            feature_group=fg,
+            dataframe=df,
+            offline_write_options={"start_offline_materialization": True},
+            storage="online",
+        )
+
+        # Assert: only the rows OnlineFS ingests are produced, marked for it alone, and
+        # the materialization job would find nothing to materialize.
+        headers = [call.kwargs["headers"] for call in mock_kafka_produce.call_args_list]
+        assert len(headers) == 3
+        assert all(header["storage"] == b"online" for header in headers)
+        job_mock.run.assert_not_called()
+        # the superseded row is never produced, so it is not counted either
+        assert mock_create_online_ingestion.call_args[0][1].num_entries == 3
+
+    def test_materialization_kafka_storage_offline(self, mocker):
+        # Arrange
+        mock_kafka_produce, mock_create_online_ingestion = (
+            self._setup_storage_header_mocks(mocker)
+        )
+        python_engine = python.Engine()
+        fg, df, job_mock = self._make_storage_header_fg(mocker)
+
+        # Act
+        python_engine._run_materialization_job(
+            feature_group=fg,
+            dataframe=df,
+            offline_write_options={"start_offline_materialization": True},
+            storage="offline",
+        )
+
+        # Assert: every row is produced for the materialization job alone, and no online
+        # ingestion is created for a write that reaches no online store.
+        headers = [call.kwargs["headers"] for call in mock_kafka_produce.call_args_list]
+        assert len(headers) == 4
+        assert all(header["storage"] == b"offline" for header in headers)
+        assert all("onlineIngestionId" not in header for header in headers)
+        mock_create_online_ingestion.assert_not_called()
+        job_mock.run.assert_called_once()
+
+    def test_save_dataframe_stream_passes_storage(self, mocker):
+        # Arrange
+        mock_python_engine_run_materialization_job = mocker.patch(
+            "hsfs.engine.python.Engine._run_materialization_job"
+        )
+        python_engine = python.Engine()
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            id=10,
+            stream=True,
+        )
+
+        # Act
+        python_engine._save_dataframe(
+            feature_group=fg,
+            dataframe=None,
+            operation=None,
+            online_enabled=None,
+            storage="online",
+            offline_write_options=None,
+            online_write_options=None,
+            validation_id=None,
+        )
+
+        # Assert
+        mock_python_engine_run_materialization_job.assert_called_once_with(
+            fg, None, None, "online"
+        )
+
+    def test_save_dataframe_delta_online_write_is_online_only(self, mocker):
+        # Arrange
+        mock_python_engine_write_dataframe_kafka = mocker.patch(
+            "hsfs.engine.python.Engine._write_dataframe_kafka"
+        )
+        mocker.patch("hsfs.core.delta_engine.DeltaEngine")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        python_engine = python.Engine()
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            id=10,
+            stream=False,
+            time_travel_format="DELTA",
+            online_enabled=True,
+        )
+        test_dataframe = pd.DataFrame({"col1": [1, 2, 3]})
+
+        # Act
+        python_engine._save_dataframe(
+            feature_group=fg,
+            dataframe=test_dataframe,
+            operation="insert",
+            online_enabled=True,
+            storage=None,
+            offline_write_options={},
+            online_write_options={},
+            validation_id=None,
+        )
+
+        # Assert: the offline leg went straight to the Delta table, so the records on the
+        # topic are for OnlineFS alone.
+        mock_python_engine_write_dataframe_kafka.assert_called_once_with(
+            fg, test_dataframe, {}, "online"
+        )
+
+    def test_save_dataframe_hudi_online_write_stays_unmarked(self, mocker):
+        # Arrange
+        mock_python_engine_write_dataframe_kafka = mocker.patch(
+            "hsfs.engine.python.Engine._write_dataframe_kafka"
+        )
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        python_engine = python.Engine()
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            id=10,
+            stream=False,
+            time_travel_format="HUDI",
+            online_enabled=True,
+        )
+        test_dataframe = pd.DataFrame({"col1": [1, 2, 3]})
+
+        # Act
+        python_engine._save_dataframe(
+            feature_group=fg,
+            dataframe=test_dataframe,
+            operation="insert",
+            online_enabled=True,
+            storage=None,
+            offline_write_options={},
+            online_write_options={},
+            validation_id=None,
+        )
+
+        # Assert: nothing wrote the offline leg in this call, so the records must stay
+        # readable by both consumers rather than being claimed for OnlineFS.
+        mock_python_engine_write_dataframe_kafka.assert_called_once_with(
+            fg, test_dataframe, {}, None
+        )
+
     def test_test(self, mocker):
         fg = feature_group.FeatureGroup(
             name="test",
