@@ -1179,8 +1179,9 @@ class Engine:
             # offline leg itself — the direct write above (`inserted`), a feature group with
             # no offline store at all, or a caller that asked for online only — so that a
             # materialization job cannot write the same rows to the offline table a second
-            # time. Anything else leaves the offline leg to a consumer of the topic, so the
-            # records stay unmarked and both consumers read them.
+            # time.
+            # Anything else leaves the offline leg to a consumer of the topic, so the records
+            # stay unmarked and both consumers read them.
             kafka_storage = (
                 kafka_engine._STORAGE_ONLINE
                 if inserted
@@ -2012,9 +2013,10 @@ class Engine:
             strict=False,
         ):
             # A row the online store has no use for goes to the offline table alone, so
-            # override the destination of the write for that row only. Rows that do belong
-            # online keep the headers of the write: they are the common case, and leaving
-            # the header out of them is what keeps the default insert cheap on the wire.
+            # override the destination of the write for that row only.
+            # Rows that do belong online keep the headers of the write: they are the common
+            # case, and leaving the header out of them is what keeps the default insert cheap
+            # on the wire.
             row_headers = headers
             if online_flag is not None and not online_flag:
                 if storage == kafka_engine._STORAGE_ONLINE:
@@ -2067,9 +2069,9 @@ class Engine:
         # delete directly to the table, so the storage header keeps the materialization job
         # from re-inserting the key the delete removed.
         # `operation` is what makes it a delete rather than an upsert: OnlineFsHandler.getRow
-        # turns it into Row.delete. The materialization job also drops records carrying it,
-        # which is what protects the offline table against tombstones from clients that
-        # predate the storage header.
+        # turns it into Row.delete.
+        # The materialization job also drops records carrying it, which is what protects the
+        # offline table against tombstones from clients that predate the storage header.
         producer, headers, feature_writers, writer = kafka_engine._get_kafka_resources(
             feature_group,
             offline_write_options,

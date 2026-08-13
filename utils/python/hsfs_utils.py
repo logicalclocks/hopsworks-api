@@ -377,7 +377,8 @@ def offline_fg_materialization(
 
     # A delete tombstone is on the topic for OnlineFS only: remove_rows has already applied the
     # offline delete directly to the table, so materializing the tombstone re-inserts the key it
-    # deleted. New clients mark it "online" above, so this covers the ones that do not.
+    # deleted.
+    # New clients mark it "online" above, so this covers the ones that do not.
     # The header is absent on inserts, so null means keep.
     # Exact match on the value, as in OnlineFsHandler.getRow.
     operation_header = expr(

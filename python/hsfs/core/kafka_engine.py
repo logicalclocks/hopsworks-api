@@ -76,8 +76,9 @@ if TYPE_CHECKING:
 #
 # Older clients wrote a per-row flag into the same header instead: b"0" meant "skip
 # online" (equivalent to b"offline") and b"1" meant "ingest online" while the record was
-# still materialized offline (equivalent to absent). Both consumers keep reading b"0" as
-# b"offline"; the producers here no longer emit either value.
+# still materialized offline (equivalent to absent).
+# Both consumers keep reading b"0" as b"offline"; the producers here no longer emit either
+# value.
 # Only set the header when the record has a single destination: leaving it out is both the
 # default and the cheapest option on the wire, which matters per record at ingestion scale.
 _STORAGE_ONLINE = "online"

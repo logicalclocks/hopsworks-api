@@ -303,8 +303,9 @@ public class FeatureGroupUtils {
     }
 
     // storage header names the consumer these records are meant for: "online" is skipped by the
-    // offline materialization job, "offline" is skipped by OnlineFS, absent is read by both. Only
-    // set it when the records have a single destination, leaving it out is the cheaper default.
+    // offline materialization job, "offline" is skipped by OnlineFS, absent is read by both.
+    // Only set it when the records have a single destination, leaving it out is the cheaper
+    // default.
     if (storage != null) {
       headerMap.put("storage", storage.name().toLowerCase().getBytes(StandardCharsets.UTF_8));
     }
