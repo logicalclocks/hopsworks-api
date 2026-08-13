@@ -97,6 +97,7 @@ import com.logicalclocks.hsfs.FeatureGroupBase;
 import com.logicalclocks.hsfs.FeatureStoreException;
 import com.logicalclocks.hsfs.HudiOperationType;
 import com.logicalclocks.hsfs.Split;
+import com.logicalclocks.hsfs.Storage;
 import com.logicalclocks.hsfs.StorageConnector;
 import com.logicalclocks.hsfs.TimeTravelFormat;
 import com.logicalclocks.hsfs.TrainingDatasetFeature;
@@ -547,12 +548,31 @@ public class SparkEngine extends EngineBase {
   public void writeOnlineDataframe(FeatureGroupBase featureGroupBase, Dataset<Row> dataset,
                                    Map<String, String> writeOptions)
       throws FeatureStoreException, IOException {
+    writeOnlineDataframe(featureGroupBase, dataset, writeOptions, null);
+  }
+
+  /**
+   * Writes feature group dataframe to kafka for online-fs ingestion.
+   *
+   * @param featureGroupBase
+   * @param dataset
+   * @param writeOptions options map; see {@link #writeOnlineDataframe(FeatureGroupBase, Dataset, Map)}
+   * @param storage which consumer of the topic is meant to ingest these records: {@link Storage#ONLINE}
+   *     when the offline leg is written straight to the table (or does not exist), so that the offline
+   *     materialization job does not write the same rows a second time; null when the topic is the only
+   *     source of both stores and both consumers read the records
+   * @throws FeatureStoreException
+   * @throws IOException
+   */
+  public void writeOnlineDataframe(FeatureGroupBase featureGroupBase, Dataset<Row> dataset,
+                                   Map<String, String> writeOptions, Storage storage)
+      throws FeatureStoreException, IOException {
     Map<String, String> kafkaConfig = SparkEngine.getInstance().getKafkaConfig(featureGroupBase, writeOptions);
     Long numEntries = Boolean.parseBoolean(
         writeOptions.getOrDefault("online_ingestion_options.disable_online_ingestion_count", "false"))
         ? null : dataset.count();
     onlineFeatureGroupToAvro(featureGroupBase, encodeComplexFeatures(featureGroupBase, dataset))
-        .withColumn("headers", getHeader(featureGroupBase, numEntries, writeOptions))
+        .withColumn("headers", getHeader(featureGroupBase, numEntries, writeOptions, null, storage))
         .write()
         .format(Constants.KAFKA_FORMAT)
         .options(kafkaConfig)
@@ -598,6 +618,10 @@ public class SparkEngine extends EngineBase {
    * <p>The deletes are tracked by the same online ingestion record as an insert, and reported under
    * its {@code DELETED} status, so the removed rows are counted apart from written ones.
    *
+   * <p>The tombstone is marked {@link Storage#ONLINE}: removeRows applies the offline delete straight
+   * to the table, so the offline materialization job has to skip it rather than re-insert the key the
+   * delete removed.
+   *
    * @param featureGroupBase the online-enabled feature group
    * @param dataset the rows to delete
    * @param writeOptions kafka write options
@@ -611,7 +635,8 @@ public class SparkEngine extends EngineBase {
         writeOptions.getOrDefault("online_ingestion_options.disable_online_ingestion_count", "false"))
         ? null : padded.count();
     onlineFeatureGroupToAvro(featureGroupBase, encodeComplexFeatures(featureGroupBase, padded))
-        .withColumn("headers", getHeader(featureGroupBase, numEntries, writeOptions, "delete"))
+        .withColumn("headers",
+            getHeader(featureGroupBase, numEntries, writeOptions, "delete", Storage.ONLINE))
         .write()
         .format(Constants.KAFKA_FORMAT)
         .options(kafkaConfig)
@@ -657,8 +682,14 @@ public class SparkEngine extends EngineBase {
   private Column getHeader(FeatureGroupBase featureGroup, Long numEntries, Map<String, String> options,
                            String operation)
       throws FeatureStoreException, IOException {
+    return getHeader(featureGroup, numEntries, options, operation, null);
+  }
+
+  private Column getHeader(FeatureGroupBase featureGroup, Long numEntries, Map<String, String> options,
+                           String operation, Storage storage)
+      throws FeatureStoreException, IOException {
     return array(
-      FeatureGroupUtils.getHeaders(featureGroup, numEntries, options, operation).entrySet().stream()
+      FeatureGroupUtils.getHeaders(featureGroup, numEntries, options, operation, storage).entrySet().stream()
       .map(entry -> struct(
         lit(entry.getKey()).as("key"),
         lit(entry.getValue()).as("value")
