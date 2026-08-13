@@ -1890,8 +1890,14 @@ class FeatureView:
                 The filters will be also applied in `get_batch_data`.
             data_format: The data format used to save the training dataset.
             coalesce:
-                If true the training dataset data will be coalesced into a single partition before writing.
-                The resulting training dataset will be a single file per split.
+                Applies to Spark materialization only, and is ignored when the
+                training dataset is materialized by the Feature Query Service, which
+                is the usual path on the Python engine for an unsplit,
+                transformation-free Parquet dataset with no transformation context
+                and no user-supplied sink.
+                Where it applies, the training dataset data will be coalesced into a
+                single partition before writing, and the resulting training dataset
+                will be a single file per split.
             seed: Optionally, define a seed to create the random splits with, in order to guarantee reproducability.
             statistics_config:
                 A configuration object, or a dictionary with keys:
@@ -2183,8 +2189,13 @@ class FeatureView:
                 The filters will be also applied in `get_batch_data`.
             data_format: The data format used to save the training dataset,
                 defaults to `"parquet"`-format.
-            coalesce: If true the training dataset data will be coalesced into
-                a single partition before writing. The resulting training dataset
+            coalesce: Applies to Spark materialization only, and is ignored when the
+                training dataset is materialized by the Feature Query Service, which
+                is the usual path on the Python engine for an unsplit,
+                transformation-free Parquet dataset with no transformation context
+                and no user-supplied sink.
+                Where it applies, the training dataset data will be coalesced into a
+                single partition before writing, and the resulting training dataset
                 will be a single file per split. Default False.
             seed: Optionally, define a seed to create the random splits with, in order
                 to guarantee reproducability, defaults to `None`.
@@ -2471,8 +2482,13 @@ class FeatureView:
                 The filters will be also applied in `get_batch_data`.
             data_format: The data format used to save the training dataset,
                 defaults to `"parquet"`-format.
-            coalesce: If true the training dataset data will be coalesced into
-                a single partition before writing. The resulting training dataset
+            coalesce: Applies to Spark materialization only, and is ignored when the
+                training dataset is materialized by the Feature Query Service, which
+                is the usual path on the Python engine for an unsplit,
+                transformation-free Parquet dataset with no transformation context
+                and no user-supplied sink.
+                Where it applies, the training dataset data will be coalesced into a
+                single partition before writing, and the resulting training dataset
                 will be a single file per split. Default False.
             seed: Optionally, define a seed to create the random splits with, in order
                 to guarantee reproducability, defaults to `None`.
