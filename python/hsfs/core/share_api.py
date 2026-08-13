@@ -61,10 +61,13 @@ def _denied_msg(action: str, source_project: str, target_project: str | int) -> 
 
 
 class ShareApi:
-    """Thin REST wrapper for both feature-store-level and feature-group-level shares."""
+    """Thin REST wrapper for both feature-store-level and feature-group-level shares.
 
-    def __init__(self, feature_store_id: int) -> None:
-        self._feature_store_id = feature_store_id
+    Both REST resources are mounted directly on the calling project (e.g.
+    ``/project/{id}/featurestores/share``, no featurestore id in the path) —
+    the backend always resolves "the feature store" from the connected
+    project, since a project has exactly one.
+    """
 
     def _share_feature_store(self, target_project: str | int) -> None:
         """Share the entire feature store with another project.
@@ -81,7 +84,6 @@ class ShareApi:
             "project",
             _client._project_id,
             "featurestores",
-            self._feature_store_id,
             "share",
         ]
         try:
@@ -111,7 +113,6 @@ class ShareApi:
             "project",
             _client._project_id,
             "featurestores",
-            self._feature_store_id,
             "share",
         ]
         try:
@@ -155,7 +156,6 @@ class ShareApi:
             "project",
             _client._project_id,
             "featurestores",
-            self._feature_store_id,
             "share",
             "featuregroups",
             feature_group_id,
@@ -182,7 +182,7 @@ class ShareApi:
         """List the projects this feature store has been shared with.
 
         Returns the ``items`` array from the backend's
-        ``GET /featurestores/{id}/share`` response. Each entry has at
+        ``GET /featurestores/share`` response. Each entry has at
         least ``sharedWithProject`` (with ``name`` / ``id``),
         ``sharedBy``, ``sharedOn``, and ``sharedEntirely`` (true when
         the whole feature store was shared rather than an individual
@@ -200,7 +200,6 @@ class ShareApi:
             "project",
             _client._project_id,
             "featurestores",
-            self._feature_store_id,
             "share",
         ]
         try:
@@ -219,7 +218,7 @@ class ShareApi:
         """List the projects a single feature group has been shared with.
 
         Returns the ``items`` array from the backend's
-        ``GET /featurestores/{id}/share/featuregroups/{fgId}`` response.
+        ``GET /featurestores/share/featuregroups/{fgId}`` response.
         Each entry includes ``sharedWithProject``, ``sharedBy``,
         ``sharedOn``, ``sharedEntirely`` (false when only specific
         columns were shared), and ``features`` (the column whitelist
@@ -240,7 +239,6 @@ class ShareApi:
             "project",
             _client._project_id,
             "featurestores",
-            self._feature_store_id,
             "share",
             "featuregroups",
             feature_group_id,
@@ -271,7 +269,6 @@ class ShareApi:
             "project",
             _client._project_id,
             "featurestores",
-            self._feature_store_id,
             "share",
             "featuregroups",
             feature_group_id,

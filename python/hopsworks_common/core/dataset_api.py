@@ -620,7 +620,7 @@ class DatasetApi:
             "target_project": target_project,
         }
         try:
-            _client._send_request("POST", path_params, query_params=query_params)
+            _client._send_request("DELETE", path_params, query_params=query_params)
         except RestAPIError as e:
             if getattr(e.response, "status_code", None) == 403:
                 raise PermissionError(
