@@ -22,7 +22,7 @@ import fastavro
 import pandas as pd
 import pytest
 from hsfs import feature_group
-from hsfs.core import kafka_engine
+from hsfs.core import kafka_engine, online_ingestion
 from hsfs.core.feature_group_engine import FeatureGroupEngine
 from hsfs.engine import python
 
@@ -254,6 +254,78 @@ class TestCommitDeleteRecordDeprecated:
         # callers written before the online delete and must never reach the online store
         remove_rows.assert_called_once()
         online.assert_not_called()
+
+
+class TestRemoveRowsStorageHeader:
+    """The headers remove_rows puts on the topic, through the public API.
+
+    The tests above assert which legs of the delete run; these assert what the online leg
+    tells the two consumers of the topic, with the real header builder rather than a mock.
+    """
+
+    def _mock_kafka(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        # the engine is not initialized in unit tests, and the delete has to reach the real
+        # python engine for its headers to be the ones under test
+        mocker.patch("hsfs.engine._get_instance", return_value=python.Engine())
+        mocker.patch("hsfs.core.kafka_engine._get_kafka_config", return_value={})
+        mocker.patch("hsfs.core.kafka_engine.Producer")
+        mocker.patch(
+            "hsfs.core.kafka_engine._get_encoder_func",
+            return_value=lambda *a, **kw: b"",
+        )
+        mocker.patch(
+            "hsfs.core.kafka_engine._encode_complex_features",
+            side_effect=lambda writers, row: row,
+        )
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup.get_complex_features", return_value=[]
+        )
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._get_encoded_avro_schema",
+            return_value=AVRO_SCHEMA,
+        )
+        mocker.patch(
+            "hsfs.core.online_ingestion_api.OnlineIngestionApi._create_online_ingestion",
+            return_value=online_ingestion.OnlineIngestion(id=7),
+        )
+        return mocker.patch("hsfs.core.kafka_engine._kafka_produce")
+
+    def _fg(self, mocker):
+        fg = _stream_online_fg(mocker)
+        fg.feature_store = mocker.MagicMock()
+        fg.feature_store.project_id = 234
+        fg._subject = {"id": 1, "schema": AVRO_SCHEMA}
+        fg._online_topic_name = "test_topic"
+        fg._avro_schema = AVRO_SCHEMA
+        return fg
+
+    @pytest.mark.parametrize("storage", ["online", None])
+    def test_tombstone_is_marked_for_online_alone(self, mocker, storage):
+        # Whether the caller asked for online only or let the delete hit both stores, the
+        # offline leg is applied to the table directly, so the tombstone on the topic is for
+        # OnlineFS: the materialization job has to skip it rather than re-insert the key.
+        mocker.patch.object(FeatureGroupEngine, "_commit_delete")
+        produce = self._mock_kafka(mocker)
+        fg = self._fg(mocker)
+
+        fg.remove_rows(pd.DataFrame({"id": [2]}), storage=storage)
+
+        headers = produce.call_args[1]["headers"]
+        assert headers["storage"] == b"online"
+        assert headers["operation"] == b"delete"
+
+    def test_offline_only_delete_produces_nothing_to_the_topic(self, mocker):
+        # An offline delete is a direct table write, so there is no record on the topic to
+        # carry a storage header at all.
+        offline = mocker.patch.object(FeatureGroupEngine, "_commit_delete")
+        produce = self._mock_kafka(mocker)
+        fg = self._fg(mocker)
+
+        fg.remove_rows(pd.DataFrame({"id": [2]}), storage="offline")
+
+        offline.assert_called_once()
+        produce.assert_not_called()
 
 
 class TestDeleteDataframeKafka:
