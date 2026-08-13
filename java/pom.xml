@@ -16,6 +16,7 @@
     </modules>
 
     <properties>
+        <maven-scala-plugin.version>2.15.2</maven-scala-plugin.version>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
         <guava.version>30.1.1-jre</guava.version>
@@ -28,8 +29,8 @@
         <lombok.plugin.version>1.18.20.0</lombok.plugin.version>
         <fasterxml.jackson.databind.version>2.10.0</fasterxml.jackson.databind.version>
         <datasketches.version>6.2.0</datasketches.version>
-        <spark.version>3.5.5.1</spark.version>
-        <hudi.version>1.0.2.1</hudi.version>
+        <spark.version>3.5.5.2</spark.version>
+        <hudi.version>1.0.2.2</hudi.version>
         <awssdk.version>2.10.40</awssdk.version>
         <scala.version>2.12.10</scala.version>
         <scala-short.version>2.12</scala-short.version>
@@ -157,6 +158,15 @@
             <plugin>
                 <groupId>org.scala-tools</groupId>
                 <artifactId>maven-scala-plugin</artifactId>
+                <!-- Pinned because an unversioned plugin is resolved from
+                     Central's metadata on every build, so the build depends on
+                     a network round trip it does not need. Central answered 429
+                     Too Many Requests and the whole reactor failed at
+                     hsfs-parent with "Plugin not found in any plugin
+                     repository", which reads as a missing plugin rather than a
+                     rate limit. 2.15.2 is the last release of this plugin, and
+                     it is what the unversioned resolution selected anyway. -->
+                <version>${maven-scala-plugin.version}</version>
                 <configuration>
                     <scalaVersion>${scala.version}</scalaVersion>
                 </configuration>
@@ -301,7 +311,7 @@
         <profile>
             <id>spark-3.5</id>
             <properties>
-                <spark.version>3.5.5.1</spark.version>
+                <spark.version>3.5.5.2</spark.version>
                 <deequ.version>2.0.7-spark-3.5</deequ.version>
                 <artifact.spark.version>spark3.5</artifact.spark.version>
                 <fasterxml.jackson.databind.version>2.15.2</fasterxml.jackson.databind.version>
