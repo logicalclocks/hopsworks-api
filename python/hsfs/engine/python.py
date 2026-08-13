@@ -43,6 +43,8 @@ from hsfs.core.type_systems import (
 
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     import great_expectations
     from hsfs.constructor.filter import Filter, Logic
     from hsfs.training_dataset import TrainingDataset
@@ -1823,6 +1825,52 @@ class Engine:
     ) -> np.ndarray:
         return feature_dataframe[feature_name].unique()
 
+    @staticmethod
+    def _iter_dataframe_rows(
+        dataframe: pd.DataFrame | pl.DataFrame,
+    ) -> Iterator[dict[str, Any]]:
+        if isinstance(dataframe, pd.DataFrame):
+            # itertuples returns Python NamedTuple; convert to dict to serialize via Avro
+            for row in dataframe.itertuples(index=False):
+                yield row._asdict()
+        else:
+            yield from dataframe.iter_rows(named=True)
+
+    @staticmethod
+    def _produce_row_kafka(
+        feature_group: FeatureGroup | ExternalFeatureGroup,
+        producer: Any,
+        row: dict[str, Any],
+        headers: dict[str, bytes],
+        feature_writers: dict[str, Any],
+        writer: Any,
+        acked: Any,
+        offline_write_options: dict[str, Any],
+    ) -> None:
+        encoded_row = kafka_engine._encode_row(feature_writers, writer, row)
+        key = "".join([str(row[pk]) for pk in sorted(feature_group.primary_key)])
+        kafka_engine._kafka_produce(
+            producer=producer,
+            key=key,
+            encoded_row=encoded_row,
+            topic_name=feature_group._online_topic_name,
+            headers=headers,
+            acked=acked,
+            debug_kafka=offline_write_options.get("debug_kafka", False),
+        )
+
+    @staticmethod
+    def _wait_for_online_ingestion(
+        feature_group: FeatureGroup | ExternalFeatureGroup,
+        offline_write_options: dict[str, Any],
+    ) -> None:
+        if feature_group.online_enabled and offline_write_options.get(
+            "wait_for_online_ingestion", False
+        ):
+            feature_group.get_latest_online_ingestion().wait_for_completion(
+                options=offline_write_options.get("online_ingestion_options", {})
+            )
+
     def _write_dataframe_kafka(
         self,
         feature_group: FeatureGroup | ExternalFeatureGroup,
@@ -1867,21 +1915,12 @@ class Engine:
             )
         )
 
-        if isinstance(dataframe, pd.DataFrame):
-            row_iterator = dataframe.itertuples(index=False)
-        else:
-            row_iterator = dataframe.iter_rows(named=True)
-
         # loop over rows
         for row, online_flag in zip(
-            row_iterator,
+            self._iter_dataframe_rows(dataframe),
             online_flags if online_flags is not None else itertools.repeat(None),
             strict=False,
         ):
-            if isinstance(dataframe, pd.DataFrame):
-                # itertuples returns Python NamedTuple; _convert to dict to serialize via Avro
-                row = row._asdict()
-
             # Set per-row storage header based on the online flag when present.
             row_headers = headers
             if online_flag is not None:
@@ -1894,19 +1933,15 @@ class Engine:
                     "storage": b"1" if online_flag else b"0",
                 }
 
-            encoded_row = kafka_engine._encode_row(feature_writers, writer, row)
-
-            # assemble key
-            key = "".join([str(row[pk]) for pk in sorted(feature_group.primary_key)])
-
-            kafka_engine._kafka_produce(
-                producer=producer,
-                key=key,
-                encoded_row=encoded_row,
-                topic_name=feature_group._online_topic_name,
-                headers=row_headers,
-                acked=acked,
-                debug_kafka=offline_write_options.get("debug_kafka", False),
+            self._produce_row_kafka(
+                feature_group,
+                producer,
+                row,
+                row_headers,
+                feature_writers,
+                writer,
+                acked,
+                offline_write_options,
             )
 
         # make sure producer blocks and everything is delivered
@@ -1915,13 +1950,77 @@ class Engine:
             del producer
             progress_bar.close()
 
-        # wait for online _ingestion
-        if feature_group.online_enabled and offline_write_options.get(
-            "wait_for_online_ingestion", False
-        ):
-            feature_group.get_latest_online_ingestion().wait_for_completion(
-                options=offline_write_options.get("online_ingestion_options", {})
+        self._wait_for_online_ingestion(feature_group, offline_write_options)
+
+    def _delete_dataframe_kafka(
+        self,
+        feature_group: FeatureGroup | ExternalFeatureGroup,
+        dataframe: pd.DataFrame | pl.DataFrame,
+        offline_write_options: dict[str, Any],
+    ) -> None:
+        # Produce an online delete tombstone for every row in `dataframe`.
+        # Each message carries the row encoded against the feature group Avro
+        # schema plus an `operation: delete` header; OnlineFS deletes the row by
+        # primary key and ignores the values. `dataframe` needs to carry only the
+        # primary key: non-key fields are filled with null so the record serializes.
+        fill_values = kafka_engine._online_delete_fill_values(feature_group)
+        n_rows = (
+            None
+            if offline_write_options.get("online_ingestion_options", {}).get(
+                "disable_online_ingestion_count", False
             )
+            else len(dataframe)
+        )
+        producer, headers, feature_writers, writer = kafka_engine._get_kafka_resources(
+            feature_group,
+            offline_write_options,
+            num_entries=n_rows,
+        )
+
+        acked, progress_bar = (
+            kafka_engine._build_ack_callback_and_optional_progress_bar(
+                n_rows=n_rows,
+                is_multi_part_insert=feature_group._multi_part_insert,
+                offline_write_options=offline_write_options,
+            )
+        )
+
+        # `operation` is the only header the delete needs, and it is what both consumers
+        # read: OnlineFsHandler.getRow turns it into Row.delete, and the offline
+        # materialization drops the record so it does not re-insert the deleted key.
+        # No `storage` header: it gates the online leg alone ("0" makes OnlineFS skip the
+        # row, anything else or absent ingests it), so it cannot express "online only" and
+        # setting it to b"1" here only restated the default. The Spark and Java delete
+        # paths never set it either.
+        row_headers = {**headers, "operation": b"delete"}
+
+        for row in self._iter_dataframe_rows(dataframe):
+            # Build the tombstone from the primary key only: null every non-key
+            # field and keep just the caller's primary-key values. Any other columns
+            # in `delete_df` are ignored for the online delete (OnlineFS deletes by
+            # primary key and discards the values), so a stale or unserializable
+            # non-key value cannot fail the tombstone after the offline delete has
+            # already committed.
+            row = {**fill_values, **{pk: row[pk] for pk in feature_group.primary_key}}
+            self._produce_row_kafka(
+                feature_group,
+                producer,
+                row,
+                row_headers,
+                feature_writers,
+                writer,
+                acked,
+                offline_write_options,
+            )
+
+        producer.flush()
+        del producer
+        if progress_bar is not None:
+            progress_bar.close()
+
+        # wait for online ingestion so callers that set wait_for_online_ingestion do not
+        # return before OnlineFS has applied the deletes (matches the insert path).
+        self._wait_for_online_ingestion(feature_group, offline_write_options)
 
     def _run_materialization_job(
         self,
