@@ -714,6 +714,62 @@ class TestFeatureGroup:
         mock_writer.insert.assert_called_once()
         assert fg._multi_part_insert is True
 
+    def test_insert_unknown_storage_is_rejected(self, mocker):
+        # An unknown storage would travel to the Kafka storage header, where neither
+        # consumer recognizes it and both ingest the records, so reject it up front.
+        import pandas as pd
+
+        mock_insert = mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine._insert"
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="test_fg",
+            version=2,
+            featurestore_id=99,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            id=10,
+        )
+
+        with pytest.raises(FeatureStoreException, match="Invalid storage"):
+            fg.insert(pd.DataFrame({"id": [1]}), storage="both")
+
+        mock_insert.assert_not_called()
+
+    def test_insert_stream_feature_group_accepts_storage(self, mocker):
+        # A stream feature group writes both stores from the same topic, so storage selects
+        # the consumer rather than being unsupported.
+        import pandas as pd
+
+        mock_insert = mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine._insert",
+            return_value=(None, None),
+        )
+        mock_engine = mocker.patch("hsfs.engine._get_instance")
+        mock_engine.return_value._convert_to_default_dataframe.side_effect = lambda df: (
+            df
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="test_fg",
+            version=2,
+            featurestore_id=99,
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            id=10,
+            stream=True,
+            online_enabled=True,
+        )
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            fg.insert(pd.DataFrame({"id": [1]}), storage="ONLINE")
+
+        assert mock_insert.call_args[1]["storage"] == "online"
+
     def test_save_feature_list(self, mocker):
         mock_save_metadata = mocker.patch(
             "hsfs.core.feature_group_engine.FeatureGroupEngine._save_feature_group_metadata",
