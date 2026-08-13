@@ -15,12 +15,15 @@
 #
 import importlib
 
+import pytest
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core import constants
 from hsfs import feature_group, storage_connector
 from hsfs.core import kafka_engine, online_ingestion
 
 
 if constants.HAS_CONFLUENT_KAFKA:
+    from confluent_kafka import KafkaError, KafkaException
     from confluent_kafka.admin import PartitionMetadata, TopicMetadata
 
 
@@ -739,3 +742,73 @@ class TestKafkaEngine:
             "projectId": b"234",
             "subjectId": b"823",
         }
+
+    def _acked_error(self, mocker, code, is_multi_part_insert=False):
+        msg = mocker.Mock()
+        msg.topic.return_value = "test_topic"
+        msg.partition.return_value = 3
+        acked, _ = kafka_engine._build_ack_callback_and_optional_progress_bar(
+            n_rows=10,
+            is_multi_part_insert=is_multi_part_insert,
+            offline_write_options={},
+        )
+        with pytest.raises(FeatureStoreException) as error:
+            acked(KafkaError(code), msg)
+        return error.value
+
+    @pytest.mark.skipif(
+        not constants.HAS_CONFLUENT_KAFKA, reason="confluent-kafka not installed"
+    )
+    def test_acked_raises_on_size_error(self, mocker):
+        # Act
+        error = self._acked_error(mocker, KafkaError.MSG_SIZE_TOO_LARGE)
+
+        # Assert
+        assert "test_topic" in str(error)
+        assert "partition 3" in str(error)
+        assert "max.message.bytes" in str(error)
+        # KafkaError is not a BaseException subclass, so it is wrapped to stay catchable
+        assert isinstance(error.__cause__, KafkaException)
+        assert error.__cause__.args[0].code() == KafkaError.MSG_SIZE_TOO_LARGE
+
+    @pytest.mark.skipif(
+        not constants.HAS_CONFLUENT_KAFKA, reason="confluent-kafka not installed"
+    )
+    def test_acked_raises_on_any_delivery_error(self, mocker):
+        # Act
+        error = self._acked_error(mocker, KafkaError.BROKER_NOT_AVAILABLE)
+
+        # Assert
+        # errors other than the two previously special cased codes must not be swallowed
+        assert "BROKER_NOT_AVAILABLE" in str(error)
+        assert "max.message.bytes" not in str(error)
+
+    @pytest.mark.skipif(
+        not constants.HAS_CONFLUENT_KAFKA, reason="confluent-kafka not installed"
+    )
+    def test_acked_raises_without_progress_bar(self, mocker):
+        # Act
+        # a multi part insert has no progress bar to colour; reporting the error must still work
+        error = self._acked_error(
+            mocker, KafkaError.MSG_SIZE_TOO_LARGE, is_multi_part_insert=True
+        )
+
+        # Assert
+        assert "MSG_SIZE_TOO_LARGE" in str(error)
+
+    @pytest.mark.skipif(
+        not constants.HAS_CONFLUENT_KAFKA, reason="confluent-kafka not installed"
+    )
+    def test_acked_updates_progress_bar_on_success(self, mocker):
+        # Arrange
+        acked, progress_bar = (
+            kafka_engine._build_ack_callback_and_optional_progress_bar(
+                n_rows=2, is_multi_part_insert=False, offline_write_options={}
+            )
+        )
+
+        # Act
+        acked(None, mocker.Mock())
+
+        # Assert
+        assert progress_bar.n == 1

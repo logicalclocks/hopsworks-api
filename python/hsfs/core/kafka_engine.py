@@ -15,12 +15,14 @@
 #
 from __future__ import annotations
 
+import contextlib
 import json
 from datetime import datetime, timezone
 from io import BytesIO
 from typing import TYPE_CHECKING, Any, Literal
 
 from hopsworks_common import client
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core.constants import (
     HAS_AVRO,
     HAS_CONFLUENT_KAFKA,
@@ -41,7 +43,13 @@ if HAS_PANDAS:
     import pandas as pd
 
 if HAS_CONFLUENT_KAFKA:
-    from confluent_kafka import Consumer, KafkaError, Producer, TopicPartition
+    from confluent_kafka import (
+        Consumer,
+        KafkaError,
+        KafkaException,
+        Producer,
+        TopicPartition,
+    )
 
 if HAS_FAST_AVRO:
     from fastavro import schemaless_writer
@@ -378,18 +386,51 @@ def _build_ack_callback_and_optional_progress_bar(
     else:
         progress_bar = None
 
-    def acked(err: Exception, msg: Any) -> None:
+    def acked(err: KafkaError | None, msg: Any) -> None:
         if err is not None:
             if offline_write_options.get("debug_kafka", False):
                 print(f"Failed to deliver message: {str(msg)}: {str(err)}")
-            if err.code() in [
-                KafkaError.TOPIC_AUTHORIZATION_FAILED,
-                KafkaError._MSG_TIMED_OUT,
-            ]:
+            if progress_bar is not None:
                 progress_bar.colour = "RED"
-                raise err  # Stop producing and show error
+            raise _delivery_error(err, msg)
         # update progress bar for each msg
         if not is_multi_part_insert:
             progress_bar.update()
 
     return acked, progress_bar
+
+
+def _delivery_error(err: KafkaError, msg: Any) -> FeatureStoreException:
+    """Build the exception raised when Kafka fails to deliver a produced row.
+
+    Any delivery error means the row never reached the topic, so the online feature store will
+    never ingest it.
+    Reporting it is what keeps a partially delivered insert from looking like a successful one.
+
+    `confluent_kafka.KafkaError` is an odd type to raise: CPython accepts it as the operand of
+    `raise`, yet it does not subclass `BaseException`, so `except Exception` never matches it and
+    only an explicit `except KafkaError` would.
+    Raising it directly would therefore slip past a caller's error handling, so it is wrapped in a
+    `KafkaException` cause, which is an ordinary exception and keeps the original error code
+    reachable for callers that need to branch on it.
+    """
+    location = ""
+    # The message handle may be unusable; the error itself is still worth reporting.
+    with contextlib.suppress(AttributeError, TypeError):
+        location = f" to topic '{msg.topic()}' partition {msg.partition()}"
+
+    hint = ""
+    if err.code() in (KafkaError.MSG_SIZE_TOO_LARGE, KafkaError.RECORD_LIST_TOO_LARGE):
+        hint = (
+            " The row exceeds the maximum message size accepted by the broker."
+            " Reduce the size of the row's values, or raise the topic's 'max.message.bytes'"
+            " together with the producer's 'message.max.bytes'"
+            " (via the 'kafka_producer_config' write option)."
+        )
+
+    exception = FeatureStoreException(
+        f"Failed to deliver row{location}: {err!s}.{hint}"
+        " The insert is incomplete - this row was not written to the online feature store."
+    )
+    exception.__cause__ = KafkaException(err)
+    return exception
