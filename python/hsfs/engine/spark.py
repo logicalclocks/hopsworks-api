@@ -668,7 +668,10 @@ class Engine:
 
         query = (
             serialized_df.withColumn(
-                "headers", self._get_headers(feature_group, options=write_options)
+                # No storage header: the topic is the only source of both stores here, so
+                # OnlineFS and the offline materialization job both read these records.
+                "headers",
+                self._get_headers(feature_group, options=write_options),
             )
             .writeStream.outputMode(output_mode)
             .format(self.KAFKA_FORMAT)
@@ -824,6 +827,10 @@ class Engine:
                     else dataframe.count(),
                     write_options,
                     operation=operation,
+                    # Spark writes the offline leg straight to the table, so these records
+                    # are for OnlineFS alone: without the header the materialization job
+                    # would write them to the offline table a second time.
+                    storage=kafka_engine._STORAGE_ONLINE,
                 ),
             )
             .write.format(self.KAFKA_FORMAT)
@@ -874,12 +881,13 @@ class Engine:
         num_entries: int | None = None,
         options: dict | None = None,
         operation: str | None = None,
+        storage: str | None = None,
     ) -> array:
         return array(
             *[
                 struct(lit(key).alias("key"), lit(value).alias("value"))
                 for key, value in kafka_engine._get_headers(
-                    feature_group, num_entries, options, operation
+                    feature_group, num_entries, options, operation, storage
                 ).items()
             ]
         )

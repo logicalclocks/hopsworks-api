@@ -4484,7 +4484,7 @@ class FeatureGroup(FeatureGroupBase):
             operation: Apache Hudi operation type `"insert"` or `"upsert"`.
             storage:
                 Overwrite default behaviour, write to offline storage only with `"offline"` or online only with `"online"`.
-                If the streaming APIs are enabled, specifying the storage option is not supported.
+                On a stream feature group the records reach both stores through the same Kafka topic, so the choice travels with them and selects which store ingests them: `"online"` does not start the offline materialization job, and `"offline"` does not run an online ingestion.
             write_options:
                 Additional write options as key-value pairs.
 
@@ -4549,11 +4549,15 @@ class FeatureGroup(FeatureGroupBase):
             hopsworks.client.exceptions.DataValidationException:
                 If data validation fails and the expectation suite `validation_ingestion_policy` is set to `STRICT`.
                 Data is NOT ingested.
+            hopsworks.client.exceptions.FeatureStoreException: If `storage` is not one of `"offline"`, `"online"` or unset.
         """
-        if storage and self.stream:
-            warnings.warn(
-                "Specifying the storage option is not supported if the streaming APIs are enabled",
-                stacklevel=1,
+        storage_normalized = storage.lower() if storage is not None else None
+        if storage_normalized is not None and storage_normalized not in (
+            "offline",
+            "online",
+        ):
+            raise FeatureStoreException(
+                f"Invalid storage: {storage}. Use 'offline', 'online', or leave it unset."
             )
 
         feature_dataframe = engine._get_instance()._convert_to_default_dataframe(
@@ -4580,7 +4584,6 @@ class FeatureGroup(FeatureGroupBase):
             # New delta FG allow for change data capture query
             write_options["delta.enableChangeDataFeed"] = "true"
 
-        storage_normalized = storage.lower() if storage is not None else None
         job, ge_report = self._feature_group_engine._insert(
             self,
             feature_dataframe=feature_dataframe,

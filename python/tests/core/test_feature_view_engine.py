@@ -1920,6 +1920,127 @@ class TestFeatureViewEngine:
             assert td_feature.type == expected_td_feature.type
             assert td_feature.label == expected_td_feature.label
 
+    def test_compute_training_dataset_statistics_disabled_skips_read(self, mocker):
+        # The split read-back exists only to feed statistics.
+        # With statistics_config=False the previous behaviour still re-read
+        # every split of the freshly written dataset and then discarded the
+        # dataframes, which on a large training dataset is the most expensive
+        # step of creation.
+        # The gate has to suppress the read, not only the statistics call.
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
+        )
+        mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_schema",
+            return_value=[],
+        )
+        mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine._get_batch_query")
+        mocker.patch("hsfs.engine._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        mock_td_engine = mocker.patch(
+            "hsfs.core.training_dataset_engine.TrainingDatasetEngine"
+        )
+        mock_statistics_engine = mocker.patch(
+            "hsfs.core.statistics_engine.StatisticsEngine"
+        )
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=query,
+        )
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={},
+            statistics_config=False,
+        )
+
+        # Act
+        fv_engine._compute_training_dataset(
+            feature_view_obj=fv,
+            user_write_options={},
+            training_dataset_obj=td,
+            training_dataset_version=None,
+        )
+
+        # Assert
+        assert mock_td_engine.return_value._read.call_count == 0
+        assert (
+            mock_statistics_engine.return_value._compute_and_save_statistics.call_count
+            == 0
+        )
+        assert (
+            mock_statistics_engine.return_value._compute_and_save_split_statistics.call_count
+            == 0
+        )
+
+    def test_compute_training_dataset_statistics_enabled_reads(self, mocker):
+        # The twin of the disabled test: the gate must not over-suppress.
+        # With statistics enabled (the default) the read-back and the statistics
+        # computation both still happen on the Spark engine.
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
+        )
+        mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_schema",
+            return_value=[],
+        )
+        mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine._get_batch_query")
+        mocker.patch("hsfs.engine._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        mock_td_engine = mocker.patch(
+            "hsfs.core.training_dataset_engine.TrainingDatasetEngine"
+        )
+        mock_fv_engine_compute_statistics = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._compute_training_dataset_statistics"
+        )
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=query,
+        )
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={},
+        )
+
+        # Act
+        fv_engine._compute_training_dataset(
+            feature_view_obj=fv,
+            user_write_options={},
+            training_dataset_obj=td,
+            training_dataset_version=None,
+        )
+
+        # Assert
+        assert mock_td_engine.return_value._read.call_count == 1
+        assert mock_fv_engine_compute_statistics.call_count == 1
+
     def test_compute_training_dataset_td_transformations(self, mocker):
         # Arrange
         feature_store_id = 99

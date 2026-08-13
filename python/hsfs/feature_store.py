@@ -1907,8 +1907,11 @@ class FeatureStore:
             description: A string describing the contents of the training dataset to improve discoverability for Data Scientists.
             data_format: The data format used to save the training dataset.
             coalesce:
-                If true the training dataset data will be coalesced into a single partition before writing.
-                The resulting training dataset will be a single file per split.
+                Applies to Spark materialization only, and is ignored when the training dataset is
+                materialized by the Feature Query Service.
+                Where it applies, the training dataset data will be coalesced into a single
+                partition before writing, and the resulting training dataset will be a single file
+                per split.
             storage_connector:
                 Storage connector defining the sink location for the training dataset, defaults to `None`, and materializes training dataset on HopsFS. **[DEPRECATED: Use `data_source` instead.]**
             splits:
