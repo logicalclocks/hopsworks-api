@@ -55,8 +55,8 @@
         </aside>
         <h2>
             <span class="text">350 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">303<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">47<span class="text"> missing</span></button>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">306<span class="text"> run</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">44<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">4<span class="text"> excluded</span></button>
         </h2>
         <p class="text">
@@ -65,7 +65,7 @@
             <a id="nextFileLink" class="nav" href="z_8e412babf0efab20_feature_logging_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.15.4">coverage.py v7.15.4</a>,
-            created at 2026-08-12 15:39 +0000
+            created at 2026-08-13 13:16 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -470,15 +470,15 @@
     <p class="pln"><span class="n"><a id="t388" href="#t388">388</a></span><span class="t">        <span class="com"># Produce online delete tombstones to the feature group topic; OnlineFS</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t389" href="#t389">389</a></span><span class="t">        <span class="com"># applies a RonDB delete by primary key. The offline delete is handled</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t390" href="#t390">390</a></span><span class="t">        <span class="com"># separately by `_commit_delete`.</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t391" href="#t391">391</a></span><span class="t">        <span class="nam">online_engine</span> <span class="op">=</span> <span class="nam">engine</span><span class="op">.</span><span class="nam">_get_instance</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t392" href="#t392">392</a></span><span class="t">        <span class="key">if</span> <span class="nam">isinstance</span><span class="op">(</span><span class="nam">online_engine</span><span class="op">,</span> <span class="nam">engine</span><span class="op">.</span><span class="nam">spark</span><span class="op">.</span><span class="nam">Engine</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t391" href="#t391">391</a></span><span class="t">        <span class="nam">online_engine</span> <span class="op">=</span> <span class="nam">engine</span><span class="op">.</span><span class="nam">_get_instance</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t392" href="#t392">392</a></span><span class="t">        <span class="key">if</span> <span class="nam">isinstance</span><span class="op">(</span><span class="nam">online_engine</span><span class="op">,</span> <span class="nam">engine</span><span class="op">.</span><span class="nam">spark</span><span class="op">.</span><span class="nam">Engine</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t393" href="#t393">393</a></span><span class="t">            <span class="nam">online_engine</span><span class="op">.</span><span class="nam">_delete_online_dataframe</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis mis2 show_mis"><span class="n"><a id="t394" href="#t394">394</a></span><span class="t">                <span class="nam">feature_group</span><span class="op">,</span> <span class="nam">delete_df</span><span class="op">,</span> <span class="nam">write_options</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis mis2 show_mis"><span class="n"><a id="t395" href="#t395">395</a></span><span class="t">            <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t396" href="#t396">396</a></span><span class="t">        <span class="key">else</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t397" href="#t397">397</a></span><span class="t">            <span class="nam">online_engine</span><span class="op">.</span><span class="nam">_delete_dataframe_kafka</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t398" href="#t398">398</a></span><span class="t">                <span class="nam">feature_group</span><span class="op">,</span> <span class="nam">delete_df</span><span class="op">,</span> <span class="nam">write_options</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t399" href="#t399">399</a></span><span class="t">            <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t397" href="#t397">397</a></span><span class="t">            <span class="nam">online_engine</span><span class="op">.</span><span class="nam">_delete_dataframe_kafka</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t398" href="#t398">398</a></span><span class="t">                <span class="nam">feature_group</span><span class="op">,</span> <span class="nam">delete_df</span><span class="op">,</span> <span class="nam">write_options</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t399" href="#t399">399</a></span><span class="t">            <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t400" href="#t400">400</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t401" href="#t401">401</a></span><span class="t">    <span class="op">@</span><span class="nam">staticmethod</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t402" href="#t402">402</a></span><span class="t">    <span class="key">def</span> <span class="nam">_commit_delete</span><span class="op">(</span><span class="nam">feature_group</span><span class="op">,</span> <span class="nam">delete_df</span><span class="op">,</span> <span class="nam">write_options</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
@@ -1312,7 +1312,7 @@
             <a class="nav" href="z_8e412babf0efab20_feature_logging_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.15.4">coverage.py v7.15.4</a>,
-            created at 2026-08-12 15:39 +0000
+            created at 2026-08-13 13:16 +0000
         </p>
     </div>
 </footer>
