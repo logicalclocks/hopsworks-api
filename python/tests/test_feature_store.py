@@ -233,6 +233,77 @@ class TestFeatureStore:
         # Assert
         assert fg_res.bucket_index == {"field": "cc_num", "num_buckets": 16}
 
+    def test_create_feature_group_passes_not_check_duplicate(
+        self, backend_fixtures, mocker
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
+        json = backend_fixtures["feature_store"]["get"]["response"]
+        fs = feature_store_mod.FeatureStore.from_response_json(json)
+
+        # Act
+        fg_res = fs.create_feature_group(
+            "test_feature_group_name",
+            version=1,
+            primary_key=["cc_num"],
+            not_check_duplicate=True,
+        )
+
+        # Assert
+        assert fg_res._not_check_duplicate is True
+
+    def test_get_or_create_feature_group_passes_not_check_duplicate(
+        self, backend_fixtures, mocker
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup._has_deltalake", return_value=True
+        )
+        mocker.patch(
+            "hsfs.core.feature_group_api.FeatureGroupApi._get", return_value=None
+        )
+        json = backend_fixtures["feature_store"]["get"]["response"]
+        fs = feature_store_mod.FeatureStore.from_response_json(json)
+
+        # Act
+        fg_res = fs.get_or_create_feature_group(
+            "test_feature_group_name",
+            version=1,
+            primary_key=["cc_num"],
+            not_check_duplicate=True,
+        )
+
+        # Assert
+        assert fg_res._not_check_duplicate is True
+
+    def test_check_feature_group_duplicates_delegates_to_api(
+        self, backend_fixtures, mocker
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        json = backend_fixtures["feature_store"]["get"]["response"]
+        fs = feature_store_mod.FeatureStore.from_response_json(json)
+        fg = feature_group_mod.FeatureGroup.from_response_json(
+            backend_fixtures["feature_group"]["get"]["response"]
+        )
+        mock_check = mocker.patch(
+            "hsfs.core.feature_group_api.FeatureGroupApi._check_duplicates",
+            return_value={"status": "NOT_CHECKED", "suspected_duplicates": False},
+        )
+
+        # Act
+        result = fs.check_feature_group_duplicates(fg, recheck=True)
+
+        # Assert
+        mock_check.assert_called_once_with(fg, recheck=True)
+        assert result == {"status": "NOT_CHECKED", "suspected_duplicates": False}
+
     def test_create_feature_group_normalizes_tags(self, backend_fixtures, mocker):
         # Arrange
         from hopsworks_common.tag import Tag

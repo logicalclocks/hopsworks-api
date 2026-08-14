@@ -794,6 +794,7 @@ class FeatureStore:
         clustered_by: list[str] | None = None,
         bucket_index: dict[str, Any] | None = None,
         sort_order: list[str] | None = None,
+        not_check_duplicate: bool = False,
     ) -> feature_group.FeatureGroup:
         """Create a feature group metadata object.
 
@@ -975,6 +976,9 @@ class FeatureStore:
                 A persistent Iceberg write sort order, e.g. `["merchant_id asc", "amount desc nulls last"]`; ICEBERG only.
                 New writes are range-distributed and sorted on these fields, and [`FeatureGroup.optimize`][hsfs.feature_group.FeatureGroup.optimize] with `strategy="sort"` rewrites existing files to the order.
                 Mutually exclusive with `zorder_by` (the two prescribe conflicting file layouts); defaults to `None`.
+            not_check_duplicate:
+                If `True`, skip the automatic duplicate feature group check that Hopsworks runs when the feature group is saved.
+                The stored result of that check is available through [`FeatureGroupBase.check_duplicates`][hsfs.feature_group.FeatureGroupBase.check_duplicates].
 
         Returns:
             The feature group metadata object.
@@ -1032,6 +1036,7 @@ class FeatureStore:
             clustered_by=clustered_by,
             bucket_index=bucket_index,
             sort_order=sort_order,
+            not_check_duplicate=not_check_duplicate,
         )
         feature_group_object.feature_store = self
         return feature_group_object
@@ -1083,6 +1088,7 @@ class FeatureStore:
         clustered_by: list[str] | None = None,
         bucket_index: dict[str, Any] | None = None,
         sort_order: list[str] | None = None,
+        not_check_duplicate: bool = False,
     ) -> (
         feature_group.FeatureGroup
         | feature_group.ExternalFeatureGroup
@@ -1257,6 +1263,9 @@ class FeatureStore:
                 A persistent Iceberg write sort order, e.g. `["merchant_id asc", "amount desc nulls last"]`; ICEBERG only.
                 New writes are range-distributed and sorted on these fields, and [`FeatureGroup.optimize`][hsfs.feature_group.FeatureGroup.optimize] with `strategy="sort"` rewrites existing files to the order.
                 Mutually exclusive with `zorder_by` (the two prescribe conflicting file layouts); defaults to `None`.
+            not_check_duplicate:
+                If `True`, skip the automatic duplicate feature group check that Hopsworks runs when the feature group is saved.
+                The stored result of that check is available through [`FeatureGroupBase.check_duplicates`][hsfs.feature_group.FeatureGroupBase.check_duplicates].
 
         Returns:
             The feature group metadata object.
@@ -1318,6 +1327,7 @@ class FeatureStore:
                 clustered_by=clustered_by,
                 bucket_index=bucket_index,
                 sort_order=sort_order,
+                not_check_duplicate=not_check_duplicate,
             )
         elif sink_job is not None:
             # The feature group already exists: attach it to a shared multi-table
@@ -1343,6 +1353,48 @@ class FeatureStore:
                 )
         feature_group_object.feature_store = self
         return feature_group_object
+
+    @public
+    @usage._method_logger
+    def check_feature_group_duplicates(
+        self,
+        feature_group: (
+            feature_group.FeatureGroup
+            | feature_group.ExternalFeatureGroup
+            | feature_group.SpineGroup
+        ),
+        recheck: bool = False,
+    ) -> dict:
+        """Retrieve the result of the duplicate feature group check for a feature group.
+
+        When a feature group is created, Hopsworks asynchronously checks whether it duplicates features of existing feature groups and stores the result.
+        This method returns that stored result as a dictionary with keys such as `status`, `suspected_duplicates`, and `matches`.
+        It is the feature-store-level equivalent of [`FeatureGroupBase.check_duplicates`][hsfs.feature_group.FeatureGroupBase.check_duplicates].
+
+        Example:
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            # get the Feature Group instance
+            fg = fs.get_feature_group("electricity_prices", version=1)
+
+            # get the stored duplicate check result
+            result = fs.check_feature_group_duplicates(fg)
+            ```
+
+        Parameters:
+            feature_group: The feature group to fetch the duplicate check result for.
+            recheck: If `True`, run a fresh synchronous platform-intelligence check instead of returning the stored result.
+
+        Returns:
+            The duplicate check result.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+            hopsworks.client.exceptions.PlatformIntelligenceException: If platform intelligence is not configured on the cluster, the duplicate check is disabled, or the check failed.
+        """
+        return self._feature_group_api._check_duplicates(feature_group, recheck=recheck)
 
     @public
     @usage._method_logger
