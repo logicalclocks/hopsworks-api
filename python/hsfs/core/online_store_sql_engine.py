@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import re
@@ -102,11 +103,28 @@ class OnlineStoreSqlClient:
 
         self._async_task_thread = None
 
+    def _close(self) -> None:
+        """Release the online store connection pool held by this client.
+
+        Idempotent, and safe to call on a client that never initialised serving.
+
+        Callers have to do this explicitly, because `__del__` cannot be relied on
+        here: the task thread is constructed with bound methods of this object,
+        so while it runs it keeps this object reachable, and a client that is
+        reachable is never finalized. Each pool holds one connection per feature
+        group in the view, so a process that initialises serving repeatedly can
+        exhaust the online store's `max_connections`.
+        """
+        thread = self._async_task_thread
+        if thread is not None:
+            thread._shutdown()
+            self._async_task_thread = None
+
     def __del__(self):
-        # Safely stop the async task thread.
-        # The connection pool will be closed during garbage collection by aiomysql.
-        if self._async_task_thread.is_alive():
-            self._async_task_thread._stop()
+        # Best effort only. See _close: this object is normally still reachable
+        # from its own task thread, so this does not run while that thread lives.
+        with contextlib.suppress(Exception):
+            self._close()
 
     def _fetch_prepared_statements(
         self,

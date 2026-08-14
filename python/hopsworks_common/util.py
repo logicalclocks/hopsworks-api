@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import inspect
 import itertools
 import json
@@ -961,12 +962,25 @@ class AsyncTask:
         return self._requires_connection_pool
 
 
+SHUTDOWN_TIMEOUT_S = 15
+
+
+async def _noop_task() -> None:
+    """Body for the sentinel task that unblocks a task thread's queue."""
+
+
 class AsyncTaskThread(threading.Thread):
     """Generic thread class that can be used to run async tasks in a separate thread.
 
     The thread will create its own event loop and run submitted tasks in that loop.
 
     The thread also store and fetches a connection pool that can be used by the async tasks.
+
+    Call `_shutdown()` when done with the thread.
+    The owner is reachable from the running thread through the callbacks it is
+    constructed with, and a running thread is a garbage collection root, so an
+    owner that relies on its own `__del__` to shut this down is never collected
+    and the thread and its connection pool live for the life of the process.
     """
 
     def __init__(
@@ -1028,11 +1042,57 @@ class AsyncTaskThread(threading.Thread):
                 task.result = e
                 task.event.set()
 
-    def _stop(self):
-        """Stop the thread and close the event loop."""
+    async def _close_connection_pool(self, pool) -> None:
+        """Close every connection the pool holds, free and checked out alike."""
+        pool.close()
+        await pool.wait_closed()
+
+    def _shutdown(self, timeout: float = SHUTDOWN_TIMEOUT_S) -> bool:
+        """Close the connection pool, end the event loop and let the thread exit.
+
+        Returns whether the event loop reached a closed state within the timeout.
+
+        Not named `_stop`.
+        `threading.Thread._stop` is the internal method CPython calls from
+        `_wait_for_tstate_lock` to mark a thread finished, so a subclass that
+        defines `_stop` breaks `is_alive()` and `join()` for every instance.
+
+        The pool is closed first and from inside the loop.
+        `aiomysql.Connection.close()` only calls `transport.close()`, and a
+        selector transport does not touch the socket itself: it schedules
+        `_call_connection_lost` on the loop, which is where the socket is closed.
+        Stopping the loop first leaves every connection open on the server.
+
+        A sentinel task follows the stop flag because `_execute_task` blocks on
+        `queue.Queue.get()`, so the loop cannot service anything until a task
+        arrives and the flag alone would leave the thread blocked forever.
+
+        The loop is never closed from here. `run()` closes it in a `finally`, and
+        closing a loop that is still running raises `RuntimeError`.
+        """
+        loop = self._event_loop
+        if loop.is_closed():
+            return True
+
+        pool = self._connection_pool
+        if pool is not None:
+            closing = AsyncTask(
+                task_function=self._close_connection_pool, task_args=(pool,)
+            )
+            self.task_queue.put(closing)
+            closing.event.wait(timeout=timeout)
+            self._connection_pool = None
+
         self.stop_event.set()
-        self._event_loop.stop()
-        self._event_loop.close()
+        self.task_queue.put(AsyncTask(task_function=_noop_task))
+        # Loop may already be closing under us; the wait below still settles it.
+        with contextlib.suppress(RuntimeError):
+            loop.call_soon_threadsafe(loop.stop)
+
+        deadline = time.monotonic() + timeout
+        while not loop.is_closed() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        return loop.is_closed()
 
     def run(self):
         """Execute the async tasks for the queue."""
