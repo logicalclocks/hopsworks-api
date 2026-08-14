@@ -1644,12 +1644,18 @@ def test_function():
 class TestUdfSourceExtraction:
     """Source extraction for UDFs defined inside another function.
 
-    `inspect.getsource` locates a function by scanning backwards from its first
-    line for something that opens a block, and returns the block it lands on.
-    With several same-shaped UDFs defined in a loop inside an enclosing
-    function, that scan could land on the enclosing function and return its
-    whole body, which then broke wrapper generation with an IndentationError
-    naming a line in a string nobody could see.
+    These pin the property the fix guarantees: the extracted source is the UDF
+    and nothing above it, so the imports derived from it cannot carry a fragment
+    of an enclosing block into the generated wrapper.
+
+    They are not a reproduction of the original failure. A decorated function's
+    co_firstlineno is its first decorator line, so `inspect.getsource`'s
+    backwards scan matches immediately and does not reach an enclosing def; the
+    loop shape below does not fail on the old code. What reached the imports in
+    the run that hit this 42 times is still unidentified. The consequence chain
+    is exercised directly by
+    test_imports_never_carry_a_fragment_of_an_enclosing_scope, which feeds the
+    malformed source in rather than relying on the extractor to produce it.
     """
 
     def test_udf_defined_in_a_loop_extracts_only_itself(self):
