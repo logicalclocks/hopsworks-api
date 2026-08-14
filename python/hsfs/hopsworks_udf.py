@@ -422,21 +422,32 @@ class HopsworksUdf:
 
         `inspect.getsource` locates a function by scanning backwards from its
         first line for something that opens a block, and returns whatever block
-        it lands on. Where several same-shaped UDFs are defined in a loop inside
-        an enclosing function, that scan can land on the *enclosing* function and
-        return its entire body.
+        it lands on, so in principle it can return more than the function asked
+        for.
 
-        The consequence is not a bad error message, it is a broken UDF. The
+        What that costs is not a bad error message, it is a broken UDF. The
         returned source is later split on its first "@" to recover the module
-        imports, so an enclosing body contributes everything up to the first
-        decorator, which ends part-way through the enclosing `for` statement.
-        The generated wrapper then fails to compile with
+        imports, so any text ahead of the first decorator is carried into them.
+        Where that text is a fragment of an enclosing block, the generated
+        wrapper fails to compile with
 
             IndentationError: expected an indented block after 'for' statement
 
-        naming a line in a string nobody can see. A run hit this 42 times across
-        four modules while three hand-written reproductions compiled cleanly,
-        because each of those defined a single UDF per loop.
+        naming a line in a string nobody can see. A cluster run hit this 42 times
+        across four modules.
+
+        The route by which enclosing text reached the extracted source in that
+        run has not been identified. A decorated function's co_firstlineno is its
+        first decorator line, so the backwards scan matches on its first look and
+        does not walk up to an enclosing def; UDFs defined in a loop, multi-line
+        decorators and udf(...)(fn) registration were all tried and none
+        reproduce it. A stale linecache against a file rewritten during the run,
+        or line-number shifts from an import hook that rewrites the AST, are the
+        remaining candidates and are untested.
+
+        Parsing the file and selecting the definition by name, nearest to the
+        function's own first line, cannot return an enclosing scope whatever the
+        route was, which is why the fix stands independently of the diagnosis.
 
         Parsing the file and selecting the definition by name, nearest to the
         function's own first line, cannot land on the enclosing scope. The result
