@@ -1865,8 +1865,34 @@ class TestRonsqlProcessWideAdmission:
             assert live["peak"] == 8
         finally:
             release.set()
+            # Under an 8-slot bound the later waves admitted zero items at begin, so
+            # this also proves the finisher drives their submission rather than
+            # returning a list of Nones (the bug the while-inflight loop had).
             for wave in waves:
-                wave()
+                assert wave() == list(range(40))
+
+    def test_wave_admitted_nothing_at_begin_still_produces_results(self, monkeypatch):
+        import threading as threading_module
+
+        server = make_server()
+        slots = threading_module.BoundedSemaphore(2)
+        monkeypatch.setattr(VectorServer, "_RONSQL_MAX_INFLIGHT", 2, raising=False)
+        monkeypatch.setattr(
+            VectorServer, "_RONSQL_INFLIGHT_SLOTS", slots, raising=False
+        )
+
+        # Exhaust every slot before the wave begins: begin's non-blocking admission
+        # gets nothing, which used to make finish() return [None, None, None].
+        slots.acquire()
+        slots.acquire()
+        finish = server._start_ronsql_tasks(lambda item: item * 2, [1, 2, 3])
+
+        def free_slots_soon():
+            slots.release()
+            slots.release()
+
+        threading_module.Timer(0.2, free_slots_soon).start()
+        assert finish() == [2, 4, 6]
 
     def test_slots_are_released_when_a_task_raises(self):
         server = make_server()

@@ -3061,7 +3061,14 @@ class VectorServer:
         def finish() -> list:
             results: list = [None] * len(items)
             failure: tuple[int, BaseException] | None = None
-            while inflight:
+            # The loop must keep driving while items remain UNSUBMITTED, not only
+            # while futures are in flight: under process-wide contention the
+            # non-blocking begin can admit zero items, and a finisher that only
+            # drained inflight would return a list of Nones without error.
+            while inflight or (failure is None and next_index < len(items)):
+                if not inflight:
+                    submit_while_possible(blocking=True)
+                    continue
                 done, _ = concurrent.futures.wait(
                     inflight, return_when=concurrent.futures.FIRST_COMPLETED
                 )
