@@ -130,3 +130,63 @@ class TestDatasetApiTags:
 
         # Assert
         assert result == {"meta": value}
+
+
+class TestDatasetApiShare:
+    def _patch_client(self, mocker) -> MagicMock:
+        client_instance = MagicMock()
+        client_instance._project_id = 119
+        client_instance._project_name = "my_project"
+        mocker.patch(
+            "hopsworks_common.core.dataset_api.client._get_instance",
+            return_value=client_instance,
+        )
+        return client_instance
+
+    def test_share_sends_post_with_action_share(self, mocker):
+        api = DatasetApi()
+        client_instance = self._patch_client(mocker)
+
+        api.share("Resources/my_dir", "other_project")
+
+        call = client_instance._send_request.call_args_list[0]
+        assert call.args[0] == "POST"
+        assert call.args[1] == ["project", 119, "dataset", "Resources/my_dir"]
+        assert call.kwargs["query_params"] == {
+            "action": "SHARE",
+            "target_project": "other_project",
+            "permission": "READ_ONLY",
+        }
+
+    def test_unshare_sends_delete_with_action_unshare(self, mocker):
+        api = DatasetApi()
+        client_instance = self._patch_client(mocker)
+
+        api.unshare("Resources/my_dir", "other_project")
+
+        call = client_instance._send_request.call_args_list[0]
+        assert call.args[0] == "DELETE"
+        assert call.args[1] == ["project", 119, "dataset", "Resources/my_dir"]
+        assert call.kwargs["query_params"] == {
+            "action": "UNSHARE",
+            "target_project": "other_project",
+        }
+
+    def test_unshare_403_raises_permission_error(self, mocker):
+        api = DatasetApi()
+        client_instance = self._patch_client(mocker)
+        response = MagicMock()
+        response.status_code = 403
+        client_instance._send_request.side_effect = RestAPIError("url", response)
+
+        with pytest.raises(PermissionError, match="Data Owner"):
+            api.unshare("Resources/my_dir", "other_project")
+
+    def test_unshare_empty_target_project_raises_value_error(self, mocker):
+        api = DatasetApi()
+        client_instance = self._patch_client(mocker)
+
+        with pytest.raises(ValueError, match="target_project"):
+            api.unshare("Resources/my_dir", "")
+
+        client_instance._send_request.assert_not_called()

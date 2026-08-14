@@ -19,8 +19,10 @@ import ast
 import copy
 import inspect
 import json
+import linecache
 import logging
 import re
+import textwrap
 import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -411,8 +413,79 @@ class HopsworksUdf:
                 stacklevel=2,
             )
 
-        function_code = inspect.getsource(udf_function)
+        function_code = HopsworksUdf._extract_function_block(udf_function)
         return "\n".join(module_imports) + "\n" + function_code
+
+    @staticmethod
+    def _extract_function_block(udf_function: Callable) -> str:
+        """The source of exactly this function, decorators included and dedented.
+
+        `inspect.getsource` locates a function by scanning backwards from its
+        first line for something that opens a block, and returns whatever block
+        it lands on, so in principle it can return more than the function asked
+        for.
+
+        What that costs is not a bad error message, it is a broken UDF. The
+        returned source is later split on its first "@" to recover the module
+        imports, so any text ahead of the first decorator is carried into them.
+        Where that text is a fragment of an enclosing block, the generated
+        wrapper fails to compile with
+
+            IndentationError: expected an indented block after 'for' statement
+
+        naming a line in a string nobody can see. A cluster run hit this 42 times
+        across four modules.
+
+        The route by which enclosing text reached the extracted source in that
+        run has not been identified. A decorated function's co_firstlineno is its
+        first decorator line, so the backwards scan matches on its first look and
+        does not walk up to an enclosing def; UDFs defined in a loop, multi-line
+        decorators and udf(...)(fn) registration were all tried and none
+        reproduce it. A stale linecache against a file rewritten during the run,
+        or line-number shifts from an import hook that rewrites the AST, are the
+        remaining candidates and are untested.
+
+        Parsing the file and selecting the definition by name, nearest to the
+        function's own first line, cannot return an enclosing scope whatever the
+        route was, which is why the fix stands independently of the diagnosis.
+
+        Parsing the file and selecting the definition by name, nearest to the
+        function's own first line, cannot land on the enclosing scope. The result
+        is dedented so a UDF defined inside a function or a loop yields the same
+        source as one defined at module level.
+        """
+        try:
+            source_file = inspect.getsourcefile(udf_function)
+            source = "".join(linecache.getlines(source_file)) if source_file else ""
+            tree = ast.parse(source)
+        except (OSError, TypeError, SyntaxError, ValueError):
+            # Notebooks and exec'd code have no readable file. The old behaviour
+            # is still the best available answer there.
+            return inspect.getsource(udf_function)
+
+        name = getattr(udf_function, "__name__", None)
+        first_line = getattr(
+            getattr(udf_function, "__code__", None), "co_firstlineno", 0
+        )
+        best = None
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if node.name != name:
+                continue
+            # Decorators come first in the source but not in node.lineno, and the
+            # generated wrapper needs them, so start from the earliest of the two.
+            start = min([d.lineno for d in node.decorator_list] + [node.lineno])
+            distance = abs(start - first_line)
+            if best is None or distance < best[0]:
+                best = (distance, start, node.end_lineno)
+
+        if best is None or best[2] is None:
+            return inspect.getsource(udf_function)
+
+        _, start, end = best
+        block = "".join(source.splitlines(keepends=True)[start - 1 : end])
+        return textwrap.dedent(block)
 
     @staticmethod
     def _parse_function_signature(source_code: str) -> tuple[list[str], str, int, int]:
@@ -505,6 +578,35 @@ class HopsworksUdf:
         return [TransformationFeature(arg, None) for arg in arg_list]
 
     @staticmethod
+    def _select_import_lines(source_code: str) -> str:
+        """The import statements at the top of `source_code`, and nothing else.
+
+        Parsed rather than string-split so a fragment of an enclosing function
+        can never be mistaken for an import. Falls back to a line scan when the
+        source does not parse on its own, which happens for the dedented body
+        of a nested function.
+        """
+        try:
+            tree = ast.parse(source_code)
+        except SyntaxError:
+            lines = []
+            for line in source_code.split("\n"):
+                stripped = line.strip()
+                if stripped.startswith(("import ", "from ")):
+                    lines.append(stripped)
+                elif stripped.startswith(("@", "def ", "async def ")):
+                    break
+            return "\n".join(lines) + ("\n" if lines else "")
+
+        lines = source_code.splitlines()
+        selected = [
+            "\n".join(lines[node.lineno - 1 : node.end_lineno])
+            for node in ast.iter_child_nodes(tree)
+            if isinstance(node, (ast.Import, ast.ImportFrom))
+        ]
+        return "\n".join(selected) + ("\n" if selected else "")
+
+    @staticmethod
     def _format_source_code(source_code: str) -> tuple[str, str]:
         """Function that parses the existing source code to remove statistics parameter and remove all decorators and type hints from the function source code.
 
@@ -517,7 +619,21 @@ class HopsworksUdf:
         arg_list, signature, _, signature_end_line = (
             HopsworksUdf._parse_function_signature(source_code)
         )
-        module_imports = source_code.split("@")[0]
+        # Everything before the first "@" is not "the imports": it is whatever
+        # precedes the first decorator, which is only the imports when the
+        # source contains nothing else. When it contains more — an enclosing
+        # function, a loop — the split keeps a fragment of that too, cut off
+        # wherever the decorator happens to be. A UDF defined inside a `for`
+        # loop produced imports ending in
+        #
+        #     for udf_execution_mode in ["default", "pandas", "python"]:
+        #
+        # with no body, so the generated wrapper failed to compile with
+        # "IndentationError: expected an indented block after 'for' statement",
+        # naming a line in a string the caller never sees. Selecting the import
+        # statements by parsing keeps only what the name promises, and cannot
+        # carry a fragment of anything else.
+        module_imports = HopsworksUdf._select_import_lines(source_code)
 
         # Reconstruct the function signature
         new_signature = (
