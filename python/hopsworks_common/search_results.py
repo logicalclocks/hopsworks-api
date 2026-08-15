@@ -34,6 +34,24 @@ if TYPE_CHECKING:
     from hsml.model import Model
 
 
+def _shared_registry_name(project_name: str | None) -> str | None:
+    """The name to open a model registry with, or None for the connection's own.
+
+    The registry API reads any name it is given as a request for a SHARED registry, and the
+    project's own `Models` dataset is in the list it matches against, so passing the login
+    project's own name matches and marks the registry shared.
+    Every path built from it then addresses `<project>::Models`, which names a dataset shared
+    into the project from elsewhere and does not exist for the project's own.
+    Search hits are in the login project by default, so this is the ordinary case, not an edge one.
+    Mirrors `Project._shared_name`.
+    """
+    try:
+        connected = client._get_instance()._project_name
+    except Exception:
+        return None
+    return project_name if project_name and project_name != connected else None
+
+
 @public("hopsworks.core.search_api.Project")
 class Project:
     """Represents a project associated with a search result."""
@@ -371,6 +389,11 @@ class JobSearchResult(SearchResultItem):
         """
         from hopsworks_common.core import job_api
 
+        # Fail closed, for the reason given on DatasetSearchResult._dataset_api.
+        if self.project is None:
+            raise ValueError(
+                "this search result carries no project, so its job cannot be resolved"
+            )
         return job_api.JobApi(
             project_id=self.project.id, project_name=self.project.name
         ).get_job(self.name)
@@ -493,7 +516,9 @@ class ModelSearchResult(SearchResultItem):
             raise ValueError(
                 "this search result carries no project, so its model cannot be resolved"
             )
-        mr = client._get_connection()._get_model_registry(self.project.name)
+        mr = client._get_connection()._get_model_registry(
+            _shared_registry_name(self.project.name)
+        )
         return mr.get_model(self.name, version=self.version)
 
     def json(self) -> dict:
