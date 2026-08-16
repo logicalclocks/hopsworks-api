@@ -74,7 +74,10 @@ class ModelServing:
         self._project_name = project_name
         self._project_id = project_id
 
-        self._serving_api = serving_api.ServingApi()
+        # Bound to this project, not the connection's: every serving path is
+        # project/<id>/serving, so an unbound API would list and mutate the login project's
+        # deployments through a handle that names another project.
+        self._serving_api = serving_api.ServingApi(project_id, project_name)
 
     @public
     @usage._method_logger
@@ -583,8 +586,10 @@ class ModelServing:
 
         agent_dir = f"{_normalize_upload_dir(upload_dir)}/{name}"
 
-        ds_api = _dataset_api.DatasetApi()
-        env_api = _environment_api.EnvironmentApi()
+        # This project's, not the connection's: the agent's files are uploaded into the project
+        # whose serving is being deployed to, and its environment is built there.
+        ds_api = _dataset_api.DatasetApi(self._project_id, self._project_name)
+        env_api = _environment_api.EnvironmentApi(self._project_id, self._project_name)
 
         requirements_abs = None
         if requirements is not None:

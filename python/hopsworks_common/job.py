@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import warnings
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import humps
 from hopsworks_apigen import public
@@ -31,6 +31,7 @@ from hopsworks_common.job_schedule import JobSchedule
 
 
 if TYPE_CHECKING:
+    from hopsworks_common import tag
     from hopsworks_common.execution import Execution
 
 
@@ -53,6 +54,7 @@ class Job:
         items=None,
         count=None,
         job_schedule=None,
+        description=None,
         **kwargs,
     ):
         self._id = id
@@ -63,6 +65,7 @@ class Job:
         self._creator = creator
         self._executions = executions
         self._href = href
+        self._description = description
         self._job_schedule = (
             JobSchedule.from_response_json(job_schedule)
             if job_schedule
@@ -71,9 +74,32 @@ class Job:
 
         self._execution_engine = execution_engine.ExecutionEngine()
         self._execution_api = execution_api.ExecutionApi()
-        self._execution_engine = execution_engine.ExecutionEngine()
         self._job_api = job_api.JobApi()
         self._alerts_api = alerts_api.AlertsApi()
+        self._project_id = None
+        self._project_name = None
+
+    def _bind_project(self, project_id: int, project_name: str) -> None:
+        """Address the project this job actually belongs to.
+
+        Every handle a Job holds is rebuilt here, not only the job one. Rebinding the job API alone
+        left a job obtained from another project able to update its tags there while starting an
+        execution, manipulating an alert, or opening a URL in the login project instead: same class of
+        defect, one layer down.
+        """
+        self._project_id = project_id
+        self._project_name = project_name
+        self._job_api = job_api.JobApi(project_id=project_id, project_name=project_name)
+        self._execution_api = execution_api.ExecutionApi(project_id=project_id)
+        self._alerts_api = alerts_api.AlertsApi(
+            project_id=project_id, project_name=project_name
+        )
+        # The engine too. It owns the dataset and execution handles that await, stop and log download
+        # go through, so leaving it built against the connection meant a bound job still waited on,
+        # and downloaded logs from, the login project.
+        self._execution_engine = execution_engine.ExecutionEngine(
+            project_id=project_id, project_name=project_name
+        )
 
     @classmethod
     def from_response_json(cls, json_dict):
@@ -124,6 +150,25 @@ class Job:
 
     @public
     @property
+    def description(self):
+        """Description of the job.
+
+        An old server does not send the scalar field; the description then comes from the job configuration.
+        """
+        if self._description is not None:
+            return self._description
+        if isinstance(self._config, dict):
+            return self._config.get("description")
+        return None
+
+    @description.setter
+    def description(self, description: str):
+        # Written into the config too, so the existing save() persists it.
+        self._description = description
+        self._config["description"] = description
+
+    @public
+    @property
     def job_type(self):
         """Type of the job."""
         return self._job_type
@@ -151,12 +196,6 @@ class Job:
     def href(self):
         """The URL of the job in Hopsworks UI, use `get_url` instead."""
         return self._href
-
-    @public
-    @property
-    def config(self):
-        """Configuration for the job."""
-        return self._config
 
     @public
     @usage._method_logger
@@ -598,6 +637,99 @@ class Job:
         """
         return self._alerts_api.create_job_alert(self._name, receiver, status, severity)
 
+    @public
+    @usage._method_logger
+    def add_tag(self, name: str, value: Any) -> None:
+        """Attach a tag to the job.
+
+        A tag consists of a name-value pair.
+        Tag names are unique identifiers across the whole cluster.
+        The value of a tag can be any valid json - primitives, arrays or json objects.
+
+        ```python
+        job.add_tag(name="example_tag", value="42")
+        ```
+
+        Parameters:
+            name: Name of the tag to be added.
+            value: Value of the tag to be added.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        self._job_api._add_tag(self, name, value)
+
+    @public
+    @usage._method_logger
+    def delete_tag(self, name: str) -> None:
+        """Delete a tag attached to the job.
+
+        Parameters:
+            name: Name of the tag to be removed.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        self._job_api._delete_tag(self, name)
+
+    @public
+    def get_tag(self, name: str) -> Any | None:
+        """Get the value of a tag attached to the job.
+
+        Parameters:
+            name: Name of the tag to get.
+
+        Returns:
+            Tag value or `None` if it does not exist.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._job_api._get_tag(self, name)
+
+    @public
+    def get_tags(self) -> dict[str, Any]:
+        """Retrieve all tags attached to the job.
+
+        Returns:
+            Dictionary of tag names and values.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._job_api._get_tags(self)
+
+    @public
+    def get_tag_metadata(self, name: str) -> tag.Tag | None:
+        """Get a tag with its metadata, including the time it was attached.
+
+        Unlike [`Job.get_tag`][hopsworks.job.Job.get_tag], which returns only the tag's value, this returns the [`Tag`][hopsworks.tag.Tag] object, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Parameters:
+            name: Name of the tag to get.
+
+        Returns:
+            The tag object or `None` if it does not exist.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._job_api._get_tags_metadata(self, name).get(name)
+
+    @public
+    def get_tags_metadata(self) -> dict[str, tag.Tag]:
+        """Retrieve all tags attached to the job, with their metadata.
+
+        Unlike [`Job.get_tags`][hopsworks.job.Job.get_tags], which returns only the tag values, this keeps the [`Tag`][hopsworks.tag.Tag] objects, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Returns:
+            Dictionary of tag names to tag objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._job_api._get_tags_metadata(self)
+
     def _update_schedule(self, job_schedule):
         self._job_schedule = self._job_api.create_or_update_schedule_job(
             self._name, job_schedule.to_dict()
@@ -616,6 +748,12 @@ class Job:
     @public
     def get_url(self):
         """Get url to the job in Hopsworks."""
-        _client = client._get_instance()
-        path = "/p/" + str(_client._project_id) + "/jobs/named/" + self.name
+        # The job's own project, so a link to a job from another project opens that job rather than
+        # whatever the login project happens to have under the same name.
+        project_id = (
+            self._project_id
+            if self._project_id is not None
+            else client._get_instance()._project_id
+        )
+        path = "/p/" + str(project_id) + "/jobs/named/" + self.name
         return util._get_hostname_replaced_url(path)

@@ -15,6 +15,7 @@
 #
 
 import json
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -137,3 +138,48 @@ class TestTagsApi:
 
         # Assert
         assert result == {"t": bad_value}
+
+    def test_get_metadata_keeps_tag_objects(self, mocker):
+        # Arrange
+        api = TagsApi(feature_store_id=99, entity_type="featuregroups")
+        response = {
+            "count": 1,
+            "items": [
+                {"name": "meta", "value": "v", "createdOn": 1785474813000},
+            ],
+        }
+        _patch_client(mocker, response)
+
+        # Act
+        result = api._get_metadata(_fg_metadata())
+
+        # Assert
+        assert set(result) == {"meta"}
+        assert result["meta"].value == "v"
+        assert result["meta"].created_on == datetime(
+            2026, 7, 31, 5, 13, 33, tzinfo=timezone.utc
+        )
+
+    def test_get_metadata_by_name_appends_name_to_path(self, mocker):
+        # Arrange
+        api = TagsApi(feature_store_id=99, entity_type="featuregroups")
+        client_instance = _patch_client(mocker, _tags_response("meta", "v"))
+
+        # Act
+        result = api._get_metadata(_fg_metadata(), name="meta")
+
+        # Assert
+        assert result["meta"].name == "meta"
+        path_params = client_instance._send_request.call_args.args[1]
+        assert path_params[-1] == "meta"
+
+    def test_get_metadata_empty_returns_empty_dict(self, mocker):
+        # Arrange
+        api = TagsApi(feature_store_id=99, entity_type="featuregroups")
+        _patch_client(mocker, {"count": 0, "items": []})
+
+        # Act
+        result = api._get_metadata(_fg_metadata())
+
+        # Assert
+        assert result == {}

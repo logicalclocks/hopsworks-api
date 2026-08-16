@@ -24,10 +24,10 @@ import os
 import shutil
 import time
 from concurrent.futures import ThreadPoolExecutor, wait
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from hopsworks_apigen import also_available_as, public
-from hopsworks_common import client, tag, usage, util
+from hopsworks_common import client, decorators, tag, usage, util
 from hopsworks_common.client.exceptions import DatasetException, RestAPIError
 from hopsworks_common.core import dataset, inode
 from tqdm.auto import tqdm
@@ -53,8 +53,40 @@ class Chunk:
     "hsml.core.dataset_api.DatasetApi",
 )
 class DatasetApi:
-    def __init__(self):
+    def __init__(
+        self, project_id: int | None = None, project_name: str | None = None
+    ) -> None:
+        """Datasets of one project.
+
+        Parameters:
+            project_id: Project whose datasets this reads and writes. Defaults to the
+                connection's project. A search result from another authorized project
+                constructs one for that project, since every path here is built as
+                `project/<id>/dataset/...` and would otherwise resolve against the
+                login project.
+            project_name: Name of the same project, used where a path has to be
+                absolute (`/Projects/<name>/...`). Resolved from the connection when
+                omitted.
+        """
         self._log = logging.getLogger(__name__)
+        self._project_id = project_id
+        self._project_name = project_name
+
+    def _pid(self) -> int:
+        """The project to address: the one this instance was built for, or the connection's."""
+        return (
+            self._project_id
+            if self._project_id is not None
+            else client._get_instance()._project_id
+        )
+
+    def _pname(self) -> str:
+        """The project name to address, for the paths that have to be absolute."""
+        return (
+            self._project_name
+            if self._project_name is not None
+            else client._get_instance()._project_name
+        )
 
     DEFAULT_UPLOAD_FLOW_CHUNK_SIZE = 10 * 1024 * 1024
     DEFAULT_UPLOAD_SIMULTANEOUS_UPLOADS = 3
@@ -106,7 +138,7 @@ class DatasetApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "dataset",
             "download",
             "with_auth",
@@ -420,7 +452,7 @@ class DatasetApi:
 
     def _upload_request(self, params, path, file_name, chunk):
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "dataset", "upload", path]
+        path_params = ["project", self._pid(), "dataset", "upload", path]
 
         # Flow configuration params are sent as form data
         _client._send_request(
@@ -437,7 +469,7 @@ class DatasetApi:
             Dataset metadata.
         """
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "dataset", path]
+        path_params = ["project", self._pid(), "dataset", path]
         headers = {"content-type": "application/json"}
         return _client._send_request("GET", path_params, headers=headers)
 
@@ -497,7 +529,7 @@ class DatasetApi:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "dataset", path]
+        path_params = ["project", self._pid(), "dataset", path]
         return _client._send_request("DELETE", path_params)
 
     @public
@@ -564,7 +596,7 @@ class DatasetApi:
         if not target_project:
             raise ValueError("target_project must be a non-empty project name")
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "dataset", path]
+        path_params = ["project", self._pid(), "dataset", path]
         query_params = {
             "action": "SHARE",
             "target_project": target_project,
@@ -577,8 +609,8 @@ class DatasetApi:
                 raise PermissionError(
                     f"Sharing dataset '{path}' with project '{target_project}' "
                     f"requires the Data Owner role in the source project "
-                    f"'{_client._project_name}'. Ask a data owner of "
-                    f"'{_client._project_name}' to run this, or be granted that role."
+                    f"'{self._pname()}'. Ask a data owner of "
+                    f"'{self._pname()}' to run this, or be granted that role."
                 ) from e
             raise
 
@@ -614,7 +646,7 @@ class DatasetApi:
         if not target_project:
             raise ValueError("target_project must be a non-empty project name")
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "dataset", path]
+        path_params = ["project", self._pid(), "dataset", path]
         query_params = {
             "action": "UNSHARE",
             "target_project": target_project,
@@ -626,14 +658,18 @@ class DatasetApi:
                 raise PermissionError(
                     f"Unsharing dataset '{path}' from project '{target_project}' "
                     f"requires the Data Owner role in the source project "
-                    f"'{_client._project_name}'. Ask a data owner of "
-                    f"'{_client._project_name}' to run this, or be granted that role."
+                    f"'{self._pname()}'. Ask a data owner of "
+                    f"'{self._pname()}' to run this, or be granted that role."
                 ) from e
             raise
 
     @public
     @usage._method_logger
-    def mkdir(self, path: str) -> str:
+    def mkdir(
+        self,
+        path: str,
+        tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
+    ) -> str:
         """Create a directory in the Hopsworks Filesystem.
 
         ```python
@@ -644,10 +680,19 @@ class DatasetApi:
         dataset_api = project.get_dataset_api()
 
         directory_path = dataset_api.mkdir("Resources/my_dir")
+
+        # attach tags at creation, e.g. to satisfy a mandatory-tag policy
+        directory_path = dataset_api.mkdir(
+            "my_dataset", tags={"name": "sensitivity", "value": "internal"}
+        )
         ```
 
         Parameters:
             path: Path to directory.
+            tags:
+                Tags to attach to the created top-level dataset, validated before anything is created.
+                A cluster with a mandatory-tag policy for datasets refuses the creation of a top-level dataset without them.
+                Requires a server with dataset tag support; against an older server, create the dataset without tags and attach them afterwards.
 
         Returns:
             Path to the created directory.
@@ -656,7 +701,7 @@ class DatasetApi:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "dataset", path]
+        path_params = ["project", self._pid(), "dataset", path]
         query_params = {
             "action": "create",
             "searchable": "true",
@@ -664,9 +709,22 @@ class DatasetApi:
             "type": "DATASET",
         }
         headers = {"content-type": "application/json"}
-        return _client._send_request(
-            "POST", path_params, headers=headers, query_params=query_params
-        )["attributes"]["path"]
+        # An absent or empty body keeps the endpoint's pre-tags behavior, so old
+        # servers and tag-less calls stay unchanged.
+        data = None
+        if tags:
+            data = json.dumps(tag.Tag._tags_to_dict(tag.Tag._normalize(tags)))
+        response = _client._send_request(
+            "POST", path_params, headers=headers, query_params=query_params, data=data
+        )
+        created = (response.get("attributes") or {}).get("path")
+        if created:
+            return created
+        # A top-level dataset answers with the dataset, whose inode attributes the
+        # create response does not expand, so there is no path to read back. The
+        # requested path is what was created, and the absolute form is what this
+        # method returns for every other path.
+        return f"/Projects/{self._pname()}/{path}"
 
     @public
     @usage._method_logger
@@ -705,7 +763,7 @@ class DatasetApi:
                 )
 
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "dataset", source_path]
+        path_params = ["project", self._pid(), "dataset", source_path]
         query_params = {
             "action": "copy",
             "destination_path": destination_path,
@@ -749,7 +807,7 @@ class DatasetApi:
                 )
 
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "dataset", source_path]
+        path_params = ["project", self._pid(), "dataset", source_path]
         query_params = {
             "action": "move",
             "destination_path": destination_path,
@@ -843,9 +901,7 @@ class DatasetApi:
 
         files = []
         for item in items:
-            files.append(
-                util._convert_to_project_rel_path(item.path, _client._project_name)
-            )
+            files.append(util._convert_to_project_rel_path(item.path, self._pname()))
         return files
 
     @usage._method_logger
@@ -870,7 +926,7 @@ class DatasetApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "dataset",
             path,
         ]
@@ -904,7 +960,7 @@ class DatasetApi:
 
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "dataset",
             "download",
             "with_auth",
@@ -932,7 +988,7 @@ class DatasetApi:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "dataset", remote_path]
+        path_params = ["project", self._pid(), "dataset", remote_path]
         headers = {"content-type": "application/json"}
         query_params = {"action": "PERMISSION", "permissions": permissions}
         return _client._send_request(
@@ -965,7 +1021,7 @@ class DatasetApi:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "dataset", remote_path]
+        path_params = ["project", self._pid(), "dataset", remote_path]
 
         query_params = {"action": action}
 
@@ -1086,7 +1142,7 @@ class DatasetApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "dataset",
             "tags",
             "schema",
@@ -1112,7 +1168,7 @@ class DatasetApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "dataset",
             "tags",
             "schema",
@@ -1139,7 +1195,7 @@ class DatasetApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "dataset",
             "tags",
         ]
@@ -1156,6 +1212,66 @@ class DatasetApi:
         return {
             tag._name: tag._value
             for tag in tag.Tag.from_response_json(
+                _client._send_request("GET", path_params)
+            )
+        }
+
+    @public
+    def get_tag_metadata(self, path: str, name: str) -> tag.Tag | None:
+        """Get a dataset tag with its metadata, including the time it was attached.
+
+        Unlike [`DatasetApi.get_tags`][hopsworks.core.dataset_api.DatasetApi.get_tags], which returns only tag values, this returns the [`Tag`][hopsworks.tag.Tag] object, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Parameters:
+            path: Path of the dataset the tag is attached to.
+            name: Name of the tag to get.
+
+        Returns:
+            The tag object, or `None` if it does not exist.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self.get_tags_metadata(path, name=name).get(name)
+
+    @public
+    @decorators._catch_not_found("hopsworks_common.tag.Tag", fallback_return={})
+    def get_tags_metadata(
+        self, path: str, name: str | None = None
+    ) -> dict[str, tag.Tag]:
+        """Get all tags attached to a dataset, with their metadata.
+
+        Unlike [`DatasetApi.get_tags`][hopsworks.core.dataset_api.DatasetApi.get_tags], which returns only tag values, this keeps the [`Tag`][hopsworks.tag.Tag] objects, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Parameters:
+            path: Path of the dataset to get the tags for.
+            name: Tag name; all tags if omitted.
+
+        Returns:
+            Dictionary of tag names to tag objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            self._pid(),
+            "dataset",
+            "tags",
+        ]
+
+        if name is not None:
+            path_params.append("schema")
+            path_params.append(name)
+        else:
+            path_params.append("all")
+
+        path_params.append(path)
+
+        return {
+            t._name: t
+            for t in tag.Tag.from_response_json(
                 _client._send_request("GET", path_params)
             )
         }

@@ -53,6 +53,26 @@ class ProjectMembersApi:
     to get an instance of this class.
     """
 
+    def __init__(self, project_id: int | None = None) -> None:
+        """Members of one project.
+
+        Parameters:
+            project_id: Project whose members this reads and writes. Defaults to the
+                connection's project. A `Project` object for another authorized project
+                constructs one for that project, since every path here is built as
+                `project/<id>/projectMembers` and would otherwise add and remove members
+                of the login project instead.
+        """
+        self._project_id = project_id
+
+    def _pid(self) -> int:
+        """The project to address: the one this instance was built for, or the connection's."""
+        return (
+            self._project_id
+            if self._project_id is not None
+            else client._get_instance()._project_id
+        )
+
     @public
     def get_members(self) -> list[project_member_mod.ProjectMember]:
         """Get all members of the project.
@@ -74,7 +94,7 @@ class ProjectMembersApi:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "projectMembers"]
+        path_params = ["project", self._pid(), "projectMembers"]
         return project_member_mod.ProjectMember.from_response_json(
             _client._send_request("GET", path_params)
         )
@@ -110,13 +130,13 @@ class ProjectMembersApi:
         }
 
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "projectMembers"]
+        path_params = ["project", self._pid(), "projectMembers"]
         headers = {"content-type": "application/json"}
         body = {
             "projectTeam": [
                 {
                     "projectTeamPK": {
-                        "projectId": _client._project_id,
+                        "projectId": self._pid(),
                         "teamMember": email,
                     },
                     "teamRole": role,
@@ -199,7 +219,7 @@ class ProjectMembersApi:
         """
         role = _normalize_role(role)
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "projectMembers", email]
+        path_params = ["project", self._pid(), "projectMembers", email]
         _client._send_request("POST", path_params, data={"role": role})
         return self._find_member(email)
 
@@ -228,6 +248,6 @@ class ProjectMembersApi:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if a data scientist tries to remove someone other than themselves.
         """
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "projectMembers", email]
+        path_params = ["project", self._pid(), "projectMembers", email]
         query_params = {"deleteHomeDir": "true" if delete_home_dir else "false"}
         _client._send_request("DELETE", path_params, query_params=query_params)

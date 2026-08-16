@@ -949,6 +949,14 @@ class ModelEngine:
         """
         return self._model_api._get_tags(model_instance)
 
+    def _get_tag_metadata(self, model_instance, name):
+        """Get the tag with a certain name as a Tag object, or None if it does not exist."""
+        return self._model_api._get_tags_metadata(model_instance, name).get(name)
+
+    def _get_tags_metadata(self, model_instance):
+        """Get all tags for a model as Tag objects."""
+        return self._model_api._get_tags_metadata(model_instance)
+
     def _get_feature_view_provenance(
         self, model_instance
     ) -> explicit_provenance.Links | None:

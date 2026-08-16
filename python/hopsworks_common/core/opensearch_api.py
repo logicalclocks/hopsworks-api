@@ -55,8 +55,33 @@ class OPENSEARCH_CONFIG:
     "hsfs.core.opensearch_api.OpenSearchApi",
 )
 class OpenSearchApi:
-    def __init__(self) -> None:
+    def __init__(
+        self, project_id: int | None = None, project_name: str | None = None
+    ) -> None:
+        """OpenSearch access for one project.
+
+        Parameters:
+            project_id: The project this handle addresses; the connection's project if omitted.
+            project_name: Name of the same project, which index names are prefixed with. Resolved
+                from the connection when omitted.
+        """
         self._variable_api: VariableApi = VariableApi()
+        self._project_id = project_id
+        self._project_name = project_name
+
+    def _pid(self) -> int:
+        return (
+            self._project_id
+            if self._project_id is not None
+            else client._get_instance()._project_id
+        )
+
+    def _pname(self) -> str:
+        return (
+            self._project_name
+            if self._project_name is not None
+            else client._get_instance()._project_name
+        )
 
     def _get_opensearch_url(self) -> str:
         if client._is_external():
@@ -84,7 +109,7 @@ class OpenSearchApi:
             A valid opensearch index name.
         """
         _client = client._get_instance()
-        return (_client._project_name + "_" + index).lower()
+        return (self._pname() + "_" + index).lower()
 
     @public
     @usage._method_logger
@@ -134,7 +159,7 @@ class OpenSearchApi:
         """
         _client = client._get_instance()
         # Do not use feature store id for now since the backend is not yet updated to use it.
-        path_params = ["elastic", "jwt", _client._project_id]
+        path_params = ["elastic", "jwt", self._pid()]
 
         headers = {"content-type": "application/json"}
         return _client._send_request("GET", path_params, headers=headers)["token"]

@@ -20,6 +20,7 @@ import warnings
 from hsfs import engine, training_dataset_feature
 from hsfs.constructor import query
 from hsfs.core import (
+    keywords_api,
     tags_api,
     training_dataset_api,
 )
@@ -37,6 +38,9 @@ class TrainingDatasetEngine:
             feature_store_id
         )
         self._tags_api = tags_api.TagsApi(feature_store_id, self.ENTITY_TYPE)
+        self._keywords_api = keywords_api.KeywordsApi(
+            feature_store_id, self.ENTITY_TYPE
+        )
 
     def _save(self, training_dataset, features, user_write_options):
         if isinstance(features, query.Query):
@@ -158,6 +162,37 @@ class TrainingDatasetEngine:
             training_dataset: The training dataset to read tags from.
         """
         return self._tags_api._get(training_dataset)
+
+    def _get_tag_metadata(self, training_dataset, name):
+        """Get the tag with a certain name as a Tag object, or None if it does not exist."""
+        return self._tags_api._get_metadata(training_dataset, name).get(name)
+
+    def _get_tags_metadata(self, training_dataset):
+        """Get all tags for a training dataset as Tag objects."""
+        return self._tags_api._get_metadata(training_dataset)
+
+    def _get_keywords(self, training_dataset):
+        """Get all keywords of a training dataset."""
+        return self._keywords_api._get(training_dataset)
+
+    def _get_keywords_metadata(self, training_dataset):
+        """Get all keywords of a training dataset with their attachment times."""
+        return self._keywords_api._get_with_metadata(training_dataset)
+
+    def _set_keywords(self, training_dataset, keywords):
+        """Replace the whole keyword set of a training dataset."""
+        return self._keywords_api._replace(training_dataset, keywords)
+
+    def _add_keywords(self, training_dataset, keywords):
+        """Add keywords to a training dataset, keeping the existing ones."""
+        current = self._keywords_api._get(training_dataset)
+        return self._keywords_api._replace(
+            training_dataset, list(dict.fromkeys(current + keywords))
+        )
+
+    def _delete_keyword(self, training_dataset, keyword):
+        """Remove a single keyword from a training dataset."""
+        return self._keywords_api._delete(training_dataset, keyword)
 
     def _update_statistics_config(self, training_dataset):
         """Update the statistics configuration of a training dataset.

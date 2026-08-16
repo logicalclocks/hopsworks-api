@@ -38,8 +38,44 @@ _GIT_PROVIDER_ALIASES = {
 
 @public("hopsworks.core.app_api.AppApi")
 class AppApi:
-    def __init__(self):
+    def __init__(
+        self, project_id: int | None = None, project_name: str | None = None
+    ) -> None:
+        """Apps of one project.
+
+        Parameters:
+            project_id: The project this handle addresses; the connection's project if omitted.
+            project_name: Name of the same project, for the paths that carry it. Resolved from the
+                connection when omitted.
+        """
         self._log = logging.getLogger(__name__)
+        self._project_id = project_id
+        self._project_name = project_name
+
+    def _pid(self) -> int:
+        return (
+            self._project_id
+            if self._project_id is not None
+            else client._get_instance()._project_id
+        )
+
+    def _pname(self) -> str:
+        return (
+            self._project_name
+            if self._project_name is not None
+            else client._get_instance()._project_name
+        )
+
+    def _stamp(self, apps):
+        """Bind the apps this handle returns to the project it addresses.
+
+        An App builds its own handle, so one read out of another project would be started,
+        stopped and deleted in the login project.
+        """
+        for one in apps if isinstance(apps, list) else [apps]:
+            if one is not None:
+                one._bind_project(self._pid(), self._pname())
+        return apps
 
     @public
     @usage._method_logger
@@ -52,10 +88,10 @@ class AppApi:
         from hopsworks_common import app
 
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "apps"]
+        path_params = ["project", self._pid(), "apps"]
         headers = {"content-type": "application/json"}
         response = _client._send_request("GET", path_params, headers=headers)
-        return app.App.from_response_json_list(response)
+        return self._stamp(app.App.from_response_json_list(response))
 
     @public
     @usage._method_logger
@@ -75,7 +111,7 @@ class AppApi:
         from hopsworks_common import app
 
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "apps", name]
+        path_params = ["project", self._pid(), "apps", name]
         headers = {"content-type": "application/json"}
         try:
             response = _client._send_request("GET", path_params, headers=headers)
@@ -86,7 +122,7 @@ class AppApi:
             ):
                 return None
             raise
-        return app.App.from_response_json(response)
+        return self._stamp(app.App.from_response_json(response))
 
     @public
     @usage._method_logger
@@ -207,7 +243,7 @@ class AppApi:
                 )
 
         if app_path and not git_repo_app:
-            app_path = util._convert_to_abs(app_path, _client._project_name)
+            app_path = util._convert_to_abs(app_path, self._pname())
             if not app_path.startswith("hdfs://"):
                 app_path = "hdfs://" + app_path
 
@@ -244,7 +280,7 @@ class AppApi:
         if readiness_probe_path is not None:
             config["readinessProbePath"] = readiness_probe_path
 
-        path_params = ["project", _client._project_id, "jobs", name]
+        path_params = ["project", self._pid(), "jobs", name]
         headers = {"content-type": "application/json"}
         _client._send_request(
             "PUT", path_params, headers=headers, data=json.dumps(config)
@@ -266,7 +302,7 @@ class AppApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "jobs",
             app_name,
             "executions",
@@ -285,7 +321,7 @@ class AppApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "jobs",
             app_name,
             "executions",
@@ -302,7 +338,7 @@ class AppApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "apps",
             app_name,
             "redeploy",
@@ -319,7 +355,7 @@ class AppApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "apps",
             app_name,
             "public",
@@ -334,7 +370,7 @@ class AppApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "jobs",
             app_name,
             "executions",
@@ -350,7 +386,7 @@ class AppApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "jobs",
             app_name,
         ]

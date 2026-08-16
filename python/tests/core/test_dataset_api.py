@@ -15,6 +15,7 @@
 #
 
 import json
+from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 import pytest
@@ -130,6 +131,116 @@ class TestDatasetApiTags:
 
         # Assert
         assert result == {"meta": value}
+
+    def test_get_tags_metadata_keeps_tag_objects(self, mocker):
+        # Arrange
+        api = DatasetApi()
+        response = {
+            "count": 1,
+            "items": [{"name": "meta", "value": "v", "createdOn": 1785474813000}],
+        }
+        client_instance = self._patch_client(mocker, response)
+
+        # Act
+        result = api.get_tags_metadata("my_dataset")
+
+        # Assert
+        assert result["meta"].value == "v"
+        assert result["meta"].created_on == datetime(
+            2026, 7, 31, 5, 13, 33, tzinfo=timezone.utc
+        )
+        path_params = client_instance._send_request.call_args.args[1]
+        assert path_params == ["project", 1, "dataset", "tags", "all", "my_dataset"]
+
+    def test_get_tag_metadata_by_name_uses_schema_path(self, mocker):
+        # Arrange
+        api = DatasetApi()
+        response = {"count": 1, "items": [{"name": "meta", "value": "v"}]}
+        client_instance = self._patch_client(mocker, response)
+
+        # Act
+        result = api.get_tag_metadata("my_dataset", "meta")
+
+        # Assert
+        assert result.name == "meta"
+        path_params = client_instance._send_request.call_args.args[1]
+        assert path_params == [
+            "project",
+            1,
+            "dataset",
+            "tags",
+            "schema",
+            "meta",
+            "my_dataset",
+        ]
+
+    def test_get_tag_metadata_missing_is_none(self, mocker):
+        # Arrange
+        api = DatasetApi()
+        self._patch_client(mocker, {"count": 0, "items": []})
+
+        # Act & Assert
+        assert api.get_tag_metadata("my_dataset", "meta") is None
+
+
+class TestDatasetApiMkdir:
+    def _patch_client(self, mocker) -> MagicMock:
+        client_instance = MagicMock()
+        client_instance._project_id = 1
+        client_instance._send_request.return_value = {
+            "attributes": {"path": "/Projects/p/my_dataset"}
+        }
+        mocker.patch(
+            "hopsworks_common.core.dataset_api.client._get_instance",
+            return_value=client_instance,
+        )
+        return client_instance
+
+    def test_mkdir_without_tags_sends_no_body(self, mocker):
+        # Existing clients and old servers rely on the body staying absent.
+        # Arrange
+        api = DatasetApi()
+        client_instance = self._patch_client(mocker)
+
+        # Act
+        result = api.mkdir("my_dataset")
+
+        # Assert
+        assert result == "/Projects/p/my_dataset"
+        call = client_instance._send_request.call_args
+        assert call.args[0] == "POST"
+        assert call.kwargs["data"] is None
+
+    def test_mkdir_with_tags_sends_tags_dto_body(self, mocker):
+        # Arrange
+        api = DatasetApi()
+        client_instance = self._patch_client(mocker)
+
+        # Act
+        api.mkdir(
+            "my_dataset",
+            tags=[{"name": "sensitivity", "value": {"level": "internal"}}],
+        )
+
+        # Assert
+        call = client_instance._send_request.call_args
+        body = json.loads(call.kwargs["data"])
+        assert body["count"] == 1
+        # Non-string values are JSON-serialized the way tag values are elsewhere.
+        assert body["items"] == [
+            {"name": "sensitivity", "value": json.dumps({"level": "internal"})}
+        ]
+
+    def test_mkdir_with_empty_tags_sends_no_body(self, mocker):
+        # Arrange
+        api = DatasetApi()
+        client_instance = self._patch_client(mocker)
+
+        # Act
+        api.mkdir("my_dataset", tags=[])
+
+        # Assert
+        assert client_instance._send_request.call_args.kwargs["data"] is None
 
 
 class TestDatasetApiShare:

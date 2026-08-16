@@ -23,17 +23,29 @@ from urllib.parse import quote
 from hopsworks_apigen import public
 from hopsworks_common import client
 from hopsworks_common.search_results import (
+    DatasetSearchResult,
+    DeploymentSearchResult,
     FeatureGroupSearchResult,
     FeatureSearchResult,
     FeaturestoreSearchResult,
     FeatureViewSearchResult,
+    JobSearchResult,
+    ModelSearchResult,
     TrainingDatasetSearchResult,
 )
 from hopsworks_common.util import Encoder
 
 
 DOC_TYPE_ARG = Literal[
-    "FEATUREGROUP", "FEATUREVIEW", "TRAININGDATASET", "FEATURE", "ALL"
+    "FEATUREGROUP",
+    "FEATUREVIEW",
+    "TRAININGDATASET",
+    "FEATURE",
+    "JOB",
+    "DATASET",
+    "MODEL",
+    "DEPLOYMENT",
+    "ALL",
 ]
 
 
@@ -140,8 +152,33 @@ class KeywordSearchFilter:
 
 @public("hopsworks.core.search_api.SearchApi")
 class SearchApi:
-    def __init__(self):
+    def __init__(
+        self, project_id: int | None = None, project_name: str | None = None
+    ) -> None:
+        """Search over one project's artifacts.
+
+        Parameters:
+            project_id: The project whose artifacts the project-scoped searches address; the
+                connection's project if omitted.
+            project_name: Name of the same project. Resolved from the connection when omitted.
+        """
         self._log = logging.getLogger(__name__)
+        self._project_id = project_id
+        self._project_name = project_name
+
+    def _pid(self) -> int:
+        return (
+            self._project_id
+            if self._project_id is not None
+            else client._get_instance()._project_id
+        )
+
+    def _pname(self) -> str:
+        return (
+            self._project_name
+            if self._project_name is not None
+            else client._get_instance()._project_name
+        )
 
     @public
     def feature_store(
@@ -155,7 +192,7 @@ class SearchApi:
         limit: int = 100,
         global_search: bool = False,
     ) -> FeaturestoreSearchResult:
-        """Search for feature groups, feature views, training datasets and features.
+        """Search for feature groups, feature views, training datasets, features, jobs, datasets, models, and deployments.
 
         Parameters:
             search_term: The term to search for.
@@ -173,7 +210,7 @@ class SearchApi:
                 If `True`, search over all projects.
 
         Returns:
-            The search results containing lists of metadata objects for feature groups, feature views, training datasets, and features.
+            The search results containing lists of metadata objects for feature groups, feature views, training datasets, features, jobs, datasets, models, and deployments.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
@@ -493,6 +530,272 @@ class SearchApi:
         )
         return result.features
 
+    @public
+    def jobs(
+        self,
+        search_term: str | None = None,
+        keyword_filter: str | list[str] | None = None,
+        tag_filter: dict[str, str]
+        | list[dict[str, str] | TagSearchFilter]
+        | None = None,
+        offset: int = 0,
+        limit: int = 100,
+        global_search: bool = False,
+    ) -> list[JobSearchResult]:
+        """Search for jobs only.
+
+        The search covers the job's name, description, and tags.
+        Results are scoped by the cluster's cross-project search policy: with `global_search` the caller sees jobs from other projects only where the policy allows it.
+        Jobs carry no keywords, so a `keyword_filter` never matches a job.
+
+        Parameters:
+            search_term: The term to search for.
+            keyword_filter:
+                Filter results by keywords.
+                Jobs carry no keywords, so any keyword filter returns no jobs.
+            tag_filter:
+                Filter results by tags.
+                Can be a single dictionary, an array of dictionaries, or an array of TagSearchFilter objects.
+                Each tag filter requires: ``name`` (the tag schema name as defined by Hopsworks Admin), ``key`` (the property within that tag schema), and ``value`` (the value to match).
+            offset: The number of results to skip.
+            limit: The number of search results to return.
+            global_search:
+                If `False`, search in current project only.
+                If `True`, search over all projects.
+
+        Returns:
+            A list of metadata objects for jobs matching the search criteria.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+            search_api = project.get_search_api()
+
+            # Search for jobs
+            job_metas = search_api.jobs("ingestion")
+
+            for job_meta in job_metas:
+                print(f"Job: {job_meta.name} ({job_meta.job_type})")
+
+                # Get the same Job object as returned by the job api
+                job = job_meta.get()
+            ```
+        """
+        result = self._search(
+            doc_type="JOB",
+            search_term=search_term,
+            keyword_filter=keyword_filter,
+            tag_filter=tag_filter,
+            offset=offset,
+            limit=limit,
+            global_search=global_search,
+        )
+        return result.jobs
+
+    @public
+    def datasets(
+        self,
+        search_term: str | None = None,
+        keyword_filter: str | list[str] | None = None,
+        tag_filter: dict[str, str]
+        | list[dict[str, str] | TagSearchFilter]
+        | None = None,
+        offset: int = 0,
+        limit: int = 100,
+        global_search: bool = False,
+    ) -> list[DatasetSearchResult]:
+        """Search for datasets only.
+
+        The search covers the dataset's name, description, and tags.
+        Results are scoped by the cluster's cross-project search policy: with `global_search` the caller sees datasets from other projects only where the policy allows it.
+        Datasets carry no keywords, so a `keyword_filter` never matches a dataset.
+
+        Parameters:
+            search_term: The term to search for.
+            keyword_filter:
+                Filter results by keywords.
+                Datasets carry no keywords, so any keyword filter returns no datasets.
+            tag_filter:
+                Filter results by tags.
+                Can be a single dictionary, an array of dictionaries, or an array of TagSearchFilter objects.
+                Each tag filter requires: ``name`` (the tag schema name as defined by Hopsworks Admin), ``key`` (the property within that tag schema), and ``value`` (the value to match).
+            offset: The number of results to skip.
+            limit: The number of search results to return.
+            global_search:
+                If `False`, search in current project only.
+                If `True`, search over all projects.
+
+        Returns:
+            A list of metadata objects for datasets matching the search criteria.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+            search_api = project.get_search_api()
+
+            # Search for datasets
+            dataset_metas = search_api.datasets("reports")
+
+            for dataset_meta in dataset_metas:
+                print(f"Dataset: {dataset_meta.name}")
+            ```
+        """
+        result = self._search(
+            doc_type="DATASET",
+            search_term=search_term,
+            keyword_filter=keyword_filter,
+            tag_filter=tag_filter,
+            offset=offset,
+            limit=limit,
+            global_search=global_search,
+        )
+        return result.datasets
+
+    @public
+    def models(
+        self,
+        search_term: str | None = None,
+        keyword_filter: str | list[str] | None = None,
+        tag_filter: dict[str, str]
+        | list[dict[str, str] | TagSearchFilter]
+        | None = None,
+        offset: int = 0,
+        limit: int = 100,
+        global_search: bool = False,
+    ) -> list[ModelSearchResult]:
+        """Search for models only.
+
+        The search covers the model's name, description, and tags.
+        Results are scoped by the cluster's cross-project search policy: with `global_search` the caller sees models from other projects only where the policy allows it.
+        A model in a shared registry is also reachable, because sharing the registry is what makes the hit visible.
+        Models carry no keywords, so a `keyword_filter` never matches a model.
+
+        Parameters:
+            search_term: The term to search for.
+            keyword_filter:
+                Filter results by keywords.
+                Models carry no keywords, so any keyword filter returns no models.
+            tag_filter:
+                Filter results by tags.
+                Can be a single dictionary, an array of dictionaries, or an array of TagSearchFilter objects.
+                Each tag filter requires: ``name`` (the tag schema name as defined by Hopsworks Admin), ``key`` (the property within that tag schema), and ``value`` (the value to match).
+            offset: The number of results to skip.
+            limit: The number of search results to return.
+            global_search:
+                If `False`, search in current project only.
+                If `True`, search over all projects.
+
+        Returns:
+            A list of metadata objects for models matching the search criteria.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+            search_api = project.get_search_api()
+
+            # Every model an audit has to account for
+            model_metas = search_api.models(
+                tag_filter={"name": "eu_ai_act", "key": "risk_class", "value": "high_risk"}
+            )
+
+            for model_meta in model_metas:
+                print(f"Model: {model_meta.name} v{model_meta.version} ({model_meta.framework})")
+
+                # Get the same Model object as returned by the model registry
+                model = model_meta.get()
+            ```
+        """
+        result = self._search(
+            doc_type="MODEL",
+            search_term=search_term,
+            keyword_filter=keyword_filter,
+            tag_filter=tag_filter,
+            offset=offset,
+            limit=limit,
+            global_search=global_search,
+        )
+        return result.models
+
+    @public
+    def deployments(
+        self,
+        search_term: str | None = None,
+        keyword_filter: str | list[str] | None = None,
+        tag_filter: dict[str, str]
+        | list[dict[str, str] | TagSearchFilter]
+        | None = None,
+        offset: int = 0,
+        limit: int = 100,
+        global_search: bool = False,
+    ) -> list[DeploymentSearchResult]:
+        """Search for deployments only.
+
+        The search covers the deployment's name, description, tags, and the name of the model it serves.
+        Results are scoped by the cluster's cross-project search policy: with `global_search` the caller sees deployments from other projects only where the policy allows it.
+        A deployment is administered in its own project, so a hit from another project can be read as metadata but not fetched as an object.
+        Deployments carry no keywords, so a `keyword_filter` never matches a deployment.
+
+        Parameters:
+            search_term: The term to search for.
+            keyword_filter:
+                Filter results by keywords.
+                Deployments carry no keywords, so any keyword filter returns no deployments.
+            tag_filter:
+                Filter results by tags.
+                Can be a single dictionary, an array of dictionaries, or an array of TagSearchFilter objects.
+                Each tag filter requires: ``name`` (the tag schema name as defined by Hopsworks Admin), ``key`` (the property within that tag schema), and ``value`` (the value to match).
+            offset: The number of results to skip.
+            limit: The number of search results to return.
+            global_search:
+                If `False`, search in current project only.
+                If `True`, search over all projects.
+
+        Returns:
+            A list of metadata objects for deployments matching the search criteria.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+            search_api = project.get_search_api()
+
+            # What is serving a given model
+            deployment_metas = search_api.deployments("credit_scoring")
+
+            for deployment_meta in deployment_metas:
+                print(f"{deployment_meta.name} serves {deployment_meta.model_name} v{deployment_meta.model_version}")
+            ```
+        """
+        result = self._search(
+            doc_type="DEPLOYMENT",
+            search_term=search_term,
+            keyword_filter=keyword_filter,
+            tag_filter=tag_filter,
+            offset=offset,
+            limit=limit,
+            global_search=global_search,
+        )
+        return result.deployments
+
     def _parse_keyword_filter(
         self, keyword_filter: str | list[str] | None
     ) -> list[KeywordSearchFilter] | None:
@@ -593,7 +896,7 @@ class SearchApi:
         if global_search:
             path_params = ["elastic", "featurestore"]
         else:
-            path_params = ["project", _client._project_id, "elastic", "featurestore"]
+            path_params = ["project", self._pid(), "elastic", "featurestore"]
 
         headers = {"content-type": "application/json"}
         query_params = {

@@ -28,6 +28,7 @@ from hsml.engine import serving_engine
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from hopsworks_common import tag
     from hsfs.core.feature_monitoring_config import FeatureMonitoringConfig
     from hsml.client.istio.utils.infer_type import InferInput
     from hsml.deployment_tracing_config import DeploymentTracingConfig
@@ -76,6 +77,24 @@ class Deployment:
         self._model_api = model_api.ModelApi()
         self._grpc_channel = None
         self._model_registry_id = None
+
+    def _rebind(self):
+        """Point this deployment's API and engine at the project that owns it.
+
+        A deployment read out of another project carries that project's id and name, and every
+        call it then makes has to go there: an engine left on the connection's project starts,
+        stops and reads the logs of whatever the login project holds under the same id.
+        Rebinding happens as the two attributes are set, which is how the deployment learns
+        which project it came from.
+        """
+        self._serving_api = serving_api.ServingApi(
+            self._model_registry_id, self._predictor._project_name
+        )
+        self._serving_engine = serving_engine.ServingEngine(
+            self._model_registry_id, self._predictor._project_name
+        )
+        # The predictor builds the inference URLs, and the Hopsworks one carries a project id.
+        self._predictor._project_id = self._model_registry_id
 
     @public
     @usage._method_logger
@@ -219,6 +238,37 @@ class Deployment:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the tags.
         """
         return self._serving_engine._get_tags(self)
+
+    @public
+    def get_tag_metadata(self, name: str) -> tag.Tag | None:
+        """Get a tag with its metadata, including the time it was attached.
+
+        Unlike [`Deployment.get_tag`][hsml.deployment.Deployment.get_tag], which returns only the tag's value, this returns the [`Tag`][hopsworks.tag.Tag] object, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Parameters:
+            name: Name of the tag to get.
+
+        Returns:
+            The tag object, or `None` if it does not exist.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the tag.
+        """
+        return self._serving_engine._get_tag_metadata(self, name)
+
+    @public
+    def get_tags_metadata(self) -> dict[str, tag.Tag]:
+        """Retrieve all tags attached to a deployment, with their metadata.
+
+        Unlike [`Deployment.get_tags`][hsml.deployment.Deployment.get_tags], which returns only the tag values, this keeps the [`Tag`][hopsworks.tag.Tag] objects, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Returns:
+            Dictionary of tag names to tag objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the tags.
+        """
+        return self._serving_engine._get_tags_metadata(self)
 
     @public
     @property
@@ -699,12 +749,23 @@ class Deployment:
         )
 
     def update_from_response_json(self, json_dict):
+        # The refresh rebuilds this object through __init__, which resets the api and the engine to
+        # the connection's project, and the predictor's refresh does the same to its project name. A
+        # deployment bound to a foreign project must stay bound across a refresh: the
+        # duplicate-create recovery in ServingEngine._create refreshes exactly here, and an unbound
+        # result would start, stop and read the logs of the login project's deployment instead.
+        model_registry_id = self._model_registry_id
+        project_name = self._predictor._project_name
         self._predictor.update_from_response_json(json_dict)
         self.__init__(
             predictor=self._predictor,
             name=self._predictor._name,
             description=self._predictor._description,
         )
+        if model_registry_id is not None or project_name is not None:
+            self._model_registry_id = model_registry_id
+            self._predictor._project_name = project_name
+            self._rebind()
         return self
 
     def json(self):
@@ -934,6 +995,7 @@ class Deployment:
     @model_registry_id.setter
     def model_registry_id(self, model_registry_id: int):
         self._model_registry_id = model_registry_id
+        self._rebind()
 
     @public
     @property
@@ -996,6 +1058,7 @@ class Deployment:
     @project_name.setter
     def project_name(self, project_name: str):
         self._predictor._project_name = project_name
+        self._rebind()
 
     @public
     @property

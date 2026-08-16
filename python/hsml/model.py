@@ -535,6 +535,37 @@ class Model:
         return self._model_engine._get_tags(model_instance=self)
 
     @public
+    def get_tag_metadata(self, name: str) -> tag.Tag | None:
+        """Get a tag with its metadata, including the time it was attached.
+
+        Unlike [`Model.get_tag`][hsml.model.Model.get_tag], which returns only the tag's value, this returns the [`Tag`][hopsworks.tag.Tag] object, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Parameters:
+            name: Name of the tag to get.
+
+        Returns:
+            The tag object, or `None` if it does not exist.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the tag.
+        """
+        return self._model_engine._get_tag_metadata(model_instance=self, name=name)
+
+    @public
+    def get_tags_metadata(self) -> dict[str, tag.Tag]:
+        """Retrieve all tags attached to a model, with their metadata.
+
+        Unlike [`Model.get_tags`][hsml.model.Model.get_tags], which returns only the tag values, this keeps the [`Tag`][hopsworks.tag.Tag] objects, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Returns:
+            Dictionary of tag names to tag objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case of a server error.
+        """
+        return self._model_engine._get_tags_metadata(model_instance=self)
+
+    @public
     @property
     def missing_mandatory_tags(self) -> list[dict[str, Any]]:
         """Mandatory tags configured for models that this model is missing.

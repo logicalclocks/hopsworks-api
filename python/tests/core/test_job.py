@@ -607,3 +607,282 @@ class TestExecution:
 
         # Act + Assert
         assert ex.app_url is None
+
+
+class TestJobDescription:
+    def _job(self, mocker, **kwargs):
+        mocker.patch("hopsworks_common.client._get_instance")
+        return job.Job(
+            id=1,
+            name="test",
+            creation_time=None,
+            config={"appPath": "app.py"},
+            job_type="PYTHON",
+            creator=None,
+            **kwargs,
+        )
+
+    def test_description_from_constructor(self, mocker):
+        j = self._job(mocker, description="scalar description")
+
+        assert j.description == "scalar description"
+
+    def test_description_falls_back_to_config(self, mocker):
+        # An old server does not send the scalar field; the config carries it.
+        j = self._job(mocker)
+        j._config["description"] = "config description"
+
+        assert j.description == "config description"
+
+    def test_description_none_when_absent_everywhere(self, mocker):
+        j = self._job(mocker)
+
+        assert j.description is None
+
+    def test_description_setter_writes_config_too(self, mocker):
+        # save() persists the config, so the setter must write it there.
+        j = self._job(mocker)
+
+        j.description = "new description"
+
+        assert j._description == "new description"
+        assert j._config["description"] == "new description"
+
+    def test_config_setter_survives(self, mocker):
+        # A duplicate `config` property definition used to shadow this setter.
+        j = self._job(mocker)
+
+        j.config = {"appPath": "other.py"}
+
+        assert j.config == {"appPath": "other.py"}
+
+
+class TestJobTags:
+    def _job(self, mocker):
+        mocker.patch("hopsworks_common.client._get_instance")
+        mock_job_api = mocker.patch("hopsworks_common.core.job_api.JobApi")
+        j = job.Job(
+            id=1,
+            name="test",
+            creation_time=None,
+            config={},
+            job_type="PYTHON",
+            creator=None,
+        )
+        return j, mock_job_api.return_value
+
+    def test_add_tag_delegates(self, mocker):
+        j, api = self._job(mocker)
+
+        j.add_tag("meta", {"k": "v"})
+
+        api._add_tag.assert_called_once_with(j, "meta", {"k": "v"})
+
+    def test_delete_tag_delegates(self, mocker):
+        j, api = self._job(mocker)
+
+        j.delete_tag("meta")
+
+        api._delete_tag.assert_called_once_with(j, "meta")
+
+    def test_get_tag_delegates(self, mocker):
+        j, api = self._job(mocker)
+        api._get_tag.return_value = "v"
+
+        assert j.get_tag("meta") == "v"
+        api._get_tag.assert_called_once_with(j, "meta")
+
+    def test_get_tags_delegates(self, mocker):
+        j, api = self._job(mocker)
+        api._get_tags.return_value = {"meta": "v"}
+
+        assert j.get_tags() == {"meta": "v"}
+
+    def test_get_tag_metadata_delegates(self, mocker):
+        j, api = self._job(mocker)
+        tag_obj = mocker.Mock()
+        api._get_tags_metadata.return_value = {"meta": tag_obj}
+
+        assert j.get_tag_metadata("meta") is tag_obj
+        api._get_tags_metadata.assert_called_once_with(j, "meta")
+
+    def test_get_tag_metadata_missing_is_none(self, mocker):
+        j, api = self._job(mocker)
+        api._get_tags_metadata.return_value = {}
+
+        assert j.get_tag_metadata("meta") is None
+
+    def test_get_tags_metadata_delegates(self, mocker):
+        j, api = self._job(mocker)
+        tag_obj = mocker.Mock()
+        api._get_tags_metadata.return_value = {"meta": tag_obj}
+
+        assert j.get_tags_metadata() == {"meta": tag_obj}
+        api._get_tags_metadata.assert_called_once_with(j)
+
+
+class TestJobProjectBinding:
+    """A job addresses the project it came from, not the connection's."""
+
+    def _job(self):
+        from hopsworks_common.job import Job
+
+        return Job(
+            id=7,
+            name="nightly",
+            creation_time="2026-08-03T00:00:00Z",
+            config={"type": "sparkJobConfiguration"},
+            job_type="SPARK",
+            creator=None,
+        )
+
+    def test_unbound_job_uses_the_connection(self):
+        job = self._job()
+        assert job._project_id is None
+        assert job._job_api._project_id is None
+
+    def test_binding_rebuilds_every_handle(self):
+        job = self._job()
+        job._bind_project(42, "other_project")
+        # All of them, not only the job handle: tags used to be bound while
+        # executions, alerts and the URL still addressed the login project.
+        assert job._job_api._project_id == 42
+        assert job._job_api._project_name == "other_project"
+        assert job._execution_api._project_id == 42
+        assert job._alerts_api._project_id == 42
+        assert job._alerts_api._project_name == "other_project"
+        # The engine owns the handles that awaiting and log download go through.
+        assert job._execution_engine._execution_api._project_id == 42
+        assert job._execution_engine._dataset_api._project_id == 42
+        assert job._execution_engine._dataset_api._project_name == "other_project"
+
+    def test_every_project_handle_addresses_that_project(self, mocker):
+        """Every getter on a foreign Project, not only the ones a review happened to name.
+
+        The defect is always the same shape: a handle built with no project reads the connection's
+        when it is called, and answers successfully for the wrong project.
+        """
+        from hopsworks_common.project import Project
+
+        mocker.patch(
+            "hopsworks_common.client._get_instance",
+            return_value=mocker.Mock(_project_id=5, _project_name="login_project"),
+        )
+        b = Project(project_id=42, project_name="project_b")
+
+        for handle in (
+            b.get_job_api(),
+            b.get_dataset_api(),
+            b.get_alerts_api(),
+            b.get_app_api(),
+            b.get_git_api(),
+            b.get_environment_api(),
+            b.get_kafka_api(),
+            b.get_opensearch_api(),
+            b.get_search_api(),
+        ):
+            assert handle._pid() == 42, (
+                f"{type(handle).__name__} addresses the wrong project"
+            )
+            assert handle._pname() == "project_b", (
+                f"{type(handle).__name__} carries the wrong project name"
+            )
+
+    def test_executions_of_a_bound_job_stay_bound(self, mocker):
+        job = self._job()
+        job._bind_project(42, "other_project")
+        instance = mocker.Mock(_project_id=5, _project_name="login_project")
+        mocker.patch("hopsworks_common.client._get_instance", return_value=instance)
+        mocker.patch(
+            "hopsworks_common.util._get_hostname_replaced_url", side_effect=lambda p: p
+        )
+        instance._send_request.return_value = {
+            "count": 1,
+            "items": [{"id": 3, "state": "RUNNING"}],
+        }
+
+        execution = job.get_executions()[0]
+
+        assert execution._project_id == 42
+        assert execution._execution_api._project_id == 42
+        assert execution._execution_engine._execution_api._project_id == 42
+        assert execution.get_url() == "/p/42/jobs/named/nightly/executions"
+
+    def test_refreshing_an_execution_keeps_its_project(self, mocker):
+        job = self._job()
+        job._bind_project(42, "other_project")
+        from hopsworks_common.execution import Execution
+
+        execution = Execution.from_response_json({"id": 3, "state": "RUNNING"}, job)
+
+        execution.update_from_response_json({"id": 3, "state": "FINISHED"})
+
+        # Re-initialising used to drop the job entirely, which rebound every handle to the login
+        # project and left job_name raising.
+        assert execution.job_name == "nightly"
+        assert execution._project_id == 42
+        assert execution._execution_api._project_id == 42
+
+    def test_executions_address_the_bound_project(self, mocker):
+        job = self._job()
+        job._bind_project(42, "other_project")
+        instance = mocker.Mock(_project_id=5, _project_name="login_project")
+        mocker.patch("hopsworks_common.client._get_instance", return_value=instance)
+        instance._send_request.return_value = {"count": 0, "items": []}
+
+        job._execution_api._get_all(job)
+
+        path_params = instance._send_request.call_args[0][1]
+        assert path_params[:2] == ["project", 42], path_params
+
+    def test_alerts_address_the_bound_project(self, mocker):
+        job = self._job()
+        job._bind_project(42, "other_project")
+        instance = mocker.Mock(_project_id=5, _project_name="login_project")
+        mocker.patch("hopsworks_common.client._get_instance", return_value=instance)
+        instance._send_request.return_value = {"count": 0, "items": []}
+
+        job._alerts_api.get_job_alerts(job.name)
+
+        path_params = instance._send_request.call_args[0][1]
+        assert path_params[:2] == ["project", 42], path_params
+
+    def test_url_points_at_the_bound_project(self, mocker):
+        job = self._job()
+        job._bind_project(42, "other_project")
+        mocker.patch(
+            "hopsworks_common.client._get_instance",
+            return_value=mocker.Mock(_project_id=5, _project_name="login_project"),
+        )
+        mocker.patch(
+            "hopsworks_common.util._get_hostname_replaced_url", side_effect=lambda p: p
+        )
+
+        assert job.get_url() == "/p/42/jobs/named/nightly"
+
+    def test_an_unbound_job_still_uses_the_connection(self, mocker):
+        job = self._job()
+        instance = mocker.Mock(_project_id=5, _project_name="login_project")
+        mocker.patch("hopsworks_common.client._get_instance", return_value=instance)
+        instance._send_request.return_value = {"count": 0, "items": []}
+
+        job._execution_api._get_all(job)
+
+        path_params = instance._send_request.call_args[0][1]
+        assert path_params[:2] == ["project", 5], path_params
+
+    def test_job_api_stamps_the_jobs_it_returns(self, mocker):
+        from hopsworks_common.core import job_api
+
+        api = job_api.JobApi(project_id=42, project_name="other_project")
+        job = self._job()
+        assert api._bind(job) is job
+        assert job._job_api._project_id == 42
+
+    def test_bind_tolerates_a_list_and_none(self):
+        from hopsworks_common.core import job_api
+
+        api = job_api.JobApi(project_id=9, project_name="p")
+        jobs = [self._job(), None]
+        api._bind(jobs)
+        assert jobs[0]._job_api._project_id == 9

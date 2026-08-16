@@ -24,6 +24,28 @@ from hopsworks_common.core import execution_pod_log
 
 @also_available_as("hopsworks.core.execution_api.ExecutionApi")
 class ExecutionApi:
+    def __init__(
+        self,
+        project_id: int | None = None,
+    ) -> None:
+        """Executions of the jobs of one project.
+
+        Parameters:
+            project_id:
+                The project whose jobs this handle addresses.
+                Defaults to the project of the connection, which is wrong for a job obtained from
+                another project: starting or listing its executions would then address a same-named
+                job of the login project.
+        """
+        self._project_id = project_id
+
+    def _pid(self) -> int:
+        return (
+            self._project_id
+            if self._project_id is not None
+            else client._get_instance()._project_id
+        )
+
     def _start(
         self,
         job,
@@ -41,7 +63,7 @@ class ExecutionApi:
         args body for backwards compatibility.
         """
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "jobs", job.name, "executions"]
+        path_params = ["project", self._pid(), "jobs", job.name, "executions"]
 
         use_json = (
             start_time is not None
@@ -90,7 +112,7 @@ class ExecutionApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "jobs",
             job.name,
             "executions",
@@ -104,7 +126,7 @@ class ExecutionApi:
 
     def _get_all(self, job):
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "jobs", job.name, "executions"]
+        path_params = ["project", self._pid(), "jobs", job.name, "executions"]
 
         query_params = {"sort_by": "submissiontime:desc"}
 
@@ -120,7 +142,7 @@ class ExecutionApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "jobs",
             job_name,
             "executions",
@@ -132,7 +154,7 @@ class ExecutionApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "jobs",
             job_name,
             "executions",
@@ -150,7 +172,7 @@ class ExecutionApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "jobs",
             job_name,
             "executions",
@@ -176,7 +198,7 @@ class ExecutionApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "jobs",
             job_name,
             "executions",

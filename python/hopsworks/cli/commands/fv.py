@@ -49,6 +49,15 @@ def fv_list(ctx: click.Context) -> None:
     output.print_table(["ID", "NAME", "VERSION", "LABELS", "DESCRIPTION"], rows)
 
 
+def _get_fv(ctx: click.Context, name: str, version: int | None) -> Any:
+    """Resolve a feature view or fail with a clean CLI error."""
+    fs = session.get_feature_store(ctx)
+    try:
+        return fs.get_feature_view(name, version=version)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Feature view '{name}' not found: {exc}") from exc
+
+
 @fv_group.command("info")
 @click.argument("name")
 @click.option("--version", type=int, help="Feature view version; defaults to latest.")
@@ -61,11 +70,7 @@ def fv_info(ctx: click.Context, name: str, version: int | None) -> None:
         name: Feature view name.
         version: Specific version to inspect.
     """
-    fs = session.get_feature_store(ctx)
-    try:
-        fv = fs.get_feature_view(name, version=version)
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Feature view '{name}' not found: {exc}") from exc
+    fv = _get_fv(ctx, name, version)
 
     if output.JSON_MODE:
         output.print_json(_fv_to_dict(fv))
@@ -137,11 +142,7 @@ def fv_lineage(ctx: click.Context, name: str, version: int | None) -> None:
         name: Feature view name.
         version: Specific version; latest if omitted.
     """
-    fs = session.get_feature_store(ctx)
-    try:
-        fv = fs.get_feature_view(name, version=version)
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Feature view '{name}' not found: {exc}") from exc
+    fv = _get_fv(ctx, name, version)
     label = f"feature view {getattr(fv, 'name', name)} v{getattr(fv, 'version', '?')}"
     sections = [
         (
@@ -343,11 +344,7 @@ def fv_get(ctx: click.Context, name: str, version: int | None, entry: str) -> No
         version: Feature view version.
         entry: Comma-separated ``key=value`` pairs for the primary keys.
     """
-    fs = session.get_feature_store(ctx)
-    try:
-        fv = fs.get_feature_view(name, version=version)
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Feature view '{name}' not found: {exc}") from exc
+    fv = _get_fv(ctx, name, version)
 
     entry_dict = _parse_entry(entry)
     try:
@@ -396,11 +393,7 @@ def fv_read(
         start_time: ISO timestamp lower bound.
         end_time: ISO timestamp upper bound.
     """
-    fs = session.get_feature_store(ctx)
-    try:
-        fv = fs.get_feature_view(name, version=version)
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Feature view '{name}' not found: {exc}") from exc
+    fv = _get_fv(ctx, name, version)
 
     try:
         df = fv.get_batch_data(
@@ -447,11 +440,7 @@ def fv_delete(
         yes: Skip confirmation when True.
         force: Pass ``force=True`` to the SDK.
     """
-    fs = session.get_feature_store(ctx)
-    try:
-        fv = fs.get_feature_view(name, version=version)
-    except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Feature view '{name}' not found: {exc}") from exc
+    fv = _get_fv(ctx, name, version)
 
     if not yes and not output.JSON_MODE:
         click.confirm(
@@ -463,6 +452,149 @@ def fv_delete(
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Delete failed: {exc}") from exc
     output.success("✓ Deleted feature view %s", name)
+
+
+@fv_group.command("tags")
+@click.argument("name")
+@click.option("--version", type=int, help="Feature view version.")
+@click.pass_context
+def fv_tags(ctx: click.Context, name: str, version: int | None) -> None:
+    """Show all tags attached to a feature view.
+
+    Args:
+        ctx: Click context.
+        name: Feature view name.
+        version: Feature view version.
+    """
+    fv = _get_fv(ctx, name, version)
+    try:
+        tags = fv.get_tags_metadata()
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not read tags: {exc}") from exc
+    output.render_tags(tags)
+
+
+@fv_group.command("add-tag")
+@click.argument("name")
+@click.argument("tag")
+@click.option("--value", required=True, help="Tag value, JSON or a plain string.")
+@click.option("--version", type=int, help="Feature view version.")
+@click.pass_context
+def fv_add_tag(
+    ctx: click.Context, name: str, tag: str, value: str, version: int | None
+) -> None:
+    """Attach a tag (name/value pair) to a feature view.
+
+    Args:
+        ctx: Click context.
+        name: Feature view name.
+        tag: Tag name (a registered tag schema).
+        value: Tag value, JSON or a plain string.
+        version: Feature view version.
+    """
+    fv = _get_fv(ctx, name, version)
+    try:
+        fv.add_tag(name=tag, value=output.parse_tag_value(value))
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not add tag: {exc}") from exc
+    output.success("✓ Added tag '%s' to %s", tag, name)
+
+
+@fv_group.command("remove-tag")
+@click.argument("name")
+@click.argument("tag")
+@click.option("--version", type=int, help="Feature view version.")
+@click.pass_context
+def fv_remove_tag(ctx: click.Context, name: str, tag: str, version: int | None) -> None:
+    """Remove a tag from a feature view.
+
+    Args:
+        ctx: Click context.
+        name: Feature view name.
+        tag: Tag name.
+        version: Feature view version.
+    """
+    fv = _get_fv(ctx, name, version)
+    try:
+        fv.delete_tag(tag)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not remove tag: {exc}") from exc
+    output.success("✓ Removed tag '%s' from %s", tag, name)
+
+
+@fv_group.command("keywords")
+@click.argument("name")
+@click.option("--version", type=int, help="Feature view version.")
+@click.pass_context
+def fv_keywords(ctx: click.Context, name: str, version: int | None) -> None:
+    """Show all keywords attached to a feature view.
+
+    Args:
+        ctx: Click context.
+        name: Feature view name.
+        version: Feature view version.
+    """
+    fv = _get_fv(ctx, name, version)
+    try:
+        keywords = fv.get_keywords_metadata()
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not read keywords: {exc}") from exc
+
+    if output.JSON_MODE:
+        output.print_json(
+            {k: output.format_ts(v, empty=None) for k, v in (keywords or {}).items()}
+        )
+        return
+    rows = [[k, output.format_ts(v)] for k, v in (keywords or {}).items()]
+    output.print_table(["KEYWORD", "ADDED"], rows)
+
+
+@fv_group.command("add-keyword")
+@click.argument("name")
+@click.argument("keyword")
+@click.option("--version", type=int, help="Feature view version.")
+@click.pass_context
+def fv_add_keyword(
+    ctx: click.Context, name: str, keyword: str, version: int | None
+) -> None:
+    """Attach a keyword to a feature view.
+
+    Args:
+        ctx: Click context.
+        name: Feature view name.
+        keyword: The keyword.
+        version: Feature view version.
+    """
+    fv = _get_fv(ctx, name, version)
+    try:
+        fv.add_keywords([keyword])
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not add keyword: {exc}") from exc
+    output.success("✓ Added keyword '%s' to %s", keyword, name)
+
+
+@fv_group.command("remove-keyword")
+@click.argument("name")
+@click.argument("keyword")
+@click.option("--version", type=int, help="Feature view version.")
+@click.pass_context
+def fv_remove_keyword(
+    ctx: click.Context, name: str, keyword: str, version: int | None
+) -> None:
+    """Remove a keyword from a feature view.
+
+    Args:
+        ctx: Click context.
+        name: Feature view name.
+        keyword: The keyword.
+        version: Feature view version.
+    """
+    fv = _get_fv(ctx, name, version)
+    try:
+        fv.delete_keyword(keyword)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not remove keyword: {exc}") from exc
+    output.success("✓ Removed keyword '%s' from %s", keyword, name)
 
 
 # region Helpers

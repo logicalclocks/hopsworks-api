@@ -22,6 +22,25 @@ from hopsworks_common import client, library
 
 @also_available_as("hopsworks.core.library_api.LibraryApi")
 class LibraryApi:
+    def __init__(self, project_id=None, project_name=None):
+        """Libraries of one project's environments.
+
+        Parameters:
+            project_id: The project whose environments this installs into, and project_name
+                its name. Both default to the connection's project. An Environment obtained
+                from another project passes that project's, because an unbound handle
+                installs into an identically named environment in the login project.
+        """
+        self._project_id = project_id
+        self._project_name = project_name
+
+    def _pid(self):
+        return (
+            self._project_id
+            if self._project_id is not None
+            else client._get_instance()._project_id
+        )
+
     def _install(
         self, library_name: str, name: str, library_spec: dict
     ) -> library.Library:
@@ -42,7 +61,7 @@ class LibraryApi:
 
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "python",
             "environments",
             name,
@@ -72,7 +91,7 @@ class LibraryApi:
 
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "python",
             "environments",
             name,

@@ -39,6 +39,8 @@ from hsfs.training_dataset_split import TrainingDatasetSplit
 
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from hopsworks_common.core.constants import HAS_NUMPY
     from hopsworks_common.job import Job
     from hsfs.statistics import Statistics
@@ -862,16 +864,126 @@ class TrainingDataset(TrainingDatasetBase):
         return self._training_dataset_engine._get_tag(self, name)
 
     @public
-    def get_tags(self) -> dict[str, tag.Tag]:
+    def get_tags(self) -> dict[str, Any]:
         """Returns all tags attached to a training dataset.
 
         Returns:
-            Dictionary of tags.
+            Dictionary of tag names and values.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the tags.
         """
         return self._training_dataset_engine._get_tags(self)
+
+    @public
+    def get_tag_metadata(self, name: str) -> tag.Tag | None:
+        """Get a tag with its metadata, including the time it was attached.
+
+        Unlike [`TrainingDataset.get_tag`][hsfs.training_dataset.TrainingDataset.get_tag], which returns only the tag's value, this returns the [`Tag`][hopsworks.tag.Tag] object, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Parameters:
+            name: Name of the tag to get.
+
+        Returns:
+            The tag object or `None` if it does not exist.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the tag.
+        """
+        return self._training_dataset_engine._get_tag_metadata(self, name)
+
+    @public
+    def get_tags_metadata(self) -> dict[str, tag.Tag]:
+        """Returns all tags attached to a training dataset, with their metadata.
+
+        Unlike [`TrainingDataset.get_tags`][hsfs.training_dataset.TrainingDataset.get_tags], which returns only the tag values, this keeps the [`Tag`][hopsworks.tag.Tag] objects, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Returns:
+            Dictionary of tag names to tag objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the tags.
+        """
+        return self._training_dataset_engine._get_tags_metadata(self)
+
+    @public
+    def get_keywords(self) -> list[str]:
+        """Retrieve all keywords attached to a training dataset.
+
+        A keyword is a plain label without a value, used to categorize and search for artifacts.
+
+        Returns:
+            List of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the keywords.
+        """
+        return self._training_dataset_engine._get_keywords(self)
+
+    @public
+    def get_keywords_metadata(self) -> dict[str, datetime | None]:
+        """Retrieve all keywords attached to a training dataset, with the time each was attached.
+
+        Returns:
+            Dictionary of keyword to attachment time.
+            The time is `None` when it is unknown, for example for a keyword attached before Hopsworks recorded attachment times.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to retrieve the keywords.
+        """
+        return self._training_dataset_engine._get_keywords_metadata(self)
+
+    @public
+    def set_keywords(self, keywords: list[str]) -> list[str]:
+        """Replace the whole keyword set of a training dataset.
+
+        Keywords not in `keywords` are removed.
+
+        Parameters:
+            keywords: The new keyword set.
+
+        Returns:
+            The updated list of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to set the keywords.
+        """
+        return self._training_dataset_engine._set_keywords(self, keywords)
+
+    @public
+    def add_keywords(self, keywords: str | list[str]) -> list[str]:
+        """Add keywords to a training dataset, keeping the existing ones.
+
+        This reads the current keywords and writes back their union with `keywords`, so a concurrent `add_keywords` or [`TrainingDataset.set_keywords`][hsfs.training_dataset.TrainingDataset.set_keywords] call can lose additions.
+        When the full keyword set is known, prefer [`TrainingDataset.set_keywords`][hsfs.training_dataset.TrainingDataset.set_keywords].
+
+        Parameters:
+            keywords: A keyword or a list of keywords to add.
+
+        Returns:
+            The updated list of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to add the keywords.
+        """
+        if isinstance(keywords, str):
+            keywords = [keywords]
+        return self._training_dataset_engine._add_keywords(self, keywords)
+
+    @public
+    def delete_keyword(self, keyword: str) -> list[str]:
+        """Remove a single keyword from a training dataset.
+
+        Parameters:
+            keyword: The keyword to remove.
+
+        Returns:
+            The updated list of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: in case the backend fails to delete the keyword.
+        """
+        return self._training_dataset_engine._delete_keyword(self, keyword)
 
     @public
     def update_statistics_config(self) -> TrainingDataset:

@@ -150,8 +150,38 @@ class AlertsApi:
     To obtain an object of this type, use [`project.get_alerts_api`][hopsworks_common.project.Project.get_alerts_api].
     """
 
-    def __init__(self):
+    def __init__(
+        self, project_id: int | None = None, project_name: str | None = None
+    ) -> None:
+        """Alerts of one project.
+
+        Parameters:
+            project_id:
+                The project whose alerts this handle addresses.
+                Defaults to the project of the connection. A Job obtained from another project passes
+                its own project here, so that manipulating its alerts does not reach a same-named job
+                of the login project.
+            project_name:
+                Name of the same project. Receiver names are qualified with it, so a handle bound by id
+                alone would create an alert on project B's job pointing at project A's receiver.
+        """
         self._log = logging.getLogger(__name__)
+        self._project_id = project_id
+        self._project_name = project_name
+
+    def _pid(self) -> int:
+        return (
+            self._project_id
+            if self._project_id is not None
+            else client._get_instance()._project_id
+        )
+
+    def _pname(self) -> str:
+        return (
+            self._project_name
+            if self._project_name is not None
+            else client._get_instance()._project_name
+        )
 
     @public
     @usage._method_logger
@@ -176,7 +206,7 @@ class AlertsApi:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "service", "alerts"]
+        path_params = ["project", self._pid(), "service", "alerts"]
         headers = {"content-type": "application/json"}
         return alert.ProjectAlert.from_response_json(
             _client._send_request("GET", path_params, headers=headers)
@@ -211,7 +241,7 @@ class AlertsApi:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "service", "alerts", alert_id]
+        path_params = ["project", self._pid(), "service", "alerts", alert_id]
         headers = {"content-type": "application/json"}
         return alert.ProjectAlert.from_response_json(
             _client._send_request("GET", path_params, headers=headers)
@@ -243,7 +273,7 @@ class AlertsApi:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "jobs", job_name, "alerts"]
+        path_params = ["project", self._pid(), "jobs", job_name, "alerts"]
         headers = {"content-type": "application/json"}
         return alert.JobAlert.from_response_json(
             _client._send_request("GET", path_params, headers=headers)
@@ -281,7 +311,7 @@ class AlertsApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "jobs",
             job_name,
             "alerts",
@@ -325,7 +355,7 @@ class AlertsApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "featurestores",
             feature_store_id,
             "featuregroups",
@@ -375,7 +405,7 @@ class AlertsApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "featurestores",
             feature_store_id,
             "featuregroups",
@@ -423,7 +453,7 @@ class AlertsApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "featurestores",
             feature_store_id,
             "featureview",
@@ -477,7 +507,7 @@ class AlertsApi:
         _client = client._get_instance()
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "featurestores",
             feature_store_id,
             "featureview",
@@ -561,8 +591,8 @@ class AlertsApi:
             status = status.replace("feature_validation_", "validation_")
 
         _client = client._get_instance()
-        receiver = self._fix_receiver_name(receiver, _client._project_name)
-        path_params = ["project", _client._project_id, "service", "alerts"]
+        receiver = self._fix_receiver_name(receiver, self._pname())
+        path_params = ["project", self._pid(), "service", "alerts"]
         alert_data = {
             "status": status.upper(),
             "severity": severity.upper(),
@@ -642,10 +672,10 @@ class AlertsApi:
         if severity not in _SEVERITY:
             raise ValueError(f"Severity must be one of the following: {_SEVERITY}.")
         _client = client._get_instance()
-        receiver = self._fix_receiver_name(receiver, _client._project_name)
+        receiver = self._fix_receiver_name(receiver, self._pname())
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "featurestores",
             feature_store_id,
             "featuregroups",
@@ -716,10 +746,10 @@ class AlertsApi:
         if severity not in _SEVERITY:
             raise ValueError(f"Severity must be one of the following: {_SEVERITY}.")
         _client = client._get_instance()
-        receiver = self._fix_receiver_name(receiver, _client._project_name)
+        receiver = self._fix_receiver_name(receiver, self._pname())
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "featurestores",
             feature_store_id,
             "featureview",
@@ -785,10 +815,10 @@ class AlertsApi:
             status = status.replace("job_", "")
 
         _client = client._get_instance()
-        receiver = self._fix_receiver_name(receiver, _client._project_name)
+        receiver = self._fix_receiver_name(receiver, self._pname())
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "jobs",
             job_name,
             "alerts",
@@ -828,7 +858,7 @@ class AlertsApi:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "alerts", "receivers"]
+        path_params = ["project", self._pid(), "alerts", "receivers"]
         query_params = {"expand": True, "global": True}
         headers = {"content-type": "application/json"}
         return alert_receiver.AlertReceiver.from_response_json(
@@ -867,8 +897,8 @@ class AlertsApi:
         """
         _client = client._get_instance()
 
-        name = self._fix_receiver_name(name, _client._project_name)
-        path_params = ["project", _client._project_id, "alerts", "receivers", name]
+        name = self._fix_receiver_name(name, self._pname())
+        path_params = ["project", self._pid(), "alerts", "receivers", name]
         headers = {"content-type": "application/json"}
         return alert_receiver.AlertReceiver.from_response_json(
             _client._send_request("GET", path_params, headers=headers)
@@ -952,7 +982,7 @@ class AlertsApi:
             )
 
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "alerts", "receivers"]
+        path_params = ["project", self._pid(), "alerts", "receivers"]
         headers = {"content-type": "application/json"}
         data = {
             "name": name,
@@ -1003,7 +1033,7 @@ class AlertsApi:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "service", "alerts", alert_id]
+        path_params = ["project", self._pid(), "service", "alerts", alert_id]
         headers = {"content-type": "application/json"}
         _client._send_request("DELETE", path_params, headers=headers)
         self._log.info(f"Alert with ID {alert_id} deleted successfully.")
@@ -1053,7 +1083,7 @@ class AlertsApi:
             raise ValueError(f"Severity must be one of the following: {_SEVERITY}.")
         _client = client._get_instance()
         self._create_route_if_not_exist(receiver_name, status, severity)
-        path_params = ["project", _client._project_id, "alerts"]
+        path_params = ["project", self._pid(), "alerts"]
         headers = {"content-type": "application/json"}
         data = {
             "alerts": [
@@ -1115,7 +1145,7 @@ class AlertsApi:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "alerts"]
+        path_params = ["project", self._pid(), "alerts"]
         query_params = {"active": active, "silenced": silenced, "inhibited": inhibited}
         headers = {"content-type": "application/json"}
         return triggered_alert.TriggeredAlert.from_response_json(
@@ -1131,7 +1161,7 @@ class AlertsApi:
             A list of configured alert receivers.
         """
         _client = client._get_instance()
-        path_params = ["project", _client._project_id, "alerts", "receivers", "default"]
+        path_params = ["project", self._pid(), "alerts", "receivers", "default"]
         headers = {"content-type": "application/json"}
         return humps.decamelize(
             _client._send_request("GET", path_params, headers=headers)
@@ -1145,15 +1175,15 @@ class AlertsApi:
         if receiver_name is None:
             raise ValueError("Receiver name cannot be None.")
 
-        receiver_name = self._fix_receiver_name(receiver_name, _client._project_name)
+        receiver_name = self._fix_receiver_name(receiver_name, self._pname())
         # Check if the receiver exists
         receiver = self.get_alert_receiver(receiver_name)
         if receiver is None:
             raise ValueError(f"Receiver {receiver_name} does not exist.")
 
         # Only create a route if the receiver is a project receiver
-        if receiver_name.startswith(f"{_client._project_name}__"):
-            path_params = ["project", _client._project_id, "alerts", "routes"]
+        if receiver_name.startswith(f"{self._pname()}__"):
+            path_params = ["project", self._pid(), "alerts", "routes"]
             headers = {"content-type": "application/json"}
             match = [
                 {"key": "status", "value": status},

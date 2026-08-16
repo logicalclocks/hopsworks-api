@@ -38,7 +38,16 @@ class KafkaSchema:
         self._version = version
         self._schema = schema
 
+        self._project_id = None
+        self._project_name = None
         self._kafka_api = kafka_api.KafkaApi()
+
+    def _bind_project(self, project_id, project_name):
+        self._project_id = project_id
+        self._project_name = project_name
+        self._kafka_api = kafka_api.KafkaApi(
+            project_id=project_id, project_name=project_name
+        )
 
     @classmethod
     def from_response_json(cls, json_dict):
@@ -51,7 +60,12 @@ class KafkaSchema:
 
     def update_from_response_json(self, json_dict):
         json_decamelized = humps.decamelize(json_dict)
+        project_id, project_name = self._project_id, self._project_name
         self.__init__(**json_decamelized)
+        # __init__ rebuilds the handle unbound, and a re-read must not move the object back to
+        # the login project.
+        if project_id is not None or project_name is not None:
+            self._bind_project(project_id, project_name)
         return self
 
     @public

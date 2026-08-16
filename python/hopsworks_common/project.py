@@ -80,17 +80,41 @@ class Project:
         self._description = description
         self._created = created
 
-        self._app_api = app_api.AppApi()
-        self._opensearch_api = opensearch_api.OpenSearchApi()
-        self._kafka_api = kafka_api.KafkaApi()
-        self._job_api = job_api.JobApi()
+        # Every handle carries THIS project, not the connection's. A Project object for another
+        # authorized project that handed out connection-scoped handles answered successfully for the
+        # wrong project, which is the defect class this whole constructor exists to close.
+        self._app_api = app_api.AppApi(project_id=project_id, project_name=project_name)
+        self._opensearch_api = opensearch_api.OpenSearchApi(
+            project_id=project_id, project_name=project_name
+        )
+        self._kafka_api = kafka_api.KafkaApi(
+            project_id=project_id, project_name=project_name
+        )
+        # Bound to THIS project, not to the connection's. A Project object for another authorized
+        # project would otherwise hand out handles that address the login project, which is how a
+        # cross-project search result ends up reading the wrong artifact.
+        # The NAME as well as the id. A job configuration carries paths, and expanding a relative
+        # application path uses the project name: bound by id alone, a job created for project B went
+        # to B's REST endpoint carrying /Projects/A/... paths from the login project.
+        self._job_api = job_api.JobApi(project_id=project_id, project_name=project_name)
         self._jobs_api = self._job_api  # deprecated
-        self._git_api = git_api.GitApi()
-        self._dataset_api = dataset_api.DatasetApi()
-        self._environment_api = environment_api.EnvironmentApi()
-        self._alerts_api = alerts_api.AlertsApi()
-        self._project_members_api = project_members_api.ProjectMembersApi()
-        self._search_api = search_api.SearchApi()
+        self._git_api = git_api.GitApi(project_id=project_id, project_name=project_name)
+        self._dataset_api = dataset_api.DatasetApi(
+            project_id=project_id, project_name=project_name
+        )
+        self._environment_api = environment_api.EnvironmentApi(
+            project_id=project_id, project_name=project_name
+        )
+        # Alert receivers are qualified by project name, so this handle needs both too.
+        self._alerts_api = alerts_api.AlertsApi(
+            project_id=project_id, project_name=project_name
+        )
+        self._project_members_api = project_members_api.ProjectMembersApi(
+            project_id=project_id
+        )
+        self._search_api = search_api.SearchApi(
+            project_id=project_id, project_name=project_name
+        )
         self._project_namespace = project_namespace
         self._trino_api = None
         self._superset_api = None
@@ -180,7 +204,11 @@ class Project:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return client._get_connection()._get_feature_store(name)
+        # This project's own feature store when the caller did not name one. A Project object for
+        # another project used to hand back the CONNECTION's feature store here, which is the same
+        # defect the job and dataset handles carried: a foreign Project quietly answering for the
+        # login project.
+        return client._get_connection()._get_feature_store(name or self._shared_name())
 
     @public
     def get_model_registry(self) -> ModelRegistry:
@@ -201,7 +229,20 @@ class Project:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return client._get_connection()._get_model_registry()
+        return client._get_connection()._get_model_registry(self._shared_name())
+
+    def _shared_name(self) -> str | None:
+        """This project's name when it is NOT the connection's, otherwise None.
+
+        The feature store and model registry APIs take a project name to open a SHARED one, and
+        refuse a name that is the connection's own project. So a foreign Project has to pass its
+        name and the connection's own must not, and neither can be hard-coded here.
+        """
+        try:
+            connected = client._get_instance()._project_name
+        except Exception:
+            return None
+        return self._name if self._name and self._name != connected else None
 
     @public
     def get_model_serving(self) -> ModelServing:
@@ -222,7 +263,9 @@ class Project:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return client._get_connection()._get_model_serving()
+        # This project's serving, not the connection's, for the same reason every other handle here
+        # carries its own project.
+        return client._get_connection()._get_model_serving(self._name, self._id)
 
     @public
     def get_kafka_api(self) -> kafka_api.KafkaApi:

@@ -140,6 +140,7 @@ class Predictor(DeployableComponent):
         self._environment = environment
         self._project_namespace = project_namespace
         self._project_name = None
+        self._project_id = None
         self._env_vars = env_vars
         self._tracing = util._get_obj_from_json(tracing, DeploymentTracingConfig)
         self._git_url = git_url
@@ -890,7 +891,10 @@ class Predictor(DeployableComponent):
         # Fallback to Hopsworks REST API path
         hopsworks_client = client._get_instance()
         path_parts = serving._get_hopsworks_inference_path(
-            hopsworks_client._project_id, self
+            self._project_id
+            if self._project_id is not None
+            else hopsworks_client._project_id,
+            self,
         )
         return f"{hopsworks_client._base_url}/hopsworks-api/api/{'/'.join(str(p) for p in path_parts)}"
 

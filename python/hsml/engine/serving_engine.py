@@ -65,9 +65,20 @@ class ServingEngine:
         PREDICTOR_STATE.CONDITION_TYPE_STOPPED,
     ]
 
-    def __init__(self):
-        self._serving_api = serving_api.ServingApi()
-        self._dataset_api = dataset_api.DatasetApi()
+    def __init__(
+        self, project_id: int | None = None, project_name: str | None = None
+    ) -> None:
+        """Operate on the deployments of one project.
+
+        Parameters:
+            project_id: The project that owns the deployments this engine acts on, and
+                project_name its name. Both default to the connection's project. A
+                deployment read out of another project binds them to that project, so
+                that starting it, reading its logs or downloading its artifacts does not
+                address the login project instead.
+        """
+        self._serving_api = serving_api.ServingApi(project_id, project_name)
+        self._dataset_api = dataset_api.DatasetApi(project_id, project_name)
 
         self._engine = local_engine.LocalEngine()
 
@@ -106,6 +117,14 @@ class ServingEngine:
             deployment_instance: the deployment to get tags from
         """
         return self._serving_api._get_tags(deployment_instance)
+
+    def _get_tag_metadata(self, deployment_instance, name: str):
+        """Get the tag with a certain name as a Tag object, or None if it does not exist."""
+        return self._serving_api._get_tags_metadata(deployment_instance, name).get(name)
+
+    def _get_tags_metadata(self, deployment_instance):
+        """Get all tags for a deployment as Tag objects."""
+        return self._serving_api._get_tags_metadata(deployment_instance)
 
     def _poll_deployment_status(
         self, deployment_instance, status: str, await_status: int, update_progress=None

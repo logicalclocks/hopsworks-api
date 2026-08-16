@@ -18,6 +18,7 @@ from hopsworks_common.connection import Connection
 from hopsworks_common.search_results import (
     FeatureGroupSearchResult,
     FeatureViewSearchResult,
+    JobSearchResult,
     TrainingDatasetSearchResult,
 )
 
@@ -74,3 +75,16 @@ class TestSearchResults:
         assert result == "TD"
         conn._get_feature_store.assert_called_once_with("proj")
         fs.get_training_dataset.assert_called_once_with("entity", version=1)
+
+    def test_job_search_result_get_scopes_job_api_to_hit_project(self, mocker):
+        # Every JobApi path builds on a project id, and a job configuration path
+        # is expanded with a project name; a hit from another authorized project
+        # must not resolve either against the login project.
+        mock_job_api = mocker.patch("hopsworks_common.core.job_api.JobApi")
+        mock_job_api.return_value.get_job.return_value = "JOB"
+
+        result = JobSearchResult({**_DATA, "jobType": "SPARK"}).get()
+
+        assert result == "JOB"
+        mock_job_api.assert_called_once_with(project_id=1, project_name="proj")
+        mock_job_api.return_value.get_job.assert_called_once_with("entity")

@@ -23,6 +23,26 @@ from hopsworks_common.client.exceptions import EnvironmentException, RestAPIErro
 
 @also_available_as("hopsworks.engine.environment_engine.EnvironmentEngine")
 class EnvironmentEngine:
+    def __init__(self, project_id=None, project_name=None):
+        """Poll the environment commands of one project.
+
+        Parameters:
+            project_id: The project whose commands this polls, and project_name its name.
+                Both default to the connection's project. An EnvironmentApi bound to another
+                project passes that project's, because an unbound engine creates the
+                environment in one project and then waits for a command in another, where it
+                either never appears or belongs to something else.
+        """
+        self._project_id = project_id
+        self._project_name = project_name
+
+    def _pid(self):
+        return (
+            self._project_id
+            if self._project_id is not None
+            else client._get_instance()._project_id
+        )
+
     def _await_library_command(self, environment_name, library_name):
         commands = [command.Command(status="ONGOING")]
         while len(commands) > 0 and not self._is_final_status(commands[0]):
@@ -49,7 +69,7 @@ class EnvironmentEngine:
 
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "python",
             "environments",
             environment_name,
@@ -78,7 +98,7 @@ class EnvironmentEngine:
 
         path_params = [
             "project",
-            _client._project_id,
+            self._pid(),
             "python",
             "environments",
             environment_name,
