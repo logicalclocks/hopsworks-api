@@ -378,6 +378,56 @@ class TestDataSourceApiInferMetadata:
         }
         assert isinstance(result, im.InferredMetadata)
 
+    def test_infer_metadata_sends_source_column_names_verbatim(self):
+        # Feature.__init__ runs the feature-store autofix over `name`, so `feature.name` is
+        # lower-cased with spaces turned into underscores. The backend echoes the names we send
+        # back as `originalName`, and the caller matches those against the real source columns —
+        # so sending the sanitized form makes every suggestion unmatchable for any table whose
+        # columns are uppercase or contain spaces, which is the common case for Snowflake/Oracle.
+        preview_data = dsd.DataSourceData.from_response_json(
+            {
+                "features": [
+                    {"name": "USER_ID", "type": "bigint"},
+                    {"name": "Order Date", "type": "timestamp"},
+                ],
+                "preview": [
+                    {
+                        "values": [
+                            {"value0": "USER_ID", "value1": "7"},
+                            {"value0": "Order Date", "value1": "2026-01-01"},
+                        ]
+                    },
+                ],
+            }
+        )
+
+        sc = MagicMock()
+        sc._featurestore_id = 99
+        sc._name = "my_conn"
+
+        api = data_source_api.DataSourceApi()
+        captured: dict = {}
+
+        class _StubClient:
+            _project_id = 1
+
+            def _send_request(self, method, path_params, **kwargs):
+                captured["data"] = kwargs.get("data")
+                return {
+                    "features": [],
+                    "suggestedPrimaryKey": [],
+                    "suggestedEventTime": None,
+                }
+
+        with patch(
+            "hsfs.core.data_source_api.client._get_instance",
+            return_value=_StubClient(),
+        ):
+            api._infer_metadata(sc, preview_data)
+
+        body = json.loads(captured["data"])
+        assert [c["name"] for c in body["columns"]] == ["USER_ID", "Order Date"]
+
     def _make_rest_api_error(self, error_code: int) -> RestAPIError:
         # Build a real RestAPIError without going through HTTP — we just need
         # the parsed-error-object path to set self.error_code to our value.
