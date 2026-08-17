@@ -1,6 +1,6 @@
 ---
 name: hops-environments
-description: Use when a Hopsworks job, app, or deployment needs Python libraries that are not in a base environment. Clone a base environment and install requirements or a wheel into the clone. Auto-invoke when the user hits a missing-package error in a job/app/deployment, asks to install custom dependencies, add a pip requirement, install a wheel, or pick which Python environment a workload should run in.
+description: Use when a Hopsworks job, app, or deployment needs Python libraries or npm packages that are not in a base environment. Clone a base environment and install requirements, a wheel, or an npm package into the clone. Auto-invoke when the user hits a missing-package error in a job/app/deployment, asks to install custom dependencies, add a pip requirement, install a wheel, install an npm package or CLI tool, or pick which Python environment a workload should run in.
 ---
 
 # Hopsworks Python Environments
@@ -134,6 +134,96 @@ env.uninstall("some-package")              # remove a library
 env.delete()                               # remove the environment
 ```
 
+## npm packages (requires Hopsworks 5.1+)
+
+Environments also carry npm packages, installed globally in the image so they
+are on PATH for jobs, Jupyter and the terminal — the way to get a CLI tool or a
+JS dependency into a workload. Same rules as Python libraries: install into a
+**clone**, never a base, and the backend queues a build that applies it.
+
+The SDK has no npm method yet; the install goes through the same library
+endpoint the SDK uses internally, with `packageSource: "NPM"`:
+
+```python
+import json
+import time
+import hopsworks
+from hopsworks_common import client
+from hopsworks_common.client.exceptions import RestAPIError
+
+project = hopsworks.login()
+_client = client._get_instance()
+
+def _npm_path(env_name, package):
+    # A scoped name (@scope/name) is two path segments; splitting keeps both
+    # forms on the route the backend expects.
+    return ["project", _client._project_id, "python", "environments",
+            env_name, "libraries", *package.split("/")]
+
+def npm_install(env_name, package, version="latest", flags=None):
+    spec = {"packageSource": "NPM", "channelUrl": "npm",
+            "version": version, "flags": flags or []}
+    return _client._send_request(
+        "POST", _npm_path(env_name, package),
+        headers={"content-type": "application/json"}, data=json.dumps(spec))
+
+def npm_uninstall(env_name, package):
+    # packageSource on every name-addressed call: the same name can exist as a
+    # Python package too, and the backend refuses the ambiguity otherwise.
+    _client._send_request("DELETE", _npm_path(env_name, package),
+                          query_params={"packageSource": "NPM"})
+
+def npm_await(env_name, package, timeout_s=900):
+    # Polls the npm row's own commands; an environment-level await returns
+    # before a library build starts. The row can 404 for a moment right after
+    # queueing, so not-found is retried until the deadline; anything else
+    # raises immediately rather than being retried into silence.
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        try:
+            row = _client._send_request(
+                "GET", _npm_path(env_name, package),
+                query_params={"packageSource": "NPM", "expand": "commands"})
+        except RestAPIError as e:
+            if e.response.status_code != 404:
+                raise
+            time.sleep(5)
+            continue
+        cmds = (row.get("commands") or {}).get("items") or []
+        failed = [c for c in cmds if c.get("status") == "FAILED"]
+        if failed:
+            raise RuntimeError(failed[0].get("errorMessage")
+                               or "npm install FAILED")
+        if not cmds:
+            return row   # commands swept: the install is applied
+        time.sleep(5)
+    raise TimeoutError(f"{package} still building after {timeout_s}s")
+
+npm_install("my_app_env", "left-pad", version="1.3.0",
+            flags=["--ignore-scripts"])
+row = npm_await("my_app_env", "left-pad")
+print(row["library"], row["version"])   # version is the resolved one, e.g. 1.3.0
+
+libs = _client._send_request(
+    "GET", ["project", _client._project_id, "python", "environments",
+            "my_app_env", "libraries"], query_params={"limit": 500})
+[(i["library"], i["version"]) for i in libs["items"]
+ if i.get("packageSource") == "NPM"]
+```
+
+Rules the backend enforces:
+- **Versions are exact (`1.3.0`) or a dist-tag (`latest`).** Ranges (`^1.0.0`)
+  are refused; they are not reproducible.
+- **Flags come from a closed allowlist:** `--ignore-scripts`,
+  `--legacy-peer-deps`, `--no-audit`, `--no-fund`, `--no-optional`,
+  `--strict-peer-deps`. Anything else is refused with the list in the message.
+- **A package the image already carries is refused** with "already installed";
+  uninstall it first to change the version. The base image's own npm packages
+  (e.g. `corepack`) cannot be uninstalled.
+- The registry is the cluster's `npm_registry_url` variable (empty means
+  registry.npmjs.org), applied at build time and baked into the image so the
+  runtime resolves from the same registry.
+
 ## Ask the user (only when state is ambiguous)
 - Which base matches the workload (training vs inference vs app vs agent)?
 - Is there a `requirements.txt` already? If not, prompt for one before cloning —
@@ -163,6 +253,7 @@ env.delete()                               # remove the environment
 ## Toolset
 - **CLI:** `hops env list`, `hops env clone <new> --from <base> [--description]`, `hops env install <env> -f <local-file-or-project-path> [--upload-dir] [--no-overwrite]`.
 - **SDK:** `project.get_environment_api()` → `create_environment(base_environment_name=, await_creation=)`, `env.install_requirements()`, `env.install_wheel()`, `env.uninstall()`, `env.delete()`.
+- **npm:** no SDK method yet — POST the library endpoint with `packageSource: "NPM"` as in *npm packages* above.
 - **Source:** `python/hopsworks_common/core/environment_api.py`, `python/hopsworks_common/environment.py`, `python/hopsworks/cli/commands/env.py` (see `env_install` — a local `-f` is uploaded, any other string is passed through as a project path).
 
 ## Next steps
