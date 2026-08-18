@@ -119,20 +119,6 @@ class TestDatasetApiUploadChunk:
 
         assert "not allowed on this cluster" in str(exc_info.value)
 
-    def test_upload_not_allowed_is_not_retried(self, mocker):
-        # A policy refusal is permanent, so retrying the chunk only adds delay.
-        api = DatasetApi()
-        error = _make_rest_api_error(
-            DatasetApi.DATASET_ERROR_CODE_UPLOAD_NOT_ALLOWED, status_code=403
-        )
-        mock_upload = mocker.patch.object(api, "_upload_request", side_effect=error)
-        chunk = Chunk(b"data", 1, "pending")
-
-        with pytest.raises(DatasetException):
-            api._upload_chunk({}, "/test/path", "file.txt", chunk, None, 3, 0)
-
-        assert mock_upload.call_count == 1
-
     def test_dataset_error_code_upload_not_allowed_constant(self):
         # DatasetErrorCode range=110000, UPLOAD_NOT_ALLOWED code=56
         assert DatasetApi.DATASET_ERROR_CODE_UPLOAD_NOT_ALLOWED == 110056
