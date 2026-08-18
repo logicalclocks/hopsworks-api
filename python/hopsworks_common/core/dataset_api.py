@@ -446,7 +446,10 @@ class DatasetApi:
         Raises:
             DatasetException: If the cluster upload policy does not permit this caller to upload.
         """
-        policy = variable_api.VariableApi()._get_upload_policy()
+        try:
+            policy = variable_api.VariableApi()._get_upload_policy()
+        except RestAPIError as re:
+            raise self._upload_policy_unreadable(destination_path, re) from re
         policy = policy.strip().lower() if policy else ""
 
         if policy == "disabled":
@@ -462,19 +465,31 @@ class DatasetApi:
         try:
             user = users_api.UsersApi()._get_current_user()
         except RestAPIError as re:
-            # Refusing costs the caller an overwrite; guessing costs them the file.
-            raise DatasetException(
-                "Uploading files is restricted to cluster administrators on this cluster, and "
-                "your role could not be determined, so "
-                f"{destination_path} was left unchanged. An API key with the USER, PROJECT or "
-                "FEATURESTORE scope is required to check this."
-            ) from re
+            raise self._upload_policy_unreadable(destination_path, re) from re
 
         if not user or "HOPS_ADMIN" not in user.roles:
             raise DatasetException(
                 "Uploading files is restricted to cluster administrators on this cluster, so "
                 f"{destination_path} was left unchanged. Please contact your administrator."
             )
+
+    @staticmethod
+    def _upload_policy_unreadable(
+        destination_path: str, error: RestAPIError
+    ) -> DatasetException:
+        """Build the refusal for an upload whose policy or role could not be established.
+
+        Refusing costs the caller an overwrite; guessing costs them the file.
+        """
+        message = (
+            "The cluster upload policy could not be established, so "
+            f"{destination_path} was left unchanged."
+        )
+        if error.response.status_code == RestAPIError.STATUS_CODE_FORBIDDEN:
+            # Only a refusal points at credentials; a 500 or an expired token does not, and an
+            # in-cluster caller authenticates with a JWT and has no API key to widen.
+            message += " An API key needs the USER, PROJECT or FEATURESTORE scope to read this."
+        return DatasetException(message)
 
     def _upload_request(self, params, path, file_name, chunk):
         _client = client._get_instance()

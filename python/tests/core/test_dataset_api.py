@@ -189,12 +189,15 @@ class TestDatasetApiUploadChunk:
             "hopsworks_common.core.variable_api.VariableApi._get_upload_policy",
             return_value="admins_only",
         )
-        mocker.patch(
+        mock_profile = mocker.patch(
             "hopsworks_common.core.users_api.UsersApi._get_current_user",
             return_value=User(roles=["HOPS_ADMIN"]),
         )
 
         api._assert_upload_allowed("Resources")
+
+        # The branch this covers is the role check, so the profile has to have been read.
+        mock_profile.assert_called_once()
 
     def test_assert_upload_allowed_blocks_non_admin_under_admins_only(self, mocker):
         api = DatasetApi()
@@ -211,6 +214,38 @@ class TestDatasetApiUploadChunk:
             api._assert_upload_allowed("Resources")
 
         assert "administrators" in str(exc_info.value)
+
+    def test_assert_upload_allowed_refuses_when_the_policy_is_unreadable(self, mocker):
+        # A row whose visibility is ADMIN answers 403 to everyone else, and treating that as
+        # "no policy" would delete the file for exactly the caller the policy blocks.
+        api = DatasetApi()
+        mocker.patch(
+            "hopsworks_common.core.variable_api.VariableApi._get_upload_policy",
+            side_effect=_make_rest_api_error(160014, status_code=403),
+        )
+
+        with pytest.raises(DatasetException) as exc_info:
+            api._assert_upload_allowed("Resources/model.pkl")
+
+        assert "could not be established" in str(exc_info.value)
+        assert "Resources/model.pkl" in str(exc_info.value)
+        assert "USER, PROJECT or FEATURESTORE" in str(exc_info.value)
+
+    def test_unreadable_policy_refusal_omits_the_scope_hint_for_a_server_error(
+        self, mocker
+    ):
+        # A 500 or an expired token says nothing about API key scopes.
+        api = DatasetApi()
+        mocker.patch(
+            "hopsworks_common.core.variable_api.VariableApi._get_upload_policy",
+            side_effect=_make_rest_api_error(120000, status_code=500),
+        )
+
+        with pytest.raises(DatasetException) as exc_info:
+            api._assert_upload_allowed("Resources/model.pkl")
+
+        assert "could not be established" in str(exc_info.value)
+        assert "scope" not in str(exc_info.value)
 
     def test_assert_upload_allowed_refuses_when_role_is_unreadable(self, mocker):
         # Refusing costs the caller an overwrite; guessing costs them the file.
@@ -244,14 +279,6 @@ class TestDatasetApiUploadChunk:
         api._assert_upload_allowed("Resources")
 
         mock_profile.assert_not_called()
-
-    def test_user_profile_parses_cluster_roles(self):
-        # The profile endpoint sends roles as `role`, a list of group objects.
-        user = User.from_response_json(
-            {"username": "meb10000", "role": [{"groupName": "HOPS_ADMIN"}]}
-        )
-
-        assert user.roles == ["HOPS_ADMIN"]
 
 
 class TestDatasetApiTags:

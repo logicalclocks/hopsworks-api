@@ -25,6 +25,11 @@ from hopsworks_apigen import public
 from hopsworks_common import util
 
 
+def _parse_roles(role: Any) -> list[str]:
+    """Extract cluster role names from the `role` collection the backend sends."""
+    return [group.get("group_name") for group in role] if role else []
+
+
 @public("hopsworks.user.User", "hsfs.user.User")
 @dataclass
 class User:
@@ -55,10 +60,10 @@ class User:
             if "firstname" in json_decamelized:
                 json_decamelized["first_name"] = json_decamelized.pop("firstname")
                 json_decamelized["last_name"] = json_decamelized.pop("lastname")
-            # The profile sends roles as `role`, a list of group objects.
+            # Only the caller's own profile carries `role`; an embedded reference has none.
             role = json_decamelized.pop("role", None)
             if role:
-                json_decamelized["roles"] = [group.get("group_name") for group in role]
+                json_decamelized["roles"] = _parse_roles(role)
             # Remove keys that are not part of the dataclass
             for key in set(json_decamelized.keys()) - set(
                 User.__dataclass_fields__.keys()
@@ -111,10 +116,7 @@ class AdminUser:
         if "firstname" in json_decamelized:
             json_decamelized["first_name"] = json_decamelized.pop("firstname")
             json_decamelized["last_name"] = json_decamelized.pop("lastname")
-        role = json_decamelized.pop("role", None)
-        json_decamelized["roles"] = (
-            [group.get("group_name") for group in role] if role else []
-        )
+        json_decamelized["roles"] = _parse_roles(json_decamelized.pop("role", None))
         for key in set(json_decamelized.keys()) - set(cls.__dataclass_fields__):
             json_decamelized.pop(key)
         return cls(**json_decamelized)

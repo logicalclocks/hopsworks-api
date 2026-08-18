@@ -167,12 +167,19 @@ class VariableApi:
         Returns:
             The configured value, or None when the cluster has no policy configured, in which
                 case the backend's own default applies.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the variable exists but could not be read, for instance when its visibility restricts it to admins.
         """
         try:
             return self._get_variable("upload_policy")
-        except RestAPIError:
-            # No row on this cluster, which the backend also treats as no restriction.
-            return None
+        except RestAPIError as re:
+            if re.response.status_code == RestAPIError.STATUS_CODE_NOT_FOUND:
+                # No row on this cluster, which the backend also treats as no restriction.
+                return None
+            # Anything else, a row only an admin may read among them, leaves the policy unknown
+            # rather than absent, so the caller decides what to do about it.
+            raise
 
     def _get_service_discovery_domain(self) -> str:
         """Get domain of service discovery server.
