@@ -76,7 +76,6 @@ class UsersApi:
     Use [`hopsworks.get_users_api`][hopsworks.get_users_api] to get an instance of this class.
     """
 
-    @public
     def _get_current_user(self) -> User | None:
         """Get the profile of the user this client is authenticated as.
 
@@ -97,6 +96,7 @@ class UsersApi:
 
         return User.from_response_json(_client._send_request("GET", path_params))
 
+    @public
     def get_users(self) -> list[AdminUser]:
         """Get all registered platform users.
 

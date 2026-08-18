@@ -59,9 +59,7 @@ class User:
             # The backend sends the cluster roles as `role`, a list of group objects.
             role = json_decamelized.pop("role", None)
             if role:
-                json_decamelized["roles"] = [
-                    group.get("group_name") for group in role
-                ]
+                json_decamelized["roles"] = [group.get("group_name") for group in role]
             # Remove keys that are not part of the dataclass
             for key in set(json_decamelized.keys()) - set(
                 User.__dataclass_fields__.keys()
