@@ -72,8 +72,8 @@ class DatasetApi:
     # Backend error code for DatasetErrorCode.UPLOAD_NOT_ALLOWED (110000 + 56)
     DATASET_ERROR_CODE_UPLOAD_NOT_ALLOWED = 110056
 
-    # upload_policy values, mirroring UploadPolicy in the backend. `enabled` needs no constant:
-    # every value that is not one of these two permits the upload.
+    # upload_policy values, mirroring UploadPolicy in the backend.
+    # `enabled` needs no constant: every value that is not one of these two permits the upload.
     UPLOAD_POLICY_ADMINS_ONLY = "admins_only"
     UPLOAD_POLICY_DISABLED = "disabled"
 
@@ -220,7 +220,9 @@ class DatasetApi:
             The path to the uploaded file or directory.
 
         Raises:
-            hopsworks.client.exceptions.DatasetException: If the destination path already exists and overwrite is not set to `True`, if the upload fails because the HopsFS storage quota is exhausted, or if the cluster upload policy does not permit this user to upload. With `overwrite=True` the policy is checked before the existing path is removed, so a refusal leaves it untouched.
+            hopsworks.client.exceptions.DatasetException:
+                If the destination path already exists and overwrite is not set to `True`, if the upload fails because the HopsFS storage quota is exhausted, or if the cluster upload policy does not permit this user to upload.
+                With `overwrite=True` the policy is checked before the existing path is removed, so a refusal leaves it untouched.
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         # local path could be absolute or relative,
@@ -240,7 +242,7 @@ class DatasetApi:
                         "overwrite=True not supported on a top-level dataset"
                     )
                 # Before the removal, never after: see _assert_upload_allowed.
-                self._assert_upload_allowed(upload_path)
+                self._assert_upload_allowed(destination_path)
                 self.remove(destination_path)
             else:
                 raise DatasetException(
@@ -438,7 +440,7 @@ class DatasetApi:
             "flowTotalChunks": num_chunks,
         }
 
-    def _assert_upload_allowed(self, upload_path: str) -> None:
+    def _assert_upload_allowed(self, destination_path: str) -> None:
         """Refuse early when the cluster upload policy will not accept an upload.
 
         `upload(..., overwrite=True)` removes the destination before sending any bytes, so a
@@ -462,7 +464,7 @@ class DatasetApi:
         if policy == DatasetApi.UPLOAD_POLICY_DISABLED:
             raise DatasetException(
                 "Uploading files is disabled on this cluster, so "
-                f"{upload_path} was left unchanged. Please contact your administrator."
+                f"{destination_path} was left unchanged. Please contact your administrator."
             )
 
         if policy != DatasetApi.UPLOAD_POLICY_ADMINS_ONLY:
@@ -473,18 +475,19 @@ class DatasetApi:
             user = users_api.UsersApi()._get_current_user()
         except RestAPIError as re:
             # Without the caller's roles there is no way to tell whether this upload would be
-            # accepted. Refusing costs the caller an overwrite; guessing costs them the file.
+            # accepted.
+            # Refusing costs the caller an overwrite; guessing costs them the file.
             raise DatasetException(
                 "Uploading files is restricted to cluster administrators on this cluster, and "
                 "your role could not be determined, so "
-                f"{upload_path} was left unchanged. An API key with the USER, PROJECT or "
+                f"{destination_path} was left unchanged. An API key with the USER, PROJECT or "
                 "FEATURESTORE scope is required to check this."
             ) from re
 
         if not user or "HOPS_ADMIN" not in user.roles:
             raise DatasetException(
                 "Uploading files is restricted to cluster administrators on this cluster, so "
-                f"{upload_path} was left unchanged. Please contact your administrator."
+                f"{destination_path} was left unchanged. Please contact your administrator."
             )
 
     def _upload_request(self, params, path, file_name, chunk):

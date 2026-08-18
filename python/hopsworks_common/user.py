@@ -45,8 +45,9 @@ class User:
     test_user: bool | None = None
     num_active_projects: int | None = None
     num_remaining_projects: int | None = None
-    # Cluster roles, such as HOPS_ADMIN. Only the user's own profile carries these; a User
-    # parsed from an embedded reference, for instance a project member, leaves this empty.
+    # Cluster roles, such as HOPS_ADMIN.
+    # Only the user's own profile carries these.
+    # A User parsed from an embedded reference, for instance a project member, leaves this empty.
     roles: list[str] = field(default_factory=list)
 
     @classmethod
