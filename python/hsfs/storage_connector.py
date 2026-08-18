@@ -92,7 +92,7 @@ class StorageConnector(ABC):
         MONGODB: "featurestoreMongoConnectorDTO",
         GLUE: "featurestoreGlueConnectorDTO",
         JDBC: "featurestoreJdbcConnectorDTO",
-        KAFKA: "featurestoreKafkaConnectorDTO",
+        KAFKA: "featureStoreKafkaConnectorDTO",
         GCS: "featureStoreGcsConnectorDTO",
         BIGQUERY: "featurestoreBigqueryConnectorDTO",
         SQL: "featurestoreSqlConnectorDTO",
