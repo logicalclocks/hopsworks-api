@@ -77,12 +77,10 @@ class UsersApi:
     """
 
     def _get_current_user(self) -> User | None:
-        """Get the profile of the user this client is authenticated as.
+        """Get the profile of the user this client is authenticated as, including their roles.
 
-        Unlike the rest of this class, this reads the caller's own profile rather than
-        administering someone else's, so it is available to any authenticated user and not only
-        to a `HOPS_ADMIN`.
-        The response carries the caller's cluster roles.
+        Unlike the rest of this class this reads the caller's own profile, so it is available to
+        any authenticated user and not only to a `HOPS_ADMIN`.
 
         Returns:
             The current user, or None if the backend returned no profile.

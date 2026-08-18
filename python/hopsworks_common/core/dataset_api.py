@@ -62,8 +62,6 @@ class DatasetApi:
     DEFAULT_UPLOAD_MAX_CHUNK_RETRIES = 1
 
     DEFAULT_DOWNLOAD_FLOW_CHUNK_SIZE = 1024 * 1024
-    # 403 is permanent: the cluster upload policy refused the request, and retrying the same
-    # chunk cannot change that answer.
     FLOW_PERMANENT_ERRORS = [403, 404, 413, 415, 500, 501]
 
     # Backend error code for DatasetErrorCode.UPLOAD_DISK_SPACE_ERROR (110000 + 55)
@@ -71,11 +69,6 @@ class DatasetApi:
 
     # Backend error code for DatasetErrorCode.UPLOAD_NOT_ALLOWED (110000 + 56)
     DATASET_ERROR_CODE_UPLOAD_NOT_ALLOWED = 110056
-
-    # upload_policy values, mirroring UploadPolicy in the backend.
-    # `enabled` needs no constant: every value that is not one of these two permits the upload.
-    UPLOAD_POLICY_ADMINS_ONLY = "admins_only"
-    UPLOAD_POLICY_DISABLED = "disabled"
 
     # alias for backwards-compatibility:
     DEFAULT_FLOW_CHUNK_SIZE = DEFAULT_DOWNLOAD_FLOW_CHUNK_SIZE
@@ -441,19 +434,14 @@ class DatasetApi:
         }
 
     def _assert_upload_allowed(self, destination_path: str) -> None:
-        """Refuse early when the cluster upload policy will not accept an upload.
+        """Refuse an upload the cluster policy will not accept, before anything is removed.
 
         `upload(..., overwrite=True)` removes the destination before sending any bytes, so a
-        refusal discovered on the first chunk means the original is already gone and the
-        replacement cannot be written.
-        For a directory the removal is recursive and also takes files that exist only on the
-        server.
+        refusal discovered on the first chunk leaves the caller with neither the original nor the
+        replacement, and for a directory that removal is recursive.
 
-        Anything other than a policy that clearly forbids this caller is treated as permitted:
-        the backend remains the authority, and the aim here is only to avoid a destructive step
-        that is certain to fail.
-        An unrecognised policy value therefore permits the upload, matching the backend, which
-        falls back to allowing uploads rather than blocking on a value it cannot parse.
+        Anything short of a policy that clearly forbids this caller is treated as permitted, the
+        backend being the authority.
 
         Raises:
             DatasetException: If the cluster upload policy does not permit this caller to upload.
@@ -461,21 +449,19 @@ class DatasetApi:
         policy = variable_api.VariableApi()._get_upload_policy()
         policy = policy.strip().lower() if policy else ""
 
-        if policy == DatasetApi.UPLOAD_POLICY_DISABLED:
+        if policy == "disabled":
             raise DatasetException(
                 "Uploading files is disabled on this cluster, so "
                 f"{destination_path} was left unchanged. Please contact your administrator."
             )
 
-        if policy != DatasetApi.UPLOAD_POLICY_ADMINS_ONLY:
+        if policy != "admins_only":
             return
 
-        # Only this policy depends on who the caller is, so the profile is fetched only here.
+        # Only this policy depends on the caller, so the profile is read only here.
         try:
             user = users_api.UsersApi()._get_current_user()
         except RestAPIError as re:
-            # Without the caller's roles there is no way to tell whether this upload would be
-            # accepted.
             # Refusing costs the caller an overwrite; guessing costs them the file.
             raise DatasetException(
                 "Uploading files is restricted to cluster administrators on this cluster, and "

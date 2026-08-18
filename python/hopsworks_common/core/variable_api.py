@@ -171,9 +171,7 @@ class VariableApi:
         try:
             return self._get_variable("upload_policy")
         except RestAPIError:
-            # No row on this cluster, or the variable is unreadable.
-            # The backend defaults to permitting uploads in the same situation, so report
-            # "not configured" rather than inventing a restriction the backend will not apply.
+            # No row on this cluster, which the backend also treats as no restriction.
             return None
 
     def _get_service_discovery_domain(self) -> str:

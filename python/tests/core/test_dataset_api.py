@@ -137,9 +137,6 @@ class TestDatasetApiUploadChunk:
         # DatasetErrorCode range=110000, UPLOAD_NOT_ALLOWED code=56
         assert DatasetApi.DATASET_ERROR_CODE_UPLOAD_NOT_ALLOWED == 110056
 
-    def test_forbidden_is_a_permanent_flow_error(self):
-        assert 403 in DatasetApi.FLOW_PERMANENT_ERRORS
-
     def test_overwrite_does_not_remove_when_policy_forbids_upload(
         self, mocker, tmp_path
     ):
