@@ -223,7 +223,7 @@
 | python/hopsworks\_common/kafka\_schema.py                                        |       51 |       22 |     57% |36-41, 45-50, 53-55, 61, 67, 73, 79, 92, 95, 98, 101 |
 | python/hopsworks\_common/kafka\_topic.py                                         |      106 |       17 |     84% |70, 97-99, 118-120, 130, 136, 146, 152, 162, 168, 183, 186, 198, 201 |
 | python/hopsworks\_common/library.py                                              |       19 |       11 |     42% |39-50, 54-55 |
-| python/hopsworks\_common/project.py                                              |      158 |       43 |     73% |100-103, 109, 115, 121, 127, 133, 139, 234-237, 246-249, 258, 276, 281, 290, 299, 308, 317, 412, 421-423, 432-434, 446, 458, 488, 531, 536, 539, 542-544, 549-550 |
+| python/hopsworks\_common/project.py                                              |      158 |       39 |     75% |103, 109, 115, 121, 127, 133, 234-237, 246-249, 258, 276, 281, 290, 299, 308, 317, 412, 421-423, 432-434, 446, 458, 488, 531, 536, 539, 542-544, 549-550 |
 | python/hopsworks\_common/project\_member.py                                      |       67 |        9 |     87% |55, 76, 82, 88, 100, 160, 163, 169, 172 |
 | python/hopsworks\_common/search\_results.py                                      |      224 |       40 |     82% |58, 61, 110, 116, 122, 146, 156-172, 199, 217, 235, 243, 253-262, 398, 404, 410, 416, 448, 464 |
 | python/hopsworks\_common/secret.py                                               |       61 |       11 |     82% |61, 80, 86, 92, 98, 110, 113, 116, 119-121 |
@@ -475,7 +475,7 @@
 | python/hsml/utils/schema/tensor.py                                               |        8 |        0 |    100% |           |
 | python/hsml/utils/schema/tensor\_schema.py                                       |       34 |        0 |    100% |           |
 | python/hsml/version.py                                                           |        2 |        2 |      0% |     17-22 |
-| **TOTAL**                                                                        | **41360** | **12509** | **70%** |           |
+| **TOTAL**                                                                        | **41360** | **12505** | **70%** |           |
 
 
 ## Setup coverage badge
