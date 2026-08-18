@@ -260,9 +260,10 @@ class TestDatasetApiUploadChunk:
         )
 
         with pytest.raises(DatasetException) as exc_info:
-            api._assert_upload_allowed("Resources")
+            api._assert_upload_allowed("Resources/model.pkl")
 
-        assert "could not be determined" in str(exc_info.value)
+        assert "could not be established" in str(exc_info.value)
+        assert "Resources/model.pkl" in str(exc_info.value)
 
     @pytest.mark.parametrize("policy", ["enabled", "", None, "disabeld"])
     def test_assert_upload_allowed_permits_when_not_restricted(self, mocker, policy):
