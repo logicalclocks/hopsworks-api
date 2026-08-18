@@ -618,6 +618,47 @@ class TestSpark:
         # Assert
         assert mock_sc_read.return_value.createOrReplaceTempView.call_count == 1
 
+    def test_register_external_temporary_table_glue_iceberg_uses_catalog(
+        self, mocker
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        mock_sc_read = mocker.patch("hsfs.storage_connector.GlueConnector.read")
+        mock_via_catalog = mocker.patch(
+            "hsfs.engine.spark.Engine._read_glue_iceberg_via_catalog"
+        )
+
+        spark_engine = spark.Engine()
+
+        glue_connector = storage_connector.GlueConnector(
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
+            database="db",
+        )
+
+        external_fg = feature_group.ExternalFeatureGroup(
+            id=10,
+            location="s3://bucket/db.db/tbl",
+            data_format="ICEBERG",
+            data_source=ds.DataSource(
+                storage_connector=glue_connector, database="db", table="tbl"
+            ),
+        )
+
+        # Act
+        spark_engine._register_external_temporary_table(
+            external_fg=external_fg,
+            alias="tbl_1",
+        )
+
+        # Assert: Glue + Iceberg goes through the catalog, not the path-based read
+        mock_via_catalog.assert_called_once()
+        assert mock_sc_read.call_count == 0
+        assert (
+            mock_via_catalog.return_value.createOrReplaceTempView.call_count == 1
+        )
+
     def test_register_hudi_temporary_table(self, mocker):
         # Arrange
         mock_hudi_engine = mocker.patch("hsfs.core.hudi_engine.HudiEngine")
