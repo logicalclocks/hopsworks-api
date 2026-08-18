@@ -45,6 +45,9 @@ class User:
     test_user: bool | None = None
     num_active_projects: int | None = None
     num_remaining_projects: int | None = None
+    # Cluster roles, such as HOPS_ADMIN. Only the user's own profile carries these; a User
+    # parsed from an embedded reference, for instance a project member, leaves this empty.
+    roles: list[str] = field(default_factory=list)
 
     @classmethod
     def from_response_json(cls, json_dict: dict[str, Any] | None) -> User | None:
@@ -53,6 +56,12 @@ class User:
             if "firstname" in json_decamelized:
                 json_decamelized["first_name"] = json_decamelized.pop("firstname")
                 json_decamelized["last_name"] = json_decamelized.pop("lastname")
+            # The backend sends the cluster roles as `role`, a list of group objects.
+            role = json_decamelized.pop("role", None)
+            if role:
+                json_decamelized["roles"] = [
+                    group.get("group_name") for group in role
+                ]
             # Remove keys that are not part of the dataclass
             for key in set(json_decamelized.keys()) - set(
                 User.__dataclass_fields__.keys()

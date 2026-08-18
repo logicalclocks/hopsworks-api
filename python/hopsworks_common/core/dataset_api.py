@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING, Literal
 from hopsworks_apigen import also_available_as, public
 from hopsworks_common import client, tag, usage, util
 from hopsworks_common.client.exceptions import DatasetException, RestAPIError
-from hopsworks_common.core import dataset, inode
+from hopsworks_common.core import dataset, inode, users_api, variable_api
 from tqdm.auto import tqdm
 
 
@@ -71,6 +71,11 @@ class DatasetApi:
 
     # Backend error code for DatasetErrorCode.UPLOAD_NOT_ALLOWED (110000 + 56)
     DATASET_ERROR_CODE_UPLOAD_NOT_ALLOWED = 110056
+
+    # upload_policy values, mirroring UploadPolicy in the backend. `enabled` needs no constant:
+    # every value that is not one of these two permits the upload.
+    UPLOAD_POLICY_ADMINS_ONLY = "admins_only"
+    UPLOAD_POLICY_DISABLED = "disabled"
 
     # alias for backwards-compatibility:
     DEFAULT_FLOW_CHUNK_SIZE = DEFAULT_DOWNLOAD_FLOW_CHUNK_SIZE
@@ -438,37 +443,49 @@ class DatasetApi:
 
         `upload(..., overwrite=True)` removes the destination before sending any bytes, so a
         refusal discovered on the first chunk means the original is already gone and the
-        replacement cannot be written. For a directory the removal is recursive and also takes
-        files that exist only on the server.
+        replacement cannot be written.
+        For a directory the removal is recursive and also takes files that exist only on the
+        server.
 
-        Rather than reimplementing the policy, this asks the endpoint that enforces it. The
-        chunk-probe GET runs the identical check as the upload POST and writes nothing, so a 403
-        here is the authoritative answer for this user, whatever the policy and role happen to be.
-        Any other outcome is treated as permitted: the aim is to avoid a destructive step that is
-        certain to fail, not to add a second gatekeeper.
+        Anything other than a policy that clearly forbids this caller is treated as permitted:
+        the backend remains the authority, and the aim here is only to avoid a destructive step
+        that is certain to fail.
+        An unrecognised policy value therefore permits the upload, matching the backend, which
+        falls back to allowing uploads rather than blocking on a value it cannot parse.
 
         Raises:
-            DatasetException: If the cluster upload policy does not permit this user to upload.
+            DatasetException: If the cluster upload policy does not permit this caller to upload.
         """
-        _client = client._get_instance()
-        path_params = ["project", _client._project_id, "dataset", "upload", upload_path]
-        try:
-            _client._send_request(
-                "GET",
-                path_params,
-                query_params=self._get_flow_base_params(
-                    "upload-policy-probe", 1, 0, self.DEFAULT_UPLOAD_FLOW_CHUNK_SIZE
-                ),
+        policy = variable_api.VariableApi()._get_upload_policy()
+        policy = policy.strip().lower() if policy else ""
+
+        if policy == DatasetApi.UPLOAD_POLICY_DISABLED:
+            raise DatasetException(
+                "Uploading files is disabled on this cluster, so "
+                f"{upload_path} was left unchanged. Please contact your administrator."
             )
+
+        if policy != DatasetApi.UPLOAD_POLICY_ADMINS_ONLY:
+            return
+
+        # Only this policy depends on who the caller is, so the profile is fetched only here.
+        try:
+            user = users_api.UsersApi()._get_current_user()
         except RestAPIError as re:
-            if (
-                re.error_code == DatasetApi.DATASET_ERROR_CODE_UPLOAD_NOT_ALLOWED
-                or getattr(re.response, "status_code", None) == 403
-            ):
-                raise DatasetException(
-                    "Uploading files is not allowed on this cluster, so "
-                    f"{upload_path} was left unchanged. Please contact your administrator."
-                ) from re
+            # Without the caller's roles there is no way to tell whether this upload would be
+            # accepted. Refusing costs the caller an overwrite; guessing costs them the file.
+            raise DatasetException(
+                "Uploading files is restricted to cluster administrators on this cluster, and "
+                "your role could not be determined, so "
+                f"{upload_path} was left unchanged. An API key with the USER, PROJECT or "
+                "FEATURESTORE scope is required to check this."
+            ) from re
+
+        if not user or "HOPS_ADMIN" not in user.roles:
+            raise DatasetException(
+                "Uploading files is restricted to cluster administrators on this cluster, so "
+                f"{upload_path} was left unchanged. Please contact your administrator."
+            )
 
     def _upload_request(self, params, path, file_name, chunk):
         _client = client._get_instance()

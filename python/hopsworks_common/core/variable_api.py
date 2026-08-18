@@ -158,6 +158,24 @@ class VariableApi:
                 ) from err
             raise err
 
+    def _get_upload_policy(self) -> str | None:
+        """Get the cluster policy governing who may upload files.
+
+        One of `enabled`, `admins_only` or `disabled`, as enforced by the backend on the dataset
+        upload endpoint.
+
+        Returns:
+            The configured value, or None when the cluster has no policy configured, in which
+                case the backend's own default applies.
+        """
+        try:
+            return self._get_variable("upload_policy")
+        except RestAPIError:
+            # No row on this cluster, or the variable is unreadable. The backend defaults to
+            # permitting uploads in the same situation, so report "not configured" rather than
+            # inventing a restriction the backend will not apply.
+            return None
+
     def _get_service_discovery_domain(self) -> str:
         """Get domain of service discovery server.
 
