@@ -761,12 +761,13 @@ class TestPredictor:
             model_framework=MODEL.FRAMEWORK_SKLEARN,
         )
         p._project_name = "my_project"
+        p._project_namespace = "my-project-ns"
 
         # Act
         url = p.get_endpoint_url()
 
         # Assert
-        assert url == "https://istio.example.com/v1/my_project/my_model"
+        assert url == "https://istio.example.com/v1/my-project-ns/my_model"
 
     def test_get_endpoint_url_no_istio_returns_none(self, mocker):
         # Arrange
@@ -811,12 +812,13 @@ class TestPredictor:
             model_framework=MODEL.FRAMEWORK_LLM,
         )
         p._project_name = "my_project"
+        p._project_namespace = "my-project-ns"
 
         # Act
         url = p.get_openai_url()
 
         # Assert
-        assert url == "https://istio.example.com/v1/my_project/my_llm/v1"
+        assert url == "https://istio.example.com/v1/my-project-ns/my_llm/v1"
 
     def test_get_openai_url_non_vllm_returns_none(self, mocker):
         # Arrange
@@ -909,6 +911,7 @@ class TestPredictor:
             model_framework=MODEL.FRAMEWORK_SKLEARN,
         )
         p._project_name = "my_project"
+        p._project_namespace = "my-project-ns"
 
         # Act
         url = p.get_inference_url()
@@ -916,7 +919,7 @@ class TestPredictor:
         # Assert
         assert (
             url
-            == "https://istio.example.com/v1/my_project/my_model/v1/models/my_model:predict"
+            == "https://istio.example.com/v1/my-project-ns/my_model/v1/models/my_model:predict"
         )
 
     def test_get_inference_url_standard_model_fallback_hopsworks(self, mocker):

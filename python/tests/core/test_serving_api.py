@@ -115,3 +115,39 @@ class TestServingApi:
 
         # Assert
         assert result == {"t": bad_value}
+
+    # Regression: Istio routes on the namespace the deployment runs in, and the
+    # backend reports it on every deployment the client parses. Addressing by
+    # project name instead only reaches the deployment on a cluster where the
+    # backend derives one name from the other, so it worked everywhere except
+    # the pre-created-namespace clusters it was silently broken on.
+    def test_istio_inference_path_addresses_the_namespace(self):
+        api = ServingApi()
+        deployment = SimpleNamespace(
+            name="skdepl",
+            project_name="my_project",
+            project_namespace="pre-created-ns",
+        )
+
+        assert api._get_istio_inference_path(deployment) == [
+            "v1",
+            "pre-created-ns",
+            "skdepl",
+            "v1",
+            "models",
+            "skdepl:predict",
+        ]
+
+    def test_istio_inference_base_path_addresses_the_namespace(self):
+        api = ServingApi()
+        deployment = SimpleNamespace(
+            name="vllmdepl",
+            project_name="my_project",
+            project_namespace="pre-created-ns",
+        )
+
+        assert api._get_istio_inference_path(deployment, base_only=True) == [
+            "v1",
+            "pre-created-ns",
+            "vllmdepl",
+        ]
