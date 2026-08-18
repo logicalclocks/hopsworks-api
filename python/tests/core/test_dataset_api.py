@@ -103,6 +103,116 @@ class TestDatasetApiUploadChunk:
         # DatasetErrorCode range=110000, UPLOAD_DISK_SPACE_ERROR code=55
         assert DatasetApi.DATASET_ERROR_CODE_UPLOAD_DISK_SPACE == 110055
 
+    def test_upload_not_allowed_error_names_the_policy(self, mocker):
+        # Arrange
+        api = DatasetApi()
+        error = _make_rest_api_error(
+            DatasetApi.DATASET_ERROR_CODE_UPLOAD_NOT_ALLOWED, status_code=403
+        )
+        mocker.patch.object(api, "_upload_request", side_effect=error)
+        chunk = Chunk(b"data", 1, "pending")
+
+        # Act & Assert
+        with pytest.raises(DatasetException) as exc_info:
+            api._upload_chunk({}, "/test/path", "file.txt", chunk, None, 0, 1)
+
+        assert "not allowed on this cluster" in str(exc_info.value)
+
+    def test_upload_not_allowed_is_not_retried(self, mocker):
+        # A policy refusal is permanent, so retrying the chunk only adds delay.
+        api = DatasetApi()
+        error = _make_rest_api_error(
+            DatasetApi.DATASET_ERROR_CODE_UPLOAD_NOT_ALLOWED, status_code=403
+        )
+        mock_upload = mocker.patch.object(api, "_upload_request", side_effect=error)
+        chunk = Chunk(b"data", 1, "pending")
+
+        with pytest.raises(DatasetException):
+            api._upload_chunk({}, "/test/path", "file.txt", chunk, None, 3, 0)
+
+        assert mock_upload.call_count == 1
+
+    def test_dataset_error_code_upload_not_allowed_constant(self):
+        # DatasetErrorCode range=110000, UPLOAD_NOT_ALLOWED code=56
+        assert DatasetApi.DATASET_ERROR_CODE_UPLOAD_NOT_ALLOWED == 110056
+
+    def test_forbidden_is_a_permanent_flow_error(self):
+        assert 403 in DatasetApi.FLOW_PERMANENT_ERRORS
+
+    def test_overwrite_does_not_remove_when_policy_forbids_upload(
+        self, mocker, tmp_path
+    ):
+        # The whole point of the pre-flight check: a refusal must leave the destination intact.
+        api = DatasetApi()
+        local_file = tmp_path / "model.pkl"
+        local_file.write_bytes(b"payload")
+
+        mocker.patch.object(api, "exists", return_value=True)
+        mocker.patch.object(api, "_get", return_value={})
+        mock_remove = mocker.patch.object(api, "remove")
+        mock_upload_file = mocker.patch.object(api, "_upload_file")
+        mocker.patch.object(
+            api,
+            "_assert_upload_allowed",
+            side_effect=DatasetException(
+                "Uploading files is not allowed on this cluster"
+            ),
+        )
+
+        with pytest.raises(DatasetException):
+            api.upload(str(local_file), "Resources", overwrite=True)
+
+        mock_remove.assert_not_called()
+        mock_upload_file.assert_not_called()
+
+    def test_overwrite_removes_then_uploads_when_policy_allows(self, mocker, tmp_path):
+        api = DatasetApi()
+        local_file = tmp_path / "model.pkl"
+        local_file.write_bytes(b"payload")
+
+        mocker.patch.object(api, "exists", return_value=True)
+        mocker.patch.object(api, "_get", return_value={})
+        mock_remove = mocker.patch.object(api, "remove")
+        mock_upload_file = mocker.patch.object(api, "_upload_file")
+        mocker.patch.object(api, "_assert_upload_allowed")
+
+        api.upload(str(local_file), "Resources", overwrite=True)
+
+        mock_remove.assert_called_once()
+        mock_upload_file.assert_called_once()
+
+    def test_assert_upload_allowed_raises_on_forbidden_probe(self, mocker):
+        api = DatasetApi()
+        client_instance = MagicMock()
+        client_instance._project_id = 119
+        client_instance._send_request.side_effect = _make_rest_api_error(
+            DatasetApi.DATASET_ERROR_CODE_UPLOAD_NOT_ALLOWED, status_code=403
+        )
+        mocker.patch(
+            "hopsworks_common.core.dataset_api.client._get_instance",
+            return_value=client_instance,
+        )
+
+        with pytest.raises(DatasetException) as exc_info:
+            api._assert_upload_allowed("Resources")
+
+        assert "left unchanged" in str(exc_info.value)
+
+    def test_assert_upload_allowed_ignores_unrelated_probe_failure(self, mocker):
+        # The probe is not a second gatekeeper: anything other than a refusal must not block.
+        api = DatasetApi()
+        client_instance = MagicMock()
+        client_instance._project_id = 119
+        client_instance._send_request.side_effect = _make_rest_api_error(
+            110042, status_code=400
+        )
+        mocker.patch(
+            "hopsworks_common.core.dataset_api.client._get_instance",
+            return_value=client_instance,
+        )
+
+        api._assert_upload_allowed("Resources")
+
 
 class TestDatasetApiTags:
     def _patch_client(self, mocker, send_request_return) -> MagicMock:

@@ -62,10 +62,15 @@ class DatasetApi:
     DEFAULT_UPLOAD_MAX_CHUNK_RETRIES = 1
 
     DEFAULT_DOWNLOAD_FLOW_CHUNK_SIZE = 1024 * 1024
-    FLOW_PERMANENT_ERRORS = [404, 413, 415, 500, 501]
+    # 403 is permanent: the cluster upload policy refused the request, and retrying the same
+    # chunk cannot change that answer.
+    FLOW_PERMANENT_ERRORS = [403, 404, 413, 415, 500, 501]
 
     # Backend error code for DatasetErrorCode.UPLOAD_DISK_SPACE_ERROR (110000 + 55)
     DATASET_ERROR_CODE_UPLOAD_DISK_SPACE = 110055
+
+    # Backend error code for DatasetErrorCode.UPLOAD_NOT_ALLOWED (110000 + 56)
+    DATASET_ERROR_CODE_UPLOAD_NOT_ALLOWED = 110056
 
     # alias for backwards-compatibility:
     DEFAULT_FLOW_CHUNK_SIZE = DEFAULT_DOWNLOAD_FLOW_CHUNK_SIZE
@@ -210,7 +215,7 @@ class DatasetApi:
             The path to the uploaded file or directory.
 
         Raises:
-            hopsworks.client.exceptions.DatasetException: If the destination path already exists and overwrite is not set to `True`, or if the upload fails because the HopsFS storage quota is exhausted.
+            hopsworks.client.exceptions.DatasetException: If the destination path already exists and overwrite is not set to `True`, if the upload fails because the HopsFS storage quota is exhausted, or if the cluster upload policy does not permit this user to upload. With `overwrite=True` the policy is checked before the existing path is removed, so a refusal leaves it untouched.
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         # local path could be absolute or relative,
@@ -229,6 +234,8 @@ class DatasetApi:
                     raise DatasetException(
                         "overwrite=True not supported on a top-level dataset"
                     )
+                # Before the removal, never after: see _assert_upload_allowed.
+                self._assert_upload_allowed(upload_path)
                 self.remove(destination_path)
             else:
                 raise DatasetException(
@@ -398,6 +405,14 @@ class DatasetApi:
                             "Upload failed: HopsFS storage is full. "
                             "Please contact your administrator to free up disk space."
                         ) from re
+                    if (
+                        re.error_code
+                        == DatasetApi.DATASET_ERROR_CODE_UPLOAD_NOT_ALLOWED
+                    ):
+                        raise DatasetException(
+                            "Upload failed: uploading files is not allowed on this cluster. "
+                            "Please contact your administrator."
+                        ) from re
                     raise re
                 time.sleep(chunk_retry_interval)
                 continue
@@ -417,6 +432,43 @@ class DatasetApi:
             "flowRelativePath": file_name,
             "flowTotalChunks": num_chunks,
         }
+
+    def _assert_upload_allowed(self, upload_path: str) -> None:
+        """Refuse early when the cluster upload policy will not accept an upload.
+
+        `upload(..., overwrite=True)` removes the destination before sending any bytes, so a
+        refusal discovered on the first chunk means the original is already gone and the
+        replacement cannot be written. For a directory the removal is recursive and also takes
+        files that exist only on the server.
+
+        Rather than reimplementing the policy, this asks the endpoint that enforces it. The
+        chunk-probe GET runs the identical check as the upload POST and writes nothing, so a 403
+        here is the authoritative answer for this user, whatever the policy and role happen to be.
+        Any other outcome is treated as permitted: the aim is to avoid a destructive step that is
+        certain to fail, not to add a second gatekeeper.
+
+        Raises:
+            DatasetException: If the cluster upload policy does not permit this user to upload.
+        """
+        _client = client._get_instance()
+        path_params = ["project", _client._project_id, "dataset", "upload", upload_path]
+        try:
+            _client._send_request(
+                "GET",
+                path_params,
+                query_params=self._get_flow_base_params(
+                    "upload-policy-probe", 1, 0, self.DEFAULT_UPLOAD_FLOW_CHUNK_SIZE
+                ),
+            )
+        except RestAPIError as re:
+            if (
+                re.error_code == DatasetApi.DATASET_ERROR_CODE_UPLOAD_NOT_ALLOWED
+                or getattr(re.response, "status_code", None) == 403
+            ):
+                raise DatasetException(
+                    "Uploading files is not allowed on this cluster, so "
+                    f"{upload_path} was left unchanged. Please contact your administrator."
+                ) from re
 
     def _upload_request(self, params, path, file_name, chunk):
         _client = client._get_instance()
