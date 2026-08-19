@@ -20,6 +20,7 @@ from unittest.mock import MagicMock
 import pytest
 from hopsworks_common.client.exceptions import DatasetException, RestAPIError
 from hopsworks_common.core.dataset_api import Chunk, DatasetApi
+from hopsworks_common.user import User
 
 
 def _make_rest_api_error(error_code: int, status_code: int = 500) -> RestAPIError:
@@ -102,6 +103,183 @@ class TestDatasetApiUploadChunk:
         # Sanity-check the constant value matches the backend enum:
         # DatasetErrorCode range=110000, UPLOAD_DISK_SPACE_ERROR code=55
         assert DatasetApi.DATASET_ERROR_CODE_UPLOAD_DISK_SPACE == 110055
+
+    def test_upload_not_allowed_error_names_the_policy(self, mocker):
+        # Arrange
+        api = DatasetApi()
+        error = _make_rest_api_error(
+            DatasetApi.DATASET_ERROR_CODE_UPLOAD_NOT_ALLOWED, status_code=403
+        )
+        mocker.patch.object(api, "_upload_request", side_effect=error)
+        chunk = Chunk(b"data", 1, "pending")
+
+        # Act & Assert
+        with pytest.raises(DatasetException) as exc_info:
+            api._upload_chunk({}, "/test/path", "file.txt", chunk, None, 0, 1)
+
+        assert "not allowed on this cluster" in str(exc_info.value)
+
+    def test_dataset_error_code_upload_not_allowed_constant(self):
+        # DatasetErrorCode range=110000, UPLOAD_NOT_ALLOWED code=56
+        assert DatasetApi.DATASET_ERROR_CODE_UPLOAD_NOT_ALLOWED == 110056
+
+    def test_overwrite_does_not_remove_when_policy_forbids_upload(
+        self, mocker, tmp_path
+    ):
+        # The whole point of the pre-flight check: a refusal must leave the destination intact.
+        api = DatasetApi()
+        local_file = tmp_path / "model.pkl"
+        local_file.write_bytes(b"payload")
+
+        mocker.patch.object(api, "exists", return_value=True)
+        mocker.patch.object(api, "_get", return_value={})
+        mock_remove = mocker.patch.object(api, "remove")
+        mock_upload_file = mocker.patch.object(api, "_upload_file")
+        mocker.patch.object(
+            api,
+            "_assert_upload_allowed",
+            side_effect=DatasetException(
+                "Uploading files is not allowed on this cluster"
+            ),
+        )
+
+        with pytest.raises(DatasetException):
+            api.upload(str(local_file), "Resources", overwrite=True)
+
+        mock_remove.assert_not_called()
+        mock_upload_file.assert_not_called()
+
+    def test_overwrite_removes_then_uploads_when_policy_allows(self, mocker, tmp_path):
+        api = DatasetApi()
+        local_file = tmp_path / "model.pkl"
+        local_file.write_bytes(b"payload")
+
+        mocker.patch.object(api, "exists", return_value=True)
+        mocker.patch.object(api, "_get", return_value={})
+        mock_remove = mocker.patch.object(api, "remove")
+        mock_upload_file = mocker.patch.object(api, "_upload_file")
+        mocker.patch.object(api, "_assert_upload_allowed")
+
+        api.upload(str(local_file), "Resources", overwrite=True)
+
+        mock_remove.assert_called_once()
+        mock_upload_file.assert_called_once()
+
+    @pytest.mark.parametrize("policy", ["disabled", "DISABLED", "  Disabled  "])
+    def test_assert_upload_allowed_blocks_everyone_when_disabled(self, mocker, policy):
+        api = DatasetApi()
+        mocker.patch(
+            "hopsworks_common.core.variable_api.VariableApi._get_upload_policy",
+            return_value=policy,
+        )
+        mock_profile = mocker.patch(
+            "hopsworks_common.core.users_api.UsersApi._get_current_user"
+        )
+
+        with pytest.raises(DatasetException) as exc_info:
+            api._assert_upload_allowed("Resources")
+
+        assert "left unchanged" in str(exc_info.value)
+        # `disabled` applies to everyone, so the caller's role is irrelevant and must not be read.
+        mock_profile.assert_not_called()
+
+    def test_assert_upload_allowed_permits_admin_under_admins_only(self, mocker):
+        api = DatasetApi()
+        mocker.patch(
+            "hopsworks_common.core.variable_api.VariableApi._get_upload_policy",
+            return_value="admins_only",
+        )
+        mock_profile = mocker.patch(
+            "hopsworks_common.core.users_api.UsersApi._get_current_user",
+            return_value=User(roles=["HOPS_ADMIN"]),
+        )
+
+        api._assert_upload_allowed("Resources")
+
+        # The branch this covers is the role check, so the profile has to have been read.
+        mock_profile.assert_called_once()
+
+    def test_assert_upload_allowed_blocks_non_admin_under_admins_only(self, mocker):
+        api = DatasetApi()
+        mocker.patch(
+            "hopsworks_common.core.variable_api.VariableApi._get_upload_policy",
+            return_value="admins_only",
+        )
+        mocker.patch(
+            "hopsworks_common.core.users_api.UsersApi._get_current_user",
+            return_value=User(roles=["HOPS_USER"]),
+        )
+
+        with pytest.raises(DatasetException) as exc_info:
+            api._assert_upload_allowed("Resources")
+
+        assert "administrators" in str(exc_info.value)
+
+    def test_assert_upload_allowed_refuses_when_the_policy_is_unreadable(self, mocker):
+        # A row whose visibility is ADMIN answers 403 to everyone else, and treating that as
+        # "no policy" would delete the file for exactly the caller the policy blocks.
+        api = DatasetApi()
+        mocker.patch(
+            "hopsworks_common.core.variable_api.VariableApi._get_upload_policy",
+            side_effect=_make_rest_api_error(160014, status_code=403),
+        )
+
+        with pytest.raises(DatasetException) as exc_info:
+            api._assert_upload_allowed("Resources/model.pkl")
+
+        assert "could not be established" in str(exc_info.value)
+        assert "Resources/model.pkl" in str(exc_info.value)
+        assert "USER, PROJECT or FEATURESTORE" in str(exc_info.value)
+
+    def test_unreadable_policy_refusal_omits_the_scope_hint_for_a_server_error(
+        self, mocker
+    ):
+        # A 500 or an expired token says nothing about API key scopes.
+        api = DatasetApi()
+        mocker.patch(
+            "hopsworks_common.core.variable_api.VariableApi._get_upload_policy",
+            side_effect=_make_rest_api_error(120000, status_code=500),
+        )
+
+        with pytest.raises(DatasetException) as exc_info:
+            api._assert_upload_allowed("Resources/model.pkl")
+
+        assert "could not be established" in str(exc_info.value)
+        assert "scope" not in str(exc_info.value)
+
+    def test_assert_upload_allowed_refuses_when_role_is_unreadable(self, mocker):
+        # Refusing costs the caller an overwrite; guessing costs them the file.
+        api = DatasetApi()
+        mocker.patch(
+            "hopsworks_common.core.variable_api.VariableApi._get_upload_policy",
+            return_value="admins_only",
+        )
+        mocker.patch(
+            "hopsworks_common.core.users_api.UsersApi._get_current_user",
+            side_effect=_make_rest_api_error(160002, status_code=403),
+        )
+
+        with pytest.raises(DatasetException) as exc_info:
+            api._assert_upload_allowed("Resources/model.pkl")
+
+        assert "could not be established" in str(exc_info.value)
+        assert "Resources/model.pkl" in str(exc_info.value)
+
+    @pytest.mark.parametrize("policy", ["enabled", "", None, "disabeld"])
+    def test_assert_upload_allowed_permits_when_not_restricted(self, mocker, policy):
+        # An unrecognised value permits the upload, matching the backend's tolerant parsing.
+        api = DatasetApi()
+        mocker.patch(
+            "hopsworks_common.core.variable_api.VariableApi._get_upload_policy",
+            return_value=policy,
+        )
+        mock_profile = mocker.patch(
+            "hopsworks_common.core.users_api.UsersApi._get_current_user"
+        )
+
+        api._assert_upload_allowed("Resources")
+
+        mock_profile.assert_not_called()
 
 
 class TestDatasetApiTags:
