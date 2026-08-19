@@ -21,7 +21,7 @@ from typing import Literal, get_args
 from hopsworks_apigen import public
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import RestAPIError
-from hopsworks_common.user import AdminUser
+from hopsworks_common.user import AdminUser, User
 
 
 _ROLE_ARG = Literal["HOPS_ADMIN", "HOPS_USER", "HOPS_SERVICE_USER"]
@@ -75,6 +75,24 @@ class UsersApi:
 
     Use [`hopsworks.get_users_api`][hopsworks.get_users_api] to get an instance of this class.
     """
+
+    def _get_current_user(self) -> User | None:
+        """Get the profile of the user this client is authenticated as, including their roles.
+
+        Unlike the rest of this class this reads the caller's own profile, so it is available to
+        any authenticated user and not only to a `HOPS_ADMIN`.
+
+        Returns:
+            The current user, or None if the backend returned no profile.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        _client = client._get_instance()
+
+        path_params = ["users", "profile"]
+
+        return User.from_response_json(_client._send_request("GET", path_params))
 
     @public
     def get_users(self) -> list[AdminUser]:

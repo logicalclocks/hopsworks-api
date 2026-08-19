@@ -130,3 +130,14 @@ class TestProject:
         project = Project(project_name="my_project")
 
         assert project.get_members_api() is project._project_members_api
+
+    # Regression: the backend serializes this field as "namespace" (ProjectDTO),
+    # and from_response_json splats the decamelized payload straight into
+    # __init__, so a parameter under any other name is swallowed by **kwargs and
+    # the property silently reads None.
+    def test_project_namespace_deserialized_from_response(self):
+        project = Project.from_response_json(
+            {"projectName": "my_project", "namespace": "my-project-ns"}
+        )
+
+        assert project.project_namespace == "my-project-ns"
