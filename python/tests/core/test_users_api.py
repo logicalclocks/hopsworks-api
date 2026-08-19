@@ -45,6 +45,22 @@ def _patch_client(mocker, send_request_return):
 
 
 class TestUsersApi:
+    def test_get_current_user_reads_the_callers_own_profile(self, mocker):
+        client_instance = _patch_client(mocker, _profile())
+
+        user = UsersApi()._get_current_user()
+
+        get_call = client_instance._send_request.call_args_list[0]
+        assert get_call.args[0] == "GET"
+        assert get_call.args[1] == ["users", "profile"]
+        assert user.username == "alice"
+        assert user.roles == ["HOPS_USER"]
+
+    def test_get_current_user_returns_none_without_a_profile(self, mocker):
+        _patch_client(mocker, None)
+
+        assert UsersApi()._get_current_user() is None
+
     def test_get_users_parses_items_envelope(self, mocker):
         api = UsersApi()
         _patch_client(mocker, {"items": [_profile()], "count": 1})

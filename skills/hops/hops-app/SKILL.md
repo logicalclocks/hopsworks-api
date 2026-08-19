@@ -250,7 +250,7 @@ fastapi_app = apps.create_app(
     git_provider="GitHub",
     git_branch="main",
     entrypoint_command=(
-        'bash -lc "python -m uv pip install --system --no-cache fastapi uvicorn && '
+        'bash -lc "python -m uv pip install --no-cache fastapi uvicorn && '
         'exec python -m uvicorn fastapiapp:app --host 0.0.0.0 --port \\"$APP_PORT\\""'
     ),
     app_port=8080,

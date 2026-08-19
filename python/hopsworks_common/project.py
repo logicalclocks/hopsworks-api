@@ -71,7 +71,7 @@ class Project:
         services=None,
         datasets=None,
         creation_status=None,
-        project_namespace=None,
+        namespace=None,
         **kwargs,
     ):
         self._id = project_id
@@ -91,7 +91,7 @@ class Project:
         self._alerts_api = alerts_api.AlertsApi()
         self._project_members_api = project_members_api.ProjectMembersApi()
         self._search_api = search_api.SearchApi()
-        self._project_namespace = project_namespace
+        self._project_namespace = namespace
         self._trino_api = None
         self._superset_api = None
 
