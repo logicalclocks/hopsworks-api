@@ -19,14 +19,11 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from hopsworks_apigen import also_available_as
-from hopsworks_common import client
+from hopsworks_apigen import public
+from hopsworks_common import client, usage
 
 
-@also_available_as(
-    "hopsworks.core.trino_catalog_api.TrinoCatalogApi",
-    "hsfs.core.trino_catalog_api.TrinoCatalogApi",
-)
+@public("hopsworks.core.trino_catalog_api.TrinoCatalogApi")
 class TrinoCatalogApi:
     """Trino catalogs of the current project, and the query engine restart that loads them.
 
@@ -39,6 +36,42 @@ class TrinoCatalogApi:
         _client = client._get_instance()
         return ["project", _client._project_id, "trino", *tail]
 
+    def _send_catalog(
+        self,
+        method: str,
+        path: list[Any],
+        name: str,
+        connector_type: str,
+        properties: dict[str, str],
+        data_source_name: str | None = None,
+        featurestore_id: int | None = None,
+    ) -> Any:
+        payload: dict[str, Any] = {
+            "name": name,
+            "connectorType": connector_type,
+            "properties": properties,
+        }
+        # Sent only when deriving from a data source. Their joint presence is what tells the backend
+        # to resolve credential references out of that source; without them the properties are used
+        # exactly as given, which is the hand-written case.
+        if (data_source_name is None) != (featurestore_id is None):
+            raise ValueError(
+                "data_source_name and featurestore_id must be passed together: "
+                "they name the data source to resolve credentials from."
+            )
+        if data_source_name is not None:
+            payload["dataSourceName"] = data_source_name
+            payload["featurestoreId"] = featurestore_id
+        _client = client._get_instance()
+        return _client._send_request(
+            method,
+            path,
+            headers={"content-type": "application/json"},
+            data=json.dumps(payload),
+        )
+
+    @public
+    @usage._method_logger
     def get_catalogs(self) -> list[dict[str, Any]]:
         """The project's Trino catalogs, plus the cluster's shared default catalogs.
 
@@ -53,6 +86,8 @@ class TrinoCatalogApi:
         _client = client._get_instance()
         return _client._send_request("GET", self._project_path("catalog"))
 
+    @public
+    @usage._method_logger
     def get_catalog(self, name: str) -> dict[str, Any]:
         """One catalog with its properties, for inspection or editing.
 
@@ -63,12 +98,18 @@ class TrinoCatalogApi:
         Parameters:
             name: The catalog's full name, including the `<project>__` prefix.
 
+        Returns:
+            The catalog: its `name`, `connectorType`, `status`, pending `operation`, and
+            `properties` with secret-bearing values masked.
+
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         _client = client._get_instance()
         return _client._send_request("GET", self._project_path("catalog", name))
 
+    @public
+    @usage._method_logger
     def get_capabilities(self) -> dict[str, Any]:
         """What this cluster's query engine supports, and when it next restarts.
 
@@ -84,6 +125,8 @@ class TrinoCatalogApi:
         _client = client._get_instance()
         return _client._send_request("GET", self._project_path("capabilities"))
 
+    @public
+    @usage._method_logger
     def get_catalog_template(
         self, data_source_name: str, featurestore_id: int
     ) -> dict[str, Any]:
@@ -99,8 +142,7 @@ class TrinoCatalogApi:
 
         Returns:
             `supported` and, when false, `reason` saying why the source cannot be mapped. When true:
-            `suggestedName`, `connectorType`, `properties`, and `credentialKeys` naming the
-            properties that are credential-derived.
+            `suggestedName`, `connectorType`, and `properties`.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
@@ -115,28 +157,8 @@ class TrinoCatalogApi:
             },
         )
 
-    def _catalog_payload(
-        self,
-        name: str,
-        connector_type: str,
-        properties: dict[str, str],
-        data_source_name: str | None,
-        featurestore_id: int | None,
-    ) -> str:
-        payload: dict[str, Any] = {
-            "name": name,
-            "connectorType": connector_type,
-            "properties": properties,
-        }
-        # Sent only when creating from a data source. Their presence is what tells the backend to
-        # resolve credential references out of that source; without them the properties are used
-        # exactly as given, which is the hand-written case.
-        if data_source_name is not None:
-            payload["dataSourceName"] = data_source_name
-        if featurestore_id is not None:
-            payload["featurestoreId"] = featurestore_id
-        return json.dumps(payload)
-
+    @public
+    @usage._method_logger
     def create_catalog(
         self,
         name: str,
@@ -161,49 +183,65 @@ class TrinoCatalogApi:
                 built from `get_catalog_template`. Leave unset for a hand-written catalog.
             featurestore_id: The data source's feature store. Required with `data_source_name`.
 
+        Returns:
+            The created catalog, including the `status` it is waiting in.
+
         Raises:
+            ValueError: If only one of `data_source_name` and `featurestore_id` is passed.
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client._get_instance()
-        return _client._send_request(
+        return self._send_catalog(
             "POST",
             self._project_path("catalog"),
-            headers={"content-type": "application/json"},
-            data=self._catalog_payload(
-                name, connector_type, properties, data_source_name, featurestore_id
-            ),
+            name,
+            connector_type,
+            properties,
+            data_source_name,
+            featurestore_id,
         )
 
+    @public
+    @usage._method_logger
     def update_catalog(
         self,
         name: str,
         connector_type: str,
         properties: dict[str, str],
-        data_source_name: str | None = None,
-        featurestore_id: int | None = None,
     ) -> dict[str, Any]:
         """Change an existing catalog's connector or properties.
 
         Like a create, the change takes effect at the next query engine restart. A property left at
-        its masked value keeps the secret already stored for it.
+        its masked value keeps the secret already stored for it, which is how an update changes one
+        property without retyping the others' credentials.
+
+        Parameters:
+            name: The catalog's full name, including the `<project>__` prefix.
+            connector_type: The Trino connector the catalog uses.
+            properties: The full set of connector properties to store, as from `get_catalog`.
+
+        Returns:
+            The updated catalog, including the `status` it is waiting in.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        _client = client._get_instance()
-        return _client._send_request(
+        return self._send_catalog(
             "PUT",
             self._project_path("catalog", name),
-            headers={"content-type": "application/json"},
-            data=self._catalog_payload(
-                name, connector_type, properties, data_source_name, featurestore_id
-            ),
+            name,
+            connector_type,
+            properties,
         )
 
+    @public
+    @usage._method_logger
     def delete_catalog(self, name: str) -> None:
         """Delete a catalog.
 
         The catalog stays queryable until the query engine restarts and unloads it.
+
+        Parameters:
+            name: The catalog's full name, including the `<project>__` prefix.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
@@ -211,6 +249,8 @@ class TrinoCatalogApi:
         _client = client._get_instance()
         _client._send_request("DELETE", self._project_path("catalog", name))
 
+    @public
+    @usage._method_logger
     def test_connection(
         self,
         name: str,
@@ -225,20 +265,31 @@ class TrinoCatalogApi:
         cluster's optional test coordinator. Returns nothing on success and raises with the engine's
         own message on failure, so a bad host or credential is reported before the catalog exists.
 
+        Parameters:
+            name: Full catalog name, as it would be created.
+            connector_type: A Trino connector from `get_capabilities()["connectors"]`.
+            properties: The connector properties to test, as they would be stored.
+            data_source_name: Resolve credential properties from this data source, exactly as
+                `create_catalog` would. Leave unset for a hand-written catalog.
+            featurestore_id: The data source's feature store. Required with `data_source_name`.
+
         Raises:
+            ValueError: If only one of `data_source_name` and `featurestore_id` is passed.
             hopsworks.client.exceptions.RestAPIError: If the connection fails, or the backend
                 encounters an error when handling the request.
         """
-        _client = client._get_instance()
-        _client._send_request(
+        self._send_catalog(
             "POST",
             self._project_path("catalog", "test-connection"),
-            headers={"content-type": "application/json"},
-            data=self._catalog_payload(
-                name, connector_type, properties, data_source_name, featurestore_id
-            ),
+            name,
+            connector_type,
+            properties,
+            data_source_name,
+            featurestore_id,
         )
 
+    @public
+    @usage._method_logger
     def restart(self) -> dict[str, Any]:
         """Apply every pending catalog change now, instead of waiting for the schedule.
 

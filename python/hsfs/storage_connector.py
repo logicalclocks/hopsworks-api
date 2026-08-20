@@ -35,10 +35,10 @@ from hopsworks_common.client.exceptions import (
     DataSourceException,
     FeatureStoreException,
 )
+from hopsworks_common.core import trino_catalog_api
 from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 from hopsworks_common.core.opensearch_api import OPENSEARCH_CONFIG
 from hopsworks_common.core.rest_endpoint import RestEndpointConfig
-from hopsworks_common.core import trino_catalog_api
 from hsfs import engine
 from hsfs.core import data_source as ds
 from hsfs.core import data_source_api, storage_connector_api
@@ -268,7 +268,7 @@ class StorageConnector(ABC):
 
         Returns:
             `supported`, and `reason` when it is false. Otherwise `suggestedName`,
-            `connectorType`, `properties` and `credentialKeys`.
+            `connectorType` and `properties`.
         """
         return self._trino_catalog_api.get_catalog_template(
             self._name, self._featurestore_id
@@ -303,9 +303,8 @@ class StorageConnector(ABC):
         Parameters:
             name: Catalog name, which must start with `<project>__` in lowercase. Defaults to the
                 name the template suggests, derived from this data source's own name.
-            properties: Override the derived properties. Any property left out of an override keeps
-                the derived value only if it is absent here entirely: pass the template's
-                `properties` with your edits applied rather than a partial dictionary.
+            properties: Replace the derived properties entirely; keys are not merged with the
+                template's. Start from the template's `properties` and apply your edits.
             test_connection: Verify the definition can reach the source before creating it, where
                 the cluster supports it. On failure nothing is created and the engine's own error is
                 raised, so an unreachable source is caught now rather than after a restart.
@@ -326,7 +325,7 @@ class StorageConnector(ABC):
                 f"{template.get('reason')}"
             )
 
-        catalog_name = name or template["suggestedName"]
+        catalog_name = name if name is not None else template["suggestedName"]
         catalog_properties = (
             properties if properties is not None else template["properties"]
         )
