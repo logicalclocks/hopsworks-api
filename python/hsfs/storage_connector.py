@@ -246,10 +246,9 @@ class StorageConnector(ABC):
     def get_trino_catalog_template(self) -> dict[str, Any]:
         """A Trino catalog proposed from this data source, to review before creating it.
 
-        Nothing is created by asking for this. The connector type and properties are derived from
-        what this data source already holds, and credential properties come back as a reference to a
-        Hopsworks secret or credential-file bundle rather than a value, so no credential is sent to
-        the caller.
+        Nothing is created by asking for this.
+        The connector type and properties are derived from what this data source already holds.
+        Credential properties come back as a reference to a Hopsworks secret or credential-file bundle rather than a value, so no credential is sent to the caller.
 
         Example:
             ```python
@@ -283,10 +282,8 @@ class StorageConnector(ABC):
     ) -> dict[str, Any]:
         """Make this data source queryable from the query engine, as a Trino catalog.
 
-        The catalog is derived from this data source, so nothing has to be supplied: credentials are
-        read from the data source when the catalog is created and stored as a reference, never as a
-        plaintext copy. It becomes queryable once the query engine restarts, on the cluster's
-        schedule or immediately via `project.get_trino_catalog_api().restart()` as an administrator.
+        The catalog is derived from this data source, so nothing has to be supplied: credentials are read from the data source when the catalog is created and stored as a reference, never as a plaintext copy.
+        It becomes queryable once the query engine restarts, on the cluster's schedule or immediately via `project.get_trino_catalog_api().restart()` as an administrator.
 
         Example:
             ```python
@@ -303,11 +300,10 @@ class StorageConnector(ABC):
         Parameters:
             name: Catalog name, which must start with `<project>__` in lowercase. Defaults to the
                 name the template suggests, derived from this data source's own name.
-            properties: Replace the derived properties entirely; keys are not merged with the
-                template's. Start from the template's `properties` and apply your edits.
-            test_connection: Verify the definition can reach the source before creating it, where
-                the cluster supports it. On failure nothing is created and the engine's own error is
-                raised, so an unreachable source is caught now rather than after a restart.
+            properties: Replace the derived properties entirely; keys are not merged with the template's.
+                Start from the template's `properties` and apply your edits.
+            test_connection: Verify the definition can reach the source before creating it, where the cluster supports it.
+                On failure nothing is created and the engine's own error is raised, so an unreachable source is caught now rather than after a restart.
 
         Returns:
             The created catalog, including the `status` it is waiting in.

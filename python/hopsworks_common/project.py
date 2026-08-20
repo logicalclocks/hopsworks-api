@@ -436,9 +436,9 @@ class Project:
             import hopsworks
 
             project = hopsworks.login()
-            catalogs = project.get_trino_catalog_api()
+            catalog_api = project.get_trino_catalog_api()
 
-            for catalog in catalogs.get_catalogs():
+            for catalog in catalog_api.get_catalogs():
                 print(catalog["name"], catalog["status"])
             ```
 
