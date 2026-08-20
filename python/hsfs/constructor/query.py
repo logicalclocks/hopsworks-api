@@ -126,9 +126,10 @@ class Query:
                 fs_query = self._query_constructor_api._construct_query(self)
 
                 if fs_query.pushdown_query is not None:
-                    if engine._get_instance()._is_source_pushdown_supported():
+                    engine_instance = engine._get_instance()
+                    if engine_instance._is_source_pushdown_supported():
                         return (
-                            engine._get_instance()._register_pushdown_query(fs_query),
+                            engine_instance._register_pushdown_query(fs_query),
                             online_conn,
                         )
                     _logger.debug(

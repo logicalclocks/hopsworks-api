@@ -142,7 +142,9 @@ class Engine:
     APPEND = "append"
     OVERWRITE = "overwrite"
 
-    PUSHDOWN_RESULT_VIEW = "pushdown_result_hopsworks"
+    # Prefix only; each registration appends a unique suffix so two pushdown reads in one
+    # session cannot land on the same view.
+    PUSHDOWN_RESULT_VIEW_PREFIX = "pushdown_result_hopsworks"
 
     def _create_spark_session(self):
         """Create and return a SparkSession.
@@ -297,8 +299,11 @@ class Engine:
             if column != column.lower():
                 dataframe = dataframe.withColumnRenamed(column, column.lower())
 
-        dataframe.createOrReplaceTempView(self.PUSHDOWN_RESULT_VIEW)
-        return f"SELECT * FROM {self.PUSHDOWN_RESULT_VIEW}"
+        # A fixed name would let two concurrent reads in one session overwrite each other's
+        # result between registration and execution, and answer from the wrong one.
+        view = f"{self.PUSHDOWN_RESULT_VIEW_PREFIX}_{uuid.uuid4().hex}"
+        dataframe.createOrReplaceTempView(view)
+        return f"SELECT * FROM {view}"
 
     def _register_external_temporary_table(self, external_fg, alias):
         if not isinstance(external_fg, fg_mod.SpineGroup):
