@@ -34,6 +34,7 @@ from hopsworks_common.core import (
     search_api,
     superset_api,
     trino_api,
+    trino_catalog_api,
 )
 
 
@@ -93,6 +94,7 @@ class Project:
         self._search_api = search_api.SearchApi()
         self._project_namespace = namespace
         self._trino_api = None
+        self._trino_catalog_api = None
         self._superset_api = None
 
     @classmethod
@@ -421,6 +423,31 @@ class Project:
         if self._trino_api is None:
             self._trino_api = trino_api.TrinoApi(project=self)
         return self._trino_api
+
+    @public
+    def get_trino_catalog_api(self) -> trino_catalog_api.TrinoCatalogApi:
+        """Get the Trino catalog API for the project.
+
+        Distinct from `get_trino_api`, which connects to the query engine and runs queries. This one
+        manages which sources the engine can query, and the restart that applies a change.
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+            catalogs = project.get_trino_catalog_api()
+
+            for catalog in catalogs.get_catalogs():
+                print(catalog["name"], catalog["status"])
+            ```
+
+        Returns:
+            The Trino catalog API handle.
+        """
+        if self._trino_catalog_api is None:
+            self._trino_catalog_api = trino_catalog_api.TrinoCatalogApi()
+        return self._trino_catalog_api
 
     @public
     def get_superset_api(self) -> superset_api.SupersetApi:
