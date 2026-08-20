@@ -15,12 +15,14 @@
 #
 from __future__ import annotations
 
+import contextlib
 import json
 from datetime import datetime, timezone
 from io import BytesIO
 from typing import TYPE_CHECKING, Any, Literal
 
 from hopsworks_common import client
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core.constants import (
     HAS_AVRO,
     HAS_CONFLUENT_KAFKA,
@@ -41,7 +43,13 @@ if HAS_PANDAS:
     import pandas as pd
 
 if HAS_CONFLUENT_KAFKA:
-    from confluent_kafka import Consumer, KafkaError, Producer, TopicPartition
+    from confluent_kafka import (
+        Consumer,
+        KafkaError,
+        KafkaException,
+        Producer,
+        TopicPartition,
+    )
 
 if HAS_FAST_AVRO:
     from fastavro import schemaless_writer
@@ -55,6 +63,27 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from hsfs.feature_group import ExternalFeatureGroup, FeatureGroup
+
+
+# region Storage header
+# The `storage` header names which of the two consumers of the online topic is meant to
+# ingest a record, mirroring the `storage` argument of
+# [`FeatureGroup.insert`][hsfs.feature_group.FeatureGroup.insert]:
+#
+#   absent      both OnlineFS and the offline materialization job ingest the record
+#   b"online"   OnlineFS only; the materialization job skips the record
+#   b"offline"  the materialization job only; OnlineFS skips the record
+#
+# Older clients wrote a per-row flag into the same header instead: b"0" meant "skip
+# online" (equivalent to b"offline") and b"1" meant "ingest online" while the record was
+# still materialized offline (equivalent to absent).
+# Both consumers keep reading b"0" as b"offline"; the producers here no longer emit either
+# value.
+# Only set the header when the record has a single destination: leaving it out is both the
+# default and the cheapest option on the wire, which matters per record at ingestion scale.
+_STORAGE_ONLINE = "online"
+_STORAGE_OFFLINE = "offline"
+# endregion
 
 
 @_uses_confluent_kafka
@@ -74,6 +103,7 @@ def _get_kafka_resources(
     feature_group: FeatureGroup | ExternalFeatureGroup,
     offline_write_options: dict[str, Any],
     num_entries: int | None = None,
+    storage: str | None = None,
 ) -> tuple[
     Producer, dict[str, bytes], dict[str, Callable[..., bytes]], Callable[..., bytes] :
 ]:
@@ -86,7 +116,7 @@ def _get_kafka_resources(
             feature_group._writer,
         )
     producer, headers, feature_writers, writer = _init_kafka_resources(
-        feature_group, offline_write_options, num_entries
+        feature_group, offline_write_options, num_entries, storage
     )
     if feature_group._multi_part_insert:
         feature_group._kafka_producer = producer
@@ -100,6 +130,7 @@ def _init_kafka_resources(
     feature_group: FeatureGroup | ExternalFeatureGroup,
     offline_write_options: dict[str, Any],
     num_entries: int | None = None,
+    storage: str | None = None,
 ) -> tuple[
     Producer, dict[str, bytes], dict[str, Callable[..., bytes]], Callable[..., bytes] :
 ]:
@@ -108,7 +139,9 @@ def _init_kafka_resources(
         feature_group.feature_store_id, offline_write_options
     )
     # setup headers
-    headers = _get_headers(feature_group, num_entries, offline_write_options)
+    headers = _get_headers(
+        feature_group, num_entries, offline_write_options, storage=storage
+    )
     # setup writers
     feature_writers, writer = _get_writer_function(feature_group)
 
@@ -151,7 +184,15 @@ def _get_headers(
     num_entries: int | None = None,
     options: dict[str, Any] | None = None,
     operation: str | None = None,
+    storage: str | None = None,
 ) -> dict[str, bytes]:
+    """Kafka headers for the records of one write to the online topic.
+
+    `storage` is the destination of this write: `"online"` for records only OnlineFS
+    should ingest, `"offline"` for records only the offline materialization job should
+    ingest, `None` when both consume them.
+    See the storage header contract at the top of this module.
+    """
     # custom headers for hopsworks onlineFS
     headers = {
         "projectId": str(feature_group.feature_store.project_id).encode("utf8"),
@@ -164,13 +205,18 @@ def _get_headers(
     if operation is not None:
         headers["operation"] = operation.encode("utf8")
 
+    if storage is not None:
+        headers["storage"] = storage.encode("utf8")
+
     online_ingestion_options = (
         options.get("online_ingestion_options") if options else None
     )
     if online_ingestion_options and online_ingestion_options.get("upsert_if_newer"):
         headers["upsertIfNewer"] = b"1"
 
-    if feature_group.online_enabled:
+    # An offline-only write reaches no online store, so it gets no online ingestion to
+    # report progress against: creating one would leave it forever short of its entries.
+    if feature_group.online_enabled and storage != _STORAGE_OFFLINE:
         # setup online ingestion id
         online_ingestion_instance = (
             online_ingestion_api.OnlineIngestionApi()._create_online_ingestion(
@@ -341,18 +387,51 @@ def _build_ack_callback_and_optional_progress_bar(
     else:
         progress_bar = None
 
-    def acked(err: Exception, msg: Any) -> None:
+    def acked(err: KafkaError | None, msg: Any) -> None:
         if err is not None:
             if offline_write_options.get("debug_kafka", False):
                 print(f"Failed to deliver message: {str(msg)}: {str(err)}")
-            if err.code() in [
-                KafkaError.TOPIC_AUTHORIZATION_FAILED,
-                KafkaError._MSG_TIMED_OUT,
-            ]:
+            if progress_bar is not None:
                 progress_bar.colour = "RED"
-                raise err  # Stop producing and show error
+            raise _delivery_error(err, msg)
         # update progress bar for each msg
         if not is_multi_part_insert:
             progress_bar.update()
 
     return acked, progress_bar
+
+
+def _delivery_error(err: KafkaError, msg: Any) -> FeatureStoreException:
+    """Build the exception raised when Kafka fails to deliver a produced row.
+
+    Any delivery error means the row never reached the topic, so the online feature store will
+    never ingest it.
+    Reporting it is what keeps a partially delivered insert from looking like a successful one.
+
+    `confluent_kafka.KafkaError` is an odd type to raise: CPython accepts it as the operand of
+    `raise`, yet it does not subclass `BaseException`, so `except Exception` never matches it and
+    only an explicit `except KafkaError` would.
+    Raising it directly would therefore slip past a caller's error handling, so it is wrapped in a
+    `KafkaException` cause, which is an ordinary exception and keeps the original error code
+    reachable for callers that need to branch on it.
+    """
+    location = ""
+    # The message handle may be unusable; the error itself is still worth reporting.
+    with contextlib.suppress(AttributeError, TypeError):
+        location = f" to topic '{msg.topic()}' partition {msg.partition()}"
+
+    hint = ""
+    if err.code() in (KafkaError.MSG_SIZE_TOO_LARGE, KafkaError.RECORD_LIST_TOO_LARGE):
+        hint = (
+            " The row exceeds the maximum message size accepted by the broker."
+            " Reduce the size of the row's values, or raise the topic's 'max.message.bytes'"
+            " together with the producer's 'message.max.bytes'"
+            " (via the 'kafka_producer_config' write option)."
+        )
+
+    exception = FeatureStoreException(
+        f"Failed to deliver row{location}: {err!s}.{hint}"
+        " The insert is incomplete - this row was not written to the online feature store."
+    )
+    exception.__cause__ = KafkaException(err)
+    return exception

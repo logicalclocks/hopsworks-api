@@ -2160,6 +2160,7 @@ class TestSpark:
                 "kafka.ssl.key.password": "test_ssl_key_password",
             },
             operation=None,
+            storage="online",
         )
         mock_spark_engine_serialize_to_avro.assert_called_once()
 
@@ -2235,6 +2236,7 @@ class TestSpark:
                 "online_ingestion_options": {"disable_online_ingestion_count": True},
             },
             operation=None,
+            storage="online",
         )
         mock_spark_engine_serialize_to_avro.assert_called_once()
 
@@ -2372,6 +2374,8 @@ class TestSpark:
         # Assert - num_entries should be None when disable_online_ingestion_count is True
         assert mock_get_headers.call_args[0][1] is None
         assert mock_get_headers.call_args[1]["operation"] == "delete"
+        # the tombstone is for OnlineFS alone: the offline delete already hit the table
+        assert mock_get_headers.call_args[1]["storage"] == "online"
 
     def test_serialize_to_avro(self, mocker):
         # Arrange

@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING, Literal
 from hopsworks_apigen import also_available_as, public
 from hopsworks_common import client, tag, usage, util
 from hopsworks_common.client.exceptions import DatasetException, RestAPIError
-from hopsworks_common.core import dataset, inode
+from hopsworks_common.core import dataset, inode, users_api, variable_api
 from tqdm.auto import tqdm
 
 
@@ -66,6 +66,9 @@ class DatasetApi:
 
     # Backend error code for DatasetErrorCode.UPLOAD_DISK_SPACE_ERROR (110000 + 55)
     DATASET_ERROR_CODE_UPLOAD_DISK_SPACE = 110055
+
+    # Backend error code for DatasetErrorCode.UPLOAD_NOT_ALLOWED (110000 + 56)
+    DATASET_ERROR_CODE_UPLOAD_NOT_ALLOWED = 110056
 
     # alias for backwards-compatibility:
     DEFAULT_FLOW_CHUNK_SIZE = DEFAULT_DOWNLOAD_FLOW_CHUNK_SIZE
@@ -210,7 +213,9 @@ class DatasetApi:
             The path to the uploaded file or directory.
 
         Raises:
-            hopsworks.client.exceptions.DatasetException: If the destination path already exists and overwrite is not set to `True`, or if the upload fails because the HopsFS storage quota is exhausted.
+            hopsworks.client.exceptions.DatasetException:
+                If the destination path already exists and overwrite is not set to `True`, if the upload fails because the HopsFS storage quota is exhausted, or if the cluster upload policy does not permit this user to upload.
+                With `overwrite=True` the policy is checked before the existing path is removed, so a refusal leaves it untouched.
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         # local path could be absolute or relative,
@@ -229,6 +234,8 @@ class DatasetApi:
                     raise DatasetException(
                         "overwrite=True not supported on a top-level dataset"
                     )
+                # Before the removal, never after: see _assert_upload_allowed.
+                self._assert_upload_allowed(destination_path)
                 self.remove(destination_path)
             else:
                 raise DatasetException(
@@ -398,6 +405,14 @@ class DatasetApi:
                             "Upload failed: HopsFS storage is full. "
                             "Please contact your administrator to free up disk space."
                         ) from re
+                    if (
+                        re.error_code
+                        == DatasetApi.DATASET_ERROR_CODE_UPLOAD_NOT_ALLOWED
+                    ):
+                        raise DatasetException(
+                            "Upload failed: uploading files is not allowed on this cluster. "
+                            "Please contact your administrator."
+                        ) from re
                     raise re
                 time.sleep(chunk_retry_interval)
                 continue
@@ -417,6 +432,64 @@ class DatasetApi:
             "flowRelativePath": file_name,
             "flowTotalChunks": num_chunks,
         }
+
+    def _assert_upload_allowed(self, destination_path: str) -> None:
+        """Refuse an upload the cluster policy will not accept, before anything is removed.
+
+        `upload(..., overwrite=True)` removes the destination before sending any bytes, so a
+        refusal discovered on the first chunk leaves the caller with neither the original nor the
+        replacement, and for a directory that removal is recursive.
+
+        Anything short of a policy that clearly forbids this caller is treated as permitted, the
+        backend being the authority.
+
+        Raises:
+            DatasetException: If the cluster upload policy does not permit this caller to upload.
+        """
+        try:
+            policy = variable_api.VariableApi()._get_upload_policy()
+        except RestAPIError as re:
+            raise self._upload_policy_unreadable(destination_path, re) from re
+        policy = policy.strip().lower() if policy else ""
+
+        if policy == "disabled":
+            raise DatasetException(
+                "Uploading files is disabled on this cluster, so "
+                f"{destination_path} was left unchanged. Please contact your administrator."
+            )
+
+        if policy != "admins_only":
+            return
+
+        # Only this policy depends on the caller, so the profile is read only here.
+        try:
+            user = users_api.UsersApi()._get_current_user()
+        except RestAPIError as re:
+            raise self._upload_policy_unreadable(destination_path, re) from re
+
+        if not user or "HOPS_ADMIN" not in user.roles:
+            raise DatasetException(
+                "Uploading files is restricted to cluster administrators on this cluster, so "
+                f"{destination_path} was left unchanged. Please contact your administrator."
+            )
+
+    @staticmethod
+    def _upload_policy_unreadable(
+        destination_path: str, error: RestAPIError
+    ) -> DatasetException:
+        """Build the refusal for an upload whose policy or role could not be established.
+
+        Refusing costs the caller an overwrite; guessing costs them the file.
+        """
+        message = (
+            "The cluster upload policy could not be established, so "
+            f"{destination_path} was left unchanged."
+        )
+        if error.response.status_code == RestAPIError.STATUS_CODE_FORBIDDEN:
+            # Only a refusal points at credentials; a 500 or an expired token does not, and an
+            # in-cluster caller authenticates with a JWT and has no API key to widen.
+            message += " An API key needs the USER, PROJECT or FEATURESTORE scope to read this."
+        return DatasetException(message)
 
     def _upload_request(self, params, path, file_name, chunk):
         _client = client._get_instance()
