@@ -593,7 +593,7 @@ class FeatureStore:
         """
         from hsfs.core import share_api
 
-        share_api.ShareApi(self._id)._share_feature_store(target_project)
+        share_api.ShareApi()._share_feature_store(target_project)
 
     @public
     @usage._method_logger
@@ -621,7 +621,7 @@ class FeatureStore:
         """
         from hsfs.core import share_api
 
-        return share_api.ShareApi(self._id)._list_feature_store_shares()
+        return share_api.ShareApi()._list_feature_store_shares()
 
     @public
     @usage._method_logger
@@ -641,7 +641,7 @@ class FeatureStore:
         """
         from hsfs.core import share_api
 
-        share_api.ShareApi(self._id)._unshare_feature_store(target_project)
+        share_api.ShareApi()._unshare_feature_store(target_project)
 
     @public
     def sql(
@@ -1906,8 +1906,11 @@ class FeatureStore:
             description: A string describing the contents of the training dataset to improve discoverability for Data Scientists.
             data_format: The data format used to save the training dataset.
             coalesce:
-                If true the training dataset data will be coalesced into a single partition before writing.
-                The resulting training dataset will be a single file per split.
+                Applies to Spark materialization only, and is ignored when the training dataset is
+                materialized by the Feature Query Service.
+                Where it applies, the training dataset data will be coalesced into a single
+                partition before writing, and the resulting training dataset will be a single file
+                per split.
             storage_connector:
                 Storage connector defining the sink location for the training dataset, defaults to `None`, and materializes training dataset on HopsFS. **[DEPRECATED: Use `data_source` instead.]**
             splits:
