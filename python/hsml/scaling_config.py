@@ -47,12 +47,14 @@ class ScaleMetric(Enum):
 
 @public
 class LogPersistence(Enum):
-    """Whether a component archives its logs to HopsFS when an instance stops.
+    """Whether a component archives its logs to the project's Logs dataset when an instance stops.
 
-    Only Python model deployments support archiving: it attaches a privileged HopsFS
-    sidecar, and on clusters enforcing the restricted pod security standards only
-    Python serving pods carry the policy exception that admits it. The backend
-    rejects `ALL_REPLICAS` for any other model server.
+    Each instance keeps its own logs on local disk and uploads them through the REST
+    API when it stops, including stops the platform initiates such as scale-to-zero.
+    Only deployments whose serving container runs a Hopsworks inference pipeline image
+    support archiving, since the upload runs the hopsworks SDK from that image. The
+    backend rejects `ALL_REPLICAS` for TensorFlow Serving and vLLM, and for a KServe
+    Python deployment with no predictor script, which runs the sklearnserver runtime.
     """
 
     NONE = "NONE"
@@ -112,7 +114,7 @@ class ComponentScalingConfig(ABC):
             panic_threshold_percentage: Percentage of the scale metric threshold to trigger scaling.
             stable_window_seconds: Interval in seconds for calculating the average metric.
             scale_to_zero_retention_seconds: Time in seconds to retain the last instance before scaling to zero.
-            log_persistence: Whether instances archive their logs to HopsFS when they stop.
+            log_persistence: Whether instances upload their logs to the Logs dataset when they stop.
                 Unset means the backend default: `ALL_REPLICAS` for a Python predictor,
                 `NONE` for everything else.
         """
@@ -390,7 +392,7 @@ class ComponentScalingConfig(ABC):
     @public
     @property
     def log_persistence(self):
-        """Whether every instance archives its logs to HopsFS when it stops. 'ALL_REPLICAS' or 'NONE'. Only Python model deployments support 'ALL_REPLICAS'; the backend rejects it for TensorFlow Serving and vLLM, whose pods cannot carry the privileged HopsFS sidecar on a hardened cluster. Unset means the backend default: on for a Python predictor, off for everything else."""
+        """Whether every instance uploads its logs to the project's Logs dataset when it stops. 'ALL_REPLICAS' or 'NONE'. The backend rejects 'ALL_REPLICAS' for TensorFlow Serving and vLLM, and for a KServe Python deployment with no predictor script, because those runtime images do not ship the hopsworks SDK the upload runs. Unset means the backend default: on where it is supported, off everywhere else."""
         return self._log_persistence
 
     @log_persistence.setter
@@ -419,7 +421,7 @@ class PredictorScalingConfig(ComponentScalingConfig):
             panic_threshold_percentage (float | None, optional): Percentage of the scale metric threshold to trigger scaling.
             stable_window_seconds (int | None, optional): Interval in seconds for calculating the average metric.
             scale_to_zero_retention_seconds (int | None, optional): Time in seconds to retain the last instance before scaling to zero.
-            log_persistence (LogPersistence | str | Default | None, optional): Whether instances archive their logs to HopsFS when they stop.
+            log_persistence (LogPersistence | str | Default | None, optional): Whether instances upload their logs to the Logs dataset when they stop.
 
         Raises:
             ValueError: If `min_instances` is not provided.
@@ -461,7 +463,7 @@ class TransformerScalingConfig(ComponentScalingConfig):
             panic_threshold_percentage (float | None, optional): Percentage of the scale metric threshold to trigger scaling.
             stable_window_seconds (int | None, optional): Interval in seconds for calculating the average metric.
             scale_to_zero_retention_seconds (int | None, optional): Time in seconds to retain the last instance before scaling to zero.
-            log_persistence (LogPersistence | str | Default | None, optional): Whether instances archive their logs to HopsFS when they stop.
+            log_persistence (LogPersistence | str | Default | None, optional): Whether instances upload their logs to the Logs dataset when they stop.
 
         Raises:
             ValueError: If `min_instances` is not provided.
