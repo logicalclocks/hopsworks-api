@@ -25,6 +25,7 @@ from hopsworks_common import (
     execution,
     job,
     job_schedule,
+    tag,
     usage,
     util,
 )
@@ -333,3 +334,131 @@ class JobApi:
             "DELETE",
             path_params,
         )
+
+    def _add_tag(self, job: job.Job, name: str, value: Any) -> None:
+        """Attach a name/value tag to a job.
+
+        A tag consists of a name/value pair. Tag names are unique identifiers.
+        The value of a tag can be any valid json - primitives, arrays or json objects.
+
+        Parameters:
+            job: The job to attach the tag to.
+            name: Name of the tag to be added.
+            value: Value of the tag to be added.
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "jobs",
+            job.name,
+            "tags",
+            name,
+        ]
+        headers = {"content-type": "application/json"}
+        json_value = json.dumps(value)
+        _client._send_request("PUT", path_params, headers=headers, data=json_value)
+
+    def _delete_tag(self, job: job.Job, name: str) -> None:
+        """Delete a tag from a job.
+
+        Tag names are unique identifiers.
+
+        Parameters:
+            job: The job to remove the tag from.
+            name: Name of the tag to be removed.
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "jobs",
+            job.name,
+            "tags",
+            name,
+        ]
+        _client._send_request("DELETE", path_params)
+
+    @decorators._catch_not_found("hopsworks_common.tag.Tag", fallback_return={})
+    def _get_tags(self, job: job.Job) -> dict[str, Any]:
+        """Get all tags attached to a job.
+
+        Parameters:
+            job: The job to get the tags from.
+
+        Returns:
+            Dict of tag name/values.
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "jobs",
+            job.name,
+            "tags",
+        ]
+        # from_response_json already returns deserialized values.
+        return {
+            t._name: t._value
+            for t in tag.Tag.from_response_json(
+                _client._send_request("GET", path_params)
+            )
+        }
+
+    @decorators._catch_not_found("hopsworks_common.tag.Tag", fallback_return=None)
+    def _get_tag(self, job: job.Job, name: str) -> Any | None:
+        """Get the value of a tag attached to a job.
+
+        Parameters:
+            job: The job to get the tag from.
+            name: Tag name.
+
+        Returns:
+            The value of the tag with the specified name, or `None` if it does not exist.
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "jobs",
+            job.name,
+            "tags",
+            name,
+        ]
+        tags = {
+            t._name: t._value
+            for t in tag.Tag.from_response_json(
+                _client._send_request("GET", path_params)
+            )
+        }
+        return tags.get(name)
+
+    @decorators._catch_not_found("hopsworks_common.tag.Tag", fallback_return={})
+    def _get_tags_metadata(
+        self, job: job.Job, name: str | None = None
+    ) -> dict[str, tag.Tag]:
+        """Get the tags of a job as Tag objects, keeping metadata such as created_on.
+
+        Parameters:
+            job: The job to get the tags from.
+            name: Tag name; all tags if omitted.
+
+        Returns:
+            Dict of tag name to Tag object.
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "jobs",
+            job.name,
+            "tags",
+        ]
+        if name is not None:
+            path_params.append(name)
+        return {
+            t._name: t
+            for t in tag.Tag.from_response_json(
+                _client._send_request("GET", path_params)
+            )
+        }
