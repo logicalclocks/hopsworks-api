@@ -125,6 +125,39 @@ class TagsApi:
         }
 
     @usage._method_logger
+    @decorators._catch_not_found("hopsworks_common.tag.Tag", fallback_return={})
+    def _get_metadata(
+        self,
+        metadata_instance: TrainingDataset | FeatureGroup,
+        name: str | None = None,
+        training_dataset_version=None,
+    ) -> dict[str, tag.Tag]:
+        """Get the tags of a training dataset or feature group as Tag objects.
+
+        Unlike `_get`, keeps the `Tag` objects so callers can read metadata such as `created_on`.
+
+        Parameters:
+            metadata_instance: Metadata object of the instance to get the tags for.
+            name: Tag name.
+            training_dataset_version: Version of the training dataset.
+
+        Returns:
+            Dict of tag name to Tag object.
+        """
+        _client = client._get_instance()
+        path_params = self._get_path(metadata_instance, training_dataset_version)
+
+        if name is not None:
+            path_params.append(name)
+
+        return {
+            t._name: t
+            for t in tag.Tag.from_response_json(
+                _client._send_request("GET", path_params)
+            )
+        }
+
+    @usage._method_logger
     def _get_path(self, metadata_instance, training_dataset_version=None):
         _client = client._get_instance()
         if hasattr(metadata_instance, "training_data"):
