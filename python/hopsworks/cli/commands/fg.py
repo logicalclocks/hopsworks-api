@@ -3,7 +3,8 @@
 Covers the full feature-group surface: ``list``, ``info``, ``preview``,
 ``features`` (reads) plus ``create``, ``create-external``, ``insert``,
 ``derive``, ``append-features``, ``delete``, ``stats``, ``search``,
-``keywords``/``add-keyword``/``remove-keyword`` (writes). All operations go
+``keywords``/``add-keyword``/``remove-keyword`` (plain labels) and
+``tags``/``add-tag``/``remove-tag`` (name/value pairs). All operations go
 through the SDK in-process so Hopsworks domain logic is invoked directly, with
 no subprocess hop.
 """
@@ -917,52 +918,77 @@ def fg_search(
     output.print_table(["SCORE", "ROW"], rows)
 
 
+# Printed to stderr rather than raised as a DeprecationWarning: Python's default filters hide
+# DeprecationWarning outside __main__, and these commands run from click, so the one audience that
+# needs to read this would never see it.
+_KEYWORD_SEMANTICS_CHANGED = (
+    "The *-keyword commands now operate on keywords (plain labels without "
+    "values); tag name/value pairs moved to 'hops fg tags/add-tag/remove-tag'."
+)
+
+
 @fg_group.command("keywords")
 @click.argument("name")
 @click.option("--version", type=int, help="Feature group version.")
 @click.pass_context
 def fg_keywords(ctx: click.Context, name: str, version: int | None) -> None:
-    """Show all tags attached to a feature group (aka keywords).
+    """Show all keywords attached to a feature group.
 
     Args:
         ctx: Click context.
         name: Feature group name.
         version: Feature group version.
     """
+    output.warn(_KEYWORD_SEMANTICS_CHANGED)
     fg = _get_fg(ctx, name, version)
     try:
-        tags = fg.get_tags()
+        keywords = fg.get_keywords_metadata()
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Could not read tags: {exc}") from exc
+        raise click.ClickException(f"Could not read keywords: {exc}") from exc
 
     if output.JSON_MODE:
-        output.print_json({k: _tag_value(v) for k, v in (tags or {}).items()})
+        output.print_json(
+            {k: output.format_ts(v, empty=None) for k, v in (keywords or {}).items()}
+        )
         return
-    rows = [[k, _tag_value(v)] for k, v in (tags or {}).items()]
-    output.print_table(["KEYWORD", "VALUE"], rows)
+    rows = [[k, output.format_ts(v)] for k, v in (keywords or {}).items()]
+    output.print_table(["KEYWORD", "ADDED"], rows)
 
 
 @fg_group.command("add-keyword")
 @click.argument("name")
 @click.argument("keyword")
-@click.option("--value", default="true", help="Tag value; defaults to 'true'.")
+@click.option(
+    "--value",
+    default=None,
+    help="Retired. Keywords carry no value; use 'hops fg add-tag' for name/value tags.",
+)
 @click.option("--version", type=int, help="Feature group version.")
 @click.pass_context
 def fg_add_keyword(
-    ctx: click.Context, name: str, keyword: str, value: str, version: int | None
+    ctx: click.Context, name: str, keyword: str, value: str | None, version: int | None
 ) -> None:
-    """Attach a keyword (tag) to a feature group.
+    """Attach a keyword to a feature group.
 
     Args:
         ctx: Click context.
         name: Feature group name.
-        keyword: Tag name.
-        value: Tag value.
+        keyword: The keyword.
+        value: Retired; fails loudly when supplied.
         version: Feature group version.
     """
+    output.warn(_KEYWORD_SEMANTICS_CHANGED)
+    # Failing beats both alternatives: dropping the option outright would make
+    # scripts that passed it die on "no such option", while accepting it would
+    # silently turn their tag write into a keyword write.
+    if value is not None:
+        raise click.UsageError(
+            "--value is retired: keywords carry no value. To write a "
+            f"name/value tag use: hops fg add-tag {name} {keyword} --value ..."
+        )
     fg = _get_fg(ctx, name, version)
     try:
-        fg.add_tag(name=keyword, value=value)
+        fg.add_keywords([keyword])
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not add keyword: {exc}") from exc
     output.success("✓ Added keyword '%s' to %s", keyword, name)
@@ -976,20 +1002,89 @@ def fg_add_keyword(
 def fg_remove_keyword(
     ctx: click.Context, name: str, keyword: str, version: int | None
 ) -> None:
-    """Remove a keyword (tag) from a feature group.
+    """Remove a keyword from a feature group.
 
     Args:
         ctx: Click context.
         name: Feature group name.
-        keyword: Tag name.
+        keyword: The keyword.
+        version: Feature group version.
+    """
+    output.warn(_KEYWORD_SEMANTICS_CHANGED)
+    fg = _get_fg(ctx, name, version)
+    try:
+        fg.delete_keyword(keyword)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not remove keyword: {exc}") from exc
+    output.success("✓ Removed keyword '%s' from %s", keyword, name)
+
+
+@fg_group.command("tags")
+@click.argument("name")
+@click.option("--version", type=int, help="Feature group version.")
+@click.pass_context
+def fg_tags(ctx: click.Context, name: str, version: int | None) -> None:
+    """Show all tags attached to a feature group.
+
+    Args:
+        ctx: Click context.
+        name: Feature group name.
         version: Feature group version.
     """
     fg = _get_fg(ctx, name, version)
     try:
-        fg.delete_tag(keyword)
+        tags = fg.get_tags_metadata()
     except Exception as exc:  # noqa: BLE001
-        raise click.ClickException(f"Could not remove keyword: {exc}") from exc
-    output.success("✓ Removed keyword '%s' from %s", keyword, name)
+        raise click.ClickException(f"Could not read tags: {exc}") from exc
+    output.render_tags(tags)
+
+
+@fg_group.command("add-tag")
+@click.argument("name")
+@click.argument("tag")
+@click.option("--value", required=True, help="Tag value, JSON or a plain string.")
+@click.option("--version", type=int, help="Feature group version.")
+@click.pass_context
+def fg_add_tag(
+    ctx: click.Context, name: str, tag: str, value: str, version: int | None
+) -> None:
+    """Attach a tag (name/value pair) to a feature group.
+
+    Args:
+        ctx: Click context.
+        name: Feature group name.
+        tag: Tag name (a registered tag schema).
+        value: Tag value, JSON or a plain string.
+        version: Feature group version.
+    """
+    fg = _get_fg(ctx, name, version)
+    try:
+        fg.add_tag(name=tag, value=output.parse_tag_value(value))
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not add tag: {exc}") from exc
+    output.success("✓ Added tag '%s' to %s", tag, name)
+
+
+@fg_group.command("remove-tag")
+@click.argument("name")
+@click.argument("tag")
+@click.option("--version", type=int, help="Feature group version.")
+@click.pass_context
+def fg_remove_tag(ctx: click.Context, name: str, tag: str, version: int | None) -> None:
+    """Remove a tag from a feature group.
+
+    Args:
+        ctx: Click context.
+        name: Feature group name.
+        tag: Tag name.
+        version: Feature group version.
+    """
+    fg = _get_fg(ctx, name, version)
+    try:
+        fg.delete_tag(tag)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not remove tag: {exc}") from exc
+    output.success("✓ Removed tag '%s' from %s", tag, name)
 
 
 # region Helpers
@@ -1135,13 +1230,6 @@ def _synth_value(dtype: str, i: int) -> Any:
 
         return pd.Timestamp("2026-01-01") + pd.Timedelta(days=i)
     return f"val_{i}"
-
-
-def _tag_value(tag: Any) -> Any:
-    """Normalize an SDK ``Tag`` object (or primitive) to a JSON-friendly value."""
-    if hasattr(tag, "value"):
-        return tag.value
-    return tag
 
 
 def _parse_join(raw: str) -> joinspec.JoinSpec:
