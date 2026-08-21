@@ -33,9 +33,9 @@ class TestEnvironment:
         env.uninstall("matplotlib")
 
         # Assert: in-flight env operations are awaited first, then DELETE, then await uninstall.
-        mock_await_env.assert_called_once_with("myenv")
+        mock_await_env.assert_called_once_with("myenv", None)
         mock_uninstall.assert_called_once_with("matplotlib", "myenv")
-        mock_await_lib.assert_called_once_with("myenv", "matplotlib")
+        mock_await_lib.assert_called_once_with("myenv", "matplotlib", None)
 
     def test_uninstall_no_await(self, mocker):
         # Arrange

@@ -35,6 +35,7 @@ class EnvironmentApi:
         description: str | None = None,
         base_environment_name: str | None = "python-feature-pipeline",
         await_creation: bool | None = True,
+        timeout: float | None = None,
     ) -> environment.Environment:
         """Create Python environment for the project.
 
@@ -53,6 +54,8 @@ class EnvironmentApi:
             description: Description of the environment.
             base_environment_name: The name of the environment to clone from.
             await_creation: Whether the method returns only when the creation is finished.
+            timeout: Seconds to wait for the creation before raising. Falls back to the engine's
+                default when unset. Only used when awaiting.
 
         Returns:
             The Environment object.
@@ -81,7 +84,7 @@ class EnvironmentApi:
         )
 
         if await_creation:
-            self._environment_engine._await_environment_command(name)
+            self._environment_engine._await_environment_command(name, timeout)
 
         return env
 
