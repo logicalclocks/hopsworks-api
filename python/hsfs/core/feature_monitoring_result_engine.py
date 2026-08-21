@@ -551,6 +551,10 @@ class FeatureMonitoringResultEngine:
             if specific_value is not None
             else reference_statistics.get_value(metric_lower)
         )
+        if detection_value is None or reference_value is None:
+            # the metric was not computed on one of the sides (e.g. uniqueness
+            # metrics when exact_uniqueness is disabled)
+            return None
         return self._compute_difference_between_specific_values(
             detection_value, reference_value, relative
         )
