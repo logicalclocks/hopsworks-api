@@ -36,6 +36,7 @@ from hsfs.constructor.filter import Filter, Logic
 from hsfs.constructor.query import Query
 from hsfs.core import (
     feature_view_api,
+    keywords_api,
     query_constructor_api,
     statistics_engine,
     tags_api,
@@ -73,6 +74,9 @@ class FeatureViewEngine:
 
         self._feature_view_api = feature_view_api.FeatureViewApi(feature_store_id)
         self._tags_api = tags_api.TagsApi(feature_store_id, self.ENTITY_TYPE)
+        self._keywords_api = keywords_api.KeywordsApi(
+            feature_store_id, self.ENTITY_TYPE
+        )
         self._statistics_engine = statistics_engine.StatisticsEngine(
             feature_store_id, self._TRAINING_DATA_API_PATH
         )
@@ -1163,6 +1167,65 @@ class FeatureViewEngine:
     def _get_tags(self, feature_view_obj, training_dataset_version=None):
         return self._tags_api._get(
             feature_view_obj, training_dataset_version=training_dataset_version
+        )
+
+    def _get_tag_metadata(
+        self, feature_view_obj, name: str, training_dataset_version=None
+    ):
+        """Get the tag with a certain name as a Tag object, or None if it does not exist."""
+        return self._tags_api._get_metadata(
+            feature_view_obj, name, training_dataset_version=training_dataset_version
+        ).get(name)
+
+    def _get_tags_metadata(self, feature_view_obj, training_dataset_version=None):
+        """Get all tags for a feature view or training dataset as Tag objects."""
+        return self._tags_api._get_metadata(
+            feature_view_obj, training_dataset_version=training_dataset_version
+        )
+
+    def _get_keywords(self, feature_view_obj, training_dataset_version=None):
+        """Get all keywords of a feature view or one of its training datasets."""
+        return self._keywords_api._get(
+            feature_view_obj, training_dataset_version=training_dataset_version
+        )
+
+    def _get_keywords_metadata(self, feature_view_obj, training_dataset_version=None):
+        """Get all keywords of a feature view or one of its training datasets with their attachment times."""
+        return self._keywords_api._get_with_metadata(
+            feature_view_obj, training_dataset_version=training_dataset_version
+        )
+
+    def _set_keywords(
+        self, feature_view_obj, keywords: list[str], training_dataset_version=None
+    ):
+        """Replace the whole keyword set of a feature view or one of its training datasets."""
+        return self._keywords_api._replace(
+            feature_view_obj,
+            keywords,
+            training_dataset_version=training_dataset_version,
+        )
+
+    def _add_keywords(
+        self, feature_view_obj, keywords: list[str], training_dataset_version=None
+    ):
+        """Add keywords to a feature view or one of its training datasets, keeping the existing ones."""
+        current = self._keywords_api._get(
+            feature_view_obj, training_dataset_version=training_dataset_version
+        )
+        return self._keywords_api._replace(
+            feature_view_obj,
+            list(dict.fromkeys(current + keywords)),
+            training_dataset_version=training_dataset_version,
+        )
+
+    def _delete_keyword(
+        self, feature_view_obj, keyword: str, training_dataset_version=None
+    ):
+        """Remove a single keyword from a feature view or one of its training datasets."""
+        return self._keywords_api._delete(
+            feature_view_obj,
+            keyword,
+            training_dataset_version=training_dataset_version,
         )
 
     def _get_parent_feature_groups(
