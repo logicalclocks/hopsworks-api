@@ -142,6 +142,10 @@ class Engine:
     APPEND = "append"
     OVERWRITE = "overwrite"
 
+    # Prefix only; each registration appends a unique suffix so two pushdown reads in one
+    # session cannot land on the same view.
+    PUSHDOWN_RESULT_VIEW_PREFIX = "pushdown_result_hopsworks"
+
     def _create_spark_session(self):
         """Create and return a SparkSession.
 
@@ -277,6 +281,29 @@ class Engine:
         if self._is_connect:
             return
         self._spark_session.sparkContext.setJobGroup(group_id, description)
+
+    def _is_source_pushdown_supported(self):
+        return True
+
+    def _register_pushdown_query(self, fs_query):
+        external_fg = fs_query.on_demand_fg_aliases[0].on_demand_feature_group
+        dataframe = external_fg.data_source.storage_connector.read(
+            fs_query.pushdown_query
+        )
+
+        # Feature names in the feature store are always lower case, while a warehouse that folds
+        # unquoted identifiers returns them upper case. Lower casing can only move a returned
+        # column towards its feature name, so it stays correct for warehouses that fold the other
+        # way or not at all.
+        for column in dataframe.columns:
+            if column != column.lower():
+                dataframe = dataframe.withColumnRenamed(column, column.lower())
+
+        # A fixed name would let two concurrent reads in one session overwrite each other's
+        # result between registration and execution, and answer from the wrong one.
+        view = f"{self.PUSHDOWN_RESULT_VIEW_PREFIX}_{uuid.uuid4().hex}"
+        dataframe.createOrReplaceTempView(view)
+        return f"SELECT * FROM {view}"
 
     def _register_external_temporary_table(self, external_fg, alias):
         if not isinstance(external_fg, fg_mod.SpineGroup):
