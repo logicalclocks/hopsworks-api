@@ -1842,6 +1842,77 @@ class TestDeployment:
         d.get_model.assert_called_once()
         mock_model.get_monitoring_configs.assert_called_once()
 
+    # inference addressing
+
+    def test_project_namespace_from_the_wire_reaches_the_inference_path(
+        self, mocker, backend_fixtures
+    ):
+        # Arrange: the backend reports the namespace it created the deployment
+        # in, and never reports a project name. The client stamps that on
+        # afterwards, which is why a deployment parsed on its own has none.
+        self._mock_deployment_deserialization(mocker)
+        serving_json = self._serving_json(
+            backend_fixtures, "loadtest-kserve-0-main-000"
+        )
+
+        # Act
+        d = deployment.Deployment.from_response_json(serving_json)
+
+        # Assert
+        assert d.project_namespace == "loadtest-kserve-0-main-000"
+        assert d.project_name is None
+        assert serving_api.ServingApi()._get_istio_inference_path(d) == [
+            "v1",
+            "loadtest-kserve-0-main-000",
+            d.name,
+            "v1",
+            "models",
+            f"{d.name}:predict",
+        ]
+
+    def test_update_from_response_json_follows_the_namespace(
+        self, mocker, backend_fixtures
+    ):
+        # Arrange
+        self._mock_deployment_deserialization(mocker)
+        d = deployment.Deployment.from_response_json(
+            self._serving_json(backend_fixtures, "old-ns")
+        )
+        d.project_name = "my_project"  # what ServingApi stamps on
+
+        # Act
+        d.update_from_response_json(self._serving_json(backend_fixtures, "new-ns"))
+
+        # Assert
+        assert d.project_namespace == "new-ns"
+        assert serving_api.ServingApi()._get_istio_inference_path(d)[1] == "new-ns"
+        # The refresh re-initializes the predictor, which drops the stamped
+        # project name. That is why every ServingApi call that refreshes a
+        # deployment stamps it again, and a reason not to address by it.
+        assert d.project_name is None
+
+    def test_project_namespace_delegates_to_the_predictor(
+        self, mocker, backend_fixtures
+    ):
+        # Arrange: the path builders read the namespace off a Deployment, while
+        # the tests covering them pass a stand-in, so the delegation to the
+        # predictor that holds it needs a check of its own.
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        p.project_namespace = "pre-created-ns"
+        d = deployment.Deployment(predictor=p)
+
+        # Assert
+        assert d.project_namespace == "pre-created-ns"
+
+        # Act
+        d.project_namespace = "another-ns"
+
+        # Assert
+        assert p.project_namespace == "another-ns"
+        assert serving_api.ServingApi()._get_istio_inference_path(
+            d, base_only=True
+        ) == ["v1", "another-ns", p.name]
+
     # auxiliary methods
 
     def _get_dummy_predictor(self, mocker, backend_fixtures):
@@ -1863,3 +1934,27 @@ class TestDeployment:
             model_framework=p_json["model_framework"],
             model_server=p_json["model_server"],
         )
+
+    def _mock_deployment_deserialization(self, mocker):
+        mocker.patch(
+            "hopsworks_common.client._get_serving_num_instances_limits",
+            return_value=[-1],
+        )
+        mocker.patch(
+            "hopsworks_common.client._is_scale_to_zero_required", return_value=False
+        )
+        mocker.patch("hopsworks_common.client._is_saas_connection", return_value=False)
+        mocker.patch("hopsworks_common.client._is_kserve_installed", return_value=True)
+
+    def _serving_json(self, backend_fixtures, project_namespace):
+        # camelCase, as the backend sends it: `projectNamespace` is the key that
+        # has to survive decamelization to reach `project_namespace`.
+        serving_json = humps.camelize(
+            copy.deepcopy(
+                backend_fixtures["predictor"]["get_deployments_singleton"]["response"][
+                    "items"
+                ][0]
+            )
+        )
+        serving_json["projectNamespace"] = project_namespace
+        return serving_json

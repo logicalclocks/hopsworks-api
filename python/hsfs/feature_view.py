@@ -1513,7 +1513,7 @@ class FeatureView:
         return self._feature_view_engine._add_tag(self, name, value)
 
     @public
-    def get_tag(self, name: str) -> tag.Tag | None:
+    def get_tag(self, name: str) -> Any | None:
         """Get the tags of a feature view.
 
         Example:
@@ -1540,7 +1540,7 @@ class FeatureView:
         return self._feature_view_engine._get_tag(self, name)
 
     @public
-    def get_tags(self) -> dict[str, tag.Tag]:
+    def get_tags(self) -> dict[str, Any]:
         """Returns all tags attached to a feature view.
 
         Example:
@@ -1556,12 +1556,128 @@ class FeatureView:
             ```
 
         Returns:
-            The dictionary of tags.
+            The dictionary of tag names and values.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._feature_view_engine._get_tags(self)
+
+    @public
+    def get_tag_metadata(self, name: str) -> tag.Tag | None:
+        """Get a tag with its metadata, including the time it was attached.
+
+        Unlike [`FeatureView.get_tag`][hsfs.feature_view.FeatureView.get_tag], which returns only the tag's value, this returns the [`Tag`][hopsworks.tag.Tag] object, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Example:
+            ```python
+            fv_tag = feature_view.get_tag_metadata("example_tag")
+            print(fv_tag.value, fv_tag.created_on)
+            ```
+
+        Parameters:
+            name: Name of the tag to get.
+
+        Returns:
+            The tag object or `None` if it does not exist.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._feature_view_engine._get_tag_metadata(self, name)
+
+    @public
+    def get_tags_metadata(self) -> dict[str, tag.Tag]:
+        """Returns all tags attached to a feature view, with their metadata.
+
+        Unlike [`FeatureView.get_tags`][hsfs.feature_view.FeatureView.get_tags], which returns only the tag values, this keeps the [`Tag`][hopsworks.tag.Tag] objects, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Returns:
+            The dictionary of tag names to tag objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._feature_view_engine._get_tags_metadata(self)
+
+    @public
+    def get_keywords(self) -> list[str]:
+        """Retrieve all keywords attached to a feature view.
+
+        A keyword is a plain label without a value, used to categorize and search for artifacts.
+
+        Returns:
+            List of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._feature_view_engine._get_keywords(self)
+
+    @public
+    def get_keywords_metadata(self) -> dict[str, datetime | None]:
+        """Retrieve all keywords attached to a feature view, with the time each was attached.
+
+        Returns:
+            Dictionary of keyword to attachment time.
+            The time is `None` when it is unknown, for example for a keyword attached before Hopsworks recorded attachment times.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._feature_view_engine._get_keywords_metadata(self)
+
+    @public
+    def set_keywords(self, keywords: list[str]) -> list[str]:
+        """Replace the whole keyword set of a feature view.
+
+        Keywords not in `keywords` are removed.
+
+        Parameters:
+            keywords: The new keyword set.
+
+        Returns:
+            The updated list of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._feature_view_engine._set_keywords(self, keywords)
+
+    @public
+    def add_keywords(self, keywords: str | list[str]) -> list[str]:
+        """Add keywords to a feature view, keeping the existing ones.
+
+        This reads the current keywords and writes back their union with `keywords`, so a concurrent `add_keywords` or [`FeatureView.set_keywords`][hsfs.feature_view.FeatureView.set_keywords] call can lose additions.
+        When the full keyword set is known, prefer [`FeatureView.set_keywords`][hsfs.feature_view.FeatureView.set_keywords].
+
+        Parameters:
+            keywords: A keyword or a list of keywords to add.
+
+        Returns:
+            The updated list of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        if isinstance(keywords, str):
+            keywords = [keywords]
+        return self._feature_view_engine._add_keywords(self, keywords)
+
+    @public
+    def delete_keyword(self, keyword: str) -> list[str]:
+        """Remove a single keyword from a feature view.
+
+        Parameters:
+            keyword: The keyword to remove.
+
+        Returns:
+            The updated list of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._feature_view_engine._delete_keyword(self, keyword)
 
     @public
     def get_parent_feature_groups(self) -> explicit_provenance.Links | None:
@@ -3609,7 +3725,7 @@ class FeatureView:
     @usage._method_logger
     def get_training_dataset_tag(
         self, training_dataset_version: int, name: str
-    ) -> tag.Tag | None:
+    ) -> Any | None:
         """Get the tags of a training dataset.
 
         Example:
@@ -3645,7 +3761,7 @@ class FeatureView:
     @usage._method_logger
     def get_training_dataset_tags(
         self, training_dataset_version: int
-    ) -> dict[str, tag.Tag]:
+    ) -> dict[str, Any]:
         """Returns all tags attached to a training dataset.
 
         Example:
@@ -3666,13 +3782,169 @@ class FeatureView:
             training_dataset_version: The training dataset version to get tags for.
 
         Returns:
-            Dictionary of tags.
+            Dictionary of tag names and values.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         return self._feature_view_engine._get_tags(
             self, training_dataset_version=training_dataset_version
+        )
+
+    @public
+    @usage._method_logger
+    def get_training_dataset_tag_metadata(
+        self, training_dataset_version: int, name: str
+    ) -> tag.Tag | None:
+        """Get a training dataset tag with its metadata, including the time it was attached.
+
+        Unlike [`FeatureView.get_training_dataset_tag`][hsfs.feature_view.FeatureView.get_training_dataset_tag], which returns only the tag's value, this returns the [`Tag`][hopsworks.tag.Tag] object, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Parameters:
+            training_dataset_version: training dataset version
+            name: Name of the tag to get.
+
+        Returns:
+            The tag object or `None` if it does not exist.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+        """
+        return self._feature_view_engine._get_tag_metadata(
+            self, name, training_dataset_version=training_dataset_version
+        )
+
+    @public
+    @usage._method_logger
+    def get_training_dataset_tags_metadata(
+        self, training_dataset_version: int
+    ) -> dict[str, tag.Tag]:
+        """Returns all tags attached to a training dataset, with their metadata.
+
+        Unlike [`FeatureView.get_training_dataset_tags`][hsfs.feature_view.FeatureView.get_training_dataset_tags], which returns only the tag values, this keeps the [`Tag`][hopsworks.tag.Tag] objects, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Parameters:
+            training_dataset_version: The training dataset version to get tags for.
+
+        Returns:
+            Dictionary of tag names to tag objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+        """
+        return self._feature_view_engine._get_tags_metadata(
+            self, training_dataset_version=training_dataset_version
+        )
+
+    @public
+    @usage._method_logger
+    def get_training_dataset_keywords(self, training_dataset_version: int) -> list[str]:
+        """Retrieve all keywords attached to a training dataset.
+
+        A keyword is a plain label without a value, used to categorize and search for artifacts.
+
+        Parameters:
+            training_dataset_version: training dataset version
+
+        Returns:
+            List of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+        """
+        return self._feature_view_engine._get_keywords(
+            self, training_dataset_version=training_dataset_version
+        )
+
+    @public
+    @usage._method_logger
+    def get_training_dataset_keywords_metadata(
+        self, training_dataset_version: int
+    ) -> dict[str, datetime | None]:
+        """Retrieve all keywords attached to a training dataset, with the time each was attached.
+
+        Parameters:
+            training_dataset_version: training dataset version
+
+        Returns:
+            Dictionary of keyword to attachment time.
+            The time is `None` when it is unknown, for example for a keyword attached before Hopsworks recorded attachment times.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+        """
+        return self._feature_view_engine._get_keywords_metadata(
+            self, training_dataset_version=training_dataset_version
+        )
+
+    @public
+    @usage._method_logger
+    def set_training_dataset_keywords(
+        self, training_dataset_version: int, keywords: list[str]
+    ) -> list[str]:
+        """Replace the whole keyword set of a training dataset.
+
+        Keywords not in `keywords` are removed.
+
+        Parameters:
+            training_dataset_version: training dataset version
+            keywords: The new keyword set.
+
+        Returns:
+            The updated list of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+        """
+        return self._feature_view_engine._set_keywords(
+            self, keywords, training_dataset_version=training_dataset_version
+        )
+
+    @public
+    @usage._method_logger
+    def add_training_dataset_keywords(
+        self, training_dataset_version: int, keywords: str | list[str]
+    ) -> list[str]:
+        """Add keywords to a training dataset, keeping the existing ones.
+
+        This reads the current keywords and writes back their union with `keywords`, so a concurrent add or [`FeatureView.set_training_dataset_keywords`][hsfs.feature_view.FeatureView.set_training_dataset_keywords] call can lose additions.
+        When the full keyword set is known, prefer [`FeatureView.set_training_dataset_keywords`][hsfs.feature_view.FeatureView.set_training_dataset_keywords].
+
+        Parameters:
+            training_dataset_version: training dataset version
+            keywords: A keyword or a list of keywords to add.
+
+        Returns:
+            The updated list of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+        """
+        if isinstance(keywords, str):
+            keywords = [keywords]
+        return self._feature_view_engine._add_keywords(
+            self, keywords, training_dataset_version=training_dataset_version
+        )
+
+    @public
+    @usage._method_logger
+    def delete_training_dataset_keyword(
+        self, training_dataset_version: int, keyword: str
+    ) -> list[str]:
+        """Remove a single keyword from a training dataset.
+
+        Parameters:
+            training_dataset_version: training dataset version
+            keyword: The keyword to remove.
+
+        Returns:
+            The updated list of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+        """
+        return self._feature_view_engine._delete_keyword(
+            self, keyword, training_dataset_version=training_dataset_version
         )
 
     @public

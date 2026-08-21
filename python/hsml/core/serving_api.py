@@ -423,7 +423,7 @@ class ServingApi:
     def _create_grpc_channel(self, deployment_instance):
         _client = client.istio._get_instance()
         path_prefix = (
-            f"/v1/{deployment_instance.project_name}/{deployment_instance.name}"
+            f"/v1/{deployment_instance.project_namespace}/{deployment_instance.name}"
         )
         return _client._create_grpc_channel(path_prefix)
 
@@ -570,7 +570,11 @@ class ServingApi:
         Returns:
             List of path segments.
         """
-        base_path = ["v1", deployment_instance.project_name, deployment_instance.name]
+        base_path = [
+            "v1",
+            deployment_instance.project_namespace,
+            deployment_instance.name,
+        ]
         if base_only:
             return base_path
         return base_path + ["v1", "models", deployment_instance.name + ":predict"]
