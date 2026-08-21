@@ -120,6 +120,8 @@ def job_info(ctx: click.Context, name: str) -> None:
         ["Type", getattr(job, "job_type", "-")],
         ["Creator", _user_label(getattr(job, "creator", None))],
         ["Created", _ts_label(getattr(job, "creation_time", None))],
+        ["Description", output.first_line(getattr(job, "description", None))],
+        ["Tags", output.format_mapping(output.read_tags(job))],
     ]
     output.print_table(["FIELD", "VALUE"], rows)
 
@@ -144,6 +146,8 @@ def _job_to_dict(job: Any) -> dict[str, Any]:
         "type": getattr(job, "job_type", None),
         "creator": creator,
         "creation_time": getattr(job, "creation_time", None),
+        "description": getattr(job, "description", None),
+        "tags": output.read_tags(job),
         "config": config.to_dict() if hasattr(config, "to_dict") else config,
     }
 
@@ -164,6 +168,7 @@ def _job_to_dict(job: Any) -> dict[str, Any]:
     "--app-path", "app_path", required=True, help="HDFS/HopsFS path to the main file."
 )
 @click.option("--args", "app_args", help="Arguments passed to the program.")
+@click.option("--description", help="Free-form description of the job.")
 @click.pass_context
 def job_create(
     ctx: click.Context,
@@ -171,6 +176,7 @@ def job_create(
     job_type: str,
     app_path: str,
     app_args: str | None,
+    description: str | None,
 ) -> None:
     """Create a new job from a ``type`` + ``--app-path``.
 
@@ -180,6 +186,7 @@ def job_create(
         job_type: One of ``PYTHON``/``PYSPARK``/``SPARK``/``DOCKER``.
         app_path: HopsFS path to the script or JAR.
         app_args: Optional argument string passed to the job.
+        description: Optional free-form description.
     """
     project = session.get_project(ctx)
     api = project.get_job_api()
@@ -190,6 +197,8 @@ def job_create(
     config["appPath"] = app_path
     if app_args:
         config["defaultArgs"] = app_args
+    if description:
+        config["description"] = description
     try:
         job = api.create_job(name=name, config=config)
     except Exception as exc:  # noqa: BLE001
@@ -780,6 +789,87 @@ def job_delete(ctx: click.Context, name: str, yes: bool) -> None:
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Delete failed: {exc}") from exc
     output.success("✓ Deleted job %s", name)
+
+
+@job_group.command("tags")
+@click.argument("name")
+@click.pass_context
+def job_tags(ctx: click.Context, name: str) -> None:
+    """Show all tags attached to a job.
+
+    Args:
+        ctx: Click context.
+        name: Job name.
+    """
+    job = _get_job(ctx, name)
+    try:
+        tags = job.get_tags_metadata()
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not read tags: {exc}") from exc
+    output.render_tags(tags)
+
+
+@job_group.command("add-tag")
+@click.argument("name")
+@click.argument("tag")
+@click.option("--value", required=True, help="Tag value, JSON or a plain string.")
+@click.pass_context
+def job_add_tag(ctx: click.Context, name: str, tag: str, value: str) -> None:
+    """Attach a tag (name/value pair) to a job.
+
+    Args:
+        ctx: Click context.
+        name: Job name.
+        tag: Tag name (a registered tag schema).
+        value: Tag value, JSON or a plain string.
+    """
+    job = _get_job(ctx, name)
+    try:
+        job.add_tag(name=tag, value=output.parse_tag_value(value))
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not add tag: {exc}") from exc
+    output.success("✓ Added tag '%s' to %s", tag, name)
+
+
+@job_group.command("remove-tag")
+@click.argument("name")
+@click.argument("tag")
+@click.pass_context
+def job_remove_tag(ctx: click.Context, name: str, tag: str) -> None:
+    """Remove a tag from a job.
+
+    Args:
+        ctx: Click context.
+        name: Job name.
+        tag: Tag name.
+    """
+    job = _get_job(ctx, name)
+    try:
+        job.delete_tag(tag)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not remove tag: {exc}") from exc
+    output.success("✓ Removed tag '%s' from %s", tag, name)
+
+
+@job_group.command("describe")
+@click.argument("name")
+@click.option("--description", required=True, help="New description of the job.")
+@click.pass_context
+def job_describe(ctx: click.Context, name: str, description: str) -> None:
+    """Set the description of a job.
+
+    Args:
+        ctx: Click context.
+        name: Job name.
+        description: New description.
+    """
+    job = _get_job(ctx, name)
+    try:
+        job.description = description
+        job.save()
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not update description: {exc}") from exc
+    output.success("✓ Updated description of %s", name)
 
 
 def _read_log(path: str | None, tail: int | None) -> str:
