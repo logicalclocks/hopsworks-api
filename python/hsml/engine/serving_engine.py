@@ -935,7 +935,9 @@ class ServingEngine:
 
     # Matches the kubelet's RFC 3339 line prefix requested via timestamps=true,
     # e.g. "2026-08-07T12:34:56.123456789Z log text".
-    _K8S_TS_PREFIX = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})) ?")
+    _K8S_TS_PREFIX = re.compile(
+        r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})) ?"
+    )
 
     @classmethod
     def _advance_pod_cursor(
@@ -975,7 +977,7 @@ class ServingEngine:
             else:
                 keep_continuation = True
             if keep_continuation:
-                fresh.append(line[match.end():])
+                fresh.append(line[match.end() :])
             if max_ts is None or ts > max_ts:
                 max_ts = ts
                 max_ts_count = 1
