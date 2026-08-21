@@ -32,7 +32,21 @@ class ServingPreparedStatement:
         ]
         | None = None,
         query_online: str | None = None,
+        query_online_scan: str | None = None,
         prefix: str | None = None,
+        collect_n: int | None = None,
+        collect_feature_name: str | None = None,
+        collect_order_by: str | None = None,
+        collect_ascending: bool | None = None,
+        collect_filter_applied: bool | None = None,
+        collect_source_features: list[str] | None = None,
+        collect_filters: list[dict[str, Any]] | None = None,
+        snowflake_template: bool | None = None,
+        snowflake_templates: list[str] | None = None,
+        query_ronsql: str | None = None,
+        ronsql_database: str | None = None,
+        aggregate_window: int | None = None,
+        aggregate_feature_names: list[str] | None = None,
         type: str | None = None,
         items: list[dict[str, Any]] | None = None,
         count: int | None = None,
@@ -44,7 +58,60 @@ class ServingPreparedStatement:
         # use setter to ensure that the parameters are sorted by index
         self.prepared_statement_parameters = prepared_statement_parameters
         self._query_online = query_online
+        # Direct single-entity scan for collect statements (scan_vectors and the
+        # single-vector fold on the SQL client): reads the ordered index backward and
+        # stops at the bound row cap, unlike query_online's windowed ROW_NUMBER plan.
+        # The trailing ? binds collect_n for folds, min(limit, collect_n) for scans.
+        # None from backends predating the field.
+        self._query_online_scan = query_online_scan
         self._prefix = prefix
+        # collect ("most recent N rows per entity"): when set, this statement returns up to
+        # collect_n rows per entity to fold into list-typed features (see online_store_sql_engine).
+        # pyhumps decamelizes the wire key "collectN" to "collectn" (a trailing single
+        # capital does not split), so absorb that form when the canonical kwarg is absent.
+        if collect_n is None:
+            collect_n = kwargs.get("collectn")
+        self._collect_n = collect_n
+        # Name of the feature-view feature the client folds the collect rows into
+        # (v2 C1: <fg_name>_collect, typed array<struct<...>>).
+        self._collect_feature_name = collect_feature_name
+        # Order column and direction of the collect: the client sorts the returned rows by
+        # this column before folding (SQL subquery/CTE-scan output order is not guaranteed),
+        # newest-first by default, oldest-first when collect_ascending.
+        self._collect_order_by = collect_order_by
+        self._collect_ascending = collect_ascending
+        # True when the feature view's filters apply to this collect statement: the /scan
+        # fallback applies the structured collect_filters below, and refuses /scan only
+        # when they are absent (a condition is not /scan-expressible, e.g. LIKE).
+        self._collect_filter_applied = collect_filter_applied
+        # The statement's source columns (primary keys, then struct fields, order column
+        # first): the /scan fallback projects exactly these so it never reads columns the
+        # feature view did not select.
+        self._collect_source_features = collect_source_features
+        # The feature view's filters in structured form ({feature, condition, value}),
+        # present only when every condition is expressible as an RDRS /scan filter; the
+        # /scan fallback applies them so filtered collects stay correct on REST.
+        self._collect_filters = collect_filters
+        # True when this statement serves a snowflake nested subtree (FSTORE-2060):
+        # template outputs are already aliased to the prefixed feature-view names and
+        # overlay verbatim into the vector.
+        self._snowflake_template = snowflake_template
+        # The templates: one combined statement for an all-INNER subtree, or one
+        # chain statement per nested join when the subtree has LEFT joins (so a hop
+        # miss only loses the unreachable nodes' features).
+        self._snowflake_templates = snowflake_templates
+        # RonSQL template + target database for serving this statement via RDRS /ronsql
+        # (v3 online path); the client substitutes typed literals for the `?` markers.
+        self._query_ronsql = query_ronsql
+        self._ronsql_database = ronsql_database
+        # When set, query_ronsql is a pushdown-aggregation statement whose trailing `?`
+        # is the window bound: the client substitutes now - aggregate_window (seconds).
+        self._aggregate_window = aggregate_window
+        # The prefixed aggregate output feature names in statement order: the batch
+        # GROUP BY emits no row for an entity with no matching rows, so the client
+        # synthesizes the SQL empty-set defaults (COUNT 0, other functions NULL) for
+        # these names, matching the single statement. None for non-aggregate statements.
+        self._aggregate_feature_names = aggregate_feature_names
 
     @classmethod
     def from_response_json(
@@ -100,8 +167,64 @@ class ServingPreparedStatement:
         return self._query_online
 
     @property
+    def query_online_scan(self) -> str | None:
+        return self._query_online_scan
+
+    @property
     def prefix(self) -> str | None:
         return self._prefix
+
+    @property
+    def collect_n(self) -> int | None:
+        return self._collect_n
+
+    @property
+    def collect_feature_name(self) -> str | None:
+        return self._collect_feature_name
+
+    @property
+    def collect_order_by(self) -> str | None:
+        return self._collect_order_by
+
+    @property
+    def collect_ascending(self) -> bool | None:
+        return self._collect_ascending
+
+    @property
+    def collect_filter_applied(self) -> bool | None:
+        return self._collect_filter_applied
+
+    @property
+    def collect_source_features(self) -> list[str] | None:
+        return self._collect_source_features
+
+    @property
+    def collect_filters(self) -> list[dict[str, Any]] | None:
+        return self._collect_filters
+
+    @property
+    def snowflake_template(self) -> bool | None:
+        return self._snowflake_template
+
+    @property
+    def snowflake_templates(self) -> list[str] | None:
+        return self._snowflake_templates
+
+    @property
+    def query_ronsql(self) -> str | None:
+        return self._query_ronsql
+
+    @property
+    def ronsql_database(self) -> str | None:
+        return self._ronsql_database
+
+    @property
+    def aggregate_window(self) -> int | None:
+        return self._aggregate_window
+
+    @property
+    def aggregate_feature_names(self) -> list[str] | None:
+        return self._aggregate_feature_names
 
     @feature_group_id.setter
     def feature_group_id(self, feature_group_id: int | None) -> None:
@@ -117,8 +240,14 @@ class ServingPreparedStatement:
         prepared_statement_parameters: list[
             prepared_statement_parameter.PreparedStatementParameter
         ]
-        | list[dict[str, Any]],
+        | list[dict[str, Any]]
+        | None,
     ) -> None:
+        # a statement can carry no parameters (backend edge cases must fail as a
+        # typed serving error downstream, not as a parse crash here)
+        if not prepared_statement_parameters:
+            self._prepared_statement_parameters = []
+            return
         if isinstance(prepared_statement_parameters[0], dict):
             prepared_statement_parameters = [
                 prepared_statement_parameter.PreparedStatementParameter.from_response_json(

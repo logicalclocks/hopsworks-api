@@ -249,6 +249,8 @@ class FeatureView:
         self._transformation_n_processes: int | None = None
 
         # Lazy initialization for column names used in feature logging.
+        self.__training_dataset_schema = None
+        self.__training_dataset_schema_version = None
         self.__label_column_names = None
         self.__transformed_feature_names = None
         self.__untransformed_feature_names = None
@@ -1082,6 +1084,55 @@ class FeatureView:
             transformation_context=transformation_context,
             logging_data=logging_data,
             n_processes=n_processes,
+        )
+
+    @public
+    def scan_vectors(
+        self,
+        entry: dict[str, Any],
+        limit: int | None = None,
+        return_type: Literal["list", "pandas", "polars"] = "pandas",
+        external: bool | None = None,
+        force_rest_client: bool = False,
+        force_sql_client: bool = False,
+    ) -> pd.DataFrame | pl.DataFrame | list[dict[str, Any]]:
+        """Scan the most-recent rows of the collect feature group for a single entity.
+
+        For a feature view whose label feature group uses `collect(N)`, `get_feature_vector`
+        folds the N most-recent rows of that entity into one array-typed feature. `scan_vectors`
+        instead returns those rows directly, newest-first, ordered by the collect order column
+        (the feature group `event_time`), up to N (or `limit` if smaller). It is the online
+        counterpart of the offline collect window.
+
+        Example:
+            ```python
+            fv = fs.get_feature_view("transactions_fv", version=1)
+
+            # the 100 most recent transaction rows for user 123, newest first
+            rows = fv.scan_vectors(entry={"user_id": 123}, limit=100)
+            ```
+
+        Parameters:
+            entry: Entity-key values, e.g. {"user_id": 123}. The collect order column
+                (event_time) is not a required key.
+            limit: Optional client-side cap on the number of rows returned, at most the
+                feature view's collect N.
+            return_type: "pandas", "polars", or "list" (list of row dicts).
+            external: Whether to connect to the online store from an external network.
+            force_rest_client: Force the REST online client.
+            force_sql_client: Force the SQL online client.
+
+        Returns:
+            The collected rows for the entity in the requested format.
+        """
+        if not self._vector_server._serving_initialized:
+            self.init_serving(external=external)
+        return self._vector_server._scan_vectors(
+            entry=entry,
+            limit=limit,
+            return_type=return_type,
+            force_rest_client=force_rest_client,
+            force_sql_client=force_sql_client,
         )
 
     @public
@@ -6003,11 +6054,52 @@ class FeatureView:
             )
         return self.__fully_qualified_event_time
 
+    def _schema_training_dataset_version(self) -> int | None:
+        """Training dataset version the transformed schema should be resolved against.
+
+        A one_hot_encoder makes the transformed schema depend on the training
+        statistics, so `get_training_dataset_schema` cannot answer without a version.
+        Serving and batch scoring each record the version they were initialised with;
+        otherwise fall back to the last version this feature view accessed.
+        """
+        batch_scoring_server = self.__batch_scoring_server
+        return (
+            self._serving_training_dataset_version
+            or (
+                batch_scoring_server.training_dataset_version
+                if batch_scoring_server
+                else None
+            )
+            or self.get_last_accessed_training_dataset()
+        )
+
+    def _cached_training_dataset_schema(
+        self,
+    ) -> list[training_dataset_feature.TrainingDatasetFeature]:
+        """Training dataset schema for the version currently in use.
+
+        Cached because feature logging asks for it on every logged row, and keyed on
+        the version so that re-initialising serving against a different training
+        dataset does not keep serving the previous schema.
+        """
+        training_dataset_version = self._schema_training_dataset_version()
+        if (
+            self.__training_dataset_schema is None
+            or self.__training_dataset_schema_version != training_dataset_version
+        ):
+            self.__training_dataset_schema = self.get_training_dataset_schema(
+                training_dataset_version
+            )
+            self.__training_dataset_schema_version = training_dataset_version
+            self.__label_column_names = None
+            self.__transformed_feature_names = None
+        return self.__training_dataset_schema
+
     @property
     def _label_column_names(self) -> set[str]:
         """Get label column names."""
         if self.__label_column_names is None:
-            training_dataset_schema = self.get_training_dataset_schema()
+            training_dataset_schema = self._cached_training_dataset_schema()
             self.__label_column_names = {
                 feature.name for feature in training_dataset_schema if feature.label
             }
@@ -6017,7 +6109,7 @@ class FeatureView:
     def _transformed_feature_names(self) -> list[str]:
         """Get transformed feature names."""
         if self.__transformed_feature_names is None:
-            training_dataset_schema = self.get_training_dataset_schema()
+            training_dataset_schema = self._cached_training_dataset_schema()
             self.__transformed_feature_names = [
                 feature.name
                 for feature in training_dataset_schema
