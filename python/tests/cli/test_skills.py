@@ -111,3 +111,29 @@ def test_manifest_writes_to_a_file(tmp_path, monkeypatch):
 
     assert result.exit_code == 0, result.output
     assert json.loads(target.read_text())["skills"][0]["name"] == "hops-demo"
+
+
+def test_manifest_digest_ignores_byte_compiled_helpers(tmp_path, monkeypatch):
+    # Some skills ship .py helpers, which installing the SDK byte-compiles in
+    # place. If those counted, the digest would differ between a source checkout
+    # and a wheel install of identical skills, and between Python versions, so
+    # every user would be offered an upgrade to what they already have.
+    _write(tmp_path, "ml/hops-demo/SKILL.md")
+    (tmp_path / "ml/hops-demo/scripts").mkdir(parents=True)
+    (tmp_path / "ml/hops-demo/scripts/helper.py").write_text("print(1)\n")
+    monkeypatch.setenv("HOPS_SKILLS_DIR", str(tmp_path))
+    runner = CliRunner()
+
+    before = json.loads(runner.invoke(cli, ["skills", "manifest"]).output)["digest"]
+
+    cache = tmp_path / "ml/hops-demo/scripts/__pycache__"
+    cache.mkdir()
+    (cache / "helper.cpython-312.pyc").write_bytes(b"\x00compiled\x00")
+
+    after = json.loads(runner.invoke(cli, ["skills", "manifest"]).output)["digest"]
+    assert after == before
+
+    # The helper itself still counts: it is part of the skill.
+    (tmp_path / "ml/hops-demo/scripts/helper.py").write_text("print(2)\n")
+    edited = json.loads(runner.invoke(cli, ["skills", "manifest"]).output)["digest"]
+    assert edited != before

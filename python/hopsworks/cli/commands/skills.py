@@ -20,6 +20,7 @@ from hopsworks.cli import output, session
 
 
 MANIFEST_FILE = "MANIFEST.json"
+CACHE_DIR = "__pycache__"
 
 
 def _skills_dir() -> Path | None:
@@ -210,7 +211,14 @@ def _digest(skills_dir: Path) -> str:
     Names every file by its path relative to the tree and hashes paths and
     bytes together in sorted order, so the result changes when a file is
     renamed or moved, not only when its contents change.
-    ``MANIFEST.json`` is excluded because it carries the digest itself.
+
+    Two kinds of file are excluded.
+    ``MANIFEST.json`` carries the digest itself.
+    ``__pycache__`` holds byte-compiled copies of the ``.py`` helpers some
+    skills ship, which the installer creates: counting those would make the
+    digest differ between a source checkout and a wheel install of the same
+    skills, and between Python versions, so every user would be offered an
+    upgrade to skills identical to the ones they already have.
 
     Args:
         skills_dir: Root of the skills tree.
@@ -220,7 +228,11 @@ def _digest(skills_dir: Path) -> str:
     """
     digest = hashlib.sha256()
     files = sorted(
-        p for p in skills_dir.rglob("*") if p.is_file() and p.name != MANIFEST_FILE
+        p
+        for p in skills_dir.rglob("*")
+        if p.is_file()
+        and p.name != MANIFEST_FILE
+        and CACHE_DIR not in p.relative_to(skills_dir).parts
     )
     for path in files:
         digest.update(str(path.relative_to(skills_dir)).encode("utf-8"))
