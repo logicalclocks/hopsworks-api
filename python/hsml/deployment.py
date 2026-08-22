@@ -484,7 +484,7 @@ class Deployment:
         """Prints the deployment logs of the predictor or transformer.
 
         Only the live pods of a running deployment are read. Logs of a
-        a stopped deployment are whatever was saved to HopsFS beforehand, retrieved
+        stopped deployment are whatever was saved to HopsFS beforehand, retrieved
         with :py:meth:`download_logs` or the "Log history" section in the UI.
 
         .. note::
