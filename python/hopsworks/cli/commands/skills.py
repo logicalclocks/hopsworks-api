@@ -9,19 +9,27 @@ table. ``hops context`` renders the same catalogue for LLM ingestion.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 from pathlib import Path
+from typing import Any
 
 import click
-from hopsworks.cli import output
+from hopsworks.cli import output, session
+
+
+MANIFEST_FILE = "MANIFEST.json"
 
 
 def _skills_dir() -> Path | None:
     """Resolve the directory that holds the skill buckets.
 
     Resolution order: the ``HOPS_SKILLS_DIR`` override, then the copy packaged
-    next to the installed ``hopsworks`` package, then a repo checkout located by
-    walking up from this file.
+    inside the ``hopsworks`` package.
+    Inside a Hopsworks terminal the override points at the user's own skills
+    directory in their project home, so the listing reflects what they can edit
+    rather than what the SDK happens to ship.
 
     Returns:
         The skills directory, or ``None`` when none can be found.
@@ -40,10 +48,6 @@ def _skills_dir() -> Path | None:
     except (ImportError, ModuleNotFoundError, TypeError):
         pass
 
-    for parent in Path(__file__).resolve().parents:
-        candidate = parent / "skills"
-        if candidate.is_dir() and any(candidate.glob("*/*/SKILL.md")):
-            return candidate
     return None
 
 
@@ -98,8 +102,15 @@ def _parse_frontmatter(skill_md: Path) -> dict[str, str]:
 def _collect_skills(skills_dir: Path) -> list[dict[str, str]]:
     """Scan ``skills_dir`` and return one record per skill.
 
+    Both layouts are accepted.
+    The package ships skills grouped into buckets
+    (``<bucket>/<skill>/SKILL.md``), while a user's project home holds them
+    flat (``<skill>/SKILL.md``), because one level is what a coding agent
+    discovers.
+    A flat skill reports an empty bucket.
+
     Args:
-        skills_dir: Directory containing ``<bucket>/<skill>/SKILL.md`` files.
+        skills_dir: Directory containing the skills, in either layout.
 
     Returns:
         Records sorted by bucket then name, each with ``bucket``, ``name`` (the
@@ -107,14 +118,17 @@ def _collect_skills(skills_dir: Path) -> list[dict[str, str]]:
         declared ``name``, shown only when it differs), ``description`` and
         ``path`` keys.
     """
+    root = skills_dir.resolve()
+    found = list(skills_dir.glob("*/*/SKILL.md")) + list(skills_dir.glob("*/SKILL.md"))
     skills: list[dict[str, str]] = []
-    for skill_md in skills_dir.glob("*/*/SKILL.md"):
-        folder = skill_md.parent.name
+    for skill_md in found:
+        skill_root = skill_md.parent.parent.resolve()
         front = _parse_frontmatter(skill_md)
         declared = front["name"]
+        folder = skill_md.parent.name
         skills.append(
             {
-                "bucket": skill_md.parent.parent.name,
+                "bucket": "" if skill_root == root else skill_md.parent.parent.name,
                 "name": folder,
                 "frontmatter_name": declared if declared and declared != folder else "",
                 "description": front["description"],
@@ -188,3 +202,150 @@ def skills_show(name: str) -> None:
 
     output.info("# %s  (%s)\n# %s\n", match["name"], match["bucket"], match["path"])
     click.echo(Path(match["path"]).read_text("utf-8"))
+
+
+def _digest(skills_dir: Path) -> str:
+    """Hash the contents of a skills tree.
+
+    Names every file by its path relative to the tree and hashes paths and
+    bytes together in sorted order, so the result changes when a file is
+    renamed or moved, not only when its contents change.
+    ``MANIFEST.json`` is excluded because it carries the digest itself.
+
+    Args:
+        skills_dir: Root of the skills tree.
+
+    Returns:
+        A ``sha256:<hex>`` string.
+    """
+    digest = hashlib.sha256()
+    files = sorted(
+        p for p in skills_dir.rglob("*") if p.is_file() and p.name != MANIFEST_FILE
+    )
+    for path in files:
+        digest.update(str(path.relative_to(skills_dir)).encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return f"sha256:{digest.hexdigest()}"
+
+
+@skills_group.command("manifest")
+@click.option(
+    "--output",
+    "output_path",
+    type=click.Path(dir_okay=False),
+    default=None,
+    help="Write the manifest here instead of to stdout.",
+)
+def skills_manifest(output_path: str | None) -> None:
+    """Describe the shipped skill set as JSON.
+
+    Written for the installer that publishes skills into a cluster: it reads
+    the version, the content digest and one entry per skill from here rather
+    than re-parsing ``SKILL.md`` frontmatter itself, so the published manifest
+    and ``hops skills list`` can never disagree.
+
+    Args:
+        output_path: File to write to; stdout when omitted.
+    """
+    skills_dir = _skills_dir()
+    if skills_dir is None:
+        output.error("No skills directory found; set HOPS_SKILLS_DIR to override.")
+        raise SystemExit(1)
+
+    from hopsworks_common import version
+
+    manifest = {
+        "version": version.__version__,
+        "digest": _digest(skills_dir),
+        "skills": [
+            {
+                "name": s["name"],
+                "bucket": s["bucket"],
+                "description": s["description"],
+            }
+            for s in _collect_skills(skills_dir)
+        ],
+    }
+    body = json.dumps(manifest, indent=2, sort_keys=True) + "\n"
+    if output_path:
+        Path(output_path).write_text(body, encoding="utf-8")
+        output.info("Wrote %s (%d skills)", output_path, len(manifest["skills"]))
+        return
+    click.echo(body, nl=False)
+
+
+def _skills_status(ctx: click.Context) -> dict[str, Any]:
+    """Fetch the cluster's view of this user's skills.
+
+    Args:
+        ctx: Click context.
+
+    Returns:
+        The status payload from the backend.
+    """
+    from hopsworks_common.core import rest
+
+    session.get_project(ctx)
+    try:
+        return rest._send_request("GET", rest._project_path("agentskills"))
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not read the skills status: {exc}") from exc
+
+
+@skills_group.command("status")
+@click.pass_context
+def skills_status(ctx: click.Context) -> None:
+    """Compare the skills in your project home with the installed version.
+
+    Args:
+        ctx: Click context.
+    """
+    payload = _skills_status(ctx)
+    if output.JSON_MODE:
+        output.print_json(payload)
+        return
+
+    installed = payload.get("installedVersion") or "none published"
+    mine = payload.get("homeVersion") or "none installed"
+    output.print_table(
+        ["FIELD", "VALUE"],
+        [
+            ["Cluster", installed],
+            ["Your home", mine],
+            ["Path", payload.get("skillsPath", "?")],
+            ["Upgrade available", "yes" if payload.get("upgradeAvailable") else "no"],
+        ],
+    )
+
+
+@skills_group.command("upgrade")
+@click.pass_context
+def skills_upgrade(ctx: click.Context) -> None:
+    """Replace the platform skills in your project home with the installed set.
+
+    Only the skills the platform published are replaced; anything you wrote
+    yourself is left alone. The copy is performed by the cluster, because the
+    directory the skills are published to is not readable by project users, so
+    this queues the work and returns rather than waiting for it.
+
+    Args:
+        ctx: Click context.
+    """
+    from hopsworks_common.core import rest
+
+    payload = _skills_status(ctx)
+    if not payload.get("upgradeAvailable"):
+        output.info("Skills are already up to date (%s).", payload.get("homeVersion"))
+        return
+
+    try:
+        rest._send_request("POST", rest._project_path("agentskills", "upgrade"))
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not request the upgrade: {exc}") from exc
+    output.info(
+        "Queued an upgrade to %s. It lands in %s shortly; your own skills are untouched.",
+        payload.get("installedVersion"),
+        payload.get("skillsPath"),
+    )
