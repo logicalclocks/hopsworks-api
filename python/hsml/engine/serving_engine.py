@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 import time
 import uuid
@@ -31,6 +32,7 @@ from hopsworks_common.constants import (
 )
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
 from hopsworks_common.core import dataset_api, inode
+from hsml import deployable_component_logs
 from hsml.core import serving_api
 from hsml.engine import local_engine
 from hsml.utils.local_paths import _resolve_serving_file
@@ -477,6 +479,75 @@ class ServingEngine:
 
         return local_path
 
+    def _download_logs(self, deployment_instance, path=None, latest=False):
+        """Download the HopsFS log archives of a deployment.
+
+        Each instance archives its own output when it exits, restarts, or is
+        stopped. Archives live in the project's ``Logs`` dataset, one file per
+        instance run under ``Logs/Serving/<deployment_name>/`` named
+        ``<UTC yyyyMMdd-HHmmss>_<pod>_<component>.log``.
+
+        Parameters:
+            deployment_instance: The deployment whose archived logs to download.
+            path: Local directory to download into; the current working directory when unset.
+            latest: Download only the most recent archives instead of all of them.
+
+        Returns:
+            The local paths of the downloaded archive files.
+
+        Raises:
+            hopsworks.client.exceptions.ModelServingException: If `path` does not exist or the deployment has no archived logs.
+        """
+        if path is not None and not os.path.exists(path):
+            raise ModelServingException(f"Path {path} does not exist")
+        if path is None:
+            path = os.getcwd()
+
+        archives_path = f"{MODEL_SERVING.LOGS_DATASET}/{MODEL_SERVING.ARCHIVED_LOGS_DIR}/{deployment_instance.name}"
+        no_archives_msg = (
+            f"No archived logs found for deployment '{deployment_instance.name}' "
+            f"under {archives_path}. Instances archive their logs when they "
+            "exit, restart, or are stopped."
+        )
+        if not self._dataset_api.exists(archives_path):
+            raise ModelServingException(no_archives_msg)
+
+        _, items = self._dataset_api._list_dataset_path(
+            archives_path, inode.Inode, sort_by="NAME:desc"
+        )
+        # Inode paths are absolute (/Projects/<project>/...), and download() interpolates the path
+        # straight into the request, so passing them through yields a //Projects/... segment. The
+        # archives are flat files directly under archives_path, so rebuilding project-relative paths
+        # from the basename avoids having to strip a project prefix.
+        archive_paths = [
+            f"{archives_path}/{os.path.basename(entry.path)}"
+            for entry in items
+            if not entry.dir
+        ]
+        if latest and archive_paths:
+            # File names start with the UTC stop timestamp, so the
+            # lexicographically greatest prefix is the most recent stop.
+            latest_prefix = max(
+                os.path.basename(p).split("_", 1)[0] for p in archive_paths
+            )
+            archive_paths = [
+                p
+                for p in archive_paths
+                if os.path.basename(p).startswith(latest_prefix + "_")
+            ]
+        if not archive_paths:
+            raise ModelServingException(no_archives_msg)
+
+        download_dir = os.path.join(
+            path,
+            f"logs-deployment-{deployment_instance.name}_{str(uuid.uuid4())[:16]}",
+        )
+        os.makedirs(download_dir, exist_ok=True)
+        return [
+            self._dataset_api.download(p, download_dir, overwrite=True)
+            for p in archive_paths
+        ]
+
     def _create(self, deployment_instance):
         try:
             self._serving_api._put(deployment_instance)
@@ -663,17 +734,16 @@ class ServingEngine:
         return self._serving_api._get_logs(deployment_instance, component, tail)
 
     # ----- Programmatic log APIs (read_logs / tail_logs) ---------------------
-    # These never print and never short-circuit on deployment state. The
-    # OpenSearch source returns logs even when the deployment is stopped, so
-    # the legacy "deployment is stopping → return None" guard would just hide
-    # data that is in fact retrievable.
+    # These never print and never short-circuit on deployment state, so a
+    # deployment that is starting or stopping can still be read without the
+    # legacy "deployment is stopping → return None" guard hiding data.
 
     def _read_logs(
         self,
         deployment_instance,
         component: str = "predictor",
         tail: int = 100,
-        source: str = "opensearch",
+        source: str = "kubernetes",
         since: str | None = None,
         until: str | None = None,
         pod: str | None = None,
@@ -687,7 +757,7 @@ class ServingEngine:
             deployment_instance: The deployment whose logs to read.
             component: Which deployment component to read (``predictor``, ``transformer``).
             tail: Maximum number of recent log entries to fetch.
-            source: Log source (``opensearch`` or ``kubernetes``).
+            source: Log source (``kubernetes`` or ``opensearch``).
             since: ISO-8601 lower bound for log timestamps, if any.
             until: ISO-8601 upper bound for log timestamps, if any.
             pod: Specific pod name to read logs for, if any.
@@ -711,18 +781,22 @@ class ServingEngine:
         deployment_instance,
         component: str = "predictor",
         interval: float = 2.0,
-        source: str = "opensearch",
+        source: str = "kubernetes",
         since: str | None = "now",
         timeout: float | None = None,
         stop_on_status=None,
+        pod: str | None = None,
     ):
         """Yield only newly observed log chunks as plain text.
 
-        v1 streaming is client-side polling: each tick calls
-        :py:meth:`read_logs` with a moving ``since`` cursor and yields the
-        portion not already seen. Deduplication is by (timestamp, doc_id)
-        on the OpenSearch path and by content hash for the Kubernetes path
-        (which has neither field). The generator stops when:
+        v1 streaming is client-side polling: each tick fetches with a moving
+        ``since`` cursor and yields the portion not already seen.
+        Deduplication is by (timestamp, doc_id) on the OpenSearch path (old
+        backends). On the Kubernetes path lines are requested with kubelet
+        timestamps and a per-pod cursor advances past what was yielded, so a
+        poll transfers only the news; against an old backend that ignores
+        those params, the previous tail window is kept per pod and only the
+        non-overlapping suffix is emitted. The generator stops when:
 
         - ``timeout`` (seconds, optional) elapses,
         - ``stop_on_status`` matches the current ``deployment.get_state().status``, or
@@ -732,7 +806,7 @@ class ServingEngine:
             deployment_instance: The deployment whose logs to tail.
             component: Which deployment component to tail (``predictor``, ``transformer``).
             interval: Seconds between successive polls.
-            source: Log source (``opensearch`` or ``kubernetes``).
+            source: Log source (``kubernetes`` or ``opensearch``).
             since: ISO-8601 starting cursor, or ``"now"`` for new-only.
             timeout: Stop after this many seconds, if set.
             stop_on_status: Stop when the deployment status matches this value.
@@ -745,11 +819,19 @@ class ServingEngine:
         # successive overlapping windows.
         seen_doc_ids: set[str] = set()
         last_timestamp: str | None = since if (since and since != "now") else None
-        # Kubernetes path has no doc id / timestamp, so dedupe by content
-        # hash instead. Bound the set so a chatty deployment doesn't keep
-        # the dedupe state growing forever.
-        seen_hashes: set[int] = set()
-        seen_hashes_cap = 4096
+        # Kubernetes path: lines are requested with kubelet timestamps and a
+        # per-pod cursor advances past what was already yielded, so each poll
+        # transfers only what is new. ``since`` is applied by the kubelet at
+        # second granularity, so the cursor comparison below is what actually
+        # dedupes the overlap it re-sends. A cursor is (timestamp, ordinal):
+        # the ordinal counts the lines already delivered bearing exactly that
+        # timestamp, because coarse-clock runtimes can emit several lines per
+        # timestamp and a timestamp-only cursor would drop the later ones.
+        # Old backends ignore both params and return unprefixed tail windows;
+        # the previous window is kept per pod (keyed by instance name) for
+        # overlap-suffix dedup as a fallback.
+        cursor_by_pod: dict[str, tuple[str, int]] = {}
+        previous_lines_by_pod: dict[str, list[str]] = {}
 
         # ``since="now"`` is a UX shorthand: start streaming brand-new lines
         # only. Resolved here on the first call to a real ISO-8601 timestamp
@@ -764,43 +846,79 @@ class ServingEngine:
         deadline = (time.monotonic() + timeout) if timeout else None
 
         while True:
+            # since is an absolute instant, so one value covers every pod: the
+            # earliest cursor lags without losing, and each pod trims its own
+            # overlap.
+            if cursor_by_pod:
+                since_param = min(ts for ts, _ in cursor_by_pod.values())
+            else:
+                since_param = last_timestamp
             chunks = (
                 self._serving_api._get_logs(
                     deployment_instance,
                     component,
-                    # Bounded per-poll fetch. Larger values just mean more work
-                    # for the dedupe pass; the SDK still yields only what's new.
+                    # Bounded first fetch; dropped by the API layer on a
+                    # resume, where a tail bound would discard exactly the
+                    # lines being resumed.
                     tail=200,
                     source=source,
-                    since=last_timestamp,
+                    since=since_param,
                     until=None,
-                    pod=None,
+                    pod=pod,
+                    timestamps=True,
                 )
                 or []
             )
 
             new_chunks = []
+            pods_in_response: set[str] = set()
+            saw_kubernetes_chunk = False
             for chunk in chunks:
                 if chunk.doc_id is not None:
                     if chunk.doc_id in seen_doc_ids:
                         continue
                     seen_doc_ids.add(chunk.doc_id)
-                else:
-                    key = hash((chunk.instance_name, chunk.content))
-                    if key in seen_hashes:
-                        continue
-                    if len(seen_hashes) >= seen_hashes_cap:
-                        # Drop the oldest half — set has no ordering, so we
-                        # just clear and start fresh; worst case we re-yield
-                        # at most ``seen_hashes_cap / 2`` already-seen lines
-                        # once before steady state is restored.
-                        seen_hashes = set()
-                    seen_hashes.add(key)
-                new_chunks.append(chunk)
-                if chunk.timestamp is not None and (
-                    last_timestamp is None or chunk.timestamp > last_timestamp
-                ):
-                    last_timestamp = chunk.timestamp
+                    new_chunks.append(chunk)
+                    if chunk.timestamp is not None and (
+                        last_timestamp is None or chunk.timestamp > last_timestamp
+                    ):
+                        last_timestamp = chunk.timestamp
+                    continue
+                saw_kubernetes_chunk = True
+                chunk_pod = chunk.instance_name or ""
+                pods_in_response.add(chunk_pod)
+                new_lines = (chunk.content or "").splitlines()
+                remainder = self._advance_pod_cursor(
+                    cursor_by_pod, chunk_pod, new_lines
+                )
+                if remainder is None:
+                    # No kubelet timestamps: an old backend that ignored the
+                    # request param. Fall back to overlap-suffix dedup of the
+                    # rolling tail windows.
+                    previous_lines = previous_lines_by_pod.get(chunk_pod)
+                    remainder = (
+                        new_lines
+                        if previous_lines is None
+                        else self._overlap_remainder(previous_lines, new_lines)
+                    )
+                    previous_lines_by_pod[chunk_pod] = new_lines
+                if remainder:
+                    # ``content`` is read-only on the DTO, so build a
+                    # new chunk holding only the unseen lines.
+                    new_chunks.append(
+                        deployable_component_logs.DeployableComponentLogs(
+                            instance_name=chunk.instance_name,
+                            content="\n".join(remainder),
+                        )
+                    )
+
+            # A replaced or scaled-away pod must not keep pinning since to its
+            # last position, or every later poll re-transfers a growing history
+            # for the pods that are still alive.
+            if saw_kubernetes_chunk:
+                for known_pod in list(cursor_by_pod):
+                    if known_pod not in pods_in_response:
+                        del cursor_by_pod[known_pod]
 
             if new_chunks:
                 yield self._format_log_chunks(new_chunks)
@@ -814,6 +932,89 @@ class ServingEngine:
                 return
 
             time.sleep(interval)
+
+    # Matches the kubelet's RFC 3339 line prefix requested via timestamps=true,
+    # e.g. "2026-08-07T12:34:56.123456789Z log text".
+    _K8S_TS_PREFIX = re.compile(
+        r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})) ?"
+    )
+
+    @classmethod
+    def _advance_pod_cursor(
+        cls, cursor_by_pod: dict[str, tuple[str, int]], pod: str, lines: list[str]
+    ) -> list[str] | None:
+        """Strip kubelet timestamp prefixes and return the lines after this pod's cursor.
+
+        Returns ``None`` when the lines carry no timestamps, signalling the
+        caller to use the rolling-window fallback instead. Timestamps compare
+        lexicographically: the kubelet emits them in one fixed UTC format.
+        Lines sharing the cursor's exact timestamp are skipped only up to the
+        cursor's ordinal, so a runtime emitting several lines per timestamp
+        does not lose the later ones. A line without a prefix (a continuation
+        of a long line) follows the keep-or-drop decision of the timestamped
+        line before it.
+        """
+        if not any(cls._K8S_TS_PREFIX.match(line) for line in lines):
+            return None
+        cursor_ts, cursor_ordinal = cursor_by_pod.get(pod, (None, 0))
+        fresh: list[str] = []
+        keep_continuation = cursor_ts is None
+        max_ts = cursor_ts
+        max_ts_count = 0
+        equal_seen = 0
+        for line in lines:
+            match = cls._K8S_TS_PREFIX.match(line)
+            if match is None:
+                if keep_continuation:
+                    fresh.append(line)
+                continue
+            ts = match.group(1)
+            if cursor_ts is not None and ts < cursor_ts:
+                keep_continuation = False
+            elif ts == cursor_ts:
+                equal_seen += 1
+                keep_continuation = equal_seen > cursor_ordinal
+            else:
+                keep_continuation = True
+            if keep_continuation:
+                fresh.append(line[match.end() :])
+            if max_ts is None or ts > max_ts:
+                max_ts = ts
+                max_ts_count = 1
+            elif ts == max_ts:
+                max_ts_count += 1
+        if max_ts is not None:
+            if max_ts == cursor_ts:
+                # A since-bounded window re-sends the whole cursor second, so the
+                # in-window count subsumes the previous ordinal; max() guards the
+                # case where a byte cap cut the window short of it.
+                cursor_by_pod[pod] = (max_ts, max(cursor_ordinal, equal_seen))
+            else:
+                cursor_by_pod[pod] = (max_ts, max_ts_count)
+        return fresh
+
+    @staticmethod
+    def _overlap_remainder(
+        previous_lines: list[str], new_lines: list[str]
+    ) -> list[str]:
+        """Return the lines of a new tail window not covered by the previous one.
+
+        Finds the largest suffix of the previous window that is a prefix of
+        the new window and returns the remaining new lines. When no overlap
+        exists (the window rotated fully between polls), the whole new
+        window is returned.
+
+        Parameters:
+            previous_lines: Lines of the previous poll's tail window.
+            new_lines: Lines of the current poll's tail window.
+
+        Returns:
+            The lines of `new_lines` that were not already observed.
+        """
+        for overlap in range(min(len(previous_lines), len(new_lines)), 0, -1):
+            if previous_lines[-overlap:] == new_lines[:overlap]:
+                return new_lines[overlap:]
+        return new_lines
 
     @staticmethod
     def _format_log_chunks(chunks) -> str:

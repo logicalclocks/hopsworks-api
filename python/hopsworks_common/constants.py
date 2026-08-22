@@ -167,6 +167,10 @@ class MODEL_SERVING:
     ARTIFACTS_DIR_NAME = "Artifacts"  # legacy, kept for backward compatibility (<4.6)
     # Subfolder for user-uploaded files at Deployments/<name>/resources/<role>/
     DEPLOYMENT_RESOURCES_DIR = "resources"
+    # Project dataset and subdirectory where the backend archives pod logs at
+    # deployment stop/delete time: Logs/Serving/<deployment_name>/
+    LOGS_DATASET = "Logs"
+    ARCHIVED_LOGS_DIR = "Serving"
 
 
 class RESOURCES:

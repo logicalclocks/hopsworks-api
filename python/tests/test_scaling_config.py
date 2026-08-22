@@ -17,6 +17,7 @@
 import pytest
 from hopsworks_common.constants import PREDICTOR, SCALING_CONFIG
 from hsml.scaling_config import (
+    LogPersistence,
     PredictorScalingConfig,
     ScaleMetric,
     TransformerScalingConfig,
@@ -176,3 +177,39 @@ class TestScalingConfig:
             PredictorScalingConfig.from_json(json_payload)
 
         assert "missing 'min_instances'" in str(exc_info.value)
+
+    def test_log_persistence_survives_a_read_modify_write(self):
+        # Reading a deployment and saving it back must not reset the stored choice: without
+        # round-tripping the field, an SDK update would silently re-apply the backend default.
+        json_payload = {
+            "predictor_scaling_config": {
+                "min_instances": 1,
+                "log_persistence": "NONE",
+            }
+        }
+
+        sc = PredictorScalingConfig.from_json(json_payload)
+
+        assert sc.log_persistence == LogPersistence.NONE
+        assert sc.to_json()["log_persistence"] == "NONE"
+        assert sc.to_dict()["predictorScalingConfig"]["logPersistence"] == "NONE"
+
+    def test_log_persistence_accepts_a_string_and_is_settable(self):
+        sc = TransformerScalingConfig(min_instances=1, log_persistence="all_replicas")
+        assert sc.log_persistence == LogPersistence.ALL_REPLICAS
+
+        sc.log_persistence = "none"
+        assert sc.log_persistence == LogPersistence.NONE
+
+    def test_log_persistence_omitted_when_unset(self):
+        # Unset must stay unset on the wire, so the backend applies its own default rather
+        # than the client asserting one.
+        sc = PredictorScalingConfig(min_instances=1)
+        assert sc.log_persistence is None
+        assert "log_persistence" not in sc.to_json()
+
+    def test_log_persistence_invalid_value_raises(self):
+        with pytest.raises(ValueError) as exc_info:
+            PredictorScalingConfig(min_instances=1, log_persistence="ONE_REPLICA")
+
+        assert "Invalid log_persistence" in str(exc_info.value)
