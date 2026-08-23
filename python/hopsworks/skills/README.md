@@ -10,6 +10,7 @@ into bucket folders:
 ## data/ — discovery, sources, SQL, Spark
 - [hops-data-discovery](data/hops-data-discovery/SKILL.md) — find FGs, data sources, search, files.
 - [hops-data-sources](data/hops-data-sources/SKILL.md) — mount external tables / DLTHub ingestion.
+- [hops-dbt](data/hops-dbt/SKILL.md) — dbt models over feature groups in Trino, with tests and an execution graph.
 - [hops-spark](data/hops-spark/SKILL.md) — PySpark on Hopsworks (Spark Connect + Delta).
 - [hops-table-maintenance](data/hops-table-maintenance/SKILL.md) — Table layout maintenance for offline feature groups.
 - [hops-trino-sql](data/hops-trino-sql/SKILL.md) — Trino SQL via the `hops` CLI.
