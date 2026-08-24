@@ -155,17 +155,40 @@ def analyze_iceberg(table: Path) -> dict:
     }
 
 
+def _hudi_active_base_files(table: Path) -> list[Path]:
+    """The latest base-file version per Hudi file group.
+
+    Base files are named <fileId>_<writeToken>_<instantTime>.parquet and every
+    rewrite leaves the previous versions on disk until cleaning. Counting all
+    parquet objects therefore inflates "active files" with obsolete slices and
+    recommends compaction a healthy table does not need; only the newest
+    instant per fileId within its partition is live.
+    """
+    latest: dict[tuple, tuple] = {}
+    for p in table.rglob("*.parquet"):
+        if ".hoodie" in p.parts:
+            continue
+        parts = p.stem.split("_")
+        if len(parts) < 3:
+            latest[(p.parent, p.stem)] = ("", p)
+            continue
+        key = (p.parent, parts[0])
+        instant = parts[-1]
+        if key not in latest or instant > latest[key][0]:
+            latest[key] = (instant, p)
+    return [p for _, p in latest.values()]
+
+
 def analyze_hudi(table: Path) -> dict:
-    # Basic support: file-listing heuristics only. Deep stats (file slices,
-    # pending compactions) belong to Spark's Hudi procedures.
-    parquet = [p.stat().st_size for p in table.rglob("*.parquet") if ".hoodie" not in p.parts]
+    # Basic support: file-listing heuristics only. Deep stats (pending
+    # compactions, clustering plans) belong to Spark's Hudi procedures.
+    active = _hudi_active_base_files(table)
+    parquet = [p.stat().st_size for p in active]
     logs = [p for p in table.rglob("*.log.*") if ".hoodie" not in p.parts]
     timeline = list((table / ".hoodie").glob("*.commit")) + list((table / ".hoodie").glob("*.deltacommit"))
 
     per_partition: dict[str, dict] = {}
-    for p in table.rglob("*.parquet"):
-        if ".hoodie" in p.parts:
-            continue
+    for p in active:
         key = str(p.parent.relative_to(table)) or "<unpartitioned>"
         slot = per_partition.setdefault(key, {"files": 0, "bytes": 0})
         slot["files"] += 1
@@ -216,8 +239,9 @@ def cmd_plan(args: argparse.Namespace) -> None:
             "target_file_size_mb": TARGET_FILE_BYTES // (1024 * 1024),
             "scope": "start with the most recent partitions, widen after verification",
             "estimated_rewrite_gb": round(fo.get("estimated_compaction_rewrite_bytes", 0) / 2**30, 1),
+            "api": "FeatureGroup.optimize() (Delta/Iceberg; safe incremental defaults)",
             "confidence": 0.9,
-            "requires_approval": False,
+            "requires_approval": True,
         })
     if ps.get("skew_ratio", 0) > 10 and ps.get("partition_count", 0) > 1:
         actions.append({
@@ -248,17 +272,26 @@ def cmd_plan(args: argparse.Namespace) -> None:
             "requires_approval": True,
         })
     if fs.get("delete_file_ratio", 0) > 0.1:
-        actions.append({"type": "rewrite_data_and_delete_files", "confidence": 0.85,
-                        "requires_approval": False})
+        actions.append({"type": "rewrite_data_and_delete_files",
+                        "scope": "restrict with a where filter; widen after verification",
+                        "confidence": 0.85, "requires_approval": True})
     if fs.get("manifests", 0) > 100:
-        actions.append({"type": "rewrite_manifests", "confidence": 0.85, "requires_approval": False})
+        actions.append({"type": "rewrite_manifests", "confidence": 0.85, "requires_approval": True})
     snapshots = e.get("snapshot_history", {})
     if max(snapshots.get("snapshots", 0), snapshots.get("commits_retained", 0)) > 100:
         actions.append({"type": "expire_snapshots",
                         "detail": "destructive: removes time travel history",
                         "confidence": 0.7, "requires_approval": True})
     if fs.get("log_to_base_ratio", 0) > 0.5:
-        actions.append({"type": "hudi_compaction", "confidence": 0.8, "requires_approval": False})
+        # Hopsworks runs Hudi maintenance through inline clustering on writes and rejects
+        # ad hoc procedures (FeatureGroup.optimize() refuses HUDI), so this is a review
+        # item, never a command to run.
+        actions.append({"type": "review_hudi_write_config",
+                        "detail": "high log-to-base ratio; Hudi layout maintenance runs "
+                                  "through inline clustering on writes in Hopsworks, so "
+                                  "review the feature group's write configuration rather "
+                                  "than running ad hoc procedures",
+                        "confidence": 0.8, "requires_approval": True})
 
     print(f"table: {e['table']}")
     print(f"format: {e['format']}")

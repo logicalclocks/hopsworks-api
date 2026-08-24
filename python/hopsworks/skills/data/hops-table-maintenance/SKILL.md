@@ -81,7 +81,9 @@ python3 ~/.claude/skills/hops-table-maintenance/scripts/lakehouse_doctor.py plan
 ```
 
 The planner applies these rules and emits plan YAML with per-action
-confidence, estimated rewrite volume, and a `requires_approval` flag:
+confidence and estimated rewrite volume. Every action that rewrites files
+carries `requires_approval: true`; the only thing that shrinks the asking is
+the user pre-approving the non-destructive subset in Phase 0.
 
 | Finding | Recommendation |
 | --- | --- |
@@ -89,7 +91,7 @@ confidence, estimated rewrite volume, and a `requires_approval` flag:
 | Extremely uneven partition sizes | Change partition transform or cluster |
 | Thousands of tiny partitions | Coarsen time partitioning |
 | Scans read nearly all files for equality predicates | Sort or cluster on the predicate columns |
-| Too many Iceberg delete files | Rewrite data and delete files |
+| Too many Iceberg delete files | Rewrite data and delete files (scoped) |
 | Excessive Iceberg manifests | Rewrite manifests |
 | Many old snapshots | Expire snapshots (approval required) |
 | Repeated ingestion creates small files | Enable optimized writes or auto-compaction |
@@ -102,55 +104,70 @@ statistics. "Add an index" is never the recommendation.
 
 ## Phase 3: guardrails
 
-Never run these on your own recommendation, only after the user approves the
-specific action in this session:
+Nothing that rewrites files runs on the planner's word alone: every action in
+the plan needs the user's approval in this session (or their Phase 0
+pre-approval of the non-destructive subset). These need explicit per-action
+approval even then:
 
-- `VACUUM` (Delta) and Iceberg orphan-file deletion
+- `VACUUM` / `delta_vacuum` (Delta) and Iceberg orphan-file deletion
 - Snapshot expiration
-- Full-table rewrites and destructive partition migration
+- Full-table rewrites (`full=True`, `rewrite_all=True`) and destructive
+  partition migration
 - Altering clustering or sort order on a production table
 - Any maintenance concurrent with an active large writer
 
 Two absolute rules: **never write through the `/hopsfs/featurestore` mount**
 (it is a read window; rewriting parquet under a Delta, Iceberg or Hudi table
 bypasses the transaction protocol and corrupts it), and **always scope the
-first run** to a recent partition range or dry-run mode, verify, then widen.
+first run** with a `where` predicate on a recent partition range, verify,
+then widen. The API defaults already lean safe: `optimize()` is incremental
+on Delta and skips below-threshold file groups on Iceberg unless told
+otherwise.
 
-## Phase 4: execute with Spark
+## Phase 4: execute through the Hopsworks API
 
-Maintenance goes through Spark and the native table APIs, in a SPARK terminal
-session or a Hopsworks Spark job. The table identifier is
-`<project>_featurestore.<fg>_<version>`.
+The supported path is [`FeatureGroup.optimize()`](../../hops/hops-fg/SKILL.md):
+it validates the format, follows the feature group's stored layout
+(clustering, sort order, z-order columns), and defaults to the safe rewrite
+(incremental `OPTIMIZE` on Delta; Iceberg `rewriteDataFiles` with
+`rewrite_all=False`, so a routine call never rewrites the whole table by
+accident). Run it in a SPARK terminal session or a Hopsworks Spark job;
+clustered Delta and all Iceberg rewrites require the Spark engine.
 
-Delta:
-```sql
--- Scoped compaction first, widen after verification
-OPTIMIZE <project>_featurestore.<fg>_1
-WHERE event_date >= current_date() - INTERVAL 7 DAYS;
+```python
+fg = fs.get_feature_group("<fg>", version=1)
 
--- With clustering, only when workload evidence supports the columns
-OPTIMIZE <project>_featurestore.<fg>_1
-WHERE event_date >= current_date() - INTERVAL 7 DAYS
-ZORDER BY (merchant_id, card_id);
+# Scoped compaction first, widen after verification
+metrics = fg.optimize(where="event_date >= '2026-08-14'")
+
+# Layout rewrite, only when workload evidence supports the columns and the
+# user approved it: zorder over the evidence columns
+metrics = fg.optimize(strategy="zorder", columns=["merchant_id", "card_id"],
+                      where="event_date >= '2026-08-14'")
+
+# Full rewrites are the explicitly-approved exception, never the default
+# fg.optimize(full=True)          # Delta: recluster everything
+# fg.optimize(rewrite_all=True)   # Iceberg: rewrite every file
 ```
 
-Iceberg (partition-spec changes are metadata-only and agent-friendly; they do
-not rewrite existing files):
+Raw Spark procedures are only for what `optimize()` does not cover, still
+scoped and still approved. Iceberg manifests and snapshot expiry:
+
 ```sql
-CALL spark_catalog.system.rewrite_data_files(
-  table => '<project>_featurestore.<fg>_1',
-  strategy => 'sort',
-  sort_order => 'event_time ASC, merchant_id ASC',
-  options => map('target-file-size-bytes', '536870912', 'min-input-files', '5')
-);
 CALL spark_catalog.system.rewrite_manifests(table => '<project>_featurestore.<fg>_1');
+-- destructive, removes time travel; explicit approval required
+-- CALL spark_catalog.system.expire_snapshots(table => '<project>_featurestore.<fg>_1', ...);
 ```
 
-Hudi:
-```sql
-CALL run_clustering(table => '<project>_featurestore.<fg>_1', order => 'event_time');
-CALL run_compaction(op => 'schedule', table => '<project>_featurestore.<fg>_1');
-```
+Iceberg partition-spec changes are metadata-only (existing files are not
+rewritten), so evolving the spec is cheap; the rewrite that applies it to old
+data is the expensive, approval-gated part.
+
+Hudi: do not run ad hoc maintenance procedures. Hopsworks runs Hudi layout
+maintenance through inline clustering on writes, and `optimize()` rejects
+HUDI feature groups for exactly that reason. When the evidence shows a poor
+Hudi layout, the recommendation is to review the feature group's write
+configuration, not to script `run_clustering`/`run_compaction` yourself.
 
 ## Phase 5: verify
 
