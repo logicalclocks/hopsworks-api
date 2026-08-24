@@ -974,7 +974,7 @@ class FeatureGroupBase:
         self._feature_group_engine._delete_tag(self, name)
 
     @public
-    def get_tag(self, name: str) -> tag.Tag | None:
+    def get_tag(self, name: str) -> Any | None:
         """Get the tags of a feature group.
 
         Example:
@@ -1000,16 +1000,132 @@ class FeatureGroupBase:
         return self._feature_group_engine._get_tag(self, name)
 
     @public
-    def get_tags(self) -> dict[str, tag.Tag]:
+    def get_tags(self) -> dict[str, Any]:
         """Retrieves all tags attached to a feature group.
 
         Returns:
-            The dictionary of tags.
+            The dictionary of tag names and values.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._feature_group_engine._get_tags(self)
+
+    @public
+    def get_tag_metadata(self, name: str) -> tag.Tag | None:
+        """Get a tag with its metadata, including the time it was attached.
+
+        Unlike [`FeatureGroupBase.get_tag`][hsfs.feature_group.FeatureGroupBase.get_tag], which returns only the tag's value, this returns the [`Tag`][hopsworks.tag.Tag] object, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Example:
+            ```python
+            fg_tag = fg.get_tag_metadata("example_tag")
+            print(fg_tag.value, fg_tag.created_on)
+            ```
+
+        Parameters:
+            name: Name of the tag to get.
+
+        Returns:
+            The tag object or `None` if it does not exist.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._feature_group_engine._get_tag_metadata(self, name)
+
+    @public
+    def get_tags_metadata(self) -> dict[str, tag.Tag]:
+        """Retrieves all tags attached to a feature group, with their metadata.
+
+        Unlike [`FeatureGroupBase.get_tags`][hsfs.feature_group.FeatureGroupBase.get_tags], which returns only the tag values, this keeps the [`Tag`][hopsworks.tag.Tag] objects, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Returns:
+            The dictionary of tag names to tag objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._feature_group_engine._get_tags_metadata(self)
+
+    @public
+    def get_keywords(self) -> list[str]:
+        """Retrieve all keywords attached to a feature group.
+
+        A keyword is a plain label without a value, used to categorize and search for artifacts.
+
+        Returns:
+            List of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._feature_group_engine._get_keywords(self)
+
+    @public
+    def get_keywords_metadata(self) -> dict[str, datetime | None]:
+        """Retrieve all keywords attached to a feature group, with the time each was attached.
+
+        Returns:
+            Dictionary of keyword to attachment time.
+            The time is `None` when it is unknown, for example for a keyword attached before Hopsworks recorded attachment times.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._feature_group_engine._get_keywords_metadata(self)
+
+    @public
+    def set_keywords(self, keywords: list[str]) -> list[str]:
+        """Replace the whole keyword set of a feature group.
+
+        Keywords not in `keywords` are removed.
+
+        Parameters:
+            keywords: The new keyword set.
+
+        Returns:
+            The updated list of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._feature_group_engine._set_keywords(self, keywords)
+
+    @public
+    def add_keywords(self, keywords: str | list[str]) -> list[str]:
+        """Add keywords to a feature group, keeping the existing ones.
+
+        This reads the current keywords and writes back their union with `keywords`, so a concurrent `add_keywords` or [`FeatureGroupBase.set_keywords`][hsfs.feature_group.FeatureGroupBase.set_keywords] call can lose additions.
+        When the full keyword set is known, prefer [`FeatureGroupBase.set_keywords`][hsfs.feature_group.FeatureGroupBase.set_keywords].
+
+        Parameters:
+            keywords: A keyword or a list of keywords to add.
+
+        Returns:
+            The updated list of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        if isinstance(keywords, str):
+            keywords = [keywords]
+        return self._feature_group_engine._add_keywords(self, keywords)
+
+    @public
+    def delete_keyword(self, keyword: str) -> list[str]:
+        """Remove a single keyword from a feature group.
+
+        Parameters:
+            keyword: The keyword to remove.
+
+        Returns:
+            The updated list of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._feature_group_engine._delete_keyword(self, keyword)
 
     @public
     def get_parent_feature_groups(self) -> explicit_provenance.Links | None:
