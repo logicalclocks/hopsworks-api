@@ -85,7 +85,12 @@ class Environment:
 
     @public
     @usage._method_logger
-    def install_wheel(self, path: str, await_installation: bool | None = True):
+    def install_wheel(
+        self,
+        path: str,
+        await_installation: bool | None = True,
+        timeout: float | None = None,
+    ):
         """Install a python library packaged in a wheel file.
 
         ```python
@@ -107,12 +112,15 @@ class Environment:
         Parameters:
             path: The path in Hopsworks where the wheel file is located.
             await_installation: If `True` the method returns only when the installation finishes.
+            timeout: Seconds to wait for the installation to finish before raising.
+                Falls back to the engine's default when unset.
+                It also bounds the wait for any environment command already in flight, which happens before the install is submitted and therefore applies even when `await_installation` is `False`.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         # Wait for any ongoing environment operations
-        self._environment_engine._await_environment_command(self.name)
+        self._environment_engine._await_environment_command(self.name, timeout)
 
         library_name = os.path.basename(path)
 
@@ -128,11 +136,18 @@ class Environment:
         self._library_api._install(library_name, self.name, library_spec)
 
         if await_installation:
-            self._environment_engine._await_library_command(self.name, library_name)
+            self._environment_engine._await_library_command(
+                self.name, library_name, timeout
+            )
 
     @public
     @usage._method_logger
-    def install_requirements(self, path: str, await_installation: bool | None = True):
+    def install_requirements(
+        self,
+        path: str,
+        await_installation: bool | None = True,
+        timeout: float | None = None,
+    ):
         """Install libraries specified in a `requirements.txt` file.
 
         ```python
@@ -154,12 +169,15 @@ class Environment:
         Parameters:
             path: The path in Hopsworks where the `requirements.txt` file is located.
             await_installation: If `True` the method returns only when the installation is finished.
+            timeout: Seconds to wait for the installation to finish before raising.
+                Falls back to the engine's default when unset.
+                It also bounds the wait for any environment command already in flight, which happens before the install is submitted and therefore applies even when `await_installation` is `False`.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         # Wait for any ongoing environment operations
-        self._environment_engine._await_environment_command(self.name)
+        self._environment_engine._await_environment_command(self.name, timeout)
 
         library_name = os.path.basename(path)
 
@@ -175,12 +193,17 @@ class Environment:
         self._library_api._install(library_name, self.name, library_spec)
 
         if await_installation:
-            self._environment_engine._await_library_command(self.name, library_name)
+            self._environment_engine._await_library_command(
+                self.name, library_name, timeout
+            )
 
     @public
     @usage._method_logger
     def uninstall(
-        self, library_name: str, await_uninstallation: bool | None = True
+        self,
+        library_name: str,
+        await_uninstallation: bool | None = True,
+        timeout: float | None = None,
     ) -> None:
         """Uninstall a library from the environment.
 
@@ -198,17 +221,22 @@ class Environment:
         Parameters:
             library_name: Name of the installed library to remove.
             await_uninstallation: If `True` the method returns only when the uninstallation finishes.
+            timeout: Seconds to wait for the uninstallation to finish before raising.
+                Falls back to the engine's default when unset.
+                It also bounds the wait for any environment command already in flight, which happens before the removal is submitted and therefore applies even when `await_uninstallation` is `False`.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         # Wait for any ongoing environment operations
-        self._environment_engine._await_environment_command(self.name)
+        self._environment_engine._await_environment_command(self.name, timeout)
 
         self._library_api._uninstall(library_name, self.name)
 
         if await_uninstallation:
-            self._environment_engine._await_library_command(self.name, library_name)
+            self._environment_engine._await_library_command(
+                self.name, library_name, timeout
+            )
 
     @public
     @usage._method_logger
