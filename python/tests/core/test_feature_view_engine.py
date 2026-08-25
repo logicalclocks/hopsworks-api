@@ -28,6 +28,7 @@ from hsfs import (
     split_statistics,
     training_dataset,
 )
+from hsfs.builtin_transformations import one_hot_encoder
 from hsfs.client.exceptions import FeatureStoreException
 from hsfs.constructor import fs_query
 from hsfs.constructor.query import Query
@@ -4707,8 +4708,6 @@ class TestFeatureViewEngine:
         mocker.patch.object(fv_engine, "_get_training_dataset_metadata")
 
         query = fg5.select_features().join(fg6.select_all())
-
-        from hsfs.builtin_transformations import one_hot_encoder
 
         fv = feature_view.FeatureView(
             name="fv_name",

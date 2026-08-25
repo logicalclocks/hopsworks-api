@@ -490,7 +490,6 @@ class FeatureView:
                 self.init_batch_scoring(1)
             else:
                 raise e
-        self._serving_training_dataset_version = training_dataset_version
         # Compatibility with 3.7
         if init_sql_client is None:
             init_sql_client = kwargs.get("init_online_store_sql_client")
@@ -504,6 +503,11 @@ class FeatureView:
                 util.VersionWarning,
                 stacklevel=1,
             )
+
+        # Recorded after the default is applied, not before.
+        # Serving goes on to use version 1, and feature logging reads this to decide both
+        # which schema the logged columns come from and which version it stamps on the row.
+        self._serving_training_dataset_version = training_dataset_version
 
         # initiate single vector server
         self._vector_server._init_serving(
@@ -6007,16 +6011,29 @@ class FeatureView:
             )
         return self.__fully_qualified_event_time
 
+    def _schema_requires_training_statistics(self) -> bool:
+        """Whether the training dataset schema depends on which training dataset produced it.
+
+        Only a one_hot_encoder does that: the encoded column set follows the categories seen in the training statistics.
+        Every other transformation has a fixed output schema, so for those the version is not just unnecessary but costly — resolving one makes the schema lookup validate that the training dataset still exists, which is a request, and a failure if it has since been deleted.
+        """
+        return any(
+            tf.hopsworks_udf.function_name == "one_hot_encoder"
+            for tf in self.transformation_functions
+        )
+
     def _schema_training_dataset_version(
         self, training_dataset_version: int | None = None
     ) -> int | None:
         """Training dataset version the transformed schema should be resolved against.
 
-        A one_hot_encoder makes the transformed schema depend on the training statistics, so `get_training_dataset_schema` cannot answer without a version.
-        An explicit version wins, because the caller knows which training dataset the data it is describing belongs to.
+        `None` when the schema does not depend on the training statistics: those feature views have one schema rather than one per version, and asking for a version there would only cost a training-dataset lookup.
+        Otherwise an explicit version wins, because the caller knows which training dataset the data it is describing belongs to.
         This mirrors how [`FeatureView.log`][hsfs.feature_view.FeatureView.log] resolves the version it stamps on the log, so the columns and the stamp cannot disagree.
         Failing that, serving and batch scoring each record the version they were initialised with, and the last version this feature view accessed is the final fallback.
         """
+        if not self._schema_requires_training_statistics():
+            return None
         batch_scoring_server = self.__batch_scoring_server
         return (
             training_dataset_version

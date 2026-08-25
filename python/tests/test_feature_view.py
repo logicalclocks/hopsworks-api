@@ -20,11 +20,13 @@ import pytest
 from hopsworks_common import version
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import feature, feature_group, feature_view, training_dataset_feature
+from hsfs.builtin_transformations import one_hot_encoder
 from hsfs.constructor import query
 from hsfs.feature_store import FeatureStore
 from hsfs.hopsworks_udf import udf
 from hsfs.serving_key import ServingKey
 from hsfs.transformation_function import TransformationType
+from hsfs.util import VersionWarning
 
 
 fg1 = feature_group.FeatureGroup(
@@ -1795,7 +1797,11 @@ class TestFeatureViewTrainingDatasetVersionResolution:
     These tests pin which version the derived feature names are resolved against, and that switching versions is noticed.
     """
 
-    def _feature_view(self, mocker):
+    def _feature_view(self, mocker, one_hot: bool = True):
+        """A feature view that one-hot encodes a feature, unless asked for one that does not.
+
+        Only a one_hot_encoder makes the schema depend on the training statistics, so it is what makes the version matter at all.
+        """
         mocker.patch("hopsworks_common.client._get_instance")
         mocker.patch("hsfs.engine._get_type", return_value="python")
         return feature_view.FeatureView(
@@ -1806,6 +1812,9 @@ class TestFeatureViewTrainingDatasetVersionResolution:
             inference_helper_columns=["fg1_inference_helper", "fg2_inference_helper"],
             training_helper_columns=["fg1_training_helper", "fg2_training_helper"],
             labels=["label"],
+            transformation_functions=(
+                [one_hot_encoder("fg2_feature")] if one_hot else []
+            ),
         )
 
     def _one_hot_schema(self, *categories):
@@ -1917,6 +1926,50 @@ class TestFeatureViewTrainingDatasetVersionResolution:
         assert names == ["fg1_feature", "fg2_feature_x", "fg2_feature_y"]
         schema.assert_called_once_with(5)
 
+    def test_an_explicit_version_is_used_on_a_fresh_feature_view(self, mocker):
+        """The reported reproduction: nothing has been initialised and nothing accessed, only `log(training_dataset_version=3)`.
+
+        Every other source of a version is empty here, so a resolver that ignores the explicit one asks for `None` and a one-hot feature view raises the exact error this fix targets.
+        """
+        # Arrange
+        fv = self._feature_view(mocker)
+        schema = self._schema_per_version(mocker, fv, {3: self._one_hot_schema("z")})
+
+        # Act
+        names = fv._get_transformed_feature_names(3)
+
+        # Assert
+        assert names == ["fg1_feature", "fg2_feature_z"]
+        schema.assert_called_once_with(3)
+
+    def test_log_forwards_its_resolved_version_to_the_engine(self, mocker):
+        """`log()` owns the resolution order, and what it resolves is what the engine has to receive.
+
+        Together with the engine-side test that the received version reaches the three name lookups, this closes the loop between the version stamped on the row and the columns the row is written under.
+        """
+        # Arrange
+        fv = self._feature_view(mocker)
+        fv._serving_training_dataset_version = 2
+        mocker.patch.object(
+            type(fv),
+            "logging_enabled",
+            new_callable=mocker.PropertyMock,
+            return_value=True,
+        )
+        mocker.patch.object(
+            type(fv),
+            "feature_logging",
+            new_callable=mocker.PropertyMock,
+            return_value=mocker.MagicMock(),
+        )
+        log_features = mocker.patch.object(fv._feature_view_engine, "_log_features")
+
+        # Act
+        fv.log(untransformed_features=[[1]], training_dataset_version=3)
+
+        # Assert: the explicit version beats the initialised one, all the way down.
+        assert log_features.call_args.kwargs["training_dataset_version"] == 3
+
     def test_labels_and_untransformed_names_take_the_explicit_version_too(self, mocker):
         """All three derived name sets are read side by side when a row is logged, so all three have to agree on the version."""
         # Arrange
@@ -1995,3 +2048,66 @@ class TestFeatureViewTrainingDatasetVersionResolution:
         # Assert: one fetch for version 2 and one for version 5, not one per access.
         assert schema.call_count == 2
         assert sorted(call.args[0] for call in schema.call_args_list) == [2, 5]
+
+    def test_init_serving_records_the_version_it_actually_uses(self, mocker):
+        """`init_serving()` with no version defaults to 1 and serves version 1.
+
+        It used to record `None` instead, because the attribute was set before the default was applied.
+        Feature logging reads that attribute for both the schema and the `td_version` stamped on the row, so a row served against version 1 was stamped with whatever the feature view had last accessed.
+        """
+        # Arrange
+        fv = self._feature_view(mocker)
+        mocker.patch.object(fv, "init_batch_scoring")
+        mocker.patch.object(fv._vector_server, "_init_serving")
+        mocker.patch.object(fv, "_get_embedding_fgs", return_value=[])
+        mocker.patch.object(fv, "_warmup_transformation_workers")
+
+        # Act
+        with pytest.warns(VersionWarning):
+            fv.init_serving()
+
+        # Assert
+        assert fv._serving_training_dataset_version == 1
+
+    def test_init_serving_records_an_explicit_version(self, mocker):
+        # Arrange
+        fv = self._feature_view(mocker)
+        mocker.patch.object(fv, "init_batch_scoring")
+        mocker.patch.object(fv._vector_server, "_init_serving")
+        mocker.patch.object(fv, "_get_embedding_fgs", return_value=[])
+        mocker.patch.object(fv, "_warmup_transformation_workers")
+
+        # Act
+        fv.init_serving(training_dataset_version=3)
+
+        # Assert
+        assert fv._serving_training_dataset_version == 3
+
+    def test_no_version_is_resolved_when_the_schema_does_not_need_one(self, mocker):
+        """A schema with no one_hot_encoder is the same whichever training dataset produced it.
+
+        Asking for a version there is not merely redundant: `get_training_dataset_schema` validates that the version still exists, so resolving one turns a local computation into a request, and into a failure once that training dataset is deleted.
+        """
+        # Arrange
+        fv = self._feature_view(mocker, one_hot=False)
+        fv._serving_training_dataset_version = 2
+        fv._last_accessed_training_dataset = 4
+        schema = mocker.patch.object(
+            fv,
+            "get_training_dataset_schema",
+            return_value=[
+                training_dataset_feature.TrainingDatasetFeature(
+                    name="fg1_feature", type="float"
+                ),
+                training_dataset_feature.TrainingDatasetFeature(
+                    name="label", type="int", label=True
+                ),
+            ],
+        )
+
+        # Act
+        names = fv._get_transformed_feature_names(5)
+
+        # Assert: no version asked for, even with three of them available.
+        assert names == ["fg1_feature"]
+        schema.assert_called_once_with(None)

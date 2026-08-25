@@ -26,7 +26,9 @@ import contextlib
 import warnings
 from unittest.mock import MagicMock, patch
 
+import pytest
 from hsfs import feature_group as fg_mod
+from hsfs.client.exceptions import FeatureStoreException
 from hsfs.core import feature_monitoring_config as fmc
 from hsfs.core import feature_monitoring_config_engine
 from hsfs.core import monitoring_window_config as mwc
@@ -813,3 +815,50 @@ class TestTrainingDatasetReferenceEntity:
         feature_store.get_feature_view.assert_not_called()
         for call in run_single.call_args_list:
             assert call.kwargs["entity"] is fg
+
+    def test_a_missing_feature_view_name_fails_loudly(self, mocker):
+        """There is no sensible fallback: comparing the log against itself is what this fix removes."""
+        engine = self._make_engine()
+        config = _make_fm_config()
+        reference_wc = MagicMock(spec=mwc.MonitoringWindowConfig)
+        reference_wc.window_config_type = mwc.WindowConfigType.TRAINING_DATASET
+        config.reference_window_config = reference_wc
+        config.feature_view_name = None
+        config.feature_view_version = 1
+
+        fg, feature_store = self._setup(mocker, engine, config)
+        mocker.patch.object(
+            engine._monitoring_window_config_engine,
+            "_run_single_window_monitoring",
+            return_value=[_make_fds()],
+        )
+
+        with pytest.raises(FeatureStoreException, match="needs a feature view"):
+            engine._run_feature_monitoring(entity=fg, config_name="cfg")
+
+        feature_store.get_feature_view.assert_not_called()
+
+    def test_a_missing_feature_view_version_fails_loudly(self, mocker):
+        """The version can be missing on its own, and a missing version is not harmless.
+
+        `FeatureStore.get_feature_view(name, None)` warns and returns version 1, so a config that names no version would quietly monitor against whichever feature view happens to be version 1.
+        """
+        engine = self._make_engine()
+        config = _make_fm_config()
+        reference_wc = MagicMock(spec=mwc.MonitoringWindowConfig)
+        reference_wc.window_config_type = mwc.WindowConfigType.TRAINING_DATASET
+        config.reference_window_config = reference_wc
+        config.feature_view_name = "my_fv"
+        config.feature_view_version = None
+
+        fg, feature_store = self._setup(mocker, engine, config)
+        mocker.patch.object(
+            engine._monitoring_window_config_engine,
+            "_run_single_window_monitoring",
+            return_value=[_make_fds()],
+        )
+
+        with pytest.raises(FeatureStoreException, match="needs a feature view"):
+            engine._run_feature_monitoring(entity=fg, config_name="cfg")
+
+        feature_store.get_feature_view.assert_not_called()

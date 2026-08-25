@@ -281,10 +281,7 @@ class FeatureViewEngine:
         dropped_features = set()
 
         # Statistics only required for computing schema if one-hot-encoder in the transformation functions
-        statistics_required = any(
-            tf.hopsworks_udf.function_name == "one_hot_encoder"
-            for tf in feature_view.transformation_functions
-        )
+        statistics_required = feature_view._schema_requires_training_statistics()
 
         if statistics_required:
             if not training_dataset_version:
