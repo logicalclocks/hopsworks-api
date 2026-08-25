@@ -129,6 +129,7 @@ class Client:
         stream: bool = False,
         files: dict | None = None,
         with_base_path_params: bool = True,
+        timeout: float | tuple[float, float] | None = None,
     ) -> dict:
         """Send REST request to Hopsworks.
 
@@ -143,6 +144,8 @@ class Client:
             stream: Set if response should be a stream, defaults to False
             files: dictionary for multipart encoding upload
             with_base_path_params: Whether to include the base path parameters (hopsworks-api/api) in the request URL.
+            timeout: How long to wait for the connection and for each block of the response, in seconds, passed straight through to `requests`.
+                Without it a stalled connection blocks the caller indefinitely, so pass one wherever the caller has its own deadline to honour.
 
         Returns:
             Response json
@@ -171,12 +174,14 @@ class Client:
         _logger.debug(f"url:{url} hostname_verification:{self._verify}")
 
         prepped = self._session.prepare_request(request)
-        response = self._session.send(prepped, verify=self._verify, stream=stream)
+        response = self._session.send(
+            prepped, verify=self._verify, stream=stream, timeout=timeout
+        )
 
         if response.status_code == 401 and self.REST_ENDPOINT in os.environ:
             # refresh token and retry request - only on hopsworks
             response = self._retry_token_expired(
-                request, stream, self.TOKEN_EXPIRED_RETRY_INTERVAL, 1
+                request, stream, self.TOKEN_EXPIRED_RETRY_INTERVAL, 1, timeout
             )
 
         if response.status_code // 100 != 2:
@@ -189,7 +194,7 @@ class Client:
             return None
         return response.json()
 
-    def _retry_token_expired(self, request, stream, wait, retries):
+    def _retry_token_expired(self, request, stream, wait, retries, timeout=None):
         """Refresh the JWT token and retry the request. Only on Hopsworks.
 
         As the token might take a while to get refreshed. Keep trying.
@@ -201,11 +206,15 @@ class Client:
         # Update request with the new token
         request.auth = self._auth
         prepped = self._session.prepare_request(request)
-        response = self._session.send(prepped, verify=self._verify, stream=stream)
+        response = self._session.send(
+            prepped, verify=self._verify, stream=stream, timeout=timeout
+        )
 
         if response.status_code == 401 and retries < self.TOKEN_EXPIRED_MAX_RETRIES:
             # Try again.
-            return self._retry_token_expired(request, stream, wait * 2, retries + 1)
+            return self._retry_token_expired(
+                request, stream, wait * 2, retries + 1, timeout
+            )
         # If the number of retries have expired, the _send_request method
         # will throw an exception to the user as part of the status_code validation.
         return response
