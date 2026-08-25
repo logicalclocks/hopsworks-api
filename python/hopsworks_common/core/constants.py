@@ -46,14 +46,20 @@ GE_MAJOR: int | None = None
 if HAS_GREAT_EXPECTATIONS:
     # GE 1.x's _docs_decorators logs an INFO line for every closure it scans
     # during module init (DataSourceManager._register_* / _bind_asset_factory_*),
-    # producing hundreds of useless lines on every SDK import. Suppress before
-    # the great_expectations import so module-init chatter never fires.
+    # producing hundreds of useless lines whenever GE loads. Suppress here so it
+    # is in place before the validation modules import great_expectations.
+    import importlib.metadata
     import logging
 
     logging.getLogger("great_expectations._docs_decorators").setLevel(logging.WARNING)
-    import great_expectations as _ge
-
-    GE_MAJOR = int(_ge.__version__.split(".")[0])
+    # The version comes from package metadata, never from importing the package:
+    # this module sits on the SDK's import spine, and executing GE's module init
+    # here (it pulls altair, scipy and jsonschema) put ~8 seconds on every
+    # `import hopsworks` for a value the dist-info already carries.
+    try:
+        GE_MAJOR = int(importlib.metadata.version("great_expectations").split(".")[0])
+    except (importlib.metadata.PackageNotFoundError, ValueError):
+        GE_MAJOR = None
 great_expectations_not_installed_message = (
     "Great Expectations package not found. "
     "If you want to use data validation with Hopsworks you can install the corresponding extras via "
