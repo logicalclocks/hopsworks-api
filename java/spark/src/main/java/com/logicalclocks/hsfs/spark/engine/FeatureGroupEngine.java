@@ -153,6 +153,8 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
       // After that it's going to be just a normal append
       featureGroupApi.deleteContent(streamFeatureGroup);
     }
+    // No storage header: the topic is the only source of both stores of a stream feature group, so
+    // OnlineFS and the offline materialization job both read these records.
     SparkEngine.getInstance().writeOnlineDataframe(streamFeatureGroup, featureData, writeOptions);
   }
 
@@ -170,7 +172,9 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
       externalFeatureGroup = saveExternalFeatureGroup(externalFeatureGroup);
     }
 
-    SparkEngine.getInstance().writeOnlineDataframe(externalFeatureGroup, featureData, writeOptions);
+    // An external feature group has no offline storage of ours, so these records are for OnlineFS alone.
+    SparkEngine.getInstance()
+        .writeOnlineDataframe(externalFeatureGroup, featureData, writeOptions, Storage.ONLINE);
   }
 
   @Deprecated
@@ -229,11 +233,13 @@ public class FeatureGroupEngine  extends FeatureGroupEngineBase {
       SparkEngine.getInstance().writeOfflineDataframe(featureGroup, dataset, operation,
               offlineWriteOptions, validationId);
     } else if (storage == Storage.ONLINE) {
-      SparkEngine.getInstance().writeOnlineDataframe(featureGroup, dataset, offlineWriteOptions);
+      SparkEngine.getInstance().writeOnlineDataframe(featureGroup, dataset, offlineWriteOptions, Storage.ONLINE);
     } else if (featureGroup.getOnlineEnabled() && storage == null) {
+      // The offline leg is written straight to the table here, so the records on the topic are for
+      // OnlineFS alone: a materialization job of this feature group has to skip them.
       SparkEngine.getInstance().writeOfflineDataframe(featureGroup, dataset, operation,
               offlineWriteOptions, validationId);
-      SparkEngine.getInstance().writeOnlineDataframe(featureGroup, dataset, offlineWriteOptions);
+      SparkEngine.getInstance().writeOnlineDataframe(featureGroup, dataset, offlineWriteOptions, Storage.ONLINE);
     } else {
       throw new FeatureStoreException("Error writing to offline and online feature store.");
     }

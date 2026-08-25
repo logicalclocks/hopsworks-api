@@ -974,7 +974,7 @@ class FeatureGroupBase:
         self._feature_group_engine._delete_tag(self, name)
 
     @public
-    def get_tag(self, name: str) -> tag.Tag | None:
+    def get_tag(self, name: str) -> Any | None:
         """Get the tags of a feature group.
 
         Example:
@@ -1000,16 +1000,132 @@ class FeatureGroupBase:
         return self._feature_group_engine._get_tag(self, name)
 
     @public
-    def get_tags(self) -> dict[str, tag.Tag]:
+    def get_tags(self) -> dict[str, Any]:
         """Retrieves all tags attached to a feature group.
 
         Returns:
-            The dictionary of tags.
+            The dictionary of tag names and values.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._feature_group_engine._get_tags(self)
+
+    @public
+    def get_tag_metadata(self, name: str) -> tag.Tag | None:
+        """Get a tag with its metadata, including the time it was attached.
+
+        Unlike [`FeatureGroupBase.get_tag`][hsfs.feature_group.FeatureGroupBase.get_tag], which returns only the tag's value, this returns the [`Tag`][hopsworks.tag.Tag] object, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Example:
+            ```python
+            fg_tag = fg.get_tag_metadata("example_tag")
+            print(fg_tag.value, fg_tag.created_on)
+            ```
+
+        Parameters:
+            name: Name of the tag to get.
+
+        Returns:
+            The tag object or `None` if it does not exist.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._feature_group_engine._get_tag_metadata(self, name)
+
+    @public
+    def get_tags_metadata(self) -> dict[str, tag.Tag]:
+        """Retrieves all tags attached to a feature group, with their metadata.
+
+        Unlike [`FeatureGroupBase.get_tags`][hsfs.feature_group.FeatureGroupBase.get_tags], which returns only the tag values, this keeps the [`Tag`][hopsworks.tag.Tag] objects, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Returns:
+            The dictionary of tag names to tag objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._feature_group_engine._get_tags_metadata(self)
+
+    @public
+    def get_keywords(self) -> list[str]:
+        """Retrieve all keywords attached to a feature group.
+
+        A keyword is a plain label without a value, used to categorize and search for artifacts.
+
+        Returns:
+            List of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._feature_group_engine._get_keywords(self)
+
+    @public
+    def get_keywords_metadata(self) -> dict[str, datetime | None]:
+        """Retrieve all keywords attached to a feature group, with the time each was attached.
+
+        Returns:
+            Dictionary of keyword to attachment time.
+            The time is `None` when it is unknown, for example for a keyword attached before Hopsworks recorded attachment times.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._feature_group_engine._get_keywords_metadata(self)
+
+    @public
+    def set_keywords(self, keywords: list[str]) -> list[str]:
+        """Replace the whole keyword set of a feature group.
+
+        Keywords not in `keywords` are removed.
+
+        Parameters:
+            keywords: The new keyword set.
+
+        Returns:
+            The updated list of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._feature_group_engine._set_keywords(self, keywords)
+
+    @public
+    def add_keywords(self, keywords: str | list[str]) -> list[str]:
+        """Add keywords to a feature group, keeping the existing ones.
+
+        This reads the current keywords and writes back their union with `keywords`, so a concurrent `add_keywords` or [`FeatureGroupBase.set_keywords`][hsfs.feature_group.FeatureGroupBase.set_keywords] call can lose additions.
+        When the full keyword set is known, prefer [`FeatureGroupBase.set_keywords`][hsfs.feature_group.FeatureGroupBase.set_keywords].
+
+        Parameters:
+            keywords: A keyword or a list of keywords to add.
+
+        Returns:
+            The updated list of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        if isinstance(keywords, str):
+            keywords = [keywords]
+        return self._feature_group_engine._add_keywords(self, keywords)
+
+    @public
+    def delete_keyword(self, keyword: str) -> list[str]:
+        """Remove a single keyword from a feature group.
+
+        Parameters:
+            keyword: The keyword to remove.
+
+        Returns:
+            The updated list of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._feature_group_engine._delete_keyword(self, keyword)
 
     @public
     def get_parent_feature_groups(self) -> explicit_provenance.Links | None:
@@ -1194,7 +1310,7 @@ class FeatureGroupBase:
         """
         from hsfs.core import share_api
 
-        share_api.ShareApi(self._feature_store_id)._share_feature_group(
+        share_api.ShareApi()._share_feature_group(
             self._id, target_project, features=features
         )
 
@@ -1216,9 +1332,7 @@ class FeatureGroupBase:
         """
         from hsfs.core import share_api
 
-        return share_api.ShareApi(self._feature_store_id)._list_feature_group_shares(
-            self._id
-        )
+        return share_api.ShareApi()._list_feature_group_shares(self._id)
 
     @public
     def unshare(self, target_project: str | int) -> None:
@@ -1237,9 +1351,105 @@ class FeatureGroupBase:
         """
         from hsfs.core import share_api
 
-        share_api.ShareApi(self._feature_store_id)._unshare_feature_group(
-            self._id, target_project
-        )
+        share_api.ShareApi()._unshare_feature_group(self._id, target_project)
+
+    @public
+    def grant_restricted_access(
+        self,
+        user_email: str,
+        features: list[str] | None = None,
+    ) -> None:
+        """Grant a `Feature store restricted` project member access to this feature group.
+
+        Unlike ``share``, which exposes data to *another project*, this
+        grants access to an individual member *within this project* who
+        otherwise has no feature store access at all under the `Feature
+        store restricted` role. The target user must already hold that
+        role in the project.
+
+        Requires the **Data Owner** role in the project.
+
+        Example:
+            ```python
+            fg = fs.get_feature_group("transactions", version=1)
+
+            # Grant access to the whole feature group
+            fg.grant_restricted_access("restricted_user@example.com")
+
+            # Grant access to selected columns only (PK + event_time always included)
+            fg.grant_restricted_access("restricted_user@example.com", features=["amount", "country"])
+            ```
+
+        Parameters:
+            user_email: Email of the project member to grant access to.
+            features: Optional whitelist of feature names. `None` grants
+                access to the whole feature group.
+
+        Raises:
+            PermissionError: If the caller lacks Data Owner in the project.
+            hopsworks.client.exceptions.RestAPIError: If the target user
+                doesn't exist, doesn't hold the `Feature store restricted`
+                role, or already has restricted access to this feature group.
+        """
+        from hsfs.core import restricted_access_api
+
+        restricted_access_api.RestrictedAccessApi(
+            self._feature_store_id
+        )._grant_restricted_access(self._id, user_email, features=features)
+
+    @public
+    def revoke_restricted_access(self, user_email: str) -> None:
+        """Revoke a previously-granted restricted-access grant.
+
+        Example:
+            ```python
+            fg = fs.get_feature_group("transactions", version=1)
+
+            fg.revoke_restricted_access("restricted_user@example.com")
+            ```
+
+        Parameters:
+            user_email: Email of the project member whose access is revoked.
+
+        Raises:
+            PermissionError: If the caller lacks Data Owner in the project.
+            hopsworks.client.exceptions.RestAPIError: If the user doesn't
+                exist or has no restricted-access grant on this feature group.
+        """
+        from hsfs.core import restricted_access_api
+
+        restricted_access_api.RestrictedAccessApi(
+            self._feature_store_id
+        )._revoke_restricted_access(self._id, user_email)
+
+    @public
+    def get_restricted_access(self) -> list[dict]:
+        """List the restricted members granted access to this feature group.
+
+        Each entry has `grantedToUser`, `grantedBy`, `grantedOn`,
+        `grantedEntirely` (`False` when only specific columns were
+        granted), and `features` (the column whitelist when not granted
+        entirely; empty/null otherwise).
+
+        Example:
+            ```python
+            fg = fs.get_feature_group("transactions", version=1)
+
+            for grant in fg.get_restricted_access():
+                print(grant["grantedToUser"], grant["grantedEntirely"])
+            ```
+
+        Returns:
+            A list of dicts as returned by the backend.
+
+        Raises:
+            PermissionError: If the caller lacks Data Owner in the project.
+        """
+        from hsfs.core import restricted_access_api
+
+        return restricted_access_api.RestrictedAccessApi(
+            self._feature_store_id
+        )._get_restricted_access(self._id)
 
     @public
     def get_feature(self, name: str) -> feature.Feature | None:
@@ -4274,7 +4484,7 @@ class FeatureGroup(FeatureGroupBase):
             operation: Apache Hudi operation type `"insert"` or `"upsert"`.
             storage:
                 Overwrite default behaviour, write to offline storage only with `"offline"` or online only with `"online"`.
-                If the streaming APIs are enabled, specifying the storage option is not supported.
+                On a stream feature group the records reach both stores through the same Kafka topic, so the choice travels with them and selects which store ingests them: `"online"` does not start the offline materialization job, and `"offline"` does not run an online ingestion.
             write_options:
                 Additional write options as key-value pairs.
 
@@ -4339,11 +4549,15 @@ class FeatureGroup(FeatureGroupBase):
             hopsworks.client.exceptions.DataValidationException:
                 If data validation fails and the expectation suite `validation_ingestion_policy` is set to `STRICT`.
                 Data is NOT ingested.
+            hopsworks.client.exceptions.FeatureStoreException: If `storage` is not one of `"offline"`, `"online"` or unset.
         """
-        if storage and self.stream:
-            warnings.warn(
-                "Specifying the storage option is not supported if the streaming APIs are enabled",
-                stacklevel=1,
+        storage_normalized = storage.lower() if storage is not None else None
+        if storage_normalized is not None and storage_normalized not in (
+            "offline",
+            "online",
+        ):
+            raise FeatureStoreException(
+                f"Invalid storage: {storage}. Use 'offline', 'online', or leave it unset."
             )
 
         feature_dataframe = engine._get_instance()._convert_to_default_dataframe(
@@ -4370,7 +4584,6 @@ class FeatureGroup(FeatureGroupBase):
             # New delta FG allow for change data capture query
             write_options["delta.enableChangeDataFeed"] = "true"
 
-        storage_normalized = storage.lower() if storage is not None else None
         job, ge_report = self._feature_group_engine._insert(
             self,
             feature_dataframe=feature_dataframe,
