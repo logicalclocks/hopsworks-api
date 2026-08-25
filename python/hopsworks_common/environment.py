@@ -112,8 +112,9 @@ class Environment:
         Parameters:
             path: The path in Hopsworks where the wheel file is located.
             await_installation: If `True` the method returns only when the installation finishes.
-            timeout: Seconds to wait for the installation before raising. Falls back to the engine's
-                default when unset. Only used when awaiting.
+            timeout: Seconds to wait for the installation to finish before raising.
+                Falls back to the engine's default when unset.
+                It also bounds the wait for any environment command already in flight, which happens before the install is submitted and therefore applies even when `await_installation` is `False`.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
@@ -168,8 +169,9 @@ class Environment:
         Parameters:
             path: The path in Hopsworks where the `requirements.txt` file is located.
             await_installation: If `True` the method returns only when the installation is finished.
-            timeout: Seconds to wait for the installation before raising. Falls back to the engine's
-                default when unset. Only used when awaiting.
+            timeout: Seconds to wait for the installation to finish before raising.
+                Falls back to the engine's default when unset.
+                It also bounds the wait for any environment command already in flight, which happens before the install is submitted and therefore applies even when `await_installation` is `False`.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
@@ -219,8 +221,9 @@ class Environment:
         Parameters:
             library_name: Name of the installed library to remove.
             await_uninstallation: If `True` the method returns only when the uninstallation finishes.
-            timeout: Seconds to wait for the uninstallation before raising. Falls back to the engine's
-                default when unset. Only used when awaiting.
+            timeout: Seconds to wait for the uninstallation to finish before raising.
+                Falls back to the engine's default when unset.
+                It also bounds the wait for any environment command already in flight, which happens before the removal is submitted and therefore applies even when `await_uninstallation` is `False`.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
