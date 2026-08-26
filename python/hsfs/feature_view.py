@@ -249,11 +249,13 @@ class FeatureView:
         self._transformation_n_processes: int | None = None
 
         # Lazy initialization for column names used in feature logging.
-        self.__training_dataset_schema = None
-        self.__training_dataset_schema_version = None
-        self.__label_column_names = None
-        self.__transformed_feature_names = None
-        self.__untransformed_feature_names = None
+        # Keyed by training dataset version: a one_hot_encoder makes the transformed
+        # schema depend on the training statistics, so two versions of the same feature
+        # view do not agree on their column sets.
+        self.__training_dataset_schemas = {}
+        self.__label_column_names = {}
+        self.__transformed_feature_names = {}
+        self.__untransformed_feature_names = {}
         self.__required_serving_key_names = None
         self.__root_feature_group_event_time_column_name = None
         self.__extra_logging_column_names = None
@@ -488,7 +490,6 @@ class FeatureView:
                 self.init_batch_scoring(1)
             else:
                 raise e
-        self._serving_training_dataset_version = training_dataset_version
         # Compatibility with 3.7
         if init_sql_client is None:
             init_sql_client = kwargs.get("init_online_store_sql_client")
@@ -502,6 +503,11 @@ class FeatureView:
                 util.VersionWarning,
                 stacklevel=1,
             )
+
+        # Recorded after the default is applied, not before.
+        # Serving goes on to use version 1, and feature logging reads this to decide both
+        # which schema the logged columns come from and which version it stamps on the row.
+        self._serving_training_dataset_version = training_dataset_version
 
         # initiate single vector server
         self._vector_server._init_serving(
@@ -1084,55 +1090,6 @@ class FeatureView:
             transformation_context=transformation_context,
             logging_data=logging_data,
             n_processes=n_processes,
-        )
-
-    @public
-    def scan_vectors(
-        self,
-        entry: dict[str, Any],
-        limit: int | None = None,
-        return_type: Literal["list", "pandas", "polars"] = "pandas",
-        external: bool | None = None,
-        force_rest_client: bool = False,
-        force_sql_client: bool = False,
-    ) -> pd.DataFrame | pl.DataFrame | list[dict[str, Any]]:
-        """Scan the most-recent rows of the collect feature group for a single entity.
-
-        For a feature view whose label feature group uses `collect(N)`, `get_feature_vector`
-        folds the N most-recent rows of that entity into one array-typed feature. `scan_vectors`
-        instead returns those rows directly, newest-first, ordered by the collect order column
-        (the feature group `event_time`), up to N (or `limit` if smaller). It is the online
-        counterpart of the offline collect window.
-
-        Example:
-            ```python
-            fv = fs.get_feature_view("transactions_fv", version=1)
-
-            # the 100 most recent transaction rows for user 123, newest first
-            rows = fv.scan_vectors(entry={"user_id": 123}, limit=100)
-            ```
-
-        Parameters:
-            entry: Entity-key values, e.g. {"user_id": 123}. The collect order column
-                (event_time) is not a required key.
-            limit: Optional client-side cap on the number of rows returned, at most the
-                feature view's collect N.
-            return_type: "pandas", "polars", or "list" (list of row dicts).
-            external: Whether to connect to the online store from an external network.
-            force_rest_client: Force the REST online client.
-            force_sql_client: Force the SQL online client.
-
-        Returns:
-            The collected rows for the entity in the requested format.
-        """
-        if not self._vector_server._serving_initialized:
-            self.init_serving(external=external)
-        return self._vector_server._scan_vectors(
-            entry=entry,
-            limit=limit,
-            return_type=return_type,
-            force_rest_client=force_rest_client,
-            force_sql_client=force_sql_client,
         )
 
     @public
@@ -6054,17 +6011,33 @@ class FeatureView:
             )
         return self.__fully_qualified_event_time
 
-    def _schema_training_dataset_version(self) -> int | None:
+    def _schema_requires_training_statistics(self) -> bool:
+        """Whether the training dataset schema depends on which training dataset produced it.
+
+        Only a one_hot_encoder does that: the encoded column set follows the categories seen in the training statistics.
+        Every other transformation has a fixed output schema, so for those the version is not just unnecessary but costly — resolving one makes the schema lookup validate that the training dataset still exists, which is a request, and a failure if it has since been deleted.
+        """
+        return any(
+            tf.hopsworks_udf.function_name == "one_hot_encoder"
+            for tf in self.transformation_functions
+        )
+
+    def _schema_training_dataset_version(
+        self, training_dataset_version: int | None = None
+    ) -> int | None:
         """Training dataset version the transformed schema should be resolved against.
 
-        A one_hot_encoder makes the transformed schema depend on the training
-        statistics, so `get_training_dataset_schema` cannot answer without a version.
-        Serving and batch scoring each record the version they were initialised with;
-        otherwise fall back to the last version this feature view accessed.
+        `None` when the schema does not depend on the training statistics: those feature views have one schema rather than one per version, and asking for a version there would only cost a training-dataset lookup.
+        Otherwise an explicit version wins, because the caller knows which training dataset the data it is describing belongs to.
+        This mirrors how [`FeatureView.log`][hsfs.feature_view.FeatureView.log] resolves the version it stamps on the log, so the columns and the stamp cannot disagree.
+        Failing that, serving and batch scoring each record the version they were initialised with, and the last version this feature view accessed is the final fallback.
         """
+        if not self._schema_requires_training_statistics():
+            return None
         batch_scoring_server = self.__batch_scoring_server
         return (
-            self._serving_training_dataset_version
+            training_dataset_version
+            or self._serving_training_dataset_version
             or (
                 batch_scoring_server.training_dataset_version
                 if batch_scoring_server
@@ -6074,63 +6047,82 @@ class FeatureView:
         )
 
     def _cached_training_dataset_schema(
-        self,
+        self, training_dataset_version: int | None = None
     ) -> list[training_dataset_feature.TrainingDatasetFeature]:
-        """Training dataset schema for the version currently in use.
+        """Training dataset schema for the given version, or for the version currently in use.
 
-        Cached because feature logging asks for it on every logged row, and keyed on
-        the version so that re-initialising serving against a different training
-        dataset does not keep serving the previous schema.
+        Cached because feature logging asks for it on every logged row, and kept per version so that logging against one training dataset never serves another one's columns.
         """
-        training_dataset_version = self._schema_training_dataset_version()
-        if (
-            self.__training_dataset_schema is None
-            or self.__training_dataset_schema_version != training_dataset_version
-        ):
-            self.__training_dataset_schema = self.get_training_dataset_schema(
-                training_dataset_version
+        version = self._schema_training_dataset_version(training_dataset_version)
+        if version not in self.__training_dataset_schemas:
+            self.__training_dataset_schemas[version] = self.get_training_dataset_schema(
+                version
             )
-            self.__training_dataset_schema_version = training_dataset_version
-            self.__label_column_names = None
-            self.__transformed_feature_names = None
-        return self.__training_dataset_schema
+        return self.__training_dataset_schemas[version]
+
+    def _get_label_column_names(
+        self, training_dataset_version: int | None = None
+    ) -> set[str]:
+        """Label column names as of the given training dataset version."""
+        version = self._schema_training_dataset_version(training_dataset_version)
+        if version not in self.__label_column_names:
+            self.__label_column_names[version] = {
+                feature.name
+                for feature in self._cached_training_dataset_schema(version)
+                if feature.label
+            }
+        return self.__label_column_names[version]
+
+    def _get_transformed_feature_names(
+        self, training_dataset_version: int | None = None
+    ) -> list[str]:
+        """Transformed feature names as of the given training dataset version.
+
+        These line the transformed vector up with the logging feature group's columns, so the version has to be the one the vector was produced against.
+        """
+        version = self._schema_training_dataset_version(training_dataset_version)
+        if version not in self.__transformed_feature_names:
+            self.__transformed_feature_names[version] = [
+                feature.name
+                for feature in self._cached_training_dataset_schema(version)
+                if feature.name not in self._get_label_column_names(version)
+                and feature.name not in self.training_helper_columns
+                and feature.name not in self.inference_helper_columns
+            ]
+        return self.__transformed_feature_names[version]
+
+    def _get_untransformed_feature_names(
+        self, training_dataset_version: int | None = None
+    ) -> list[str]:
+        """Untransformed feature names as of the given training dataset version.
+
+        The names come from the feature view's own features rather than the training dataset schema, but which of them are labels does depend on the version.
+        """
+        version = self._schema_training_dataset_version(training_dataset_version)
+        if version not in self.__untransformed_feature_names:
+            self.__untransformed_feature_names[version] = [
+                feature.name
+                for feature in self.features
+                if feature.name not in self._get_label_column_names(version)
+                and feature.name not in self.training_helper_columns
+                and feature.name not in self.inference_helper_columns
+            ]
+        return self.__untransformed_feature_names[version]
 
     @property
     def _label_column_names(self) -> set[str]:
-        """Get label column names."""
-        if self.__label_column_names is None:
-            training_dataset_schema = self._cached_training_dataset_schema()
-            self.__label_column_names = {
-                feature.name for feature in training_dataset_schema if feature.label
-            }
-        return self.__label_column_names
+        """Label column names for the training dataset version currently in use."""
+        return self._get_label_column_names()
 
     @property
     def _transformed_feature_names(self) -> list[str]:
-        """Get transformed feature names."""
-        if self.__transformed_feature_names is None:
-            training_dataset_schema = self._cached_training_dataset_schema()
-            self.__transformed_feature_names = [
-                feature.name
-                for feature in training_dataset_schema
-                if feature.name not in self._label_column_names
-                and feature.name not in self.training_helper_columns
-                and feature.name not in self.inference_helper_columns
-            ]
-        return self.__transformed_feature_names
+        """Transformed feature names for the training dataset version currently in use."""
+        return self._get_transformed_feature_names()
 
     @property
     def _untransformed_feature_names(self) -> list[str]:
-        """Get untransformed feature names."""
-        if self.__untransformed_feature_names is None:
-            self.__untransformed_feature_names = [
-                feature.name
-                for feature in self.features
-                if feature.name not in self._label_column_names
-                and feature.name not in self.training_helper_columns
-                and feature.name not in self.inference_helper_columns
-            ]
-        return self.__untransformed_feature_names
+        """Untransformed feature names for the training dataset version currently in use."""
+        return self._get_untransformed_feature_names()
 
     @property
     def _required_serving_key_names(self) -> list[str]:
