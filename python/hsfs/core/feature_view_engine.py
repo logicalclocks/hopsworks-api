@@ -281,10 +281,7 @@ class FeatureViewEngine:
         dropped_features = set()
 
         # Statistics only required for computing schema if one-hot-encoder in the transformation functions
-        statistics_required = any(
-            tf.hopsworks_udf.function_name == "one_hot_encoder"
-            for tf in feature_view.transformation_functions
-        )
+        statistics_required = feature_view._schema_requires_training_statistics()
 
         if statistics_required:
             if not training_dataset_version:
@@ -1885,17 +1882,17 @@ class FeatureViewEngine:
                     logging_features=logging_features,
                     transformed_features=(
                         transformed_features,
-                        fv._transformed_feature_names,
+                        fv._get_transformed_feature_names(training_dataset_version),
                         constants.FEATURE_LOGGING.TRANSFORMED_FEATURES,
                     ),
                     untransformed_features=(
                         untransformed_features,
-                        fv._untransformed_feature_names,
+                        fv._get_untransformed_feature_names(training_dataset_version),
                         constants.FEATURE_LOGGING.UNTRANSFORMED_FEATURES,
                     ),
                     predictions=(
                         predictions,
-                        list(fv._label_column_names),
+                        list(fv._get_label_column_names(training_dataset_version)),
                         constants.FEATURE_LOGGING.PREDICTIONS,
                     ),
                     serving_keys=(
@@ -1945,17 +1942,17 @@ class FeatureViewEngine:
                     logging_features=logging_features,
                     transformed_features=(
                         transformed_features,
-                        fv._transformed_feature_names,
+                        fv._get_transformed_feature_names(training_dataset_version),
                         constants.FEATURE_LOGGING.TRANSFORMED_FEATURES,
                     ),
                     untransformed_features=(
                         untransformed_features,
-                        fv._untransformed_feature_names,
+                        fv._get_untransformed_feature_names(training_dataset_version),
                         constants.FEATURE_LOGGING.UNTRANSFORMED_FEATURES,
                     ),
                     predictions=(
                         predictions,
-                        list(fv._label_column_names),
+                        list(fv._get_label_column_names(training_dataset_version)),
                         constants.FEATURE_LOGGING.PREDICTIONS,
                     ),
                     serving_keys=(

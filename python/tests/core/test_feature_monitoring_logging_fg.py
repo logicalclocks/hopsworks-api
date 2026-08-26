@@ -26,7 +26,9 @@ import contextlib
 import warnings
 from unittest.mock import MagicMock, patch
 
+import pytest
 from hsfs import feature_group as fg_mod
+from hsfs.client.exceptions import FeatureStoreException
 from hsfs.core import feature_monitoring_config as fmc
 from hsfs.core import feature_monitoring_config_engine
 from hsfs.core import monitoring_window_config as mwc
@@ -713,3 +715,150 @@ class TestRunFeatureMonitoringIdeaD:
         run_single.assert_called_once()
         call_kwargs = run_single.call_args.kwargs
         assert call_kwargs["end_commit_time_override"] == ingestion_commit_time
+
+
+# ---------------------------------------------------------------------------
+# Training-dataset reference window on a logging feature group
+# ---------------------------------------------------------------------------
+
+
+class TestTrainingDatasetReferenceEntity:
+    def _make_engine(
+        self,
+    ) -> feature_monitoring_config_engine.FeatureMonitoringConfigEngine:
+        return feature_monitoring_config_engine.FeatureMonitoringConfigEngine(
+            feature_store_id=DEFAULT_FS_ID,
+            feature_group_id=DEFAULT_FG_ID,
+        )
+
+    def _setup(self, mocker, engine, config, feature_view=None):
+        mocker.patch.object(
+            engine._feature_monitoring_config_api,
+            "_get_by_name",
+            return_value=config,
+        )
+        mocker.patch.object(
+            engine, "_get_latest_fg_commit_time", return_value=_HOURLY_COMMIT_TIME
+        )
+        mocker.patch.object(
+            engine._result_engine, "_get_latest_by_config_id", return_value=None
+        )
+        mocker.patch.object(
+            engine._result_engine,
+            "_run_and_save_statistics_comparison",
+            return_value=MagicMock(spec=FeatureMonitoringResult),
+        )
+        fg = _make_fg()
+        # entity.feature_store is a lazy REST lookup; the reference window resolves
+        # the feature view through it.
+        feature_store = MagicMock()
+        feature_store.get_feature_view.return_value = feature_view
+        mocker.patch.object(
+            fg_mod.FeatureGroup,
+            "feature_store",
+            new_callable=mocker.PropertyMock,
+            return_value=feature_store,
+        )
+        return fg, feature_store
+
+    def test_reference_window_resolves_the_feature_view(self, mocker):
+        """A training dataset reference must be read from the feature view.
+
+        The monitored entity of a model monitoring config is the logging feature
+        group, and _run_single_window_monitoring only reads training dataset
+        statistics for a feature view. Passing it the feature group made the
+        reference fall back to that group's own statistics, so the log was compared
+        against itself and no drift was ever reported.
+        """
+        engine = self._make_engine()
+        config = _make_fm_config()
+        reference_wc = MagicMock(spec=mwc.MonitoringWindowConfig)
+        reference_wc.window_config_type = mwc.WindowConfigType.TRAINING_DATASET
+        config.reference_window_config = reference_wc
+        config.feature_view_name = "my_fv"
+        config.feature_view_version = 1
+
+        feature_view = MagicMock()
+        fg, feature_store = self._setup(mocker, engine, config, feature_view)
+        run_single = mocker.patch.object(
+            engine._monitoring_window_config_engine,
+            "_run_single_window_monitoring",
+            return_value=[_make_fds()],
+        )
+
+        engine._run_feature_monitoring(entity=fg, config_name="cfg")
+
+        feature_store.get_feature_view.assert_called_once_with(name="my_fv", version=1)
+        detection_call, reference_call = run_single.call_args_list
+        assert detection_call.kwargs["entity"] is fg
+        assert reference_call.kwargs["entity"] is feature_view
+        # The model filter is meaningless against a training dataset.
+        assert reference_call.kwargs["model_filter"] is None
+
+    def test_rolling_reference_window_keeps_the_feature_group(self, mocker):
+        """A rolling reference reads the same logging feature group as detection."""
+        engine = self._make_engine()
+        config = _make_fm_config()
+        reference_wc = MagicMock(spec=mwc.MonitoringWindowConfig)
+        reference_wc.window_config_type = mwc.WindowConfigType.ROLLING_TIME
+        config.reference_window_config = reference_wc
+
+        fg, feature_store = self._setup(mocker, engine, config)
+        run_single = mocker.patch.object(
+            engine._monitoring_window_config_engine,
+            "_run_single_window_monitoring",
+            return_value=[_make_fds()],
+        )
+
+        engine._run_feature_monitoring(entity=fg, config_name="cfg")
+
+        feature_store.get_feature_view.assert_not_called()
+        for call in run_single.call_args_list:
+            assert call.kwargs["entity"] is fg
+
+    def test_a_missing_feature_view_name_fails_loudly(self, mocker):
+        """There is no sensible fallback: comparing the log against itself is what this fix removes."""
+        engine = self._make_engine()
+        config = _make_fm_config()
+        reference_wc = MagicMock(spec=mwc.MonitoringWindowConfig)
+        reference_wc.window_config_type = mwc.WindowConfigType.TRAINING_DATASET
+        config.reference_window_config = reference_wc
+        config.feature_view_name = None
+        config.feature_view_version = 1
+
+        fg, feature_store = self._setup(mocker, engine, config)
+        mocker.patch.object(
+            engine._monitoring_window_config_engine,
+            "_run_single_window_monitoring",
+            return_value=[_make_fds()],
+        )
+
+        with pytest.raises(FeatureStoreException, match="needs a feature view"):
+            engine._run_feature_monitoring(entity=fg, config_name="cfg")
+
+        feature_store.get_feature_view.assert_not_called()
+
+    def test_a_missing_feature_view_version_fails_loudly(self, mocker):
+        """The version can be missing on its own, and a missing version is not harmless.
+
+        `FeatureStore.get_feature_view(name, None)` warns and returns version 1, so a config that names no version would quietly monitor against whichever feature view happens to be version 1.
+        """
+        engine = self._make_engine()
+        config = _make_fm_config()
+        reference_wc = MagicMock(spec=mwc.MonitoringWindowConfig)
+        reference_wc.window_config_type = mwc.WindowConfigType.TRAINING_DATASET
+        config.reference_window_config = reference_wc
+        config.feature_view_name = "my_fv"
+        config.feature_view_version = None
+
+        fg, feature_store = self._setup(mocker, engine, config)
+        mocker.patch.object(
+            engine._monitoring_window_config_engine,
+            "_run_single_window_monitoring",
+            return_value=[_make_fds()],
+        )
+
+        with pytest.raises(FeatureStoreException, match="needs a feature view"):
+            engine._run_feature_monitoring(entity=fg, config_name="cfg")
+
+        feature_store.get_feature_view.assert_not_called()
