@@ -31,6 +31,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import socket
 import ssl
 import subprocess
@@ -1231,6 +1232,12 @@ async def _drive(ws, mode: str) -> None:
     so Ctrl-] detaches in both modes; in ``ro`` mode every other keystroke is
     discarded, in ``rw`` mode the bytes are forwarded as input frames. The tty
     is always restored on exit.
+
+    In ``rw`` the mirror also drives the shared window's geometry: the init
+    frame is ignored when attaching an existing session, so it pushes this
+    terminal's size explicitly on attach and again on every SIGWINCH, keeping
+    the view rendered at the local size instead of inheriting the driver's.
+    ``ro`` never resizes the session (the writer's terminal governs the grid).
     """
     cols, rows = shutil.get_terminal_size((80, 24))
     await ws.send(json.dumps({"cols": cols, "rows": rows, "mode": mode}))
@@ -1261,6 +1268,10 @@ async def _drive(ws, mode: str) -> None:
             )
         )
 
+    def _send_resize() -> None:
+        c, r = shutil.get_terminal_size((80, 24))
+        loop.create_task(ws.send(json.dumps({"type": "resize", "cols": c, "rows": r})))
+
     # Raw mode even read-only, so the documented Ctrl-] detach actually fires
     # without waiting for a newline.
     if has_tty:
@@ -1268,6 +1279,13 @@ async def _drive(ws, mode: str) -> None:
         tty.setraw(fd)
         loop.add_reader(fd, _read_stdin)
         reader_added = True
+
+    winch_added = False
+    if can_write:
+        _send_resize()  # apply our geometry now; the init frame was ignored
+        with contextlib.suppress(NotImplementedError, ValueError):
+            loop.add_signal_handler(signal.SIGWINCH, _send_resize)
+            winch_added = True
 
     try:
         recv_task = loop.create_task(_pump(ws, warned))
@@ -1281,6 +1299,9 @@ async def _drive(ws, mode: str) -> None:
             raise _Detach
         recv_task.result()  # re-raise a ConnectionClosed so the caller reconnects
     finally:
+        if winch_added:
+            with contextlib.suppress(NotImplementedError, ValueError):
+                loop.remove_signal_handler(signal.SIGWINCH)
         if reader_added:
             loop.remove_reader(fd)
         if old_attrs is not None:
