@@ -184,12 +184,25 @@ def test_transcript_relation_baseline_mismatch():
     )
 
 
-def test_pod_alive_true_when_session_present(monkeypatch):
-    monkeypatch.setattr(session.terminal_api, "get_session", lambda pid: {"id": "s"})
+def test_pod_alive_true_when_session_running(monkeypatch):
+    monkeypatch.setattr(
+        session.terminal_api, "get_session", lambda pid: {"id": "s", "running": True}
+    )
     assert session._pod_alive(1) is True
 
 
-def test_pod_alive_false_only_on_definitive_none(monkeypatch):
+def test_pod_alive_false_when_terminal_idle(monkeypatch):
+    # GET /terminal/session answers 200 for an idle terminal too, with a
+    # running=false descriptor — that is a DEAD pod, not a live one.
+    monkeypatch.setattr(
+        session.terminal_api,
+        "get_session",
+        lambda pid: {"sessionId": None, "running": False},
+    )
+    assert session._pod_alive(1) is False
+
+
+def test_pod_alive_false_on_definitive_none(monkeypatch):
     monkeypatch.setattr(session.terminal_api, "get_session", lambda pid: None)
     assert session._pod_alive(1) is False
 
@@ -405,20 +418,33 @@ def test_scan_slugs_real_failure_surfaces(_fixed_root):
 
 
 class _PushDataset:
-    """Dataset stub for push: records uploads, serves JSON sidecar downloads."""
+    """Dataset stub for push: records uploads, serves JSON sidecar downloads.
 
-    def __init__(self, files: dict[str, dict]):
+    ``ack_on_manifest`` simulates the pod's landing hook: uploading the
+    ``<id>.teleport.json`` manifest makes a fresh ``<id>.landed.json`` ack
+    appear. ``remove`` really deletes, so a stale pre-push ack (which push must
+    clear before waiting) cannot satisfy the landing poll by itself.
+    """
+
+    def __init__(self, files: dict[str, dict], ack_on_manifest: bool = False):
         self._files = files
+        self._ack_on_manifest = ack_on_manifest
         self.uploads: list[str] = []
+        self.removed: list[str] = []
 
     def mkdir(self, path: str) -> None:
         pass
 
     def upload(self, local_path, upload_path, overwrite=False) -> None:
-        self.uploads.append(Path(local_path).name)
+        name = Path(local_path).name
+        self.uploads.append(name)
+        if self._ack_on_manifest and name.endswith(".teleport.json"):
+            sid = name[: -len(".teleport.json")]
+            self._files[f"{upload_path}/{sid}.landed.json"] = {"landed_at": "now"}
 
     def remove(self, path: str) -> None:
-        pass
+        self.removed.append(path)
+        self._files.pop(path, None)
 
     def download(self, remote, local_path, overwrite=False) -> None:
         if remote not in self._files:
@@ -458,8 +484,10 @@ def _push_setup(tmp_path, monkeypatch, landed: bool):
     monkeypatch.setattr(session, "_held_open", lambda p: False)
 
     monkeypatch.setattr(session, "_teleport_root", lambda: _ROOT)
-    files = {f"{_ROOT}/{slug}/sid1.landed.json": {"landed_at": "now"}} if landed else {}
-    ds = _PushDataset(files)
+    # A stale ack from a previous land is always present: push must clear it, so
+    # only the pod's fresh ack (ack_on_manifest) may satisfy the landing poll.
+    files = {f"{_ROOT}/{slug}/sid1.landed.json": {"landed_at": "stale"}}
+    ds = _PushDataset(files, ack_on_manifest=landed)
     monkeypatch.setattr(session.conn, "get_project", lambda ctx: _FakeProject(ds))
     monkeypatch.setattr(
         session.terminal_api, "start_session", lambda pid: {"wsUrl": "/terminal/ws"}

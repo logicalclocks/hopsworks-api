@@ -293,15 +293,17 @@ def _read_baton(dataset_api, dest_dir: str, sid: str) -> dict | None:
 def _pod_alive(project_id: int) -> bool:
     """Whether the pod still holds a live terminal session for this project.
 
-    Only a definitive ``None`` from the backend counts as dead. A raised call
-    (feature disabled, network) is treated as alive on purpose: liveness we
-    cannot confirm must not silently authorise stealing the baton, so an
-    unknown state still forces ``--force``.
+    ``GET /terminal/session`` answers 200 for an idle terminal too, with a
+    descriptor whose ``running`` is false — only that flag distinguishes a live
+    pod from a stopped one. A raised call (feature disabled, network) is treated
+    as alive on purpose: liveness we cannot confirm must not silently authorise
+    stealing the baton, so an unknown state still forces ``--force``.
     """
     try:
-        return terminal_api.get_session(project_id) is not None
+        sess = terminal_api.get_session(project_id)
     except Exception:  # noqa: BLE001 - unknown liveness is fail-safe "alive"
         return True
+    return bool(sess and sess.get("running"))
 
 
 def _transcript_relation(local: list[str], remote: list[str], baseline: int) -> str:
@@ -379,6 +381,22 @@ def _upload_manifest(
     Not best-effort: the manifest is the pod watcher's trigger, so a silent drop
     would stage a session that never lands. A failure is surfaced loudly.
     """
+    # A prior land wrote a `<id>.teleport.json.consumed` marker and a
+    # `<id>.landed.json` ack next to the manifest in HopsFS. Both survive across
+    # pods: the consumed marker would make the watcher skip this fresh manifest
+    # (a re-push would silently never re-land), and the stale ack would make
+    # `_await_landing` report a land that has not happened. Uploading a manifest
+    # is the intent to land, so both are stale by definition: clear them, and do
+    # it BEFORE the manifest goes up — the manifest is the pod's trigger, so a
+    # land it causes must never race a late delete of its own fresh markers.
+    # Best-effort — they are absent for a first push / a brand-new session id.
+    for stale in (
+        f"{dest_dir}/{session_id}.teleport.json.consumed",
+        f"{dest_dir}/{session_id}.landed.json",
+    ):
+        with contextlib.suppress(Exception):
+            dataset_api.remove(stale)
+
     with tempfile.TemporaryDirectory() as tmp:
         mpath = Path(tmp) / f"{session_id}.teleport.json"
         mpath.write_text(json.dumps(manifest))
@@ -390,15 +408,6 @@ def _upload_manifest(
             raise click.ClickException(
                 f"Failed to upload teleport manifest: {exc}"
             ) from exc
-
-    # A prior land wrote a `<id>.teleport.json.consumed` marker next to the
-    # manifest in the project HopsFS. It survives across pods, and the pod
-    # watcher skips any manifest that still carries it, so this fresh upload (a
-    # re-push) would silently never re-land. Uploading a manifest is the intent
-    # to land, so the marker is stale by definition: clear it. Best-effort — it
-    # is absent for a first push / a brand-new session id.
-    with contextlib.suppress(Exception):
-        dataset_api.remove(f"{dest_dir}/{session_id}.teleport.json.consumed")
 
 
 # How long push/new waits for the pod's landing ack before falling back to the
@@ -557,17 +566,26 @@ def push(
     # surface loudly on the upload below.
     with contextlib.suppress(Exception):
         dataset_api.mkdir(dest_dir)
-    try:
-        dataset_api.upload(
-            local_path=str(jsonl), upload_path=dest_dir, overwrite=overwrite
-        )
-    except Exception as exc:  # noqa: BLE001
-        if "already exists" in str(exc):
-            raise click.ClickException(
-                "Session already staged for this directory — pass --overwrite "
-                "to replace it."
-            ) from exc
-        raise click.ClickException(f"Failed to ship session: {exc}") from exc
+    # Upload a snapshot copy, not the live file: the session may be the one the
+    # user is in, still being appended to. The baton's transferred_lines must
+    # count exactly the bytes that were shipped — counting the live file after
+    # the upload could include lines the pod never received, and pull would then
+    # misread a plain divergence as "no common history" (common < baseline).
+    with tempfile.TemporaryDirectory() as tmp:
+        snapshot = Path(tmp) / jsonl.name
+        shutil.copyfile(jsonl, snapshot)
+        lines = sum(1 for _ in snapshot.open(errors="ignore"))
+        try:
+            dataset_api.upload(
+                local_path=str(snapshot), upload_path=dest_dir, overwrite=overwrite
+            )
+        except Exception as exc:  # noqa: BLE001
+            if "already exists" in str(exc):
+                raise click.ClickException(
+                    "Session already staged for this directory — pass --overwrite "
+                    "to replace it."
+                ) from exc
+            raise click.ClickException(f"Failed to ship session: {exc}") from exc
     output.success("✓ Pushed session %s to %s", resolved_id, project.name)
 
     # Baton hand-off: record that the canonical copy now lives on the pod, and
@@ -576,7 +594,6 @@ def push(
     # you are in (its file is held open by a live `claude`).
     if not fork:
         host = socket.gethostname()
-        lines = sum(1 for _ in jsonl.open(errors="ignore"))
         _write_baton(
             dataset_api,
             dest_dir,
@@ -961,6 +978,17 @@ def pull(
             prev_holder=baton.get("holder", "?"),
             lines=final_lines,
         )
+        # A manifest that never landed must not land after this reclaim: a later
+        # pod boot would otherwise resume the stale staged copy as a ghost tab.
+        # Consuming (an empty `.consumed` sidecar) is how the pod marks "do not
+        # land"; mirror it from the reclaiming side. Best-effort, like the baton.
+        with tempfile.TemporaryDirectory() as tmp:
+            marker = Path(tmp) / f"{session_id}.teleport.json.consumed"
+            marker.write_text("")
+            with contextlib.suppress(Exception):
+                dataset_api.upload(
+                    local_path=str(marker), upload_path=dest_dir, overwrite=True
+                )
 
     output.success("✓ Pulled session %s to %s", session_id, local_dir)
     if parked is not None:
@@ -1118,7 +1146,8 @@ def stop(ctx: click.Context) -> None:
         raise click.ClickException(
             f"Could not check the terminal session: {exc}"
         ) from exc
-    if not running:
+    # An idle terminal still answers 200 with a running=false descriptor.
+    if not (running and running.get("running")):
         if output.JSON_MODE:
             output.print_json({"project": project.name, "stopped": False})
             return
