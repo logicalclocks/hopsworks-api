@@ -97,7 +97,7 @@ public class DeltaStreamerKafkaSource extends KafkaSource<JavaRDD<GenericRecord>
   
   protected JavaRDD<GenericRecord> maybeAppendKafkaOffsets(JavaRDD<ConsumerRecord<Object, Object>> kafkaRDd) {
     if (shouldAddOffsets) {
-      AvroConvertor convertor = new AvroConvertor(schemaProvider.getSourceSchema());
+      AvroConvertor convertor = new AvroConvertor(schemaProvider.getSourceSchema().toString());
       return kafkaRDd.map(convertor::withKafkaFieldsAppended);
     } else {
       return kafkaRDd.map(consumerRecord -> (GenericRecord) consumerRecord.value());
