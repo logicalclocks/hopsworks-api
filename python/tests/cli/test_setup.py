@@ -133,6 +133,69 @@ def test_setup_runs_token_flow_when_forced(tmp_home):
     assert saved.project == "demo"
 
 
+def _run_token_flow(argv):
+    created_response = {
+        "flowId": "tf-abc",
+        "waitSecret": "sekret",
+        "webUrl": "https://c.app.hopsworks.ai/token-flow/tf-abc",
+    }
+    wait_response = {
+        "apiKey": "NEW.KEY",
+        "workspaceUsername": "demo",
+        "apiKeyName": "jim-laptop",
+        "timeout": False,
+    }
+    create_mock = mock.Mock()
+    create_mock.json.return_value = created_response
+    create_mock.raise_for_status = mock.Mock()
+    wait_mock = mock.Mock()
+    wait_mock.json.return_value = wait_response
+    wait_mock.raise_for_status = mock.Mock()
+
+    def _post(url, *args, **kwargs):
+        return wait_mock if "/wait/" in url else create_mock
+
+    with (
+        mock.patch.object(setup_mod.requests, "post", side_effect=_post) as post,
+        mock.patch.object(setup_mod, "_open_browser", return_value=True),
+        mock.patch.object(setup_mod.auth, "verify") as verify,
+    ):
+        verify.return_value = mock.Mock()
+        verify.return_value.name = "demo"
+        result = CliRunner().invoke(cli, argv)
+    assert result.exit_code == 0, result.output
+    return post
+
+
+def test_setup_honors_explicit_global_no_verify(tmp_home):
+    # The global --no-verify is accepted on every command; when the user passes
+    # it explicitly, the token flow must not fail on a self-signed certificate
+    # while claiming verification the user just turned off.
+    post = _run_token_flow(
+        [
+            "setup",
+            "--host",
+            "https://10.0.0.1",
+            "--key-name",
+            "k",
+            "--force",
+            "--no-verify",
+        ],
+    )
+    for call in post.call_args_list:
+        assert call.kwargs["verify"] is False
+
+
+def test_setup_token_flow_verifies_tls_by_default(tmp_home):
+    # Without an explicit opt-out the flow stays strict: the /wait response
+    # carries a fresh API key, so the conservative default matters.
+    post = _run_token_flow(
+        ["setup", "--host", "https://c.app.hopsworks.ai", "--key-name", "k", "--force"],
+    )
+    for call in post.call_args_list:
+        assert call.kwargs["verify"] is True
+
+
 def test_setup_rejects_bad_key_name(tmp_home):
     result = CliRunner().invoke(
         cli,
