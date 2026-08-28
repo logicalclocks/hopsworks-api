@@ -8,6 +8,10 @@ pipeline {
 
     options {
         buildDiscarder(logRotator(numToKeepStr: '10'))
+        // The freestyle job this replaces had concurrentBuild=false. Two runs in parallel
+        // would install the same GAV into the shared ~/.m2 and write the same
+        // /opt/repository/master/hsfs/$POM_VERSION directory.
+        disableConcurrentBuilds()
     }
 
     triggers {
@@ -37,15 +41,19 @@ pipeline {
                 }
                 sh 'mvn -f java/pom.xml clean deploy generate-sources javadoc:javadoc -Pwith-hops-ee'
                 sh 'mvn -f utils/java/pom.xml clean package'
-                stash name: 'artifacts', includes: '''java/spark/target/*-jar-with-dependencies.jar,\
-utils/java/target/*-jar-with-dependencies.jar,\
-utils/python/hsfs_utils.py'''
+                stash name: 'artifacts', includes: [
+                    'java/spark/target/*-jar-with-dependencies.jar',
+                    'utils/java/target/*-jar-with-dependencies.jar',
+                    'utils/python/hsfs_utils.py',
+                ].join(',')
             }
         }
 
         stage('publish') {
             agent { label 'local' }
+            options { skipDefaultCheckout() }
             steps {
+                deleteDir()
                 unstash 'artifacts'
                 sh '''
                     set -eu
