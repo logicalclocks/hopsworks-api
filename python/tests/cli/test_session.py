@@ -516,6 +516,8 @@ def _push_setup(tmp_path, monkeypatch, landed: bool):
     monkeypatch.setattr(session, "_held_open", lambda p: False)
 
     monkeypatch.setattr(session, "_teleport_root", lambda: _ROOT)
+    # Keep the push tests off the real repo/prefs: git sync has its own tests.
+    monkeypatch.setattr(session.git_sync, "maybe_collect", lambda *a, **k: None)
     # A stale ack from a previous land is always present (acks are never
     # deleted); only a fresh ack echoing THIS push's pushed_at (ack_on_manifest)
     # may satisfy the landing poll.

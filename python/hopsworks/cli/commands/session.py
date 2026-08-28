@@ -52,7 +52,7 @@ except ImportError:  # non-POSIX (Windows): raw stdin / --write is unavailable
     tty = None
 
 import click
-from hopsworks.cli import output, terminal_api
+from hopsworks.cli import git_sync, output, terminal_api
 from hopsworks.cli import session as conn
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import RestAPIError
@@ -380,7 +380,12 @@ def _terminal_ui_url(project_id: int) -> str:
 
 
 def _build_manifest(
-    session_id: str, slug: str, mode: str, model: str | None, prompt: str | None = None
+    session_id: str,
+    slug: str,
+    mode: str,
+    model: str | None,
+    prompt: str | None = None,
+    git: dict | None = None,
 ) -> dict:
     """The manifest the pod's landing hook reads to self-resume.
 
@@ -389,7 +394,7 @@ def _build_manifest(
     ``mode`` (``push`` / ``fork`` / ``new``), and an optional ``prompt`` the pod
     feeds to ``claude`` as the session's first instruction.
     """
-    return {
+    manifest = {
         "session_id": session_id,
         "slug": slug,
         "cwd": str(Path.cwd()),
@@ -399,6 +404,11 @@ def _build_manifest(
         "model": model,
         "prompt": prompt,
     }
+    # Present only when the git-sync gates and consent passed: the pod's landing
+    # hook checks the repo out before it resumes the session (HWORKS-3147).
+    if git:
+        manifest["git"] = git
+    return manifest
 
 
 def _upload_manifest(
@@ -593,6 +603,11 @@ def push(
     project = conn.get_project(ctx)
     dataset_api = project.get_dataset_api()
 
+    # Git sync runs first: it is the interactive part (consent, key prompt,
+    # commit+push offer), so it must finish before any store mutation. A None
+    # simply means no git context travels with this push.
+    git_ctx = git_sync.maybe_collect(dataset_api, _teleport_root().rsplit("/", 1)[0])
+
     dest_dir = f"{_teleport_root()}/{slug}"
     # mkdir is best-effort: an existing dir is fine, and a real problem will
     # surface loudly on the upload below.
@@ -646,7 +661,7 @@ def push(
     # hard error, not best-effort — a dropped manifest strands the session
     # (staged, but never landed).
     manifest = _build_manifest(
-        resolved_id, slug, "fork" if fork else "push", model, prompt
+        resolved_id, slug, "fork" if fork else "push", model, prompt, git=git_ctx
     )
     _upload_manifest(dataset_api, dest_dir, resolved_id, manifest)
 
@@ -1007,6 +1022,7 @@ def pull(
         with contextlib.suppress(FileNotFoundError):
             marker.unlink()
 
+    manifest: dict = {}
     if baton is not None:
         final_lines = sum(1 for _ in local_jsonl.open(errors="ignore"))
         if not _write_baton(
@@ -1031,10 +1047,11 @@ def pull(
         # re-push of this id, not just the reclaimed one. An unreadable manifest
         # skips the stamp (nothing to version against). Best-effort, like the
         # baton.
-        pushed_at = (
+        manifest = (
             _read_remote_json(dataset_api, f"{dest_dir}/{session_id}.teleport.json")
             or {}
-        ).get("pushed_at")
+        )
+        pushed_at = manifest.get("pushed_at")
         if pushed_at:
             with tempfile.TemporaryDirectory() as tmp:
                 marker = Path(tmp) / f"{session_id}.teleport.json.consumed"
@@ -1047,6 +1064,13 @@ def pull(
     output.success("✓ Pulled session %s to %s", session_id, local_dir)
     if parked is not None:
         output.info("Parked the other side at %s", parked.name)
+    # The repo itself is not file transport: with git sync, pod work reaches the
+    # laptop through the remote, and only the transcript rides the store.
+    if manifest.get("git"):
+        output.info(
+            "This session synced git state. Pod work flows back through git — "
+            "commit and push on the pod, then `git pull` here."
+        )
 
     resume = f"claude --resume {session_id}"
     # The transcript landed under its origin slug; resume only resolves it from a
