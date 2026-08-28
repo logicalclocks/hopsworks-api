@@ -49,6 +49,11 @@ public class StreamFeatureGroup extends FeatureGroupBase<DataStream<?>> {
 
   protected FeatureGroupEngine featureGroupEngine = new FeatureGroupEngine();
 
+  public static class StreamFeatureGroupBuilder {
+    StreamFeatureGroupBuilder() {
+    }
+  }
+
   @Builder
   public StreamFeatureGroup(FeatureStore featureStore, @NonNull String name, Integer version, String description,
                             List<String> primaryKeys, List<String> partitionKeys, String hudiPrecombineKey,

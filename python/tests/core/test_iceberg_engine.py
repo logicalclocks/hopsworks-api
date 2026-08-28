@@ -129,7 +129,7 @@ class TestIcebergEngine:
         options = iceberg_engine._setup_iceberg_read_opts(fg_alias, "location")
 
         # Assert
-        assert options == {"snapshot-id": "11"}
+        assert options == {"versionAsOf": "11"}
 
     def test_setup_iceberg_read_opts_time_travel_query_before_first_snapshot(
         self, mocker
@@ -151,7 +151,7 @@ class TestIcebergEngine:
         options = iceberg_engine._setup_iceberg_read_opts(fg_alias, "location")
 
         # Assert
-        assert options == {"snapshot-id": "11"}
+        assert options == {"versionAsOf": "11"}
 
     def test_setup_iceberg_read_opts_time_travel_query_no_snapshots(self, mocker):
         # Arrange: table without snapshots keeps the timestamp bound
@@ -163,7 +163,7 @@ class TestIcebergEngine:
         options = iceberg_engine._setup_iceberg_read_opts(fg_alias, "location")
 
         # Assert
-        assert options == {"as-of-timestamp": "1234567890000"}
+        assert options == {"timestampAsOf": "2009-02-13 23:31:30.000Z"}
 
     def test_setup_iceberg_read_opts_incremental_query(self, mocker):
         # Arrange
@@ -201,7 +201,7 @@ class TestIcebergEngine:
         options = iceberg_engine._setup_iceberg_read_opts(fg_alias, "location")
 
         # Assert
-        assert options == {"snapshot-id": "11"}
+        assert options == {"versionAsOf": "11"}
 
     def test_setup_iceberg_read_opts_incremental_query_no_snapshots_at_all(
         self, mocker
@@ -226,7 +226,7 @@ class TestIcebergEngine:
         options = iceberg_engine._setup_iceberg_read_opts(fg_alias, "location")
 
         # Assert
-        assert options == {"snapshot-id": "11"}
+        assert options == {"versionAsOf": "11"}
 
     def test_setup_iceberg_read_opts_incremental_query_no_start_no_end(self, mocker):
         # Unresolvable start without an end bound reads the latest table state.
