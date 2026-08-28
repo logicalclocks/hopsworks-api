@@ -303,22 +303,6 @@
 
     <profiles>
         <profile>
-            <id>spark-3.3</id>
-            <properties>
-                <artifact.spark.version>spark3.3</artifact.spark.version>
-            </properties>
-        </profile>
-        <profile>
-            <id>spark-3.5</id>
-            <properties>
-                <spark.version>3.5.5.2</spark.version>
-                <deequ.version>2.0.7-spark-3.5</deequ.version>
-                <artifact.spark.version>spark3.5</artifact.spark.version>
-                <fasterxml.jackson.databind.version>2.15.2</fasterxml.jackson.databind.version>
-                <kafka.version>3.4.1</kafka.version>
-            </properties>
-        </profile>
-        <profile>
             <id>spark-4.1</id>
             <activation>
                 <activeByDefault>true</activeByDefault>
