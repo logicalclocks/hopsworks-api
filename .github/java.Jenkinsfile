@@ -24,19 +24,24 @@ pipeline {
                 docker {
                     image 'maven:3.8.5-openjdk-17'
                     label 'local'
-                    // Carries the controller's settings.xml and its warm local repository
-                    // into the container, which is what supplies the mirror and the archiva
-                    // deploy credentials. /root/.m2 cannot deliver either: the plugin runs the
-                    // container as the agent's uid, which has no /etc/passwd entry, so the JVM
-                    // reports user.home=? and Maven reads no settings at all, and /root is 0700
-                    // to a non-root container. Mount somewhere traversable and move user.home
+                    // The .m2 mount carries the controller's settings.xml and its warm local
+                    // repository into the container, which is what supplies the mirror and the
+                    // archiva deploy credentials. /root/.m2 cannot deliver either, being 0700 to
+                    // a non-root container, so mount somewhere traversable and move user.home
                     // with it, the way the maven image documents for -u.
-                    args '-v $HOME/.m2:/var/maven/.m2 -e HOME=/var/maven -e MAVEN_CONFIG=/var/maven/.m2'
+                    // The passwd/group mounts are what make that uid resolvable at all. The
+                    // plugin runs the container as the agent's uid, which the image has no entry
+                    // for, and everything downstream of getpwuid() fails: Maven read no settings
+                    // (user.home=?), and Hadoop's UserGroupInformation login died on
+                    // `new UnixPrincipal(null)`, failing every test that builds a SparkSession
+                    // with "Invalid UID, could not determine effective user".
+                    args '-v $HOME/.m2:/var/maven/.m2 -e HOME=/var/maven -e MAVEN_CONFIG=/var/maven/.m2 -v /etc/passwd:/etc/passwd:ro -v /etc/group:/etc/group:ro'
                 }
             }
             environment {
-                // The JVM takes user.home from getpwuid(), never from $HOME, so -D is the only
-                // thing that moves it. MAVEN_OPTS covers every mvn call in the stage.
+                // getpwuid() resolves now, so the JVM takes user.home from the controller's
+                // passwd entry, a /home path that is not mounted in. $HOME is still ignored, so
+                // -D remains the only thing that moves it, for every mvn call in the stage.
                 MAVEN_OPTS = '-Duser.home=/var/maven'
             }
             steps {
