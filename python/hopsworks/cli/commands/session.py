@@ -247,11 +247,13 @@ def _is_active_session(jsonl: Path) -> bool:
 
 def _write_baton(
     dataset_api, dest_dir: str, sid: str, holder: str, prev_holder: str, lines: int
-) -> None:
+) -> bool:
     """Write the baton sidecar recording where a session's canonical copy lives.
 
     Both the laptop CLI and the pod read it; it is the commit point of a
-    hand-off. Best-effort upload; a failure surfaces on the next read.
+    hand-off. Returns False on failure instead of raising: the caller decides
+    how loud to be (the local state it just wrote is valid either way), but a
+    silent drop must not masquerade as a recorded hand-off.
     """
     baton = {
         "session_id": sid,
@@ -263,8 +265,11 @@ def _write_baton(
     with tempfile.TemporaryDirectory() as tmp:
         p = Path(tmp) / f"{sid}.baton.json"
         p.write_text(json.dumps(baton))
-        with contextlib.suppress(Exception):
+        try:
             dataset_api.upload(local_path=str(p), upload_path=dest_dir, overwrite=True)
+        except Exception:  # noqa: BLE001 - caller warns; local state is already valid
+            return False
+    return True
 
 
 def _read_remote_json(dataset_api, remote_path: str) -> dict | None:
@@ -284,10 +289,33 @@ def _read_remote_json(dataset_api, remote_path: str) -> dict | None:
 def _read_baton(dataset_api, dest_dir: str, sid: str) -> dict | None:
     """Return the baton for ``sid`` staged under ``dest_dir``, or None.
 
-    None means no baton exists (a ``--fork`` push, or a legacy transfer), which
-    the caller treats as batonless copy semantics — not an error.
+    None means the baton is genuinely absent (a ``--fork`` push, or a legacy
+    transfer), which the caller treats as batonless copy semantics. Any other
+    failure (auth, network, corrupt JSON) raises: degrading it to "no baton"
+    would silently bypass the ownership gate that the baton exists to enforce.
     """
-    return _read_remote_json(dataset_api, f"{dest_dir}/{sid}.baton.json")
+    remote = f"{dest_dir}/{sid}.baton.json"
+    with tempfile.TemporaryDirectory() as tmp:
+        local = Path(tmp) / "baton.json"
+        try:
+            dataset_api.download(remote, local_path=str(local), overwrite=True)
+        except RestAPIError as exc:
+            if _is_missing_path(exc):
+                return None
+            raise click.ClickException(
+                f"Could not read the session baton: {exc}"
+            ) from exc
+        except Exception as exc:  # noqa: BLE001
+            raise click.ClickException(
+                f"Could not read the session baton: {exc}"
+            ) from exc
+        try:
+            return json.loads(local.read_text())
+        except ValueError as exc:
+            raise click.ClickException(
+                f"The baton for {sid} is unreadable; refusing to guess ownership. "
+                f"Inspect or remove {remote} in the teleport store."
+            ) from exc
 
 
 def _pod_alive(project_id: int) -> bool:
@@ -588,20 +616,40 @@ def push(
             raise click.ClickException(f"Failed to ship session: {exc}") from exc
     output.success("✓ Pushed session %s to %s", resolved_id, project.name)
 
-    # Baton hand-off: record that the canonical copy now lives on the pod, and
-    # rename the local transcript aside so it is not resumed by accident. Skip
-    # both for --fork (deliberate copy), and skip the rename for the session
-    # you are in (its file is held open by a live `claude`).
-    if not fork:
-        host = socket.gethostname()
-        _write_baton(
-            dataset_api,
-            dest_dir,
-            resolved_id,
-            holder=f"pod:{project.name}",
-            prev_holder=f"laptop:{host}",
-            lines=lines,
+    # Baton hand-off: record that the canonical copy now lives on the pod. Skip
+    # for --fork (deliberate copy). The local rename-aside happens only after
+    # the manifest upload succeeds, so a failed push never strands the session
+    # (renamed away locally, yet never going to land).
+    host = socket.gethostname()
+    if not fork and not _write_baton(
+        dataset_api,
+        dest_dir,
+        resolved_id,
+        holder=f"pod:{project.name}",
+        prev_holder=f"laptop:{host}",
+        lines=lines,
+    ):
+        output.warn(
+            "Could not record the baton hand-off; the store does not name the "
+            "pod as holder, so a pull from another machine will treat this as "
+            "an unowned copy."
         )
+
+    ws_url = _launch_pod(project)
+
+    # Manifest LAST: it is the pod watcher's trigger, so everything it depends on
+    # (transcript, baton) must already be staged when it appears. The upload is a
+    # hard error, not best-effort — a dropped manifest strands the session
+    # (staged, but never landed).
+    manifest = _build_manifest(
+        resolved_id, slug, "fork" if fork else "push", model, prompt
+    )
+    _upload_manifest(dataset_api, dest_dir, resolved_id, manifest)
+
+    # Only now that the hand-off is fully staged, rename the local transcript
+    # aside so it is not resumed by accident — except the session you are in
+    # (its file is held open by a live `claude`), which stays live locally.
+    if not fork:
         if _is_active_session(jsonl):
             output.warn(
                 "This looks like the session you are in, so it stays live on "
@@ -619,17 +667,6 @@ def push(
                         {"project": project.name, "host": host, "pushed_at": _now()}
                     )
                 )
-
-    ws_url = _launch_pod(project)
-
-    # Manifest LAST: it is the pod watcher's trigger, so everything it depends on
-    # (transcript, baton) must already be staged when it appears. The upload is a
-    # hard error, not best-effort — a dropped manifest strands the session
-    # (staged, but never landed).
-    manifest = _build_manifest(
-        resolved_id, slug, "fork" if fork else "push", model, prompt
-    )
-    _upload_manifest(dataset_api, dest_dir, resolved_id, manifest)
 
     pod_session_dir = f"~/.claude/projects/{slug}"
     pod_jsonl = f"/hopsfs/{_teleport_root()}/{slug}/{resolved_id}.jsonl"
@@ -970,14 +1007,20 @@ def pull(
 
     if baton is not None:
         final_lines = sum(1 for _ in local_jsonl.open(errors="ignore"))
-        _write_baton(
+        if not _write_baton(
             dataset_api,
             dest_dir,
             session_id,
             holder=me,
             prev_holder=baton.get("holder", "?"),
             lines=final_lines,
-        )
+        ):
+            output.warn(
+                "The transcript was pulled, but the baton could not be updated: "
+                "the store still names %s as holder, so the next pull may "
+                "demand --force. Re-run pull to retry the hand-off.",
+                baton.get("holder", "?"),
+            )
         # A manifest that never landed must not land after this reclaim: a later
         # pod boot would otherwise resume the stale staged copy as a ghost tab.
         # Consuming (an empty `.consumed` sidecar) is how the pod marks "do not
@@ -1420,6 +1463,10 @@ def mirror(ctx: click.Context, write: bool) -> None:
     if write and not has_tty:
         output.warn("No interactive tty; --write falls back to read-only.")
         role = "read-only (no tty)"
+        # Downgrade for real, not just in the banner: attaching as a writer
+        # would count in the server's roster and let this client resize the
+        # shared PTY, while its stdin can never actually type.
+        write = False
     detach_key = "Ctrl-]" if has_tty else "Ctrl-C"
     output.info(
         "Mirroring %s terminal (%s). Detach with %s.", project.name, role, detach_key

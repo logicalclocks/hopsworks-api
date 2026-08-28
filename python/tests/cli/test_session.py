@@ -414,6 +414,34 @@ def test_scan_slugs_real_failure_surfaces(_fixed_root):
         session._scan_slugs(_DS())
 
 
+def test_read_baton_absent_is_none():
+    class _DS:
+        def download(self, remote, local_path, overwrite=False):
+            raise _rest_error(404)
+
+    assert session._read_baton(_DS(), "dest", "sid") is None
+
+
+def test_read_baton_real_failure_fails_closed():
+    # A network/auth error must not degrade to "no baton": batonless copy
+    # semantics would bypass the ownership gate the baton enforces.
+    class _DS:
+        def download(self, remote, local_path, overwrite=False):
+            raise _rest_error(500)
+
+    with pytest.raises(Exception, match="baton"):
+        session._read_baton(_DS(), "dest", "sid")
+
+
+def test_read_baton_corrupt_fails_closed(tmp_path):
+    class _DS:
+        def download(self, remote, local_path, overwrite=False):
+            Path(local_path).write_text("{not json")
+
+    with pytest.raises(Exception, match="unreadable"):
+        session._read_baton(_DS(), "dest", "sid")
+
+
 # --- push golden output -------------------------------------------------------
 
 
