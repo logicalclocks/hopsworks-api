@@ -24,10 +24,20 @@ pipeline {
                 docker {
                     image 'maven:3.8.5-openjdk-17'
                     label 'local'
-                    // Carries the controller's settings.xml into the container, which is what
-                    // supplies the nexus mirror and the archiva deploy credentials.
-                    args '-v $HOME/.m2:/root/.m2'
+                    // Carries the controller's settings.xml and its warm local repository
+                    // into the container, which is what supplies the mirror and the archiva
+                    // deploy credentials. /root/.m2 cannot deliver either: the plugin runs the
+                    // container as the agent's uid, which has no /etc/passwd entry, so the JVM
+                    // reports user.home=? and Maven reads no settings at all, and /root is 0700
+                    // to a non-root container. Mount somewhere traversable and move user.home
+                    // with it, the way the maven image documents for -u.
+                    args '-v $HOME/.m2:/var/maven/.m2 -e HOME=/var/maven -e MAVEN_CONFIG=/var/maven/.m2'
                 }
+            }
+            environment {
+                // The JVM takes user.home from getpwuid(), never from $HOME, so -D is the only
+                // thing that moves it. MAVEN_OPTS covers every mvn call in the stage.
+                MAVEN_OPTS = '-Duser.home=/var/maven'
             }
             steps {
                 script {
