@@ -250,7 +250,9 @@ class _FakeDataset:
 
     def download(self, remote: str, local_path: str, overwrite: bool = False):
         if remote not in self._files:
-            raise RuntimeError(f"404: {remote}")
+            # Same shape the real DatasetApi raises for a missing path, so the
+            # CLI's absent-vs-failure split is what actually gets tested.
+            raise _rest_error(404)
         Path(local_path).write_text(json.dumps(self._files[remote]))
 
 
@@ -480,7 +482,7 @@ class _PushDataset:
 
     def download(self, remote, local_path, overwrite=False) -> None:
         if remote not in self._files:
-            raise RuntimeError(f"404: {remote}")
+            raise _rest_error(404)
         Path(local_path).write_text(json.dumps(self._files[remote]))
 
 
