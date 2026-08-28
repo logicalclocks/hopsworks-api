@@ -15,7 +15,15 @@
 #
 from __future__ import annotations
 
+import pandas as pd
+import pytest
 from hsfs.engine import python, spark
+
+
+pytestmark = pytest.mark.skipif(
+    tuple(int(part) for part in pd.__version__.split(".")[:2]) < (2, 2),
+    reason="PySpark 4.1 requires pandas >= 2.2.0.",
+)
 
 
 class TestPythonSparkConvertDataframe:

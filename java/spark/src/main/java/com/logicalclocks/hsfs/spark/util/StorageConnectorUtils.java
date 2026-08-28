@@ -26,7 +26,6 @@ import com.logicalclocks.hsfs.util.Constants;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 
-import javax.ws.rs.NotSupportedException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -332,7 +331,7 @@ public class StorageConnectorUtils {
     } else if (connector instanceof StorageConnector.GlueConnector) {
       return read((StorageConnector.GlueConnector) connector, dataSource, dataFormat, options);
     } else if (connector instanceof StorageConnector.KafkaConnector) {
-      throw new NotSupportedException("Reading a Kafka Stream into a static Spark Dataframe is not supported.");
+      throw new UnsupportedOperationException("Reading a Kafka Stream into a static Spark DataFrame is not supported.");
     } else {
       throw new FeatureStoreException("Unknown type of StorageConnector.");
     }

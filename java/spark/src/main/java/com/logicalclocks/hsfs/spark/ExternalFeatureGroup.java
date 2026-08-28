@@ -68,6 +68,11 @@ public class ExternalFeatureGroup extends FeatureGroupBase<Dataset<Row>> {
 
   private final StatisticsEngine statisticsEngine = new StatisticsEngine(EntityEndpointType.FEATURE_GROUP);
 
+  public static class ExternalFeatureGroupBuilder {
+    ExternalFeatureGroupBuilder() {
+    }
+  }
+
   @Builder
   public ExternalFeatureGroup(FeatureStore featureStore, @NonNull String name, Integer version, String query,
                               ExternalDataFormat dataFormat, String path, Map<String, String> options,

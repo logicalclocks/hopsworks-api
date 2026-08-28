@@ -80,11 +80,18 @@ from pyspark.sql.types import (
 
 
 hopsworks_common.connection._hsfs_engine_type = "spark"
+_PANDAS_UNSUPPORTED_BY_PYSPARK = tuple(
+    int(part) for part in pd.__version__.split(".")[:2]
+) < (2, 2)
 
 
 @pytest.mark.skipif(
     sys.platform.startswith("win"),
     reason="Spark tests transiently fail on Windows.",
+)
+@pytest.mark.skipif(
+    _PANDAS_UNSUPPORTED_BY_PYSPARK,
+    reason="PySpark 4.1 requires pandas >= 2.2.0.",
 )
 class TestSpark:
     # Helper Functions

@@ -38,6 +38,11 @@ public class StreamFeatureGroup<T> extends FeatureGroupBase<List<T>> {
 
   protected FeatureGroupEngine featureGroupEngine = new FeatureGroupEngine();
 
+  public static class StreamFeatureGroupBuilder<T> {
+    StreamFeatureGroupBuilder() {
+    }
+  }
+
   @Builder
   public StreamFeatureGroup(FeatureStoreBase featureStore, @NonNull String name, Integer version, String description,
                             TimeTravelFormat timeTravelFormat, List<String> primaryKeys, List<String> partitionKeys,

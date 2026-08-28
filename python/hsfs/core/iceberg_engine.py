@@ -219,8 +219,8 @@ class IcebergEngine:
 
     ICEBERG_SPARK_FORMAT = "iceberg"
     ICEBERG_SPARK_CATALOG_IMPL = "org.apache.iceberg.spark.SparkCatalog"
-    ICEBERG_QUERY_TIME_TRAVEL_AS_OF_TIMESTAMP = "as-of-timestamp"
-    ICEBERG_QUERY_TIME_TRAVEL_SNAPSHOT_ID = "snapshot-id"
+    ICEBERG_QUERY_TIME_TRAVEL_AS_OF_INSTANT = "timestampAsOf"
+    ICEBERG_QUERY_TIME_TRAVEL_AS_OF_VERSION = "versionAsOf"
     ICEBERG_START_SNAPSHOT_ID = "start-snapshot-id"
     ICEBERG_END_SNAPSHOT_ID = "end-snapshot-id"
     ICEBERG_DOT_PREFIX = "iceberg."
@@ -1012,7 +1012,7 @@ class IcebergEngine:
         The snapshot is resolved client-side against the snapshots' own
         ``committed_at`` clock, the clock the backend derives the recorded
         commit time from.
-        Passing ``as-of-timestamp`` instead lets Iceberg resolve the bound
+        Passing ``timestampAsOf`` instead lets Iceberg resolve the bound
         server-side against the snapshot-log timestamps, a different clock: a
         recorded commit time landing just below snapshot N's log timestamp
         would then silently read snapshot N-1.
@@ -1030,11 +1030,15 @@ class IcebergEngine:
         """
         snapshots = self._read_snapshots(location)
         if not snapshots:
-            return {self.ICEBERG_QUERY_TIME_TRAVEL_AS_OF_TIMESTAMP: str(end_ts)}
+            return {
+                self.ICEBERG_QUERY_TIME_TRAVEL_AS_OF_INSTANT: util._get_delta_datestr_from_timestamp(
+                    end_ts
+                )
+            }
         snapshot_id = self._latest_snapshot_id_at(snapshots, end_ts)
         if snapshot_id is None:
             snapshot_id = snapshots[0]["snapshot_id"]
-        return {self.ICEBERG_QUERY_TIME_TRAVEL_SNAPSHOT_ID: str(snapshot_id)}
+        return {self.ICEBERG_QUERY_TIME_TRAVEL_AS_OF_VERSION: str(snapshot_id)}
 
     @staticmethod
     def _is_catalog_identifier(address: str) -> bool:

@@ -49,8 +49,10 @@ import org.apache.hudi.common.table.view.HoodieTableFileSystemView;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.config.HoodieWriteConfig;
 import org.apache.hudi.hadoop.fs.HadoopFSUtils;
+import org.apache.hudi.common.table.HoodieTableVersion;
 import org.apache.hudi.metadata.HoodieMetadataWriteUtils;
 import org.apache.hudi.metadata.HoodieTableMetadata;
+import org.apache.hudi.metadata.NativeTableMetadataFactory;
 import org.apache.hudi.storage.StorageConfiguration;
 import org.apache.hudi.storage.hadoop.HoodieHadoopStorage;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -458,7 +460,7 @@ public class HudiEngine {
         .build();
     
     HoodieWriteConfig hoodieWriteConfig = HoodieMetadataWriteUtils.createMetadataWriteConfig(hudiWriteConfig,
-        HoodieFailedWritesCleaningPolicy.EAGER);
+        HoodieFailedWritesCleaningPolicy.EAGER, HoodieTableVersion.current());
     
     HoodieTableMetaClient.newTableBuilder()
         .fromProperties(hoodieWriteConfig.getProps())
@@ -585,7 +587,7 @@ public class HudiEngine {
         .build();
     HoodieSparkEngineContext engineContext = new HoodieSparkEngineContext(jsc);
     StorageConfiguration<?> storageConf = HadoopFSUtils.getStorageConfWithCopy(jsc.hadoopConfiguration());
-    HoodieTableMetadata tableMetadata = HoodieTableMetadata.create(
+    HoodieTableMetadata tableMetadata = NativeTableMetadataFactory.getInstance().create(
         engineContext, new HoodieHadoopStorage(basePath, storageConf), metadataConfig, basePath);
     List<String> allPartitions = tableMetadata.getAllPartitionPaths();
     final Histogram tableHistogram = new Histogram(new UniformReservoir(1_000_000));
