@@ -408,23 +408,16 @@ def _upload_manifest(
 
     Not best-effort: the manifest is the pod watcher's trigger, so a silent drop
     would stage a session that never lands. A failure is surfaced loudly.
-    """
-    # A prior land wrote a `<id>.teleport.json.consumed` marker and a
-    # `<id>.landed.json` ack next to the manifest in HopsFS. Both survive across
-    # pods: the consumed marker would make the watcher skip this fresh manifest
-    # (a re-push would silently never re-land), and the stale ack would make
-    # `_await_landing` report a land that has not happened. Uploading a manifest
-    # is the intent to land, so both are stale by definition: clear them, and do
-    # it BEFORE the manifest goes up — the manifest is the pod's trigger, so a
-    # land it causes must never race a late delete of its own fresh markers.
-    # Best-effort — they are absent for a first push / a brand-new session id.
-    for stale in (
-        f"{dest_dir}/{session_id}.teleport.json.consumed",
-        f"{dest_dir}/{session_id}.landed.json",
-    ):
-        with contextlib.suppress(Exception):
-            dataset_api.remove(stale)
 
+    A prior land's ``.consumed`` marker and ``landed.json`` ack are deliberately
+    NOT deleted here. Every marker is versioned by the manifest's ``pushed_at``
+    (the pod skips a manifest only when the marker records the same push, and
+    ``_await_landing`` accepts only an ack echoing this push), so a re-push
+    invalidates them without any delete. Deleting them out-of-band would also
+    be a lost-write trap: the pod's FUSE mount caches directory entries, and a
+    marker the pod writes into a name the CLI just deleted server-side can land
+    in the stale unlinked inode and never become visible.
+    """
     with tempfile.TemporaryDirectory() as tmp:
         mpath = Path(tmp) / f"{session_id}.teleport.json"
         mpath.write_text(json.dumps(manifest))
@@ -440,12 +433,23 @@ def _upload_manifest(
 
 # How long push/new waits for the pod's landing ack before falling back to the
 # manual landing steps.
-_LANDING_POLLS = 5
+_LANDING_POLLS = 8
 _LANDING_POLL_SECONDS = 2.0
 
 
-def _await_landing(dataset_api, dest_dir: str, session_id: str) -> bool:
-    """Poll for the pod's ``<id>.landed.json`` ack, for roughly ten seconds.
+def _landed(dataset_api, dest_dir: str, session_id: str, pushed_at: str) -> bool:
+    """Whether the pod has acked THIS push's landing.
+
+    The ack must echo this manifest's ``pushed_at``: acks are never deleted, so
+    a leftover from an earlier land of the same session id would otherwise read
+    as an instant (false) landing on a re-push.
+    """
+    ack = _read_remote_json(dataset_api, f"{dest_dir}/{session_id}.landed.json")
+    return bool(ack) and ack.get("pushed_at") == pushed_at
+
+
+def _await_landing(dataset_api, dest_dir: str, session_id: str, pushed_at: str) -> bool:
+    """Poll for the pod's ack of this push, for roughly fifteen seconds.
 
     The pod's landing hook writes the sidecar right after it resumes (or opens)
     the session; seeing it means the manual landing kit is unnecessary.
@@ -453,7 +457,7 @@ def _await_landing(dataset_api, dest_dir: str, session_id: str) -> bool:
     for attempt in range(_LANDING_POLLS):
         if attempt:
             time.sleep(_LANDING_POLL_SECONDS)
-        if _read_remote_json(dataset_api, f"{dest_dir}/{session_id}.landed.json"):
+        if _landed(dataset_api, dest_dir, session_id, pushed_at):
             return True
     return False
 
@@ -687,10 +691,7 @@ def push(
     if output.JSON_MODE:
         # No poll in machine mode: one instant ack check, the caller re-lists
         # if it wants to wait.
-        landed = (
-            _read_remote_json(dataset_api, f"{dest_dir}/{resolved_id}.landed.json")
-            is not None
-        )
+        landed = _landed(dataset_api, dest_dir, resolved_id, manifest["pushed_at"])
         output.print_json(
             {
                 "session_id": resolved_id,
@@ -710,7 +711,9 @@ def push(
     # The landing kit only matters when the pod did NOT self-land, so wait
     # briefly for its ack and keep the happy path to the three ✓ lines. No pod
     # (feature disabled) means no ack will ever come: skip straight to the kit.
-    if ws_url and _await_landing(dataset_api, dest_dir, resolved_id):
+    if ws_url and _await_landing(
+        dataset_api, dest_dir, resolved_id, manifest["pushed_at"]
+    ):
         output.success(
             "✓ Landed on pod %s — open the Terminal tab to resume", project.name
         )
@@ -781,10 +784,7 @@ def new(
     if output.JSON_MODE:
         # No poll in machine mode: one instant ack check, the caller re-lists
         # if it wants to wait.
-        landed = (
-            _read_remote_json(dataset_api, f"{dest_dir}/{session_id}.landed.json")
-            is not None
-        )
+        landed = _landed(dataset_api, dest_dir, session_id, manifest["pushed_at"])
         output.print_json(
             {
                 "session_id": session_id,
@@ -799,7 +799,9 @@ def new(
         return
     if not opened:
         output.info("Terminal: %s", terminal_url)
-    if ws_url and _await_landing(dataset_api, dest_dir, session_id):
+    if ws_url and _await_landing(
+        dataset_api, dest_dir, session_id, manifest["pushed_at"]
+    ):
         output.success(
             "✓ Landed on pod %s — open the Terminal tab to resume", project.name
         )
@@ -1023,15 +1025,24 @@ def pull(
             )
         # A manifest that never landed must not land after this reclaim: a later
         # pod boot would otherwise resume the stale staged copy as a ghost tab.
-        # Consuming (an empty `.consumed` sidecar) is how the pod marks "do not
-        # land"; mirror it from the reclaiming side. Best-effort, like the baton.
-        with tempfile.TemporaryDirectory() as tmp:
-            marker = Path(tmp) / f"{session_id}.teleport.json.consumed"
-            marker.write_text("")
-            with contextlib.suppress(Exception):
-                dataset_api.upload(
-                    local_path=str(marker), upload_path=dest_dir, overwrite=True
-                )
+        # Consuming is how the pod marks "do not land"; mirror it from here with
+        # the manifest's own pushed_at as the marker content — markers are
+        # versioned by push, and an empty marker would block every future
+        # re-push of this id, not just the reclaimed one. An unreadable manifest
+        # skips the stamp (nothing to version against). Best-effort, like the
+        # baton.
+        pushed_at = (
+            _read_remote_json(dataset_api, f"{dest_dir}/{session_id}.teleport.json")
+            or {}
+        ).get("pushed_at")
+        if pushed_at:
+            with tempfile.TemporaryDirectory() as tmp:
+                marker = Path(tmp) / f"{session_id}.teleport.json.consumed"
+                marker.write_text(pushed_at)
+                with contextlib.suppress(Exception):
+                    dataset_api.upload(
+                        local_path=str(marker), upload_path=dest_dir, overwrite=True
+                    )
 
     output.success("✓ Pulled session %s to %s", session_id, local_dir)
     if parked is not None:

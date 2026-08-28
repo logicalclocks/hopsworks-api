@@ -449,9 +449,9 @@ class _PushDataset:
     """Dataset stub for push: records uploads, serves JSON sidecar downloads.
 
     ``ack_on_manifest`` simulates the pod's landing hook: uploading the
-    ``<id>.teleport.json`` manifest makes a fresh ``<id>.landed.json`` ack
-    appear. ``remove`` really deletes, so a stale pre-push ack (which push must
-    clear before waiting) cannot satisfy the landing poll by itself.
+    ``<id>.teleport.json`` manifest makes a ``<id>.landed.json`` ack appear
+    that echoes the manifest's ``pushed_at``. Acks are never deleted, so a
+    stale pre-push ack (different pushed_at) must not satisfy the landing poll.
     """
 
     def __init__(self, files: dict[str, dict], ack_on_manifest: bool = False):
@@ -468,7 +468,11 @@ class _PushDataset:
         self.uploads.append(name)
         if self._ack_on_manifest and name.endswith(".teleport.json"):
             sid = name[: -len(".teleport.json")]
-            self._files[f"{upload_path}/{sid}.landed.json"] = {"landed_at": "now"}
+            manifest = json.loads(Path(local_path).read_text())
+            self._files[f"{upload_path}/{sid}.landed.json"] = {
+                "landed_at": "now",
+                "pushed_at": manifest["pushed_at"],
+            }
 
     def remove(self, path: str) -> None:
         self.removed.append(path)
@@ -512,9 +516,15 @@ def _push_setup(tmp_path, monkeypatch, landed: bool):
     monkeypatch.setattr(session, "_held_open", lambda p: False)
 
     monkeypatch.setattr(session, "_teleport_root", lambda: _ROOT)
-    # A stale ack from a previous land is always present: push must clear it, so
-    # only the pod's fresh ack (ack_on_manifest) may satisfy the landing poll.
-    files = {f"{_ROOT}/{slug}/sid1.landed.json": {"landed_at": "stale"}}
+    # A stale ack from a previous land is always present (acks are never
+    # deleted); only a fresh ack echoing THIS push's pushed_at (ack_on_manifest)
+    # may satisfy the landing poll.
+    files = {
+        f"{_ROOT}/{slug}/sid1.landed.json": {
+            "landed_at": "stale",
+            "pushed_at": "1999-01-01T00:00:00+00:00",
+        }
+    }
     ds = _PushDataset(files, ack_on_manifest=landed)
     monkeypatch.setattr(session.conn, "get_project", lambda ctx: _FakeProject(ds))
     monkeypatch.setattr(
