@@ -55,8 +55,8 @@
         </aside>
         <h2>
             <span class="text">543 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">402<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">141<span class="text"> missing</span></button>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">403<span class="text"> run</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">140<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">3<span class="text"> excluded</span></button>
         </h2>
         <p class="text">
@@ -65,7 +65,7 @@
             <a id="nextFileLink" class="nav" href="z_6bc1938dffbd99a5_version_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.15.4">coverage.py v7.15.4</a>,
-            created at 2026-08-25 14:15 +0000
+            created at 2026-08-28 14:44 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -359,12 +359,12 @@
     <p class="run"><span class="n"><a id="t277" href="#t277">277</a></span><span class="t"><span class="op">@</span><span class="nam">also_available_as</span><span class="op">(</span><span class="str">&quot;hopsworks.util._get_delta_datestr_from_timestamp&quot;</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t278" href="#t278">278</a></span><span class="t"><span class="key">def</span> <span class="nam">_get_delta_datestr_from_timestamp</span><span class="op">(</span><span class="nam">timestamp</span><span class="op">:</span> <span class="nam">int</span><span class="op">)</span> <span class="op">-&gt;</span> <span class="nam">str</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t279" href="#t279">279</a></span><span class="t">    <span class="com"># It does not work to add the Z in the strftime function</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t280" href="#t280">280</a></span><span class="t">    <span class="key">return</span> <span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t281" href="#t281">281</a></span><span class="t">        <span class="nam">datetime</span><span class="op">.</span><span class="nam">fromtimestamp</span><span class="op">(</span><span class="nam">timestamp</span> <span class="op">/</span> <span class="num">1000</span><span class="op">,</span> <span class="nam">timezone</span><span class="op">.</span><span class="nam">utc</span><span class="op">)</span><span class="op">.</span><span class="nam">strftime</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t282" href="#t282">282</a></span><span class="t">            <span class="str">&quot;%Y-%m-%d %H:%M:%S.%f&quot;</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t283" href="#t283">283</a></span><span class="t">        <span class="op">)</span><span class="op">[</span><span class="op">:</span><span class="op">-</span><span class="num">3</span><span class="op">]</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t284" href="#t284">284</a></span><span class="t">        <span class="op">+</span> <span class="str">&quot;Z&quot;</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t285" href="#t285">285</a></span><span class="t">    <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t280" href="#t280">280</a></span><span class="t">    <span class="key">return</span> <span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t281" href="#t281">281</a></span><span class="t">        <span class="nam">datetime</span><span class="op">.</span><span class="nam">fromtimestamp</span><span class="op">(</span><span class="nam">timestamp</span> <span class="op">/</span> <span class="num">1000</span><span class="op">,</span> <span class="nam">timezone</span><span class="op">.</span><span class="nam">utc</span><span class="op">)</span><span class="op">.</span><span class="nam">strftime</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t282" href="#t282">282</a></span><span class="t">            <span class="str">&quot;%Y-%m-%d %H:%M:%S.%f&quot;</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t283" href="#t283">283</a></span><span class="t">        <span class="op">)</span><span class="op">[</span><span class="op">:</span><span class="op">-</span><span class="num">3</span><span class="op">]</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t284" href="#t284">284</a></span><span class="t">        <span class="op">+</span> <span class="str">&quot;Z&quot;</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t285" href="#t285">285</a></span><span class="t">    <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t286" href="#t286">286</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t287" href="#t287">287</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t288" href="#t288">288</a></span><span class="t"><span class="op">@</span><span class="nam">also_available_as</span><span class="op">(</span><span class="str">&quot;hopsworks.util._convert_event_time_to_timestamp&quot;</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
@@ -1179,7 +1179,7 @@
             <a class="nav" href="z_6bc1938dffbd99a5_version_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.15.4">coverage.py v7.15.4</a>,
-            created at 2026-08-25 14:15 +0000
+            created at 2026-08-28 14:44 +0000
         </p>
     </div>
 </footer>
