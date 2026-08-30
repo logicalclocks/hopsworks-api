@@ -19,6 +19,7 @@ import copy
 import os
 from urllib.parse import unquote, urlsplit
 
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import feature_group_commit, util
 from hsfs.core import (
     dataset_api,
@@ -163,6 +164,25 @@ class HudiEngine:
             self._feature_group, dataset
         )
         hudi_options = self._setup_hudi_write_opts(operation, write_options)
+
+        if operation == self.HUDI_DELETE:
+            # Hudi's delete resolves each record's partition path from the frame it
+            # is given. A delete frame that omits the partition columns matches
+            # nothing, and Hudi still writes a commit -- a silent no-op. Fail loudly.
+            partition_path = hudi_options.get(self.HUDI_PARTITION_FIELD) or ""
+            partition_cols = [
+                field.split(":")[0] for field in partition_path.split(",") if field
+            ]
+            missing = [c for c in partition_cols if c not in dataset.columns]
+            if missing:
+                raise FeatureStoreException(
+                    "Cannot delete records from partitioned feature group "
+                    f"`{self._feature_group.name}`: the delete frame is missing the "
+                    f"partition column(s) {missing}. Hudi resolves the partition path "
+                    "from the frame, so a delete without them would silently match no "
+                    "records. Include the partition columns in the delete frame."
+                )
+
         self._migrate_table(self._spark_context, hudi_options, location)
         dataset.write.format(HudiEngine.HUDI_SPARK_FORMAT).options(**hudi_options).mode(
             save_mode
