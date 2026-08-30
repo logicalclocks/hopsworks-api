@@ -224,6 +224,24 @@ public class HudiEngine {
     // pairing is rejected on tables created at table version 9.
     Map<String, String> hudiArgs = setupHudiWriteOpts(featureGroup, HudiOperationType.DELETE, writeOptions);
 
+    // Hudi's delete resolves each record's partition path from the frame it is given. A
+    // delete frame that omits the partition columns matches nothing, and Hudi still writes
+    // a commit -- a silent no-op. Fail loudly.
+    List<String> frameColumns = Arrays.asList(deleteDF.columns());
+    List<String> missingPartitionColumns =
+        Arrays.stream(hudiArgs.getOrDefault(HUDI_PARTITION_FIELD, "").split(","))
+            .filter(field -> !field.isEmpty())
+            .map(field -> field.split(":")[0])
+            .filter(column -> !frameColumns.contains(column))
+            .collect(Collectors.toList());
+    if (!missingPartitionColumns.isEmpty()) {
+      throw new FeatureStoreException(
+          "Cannot delete records from partitioned feature group `" + featureGroup.getName()
+              + "`: the delete frame is missing the partition column(s) " + missingPartitionColumns
+              + ". Hudi resolves the partition path from the frame, so a delete without them would "
+              + "silently match no records. Include the partition columns in the delete frame.");
+    }
+
     deleteDF.write().format(HUDI_SPARK_FORMAT)
         .options(hudiArgs)
         .mode(SaveMode.Append)
