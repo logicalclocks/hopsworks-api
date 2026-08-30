@@ -74,14 +74,13 @@ class HudiEngine:
     HUDI_BULK_INSERT = "bulk_insert"
     HUDI_INSERT = "insert"
     HUDI_UPSERT = "upsert"
+    HUDI_DELETE = "delete"
     HUDI_QUERY_TYPE_OPT_KEY = "hoodie.datasource.query.type"
     HUDI_QUERY_TYPE_SNAPSHOT_OPT_VAL = "snapshot"
     HUDI_QUERY_TYPE_INCREMENTAL_OPT_VAL = "incremental"
     HUDI_QUERY_TIME_TRAVEL_AS_OF_INSTANT = "as.of.instant"
     HUDI_BEGIN_INSTANTTIME_OPT_KEY = "hoodie.datasource.read.begin.instanttime"
     HUDI_END_INSTANTTIME_OPT_KEY = "hoodie.datasource.read.end.instanttime"
-    PAYLOAD_CLASS_OPT_KEY = "hoodie.datasource.write.payload.class"
-    PAYLOAD_CLASS_OPT_VAL = "org.apache.hudi.common.model.EmptyHoodieRecordPayload"
     HUDI_DEFAULT_PARALLELISM = {
         "hoodie.bulkinsert.shuffle.parallelism": "5",
         "hoodie.insert.shuffle.parallelism": "5",
@@ -135,10 +134,12 @@ class HudiEngine:
         return self._feature_group_api._commit(self._feature_group, fg_commit)
 
     def _delete_record(self, delete_df, write_options):
-        write_options[self.PAYLOAD_CLASS_OPT_KEY] = self.PAYLOAD_CLASS_OPT_VAL
-
+        # Hudi's native delete operation. Overriding the payload class with
+        # EmptyHoodieRecordPayload on an upsert is the pre-1.x idiom; since Hudi
+        # 1.1 the payload is validated against the table's hoodie.record.merge.mode
+        # and that pairing is rejected on tables created at table version 9.
         fg_commit = self._write_hudi_dataset(
-            delete_df, "append", self.HUDI_UPSERT, write_options
+            delete_df, "append", self.HUDI_DELETE, write_options
         )
         return self._feature_group_api._commit(self._feature_group, fg_commit)
 

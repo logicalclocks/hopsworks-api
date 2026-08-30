@@ -137,8 +137,6 @@ public class HudiEngine {
 
   protected static final String HUDI_WRITE_INSERT_DROP_DUPLICATES = "hoodie.datasource.write.insert.drop.duplicates";
 
-  protected static final String PAYLOAD_CLASS_OPT_KEY = "hoodie.datasource.write.payload.class";
-  protected static final String PAYLOAD_CLASS_OPT_VAL = "org.apache.hudi.common.model.EmptyHoodieRecordPayload";
 
   protected static final String HUDI_KAFKA_TOPIC = "hoodie.streamer.source.kafka.topic";
   protected static final String COMMIT_METADATA_KEYPREFIX_OPT_KEY = "hoodie.datasource.write.commitmeta.key.prefix";
@@ -220,8 +218,11 @@ public class HudiEngine {
       throws IOException, FeatureStoreException,
       ParseException {
 
-    Map<String, String> hudiArgs = setupHudiWriteOpts(featureGroup, HudiOperationType.UPSERT, writeOptions);
-    hudiArgs.put(PAYLOAD_CLASS_OPT_KEY, PAYLOAD_CLASS_OPT_VAL);
+    // Hudi's native delete operation. Overriding the payload class with
+    // EmptyHoodieRecordPayload on an upsert is the pre-1.x idiom; since Hudi 1.1 the
+    // payload is validated against the table's hoodie.record.merge.mode and that
+    // pairing is rejected on tables created at table version 9.
+    Map<String, String> hudiArgs = setupHudiWriteOpts(featureGroup, HudiOperationType.DELETE, writeOptions);
 
     deleteDF.write().format(HUDI_SPARK_FORMAT)
         .options(hudiArgs)
