@@ -1788,7 +1788,12 @@ class SnowflakeConnector(StorageConnector):
     def connector_options(self) -> dict[str, Any] | None:
         """Prepare a Python dictionary with the needed arguments for you to connect to a Snowflake database.
 
-        It is useful for the `snowflake.connector` Python library.
+        It is useful for the `snowflake.connector` Python library, which this client does
+        not depend on and does not install. Install it yourself to use the example below:
+
+        ```bash
+        pip install snowflake-connector-python
+        ```
 
         ```python
         import snowflake.connector

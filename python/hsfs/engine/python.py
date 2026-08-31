@@ -613,6 +613,16 @@ class Engine:
             df = pd.DataFrame(results, columns=feature_names, index=None)
         return self._return_dataframe_type(df, dataframe_type)
 
+    def _is_source_pushdown_supported(self) -> bool:
+        # FlyingDuck fetches each feature group separately through its own connector entry, so a
+        # single pushed-down query has nowhere to go until that payload can carry one.
+        return False
+
+    def _register_pushdown_query(self, fs_query: FsQuery) -> str:
+        raise NotImplementedError(
+            "Source pushdown is not supported by the python engine."
+        )
+
     def _register_external_temporary_table(
         self, external_fg: ExternalFeatureGroup, alias: str
     ) -> None:

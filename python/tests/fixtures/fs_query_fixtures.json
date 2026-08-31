@@ -39,6 +39,7 @@
       ],
       "query_online": "test_query_online",
       "pit_query": "test_pit_query",
+      "pushdown_query": "test_pushdown_query",
       "href": "test_href",
       "expand": "test_expand",
       "items": "test_items",
