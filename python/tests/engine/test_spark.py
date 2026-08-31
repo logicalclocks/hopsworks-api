@@ -38,6 +38,7 @@ from hsfs import (
     util,
 )
 from hsfs.client import exceptions
+from hsfs.constructor import fs_query as fs_query_mod
 from hsfs.constructor import hudi_feature_group_alias, query
 from hsfs.core import data_source as ds
 from hsfs.core import online_ingestion, training_dataset_engine
@@ -624,6 +625,61 @@ class TestSpark:
 
         # Assert
         assert mock_sc_read.return_value.createOrReplaceTempView.call_count == 1
+
+    def test_register_pushdown_query(self, mocker, backend_fixtures):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+
+        spark_engine = spark.Engine()
+
+        json = backend_fixtures["fs_query"]["get"]["response"]
+        fs_query = fs_query_mod.FsQuery.from_response_json(json)
+
+        # A warehouse that folds unquoted identifiers hands back upper-case columns, while
+        # feature names in the feature store are always lower case.
+        mocker.patch(
+            "hsfs.storage_connector.JdbcConnector.read",
+            return_value=spark_engine._spark_session.createDataFrame(
+                [("key", 1)], ["PK1", "Value_2"]
+            ),
+        )
+
+        # Act
+        result = spark_engine._register_pushdown_query(fs_query)
+
+        # Assert
+        # The view name carries a unique suffix, so match the prefix and read the view back.
+        assert result.startswith("SELECT * FROM pushdown_result_hopsworks_")
+        assert spark_engine._spark_session.sql(result).columns == ["pk1", "value_2"]
+
+    def test_register_pushdown_query_uses_a_distinct_view_per_call(
+        self, mocker, backend_fixtures
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+
+        spark_engine = spark.Engine()
+
+        json = backend_fixtures["fs_query"]["get"]["response"]
+        fs_query = fs_query_mod.FsQuery.from_response_json(json)
+
+        mocker.patch(
+            "hsfs.storage_connector.JdbcConnector.read",
+            side_effect=[
+                spark_engine._spark_session.createDataFrame([("a",)], ["PK1"]),
+                spark_engine._spark_session.createDataFrame([("b",)], ["PK1"]),
+            ],
+        )
+
+        # Act
+        first = spark_engine._register_pushdown_query(fs_query)
+        second = spark_engine._register_pushdown_query(fs_query)
+
+        # Assert
+        # Two reads in one session must not answer from each other's result.
+        assert first != second
+        assert spark_engine._spark_session.sql(first).collect()[0][0] == "a"
+        assert spark_engine._spark_session.sql(second).collect()[0][0] == "b"
 
     def test_register_hudi_temporary_table(self, mocker):
         # Arrange
