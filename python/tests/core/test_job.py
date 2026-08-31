@@ -420,6 +420,89 @@ class TestJob:
         # Assert
         assert str(e_info.value) == "The Hopsworks Job was stopped"
 
+    def test_run_await_termination_python_raises_on_queue_timeout(
+        self, mocker, backend_fixtures
+    ):
+        # Arrange — the backend normally persists QUEUE_TIMEOUT together with
+        # final_status=FAILED, but updateState and updateFinalStatus are two
+        # separate facade calls: if the jobs monitor dies between them the row
+        # is stranded at state=QUEUE_TIMEOUT, final_status=UNDEFINED forever
+        # (QUEUE_TIMEOUT is not in the server's final-states set, so nothing
+        # reconciles it). await_termination must raise on state alone, not hang.
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hopsworks_common.execution.Execution.get_url")
+        mock_execution_api = mocker.patch(
+            "hopsworks_common.core.execution_api.ExecutionApi",
+        )
+        python_job_mock = mocker.Mock()
+        python_job_mock.job_type = "PYTHON"
+        mock_execution_api.return_value._start.return_value = execution.Execution(
+            job=python_job_mock
+        )
+        mock_execution_api.return_value._get.return_value = execution.Execution(
+            id=1, state="QUEUE_TIMEOUT", final_status="UNDEFINED", job=python_job_mock
+        )
+
+        j = job.Job(
+            id="test_id",
+            name="test_name",
+            creation_time=None,
+            config={},
+            job_type="PYTHON",
+            creator=None,
+        )
+
+        # Act
+        with pytest.raises(exceptions.JobExecutionException) as e_info:
+            j.run(await_termination=True)
+
+        # Assert
+        assert (
+            str(e_info.value)
+            == "Execution failed with status: QUEUE_TIMEOUT. See the logs for more information."
+        )
+
+    def test_run_await_termination_python_raises_on_queue_timeout_failed(
+        self, mocker, backend_fixtures
+    ):
+        # Arrange — the state the backend actually writes on queue timeout:
+        # KubeJobsMonitor.updateFailedState persists state=QUEUE_TIMEOUT and
+        # final_status=FAILED in the same pass. This case passed even before
+        # QUEUE_TIMEOUT joined ERROR_STATES (final_status=FAILED already
+        # matched); it pins the production path against regressions.
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hopsworks_common.execution.Execution.get_url")
+        mock_execution_api = mocker.patch(
+            "hopsworks_common.core.execution_api.ExecutionApi",
+        )
+        python_job_mock = mocker.Mock()
+        python_job_mock.job_type = "PYTHON"
+        mock_execution_api.return_value._start.return_value = execution.Execution(
+            job=python_job_mock
+        )
+        mock_execution_api.return_value._get.return_value = execution.Execution(
+            id=1, state="QUEUE_TIMEOUT", final_status="FAILED", job=python_job_mock
+        )
+
+        j = job.Job(
+            id="test_id",
+            name="test_name",
+            creation_time=None,
+            config={},
+            job_type="PYTHON",
+            creator=None,
+        )
+
+        # Act
+        with pytest.raises(exceptions.JobExecutionException) as e_info:
+            j.run(await_termination=True)
+
+        # Assert
+        assert (
+            str(e_info.value)
+            == "Execution failed with status: QUEUE_TIMEOUT. See the logs for more information."
+        )
+
     # --- PYTHON_APP tests ---
 
     def test_run_python_app_waits_for_running(self, mocker, backend_fixtures):
