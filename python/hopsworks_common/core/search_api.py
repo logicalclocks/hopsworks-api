@@ -23,10 +23,13 @@ from urllib.parse import quote
 from hopsworks_apigen import public
 from hopsworks_common import client
 from hopsworks_common.search_results import (
+    DeploymentSearchResult,
     FeatureGroupSearchResult,
     FeatureSearchResult,
     FeaturestoreSearchResult,
     FeatureViewSearchResult,
+    ModelRegistrySearchResult,
+    ModelSearchResult,
     TrainingDatasetSearchResult,
 )
 from hopsworks_common.util import Encoder
@@ -35,6 +38,8 @@ from hopsworks_common.util import Encoder
 DOC_TYPE_ARG = Literal[
     "FEATUREGROUP", "FEATUREVIEW", "TRAININGDATASET", "FEATURE", "ALL"
 ]
+
+MODEL_REGISTRY_DOC_TYPE_ARG = Literal["MODEL", "DEPLOYMENT", "ALL"]
 
 
 @public("hopsworks.core.search_api.TagSearchFilter")
@@ -493,6 +498,178 @@ class SearchApi:
         )
         return result.features
 
+    @public
+    def model_registry(
+        self,
+        search_term: str | None = None,
+        tag_filter: dict[str, str]
+        | list[dict[str, str] | TagSearchFilter]
+        | None = None,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> ModelRegistrySearchResult:
+        """Search for models and deployments.
+
+        The search is scoped to the model registries accessible from the current project.
+        Global (cross-project) search is not supported for the model registry.
+
+        Parameters:
+            search_term: The term to search for.
+            tag_filter:
+                Filter results by tags.
+                Can be a single dictionary, an array of dictionaries, or an array of TagSearchFilter objects.
+                Each tag filter requires: `"name"` (the tag schema name as defined by Hopsworks Admin), `"key"` (the property within that tag schema), and `"value"` (the value to match).
+            offset: The number of results to skip.
+            limit: The number of search results to return.
+
+        Returns:
+            The search results containing lists of metadata objects for models and deployments.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+            search_api = project.get_search_api()
+
+            # Simple search
+            result = search_api.model_registry("search-term")
+
+            # Access results
+            for model_meta in result.models:
+                print(f"Model: {model_meta.name} v{model_meta.version}")
+
+                # Get the same Model object as returned by model_registry.get_model
+                model = model_meta.get()
+
+            # Search with a tag filter
+            result = search_api.model_registry(
+                "search-term",
+                tag_filter={"name": "tag1", "key": "environment", "value": "production"},
+            )
+            ```
+        """
+        return self._search_model_registry(
+            doc_type="ALL",
+            search_term=search_term,
+            tag_filter=tag_filter,
+            offset=offset,
+            limit=limit,
+        )
+
+    @public
+    def models(
+        self,
+        search_term: str | None = None,
+        tag_filter: dict[str, str]
+        | list[dict[str, str] | TagSearchFilter]
+        | None = None,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> list[ModelSearchResult]:
+        """Search for models only.
+
+        The search is scoped to the model registries accessible from the current project.
+
+        Parameters:
+            search_term: The term to search for.
+            tag_filter:
+                Filter results by tags.
+                Can be a single dictionary, an array of dictionaries, or an array of TagSearchFilter objects.
+                Each tag filter requires: `"name"` (the tag schema name as defined by Hopsworks Admin), `"key"` (the property within that tag schema), and `"value"` (the value to match).
+            offset: The number of results to skip.
+            limit: The number of search results to return.
+
+        Returns:
+            A list of metadata objects for models matching the search criteria.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+            search_api = project.get_search_api()
+
+            # Search for models
+            model_metas = search_api.models("fraud")
+
+            for model_meta in model_metas:
+                print(f"Model: {model_meta.name} v{model_meta.version}")
+
+                # Get the same Model object as returned by model_registry.get_model
+                model = model_meta.get()
+            ```
+        """
+        result = self._search_model_registry(
+            doc_type="MODEL",
+            search_term=search_term,
+            tag_filter=tag_filter,
+            offset=offset,
+            limit=limit,
+        )
+        return result.models
+
+    @public
+    def deployments(
+        self,
+        search_term: str | None = None,
+        tag_filter: dict[str, str]
+        | list[dict[str, str] | TagSearchFilter]
+        | None = None,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> list[DeploymentSearchResult]:
+        """Search for deployments only.
+
+        The search is scoped to the model registries accessible from the current project.
+
+        Parameters:
+            search_term: The term to search for.
+            tag_filter:
+                Filter results by tags.
+                Can be a single dictionary, an array of dictionaries, or an array of TagSearchFilter objects.
+                Each tag filter requires: `"name"` (the tag schema name as defined by Hopsworks Admin), `"key"` (the property within that tag schema), and `"value"` (the value to match).
+            offset: The number of results to skip.
+            limit: The number of search results to return.
+
+        Returns:
+            A list of metadata objects for deployments matching the search criteria.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+            search_api = project.get_search_api()
+
+            # Search for deployments
+            deployment_metas = search_api.deployments("fraud")
+
+            for deployment_meta in deployment_metas:
+                print(f"Deployment: {deployment_meta.name}")
+
+                # Get the same Deployment object as returned by model_serving.get_deployment
+                deployment = deployment_meta.get()
+            ```
+        """
+        result = self._search_model_registry(
+            doc_type="DEPLOYMENT",
+            search_term=search_term,
+            tag_filter=tag_filter,
+            offset=offset,
+            limit=limit,
+        )
+        return result.deployments
+
     def _parse_keyword_filter(
         self, keyword_filter: str | list[str] | None
     ) -> list[KeywordSearchFilter] | None:
@@ -622,3 +799,51 @@ class SearchApi:
         )
 
         return FeaturestoreSearchResult(result)
+
+    def _search_model_registry(
+        self,
+        doc_type: MODEL_REGISTRY_DOC_TYPE_ARG,
+        search_term: str | None = None,
+        tag_filter: dict[str, str]
+        | list[dict[str, str] | TagSearchFilter]
+        | None = None,
+        offset: int | None = None,
+        limit: int | None = None,
+    ) -> ModelRegistrySearchResult:
+        if doc_type not in get_args(MODEL_REGISTRY_DOC_TYPE_ARG):
+            raise ValueError(
+                f"doc_type must be one of the following {get_args(MODEL_REGISTRY_DOC_TYPE_ARG)}."
+            )
+
+        # Parse tag_filter to list of TagSearchFilter objects
+        parsed_tags = self._parse_tag_filter(tag_filter)
+
+        if search_term is None and not parsed_tags:
+            raise ValueError(
+                "At least one of search_term or tag_filter must be provided."
+            )
+
+        _client = client._get_instance()
+        path_params = ["project", _client._project_id, "elastic", "modelregistry"]
+
+        headers = {"content-type": "application/json"}
+        query_params = {
+            "docType": doc_type,
+            "from": offset,
+            "size": limit,
+        }
+
+        if search_term is not None:
+            query_params["searchTerm"] = search_term
+
+        if parsed_tags:
+            # Convert list of TagSearchFilter objects to list of dictionaries
+            tags_dict = [tag.to_dict() for tag in parsed_tags]
+            # Serialize to JSON string and URL-encode all characters (safe="") since JSON contains special chars
+            query_params["tags"] = quote(json.dumps(tags_dict), safe="")
+
+        result = _client._send_request(
+            "GET", path_params, query_params=query_params, headers=headers
+        )
+
+        return ModelRegistrySearchResult(result)
