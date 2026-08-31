@@ -621,7 +621,8 @@ def push(
     with tempfile.TemporaryDirectory() as tmp:
         snapshot = Path(tmp) / jsonl.name
         shutil.copyfile(jsonl, snapshot)
-        lines = sum(1 for _ in snapshot.open(errors="ignore"))
+        with snapshot.open(errors="ignore") as f:
+            lines = sum(1 for _ in f)
         try:
             dataset_api.upload(
                 local_path=str(snapshot), upload_path=dest_dir, overwrite=overwrite
@@ -1024,7 +1025,8 @@ def pull(
 
     manifest: dict = {}
     if baton is not None:
-        final_lines = sum(1 for _ in local_jsonl.open(errors="ignore"))
+        with local_jsonl.open(errors="ignore") as f:
+            final_lines = sum(1 for _ in f)
         if not _write_baton(
             dataset_api,
             dest_dir,

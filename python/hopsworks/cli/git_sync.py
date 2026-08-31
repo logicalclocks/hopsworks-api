@@ -140,12 +140,16 @@ def _save_prefs(**updates) -> None:
     table = existing.get("gitsync", {})
     table.update({k: v for k, v in updates.items() if v is not None})
     existing["gitsync"] = table
-    with contextlib.suppress(OSError):
+    try:
         fd = os.open(
             str(config.CONFIG_PATH), os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600
         )
         with os.fdopen(fd, "wb") as f:
             tomli_w.dump(existing, f)
+    except OSError as exc:
+        # A dropped preference means the consent prompt comes back next push;
+        # say why instead of looking like the answer was never given.
+        output.warn("Could not persist the git-sync preference (%s).", exc)
 
 
 def _default_key(host: str) -> Path:
