@@ -221,6 +221,7 @@ class ModelServing:
         vllm_image_tag: str | None = None,
         tracing: DeploymentTracingConfig | dict | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
+        knative_mode: bool | None = None,
     ) -> Predictor:
         """Create a Predictor metadata object.
 
@@ -269,6 +270,9 @@ class ModelServing:
             tags: Optionally the tags to attach to the deployment when it is created, in the same shapes accepted by feature groups.
                 A single [`Tag`][hopsworks.tag.Tag], a `{"name": "owner", "value": "team-a"}` dict, or a list of either, for example `[{"name": "owner", "value": "team-a"}]`.
                 The tags ride the create request, so any mandatory deployment tags missing from them cause the backend to reject the creation.
+            knative_mode: Whether to deploy in KServe Knative mode.
+                `None` (default) lets the backend decide: LLM (vLLM) deployments default to Standard, every other deployment defaults to Knative mode; on an update, `None` keeps the deployment's current mode.
+                Standard mode does not scale to zero (minimum one instance). It autoscales on a CPU or memory metric between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum), and runs a fixed replica count without autoscaler when `min_instances == max_instances` (the default for LLM deployments).
 
         Returns:
             The predictor metadata object.
@@ -294,6 +298,7 @@ class ModelServing:
             vllm_image_tag=vllm_image_tag,
             tracing=tracing,
             tags=tags,
+            knative_mode=knative_mode,
         )
 
     @public
@@ -390,6 +395,7 @@ class ModelServing:
         git_provider: str | None = None,
         git_branch: str | None = None,
         git_auto_redeploy: bool = False,
+        knative_mode: bool | None = None,
     ) -> Predictor:
         """Create an Entrypoint metadata object.
 
@@ -426,6 +432,9 @@ class ModelServing:
             git_branch: Optional branch to clone for git-backed endpoints.
             git_auto_redeploy: Roll the endpoint to the branch HEAD whenever a new commit is pushed.
                 Only valid together with `git_url`.
+            knative_mode: Whether to deploy in KServe Knative mode.
+                `None` (default) lets the backend decide: every deployment defaults to Knative mode unless it is a vLLM deployment; on an update, `None` keeps the deployment's current mode.
+                Standard mode does not scale to zero (minimum one instance). It autoscales on a CPU or memory metric between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum), and runs a fixed replica count without autoscaler when `min_instances == max_instances` (the default for LLM deployments).
 
         Returns:
             The predictor metadata object.
@@ -456,6 +465,7 @@ class ModelServing:
             git_provider=git_provider,
             git_branch=git_branch,
             git_auto_redeploy=git_auto_redeploy,
+            knative_mode=knative_mode,
         )
 
     @public
@@ -478,6 +488,7 @@ class ModelServing:
         git_provider: str | None = None,
         git_branch: str | None = None,
         git_auto_redeploy: bool = False,
+        knative_mode: bool | None = None,
     ) -> Deployment:
         """Deploy a Python script or package as an agent.
 
@@ -528,6 +539,9 @@ class ModelServing:
             git_auto_redeploy: Roll the agent to the branch HEAD whenever a new commit is pushed.
                 Only valid together with `git_url`.
                 The running agent keeps serving until the new version is ready.
+            knative_mode: Whether to deploy in KServe Knative mode.
+                `None` (default) lets the backend decide: every deployment defaults to Knative mode unless it is a vLLM deployment; on an update, `None` keeps the deployment's current mode.
+                Standard mode does not scale to zero (minimum one instance). It autoscales on a CPU or memory metric between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum), and runs a fixed replica count without autoscaler when `min_instances == max_instances` (the default for LLM deployments).
 
         Returns:
             The deployment metadata object.
@@ -631,6 +645,7 @@ class ModelServing:
             git_provider=git_provider if git_backed else None,
             git_branch=git_branch if git_backed else None,
             git_auto_redeploy=git_auto_redeploy if git_backed else False,
+            knative_mode=knative_mode,
         )
 
         existing = self.get_deployment(name)

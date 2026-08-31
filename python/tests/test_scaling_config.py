@@ -27,7 +27,20 @@ class TestScalingConfig:
     def test_scale_metric_has_value(self):
         assert ScaleMetric._has_value("CONCURRENCY")
         assert ScaleMetric._has_value("RPS")
+        assert ScaleMetric._has_value("CPU")
+        assert ScaleMetric._has_value("MEMORY")
         assert not ScaleMetric._has_value("BOGUS")
+
+    def test_predictor_scaling_config_accepts_cpu_and_memory_metrics(self):
+        cpu = PredictorScalingConfig(min_instances=1, scale_metric="cpu", target=80)
+        memory = PredictorScalingConfig(
+            min_instances=1, scale_metric="memory", target=80
+        )
+
+        assert cpu.scale_metric == ScaleMetric.CPU
+        assert memory.scale_metric == ScaleMetric.MEMORY
+        assert cpu.to_json()["scale_metric"] == "CPU"
+        assert memory.to_json()["scale_metric"] == "MEMORY"
 
     def test_predictor_scaling_config_accepts_scale_metric_string(self):
         sc = PredictorScalingConfig(min_instances=1, scale_metric="rps")
@@ -107,6 +120,71 @@ class TestScalingConfig:
             )
 
         assert "Scale-to-zero is required" in str(exc_info.value)
+
+    def test_get_default_scaling_configuration_standard_mode_no_scale_to_zero_default(
+        self, mocker
+    ):
+        # Standard mode on KServe: no scale-to-zero and no Knative-only KPA defaults, even when the cluster forces scale-to-zero.
+        mocker.patch(
+            "hopsworks_common.client._is_scale_to_zero_required", return_value=True
+        )
+
+        sc = PredictorScalingConfig.get_default_scaling_configuration(
+            PREDICTOR.SERVING_TOOL_KSERVE, None, effective_knative_mode=False
+        )
+
+        assert sc.min_instances == SCALING_CONFIG.MIN_NUM_INSTANCES
+        assert sc.scale_metric is None
+        assert sc.target is None
+        assert sc.panic_window_percentage is None
+        assert sc.panic_threshold_percentage is None
+        assert sc.stable_window_seconds is None
+        assert sc.scale_to_zero_retention_seconds is None
+
+    def test_get_default_scaling_configuration_standard_mode_does_not_raise_on_scale_to_zero(
+        self, mocker
+    ):
+        # A caller-supplied min_instances=0 in standard mode is left to the
+        # backend to validate; the client no longer raises on it.
+        mocker.patch(
+            "hopsworks_common.client._is_scale_to_zero_required", return_value=True
+        )
+
+        sc = PredictorScalingConfig.get_default_scaling_configuration(
+            PREDICTOR.SERVING_TOOL_KSERVE, 0, effective_knative_mode=False
+        )
+
+        assert sc.min_instances == 0
+
+    def test_get_default_scaling_configuration_knative_mode_unaffected(self, mocker):
+        # effective_knative_mode=True (the default) preserves the pre-existing
+        # KServe Knative behavior.
+        mocker.patch(
+            "hopsworks_common.client._is_scale_to_zero_required", return_value=True
+        )
+
+        sc = PredictorScalingConfig.get_default_scaling_configuration(
+            PREDICTOR.SERVING_TOOL_KSERVE, None
+        )
+
+        assert sc.min_instances == 0
+        assert sc.scale_metric.value == SCALING_CONFIG.SCALE_METRIC_CONCURRENCY
+
+    def test_from_json_ignores_unknown_scale_metric(self):
+        # An older client parsing a newer backend's config must not crash (runtime images bundle the client).
+        with pytest.warns(UserWarning, match="unknown scale metric"):
+            sc = PredictorScalingConfig.from_json(
+                {
+                    "predictor_scaling_config": {
+                        "min_instances": 1,
+                        "max_instances": 3,
+                        "scale_metric": "GPU_UTIL",
+                        "target": 80,
+                    }
+                }
+            )
+        assert sc.scale_metric is None
+        assert sc.target == 80
 
     def test_from_json_to_json_roundtrip(self):
         json_payload = {

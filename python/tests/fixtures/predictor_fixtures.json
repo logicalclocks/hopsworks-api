@@ -560,6 +560,7 @@
       "config_file": "config.yaml",
       "vllmVariant": "VLLM",
       "vllmImageTag": null,
+      "knativeMode": false,
       "requested_instances": 0,
       "predictor_resources": {
         "requested_instances": 0,

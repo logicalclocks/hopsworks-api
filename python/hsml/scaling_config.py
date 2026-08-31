@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import warnings
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import TYPE_CHECKING
@@ -32,10 +33,17 @@ if TYPE_CHECKING:
 
 @public
 class ScaleMetric(Enum):
-    """Scaling metric for a predictor or transformer. Can be either 'CONCURRENCY' or 'RPS'."""
+    """Scaling metric for a predictor or transformer.
+
+    `CONCURRENCY` and `RPS` are Knative-only metrics, valid for KServe Knative deployments.
+    `CPU` and `MEMORY` drive CPU/memory-based autoscaling, valid for KServe Standard and non-KServe deployments.
+    In KServe Standard mode a deployment with `min_instances == max_instances` runs a fixed replica count and ignores the metric.
+    """
 
     CONCURRENCY = "CONCURRENCY"
     RPS = "RPS"
+    CPU = "CPU"
+    MEMORY = "MEMORY"
 
     @classmethod
     def _has_value(cls, value):
@@ -111,7 +119,11 @@ class ComponentScalingConfig(ABC):
     @public
     @staticmethod
     def get_default_scaling_configuration(
-        serving_tool: str, min_instances: int | None, component_type: str = "predictor"
+        serving_tool: str,
+        min_instances: int | None,
+        component_type: str = "predictor",
+        effective_knative_mode: bool = True,
+        enforce_scale_to_zero: bool = True,
     ) -> ComponentScalingConfig:
         """Get the default scaling configuration based on the serving tool and number of instances.
 
@@ -119,19 +131,28 @@ class ComponentScalingConfig(ABC):
             serving_tool: the serving tool to use (e.g. kserve)
             min_instances: minimum number of instances, or None to use the default
             component_type: the component type (predictor or transformer)
+            effective_knative_mode: whether the deployment runs in KServe Knative mode.
+                Only meaningful when `serving_tool` is kserve.
+                Standard mode does not scale to zero and does not default to Knative-only autoscaling metrics.
+            enforce_scale_to_zero: whether to reject a non-zero minimum when the cluster requires scale-to-zero for Knative deployments.
+                Transformers are built before the deployment mode is known and skip this check.
+                The backend validates the assembled deployment mode-aware.
 
         Returns:
             The default scaling configuration for the given serving tool.
         """
+        kserve_knative = (
+            serving_tool == PREDICTOR.SERVING_TOOL_KSERVE and effective_knative_mode
+        )
         if min_instances is None:
             min_instances = (
                 0  # enable scale-to-zero by default if required
-                if serving_tool == PREDICTOR.SERVING_TOOL_KSERVE
-                and client._is_scale_to_zero_required()
+                if kserve_knative and client._is_scale_to_zero_required()
                 else SCALING_CONFIG.MIN_NUM_INSTANCES
             )
         if (
-            serving_tool == PREDICTOR.SERVING_TOOL_KSERVE
+            kserve_knative
+            and enforce_scale_to_zero
             and min_instances != 0
             and client._is_scale_to_zero_required()
         ):
@@ -144,7 +165,7 @@ class ComponentScalingConfig(ABC):
                 "Minimum number of instances cannot be 0 for deployments not using KServe. Please, set the minimum number of instances to at least 1."
             )
         kwargs = {"min_instances": min_instances}
-        if serving_tool == PREDICTOR.SERVING_TOOL_KSERVE:
+        if kserve_knative:
             kwargs["scale_metric"] = SCALING_CONFIG.SCALE_METRIC_CONCURRENCY
             kwargs["target"] = SCALING_CONFIG.DEFAULT_CONCURRENCY_TARGET
             kwargs["panic_threshold_percentage"] = (
@@ -181,7 +202,15 @@ class ComponentScalingConfig(ABC):
         )
         scale_metric = util._extract_field_from_json(json_decamelized, "scale_metric")
         if scale_metric:
-            kwargs["scale_metric"] = ScaleMetric(scale_metric)
+            # A newer backend may store metrics this client does not know yet (e.g. CPU/MEMORY on an older client).
+            # Runtime containers parse the deployment JSON with the client bundled in their image, so an unknown metric must not crash them.
+            if ScaleMetric._has_value(scale_metric):
+                kwargs["scale_metric"] = ScaleMetric(scale_metric)
+            else:
+                warnings.warn(
+                    f"Ignoring unknown scale metric '{scale_metric}' returned by the backend; upgrade the hopsworks client to manage it.",
+                    stacklevel=2,
+                )
         kwargs["target"] = util._extract_field_from_json(json_decamelized, "target")
         kwargs["panic_window_percentage"] = util._extract_field_from_json(
             json_decamelized, "panic_window_percentage"
@@ -246,7 +275,12 @@ class ComponentScalingConfig(ABC):
     @public
     @property
     def scale_metric(self):
-        """The metric to use for scaling. Can be either 'CONCURRENCY' or 'RPS'."""
+        """The metric to use for scaling.
+
+        `CONCURRENCY` and `RPS` are Knative-only metrics for KServe Knative deployments.
+        `CPU` and `MEMORY` drive CPU/memory-based autoscaling in KServe Standard mode.
+        Standard deployments default to `CPU` when `min_instances < max_instances`; with `min_instances == max_instances` no autoscaler is configured and the metric is cleared.
+        """
         return self._scale_metric
 
     @scale_metric.setter
@@ -267,7 +301,12 @@ class ComponentScalingConfig(ABC):
     @public
     @property
     def target(self):
-        """Target value for the selected scaling metric that the autoscaler should try to maintain during the stable window. For RPS, this is requests per second. For CONCURRENCY, this is concurrent number of requests."""
+        """Target value for the selected scaling metric that the autoscaler should try to maintain.
+
+        For `RPS`, this is requests per second.
+        For `CONCURRENCY`, this is the number of concurrent requests.
+        For `CPU` and `MEMORY`, this is the utilization percentage.
+        """
         return self._target
 
     @target.setter
@@ -277,7 +316,12 @@ class ComponentScalingConfig(ABC):
     @public
     @property
     def min_instances(self) -> int:
-        """Minimum number of instances to scale to. For deployments using kserve, this must be set to 0 to enable scaling to zero. Default is 0 for deployments using kserve and 1 for deployments not using kserve."""
+        """Minimum number of instances to scale to.
+
+        KServe Knative deployments scale to zero when this is 0, and the cluster may require it.
+        KServe Standard deployments do not scale to zero and need at least 1.
+        Defaults to 0 for KServe Knative deployments when the cluster requires scale-to-zero, otherwise to 1.
+        """
         return self._min_instances
 
     @min_instances.setter
@@ -287,7 +331,11 @@ class ComponentScalingConfig(ABC):
     @public
     @property
     def max_instances(self):
-        """Maximum number of instances to scale to. Maximum allowed is configured in the cluster settings by the cluster administrator. Must be at least 1 and greater than or equal to min_instances."""
+        """Maximum number of instances to scale to.
+
+        Maximum allowed is configured in the cluster settings by the cluster administrator. Must be at least 1 and greater than or equal to min_instances.
+        Defaults to the cluster maximum, except for LLM deployments in KServe Standard mode, which default to `min_instances` (fixed replica count).
+        """
         return self._max_instances
 
     @max_instances.setter

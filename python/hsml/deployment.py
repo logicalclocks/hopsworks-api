@@ -959,6 +959,23 @@ class Deployment:
 
     @public
     @property
+    def knative_mode(self):
+        """Whether the deployment runs in KServe Knative mode.
+
+        `True` selects Knative mode, `False` selects Standard mode and `None` lets the backend decide on creation or keeps the stored mode on an update.
+        See [`Predictor.knative_mode`][hsml.predictor.Predictor.knative_mode] for the full mode semantics.
+
+        Info: Adds Knative mode selection, ~=5.1.0
+            Deployments can now select between KServe Knative and Standard mode.
+        """
+        return self._predictor.knative_mode
+
+    @knative_mode.setter
+    def knative_mode(self, knative_mode: bool | None):
+        self._predictor.knative_mode = knative_mode
+
+    @public
+    @property
     def environment(self):
         """Name of inference environment."""
         return self._predictor.environment

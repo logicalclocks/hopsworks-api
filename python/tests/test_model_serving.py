@@ -99,6 +99,45 @@ class TestTracingForwarding:
         # Assert
         assert mock_for_model.call_args.kwargs["tags"] == tags
 
+    def test_create_predictor_forwards_knative_mode(self, ms, mocker):
+        # Arrange
+        model = mocker.Mock()
+        model._get_default_serving_name.return_value = "my_model"
+        mock_for_model = mocker.patch("hsml.model_serving.Predictor.for_model")
+
+        # Act
+        ms.create_predictor(model, knative_mode=False)
+
+        # Assert
+        assert mock_for_model.call_args.kwargs["knative_mode"] is False
+
+    def test_create_endpoint_forwards_knative_mode(self, ms, mocker):
+        # Arrange
+        mock_for_server = mocker.patch("hsml.model_serving.Predictor.for_server")
+
+        # Act
+        ms.create_endpoint(
+            name="endpoint",
+            script_file="script.py",
+            knative_mode=True,
+        )
+
+        # Assert
+        assert mock_for_server.call_args.kwargs["knative_mode"] is True
+
+    def test_deploy_agent_forwards_knative_mode(self, ms, mocker, stub_apis, tmp_path):
+        # Arrange
+        script = tmp_path / "agent.py"
+        script.write_text("print('hi')")
+        mocker.patch.object(ms, "get_deployment", return_value=None)
+        mock_for_server = mocker.patch("hsml.model_serving.Predictor.for_server")
+
+        # Act
+        ms.deploy_agent(entry=str(script), name="my_agent", knative_mode=False)
+
+        # Assert
+        assert mock_for_server.call_args.kwargs["knative_mode"] is False
+
     def test_create_deployment_sets_tags_on_predictor(self, ms, mocker):
         # create_deployment normalizes the tags through the shared Tag helper and
         # stashes the resulting list[Tag] on the predictor so Predictor.to_dict

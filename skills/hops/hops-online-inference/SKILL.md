@@ -107,7 +107,7 @@ deployment = model.deploy(
     scaling_configuration=PredictorScalingConfig(
         min_instances=1,
         max_instances=3,
-        scale_metric=ScaleMetric.CONCURRENCY,   # required — omitting it fails with HTTP 422
+        scale_metric=ScaleMetric.CONCURRENCY,   # Knative-only metric; only valid for KServe Knative deployments
         target=70,                              # target concurrent requests per pod
     ),
     environment="inference-pipeline",  # Python environment name
@@ -425,16 +425,33 @@ predictor_resources = PredictorResources(
 
 ### Scaling
 
+`model.deploy(knative_mode=...)` picks the KServe mode: `True` for Knative (supports scale-to-zero and `CONCURRENCY`/`RPS` metrics), `False` for Standard (minimum one instance, autoscales on `CPU`/`MEMORY` between min and max instances; equal min and max run a fixed replica count with no autoscaler, the default for LLM deployments).
+Leave it `None` (default) to let the backend decide: vLLM deployments default to Standard, everything else to Knative.
+On an update, `None` keeps the deployment's current mode.
+
+Knative mode (`CONCURRENCY`/`RPS` metrics; the Knative-only window/panic/retention parameters are rejected in Standard mode):
+
 ```python
 from hsml.scaling_config import PredictorScalingConfig, ScaleMetric
 
 scaling = PredictorScalingConfig(
-    min_instances=1,              # minimum pods (0 for scale-to-zero)
+    min_instances=0,              # 0 enables scale-to-zero (required on scale-to-zero clusters)
     max_instances=5,              # maximum pods
     scale_metric=ScaleMetric.CONCURRENCY,  # or ScaleMetric.RPS
     target=70,                    # target concurrent requests per pod
     stable_window_seconds=60,     # averaging interval
     scale_to_zero_retention_seconds=300,  # keep last pod for 5 min
+)
+```
+
+Standard mode (`CPU`/`MEMORY` metrics; minimum one instance, no scale-to-zero):
+
+```python
+scaling = PredictorScalingConfig(
+    min_instances=1,              # at least 1 in Standard mode
+    max_instances=5,              # equal to min_instances runs a fixed replica count
+    scale_metric=ScaleMetric.CPU,  # or ScaleMetric.MEMORY
+    target=80,                    # target utilization percentage
 )
 ```
 
@@ -549,7 +566,7 @@ deployment = model.deploy(
     scaling_configuration=PredictorScalingConfig(
         min_instances=1,
         max_instances=5,
-        scale_metric=ScaleMetric.CONCURRENCY,  # required, else HTTP 422
+        scale_metric=ScaleMetric.CONCURRENCY,  # Knative-only metric; only valid for KServe Knative deployments
         target=50,
     ),
 )
