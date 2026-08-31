@@ -132,11 +132,11 @@ jobs:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
 
     steps:
-      - name: Set up JDK 8
+      - name: Set up JDK 17
         uses: actions/setup-java@v3
         with:
-          java-version: "8"
-          distribution: "adopt"
+          java-version: "17"
+          distribution: "temurin"
 
       - name: Set Timezone
         run: sudo timedatectl set-timezone UTC && echo UTC | sudo tee /etc/timezone
@@ -171,10 +171,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.ivy2
-          key: ivy-spark-avro-3.5.5
+          key: ivy-spark-avro-4.1.1
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
-        run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.5.5 pyspark-shell" >> $GITHUB_ENV
+        run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.13:4.1.1 pyspark-shell" >> $GITHUB_ENV
 
       - name: Run Pytest suite
         run: pytest python/tests
@@ -185,11 +185,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Set up JDK 8
+      - name: Set up JDK 17
         uses: actions/setup-java@v3
         with:
-          java-version: "8"
-          distribution: "adopt"
+          java-version: "17"
+          distribution: "temurin"
 
       - name: Set Timezone
         run: sudo timedatectl set-timezone UTC && echo UTC | sudo tee /etc/timezone
@@ -221,10 +221,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.ivy2
-          key: ivy-spark-avro-3.5.5
+          key: ivy-spark-avro-4.1.1
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
-        run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.5.5 pyspark-shell" >> $GITHUB_ENV
+        run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.13:4.1.1 pyspark-shell" >> $GITHUB_ENV
 
       - name: Run Pytest suite
         run: pytest python/tests
@@ -235,11 +235,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Set up JDK 8
+      - name: Set up JDK 17
         uses: actions/setup-java@v3
         with:
-          java-version: "8"
-          distribution: "adopt"
+          java-version: "17"
+          distribution: "temurin"
 
       - name: Set Timezone
         run: sudo timedatectl set-timezone UTC && echo UTC | sudo tee /etc/timezone
@@ -274,10 +274,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.ivy2
-          key: ivy-spark-avro-3.5.5
+          key: ivy-spark-avro-4.1.1
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
-        run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.5.5 pyspark-shell" >> $GITHUB_ENV
+        run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.13:4.1.1 pyspark-shell" >> $GITHUB_ENV
 
       - name: Run Pytest suite
         run: pytest python/tests
@@ -288,11 +288,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Set up JDK 8
+      - name: Set up JDK 17
         uses: actions/setup-java@v3
         with:
-          java-version: "8"
-          distribution: "adopt"
+          java-version: "17"
+          distribution: "temurin"
 
       - name: Set Timezone
         run: sudo timedatectl set-timezone UTC && echo UTC | sudo tee /etc/timezone
@@ -327,10 +327,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.ivy2
-          key: ivy-spark-avro-3.5.5
+          key: ivy-spark-avro-4.1.1
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
-        run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.5.5 pyspark-shell" >> $GITHUB_ENV
+        run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.13:4.1.1 pyspark-shell" >> $GITHUB_ENV
 
       - name: Run Pytest suite
         run: pytest python/tests
@@ -341,11 +341,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Set up JDK 8
+      - name: Set up JDK 17
         uses: actions/setup-java@v3
         with:
-          java-version: "8"
-          distribution: "adopt"
+          java-version: "17"
+          distribution: "temurin"
 
       - name: Set Timezone
         run: sudo timedatectl set-timezone Europe/Amsterdam && echo Europe/Amsterdam | sudo tee /etc/timezone
@@ -380,10 +380,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.ivy2
-          key: ivy-spark-avro-3.5.5
+          key: ivy-spark-avro-4.1.1
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
-        run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.5.5 pyspark-shell" >> $GITHUB_ENV
+        run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.13:4.1.1 pyspark-shell" >> $GITHUB_ENV
 
       - name: Run Pytest suite
         run: pytest python/tests
@@ -421,10 +421,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.ivy2
-          key: ivy-spark-avro-3.5.5
+          key: ivy-spark-avro-4.1.1
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
-        run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.5.5 pyspark-shell" >> $GITHUB_ENV
+        run: echo "PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.13:4.1.1 pyspark-shell" >> $GITHUB_ENV
 
       - name: Run Pytest suite
         env:
@@ -470,12 +470,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.ivy2
-          key: ivy-spark-avro-3.5.5
+          key: ivy-spark-avro-4.1.1
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
         shell: cmd
         run: |
-          echo PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.5.5 pyspark-shell >> %GITHUB_ENV%
+          echo PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.13:4.1.1 pyspark-shell >> %GITHUB_ENV%
 
       - name: Run Pytest suite
         run: pytest python/tests
@@ -521,12 +521,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.ivy2
-          key: ivy-spark-avro-3.5.5
+          key: ivy-spark-avro-4.1.1
 
       - name: Set PYSPARK_SUBMIT_ARGS for Avro support
         shell: cmd
         run: |
-          echo PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.12:3.5.5 pyspark-shell >> %GITHUB_ENV%
+          echo PYSPARK_SUBMIT_ARGS=--packages org.apache.spark:spark-avro_2.13:4.1.1 pyspark-shell >> %GITHUB_ENV%
 
       - name: Run Pytest suite
         run: pytest python/tests
