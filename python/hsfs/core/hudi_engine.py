@@ -19,6 +19,7 @@ import copy
 import os
 from urllib.parse import unquote, urlsplit
 
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import feature_group_commit, util
 from hsfs.core import (
     dataset_api,
@@ -74,14 +75,13 @@ class HudiEngine:
     HUDI_BULK_INSERT = "bulk_insert"
     HUDI_INSERT = "insert"
     HUDI_UPSERT = "upsert"
+    HUDI_DELETE = "delete"
     HUDI_QUERY_TYPE_OPT_KEY = "hoodie.datasource.query.type"
     HUDI_QUERY_TYPE_SNAPSHOT_OPT_VAL = "snapshot"
     HUDI_QUERY_TYPE_INCREMENTAL_OPT_VAL = "incremental"
     HUDI_QUERY_TIME_TRAVEL_AS_OF_INSTANT = "as.of.instant"
     HUDI_BEGIN_INSTANTTIME_OPT_KEY = "hoodie.datasource.read.begin.instanttime"
     HUDI_END_INSTANTTIME_OPT_KEY = "hoodie.datasource.read.end.instanttime"
-    PAYLOAD_CLASS_OPT_KEY = "hoodie.datasource.write.payload.class"
-    PAYLOAD_CLASS_OPT_VAL = "org.apache.hudi.common.model.EmptyHoodieRecordPayload"
     HUDI_DEFAULT_PARALLELISM = {
         "hoodie.bulkinsert.shuffle.parallelism": "5",
         "hoodie.insert.shuffle.parallelism": "5",
@@ -135,10 +135,12 @@ class HudiEngine:
         return self._feature_group_api._commit(self._feature_group, fg_commit)
 
     def _delete_record(self, delete_df, write_options):
-        write_options[self.PAYLOAD_CLASS_OPT_KEY] = self.PAYLOAD_CLASS_OPT_VAL
-
+        # Hudi's native delete operation. Overriding the payload class with
+        # EmptyHoodieRecordPayload on an upsert is the pre-1.x idiom; since Hudi
+        # 1.1 the payload is validated against the table's hoodie.record.merge.mode
+        # and that pairing is rejected on tables created at table version 9.
         fg_commit = self._write_hudi_dataset(
-            delete_df, "append", self.HUDI_UPSERT, write_options
+            delete_df, "append", self.HUDI_DELETE, write_options
         )
         return self._feature_group_api._commit(self._feature_group, fg_commit)
 
@@ -162,6 +164,25 @@ class HudiEngine:
             self._feature_group, dataset
         )
         hudi_options = self._setup_hudi_write_opts(operation, write_options)
+
+        if operation == self.HUDI_DELETE:
+            # Hudi's delete resolves each record's partition path from the frame it
+            # is given. A delete frame that omits the partition columns matches
+            # nothing, and Hudi still writes a commit -- a silent no-op. Fail loudly.
+            partition_path = hudi_options.get(self.HUDI_PARTITION_FIELD) or ""
+            partition_cols = [
+                field.split(":")[0] for field in partition_path.split(",") if field
+            ]
+            missing = [c for c in partition_cols if c not in dataset.columns]
+            if missing:
+                raise FeatureStoreException(
+                    "Cannot delete records from partitioned feature group "
+                    f"`{self._feature_group.name}`: the delete frame is missing the "
+                    f"partition column(s) {missing}. Hudi resolves the partition path "
+                    "from the frame, so a delete without them would silently match no "
+                    "records. Include the partition columns in the delete frame."
+                )
+
         self._migrate_table(self._spark_context, hudi_options, location)
         dataset.write.format(HudiEngine.HUDI_SPARK_FORMAT).options(**hudi_options).mode(
             save_mode
