@@ -44,14 +44,20 @@ HAS_GREAT_EXPECTATIONS: bool = (
 )
 GE_MAJOR: int | None = None
 if HAS_GREAT_EXPECTATIONS:
-    # GE 1.x's _docs_decorators logs an INFO line for every closure it scans
-    # during module init (DataSourceManager._register_* / _bind_asset_factory_*),
-    # producing hundreds of useless lines whenever GE loads. Suppress here so it
-    # is in place before the validation modules import great_expectations.
+    # GE 1.x chatters on INFO while its modules initialise: _docs_decorators logs
+    # a line for every closure it scans (DataSourceManager._register_* /
+    # _bind_asset_factory_*), and registry.register_metric one per metric GE
+    # itself declares twice ("Multiple declarations of metric ..."). Both land in
+    # the user's notebook because `hopsworks` puts the root logger at INFO.
+    # Suppress here so it is in place before the validation modules import
+    # great_expectations.
     import importlib.metadata
     import logging
 
     logging.getLogger("great_expectations._docs_decorators").setLevel(logging.WARNING)
+    logging.getLogger("great_expectations.expectations.registry").setLevel(
+        logging.WARNING
+    )
     # The version comes from package metadata, never from importing the package:
     # this module sits on the SDK's import spine, and executing GE's module init
     # here (it pulls altair, scipy and jsonschema) put ~8 seconds on every
