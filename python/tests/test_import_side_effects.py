@@ -18,6 +18,8 @@ import json
 import subprocess
 import sys
 
+import pytest
+
 
 def test_importing_the_sdk_does_not_execute_great_expectations():
     # constants.py sits on the SDK's import spine; executing great_expectations there put
@@ -38,3 +40,31 @@ def test_importing_the_sdk_does_not_execute_great_expectations():
     assert result["ge_loaded"] is False
     if result["has_ge"]:
         assert isinstance(result["ge_major"], int)
+
+
+def test_loading_a_validation_module_does_not_log_ge_metric_chatter():
+    # GE 1.x registers its core metrics from its own module init and logs "Multiple
+    # declarations of metric ... for engine ..." at INFO for each one it declares twice.
+    # The validation modules import GE long after `hopsworks` has pointed the root logger
+    # at stderr on INFO, so those five lines land in every notebook that calls login().
+    # constants.py pins that logger to WARNING before any GE import can happen; run in a
+    # subprocess because logger levels are process-global state an earlier import decides.
+    code = (
+        "import json, sys\n"
+        "import hopsworks\n"
+        "try:\n"
+        "    import hsfs.expectation_suite\n"
+        "except Exception as e:\n"
+        "    print(json.dumps({'ge_loaded': False, 'error': type(e).__name__}))\n"
+        "else:\n"
+        "    print(json.dumps({'ge_loaded': 'great_expectations' in sys.modules}))\n"
+    )
+    out = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True
+    )
+    result = json.loads(out.stdout.strip().splitlines()[-1])
+    if not result["ge_loaded"]:
+        pytest.skip(
+            f"great_expectations was not loaded: {result.get('error', 'absent')}"
+        )
+    assert "Multiple declarations of metric" not in out.stderr, out.stderr
