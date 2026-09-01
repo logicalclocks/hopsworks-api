@@ -233,11 +233,21 @@ def _ensure_clean_and_pushed(state: dict, interactive: bool) -> bool:
         return False
     if dirty:
         _, staged = _git(["diff", "--cached", "--name-only"], cwd=root)
-        if not staged and click.confirm(
-            "Nothing is staged; stage all changes first?", default=True
-        ):
-            _git(["add", "-A"], cwd=root)
-            _, staged = _git(["diff", "--cached", "--name-only"], cwd=root)
+        if not staged:
+            # Show exactly what would go, and stage TRACKED files only (`-u`):
+            # `-A` would sweep untracked files -- .env, keys, build output --
+            # into a commit that is about to be pushed to a remote. Default is
+            # No; the user opts in to staging with the list in front of them.
+            output.info("Uncommitted changes:")
+            for line in dirty.splitlines():
+                output.info("  %s", line)
+            if click.confirm(
+                "Nothing is staged; stage the modified tracked files (untracked "
+                "files stay local)?",
+                default=False,
+            ):
+                _git(["add", "-u"], cwd=root)
+                _, staged = _git(["diff", "--cached", "--name-only"], cwd=root)
         if staged:
             msg = click.prompt(
                 "Commit message",
@@ -347,9 +357,7 @@ def maybe_collect(dataset_api, teleport_user_root: str) -> dict | None:
         default_key = _default_key(_ssh_host(state["url"]))
     if interactive:
         # A dedicated deploy key is safer to stage than a personal identity key.
-        key = Path(
-            click.prompt("SSH key file", default=str(default_key))
-        ).expanduser()
+        key = Path(click.prompt("SSH key file", default=str(default_key))).expanduser()
     else:
         key = default_key
     if not key.is_file():

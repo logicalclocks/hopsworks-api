@@ -584,6 +584,13 @@ def session_group() -> None:
     help="Open the terminal in the browser after pushing (default). "
     "--no-open just prints the URL.",
 )
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Push even though a live pod holds this session. The pod's copy is "
+    "canonical and may have work you have not pulled; pushing over it "
+    "discards that work.",
+)
 @click.pass_context
 def push(
     ctx: click.Context,
@@ -593,6 +600,7 @@ def push(
     model: str | None,
     prompt: str | None,
     open_ui: bool,
+    force: bool,
 ) -> None:
     """Push the current Claude Code session onto a Hopsworks terminal pod.
 
@@ -612,6 +620,7 @@ def push(
         model: Model the pod resumes with.
         prompt: First instruction fed to the resumed session, or None.
         open_ui: Open the terminal in the browser after pushing.
+        force: Push over a session a live pod still holds.
     """
     slug = _cwd_slug()
     jsonl = _resolve_local_session(slug, session_id)
@@ -619,13 +628,29 @@ def push(
 
     project = conn.get_project(ctx)
     dataset_api = project.get_dataset_api()
+    dest_dir = f"{_teleport_root()}/{slug}"
+
+    # Ownership gate, mirroring pull: a baton naming a LIVE pod holder means the
+    # pod's copy is canonical and may carry appends never pulled. Re-pushing the
+    # laptop's copy would overwrite the transport and, when the pod lands it,
+    # `cp -f` the pod's live transcript too -- silently destroying that work.
+    # A dead pod, a laptop-held baton, or a --fork push is not gated.
+    if not fork:
+        existing = _read_baton(dataset_api, dest_dir, resolved_id)
+        holder = (existing or {}).get("holder", "")
+        if holder.startswith("pod:") and _pod_alive(project.id) and not force:
+            raise click.ClickException(
+                f"A live pod holds this session ({holder}); it may have work you "
+                f"have not pulled. `hops session pull` first to bring it back, or "
+                f"`push --force` to overwrite the pod's copy (its un-pulled work "
+                f"is lost)."
+            )
 
     # Git sync runs first: it is the interactive part (consent, key prompt,
     # commit+push offer), so it must finish before any store mutation. A None
     # simply means no git context travels with this push.
     git_ctx = git_sync.maybe_collect(dataset_api, _teleport_root().rsplit("/", 1)[0])
 
-    dest_dir = f"{_teleport_root()}/{slug}"
     # mkdir is best-effort: an existing dir is fine, and a real problem will
     # surface loudly on the upload below.
     with contextlib.suppress(Exception):
@@ -653,10 +678,22 @@ def push(
             raise click.ClickException(f"Failed to ship session: {exc}") from exc
     output.success("✓ Pushed session %s to %s", resolved_id, project.name)
 
+    ws_url = _launch_pod(project)
+
+    # Manifest before baton: the manifest is the pod watcher's trigger and the
+    # hard-error step (a dropped manifest strands the session: staged, never
+    # landed). Writing the baton after it means a failed manifest upload never
+    # leaves the store naming a pod holder for a session that pod will never
+    # receive, which would make the next pull demand --force against nothing.
+    # The pod's land path does not read the baton, so it need not precede the
+    # trigger.
+    manifest = _build_manifest(
+        resolved_id, slug, "fork" if fork else "push", model, prompt, git=git_ctx
+    )
+    _upload_manifest(dataset_api, dest_dir, resolved_id, manifest)
+
     # Baton hand-off: record that the canonical copy now lives on the pod. Skip
-    # for --fork (deliberate copy). The local rename-aside happens only after
-    # the manifest upload succeeds, so a failed push never strands the session
-    # (renamed away locally, yet never going to land).
+    # for --fork (deliberate copy).
     host = socket.gethostname()
     if not fork and not _write_baton(
         dataset_api,
@@ -671,17 +708,6 @@ def push(
             "pod as holder, so a pull from another machine will treat this as "
             "an unowned copy."
         )
-
-    ws_url = _launch_pod(project)
-
-    # Manifest LAST: it is the pod watcher's trigger, so everything it depends on
-    # (transcript, baton) must already be staged when it appears. The upload is a
-    # hard error, not best-effort — a dropped manifest strands the session
-    # (staged, but never landed).
-    manifest = _build_manifest(
-        resolved_id, slug, "fork" if fork else "push", model, prompt, git=git_ctx
-    )
-    _upload_manifest(dataset_api, dest_dir, resolved_id, manifest)
 
     # Only now that the hand-off is fully staged, rename the local transcript
     # aside so it is not resumed by accident — except the session you are in
@@ -943,10 +969,12 @@ def pull(
     # holder that may still be writing (a live pod, or another laptop we have
     # no liveness oracle for). A dead pod, or a baton we already hold, is a
     # frictionless reclaim.
+    pod_live = False
     if baton:
         holder = baton.get("holder", "")
         if holder.startswith("pod:"):
-            if _pod_alive(project.id) and not force:
+            pod_live = _pod_alive(project.id)
+            if pod_live and not force:
                 raise click.ClickException(
                     f"The pod still holds a live terminal session for "
                     f"{holder}. Close it there first, or `pull --force` to take "
@@ -1071,11 +1099,17 @@ def pull(
         # re-push of this id, not just the reclaimed one. An unreadable manifest
         # skips the stamp (nothing to version against). Best-effort, like the
         # baton.
+        #
+        # Skipped while the pod is alive (the --force path): the stamp is a
+        # server-side overwrite of a name the pod has in its FUSE dentry cache,
+        # so the pod's own later write to it could land in the stale unlinked
+        # inode and vanish -- the lost-write trap every other marker avoids.
+        # A live pod has already landed this manifest anyway.
         manifest = (
             _read_remote_json(dataset_api, f"{dest_dir}/{session_id}.teleport.json")
             or {}
         )
-        pushed_at = manifest.get("pushed_at")
+        pushed_at = None if pod_live else manifest.get("pushed_at")
         if pushed_at:
             with tempfile.TemporaryDirectory() as tmp:
                 marker = Path(tmp) / f"{session_id}.teleport.json.consumed"
@@ -1273,6 +1307,11 @@ def stop(ctx: click.Context) -> None:
 _MIRROR_DETACH = b"\x1d"
 # Bounded reconnects when the WebSocket drops (proxy idle timeout, token expiry).
 _MIRROR_MAX_RETRIES = 5
+# A connection that stayed up at least this long counts as healthy and resets the
+# retry budget. Anything shorter is a connect-then-immediate-close (the proxy
+# accepts the handshake, then closes because the pod's upstream is not up yet),
+# which must keep counting or the loop never ends.
+_MIRROR_HEALTHY_SECONDS = 30.0
 
 
 class _Detach(Exception):
@@ -1474,6 +1513,7 @@ async def _mirror_session(project_id: int, write: bool) -> None:
         url = _ws_url(sess["wsUrl"])
         ssl_ctx = _ws_ssl_context(url)
         token = terminal_api.get_proxy_token(project_id)
+        connected_at: float | None = None
         try:
             async with connect(
                 url,
@@ -1482,10 +1522,19 @@ async def _mirror_session(project_id: int, write: bool) -> None:
                 max_size=None,
                 open_timeout=20,
             ) as ws:
-                attempts = 0
+                connected_at = time.monotonic()
                 await _drive(ws, mode)
             return
         except (ConnectionClosed, OSError) as exc:
+            # Reset the budget only after a connection that actually lived: a
+            # handshake that succeeds and closes at once (upstream unreachable
+            # while the pod boots) would otherwise reset it every iteration and
+            # mint+burn a one-time token every retry, forever.
+            if (
+                connected_at is not None
+                and time.monotonic() - connected_at >= _MIRROR_HEALTHY_SECONDS
+            ):
+                attempts = 0
             attempts += 1
             if attempts > _MIRROR_MAX_RETRIES:
                 raise click.ClickException(f"Mirror connection lost: {exc}") from exc

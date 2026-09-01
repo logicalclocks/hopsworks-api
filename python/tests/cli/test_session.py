@@ -583,6 +583,55 @@ def test_push_happy_path_is_three_check_lines(tmp_path, monkeypatch):
     assert "sid1.teleport.json" in ds.uploads
 
 
+def _with_pod_baton(ds, slug, alive, monkeypatch):
+    """Stage a baton naming the pod as holder and pin the pod's liveness."""
+    ds._files[f"{_ROOT}/{slug}/sid1.baton.json"] = {
+        "session_id": "sid1",
+        "holder": "pod:demo",
+        "transferred_lines": 1,
+    }
+    monkeypatch.setattr(session, "_pod_alive", lambda pid: alive)
+
+
+def test_push_refuses_when_a_live_pod_holds_the_baton(tmp_path, monkeypatch):
+    # The pod's copy is canonical and may hold un-pulled work; a re-push would
+    # overwrite the transport and, on land, the pod's live transcript.
+    runner, ds, slug = _push_setup(tmp_path, monkeypatch, landed=True)
+    _with_pod_baton(ds, slug, alive=True, monkeypatch=monkeypatch)
+    result = runner.invoke(session.session_group, ["push"])
+    assert result.exit_code != 0
+    assert "live pod holds this session" in _all_output(result)
+    assert "sid1.jsonl" not in ds.uploads  # nothing was overwritten
+
+
+def test_push_force_overrides_the_live_pod_gate(tmp_path, monkeypatch):
+    runner, ds, slug = _push_setup(tmp_path, monkeypatch, landed=True)
+    _with_pod_baton(ds, slug, alive=True, monkeypatch=monkeypatch)
+    result = runner.invoke(
+        session.session_group, ["push", "--force"], catch_exceptions=False
+    )
+    assert result.exit_code == 0
+    assert "sid1.jsonl" in ds.uploads
+
+
+def test_push_proceeds_when_the_pod_holder_is_dead(tmp_path, monkeypatch):
+    # A dead pod cannot hold un-pulled work worth protecting.
+    runner, ds, slug = _push_setup(tmp_path, monkeypatch, landed=True)
+    _with_pod_baton(ds, slug, alive=False, monkeypatch=monkeypatch)
+    result = runner.invoke(session.session_group, ["push"], catch_exceptions=False)
+    assert result.exit_code == 0
+    assert "sid1.jsonl" in ds.uploads
+
+
+def test_push_writes_the_baton_after_the_manifest(tmp_path, monkeypatch):
+    # A failed manifest upload must never leave the store naming a pod holder
+    # for a session that pod will never receive.
+    runner, ds, slug = _push_setup(tmp_path, monkeypatch, landed=True)
+    result = runner.invoke(session.session_group, ["push"], catch_exceptions=False)
+    assert result.exit_code == 0
+    assert ds.uploads.index("sid1.teleport.json") < ds.uploads.index("sid1.baton.json")
+
+
 def test_push_prints_landing_kit_when_not_landed(tmp_path, monkeypatch):
     runner, ds, slug = _push_setup(tmp_path, monkeypatch, landed=False)
     # SESSION_ID is positional now.
