@@ -20,7 +20,8 @@ package com.logicalclocks.hsfs;
 public enum HudiOperationType {
   BULK_INSERT,
   INSERT,
-  UPSERT;
+  UPSERT,
+  DELETE;
 
   public String getValue() {
     return name().toLowerCase();
