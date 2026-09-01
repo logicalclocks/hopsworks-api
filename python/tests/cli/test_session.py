@@ -363,6 +363,21 @@ def test_locate_session_none_when_absent(_fixed_root):
     assert session._locate_session(_teleport_tree(), "missing") is None
 
 
+def test_validate_session_id_accepts_well_formed():
+    assert session._validate_session_id("abc-123_DEF") == "abc-123_DEF"
+
+
+@pytest.mark.parametrize(
+    "bad",
+    ["../etc/passwd", "a/b", "/abs/path", "has space", "dot.name", ""],
+)
+def test_validate_session_id_rejects_unsafe(bad):
+    import click
+
+    with pytest.raises(click.ClickException):
+        session._validate_session_id(bad)
+
+
 # --- hidden failures must surface --------------------------------------------
 
 

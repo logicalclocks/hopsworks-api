@@ -30,6 +30,7 @@ import contextlib
 import json
 import os
 import re
+import shlex
 import shutil
 import signal
 import socket
@@ -60,6 +61,22 @@ from hopsworks_common.client.exceptions import RestAPIError
 
 # Where Claude Code keeps per-directory session transcripts on this machine.
 _CLAUDE_PROJECTS = Path.home() / ".claude" / "projects"
+
+# A session id must match the same charset the pod enforces (server.js
+# SESSION_ID_PATTERN). It is interpolated into HopsFS and local project paths, so
+# rejecting anything with a slash, dot, or path traversal keeps an id from escaping
+# the teleport store or the ~/.claude/projects tree.
+_SESSION_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _validate_session_id(session_id: str) -> str:
+    """Return `session_id` if it is a well-formed id, else raise ClickException."""
+    if not _SESSION_ID_RE.fullmatch(session_id):
+        raise click.ClickException(
+            f"Invalid session id {session_id!r}: expected only letters, digits, "
+            "'_' and '-'."
+        )
+    return session_id
 
 
 def _resolve_username() -> str | None:
@@ -888,9 +905,14 @@ def pull(
     # this directory's single staged session.
     origin_cwd: str | None = None
     if session_id:
+        _validate_session_id(session_id)
         located = _locate_session(dataset_api, session_id)
-        if located:
-            slug, origin_cwd = located
+        if not located:
+            raise click.ClickException(
+                f"No staged session {session_id!r} found. List yours with "
+                "`hops session list --all`."
+            )
+        slug, origin_cwd = located
     else:
         staged = _remote_session_ids(dataset_api, slug)
         if not staged:
@@ -1098,7 +1120,9 @@ def pull(
     if elsewhere:
         output.info("This session came from another directory. Resume it from:")
         if origin_cwd:
-            output.info("  cd %s && %s", origin_cwd, resume)
+            # origin_cwd is a remote-supplied path; quote it so the printed line is
+            # a safe copy-paste even if the path has spaces or shell metacharacters.
+            output.info("  cd %s && %s", shlex.quote(origin_cwd), resume)
         else:
             output.info("  a path whose slug is %s, then: %s", slug, resume)
     else:
