@@ -265,6 +265,9 @@ class TestTrainingDatasetEngine:
         td_engine = training_dataset_engine.TrainingDatasetEngine(feature_store_id)
 
         mock_td_api.return_value._get_query.return_value.pit_query = None
+        # Explicit: on a MagicMock this attribute is a truthy mock, which would send the
+        # call down the pushdown branch. This test is the per-feature-group path.
+        mock_td_api.return_value._get_query.return_value.pushdown_query = None
 
         # Act
         result = td_engine._query(
@@ -291,6 +294,9 @@ class TestTrainingDatasetEngine:
 
         td_engine = training_dataset_engine.TrainingDatasetEngine(feature_store_id)
 
+        # See test_query: without this the truthy mock takes the pushdown branch.
+        mock_td_api.return_value._get_query.return_value.pushdown_query = None
+
         # Act
         result = td_engine._query(
             training_dataset=None, online=None, with_label=None, is_hive_query=None
@@ -307,6 +313,56 @@ class TestTrainingDatasetEngine:
             == 1
         )
         assert result == mock_td_api.return_value._get_query.return_value.pit_query
+
+    def test_query_pushdown(self, mocker):
+        # Arrange
+        feature_store_id = 99
+
+        mock_td_api = mocker.patch("hsfs.core.training_dataset_api.TrainingDatasetApi")
+        mock_engine = mocker.patch("hsfs.engine._get_instance")
+        mock_engine.return_value._is_source_pushdown_supported.return_value = True
+
+        td_engine = training_dataset_engine.TrainingDatasetEngine(feature_store_id)
+
+        fs_query = mock_td_api.return_value._get_query.return_value
+        fs_query.pushdown_query = "SELECT 1"
+
+        # Act
+        result = td_engine._query(
+            training_dataset=None, online=None, with_label=None, is_hive_query=None
+        )
+
+        # Assert
+        assert result == mock_engine.return_value._register_pushdown_query.return_value
+        # The whole point of pushing down is that no feature group is read separately.
+        assert fs_query._register_external.call_count == 0
+        assert fs_query._register_hudi_tables.call_count == 0
+
+    def test_query_pushdown_declined_by_engine(self, mocker):
+        # Arrange
+        feature_store_id = 99
+
+        mock_td_api = mocker.patch("hsfs.core.training_dataset_api.TrainingDatasetApi")
+        mock_engine = mocker.patch("hsfs.engine._get_instance")
+        mock_engine.return_value._is_source_pushdown_supported.return_value = False
+
+        td_engine = training_dataset_engine.TrainingDatasetEngine(feature_store_id)
+
+        fs_query = mock_td_api.return_value._get_query.return_value
+        fs_query.pushdown_query = "SELECT 1"
+        fs_query.pit_query = None
+
+        # Act
+        result = td_engine._query(
+            training_dataset=None, online=None, with_label=None, is_hive_query=None
+        )
+
+        # Assert
+        # Declining has to leave the existing route intact, which is what makes the
+        # backend safe to populate the field for every engine.
+        assert mock_engine.return_value._register_pushdown_query.call_count == 0
+        assert fs_query._register_external.call_count == 1
+        assert result == fs_query.query
 
     def test_query_online(self, mocker):
         # Arrange
