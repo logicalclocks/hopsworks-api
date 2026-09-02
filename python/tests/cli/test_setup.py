@@ -6,6 +6,7 @@ so the test can exercise branching without pulling in ``hopsworks``.
 
 from __future__ import annotations
 
+import re
 from unittest import mock
 
 import pytest
@@ -37,7 +38,18 @@ def test_suggest_key_name_sanitizes(monkeypatch):
     monkeypatch.setenv("USER", "Jim.Dowling")
     monkeypatch.setattr(setup_mod.socket, "gethostname", lambda: "dev16.hops.works")
     name = setup_mod._suggest_key_name()
-    assert name == "jim-dowling-dev16"
+    assert re.fullmatch(r"jim-dowling-dev16-[0-9a-f]{4}", name), name
+    assert name != setup_mod._suggest_key_name()  # unique per run
+
+
+def test_prefer_host_scheme():
+    f = setup_mod._prefer_host_scheme
+    assert (
+        f("http://c.example/token-flow/tf-1", "https://c.example")
+        == "https://c.example/token-flow/tf-1"
+    )
+    assert f("http://other/x", "https://c.example") == "http://other/x"
+    assert f("https://c.example/x", "https://c.example") == "https://c.example/x"
 
 
 def test_setup_short_circuits_when_cached_key_works(tmp_home, monkeypatch):
