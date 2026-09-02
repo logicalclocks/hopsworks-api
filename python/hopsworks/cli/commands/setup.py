@@ -12,8 +12,10 @@ from __future__ import annotations
 import os
 import platform
 import re
+import secrets
 import socket
 import time
+import urllib.parse
 import webbrowser
 from typing import Any
 
@@ -30,17 +32,36 @@ KEY_NAME_REGEX = re.compile(r"^[a-zA-Z0-9_-]{1,45}$")
 
 
 def _suggest_key_name() -> str:
-    """Produce a default API key name like ``jim-laptop`` or ``jdowling-dev``.
+    """Produce a default API key name like ``jim-laptop-k3x9``.
 
     Uses ``$USER`` and the short hostname; any character outside ``[a-z0-9_-]``
     is stripped so the result satisfies the backend's validation regex on the
-    first try. Length is clipped to 45.
+    first try. The suffix makes every run's suggestion unique: a setup whose
+    key was minted but whose verification failed leaves that key on the
+    server, and a retry suggesting the same name is refused as a duplicate.
+    Length is clipped to 45.
     """
     user = os.environ.get("USER") or os.environ.get("USERNAME") or "hops"
     host = socket.gethostname().split(".", 1)[0] or platform.node().split(".", 1)[0]
     raw = f"{user}-{host}".lower()
     sanitized = re.sub(r"[^a-z0-9_-]+", "-", raw).strip("-") or "hops-cli"
-    return sanitized[:45]
+    suffix = secrets.token_hex(2)
+    return f"{sanitized[:40]}-{suffix}"
+
+
+def _prefer_host_scheme(web_url: str, host: str) -> str:
+    """Give ``web_url`` the scheme of ``host`` when both name the same server.
+
+    Behind the ingress the backend sees plain http and builds the flow URL
+    from that, so the CLI would print an http link to a cluster the user
+    reached over https (the browser then redirects, and the page's service
+    worker fails on the mixed origin).
+    """
+    web = urllib.parse.urlsplit(web_url)
+    wanted = urllib.parse.urlsplit(host)
+    if web.netloc != wanted.netloc or web.scheme == wanted.scheme:
+        return web_url
+    return urllib.parse.urlunsplit((wanted.scheme,) + web[1:])
 
 
 def _open_browser(url: str, headless: bool) -> bool:
@@ -322,7 +343,7 @@ def setup_cmd(
 
     flow_id = created["flowId"]
     wait_secret = created["waitSecret"]
-    web_url = created["webUrl"]
+    web_url = _prefer_host_scheme(created["webUrl"], host)
 
     opened = _open_browser(web_url, headless=no_browser)
     output.info("")
