@@ -145,6 +145,109 @@ def test_setup_runs_token_flow_when_forced(tmp_home):
     assert saved.project == "demo"
 
 
+def _flow_post(create=None, wait=None):
+    """A ``requests.post`` stand-in routing /create and /wait to canned payloads."""
+    created = mock.Mock()
+    created.json.return_value = create or {
+        "flowId": "tf-abc",
+        "waitSecret": "sekret",
+        "webUrl": "https://c.app.hopsworks.ai/token-flow/tf-abc",
+    }
+    created.raise_for_status = mock.Mock()
+    waited = mock.Mock()
+    waited.json.return_value = wait or {
+        "apiKey": "NEW.KEY",
+        "workspaceUsername": "demo",
+        "apiKeyName": "jim-laptop",
+        "timeout": False,
+    }
+    waited.raise_for_status = mock.Mock()
+
+    def _post(url, *args, **kwargs):
+        return waited if "/wait/" in url else created
+
+    return _post
+
+
+def _run_token_flow(argv, wait=None):
+    """Invoke `hops setup` with the token flow mocked out, and return the post mock."""
+    with (
+        mock.patch.object(
+            setup_mod.requests, "post", side_effect=_flow_post(wait=wait)
+        ) as post,
+        mock.patch.object(setup_mod, "_open_browser", return_value=True),
+        mock.patch.object(setup_mod.auth, "verify") as verify,
+    ):
+        verify.return_value = mock.Mock()
+        verify.return_value.name = "demo"
+        result = CliRunner().invoke(cli, argv)
+    assert result.exit_code == 0, result.output
+    return post
+
+
+def test_setup_new_host_drops_cached_project(tmp_home):
+    """--host for another cluster must not verify the cached project there."""
+    config.save(
+        config.HopsConfig(
+            host="https://old.example",
+            api_key="OLD.KEY",
+            api_key_name="jim-laptop",
+            project="blah",
+            project_id=7,
+        )
+    )
+    create_mock = mock.Mock()
+    create_mock.json.return_value = {
+        "flowId": "tf-new",
+        "waitSecret": "s",
+        "webUrl": "https://new.example/token-flow/tf-new",
+    }
+    wait_mock = mock.Mock()
+    wait_mock.json.return_value = {
+        "apiKey": "NEW.KEY",
+        "workspaceUsername": "fresh",
+        "apiKeyName": "jim-laptop",
+        "timeout": False,
+    }
+
+    def _post(url, *args, **kwargs):
+        return wait_mock if "/wait/" in url else create_mock
+
+    with (
+        mock.patch.object(setup_mod.requests, "post", side_effect=_post),
+        mock.patch.object(setup_mod, "_open_browser", return_value=True),
+        mock.patch.object(setup_mod.auth, "verify") as verify,
+    ):
+        verify.return_value = mock.Mock()
+        verify.return_value.name = "fresh"
+        result = CliRunner().invoke(
+            cli, ["setup", "--host", "https://new.example", "--key-name", "jim-laptop"]
+        )
+
+    assert result.exit_code == 0, result.output
+    verify.assert_called_once()
+    assert verify.call_args.kwargs["project"] == "fresh"
+    assert verify.call_args.kwargs["host"] == "https://new.example"
+    saved = config.load()
+    assert (saved.host, saved.api_key, saved.project) == (
+        "https://new.example",
+        "NEW.KEY",
+        "fresh",
+    )
+    assert saved.project_id is None
+    assert "differs from the cached" in result.output
+
+
+def test_setup_token_flow_verifies_tls_by_default(tmp_home):
+    # Without an explicit opt-out the flow stays strict: the /wait response
+    # carries a fresh API key, so the conservative default matters.
+    post = _run_token_flow(
+        ["setup", "--host", "https://c.app.hopsworks.ai", "--key-name", "k", "--force"],
+    )
+    for call in post.call_args_list:
+        assert call.kwargs["verify"] is True
+
+
 def test_setup_rejects_bad_key_name(tmp_home):
     result = CliRunner().invoke(
         cli,
@@ -178,30 +281,6 @@ def test_setup_internal_mode_does_not_write_config(tmp_home, monkeypatch):
     assert not (tmp_home / ".hops.toml").exists()
 
 
-def _flow_post(create=None, wait=None):
-    """A ``requests.post`` stand-in routing /create and /wait to canned payloads."""
-    created = mock.Mock()
-    created.json.return_value = create or {
-        "flowId": "tf-abc",
-        "waitSecret": "sekret",
-        "webUrl": "https://c.app.hopsworks.ai/token-flow/tf-abc",
-    }
-    created.raise_for_status = mock.Mock()
-    waited = mock.Mock()
-    waited.json.return_value = wait or {
-        "apiKey": "FRESH.KEY",
-        "workspaceUsername": "demo",
-        "apiKeyName": "jim-laptop",
-        "timeout": False,
-    }
-    waited.raise_for_status = mock.Mock()
-
-    def _post(url, *args, **kwargs):
-        return waited if "/wait/" in url else created
-
-    return _post
-
-
 def test_setup_signs_in_again_when_the_cached_key_is_dead(tmp_home):
     """A stale key must not end the command: re-running `hops setup` reconnects."""
     config.save(
@@ -229,7 +308,7 @@ def test_setup_signs_in_again_when_the_cached_key_is_dead(tmp_home):
     assert result.exit_code == 0, result.output
     assert verify.call_count == 2  # the dead cached key, then the fresh one
     assert "signing in again" in result.output
-    assert config.load().api_key == "FRESH.KEY"
+    assert config.load().api_key == "NEW.KEY"
 
 
 def test_setup_success_prints_a_single_line(tmp_home):

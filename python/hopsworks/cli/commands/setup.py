@@ -296,6 +296,8 @@ def setup_cmd(
         insecure: When True, skip TLS verification entirely (with warning).
     """
     cfg = config.load(flag_host=host_flag)
+    if host_flag and not cfg.internal:
+        _forget_other_cluster(cfg, host_flag)
 
     if cfg.internal:
         _handle_internal(cfg)
@@ -371,6 +373,31 @@ def setup_cmd(
 
     _finalize_setup(host, api_key, project, server_key_name, cfg)
     return None
+
+
+def _forget_other_cluster(cfg: config.HopsConfig, host_flag: str) -> None:
+    """Drop the cached key and project when ``--host`` names another cluster.
+
+    ``config.load`` layers the flag host over the cached profile, so the cached
+    key kept ``is_authenticated()`` true and the short-circuit verified the old
+    project against the new host ("project X not found") instead of setting the
+    new cluster up. The project is chosen again in the token flow.
+    """
+    cached_host = config.load().host
+    if not cached_host:
+        return
+    if auth.normalize_host(cached_host) == auth.normalize_host(host_flag):
+        return
+    output.info(
+        "Host %s differs from the cached %s; setting up the new cluster from scratch.",
+        auth.normalize_host(host_flag),
+        cached_host,
+    )
+    cfg.api_key = None
+    cfg.api_key_name = None
+    cfg.project = None
+    cfg.project_id = None
+    cfg.feature_store_id = None
 
 
 def _finalize_setup(
