@@ -40,7 +40,7 @@ into bucket folders:
 - [hops-app](hops/hops-app/SKILL.md) — Python app deployments (Streamlit + custom apps).
 - [hops-superset](hops/hops-superset/SKILL.md) — Superset datasets / charts / dashboards.
 - [hops-agent-deployment](hops/hops-agent-deployment/SKILL.md) — served interactive agent.
-- [hops-agent-job](hops/hops-agent-job/SKILL.md) — scheduled coding-agent job.
+- [hops-agent-task](hops/hops-agent-task/SKILL.md) — scheduled coding-agent task (claude-code / codex job).
 
 > Note: `hops/` is the legacy flat bucket. New skills go in the categorized
 > buckets (`data/`, `ml/`, and future `agents/`, `dashboards/`). Migrating the

@@ -178,7 +178,7 @@ estimated; do not widen the scope of a rewrite that did not pay for itself.
 
 ## Scheduling
 
-To make this recurring, create a scheduled Hopsworks job (see hops-agent-job)
+To make this recurring, create a scheduled Hopsworks job (see hops-agent-task)
 that runs `analyze` plus `plan` and writes the report to the project; keep
 `apply` interactive so destructive actions always pass a human. A PYTHON job
 with this skill's script uploaded to `Resources/` is enough for the report.
