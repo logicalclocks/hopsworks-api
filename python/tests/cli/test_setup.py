@@ -167,6 +167,59 @@ def _run_token_flow(argv):
     return post
 
 
+def test_setup_new_host_drops_cached_project(tmp_home):
+    """--host for another cluster must not verify the cached project there."""
+    config.save(
+        config.HopsConfig(
+            host="https://old.example",
+            api_key="OLD.KEY",
+            api_key_name="jim-laptop",
+            project="blah",
+            project_id=7,
+        )
+    )
+    create_mock = mock.Mock()
+    create_mock.json.return_value = {
+        "flowId": "tf-new",
+        "waitSecret": "s",
+        "webUrl": "https://new.example/token-flow/tf-new",
+    }
+    wait_mock = mock.Mock()
+    wait_mock.json.return_value = {
+        "apiKey": "NEW.KEY",
+        "workspaceUsername": "fresh",
+        "apiKeyName": "jim-laptop",
+        "timeout": False,
+    }
+
+    def _post(url, *args, **kwargs):
+        return wait_mock if "/wait/" in url else create_mock
+
+    with (
+        mock.patch.object(setup_mod.requests, "post", side_effect=_post),
+        mock.patch.object(setup_mod, "_open_browser", return_value=True),
+        mock.patch.object(setup_mod.auth, "verify") as verify,
+    ):
+        verify.return_value = mock.Mock()
+        verify.return_value.name = "fresh"
+        result = CliRunner().invoke(
+            cli, ["setup", "--host", "https://new.example", "--key-name", "jim-laptop"]
+        )
+
+    assert result.exit_code == 0, result.output
+    verify.assert_called_once()
+    assert verify.call_args.kwargs["project"] == "fresh"
+    assert verify.call_args.kwargs["host"] == "https://new.example"
+    saved = config.load()
+    assert (saved.host, saved.api_key, saved.project) == (
+        "https://new.example",
+        "NEW.KEY",
+        "fresh",
+    )
+    assert saved.project_id is None
+    assert "differs from the cached" in result.output
+
+
 def test_setup_honors_explicit_global_no_verify(tmp_home):
     # The global --no-verify is accepted on every command; when the user passes
     # it explicitly, the token flow must not fail on a self-signed certificate
