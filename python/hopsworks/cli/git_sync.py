@@ -526,9 +526,8 @@ def _choose_method(
         output.info(
             "  [2] (unavailable here: Windows without ssh-keygen; use [1] or [3])"
         )
-    output.info(
-        "  [3] a personal access token registered with Hopsworks (clones over HTTPS)"
-    )
+    provider = git_cmd.provider_for_host(host) or "GitHub"
+    output.info("  [3] a %s personal access token", provider)
     choices = ["1", "3"] + (["2"] if can_generate else [])
     pick = click.prompt("Choice", type=click.Choice(choices), default="1")
     method = {"1": "ssh", "2": "ssh-new", "3": "token"}[pick]
