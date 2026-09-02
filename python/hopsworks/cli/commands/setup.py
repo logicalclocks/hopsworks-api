@@ -350,8 +350,6 @@ def setup_cmd(
     else:
         output.info("Visit this URL in a browser to continue:")
         output.info("  %s", web_url)
-    output.info("")
-    output.info("Waiting for authentication...")
 
     try:
         completed = _wait_for_key(api_base, flow_id, wait_secret, timeout, verify)
