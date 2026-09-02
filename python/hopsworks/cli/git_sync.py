@@ -562,10 +562,10 @@ def maybe_collect(dataset_api, teleport_user_root: str) -> dict | None:
         if not interactive:
             return None
         choice = click.prompt(
-            "Sync git state to the terminal? [y]es this time / [a]lways / "
+            "Sync git state to the terminal? [a]lways / [y]es this time / "
             "[n]ot now / n[e]ver",
-            type=click.Choice(["y", "a", "n", "e"], case_sensitive=False),
-            default="y",
+            type=click.Choice(["a", "y", "n", "e"], case_sensitive=False),
+            default="a",
         ).lower()
         if choice == "e":
             _save_prefs(answer="never")

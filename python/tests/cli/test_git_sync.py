@@ -193,6 +193,27 @@ def test_non_interactive_without_always_skips(monkeypatch):
     assert git_sync.maybe_collect(object(), "Users/lex") is None
 
 
+def test_consent_default_is_always(monkeypatch):
+    """Enter at the consent prompt persists "always"; later pushes stop asking."""
+    saved = {}
+    seen = {}
+
+    def fake_prompt(text, **kw):
+        seen["default"] = kw["default"]
+        return kw["default"]
+
+    monkeypatch.setattr(git_sync, "_repo_state", lambda: _state())
+    monkeypatch.setattr(git_sync, "_prefs", dict)
+    monkeypatch.setattr(git_sync.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(git_sync.output, "JSON_MODE", False)
+    monkeypatch.setattr(git_sync.click, "prompt", fake_prompt)
+    monkeypatch.setattr(git_sync, "_save_prefs", lambda **kw: saved.update(kw))
+    monkeypatch.setattr(git_sync, "_choose_method", lambda *a: None)
+    assert git_sync.maybe_collect(object(), "Users/lex") is None
+    assert seen["default"] == "a"
+    assert saved == {"answer": "always"}
+
+
 def test_passphrase_key_prints_unsupported(monkeypatch, tmp_path, capsys):
     key = tmp_path / "id_rsa"
     key.write_text("locked")
