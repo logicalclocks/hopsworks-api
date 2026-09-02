@@ -228,6 +228,30 @@ public class ColumnProfilerSmokeTest {
     Assertions.assertEquals(9, col.get("exactNumDistinctValues").asLong());
   }
 
+  @Test
+  void profilesAllNaNColumnWithoutThrowing() throws Exception {
+    // Spark counts NaN as non-null, but KllAggregator skips NaN when building the
+    // sketch, so an all-NaN column used to reach getQuantiles with an empty sketch
+    // and fail the whole job with SketchesArgumentException.
+    StructType schema = new StructType(new StructField[]{
+      DataTypes.createStructField("all_nan", DataTypes.DoubleType, true),
+    });
+    List<Row> rows = new ArrayList<>();
+    for (int i = 0; i < 10; i++) {
+      rows.add(RowFactory.create(Double.NaN));
+    }
+    Dataset<Row> df = SparkEngine.getInstance().getSparkSession().createDataFrame(rows, schema);
+
+    String json = new ColumnProfiler().profile(df, null, false, false, 20, false, true);
+
+    JsonNode col = findColumn(new ObjectMapper().readTree(json).get("columns"), "all_nan");
+    Assertions.assertNotNull(col, "all_nan column profile must be present");
+    Assertions.assertFalse(col.has("approxPercentiles"),
+        "an empty sketch must not yield approxPercentiles");
+    Assertions.assertFalse(col.has("kll"),
+        "an empty sketch must not be emitted as kll (the serializer calls getCDF on it)");
+  }
+
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
