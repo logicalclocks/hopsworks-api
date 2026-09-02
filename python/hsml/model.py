@@ -383,6 +383,7 @@ class Model:
         vllm_variant: str | None = None,
         vllm_image_tag: str | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
+        knative_mode: bool | None = None,
     ) -> deployment.Deployment:
         """Deploy the model.
 
@@ -424,6 +425,9 @@ class Model:
             tags: Optionally the tags to attach to the deployment when it is created, in the same shapes accepted by feature groups.
                 A single [`Tag`][hopsworks.tag.Tag], a `{"name": "owner", "value": "team-a"}` dict, or a list of either, for example `[{"name": "owner", "value": "team-a"}]`.
                 The tags ride the create request, so any mandatory deployment tags missing from them cause the backend to reject the creation.
+            knative_mode: Whether to deploy in KServe Knative mode.
+                `None` (default) lets the backend decide: LLM (vLLM) deployments default to Standard, every other deployment defaults to Knative mode; on an update, `None` keeps the deployment's current mode.
+                Standard mode does not scale to zero (minimum one instance). It autoscales on a CPU or memory metric between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum), and runs a fixed replica count without autoscaler when `min_instances == max_instances` (the default for LLM deployments).
 
         Returns:
             The deployment metadata object of a new or existing deployment.
@@ -452,6 +456,7 @@ class Model:
             vllm_variant=vllm_variant,
             vllm_image_tag=vllm_image_tag,
             tags=tags,
+            knative_mode=knative_mode,
         )
 
         return predictor.deploy()

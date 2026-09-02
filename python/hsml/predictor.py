@@ -91,6 +91,7 @@ class Predictor(DeployableComponent):
         git_resolved_branch: str | None = None,
         missing_mandatory_tags: list[dict[str, Any]] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
+        knative_mode: bool | None = None,
         **kwargs,
     ):
         self._missing_mandatory_tags = missing_mandatory_tags or []
@@ -99,15 +100,24 @@ class Predictor(DeployableComponent):
             self._validate_serving_tool(serving_tool)
             or self._get_default_serving_tool()
         )
+        effective_knative_mode = self._get_effective_knative_mode(
+            knative_mode, model_server
+        )
         resources = self._validate_resources(
-            util._get_obj_from_json(resources, PredictorResources), serving_tool
-        ) or self._get_default_resources(serving_tool)
+            util._get_obj_from_json(resources, PredictorResources),
+            serving_tool,
+            effective_knative_mode,
+        ) or self._get_default_resources(serving_tool, effective_knative_mode)
 
+        # Default means "not provided": PredictorScalingConfig cannot be built without min_instances.
+        if isinstance(scaling_configuration, Default):
+            scaling_configuration = None
         self._scaling_configuration = util._get_obj_from_json(
             scaling_configuration, PredictorScalingConfig
         ) or PredictorScalingConfig.get_default_scaling_configuration(
             serving_tool=serving_tool,
             min_instances=self._get_raw_num_instances(resources),
+            effective_knative_mode=effective_knative_mode,
         )
 
         super().__init__(
@@ -150,6 +160,7 @@ class Predictor(DeployableComponent):
         self._git_resolved_branch = git_resolved_branch
         self._vllm_variant = vllm_variant
         self._vllm_image_tag = vllm_image_tag
+        self._knative_mode = knative_mode
 
     @public
     def deploy(self) -> deployment.Deployment:
@@ -241,10 +252,22 @@ class Predictor(DeployableComponent):
         )
 
     @classmethod
-    def _validate_resources(cls, resources, serving_tool):
+    def _get_effective_knative_mode(cls, knative_mode, model_server):
+        """Resolve the effective Knative mode used for client-side scaling defaults.
+
+        An explicit `knative_mode` value always wins.
+        Otherwise, every model server defaults to Knative mode except vLLM, which defaults to Standard.
+        """
+        if knative_mode is not None:
+            return knative_mode
+        return model_server != PREDICTOR.MODEL_SERVER_VLLM
+
+    @classmethod
+    def _validate_resources(cls, resources, serving_tool, effective_knative_mode=True):
         if (
             resources is not None
             and serving_tool == PREDICTOR.SERVING_TOOL_KSERVE
+            and effective_knative_mode
             and cls._get_raw_num_instances(resources) != 0
             and client._is_scale_to_zero_required()
         ):
@@ -255,10 +278,11 @@ class Predictor(DeployableComponent):
         return resources
 
     @classmethod
-    def _get_default_resources(cls, serving_tool):
+    def _get_default_resources(cls, serving_tool, effective_knative_mode=True):
         num_instances = (
             0  # enable scale-to-zero by default if required
             if serving_tool == PREDICTOR.SERVING_TOOL_KSERVE
+            and effective_knative_mode
             and client._is_scale_to_zero_required()
             else SCALING_CONFIG.MIN_NUM_INSTANCES
         )
@@ -386,6 +410,9 @@ class Predictor(DeployableComponent):
         kwargs["missing_mandatory_tags"] = util._extract_field_from_json(
             json_decamelized, "missing_mandatory_tags"
         )
+        kwargs["knative_mode"] = util._extract_field_from_json(
+            json_decamelized, "knative_mode"
+        )
         return kwargs
 
     def update_from_response_json(self, json_dict):
@@ -443,6 +470,10 @@ class Predictor(DeployableComponent):
         if self._inference_batcher is not None:
             predictor_dict = {**predictor_dict, **self._inference_batcher.to_dict()}
         if self._transformer is not None:
+            # A transformer built standalone assumed Knative mode for its defaulted instance count; re-resolve it now that the deployment mode is known (Standard mode needs at least one instance).
+            self._transformer._resolve_default_num_instances(
+                self._get_effective_knative_mode(self._knative_mode, self._model_server)
+            )
             predictor_dict = {**predictor_dict, **self._transformer.to_dict()}
         if self._tracing is not None:
             predictor_dict = {**predictor_dict, "tracing": self._tracing.to_dict()}
@@ -461,6 +492,8 @@ class Predictor(DeployableComponent):
             }
         if self._scaling_configuration is not None:
             predictor_dict = {**predictor_dict, **self._scaling_configuration.to_dict()}
+        if self._knative_mode is not None:
+            predictor_dict = {**predictor_dict, "knativeMode": self._knative_mode}
         tags_dict = tag.Tag._tags_to_dict(self._tags)
         if tags_dict:
             predictor_dict = {**predictor_dict, "tags": tags_dict}
@@ -794,6 +827,26 @@ class Predictor(DeployableComponent):
     @vllm_image_tag.setter
     def vllm_image_tag(self, vllm_image_tag: str):
         self._vllm_image_tag = vllm_image_tag
+
+    @public
+    @property
+    def knative_mode(self):
+        """Whether this deployment runs in KServe Knative mode.
+
+        `True` selects Knative mode, which supports scale-to-zero and Knative-only autoscaling.
+        `False` selects Standard mode, which requires at least one instance and autoscales on a CPU/memory metric between the minimum and maximum instances, or runs a fixed replica count when they are equal.
+        `None` leaves the mode for the backend to decide: LLM (vLLM) deployments default to Standard, every other deployment defaults to Knative mode.
+        Read the current mode from a saved deployment via this property.
+        Setting it to `None` before a save call keeps the stored mode unchanged.
+
+        Info: Adds Knative mode selection, ~=5.1.0
+            Deployments can now select between KServe Knative and Standard mode.
+        """
+        return self._knative_mode
+
+    @knative_mode.setter
+    def knative_mode(self, knative_mode: bool | None):
+        self._knative_mode = knative_mode
 
     @public
     def get_endpoint_url(self) -> str | None:

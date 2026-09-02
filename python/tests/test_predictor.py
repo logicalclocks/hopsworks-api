@@ -1526,6 +1526,219 @@ class TestPredictor:
         assert p.vllm_variant == "VLLM_OMNI"
         assert p.vllm_image_tag == "v0.14.0"
 
+    # Knative mode
+
+    def test_knative_mode_none_omitted_from_to_dict(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+
+        # Act
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="my_model",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+        )
+
+        # Assert
+        assert p.knative_mode is None
+        assert "knativeMode" not in p.to_dict()
+
+    def test_knative_mode_true_round_trip(self, mocker, backend_fixtures):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        p_json = backend_fixtures["predictor"]["get_deployments_singleton"]["response"][
+            "items"
+        ][0]
+
+        # Act
+        p = predictor.Predictor.from_response_json(p_json)
+        p.knative_mode = True
+        serialized = p.to_dict()
+        p2 = predictor.Predictor.from_response_json(serialized)
+
+        # Assert
+        assert serialized["knativeMode"] is True
+        assert p2.knative_mode is True
+
+    def test_knative_mode_false_round_trip(self, mocker, backend_fixtures):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        p_json = backend_fixtures["predictor"][
+            "get_deployment_vllm_kserve_vllm_variant"
+        ]["response"]
+
+        # Act
+        p = predictor.Predictor.from_response_json(p_json)
+        serialized = p.to_dict()
+        p2 = predictor.Predictor.from_response_json(serialized)
+
+        # Assert
+        assert p.knative_mode is False
+        assert serialized["knativeMode"] is False
+        assert p2.knative_mode is False
+
+    def test_extract_fields_from_json_reads_knative_mode(
+        self, mocker, backend_fixtures
+    ):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        p_json = backend_fixtures["predictor"][
+            "get_deployment_vllm_kserve_vllm_variant"
+        ]["response"]
+
+        # Act
+        # extract_fields_from_json expects decamelized input, as on the real
+        # from_response_json path (the backend sends camelCase knativeMode).
+        import humps
+
+        kwargs = predictor.Predictor.extract_fields_from_json(humps.decamelize(p_json))
+
+        # Assert
+        assert kwargs["knative_mode"] is False
+
+    def test_effective_knative_mode_defaults_standard_for_vllm(self, mocker):
+        # Arrange: vLLM predictors default to Standard mode, so client-side scale-to-zero and KPA-only defaults must not kick in even though the cluster forces scale-to-zero.
+        self._mock_serving_variables(
+            mocker, SERVING_NUM_INSTANCES_NO_LIMIT, force_scale_to_zero=True
+        )
+
+        # Act
+        p = predictor.Predictor(
+            name="my_llm",
+            model_server=PREDICTOR.MODEL_SERVER_VLLM,
+            model_framework=MODEL.FRAMEWORK_LLM,
+            serving_tool=PREDICTOR.SERVING_TOOL_KSERVE,
+        )
+
+        # Assert
+        assert p.knative_mode is None
+        assert p.resources.num_instances == SCALING_CONFIG.MIN_NUM_INSTANCES
+        assert p.scaling_configuration.min_instances == SCALING_CONFIG.MIN_NUM_INSTANCES
+        assert p.scaling_configuration.scale_metric is None
+
+    def test_effective_knative_mode_explicit_true_forces_scale_to_zero_for_vllm(
+        self, mocker
+    ):
+        # Arrange: an explicit knative_mode=True overrides the vLLM standard default.
+        self._mock_serving_variables(
+            mocker, SERVING_NUM_INSTANCES_NO_LIMIT, force_scale_to_zero=True
+        )
+
+        # Act
+        p = predictor.Predictor(
+            name="my_llm",
+            model_server=PREDICTOR.MODEL_SERVER_VLLM,
+            model_framework=MODEL.FRAMEWORK_LLM,
+            serving_tool=PREDICTOR.SERVING_TOOL_KSERVE,
+            knative_mode=True,
+        )
+
+        # Assert
+        assert p.resources.num_instances == 0
+        assert p.scaling_configuration.min_instances == 0
+        assert p.scaling_configuration.scale_metric.name == "CONCURRENCY"
+
+    def test_effective_knative_mode_false_skips_kpa_defaults_for_non_vllm(self, mocker):
+        # Arrange: an explicit knative_mode=False (Standard mode) must not force
+        # scale-to-zero nor fill the Knative-only scaling defaults.
+        self._mock_serving_variables(
+            mocker, SERVING_NUM_INSTANCES_NO_LIMIT, force_scale_to_zero=True
+        )
+
+        # Act
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="my_model",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+            serving_tool=PREDICTOR.SERVING_TOOL_KSERVE,
+            knative_mode=False,
+        )
+
+        # Assert
+        assert p.resources.num_instances == SCALING_CONFIG.MIN_NUM_INSTANCES
+        assert p.scaling_configuration.min_instances == SCALING_CONFIG.MIN_NUM_INSTANCES
+        assert p.scaling_configuration.scale_metric is None
+
+    def test_to_dict_resolves_default_transformer_instances_mode_aware(self, mocker):
+        # Arrange: a default-built transformer assumes Knative mode (scale-to-zero) at
+        # construction; serializing under a Standard-mode predictor must lift it to one
+        # instance or the backend rejects the deployment on scale-to-zero clusters.
+        self._mock_serving_variables(
+            mocker, SERVING_NUM_INSTANCES_NO_LIMIT, force_scale_to_zero=True
+        )
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="my_model",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+            serving_tool=PREDICTOR.SERVING_TOOL_KSERVE,
+            knative_mode=False,
+            transformer=transformer.Transformer(script_file="t.py"),
+        )
+
+        # Act
+        serialized = p.to_dict()
+
+        # Assert
+        assert serialized["requestedTransformerInstances"] == 1
+
+        # Act: the same transformer under Knative mode keeps the scale-to-zero default
+        p.knative_mode = True
+        serialized = p.to_dict()
+
+        # Assert
+        assert serialized["requestedTransformerInstances"] == 0
+
+    def test_effective_knative_mode_default_true_for_non_vllm(self, mocker):
+        # Arrange: the pre-existing behavior (knative_mode=None, non-vLLM) is preserved.
+        self._mock_serving_variables(
+            mocker, SERVING_NUM_INSTANCES_NO_LIMIT, force_scale_to_zero=True
+        )
+
+        # Act
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="my_model",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+            serving_tool=PREDICTOR.SERVING_TOOL_KSERVE,
+        )
+
+        # Assert
+        assert p.knative_mode is None
+        assert p.resources.num_instances == 0
+        assert p.scaling_configuration.min_instances == 0
+        assert p.scaling_configuration.scale_metric.name == "CONCURRENCY"
+
+    def test_llm_predictor_does_not_hardcode_knative_mode(self, mocker):
+        # Arrange: the LLM predictor subclass must not force a client-side
+        # default; None flows through untouched so the backend decides.
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        from hsml.llm.predictor import Predictor as LLMPredictor
+
+        # Act
+        p = LLMPredictor(name="my_llm")
+
+        # Assert
+        assert p.knative_mode is None
+
+    def test_llm_predictor_propagates_explicit_knative_mode(self, mocker):
+        # Arrange
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        from hsml.llm.predictor import Predictor as LLMPredictor
+
+        # Act
+        p = LLMPredictor(name="my_llm", knative_mode=True)
+
+        # Assert
+        assert p.knative_mode is True
+
     # auxiliary methods
 
     def _mock_serving_variables(
