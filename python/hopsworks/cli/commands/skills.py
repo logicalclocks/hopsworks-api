@@ -16,7 +16,6 @@ import click
 from hopsworks.cli import output
 
 
-
 def _skills_dir() -> Path | None:
     """Resolve the directory that holds the skill buckets.
 
