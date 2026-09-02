@@ -15,4 +15,4 @@ canonical list is `hops skills list --bucket hops`.
 - [hops-environments](hops-environments/SKILL.md) — Clone a base Python environment and install custom libraries for jobs/apps/deployments.
 - [hops-superset](hops-superset/SKILL.md) — Build Superset datasets, charts, and dashboards.
 - [hops-agent-deployment](hops-agent-deployment/SKILL.md) — Deploy an interactive agent (e.g. LlamaIndex) as a served deployment.
-- [hops-agent-job](hops-agent-job/SKILL.md) — Create/schedule a coding-agent (claude-code / codex) job.
+- [hops-agent-task](hops-agent-task/SKILL.md) — Create/schedule an agent task: a coding-agent (claude-code / codex) job.

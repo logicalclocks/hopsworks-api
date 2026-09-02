@@ -1,6 +1,6 @@
 ---
-name: hops-agent-job
-description: Use when creating, configuring, scheduling, or running claude-code or codex jobs/workflows. 
+name: hops-agent-task
+description: Use when creating, configuring, scheduling, or running an agent task (a claude-code or codex job/workflow).
 ---
 
 # Creating Agent Jobs
