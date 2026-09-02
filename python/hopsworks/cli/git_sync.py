@@ -1,11 +1,22 @@
 """Git-state sync for ``hops session push`` (HWORKS-3147).
 
 Collects the cwd's git context (remotes, branch, HEAD) into the teleport
-manifest and stages the user's SSH key into their private HopsFS home, so the
-pod's landing hook can check out the same repo at the same commit before it
-resumes the session. v1 is SSH-key-only: HTTPS remotes are refused with a
-one-line message, and passphrase-protected keys are unsupported (no agent runs
-on the pod).
+manifest and arranges the credential the pod needs to check out the same repo
+at the same commit before it resumes the session. Two ways to authenticate the
+pod, chosen by the user the first time and remembered:
+
+* ``ssh``: a passphrase-free SSH private key staged once into the user's
+  private HopsFS home. Either an existing key, or one generated here for
+  Hopsworks (``ssh-keygen``, then ``gh ssh-key add`` when the GitHub CLI is
+  logged in). Generation is offered on Linux, macOS and WSL; a native Windows
+  host must point at an existing key.
+* ``token``: a personal access token registered with Hopsworks
+  (``hops git provider set``). The pod clones over HTTPS through the
+  credential store its entrypoint fills from that token, so no key travels.
+  This is the only option for an HTTPS remote, and an SSH remote is rewritten
+  to its HTTPS form for the pod when the user picks it.
+
+Passphrase-protected keys are unsupported (no agent runs on the pod).
 
 Everything here is gated and consent-driven: nothing is collected or uploaded
 unless the cwd is a git work tree, the branch's remote is an SSH remote, and
@@ -19,6 +30,8 @@ from __future__ import annotations
 
 import contextlib
 import os
+import platform
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -26,10 +39,15 @@ from pathlib import Path
 
 import click
 from hopsworks.cli import config, output
+from hopsworks.cli.commands import git as git_cmd
 
 
-_UNSUPPORTED_REMOTE = "git sync only supported for ssh key git usage"
+_UNSUPPORTED_REMOTE = "git sync needs an SSH or HTTPS remote"
 _UNSUPPORTED_KEY = "git sync not supported for passphrase-protected ssh keys"
+# The key generated for Hopsworks when the user asks for a new one; kept apart
+# from their personal identity so it can be revoked on its own.
+_NEW_KEY_NAME = "hopsworks_teleport_ed25519"
+_NEW_KEY_COMMENT = "hopsworks-teleport"
 
 
 def _git(args: list[str], cwd: str | None = None) -> tuple[int, str]:
@@ -66,6 +84,112 @@ def _ssh_host(url: str) -> str:
         rest = url.split(":", 1)[0]
     host = rest.rsplit("@", 1)[-1]
     return host.split(":", 1)[0]
+
+
+def _is_https_url(url: str) -> bool:
+    return url.startswith(("https://", "http://"))
+
+
+def _https_host(url: str) -> str:
+    """The host of an HTTPS git URL, without credentials or port."""
+    rest = url.split("://", 1)[1].split("/", 1)[0]
+    return rest.rsplit("@", 1)[-1].split(":", 1)[0]
+
+
+def _remote_host(url: str) -> str:
+    return _https_host(url) if _is_https_url(url) else _ssh_host(url)
+
+
+def _ssh_to_https(url: str) -> str:
+    """Rewrite a git SSH URL to the HTTPS form of the same repository.
+
+    ``git@github.com:org/repo.git`` -> ``https://github.com/org/repo.git`` and
+    ``ssh://git@host[:port]/org/repo.git`` -> ``https://host/org/repo.git``. Used
+    when the pod authenticates with a provider token: the token only works over
+    HTTPS, while the laptop keeps its SSH remote untouched.
+    """
+    if _is_https_url(url):
+        return url
+    if url.startswith("ssh://"):
+        rest = url[len("ssh://") :]
+        hostpart, _, path = rest.partition("/")
+        host = hostpart.rsplit("@", 1)[-1].split(":", 1)[0]
+        return f"https://{host}/{path}"
+    hostpart, _, path = url.partition(":")
+    host = hostpart.rsplit("@", 1)[-1]
+    return f"https://{host}/{path}"
+
+
+def _can_generate_key() -> bool:
+    """Whether a new key can be generated on this host.
+
+    Linux, macOS and WSL (which reports Linux) qualify when ssh-keygen is present.
+    Native Windows does not; the user points at an existing key instead.
+    """
+    return platform.system() != "Windows" and shutil.which("ssh-keygen") is not None
+
+
+def _generate_key(path: Path) -> bool:
+    """Create a passphrase-free ed25519 keypair at ``path`` (and ``path.pub``)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with contextlib.suppress(OSError):
+        path.parent.chmod(0o700)
+    try:
+        proc = subprocess.run(
+            [
+                "ssh-keygen",
+                "-q",
+                "-t",
+                "ed25519",
+                "-N",
+                "",
+                "-C",
+                _NEW_KEY_COMMENT,
+                "-f",
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return proc.returncode == 0 and path.is_file()
+
+
+def _gh_add_key(pub: Path) -> bool | None:
+    """Register ``pub`` with GitHub through the gh CLI.
+
+    None when gh is absent or not logged in (the caller prints manual steps),
+    True on success, False when gh refused (already registered, no scope).
+    """
+    gh = shutil.which("gh")
+    if not gh:
+        return None
+    try:
+        status = subprocess.run(
+            [gh, "auth", "status"],
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+        if status.returncode != 0:
+            return None
+        proc = subprocess.run(
+            [gh, "ssh-key", "add", str(pub), "--title", _NEW_KEY_COMMENT],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        output.warn("gh ssh-key add failed: %s", (proc.stderr or proc.stdout).strip())
+        return False
+    return True
 
 
 def _repo_state() -> dict | None:
@@ -316,6 +440,102 @@ def _stage_key(dataset_api, teleport_user_root: str, key: Path) -> str | None:
     return key_name
 
 
+def _ensure_token(host: str, interactive: bool) -> bool:
+    """Make sure a provider token for ``host`` is registered with Hopsworks.
+
+    Uses the one already registered when present; otherwise, interactively,
+    asks for the username and token (hidden) and registers them, exactly like
+    ``hops git provider set``. Non-interactive runs never prompt.
+    """
+    provider = git_cmd.provider_for_host(host)
+    if provider is None:
+        if not interactive:
+            return False
+        provider = click.prompt(
+            f"Which Git provider is {host}?",
+            type=click.Choice(["GitHub", "GitLab", "BitBucket"], case_sensitive=False),
+            default="GitLab" if "gitlab" in host.lower() else "GitHub",
+        )
+        provider = git_cmd.canonical_provider(provider)
+    try:
+        existing = git_cmd.find_provider(provider, host)
+    except Exception as exc:  # noqa: BLE001 - a lookup failure must not break the push
+        output.warn("Could not read your Git providers (%s); git sync skipped.", exc)
+        return False
+    if existing:
+        output.info(
+            "Using your registered %s token for %s (username %s).",
+            provider,
+            host,
+            existing.username,
+        )
+        return True
+    if not interactive:
+        output.info(
+            "git sync skipped: no %s token registered for %s. Register one with "
+            "`hops git provider set --provider %s`.",
+            provider,
+            host,
+            provider.lower(),
+        )
+        return False
+    output.info(
+        "The pod clones over HTTPS with a %s personal access token registered with "
+        "Hopsworks (it needs repo read access; it is stored in your account, never "
+        "in the manifest).",
+        provider,
+    )
+    if not click.confirm(f"Register a {provider} token for {host} now?", default=True):
+        output.info("git sync skipped.")
+        return False
+    username = click.prompt(f"{provider} username")
+    token = click.prompt(f"{provider} personal access token", hide_input=True)
+    try:
+        git_cmd.register_provider(provider, username, token, host)
+    except Exception as exc:  # noqa: BLE001
+        output.warn("Could not register the token (%s); git sync skipped.", exc)
+        return False
+    output.success("✓ Registered %s token for %s", provider, host)
+    return True
+
+
+def _choose_method(
+    host: str, https_remote: bool, prefs: dict, interactive: bool
+) -> str | None:
+    """Pick how the pod authenticates: ``ssh``, ``ssh-new`` or ``token``.
+
+    An HTTPS remote can only work with a token. For an SSH remote the stored
+    preference wins; otherwise the user chooses once and the choice persists.
+    """
+    if https_remote:
+        return "token"
+    method = prefs.get("method")
+    if method in ("ssh", "token"):
+        return method
+    if not interactive:
+        return "ssh"  # the pre-existing default: the key ssh -G resolves
+    can_generate = _can_generate_key()
+    output.info("How should the terminal pod authenticate to %s?", host)
+    output.info("  [1] an existing SSH private key")
+    if can_generate:
+        output.info(
+            "  [2] a new passphrase-free SSH key created for Hopsworks "
+            "(added to GitHub with gh when it is logged in)"
+        )
+    else:
+        output.info(
+            "  [2] (unavailable here: Windows without ssh-keygen; use [1] or [3])"
+        )
+    output.info(
+        "  [3] a personal access token registered with Hopsworks (clones over HTTPS)"
+    )
+    choices = ["1", "3"] + (["2"] if can_generate else [])
+    pick = click.prompt("Choice", type=click.Choice(choices), default="1")
+    method = {"1": "ssh", "2": "ssh-new", "3": "token"}[pick]
+    _save_prefs(method="token" if method == "token" else "ssh")
+    return method
+
+
 def maybe_collect(dataset_api, teleport_user_root: str) -> dict | None:
     """Run the git-sync gates and consent flow; return the manifest ``git`` object.
 
@@ -326,9 +546,12 @@ def maybe_collect(dataset_api, teleport_user_root: str) -> dict | None:
     state = _repo_state()
     if state is None:
         return None
-    if not _is_ssh_url(state["url"]):
+    url = state["url"]
+    https_remote = _is_https_url(url)
+    if not https_remote and not _is_ssh_url(url):
         output.info(_UNSUPPORTED_REMOTE)
         return None
+    host = _remote_host(url)
 
     interactive = not output.JSON_MODE and sys.stdin.isatty()
     prefs = _prefs()
@@ -352,17 +575,67 @@ def maybe_collect(dataset_api, teleport_user_root: str) -> dict | None:
         if choice == "a":
             _save_prefs(answer="always")
 
-    default_key = Path(prefs.get("key_file", "")).expanduser()
-    if not default_key.is_file():
-        default_key = _default_key(_ssh_host(state["url"]))
-    if interactive:
-        # A dedicated deploy key is safer to stage than a personal identity key.
-        key = Path(click.prompt("SSH key file", default=str(default_key))).expanduser()
-    else:
-        key = default_key
-    if not key.is_file():
-        output.info("git sync skipped: %s not found.", key)
+    method = _choose_method(host, https_remote, prefs, interactive)
+    if method is None:
         return None
+
+    common = {
+        "root_rel_cwd": state["root_rel_cwd"],
+        "remote": state["remote"],
+        "branch": state["branch"],
+        "head": state["head"],
+    }
+
+    if method == "token":
+        if not _ensure_token(host, interactive):
+            return None
+        if not _ensure_clean_and_pushed(state, interactive):
+            return None
+        # The pod only has the token, so every remote it gets is the HTTPS form;
+        # the laptop's own remotes are left as they are.
+        return {
+            **common,
+            "auth": "token",
+            "remotes": {n: _ssh_to_https(u) for n, u in state["remotes"].items()},
+            "head": state["head"],
+        }
+
+    if method == "ssh-new":
+        key = Path.home() / ".ssh" / _NEW_KEY_NAME
+        if key.is_file():
+            output.info("Reusing the Hopsworks key at %s.", key)
+        elif _generate_key(key):
+            output.success("✓ Generated a passphrase-free ed25519 key at %s", key)
+        else:
+            output.warn("ssh-keygen failed; git sync skipped.")
+            return None
+        pub = key.with_suffix(".pub")
+        added = _gh_add_key(pub)
+        if added is True:
+            output.success(
+                "✓ Added the public key to your GitHub account (gh ssh-key add)"
+            )
+        elif added is None:
+            output.info(
+                "GitHub CLI not available or not logged in. Add this public key at "
+                "https://github.com/settings/keys (or your provider's SSH keys page):"
+            )
+            with contextlib.suppress(OSError):
+                output.info("  %s", pub.read_text().strip())
+    else:
+        default_key = Path(prefs.get("key_file", "")).expanduser()
+        if not default_key.is_file():
+            default_key = _default_key(host)
+        if interactive:
+            # A dedicated deploy key is safer to stage than a personal identity key.
+            key = Path(
+                click.prompt("SSH key file", default=str(default_key))
+            ).expanduser()
+        else:
+            key = default_key
+        if not key.is_file():
+            output.info("git sync skipped: %s not found.", key)
+            return None
     if not _key_passphrase_free(key):
         output.info(_UNSUPPORTED_KEY)
         return None
@@ -376,10 +649,9 @@ def maybe_collect(dataset_api, teleport_user_root: str) -> dict | None:
         return None
 
     return {
-        "root_rel_cwd": state["root_rel_cwd"],
+        **common,
+        "auth": "ssh",
         "remotes": state["remotes"],
-        "remote": state["remote"],
-        "branch": state["branch"],
         "head": state["head"],
         "key_name": key_name,
     }
