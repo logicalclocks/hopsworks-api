@@ -392,10 +392,15 @@ public class ColumnProfiler {
 
     if (kll && nonNullVal > 0) {
       byte[] kllBytes = computeKll(df, nn);
-      builder.kllBytes(kllBytes);
       KllDoublesSketch sketch = KllAggregator.heapify(kllBytes);
-      double[] percentiles = sketch.getQuantiles(PERCENTILE_FRACTIONS);
-      builder.approxPercentiles(percentiles);
+      // Spark counts NaN as non-null but the sketch skips it, so an all-NaN column
+      // yields an empty sketch. getQuantiles here and getCDF in the serializer both
+      // throw on one, so emit no KLL for it.
+      if (!sketch.isEmpty()) {
+        builder.kllBytes(kllBytes);
+        double[] percentiles = sketch.getQuantiles(PERCENTILE_FRACTIONS);
+        builder.approxPercentiles(percentiles);
+      }
     } else if (!kll && nonNullVal > 0) {
       double[] percentiles = computeApproxPercentiles(df, nn);
       builder.approxPercentiles(percentiles);
