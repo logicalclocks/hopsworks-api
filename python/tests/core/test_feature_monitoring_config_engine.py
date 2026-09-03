@@ -605,6 +605,27 @@ class TestFeatureMonitoringConfigEngine:
         assert resolved is not None
         assert resolved.name == "intt"
 
+    def test_resolve_event_time_feature_on_feature_group_missing_raises(
+        self, backend_fixtures
+    ):
+        """A persisted event_time that no longer names a feature must fail loudly.
+
+        Returning None here would silently send the run down the commit-time path.
+        """
+        from hopsworks_common.client.exceptions import FeatureStoreException
+        from hsfs import feature_group as feature_group_mod
+
+        config_engine = feature_monitoring_config_engine.FeatureMonitoringConfigEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+        fg = feature_group_mod.FeatureGroup.from_response_json(
+            backend_fixtures["feature_group"]["get"]["response"]
+        )
+
+        with pytest.raises(FeatureStoreException, match="no longer part of"):
+            config_engine._resolve_event_time_feature(fg, "dropped_feature")
+
     def test_resolve_event_time_feature_on_feature_view_uses_source_feature_group(
         self,
     ):

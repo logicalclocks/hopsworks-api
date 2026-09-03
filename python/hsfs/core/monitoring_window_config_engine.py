@@ -433,12 +433,21 @@ class MonitoringWindowConfigEngine:
             if merged_fds_list is not None:
                 return merged_fds_list
 
-            # Fetch the actual data for which to compute statistics based on row_percentage and time window
+            # Fetch the actual data for which to compute statistics based on row_percentage and time window.
+            # An ALL_TIME window is the latest snapshot on either basis: with an event-time
+            # feature no time filter is applied at all (the window bounds above are kept
+            # only for registering the statistics), whereas the commit-time path still
+            # anchors the snapshot with as_of.
+            all_time_event_window = (
+                event_time_feature is not None
+                and monitoring_window_config.window_config_type
+                == mwc.WindowConfigType.ALL_TIME
+            )
             entity_feature_df = self._fetch_entity_data_in_monitoring_window(
                 entity=entity,
                 feature_names=feature_names,
-                start_time=start_time,
-                end_time=end_time,
+                start_time=None if all_time_event_window else start_time,
+                end_time=None if all_time_event_window else end_time,
                 row_percentage=monitoring_window_config.row_percentage,
                 model_filter=model_filter,
                 event_time_feature=event_time_feature,

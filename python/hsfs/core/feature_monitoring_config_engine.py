@@ -877,7 +877,13 @@ class FeatureMonitoringConfigEngine:
         from hsfs import feature_group as _fg_mod
 
         if isinstance(entity, _fg_mod.FeatureGroup):
-            return entity.get_feature(event_time_name)
+            feature = entity.get_feature(event_time_name)
+            if feature is None:
+                raise FeatureStoreException(
+                    f"event_time feature '{event_time_name}' is no longer part of "
+                    f"'{getattr(entity, 'name', entity)}'."
+                )
+            return feature
 
         from hsfs.feature import Feature
 

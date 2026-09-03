@@ -602,6 +602,64 @@ class TestMonitoringWindowConfigEngine:
         assert "start_commit_time" not in call_kwargs
         assert "end_commit_time" not in call_kwargs
 
+    @pytest.mark.parametrize(
+        "window_type, expect_bounds",
+        [
+            (mwc.WindowConfigType.ALL_TIME, False),
+            (mwc.WindowConfigType.ROLLING_TIME, True),
+        ],
+    )
+    def test_run_single_window_monitoring_all_time_event_window_has_no_time_filter(
+        self, mocker, window_type, expect_bounds
+    ):
+        """FSTORE-2106: an ALL_TIME window on an event-time basis reads the latest snapshot.
+
+        No time filter is applied to the read, while the registered statistics still
+        carry the window's event-time end bound. A ROLLING_TIME window keeps its bounds.
+        """
+        fg = _make_hudi_fg("DELTA")
+        window_config = mwc.MonitoringWindowConfig(
+            window_config_type=window_type,
+            time_offset="1d" if expect_bounds else None,
+            row_percentage=1.0,
+        )
+        engine = mwce.MonitoringWindowConfigEngine()
+        mocker.patch.object(engine, "_init_statistics_engine")
+        stats_engine_mock = MagicMock()
+        stats_engine_mock._get_by_time_window.return_value = None
+        saved = MagicMock()
+        saved.feature_descriptive_statistics = [
+            FeatureDescriptiveStatistics(feature_name="amount", count=10)
+        ]
+        stats_engine_mock._compute_and_save_monitoring_statistics.return_value = saved
+        engine._statistics_engine = stats_engine_mock
+        fetch_mock = mocker.patch.object(
+            engine, "_fetch_entity_data_in_monitoring_window", return_value=MagicMock()
+        )
+
+        engine._run_single_window_monitoring(
+            entity=fg,
+            monitoring_window_config=window_config,
+            feature_names=["amount"],
+            event_time_feature=Feature("event_ts", type="timestamp"),
+        )
+
+        fetch_kwargs = fetch_mock.call_args.kwargs
+        assert fetch_kwargs["event_time_feature"].name == "event_ts"
+        if expect_bounds:
+            assert fetch_kwargs["start_time"] is not None
+            assert fetch_kwargs["end_time"] is not None
+        else:
+            assert fetch_kwargs["start_time"] is None
+            assert fetch_kwargs["end_time"] is None
+        save_kwargs = (
+            stats_engine_mock._compute_and_save_monitoring_statistics.call_args.kwargs
+        )
+        assert save_kwargs["event_time"] == "event_ts"
+        assert save_kwargs["window_end_event_time"] is not None
+        assert save_kwargs["window_start_commit_time"] is None
+        assert save_kwargs["window_end_commit_time"] is None
+
     def test_run_single_window_monitoring_cache_lookup_uses_commit_bounds_without_event_time(
         self, mocker
     ):
