@@ -4954,12 +4954,13 @@ class FeatureGroup(FeatureGroupBase):
                       Combining it with `timeout` `0` waits forever, since neither the entry count nor the timeout can end the wait.
                 - key `internal_kafka` and value `True` or `False` in case you established connectivity from your Python environment to the internal advertised listeners of the Hopsworks Kafka Cluster.
             storage: The storage to delete from, `"offline"` or `"online"`, mirroring [`insert`][hsfs.feature_group.FeatureGroup.insert].
-                Left unset it follows the feature group: both stores when it is online-enabled, offline alone when it is not or when its online data lives in the vector database behind an embedding index.
+                Left unset it follows the feature group: both stores when it is online-enabled, offline alone when it is not.
                 Set it to `"offline"` to delete from the offline table only, or `"online"` to delete from the online store only.
+                On a feature group with an embedding index the online store is the vector database, and the rows are removed from it by primary key.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
-            hopsworks.client.exceptions.FeatureStoreException: If `storage` is not one of `"offline"`, `"online"` or unset; or is `"online"` on a feature group that is not online-enabled or has an embedding index.
+            hopsworks.client.exceptions.FeatureStoreException: If `storage` is not one of `"offline"`, `"online"` or unset; or is `"online"` on a feature group that is not online-enabled.
         """
         # Validate before either leg runs, so an unsupported request fails without
         # mutating a store.
@@ -4975,32 +4976,12 @@ class FeatureGroup(FeatureGroupBase):
         delete_offline = storage != "online"
         delete_online = storage != "offline" and bool(self.online_enabled)
 
-        if storage == "online":
-            # Online-only, so a feature group this release cannot delete online from would
-            # delete nothing at all. Refuse rather than no-op, unlike the unset case below
-            # where the offline delete still happens.
-            if not self.online_enabled:
-                raise FeatureStoreException(
-                    "storage='online' was set but this feature group is not online-enabled."
-                )
-            if self.embedding_index is not None:
-                raise FeatureStoreException(
-                    "storage='online' is not supported for feature groups with an embedding index; "
-                    "their online data lives in the vector database, which this release does not "
-                    "delete from, so nothing would be deleted."
-                )
-        elif delete_online and self.embedding_index is not None:
-            # An embedding index keeps its online data in the vector database, which this
-            # release cannot delete from. Skip the online leg rather than refuse the whole
-            # call, since the offline delete is still what the caller asked for, but say so:
-            # the two stores are left diverged.
-            warnings.warn(
-                "The online store was not deleted from: this feature group's online data lives in the "
-                "vector database behind an embedding index, which this release does not delete from. "
-                "The offline delete was applied, so the two stores now differ for the removed rows.",
-                stacklevel=2,
+        # Online-only, so a feature group with no online store at all would delete
+        # nothing. Refuse rather than no-op.
+        if storage == "online" and not self.online_enabled:
+            raise FeatureStoreException(
+                "storage='online' was set but this feature group is not online-enabled."
             )
-            delete_online = False
 
         if delete_offline:
             # Both guards are properties of the offline delete: a HUDI delete needs Spark,
@@ -5029,7 +5010,10 @@ class FeatureGroup(FeatureGroupBase):
         if delete_online:
             # Requires an OnlineFS (clusterj-onlinefs) that understands the
             # `operation: delete` header (the release shipping the OnlineFS delete
-            # branch onward). Not runtime-gated: OnlineFS is not reachable from the
+            # branch onward), and on a feature group with an embedding index also one
+            # whose vectordb committer routes tombstones to a vector database delete
+            # rather than indexing them as documents.
+            # Not runtime-gated: OnlineFS is not reachable from the
             # client, and the backend version is not its proxy since backend, SDK and
             # OnlineFS can be versioned/backported independently. A controlled
             # deployment (helm bumps SDK images and OnlineFS together) keeps them in

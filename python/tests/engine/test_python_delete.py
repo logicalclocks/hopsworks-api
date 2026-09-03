@@ -165,19 +165,19 @@ class TestRemoveRowsValidation:
 
         commit.assert_not_called()
 
-    def test_online_only_storage_on_embedding_fg_is_rejected(self, mocker):
-        # Same reasoning: the vector database is not deletable here, and with the offline
-        # leg skipped the call would be a complete no-op.
-        from hopsworks_common.client.exceptions import FeatureStoreException
-
-        commit = mocker.patch.object(FeatureGroupEngine, "_commit_delete")
+    def test_online_only_storage_on_embedding_fg_deletes_online(self, mocker):
+        # An embedding feature group's online store is the vector database, which OnlineFS
+        # now removes from by primary key, so storage="online" is a real delete rather than
+        # something to refuse.
+        offline = mocker.patch.object(FeatureGroupEngine, "_commit_delete")
+        online = mocker.patch.object(FeatureGroupEngine, "_delete_online_records")
         fg = _stream_online_fg(mocker)
         fg._embedding_index = mocker.Mock()
 
-        with pytest.raises(FeatureStoreException, match="embedding index"):
-            fg.remove_rows(pd.DataFrame({"id": [2]}), storage="online")
+        fg.remove_rows(pd.DataFrame({"id": [2]}), storage="online")
 
-        commit.assert_not_called()
+        offline.assert_not_called()
+        online.assert_called_once()
 
     def test_online_only_storage_skips_the_offline_engine_guard(self, mocker):
         # The HUDI guard is a property of the offline delete, which an online-only delete
@@ -216,10 +216,10 @@ class TestRemoveRowsValidation:
         offline.assert_called_once()
         online.assert_not_called()
 
-    def test_embedding_fg_skips_the_online_leg_and_warns(self, mocker):
-        # The embedding index puts the online data in the vector database, which this release
-        # does not delete from. The online leg is skipped rather than failing the whole call,
-        # and the caller is warned that the two stores are left diverged.
+    def test_embedding_fg_deletes_both_stores_without_warning(self, mocker):
+        # The embedding index puts the online data in the vector database. Now that OnlineFS
+        # removes from it, unset storage deletes both stores like any other online-enabled
+        # feature group, and there is no divergence left to warn about.
         offline = mocker.patch.object(FeatureGroupEngine, "_commit_delete")
         online = mocker.patch.object(FeatureGroupEngine, "_delete_online_records")
         fg = _stream_online_fg(mocker)
@@ -229,9 +229,9 @@ class TestRemoveRowsValidation:
             warnings.simplefilter("always")
             fg.remove_rows(pd.DataFrame({"id": [2]}))
 
-        assert any("vector database" in str(w.message) for w in caught)
+        assert not any("vector database" in str(w.message) for w in caught)
         offline.assert_called_once()
-        online.assert_not_called()
+        online.assert_called_once()
 
 
 class TestCommitDeleteRecordDeprecated:
