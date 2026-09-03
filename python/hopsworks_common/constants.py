@@ -48,7 +48,16 @@ class GIT:
 
 
 class SERVICES:
-    LIST = ["JOBS", "KAFKA", "JUPYTER", "SERVING", "FEATURESTORE", "AIRFLOW"]
+    LIST = [
+        "JOBS",
+        "KAFKA",
+        "JUPYTER",
+        "SERVING",
+        "FEATURESTORE",
+        "AIRFLOW",
+        "TRINO",
+        "SUPERSET",
+    ]
 
 
 class OPENSEARCH_CONFIG:
