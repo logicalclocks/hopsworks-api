@@ -2344,14 +2344,17 @@ class Engine:
                 for _ in range(size)
             ],
             model_col_name: [model_name for _ in range(size)],
-            constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME: [
-                str(model_version) for _ in range(size)
-            ],
             time_col_name: pd.Series([now for _ in range(size)]),
             constants.FEATURE_LOGGING.LOG_ID_COLUMN_NAME: [
                 str(uuid.uuid4()) for _ in range(size)
             ],
         }
+        # Legacy (pre-FSTORE-1871) logging feature groups carry the version inside the
+        # hsml_model value and have no model_version column to receive it.
+        if model_col_name != constants.FEATURE_LOGGING.LEGACY_MODEL_COLUMN_NAME:
+            metadata[constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME] = [
+                str(model_version) for _ in range(size)
+            ]
 
         if not batch:
             for k, v in metadata.items():

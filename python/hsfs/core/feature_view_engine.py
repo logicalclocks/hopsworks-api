@@ -2109,19 +2109,20 @@ class FeatureViewEngine:
                 )
         if model_name:
             if legacy_model_column:
-                if model_version:
-                    query = query.filter(
-                        fg.get_feature(
-                            constants.FEATURE_LOGGING.LEGACY_MODEL_COLUMN_NAME
-                        )
-                        == f"{model_name}_{model_version}"
+                # A LIKE prefix match on the concatenated value cannot express "this name,
+                # any version": `_` is a wildcard and sibling names share the prefix.
+                if not model_version:
+                    raise FeatureStoreException(
+                        "This logging feature group predates the model_name/model_version columns and "
+                        "stores the model as a single `<name>_<version>` value, so filtering by model_name "
+                        "alone is not supported. Pass `model_version` as well, or `model`."
                     )
-                else:
-                    query = query.filter(
-                        fg.get_feature(
-                            constants.FEATURE_LOGGING.LEGACY_MODEL_COLUMN_NAME
-                        ).like(f"{model_name}_%")
+                query = query.filter(
+                    fg.get_feature(constants.FEATURE_LOGGING.LEGACY_MODEL_COLUMN_NAME)
+                    == self._get_hsml_model_value(
+                        None, model_name=model_name, model_version=model_version
                     )
+                )
             else:
                 query = query.filter(
                     fg.get_feature(constants.FEATURE_LOGGING.MODEL_COLUMN_NAME)

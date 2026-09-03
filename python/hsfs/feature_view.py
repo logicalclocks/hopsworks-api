@@ -5243,7 +5243,7 @@ class FeatureView:
                 # by one. The legacy dual-feature-group row is proof the calling code predates the
                 # shift, so re-bind the arguments to the old order.
                 _logger.info(
-                    "Detected the pre-4.x `log(features, predictions)` call style on a feature view "
+                    "Detected the pre-4.6 `log(features, predictions)` call style on a feature view "
                     "with legacy logging feature groups. Re-binding the arguments accordingly. "
                     "Update the call to `log(features, predictions=...)` to silence this message."
                 )
@@ -5262,7 +5262,7 @@ class FeatureView:
                 warnings.warn(
                     "The second positional argument of `log()` is `untransformed_features`, but the "
                     "passed value matches this feature view's label schema. If you meant to log "
-                    "predictions (pre-4.x call style `log(features, predictions)`), pass them "
+                    "predictions (pre-4.6 call style `log(features, predictions)`), pass them "
                     "explicitly as `log(features, predictions=...)`.",
                     stacklevel=1,
                 )
@@ -6275,7 +6275,7 @@ class FeatureView:
     def _looks_like_prediction_data(self, data) -> bool:
         """Whether `data` matches this feature view's label schema.
 
-        Used to detect the pre-4.x positional call style `log(features, predictions)`, whose second
+        Used to detect the pre-4.6 positional call style `log(features, predictions)`, whose second
         positional argument binds to `untransformed_features` in the current signature.
         """
         label_names = self._label_column_names

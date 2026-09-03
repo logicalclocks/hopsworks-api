@@ -2808,10 +2808,13 @@ class Engine:
         logging_df = logging_df.withColumn(
             model_col_name, lit(model_name).cast(StringType())
         )
-        logging_df = logging_df.withColumn(
-            constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME,
-            lit(model_version).cast(StringType()),
-        )
+        # Legacy (pre-FSTORE-1871) logging feature groups carry the version inside the
+        # hsml_model value and have no model_version column to receive it.
+        if model_col_name != constants.FEATURE_LOGGING.LEGACY_MODEL_COLUMN_NAME:
+            logging_df = logging_df.withColumn(
+                constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME,
+                lit(model_version).cast(StringType()),
+            )
         now = datetime.now()
         logging_df = logging_df.withColumn(
             time_col_name, lit(now).cast(TimestampType())

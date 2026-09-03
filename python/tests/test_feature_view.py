@@ -699,7 +699,7 @@ class TestFeatureView:
         features_df = pd.DataFrame({"fg1_feature": [0.1, 0.2]})
         predictions_df = pd.DataFrame({"label": ["a", "b"]})
 
-        # Act: pre-4.x call style log(features, predictions) on a legacy feature view.
+        # Act: pre-4.6 call style log(features, predictions) on a legacy feature view.
         fv.log(features_df, predictions_df)
 
         # Assert: arguments are re-bound to the old positional order.
@@ -716,7 +716,7 @@ class TestFeatureView:
         predictions_df = pd.DataFrame({"label": ["a", "b"]})
         transformed_df = pd.DataFrame({"fg1_feature": [0.5, 0.6]})
 
-        # Act: pre-4.x call style log(features, predictions, transformed_features).
+        # Act: pre-4.6 call style log(features, predictions, transformed_features).
         fv.log(features_df, predictions_df, transformed_df)
 
         # Assert

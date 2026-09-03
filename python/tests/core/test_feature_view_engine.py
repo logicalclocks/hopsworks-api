@@ -5047,7 +5047,7 @@ class TestFeatureViewEngine:
         assert applied_filter._condition == "EQUALS"
         assert applied_filter._value == "test_model_2"
 
-    def test_read_feature_logs_legacy_model_name_like_filter(self, mocker):
+    def test_read_feature_logs_legacy_model_name_and_version_filter(self, mocker):
         # Arrange
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
         mocked_engine = mocker.Mock()
@@ -5065,14 +5065,87 @@ class TestFeatureViewEngine:
             feature_group.FeatureGroup, "select_all", return_value=query
         )
 
-        # Act: name-only filter falls back to a prefix match on the concatenated value.
-        fv_engine._read_feature_logs(fv=mocker.Mock(), model_name="test_model")
+        # Act
+        fv_engine._read_feature_logs(
+            fv=mocker.Mock(), model_name="test_model", model_version=3
+        )
 
-        # Assert
+        # Assert: one exact-match filter on the concatenated value.
+        assert query.filter.call_count == 1
         applied_filter = query.filter.call_args[0][0]
         assert applied_filter._feature.name == "hsml_model"
-        assert applied_filter._condition == "LIKE"
-        assert applied_filter._value == "test_model_%"
+        assert applied_filter._condition == "EQUALS"
+        assert applied_filter._value == "test_model_3"
+
+    def test_read_feature_logs_legacy_model_name_only_raises(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mocked_engine = mocker.Mock()
+        mocker.patch("hsfs.engine._get_instance", return_value=mocked_engine)
+        fv_engine = feature_view_engine.FeatureViewEngine(feature_store_id=99)
+
+        legacy_logging_fg = self._legacy_logging_fg()
+        mocker.patch.object(
+            fv_engine, "_get_logging_fg", return_value=legacy_logging_fg
+        )
+        mocker.patch.object(fv_engine, "_get_fv_feature_name_map", return_value={})
+        query = MagicMock()
+        query.filter.return_value = query
+        mocker.patch.object(
+            feature_group.FeatureGroup, "select_all", return_value=query
+        )
+
+        # Act + Assert: a LIKE prefix match would return sibling models, so refuse.
+        with pytest.raises(FeatureStoreException, match="model_name alone"):
+            fv_engine._read_feature_logs(fv=mocker.Mock(), model_name="test_model")
+
+    def test_read_feature_logs_combined_model_filter_applies_both_columns(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mocked_engine = mocker.Mock()
+        mocker.patch("hsfs.engine._get_instance", return_value=mocked_engine)
+        fv_engine = feature_view_engine.FeatureViewEngine(feature_store_id=99)
+
+        combined_logging_fg = feature_group.FeatureGroup(
+            name="fv_name_1_log",
+            version=1,
+            featurestore_id=99,
+            primary_key=["log_id"],
+            partition_key=[],
+            features=[
+                feature.Feature("log_id", primary=True, type="string"),
+                feature.Feature("model_name", type="string"),
+                feature.Feature("model_version", type="string"),
+                feature.Feature("feature_1", type="double"),
+                feature.Feature("predicted_label", type="bigint"),
+            ],
+            id=13,
+            stream=False,
+            featurestore_name="test_fs",
+        )
+        mocker.patch.object(
+            fv_engine, "_get_logging_fg", return_value=combined_logging_fg
+        )
+        mocker.patch.object(fv_engine, "_get_fv_feature_name_map", return_value={})
+        query = MagicMock()
+        query.filter.return_value = query
+        mocker.patch.object(
+            feature_group.FeatureGroup, "select_all", return_value=query
+        )
+        mock_hsml_model = mocker.Mock()
+        mock_hsml_model.name = "test_model"
+        mock_hsml_model.version = 2
+
+        # Act
+        fv_engine._read_feature_logs(fv=mocker.Mock(), hsml_model=mock_hsml_model)
+
+        # Assert: both conditions survive (Python `and` would keep only the right one).
+        applied = query.filter.call_args[0][0]
+        assert applied._type == "AND"
+        left = applied.get_left_filter_or_logic()
+        right = applied.get_right_filter_or_logic()
+        assert (left._feature.name, str(left._value)) == ("model_name", "test_model")
+        assert (right._feature.name, str(right._value)) == ("model_version", "2")
 
     def test_read_feature_logs_legacy_model_version_only_raises(self, mocker):
         # Arrange
