@@ -10279,10 +10279,14 @@ class TestPython:
         )
 
         # Act
-        logging_dataframe, _, _ = python_engine._get_feature_logging_df(**args)
+        logging_dataframe, additional_logging_features, _ = (
+            python_engine._get_feature_logging_df(**args)
+        )
 
-        # Assert: predictions stay under the bare label name and the model identity
-        # lands in the legacy hsml_model column.
+        # Assert: predictions stay under the bare label name, the model identity lands
+        # in the legacy hsml_model column, and no current-schema metadata column is
+        # reported as additional (that report is a per-write user warning).
+        assert not additional_logging_features
         assert list(logging_dataframe.columns) == [
             feat.name for feat in logging_feature_group_features
         ]
