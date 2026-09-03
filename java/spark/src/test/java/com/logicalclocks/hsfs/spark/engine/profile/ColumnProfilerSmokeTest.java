@@ -232,24 +232,37 @@ public class ColumnProfilerSmokeTest {
   void profilesAllNaNColumnWithoutThrowing() throws Exception {
     // Spark counts NaN as non-null, but KllAggregator skips NaN when building the
     // sketch, so an all-NaN column used to reach getQuantiles with an empty sketch
-    // and fail the whole job with SketchesArgumentException.
+    // and fail the whole job with SketchesArgumentException. some_nan is the
+    // counterpart the emptiness check must not swallow: NaN is present but not
+    // exclusive, so the sketch holds the finite values and KLL is still emitted.
     StructType schema = new StructType(new StructField[]{
       DataTypes.createStructField("all_nan", DataTypes.DoubleType, true),
+      DataTypes.createStructField("some_nan", DataTypes.DoubleType, true),
     });
     List<Row> rows = new ArrayList<>();
     for (int i = 0; i < 10; i++) {
-      rows.add(RowFactory.create(Double.NaN));
+      rows.add(RowFactory.create(Double.NaN, i % 2 == 0 ? Double.NaN : (double) i));
     }
     Dataset<Row> df = SparkEngine.getInstance().getSparkSession().createDataFrame(rows, schema);
 
     String json = new ColumnProfiler().profile(df, null, false, false, 20, false, true);
+    JsonNode columns = new ObjectMapper().readTree(json).get("columns");
 
-    JsonNode col = findColumn(new ObjectMapper().readTree(json).get("columns"), "all_nan");
-    Assertions.assertNotNull(col, "all_nan column profile must be present");
-    Assertions.assertFalse(col.has("approxPercentiles"),
+    JsonNode allNan = findColumn(columns, "all_nan");
+    Assertions.assertNotNull(allNan, "all_nan column profile must be present");
+    Assertions.assertFalse(allNan.has("approxPercentiles"),
         "an empty sketch must not yield approxPercentiles");
-    Assertions.assertFalse(col.has("kll"),
+    Assertions.assertFalse(allNan.has("kll"),
         "an empty sketch must not be emitted as kll (the serializer calls getCDF on it)");
+
+    JsonNode someNan = findColumn(columns, "some_nan");
+    Assertions.assertNotNull(someNan, "some_nan column profile must be present");
+    Assertions.assertTrue(someNan.has("kll"),
+        "a sketch holding the finite values must still be emitted as kll");
+    Assertions.assertEquals(99, someNan.get("approxPercentiles").size(),
+        "a non-empty sketch must still yield the full percentile vector");
+    Assertions.assertEquals(1.0, someNan.get("approxPercentiles").get(0).asDouble(), 1e-9,
+        "percentiles must be estimated from the finite values only");
   }
 
   // ---------------------------------------------------------------------------
