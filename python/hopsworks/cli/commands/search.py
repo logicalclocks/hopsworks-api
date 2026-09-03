@@ -23,7 +23,18 @@ def search_group() -> None:
     """Search the Hopsworks feature store (project-scoped by default)."""
 
 
-@search_group.command("ls")
+@search_group.command(
+    "ls",
+    epilog="""\b
+Examples:
+  hops search ls "credit card"            free text over names, descriptions and features
+  hops search ls "credit card" --global   the same across every project you belong to
+  hops search ls --type feature amount    only features
+  hops search ls --keyword pii            entities carrying the keyword
+  hops search ls --tag quality:owner=risk entities whose tag "quality" has key owner = risk
+  hops search ls --tag gdpr:pii=true --keyword finance   filters combine
+""",
+)
 @click.argument("term", required=False)
 @click.option(
     "--global",
@@ -119,8 +130,14 @@ def search_ls(
         raise click.ClickException(f"Search failed: {exc}") from exc
 
     if not rows:
-        scope = "all projects" if global_search else "current project"
-        output.info("No results in %s.", scope)
+        if global_search:
+            output.info("No results in any project you belong to.")
+        else:
+            output.info(
+                "No results in project %s. Add --global to search every project "
+                "you belong to.",
+                getattr(project, "name", None) or "?",
+            )
         return
 
     output.print_table(["KIND", "NAME", "VERSION", "PROJECT", "DESCRIPTION"], rows)
