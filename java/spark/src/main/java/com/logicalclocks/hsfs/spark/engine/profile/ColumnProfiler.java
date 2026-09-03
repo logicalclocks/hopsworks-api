@@ -213,6 +213,14 @@ public class ColumnProfiler {
         // sample stddev. Use stddev_pop to match the Deequ baseline byte-for-byte.
         exprs.add(functions.stddev_pop(cn).alias(nn + "__stddev"));
         exprs.add(functions.sum(cn).alias(nn + "__sum"));
+        // NaN-free copies for the histogram. Spark ranks NaN above every other double, so
+        // one NaN makes __max NaN and every range derived from it NaN too. The emitted
+        // minimum/maximum keep Spark's values for Deequ parity; only the binning uses
+        // these. Same pass, no extra Spark job.
+        Column finite = functions.when(functions.not(functions.isnan(cn)), cn);
+        exprs.add(functions.min(finite).alias(nn + "__min_finite"));
+        exprs.add(functions.max(finite).alias(nn + "__max_finite"));
+        exprs.add(functions.count(finite).alias(nn + "__nonnan"));
       }
     }
     Column first = exprs.get(0);
@@ -384,9 +392,17 @@ public class ColumnProfiler {
       builder.correlations(correlationMap.get(nn));
     }
 
-    if (histogram && minVal != null && maxVal != null) {
+    // Bin over the finite values: minVal/maxVal are NaN as soon as the column holds one
+    // NaN, which would label every bin "NaN to NaN", and nonNullVal counts NaN rows that
+    // do not belong in any bin. Both are null when nothing finite exists, and the
+    // histogram is then omitted rather than emitted as garbage.
+    Double minFinite = aggRow.getAs(nn + "__min_finite");
+    Double maxFinite = aggRow.getAs(nn + "__max_finite");
+    long nonNanVal = ((Number) aggRow.getAs(nn + "__nonnan")).longValue();
+
+    if (histogram && minFinite != null && maxFinite != null) {
       List<Map<String, Object>> hist = histogramBuilder.buildNumeric(
-          df, nn, minVal, maxVal, histogramBins, nonNullVal);
+          df, nn, minFinite, maxFinite, histogramBins, nonNanVal);
       builder.histogram(hist);
     }
 

@@ -110,8 +110,7 @@ class ProfileJsonSerializer {
       map.put("histogram", profile.getHistogram());
     }
     if (profile.getKllBytes() != null) {
-      map.put("kll", buildKllMap(profile.getKllBytes(), profile.getMinimum(),
-          profile.getMaximum(), profile.getNumRecordsNonNull()));
+      map.put("kll", buildKllMap(profile.getKllBytes()));
     }
     if (profile.getApproxPercentiles() != null) {
       map.put("approxPercentiles", toDoubleList(profile.getApproxPercentiles()));
@@ -180,18 +179,32 @@ class ProfileJsonSerializer {
    * matching the numeric histogram, so read-time consumers have a histogram-from-sketch shape
    * without re-merging.
    */
-  private Map<String, Object> buildKllMap(byte[] kllBytes, double minValue, double maxValue,
-      long totalRows) {
+  private Map<String, Object> buildKllMap(byte[] kllBytes) {
     KllDoublesSketch sketch = KllAggregator.heapify(kllBytes);
     Map<String, Object> kll = new LinkedHashMap<String, Object>();
     kll.put("kllFormat", "datasketches-native-v1");
     kll.put("bytes", Base64.getEncoder().encodeToString(kllBytes));
-    kll.put("buckets", buildKllBuckets(sketch, minValue, maxValue, totalRows));
+    kll.put("buckets", buildKllBuckets(sketch));
     return kll;
   }
 
-  private List<Map<String, Object>> buildKllBuckets(KllDoublesSketch sketch,
-      double minValue, double maxValue, long totalRows) {
+  /**
+   * Bins the sketch over its own range and weight rather than the column's.
+   *
+   * <p>KllAggregator never feeds NaN to the sketch, while Spark ranks NaN above every other
+   * double and counts it as non-null: the column maximum is NaN as soon as one NaN is
+   * present, and numRecordsNonNull counts rows the sketch never saw. Reading either from the
+   * profile would put every bin edge in the wrong place and scale every count by the NaN
+   * fraction. The sketch's own min/max/N are always finite and always describe exactly the
+   * values it holds.
+   *
+   * <p>getMinItem/getMaxItem throw on an empty sketch; ColumnProfiler only sets kllBytes
+   * for a non-empty one, so this is unreachable with an empty sketch.
+   */
+  private List<Map<String, Object>> buildKllBuckets(KllDoublesSketch sketch) {
+    double minValue = sketch.getMinItem();
+    double maxValue = sketch.getMaxItem();
+    long totalRows = sketch.getN();
     int numBuckets = 20;
     double range = maxValue - minValue;
     double binWidth = range > 0 ? range / numBuckets : 1.0;

@@ -265,6 +265,68 @@ public class ColumnProfilerSmokeTest {
         "percentiles must be estimated from the finite values only");
   }
 
+  @Test
+  void binsPartlyNaNColumnOverItsFiniteRange() throws Exception {
+    // Spark ranks NaN above every other double and counts it as non-null, so a column
+    // holding one NaN reported maximum=NaN. Both bin grids were derived from that: the
+    // histogram labelled all 20 bins "NaN to NaN", and the KLL buckets fell back to a
+    // width-1.0 grid and scaled their counts by numRecordsNonNull, which counts the NaN
+    // rows the sketch never saw.
+    StructType schema = new StructType(new StructField[]{
+      DataTypes.createStructField("all_nan", DataTypes.DoubleType, true),
+      DataTypes.createStructField("some_nan", DataTypes.DoubleType, true),
+    });
+    List<Row> rows = new ArrayList<>();
+    for (int i = 0; i < 10; i++) {
+      rows.add(RowFactory.create(Double.NaN, i % 2 == 0 ? Double.NaN : (double) i));
+    }
+    Dataset<Row> df = SparkEngine.getInstance().getSparkSession().createDataFrame(rows, schema);
+
+    String json = new ColumnProfiler().profile(df, null, false, true, 20, false, true);
+    JsonNode columns = new ObjectMapper().readTree(json).get("columns");
+
+    // some_nan holds 1, 3, 5, 7, 9 plus five NaN: bins span [1, 9] and hold five rows.
+    JsonNode someNan = findColumn(columns, "some_nan");
+    Assertions.assertNotNull(someNan, "some_nan column profile must be present");
+    JsonNode histogram = someNan.get("histogram");
+    Assertions.assertNotNull(histogram, "some_nan must have a histogram");
+    Assertions.assertEquals(20, histogram.size(), "histogram must have 20 bins");
+
+    long histTotal = 0;
+    double ratioTotal = 0.0;
+    for (JsonNode bin : histogram) {
+      Assertions.assertFalse(bin.get("value").asText().contains("NaN"),
+          "no bin label may be derived from a NaN range: " + bin.get("value").asText());
+      histTotal += bin.get("count").asLong();
+      ratioTotal += bin.get("ratio").asDouble();
+    }
+    Assertions.assertEquals(5, histTotal, "histogram must count the five finite values only");
+    Assertions.assertEquals(1.0, ratioTotal, 1e-9, "bin ratios must sum to 1 over non-NaN rows");
+    Assertions.assertTrue(histogram.get(0).get("value").asText().startsWith("1.00 to"),
+        "first bin must start at the finite minimum, not NaN: "
+            + histogram.get(0).get("value").asText());
+
+    // The KLL buckets bin the sketch over its own range and weight.
+    JsonNode buckets = someNan.get("kll").get("buckets");
+    Assertions.assertEquals(20, buckets.size(), "kll must have 20 buckets");
+    Assertions.assertEquals(1.0, buckets.get(0).get("low_value").asDouble(), 1e-9,
+        "first bucket must start at the sketch minimum");
+    Assertions.assertEquals(9.0, buckets.get(19).get("high_value").asDouble(), 1e-9,
+        "last bucket must end at the sketch maximum, not a width-1.0 fallback grid");
+    long bucketTotal = 0;
+    for (JsonNode bucket : buckets) {
+      bucketTotal += bucket.get("count").asLong();
+    }
+    Assertions.assertEquals(5, bucketTotal,
+        "bucket counts must be scaled by the sketch weight, not numRecordsNonNull");
+
+    // Nothing finite to bin: the histogram is omitted rather than emitted as NaN bins.
+    JsonNode allNan = findColumn(columns, "all_nan");
+    Assertions.assertNotNull(allNan, "all_nan column profile must be present");
+    Assertions.assertFalse(allNan.has("histogram"),
+        "a column with no finite values must not emit a histogram");
+  }
+
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
