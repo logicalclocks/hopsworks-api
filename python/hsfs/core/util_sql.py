@@ -80,6 +80,7 @@ async def _create_async_engine(
     default_min_size: int,
     options: dict[str, Any] | None = None,
     hostname: str | None = None,
+    default_max_size: int | None = None,
 ) -> Any:
     try:
         loop = asyncio.get_running_loop()
@@ -111,7 +112,7 @@ async def _create_async_engine(
         db=url.database,
         loop=loop,
         minsize=options.get("minsize", default_min_size),
-        maxsize=options.get("maxsize", default_min_size),
+        maxsize=options.get("maxsize", default_max_size or default_min_size),
         pool_recycle=options.get("pool_recycle", 14400),
         autocommit=options.get("autocommit", True),
     )
