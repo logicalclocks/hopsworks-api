@@ -4976,13 +4976,12 @@ class FeatureGroup(FeatureGroupBase):
         delete_offline = storage != "online"
         delete_online = storage != "offline" and bool(self.online_enabled)
 
-        if storage == "online":
-            # Online-only, so a feature group with no online store at all would delete
-            # nothing. Refuse rather than no-op.
-            if not self.online_enabled:
-                raise FeatureStoreException(
-                    "storage='online' was set but this feature group is not online-enabled."
-                )
+        # Online-only, so a feature group with no online store at all would delete
+        # nothing. Refuse rather than no-op.
+        if storage == "online" and not self.online_enabled:
+            raise FeatureStoreException(
+                "storage='online' was set but this feature group is not online-enabled."
+            )
 
         if delete_offline:
             # Both guards are properties of the offline delete: a HUDI delete needs Spark,
