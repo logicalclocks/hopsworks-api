@@ -114,9 +114,12 @@ class StatisticsEngine:
         metadata_instance: feature_group.FeatureGroup
         | training_dataset.TrainingDataset,
         feature_dataframe: TypeVar("pyspark.sql.DataFrame") | pd.DataFrame,
-        window_start_commit_time: int,
-        window_end_commit_time: int,
-        row_percentage: float,
+        window_start_commit_time: int | None = None,
+        window_end_commit_time: int | None = None,
+        window_start_event_time: int | None = None,
+        window_end_event_time: int | None = None,
+        event_time: str | None = None,
+        row_percentage: float = 1.0,
         feature_name: str | list[str] | None = None,
         *,
         histograms: bool = False,
@@ -127,11 +130,17 @@ class StatisticsEngine:
     ) -> statistics.Statistics:
         """Compute statistics for one or more features and send the result to Hopsworks.
 
+        Callers pass either the commit-time bounds or the event-time bounds and
+        `event_time`, never both.
+
         Parameters:
             metadata_instance: Metadata of the entity containing the data.
             feature_dataframe: Spark or Pandas DataFrame to compute the statistics on.
             window_start_commit_time: Window start commit time
             window_end_commit_time: Window end commit time
+            window_start_event_time: Window start event time
+            window_end_event_time: Window end event time
+            event_time: Name of the feature the window is sliced by
             row_percentage: Percentage of rows to include.
             feature_name: Feature name or list of names to compute the statistics on. If not set, statistics are computed on all features.
             histograms: Whether to compute histograms.
@@ -153,6 +162,16 @@ class StatisticsEngine:
 
         if engine._get_type() == "spark":
             commit_time = int(float(datetime.now().timestamp()) * 1000)
+            window_start = (
+                window_start_event_time
+                if event_time is not None
+                else window_start_commit_time
+            )
+            window_end = (
+                window_end_event_time
+                if event_time is not None
+                else window_end_commit_time
+            )
 
             if self._is_dataframe_empty(feature_dataframe):
                 entity_name = getattr(
@@ -162,8 +181,8 @@ class StatisticsEngine:
                     "Monitoring statistics registration skipped for entity '%s': "
                     "no data in window [%s, %s] for features %s.",
                     entity_name,
-                    window_start_commit_time,
-                    window_end_commit_time,
+                    window_start,
+                    window_end,
                     feature_names,
                 )
                 empty_fds = [
@@ -176,6 +195,9 @@ class StatisticsEngine:
                     feature_descriptive_statistics=empty_fds,
                     window_start_commit_time=window_start_commit_time,
                     window_end_commit_time=window_end_commit_time,
+                    window_start_event_time=window_start_event_time,
+                    window_end_event_time=window_end_event_time,
+                    event_time=event_time,
                 )
 
             stats_str = self._profile_statistics(
@@ -195,6 +217,9 @@ class StatisticsEngine:
                 feature_descriptive_statistics=desc_stats,
                 window_end_commit_time=window_end_commit_time,
                 window_start_commit_time=window_start_commit_time,
+                window_start_event_time=window_start_event_time,
+                window_end_event_time=window_end_event_time,
+                event_time=event_time,
             )
             return self._save_statistics(stats, metadata_instance, None)
         # TODO: Only compute statistics with Spark at the moment. This method is expected to be called
@@ -481,15 +506,24 @@ class StatisticsEngine:
         metadata_instance,
         start_commit_time: str | int | datetime | date | None = None,
         end_commit_time: str | int | datetime | date | None = None,
+        start_event_time: str | int | datetime | date | None = None,
+        end_event_time: str | int | datetime | date | None = None,
+        event_time: str | None = None,
         feature_names: list[str] | None = None,
         row_percentage: float | None = None,
     ) -> statistics.Statistics | None:
-        """Get the statistics of an entity based on a commit time window.
+        """Get the statistics of an entity based on a commit or event time window.
+
+        Callers pass either the commit-time bounds or the event-time bounds and
+        `event_time`, never both.
 
         Parameters:
             metadata_instance: Metadata of the entity containing the data.
             start_commit_time: Window start commit time
             end_commit_time: Window end commit time
+            start_event_time: Window start event time
+            end_event_time: Window end event time
+            event_time: Name of the feature the window is sliced by
             feature_names: List of feature names of which statistics are retrieved.
             row_percentage: Percentage of feature values used during statistics computation
 
@@ -498,10 +532,15 @@ class StatisticsEngine:
         """
         start_commit_time = util._convert_event_time_to_timestamp(start_commit_time)
         end_commit_time = util._convert_event_time_to_timestamp(end_commit_time)
+        start_event_time = util._convert_event_time_to_timestamp(start_event_time)
+        end_event_time = util._convert_event_time_to_timestamp(end_event_time)
         return self._statistics_api._get(
             metadata_instance,
             start_commit_time=start_commit_time,
             end_commit_time=end_commit_time,
+            start_event_time=start_event_time,
+            end_event_time=end_event_time,
+            event_time=event_time,
             feature_names=feature_names,
             row_percentage=row_percentage,
         )

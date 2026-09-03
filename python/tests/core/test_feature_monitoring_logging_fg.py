@@ -74,6 +74,9 @@ def _make_fm_config(
     cfg.model_version = model_version
     cfg.trigger_type = fmc.TriggerType.CRON
     cfg.feature_statistics_configs = []
+    # These tests predate FSTORE-2106 and exercise the commit-time (event_time=None) path;
+    # model-monitoring event_time resolution is covered separately.
+    cfg.event_time = None
     cfg.get_feature_names.return_value = ["petal_length"]
     detection_wc = MagicMock(spec=mwc.MonitoringWindowConfig)
     detection_wc.window_config_type = mwc.WindowConfigType.ROLLING_TIME

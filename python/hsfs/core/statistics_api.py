@@ -60,6 +60,9 @@ class StatisticsApi:
         computation_time: int | None = None,
         start_commit_time: int | None = None,
         end_commit_time: int | None = None,
+        start_event_time: int | None = None,
+        end_event_time: int | None = None,
+        event_time: str | None = None,
         feature_names: list[str] | None = None,
         row_percentage: float | None = None,
         before_transformation: bool | None = None,
@@ -72,6 +75,9 @@ class StatisticsApi:
             computation_time: Time at which statistics where computed
             start_commit_time: Window start commit time
             end_commit_time: Window end commit time
+            start_event_time: Window start event time
+            end_event_time: Window end event time
+            event_time: Name of the feature the window is sliced by
             feature_names: List of feature names of which statistics are retrieved
             row_percentage: Percentage of feature values used during statistics computation
             before_transformation: Whether the statistics were computed before transformations or not
@@ -92,6 +98,9 @@ class StatisticsApi:
             computation_time=computation_time,
             start_commit_time=start_commit_time,
             end_commit_time=end_commit_time,
+            start_event_time=start_event_time,
+            end_event_time=end_event_time,
+            event_time=event_time,
             filter_eq_times=True,
             feature_names=feature_names,
             row_percentage=row_percentage,
@@ -300,6 +309,9 @@ class StatisticsApi:
         computation_time: int | None = None,
         start_commit_time: int | None = None,
         end_commit_time: int | None = None,
+        start_event_time: int | None = None,
+        end_event_time: int | None = None,
+        event_time: str | None = None,
         filter_eq_times: bool = False,
         feature_names: list[str] | None = None,
         row_percentage: float | None = None,
@@ -315,6 +327,9 @@ class StatisticsApi:
             computation_time: Time at which statistics where computed
             start_commit_time: Window start commit time
             end_commit_time: Window end commit time
+            start_event_time: Window start event time, mutually exclusive with the commit-time bounds
+            end_event_time: Window end event time, mutually exclusive with the commit-time bounds
+            event_time: Name of the feature the window is sliced by
             feature_names: List of feature names of which statistics are retrieved
             row_percentage: Percentage of feature values used during statistics computation
             before_transformation: Whether the statistics were computed for transformations or not
@@ -346,8 +361,27 @@ class StatisticsApi:
             filter_name = col_name + ("_eq" if filter_eq_times else "_gtoeq")
             filters.append(filter_name + ":" + str(start_commit_time))
 
+        # event-time window bounds, mirroring the commit-time bounds above.
+        if end_event_time is not None:
+            col_name = "window_end_event_time"
+            sorts.append(col_name + ":desc")
+            filter_name = col_name + ("_eq" if filter_eq_times else "_ltoeq")
+            filters.append(filter_name + ":" + str(end_event_time))
+        if start_event_time is not None:
+            col_name = "window_start_event_time"
+            sorts.append(col_name + ":asc")
+            filter_name = col_name + ("_eq" if filter_eq_times else "_gtoeq")
+            filters.append(filter_name + ":" + str(start_event_time))
+        if event_time is not None:
+            filters.append("event_time_eq:" + str(event_time))
+
         # computation time -- order is important, this should be after the other sorts
-        if start_commit_time is None and end_commit_time is None:
+        if (
+            start_commit_time is None
+            and end_commit_time is None
+            and start_event_time is None
+            and end_event_time is None
+        ):
             sorts.append("computation_time:desc")  # third sort
         if computation_time is not None:
             filters.append("computation_time_ltoeq:" + str(computation_time))

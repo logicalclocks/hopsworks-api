@@ -43,6 +43,9 @@ class Statistics:
         feature_group_id: int | None = None,
         window_start_commit_time: int | None = None,
         window_end_commit_time: int | None = None,
+        window_start_event_time: int | None = None,
+        window_end_event_time: int | None = None,
+        event_time: str | None = None,
         # training dataset
         feature_view_name: str | None = None,
         feature_view_version: int | None = None,
@@ -65,6 +68,11 @@ class Statistics:
         self._feature_group_id = feature_group_id
         self._window_start_commit_time = window_start_commit_time
         self._window_end_commit_time = window_end_commit_time
+        # FSTORE-2106: event-time window bounds, mutually exclusive with the commit-time
+        # bounds above. Set when the owning monitoring config has an event_time feature.
+        self._window_start_event_time = window_start_event_time
+        self._window_end_event_time = window_end_event_time
+        self._event_time = event_time
         # training dataset
         self._feature_view_name = feature_view_name
         self._feature_view_version = feature_view_version
@@ -140,6 +148,13 @@ class Statistics:
             "windowEndCommitTime": self._window_end_commit_time,
             "beforeTransformation": self._before_transformation,
         }
+        # FSTORE-2106: event-time window bounds — emit only when set.
+        if self._window_start_event_time is not None:
+            _dict["windowStartEventTime"] = self._window_start_event_time
+        if self._window_end_event_time is not None:
+            _dict["windowEndEventTime"] = self._window_end_event_time
+        if self._event_time is not None:
+            _dict["eventTime"] = self._event_time
         if self._feature_descriptive_statistics is not None:
             _dict["featureDescriptiveStatistics"] = [
                 fds.to_dict() for fds in self._feature_descriptive_statistics
@@ -218,6 +233,35 @@ class Statistics:
     def window_end_commit_time(self) -> int | None:
         """End time of the window of data on which statistics were computed."""
         return self._window_end_commit_time
+
+    @public
+    @property
+    def window_start_event_time(self) -> int | None:
+        """Start time of the event-time window of data on which statistics were computed.
+
+        `None` unless the owning monitoring configuration has an `event_time` feature,
+        in which case this replaces `window_start_commit_time` as the window bound.
+        """
+        return self._window_start_event_time
+
+    @public
+    @property
+    def window_end_event_time(self) -> int | None:
+        """End time of the event-time window of data on which statistics were computed.
+
+        `None` unless the owning monitoring configuration has an `event_time` feature,
+        in which case this replaces `window_end_commit_time` as the window bound.
+        """
+        return self._window_end_event_time
+
+    @public
+    @property
+    def event_time(self) -> str | None:
+        """Name of the feature the event-time window was sliced by.
+
+        `None` unless the owning monitoring configuration has an `event_time` feature.
+        """
+        return self._event_time
 
     @public
     @property

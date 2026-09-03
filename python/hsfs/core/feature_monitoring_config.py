@@ -141,6 +141,7 @@ class FeatureMonitoringConfig:
         training_dataset_id: int | None = None,
         feature_view_id: int | None = None,
         enabled: bool | None = None,
+        event_time: str | None = None,
         **kwargs,
     ):
         self.name = name
@@ -161,6 +162,10 @@ class FeatureMonitoringConfig:
         # model_name AND model_version. Persisted via to_dict/from_response_json.
         self._model_name = model_name
         self._model_version = model_version
+        # FSTORE-2106: event-time basis for the detection and reference windows. None
+        # means commit-time windows (today's behaviour). Resolved by the caller (see
+        # FeatureMonitoringConfigEngine._resolve_event_time) before the config is built.
+        self._event_time = event_time
         # In-memory only (not serialized): set by FeatureView.create_model_monitoring so
         # with_reference_training_dataset can default to / validate against the model's TD.
         self._associated_model_td_version: int | None = None
@@ -270,6 +275,10 @@ class FeatureMonitoringConfig:
             the_dict["modelName"] = self._model_name
         if self._model_version is not None:
             the_dict["modelVersion"] = self._model_version
+
+        # FSTORE-2106: event-time basis — nullable; emit only when set.
+        if self._event_time is not None:
+            the_dict["eventTime"] = self._event_time
 
         # Backend-assigned entity IDs — emit only when set (populated from server responses).
         if self._training_dataset_id is not None:
@@ -1065,6 +1074,19 @@ class FeatureMonitoringConfig:
     def model_version(self) -> int | None:
         """Version of the model whose inference logs are filtered by this configuration."""
         return self._model_version
+
+    @public
+    @property
+    def event_time(self) -> str | None:
+        """Name of the feature the detection and reference windows are sliced by.
+
+        `None` means the windows are sliced by commit time instead, which is the
+        behavior of feature monitoring configurations created before this field existed.
+
+        Info:
+            This property is read-only once the feature monitoring configuration has been saved.
+        """
+        return self._event_time
 
     @public
     @property
