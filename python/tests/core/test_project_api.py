@@ -49,6 +49,7 @@ class TestProjectApiCreate:
         assert post_call.args[0] == "POST"
         body = json.loads(post_call.kwargs["data"])
         assert "namespace" not in body
+        assert "services" not in body
         assert body["projectName"] == "my_project"
         assert body["description"] == "desc"
         assert body["featureStoreTopic"] == "t"

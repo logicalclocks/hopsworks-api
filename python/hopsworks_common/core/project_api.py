@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 
 from hopsworks_apigen import also_available_as
-from hopsworks_common import client, constants, project
+from hopsworks_common import client, project
 from hopsworks_common.client.exceptions import RestAPIError
 
 
@@ -144,7 +144,6 @@ class ProjectApi:
 
         data = {
             "projectName": name,
-            "services": constants.SERVICES.LIST,
             "description": description,
             "featureStoreTopic": feature_store_topic,
         }
