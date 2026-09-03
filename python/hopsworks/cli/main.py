@@ -45,7 +45,7 @@ _LAZY_SUBCOMMANDS: dict[str, str] = {
     "agent": "hopsworks.cli.commands.agent:agent_group",
     "transformation": "hopsworks.cli.commands.transformation:transformation_group",
     "superset": "hopsworks.cli.commands.superset:superset_group",
-    "search": "hopsworks.cli.commands.search:search_group",
+    "search": "hopsworks.cli.commands.search:search_cmd",
     "trino": "hopsworks.cli.commands.trino:trino_group",
     "sql": "hopsworks.cli.commands.trino:trino_query",  # top-level alias of `trino query`
     "context": "hopsworks.cli.commands.context:context_cmd",

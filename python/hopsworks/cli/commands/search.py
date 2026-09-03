@@ -1,10 +1,9 @@
-"""``hops search`` — feature-store search, project-scoped or global.
+"""``hops search`` — search the project's OpenSearch index, or every project's.
 
-Wraps ``project.get_search_api().feature_store(...)``: a single REST call
-against the OpenSearch ``featurestore`` index that returns matching
-feature groups, feature views, training datasets, and features. Project
-scope is the default; ``--global`` searches every project the caller has
-access to.
+One REST call against the ``featurestore`` index returns matching feature
+groups, feature views, training datasets, features, jobs, apps, models,
+deployments and agents. Project scope is the default; ``--global`` searches
+every project the caller belongs to.
 """
 
 from __future__ import annotations
@@ -15,24 +14,46 @@ import click
 from hopsworks.cli import output, session
 
 
-_DOC_TYPES = ["all", "feature_group", "feature_view", "training_dataset", "feature"]
+# CLI spelling -> backend docType. Apps are jobs of type PythonApp and agents are
+# deployments without a registered model; the backend reports each in its own
+# bucket, so JOB excludes apps and DEPLOYMENT excludes agents.
+_DOC_TYPES = {
+    "all": "ALL",
+    "feature_group": "FEATUREGROUP",
+    "feature_view": "FEATUREVIEW",
+    "training_dataset": "TRAININGDATASET",
+    "feature": "FEATURE",
+    "job": "JOB",
+    "app": "APP",
+    "model": "MODEL",
+    "deployment": "DEPLOYMENT",
+    "agent": "AGENT",
+}
+
+# Result attribute -> KIND label, in display order.
+_BUCKETS = [
+    ("feature_groups", "feature_group"),
+    ("feature_views", "feature_view"),
+    ("training_datasets", "training_dataset"),
+    ("features", "feature"),
+    ("jobs", "job"),
+    ("apps", "app"),
+    ("models", "model"),
+    ("deployments", "deployment"),
+    ("agents", "agent"),
+]
 
 
-@click.group("search")
-def search_group() -> None:
-    """Search the Hopsworks feature store (project-scoped by default)."""
-
-
-@search_group.command(
-    "ls",
+@click.command(
+    "search",
     epilog="""\b
 Examples:
-  hops search ls "credit card"            free text over names, descriptions and features
-  hops search ls "credit card" --global   the same across every project you belong to
-  hops search ls --type feature amount    only features
-  hops search ls --keyword pii            entities carrying the keyword
-  hops search ls --tag quality:owner=risk entities whose tag "quality" has key owner = risk
-  hops search ls --tag gdpr:pii=true --keyword finance   filters combine
+  hops search "credit card"            free text over names, descriptions and features
+  hops search "credit card" --global   the same across every project you belong to
+  hops search --type model minilm      only models; also job, app, deployment, agent, feature, ...
+  hops search --keyword pii            entities carrying the keyword
+  hops search --tag quality:owner=risk entities whose tag "quality" has key owner = risk
+  hops search --tag gdpr:pii=true --keyword finance   filters combine
 """,
 )
 @click.argument("term", required=False)
@@ -45,7 +66,7 @@ Examples:
 @click.option(
     "--type",
     "doc_type",
-    type=click.Choice(_DOC_TYPES, case_sensitive=False),
+    type=click.Choice(list(_DOC_TYPES), case_sensitive=False),
     default="all",
     show_default=True,
     help="Restrict results to one entity type.",
@@ -64,7 +85,7 @@ Examples:
 )
 @click.option("--limit", type=int, default=20, show_default=True, help="Max results.")
 @click.pass_context
-def search_ls(
+def search_cmd(
     ctx: click.Context,
     term: str | None,
     global_search: bool,
@@ -80,8 +101,7 @@ def search_ls(
         term: Search string. May be omitted if ``--keyword`` or ``--tag``
             is given (the SDK requires at least one of the three).
         global_search: When True, search across all projects.
-        doc_type: One of ``all``, ``feature_group``, ``feature_view``,
-            ``training_dataset``, ``feature``.
+        doc_type: One of the ``--type`` choices.
         keywords: Repeatable ``--keyword`` filter.
         tags: Repeatable ``--tag name:key=value`` filter.
         limit: Page size cap.
@@ -96,38 +116,23 @@ def search_ls(
     project = session.get_project(ctx)
     api = project.get_search_api()
 
-    common_kwargs: dict[str, Any] = {
-        "search_term": term,
-        "keyword_filter": list(keywords) or None,
-        "tag_filter": parsed_tags or None,
-        "limit": limit,
-        "global_search": global_search,
-    }
-
     try:
-        if doc_type == "all":
-            result = api.feature_store(**common_kwargs)
-            rows = (
-                [_row("feature_group", r) for r in result.feature_groups]
-                + [_row("feature_view", r) for r in result.feature_views]
-                + [_row("training_dataset", r) for r in result.training_datasets]
-                + [_row("feature", r) for r in result.features]
-            )
-        elif doc_type == "feature_group":
-            rows = [
-                _row("feature_group", r) for r in api.feature_groups(**common_kwargs)
-            ]
-        elif doc_type == "feature_view":
-            rows = [_row("feature_view", r) for r in api.feature_views(**common_kwargs)]
-        elif doc_type == "training_dataset":
-            rows = [
-                _row("training_dataset", r)
-                for r in api.training_datasets(**common_kwargs)
-            ]
-        else:  # feature
-            rows = [_row("feature", r) for r in api.features(**common_kwargs)]
+        result = api._search(
+            doc_type=_DOC_TYPES[doc_type.lower()],
+            search_term=term,
+            keyword_filter=list(keywords) or None,
+            tag_filter=parsed_tags or None,
+            limit=limit,
+            global_search=global_search,
+        )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Search failed: {exc}") from exc
+
+    rows = [
+        _row(kind, item)
+        for attr, kind in _BUCKETS
+        for item in getattr(result, attr, None) or []
+    ]
 
     if not rows:
         if global_search:
@@ -140,22 +145,30 @@ def search_ls(
             )
         return
 
-    output.print_table(["KIND", "NAME", "VERSION", "PROJECT", "DESCRIPTION"], rows)
+    output.print_table(["KIND", "NAME", "VERSION", "PROJECT", "DETAIL"], rows)
 
 
 def _row(kind: str, item: Any) -> list[Any]:
-    """Flatten a SearchResultItem into a fixed-width table row.
+    """Flatten a search result item into a fixed-width table row.
 
-    Features don't have a ``version`` attribute; fall back to ``-``.
-    Description is truncated to keep the table readable on narrow shells.
+    Features and jobs have no version; models and jobs have no description, so
+    DETAIL falls back to the type-specific field the index carries for them
+    (framework, job type, serving tool). Text is cut to one line of 60 chars.
     """
     name = getattr(item, "name", "?")
     version = getattr(item, "version", None)
     project_obj = getattr(item, "project", None)
     project_name = getattr(project_obj, "name", "-") if project_obj else "-"
-    desc = (getattr(item, "description", None) or "").splitlines()[0:1]
-    desc_text = (desc[0] if desc else "")[:60]
-    return [kind, name, str(version) if version else "-", project_name, desc_text]
+    raw = getattr(item, "raw_data", None) or {}
+    detail = (
+        getattr(item, "description", None)
+        or raw.get("framework")
+        or raw.get("jobType")
+        or raw.get("servingTool")
+        or ""
+    )
+    first_line = detail.splitlines()[0] if detail else ""
+    return [kind, name, str(version) if version else "-", project_name, first_line[:60]]
 
 
 def _parse_tag(spec: str) -> dict[str, str]:
