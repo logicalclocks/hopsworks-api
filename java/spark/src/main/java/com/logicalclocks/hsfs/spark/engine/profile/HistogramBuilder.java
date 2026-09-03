@@ -47,10 +47,10 @@ class HistogramBuilder {
    *
    * @param df source dataframe
    * @param columnName column to histogram
-   * @param minValue pre-computed column minimum (non-null, from agg row)
-   * @param maxValue pre-computed column maximum (non-null, from agg row)
+   * @param minValue pre-computed minimum over the finite values (non-null, from agg row)
+   * @param maxValue pre-computed maximum over the finite values (non-null, from agg row)
    * @param histogramBins number of bins
-   * @param totalRows total non-null rows (denominator for ratio)
+   * @param totalRows total non-null, non-NaN rows (denominator for ratio)
    * @return list of histogram entry maps with keys: value, count, ratio
    */
   List<Map<String, Object>> buildNumeric(Dataset<Row> df,
@@ -73,7 +73,9 @@ class HistogramBuilder {
       );
     }
 
-    Dataset<Row> binned = df.filter(col.isNotNull())
+    // NaN belongs to no bin: it is outside [minValue, maxValue] by construction, and
+    // floor((NaN - min) / width) casts to 0, which would pile every NaN row into bin 0.
+    Dataset<Row> binned = df.filter(col.isNotNull().and(functions.not(functions.isnan(col))))
         .withColumn("_bin", binExpr)
         .groupBy("_bin")
         .count();
