@@ -49,8 +49,10 @@ import org.apache.hudi.common.table.view.HoodieTableFileSystemView;
 import org.apache.hudi.common.util.Option;
 import org.apache.hudi.config.HoodieWriteConfig;
 import org.apache.hudi.hadoop.fs.HadoopFSUtils;
+import org.apache.hudi.common.table.HoodieTableVersion;
 import org.apache.hudi.metadata.HoodieMetadataWriteUtils;
 import org.apache.hudi.metadata.HoodieTableMetadata;
+import org.apache.hudi.metadata.NativeTableMetadataFactory;
 import org.apache.hudi.storage.StorageConfiguration;
 import org.apache.hudi.storage.hadoop.HoodieHadoopStorage;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -135,8 +137,6 @@ public class HudiEngine {
 
   protected static final String HUDI_WRITE_INSERT_DROP_DUPLICATES = "hoodie.datasource.write.insert.drop.duplicates";
 
-  protected static final String PAYLOAD_CLASS_OPT_KEY = "hoodie.datasource.write.payload.class";
-  protected static final String PAYLOAD_CLASS_OPT_VAL = "org.apache.hudi.common.model.EmptyHoodieRecordPayload";
 
   protected static final String HUDI_KAFKA_TOPIC = "hoodie.streamer.source.kafka.topic";
   protected static final String COMMIT_METADATA_KEYPREFIX_OPT_KEY = "hoodie.datasource.write.commitmeta.key.prefix";
@@ -218,8 +218,29 @@ public class HudiEngine {
       throws IOException, FeatureStoreException,
       ParseException {
 
-    Map<String, String> hudiArgs = setupHudiWriteOpts(featureGroup, HudiOperationType.UPSERT, writeOptions);
-    hudiArgs.put(PAYLOAD_CLASS_OPT_KEY, PAYLOAD_CLASS_OPT_VAL);
+    // Hudi's native delete operation. Overriding the payload class with
+    // EmptyHoodieRecordPayload on an upsert is the pre-1.x idiom; since Hudi 1.1 the
+    // payload is validated against the table's hoodie.record.merge.mode and that
+    // pairing is rejected on tables created at table version 9.
+    Map<String, String> hudiArgs = setupHudiWriteOpts(featureGroup, HudiOperationType.DELETE, writeOptions);
+
+    // Hudi's delete resolves each record's partition path from the frame it is given. A
+    // delete frame that omits the partition columns matches nothing, and Hudi still writes
+    // a commit -- a silent no-op. Fail loudly.
+    List<String> frameColumns = Arrays.asList(deleteDF.columns());
+    List<String> missingPartitionColumns =
+        Arrays.stream(hudiArgs.getOrDefault(HUDI_PARTITION_FIELD, "").split(","))
+            .filter(field -> !field.isEmpty())
+            .map(field -> field.split(":")[0])
+            .filter(column -> !frameColumns.contains(column))
+            .collect(Collectors.toList());
+    if (!missingPartitionColumns.isEmpty()) {
+      throw new FeatureStoreException(
+          "Cannot delete records from partitioned feature group `" + featureGroup.getName()
+              + "`: the delete frame is missing the partition column(s) " + missingPartitionColumns
+              + ". Hudi resolves the partition path from the frame, so a delete without them would "
+              + "silently match no records. Include the partition columns in the delete frame.");
+    }
 
     deleteDF.write().format(HUDI_SPARK_FORMAT)
         .options(hudiArgs)
@@ -458,7 +479,7 @@ public class HudiEngine {
         .build();
     
     HoodieWriteConfig hoodieWriteConfig = HoodieMetadataWriteUtils.createMetadataWriteConfig(hudiWriteConfig,
-        HoodieFailedWritesCleaningPolicy.EAGER);
+        HoodieFailedWritesCleaningPolicy.EAGER, HoodieTableVersion.current());
     
     HoodieTableMetaClient.newTableBuilder()
         .fromProperties(hoodieWriteConfig.getProps())
@@ -585,7 +606,7 @@ public class HudiEngine {
         .build();
     HoodieSparkEngineContext engineContext = new HoodieSparkEngineContext(jsc);
     StorageConfiguration<?> storageConf = HadoopFSUtils.getStorageConfWithCopy(jsc.hadoopConfiguration());
-    HoodieTableMetadata tableMetadata = HoodieTableMetadata.create(
+    HoodieTableMetadata tableMetadata = NativeTableMetadataFactory.getInstance().create(
         engineContext, new HoodieHadoopStorage(basePath, storageConf), metadataConfig, basePath);
     List<String> allPartitions = tableMetadata.getAllPartitionPaths();
     final Histogram tableHistogram = new Histogram(new UniformReservoir(1_000_000));
