@@ -70,6 +70,9 @@ os.environ.update({
     "DBT_TRINO_USER": user,
     "DBT_TRINO_PASSWORD": password,
     "DBT_TRINO_SCHEMA": f"{project.name}_featurestore",
+    # _get_ca_chain_path is private on purpose: dbt needs the cert as a FILE
+    # PATH for profiles.yml, and connect()/create_engine() are the only
+    # public paths, which resolve it internally instead of handing it over.
     "DBT_TRINO_CA": str(trino._get_ca_chain_path(True)),
 })
 ```
@@ -161,7 +164,7 @@ def main() -> int:
 
     started = datetime.now(timezone.utc)
     try:
-        rows = run_compiled_sql_and_upsert(fs, target_dir, MODEL, TARGET_FG)   # project-specific
+        rows = run_and_upsert(project, fs, target_dir)      # see "Landing the model output"
     except Exception as e:
         ingest.update(status="error", detail={"message": str(e)},
                       execution_time=(datetime.now(timezone.utc) - started).total_seconds())
@@ -177,9 +180,74 @@ if __name__ == "__main__":
     sys.exit(main())
 ```
 
-`build` (not `run`) includes validation: on an ephemeral model it executes the model's data tests, and `run_results.json` records status, timing and failing-row counts per test. For the Trino path, `run_compiled_sql_and_upsert` reads the compiled model SQL from `<run_dir>/compiled/`, executes it over a Trino cursor, and upserts the rows into the feature group with `fg.multi_part_insert()` (see [hops-fg](../../ml/hops-fg/SKILL.md)). For the DuckDB path it reads the model's table from the `.duckdb` file and inserts it.
+`build` (not `run`) includes validation: on an ephemeral model it executes the model's data tests, and `run_results.json` records status, timing and failing-row counts per test. Gate the ingestion on `build.success`.
 
 External node statuses the graph understands: `success`, `error`, `skipped`, `warn`, `pass`, `fail`.
+
+## Landing the model output
+
+An ephemeral model creates nothing in the warehouse: dbt only compiles it. The
+runner executes the compiled SQL itself and writes the rows to a feature group.
+
+**Get the connection from the Trino API; do not invent one.** The methods are
+`connect()` (DB-API 2.0, then `conn.cursor()`) and `create_engine()`
+(SQLAlchemy). There is **no** `get_connection()`, `get_cursor()` or
+`get_client()` — guessing one fails the run *after* dbt has already passed, with
+`AttributeError: 'TrinoApi' object has no attribute 'get_connection'`. Before
+calling any SDK method you have not used in this project, list the real surface:
+
+```bash
+python3 -c "import hopsworks; print([m for m in dir(hopsworks.login().get_trino_api()) if not m.startswith('_')])"
+# ['connect', 'create_engine', 'get_basic_auth', 'get_host', 'get_port']
+```
+
+```python
+import os
+import pandas as pd
+
+def compiled_sql(target_dir: Path) -> str:
+    # dbt writes the compiled model under compiled/<dbt project name>/models/.
+    path = target_dir / "compiled" / DBT_PROJECT_NAME / "models" / f"{MODEL}.sql"
+    # Trino rejects a trailing semicolon through the DB-API driver.
+    return path.read_text().strip().rstrip(";")
+
+
+def run_and_upsert(project, fs, target_dir: Path) -> int:
+    conn = project.get_trino_api().connect(
+        catalog="delta",                              # the FG's format: delta | hudi | iceberg
+        schema=f"{project.name.lower()}_featurestore",
+    )
+    try:
+        cur = conn.cursor()
+        cur.execute(compiled_sql(target_dir))
+        rows = cur.fetchall()
+        columns = [c[0] for c in cur.description]     # cursor.description carries the names
+    finally:
+        conn.close()
+
+    df = pd.DataFrame(rows, columns=columns)
+    # The driver hands back Decimal for numerics and str for timestamps, and the
+    # feature group rejects both. Coerce every column to the type the FG declares.
+    df["month"] = pd.to_datetime(df["month"])
+    for col in ("revenue", "gross_margin"):
+        df[col] = df[col].astype("float64")
+    for col in ("order_lines",):
+        df[col] = df[col].astype("int64")
+
+    fg = fs.get_or_create_feature_group(
+        name=TARGET_FG[0], version=TARGET_FG[1],
+        description="...",                            # never leave this blank
+        primary_key=["month", "product_category"], event_time="month",
+        online_enabled=False,
+    )
+    fg.insert(df, wait=True)
+    return len(df)
+```
+
+For a large result use `fg.multi_part_insert()` instead of one `insert`
+(see [hops-fg](../../ml/hops-fg/SKILL.md)). On the DuckDB path, replace the
+cursor with `duckdb.connect(path).execute(f"select * from main.{MODEL}").fetch_df()`,
+which already returns typed columns and needs no coercion.
 
 ## The execution graph
 
