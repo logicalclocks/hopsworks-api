@@ -974,6 +974,39 @@ class TestStatisticsEngine:
         # Assert: a warning was logged
         assert mock_logger.warning.call_count == 1
 
+    @pytest.mark.parametrize(
+        "kwargs, match",
+        [
+            (
+                {
+                    "window_start_commit_time": 1,
+                    "window_end_commit_time": 2,
+                    "event_time": "datetime",
+                    "window_end_event_time": 2,
+                },
+                "cannot be combined",
+            ),
+            ({"event_time": "datetime"}, "both the event-time feature name"),
+            ({"window_end_event_time": 2}, "both the event-time feature name"),
+        ],
+    )
+    def test_compute_and_save_monitoring_statistics_rejects_inconsistent_windows(
+        self, mocker, kwargs, match
+    ):
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        mocker.patch("hsfs.core.statistics_api.StatisticsApi")
+        s_engine = statistics_engine.StatisticsEngine(99, "featuregroup")
+
+        with pytest.raises(ValueError, match=match):
+            s_engine._compute_and_save_monitoring_statistics(
+                metadata_instance=mocker.Mock(),
+                feature_dataframe=mocker.Mock(),
+                row_percentage=1.0,
+                feature_name=["amount"],
+                **kwargs,
+            )
+
     def test_compute_and_save_monitoring_statistics_event_time_bounds(self, mocker):
         # FSTORE-2106: event-time bounds and event_time are set on the resulting
         # Statistics instead of the commit-time bounds.

@@ -161,6 +161,21 @@ class StatisticsEngine:
             feature_names = feature_name
 
         if engine._get_type() == "spark":
+            has_commit_bounds = (
+                window_start_commit_time is not None
+                or window_end_commit_time is not None
+            )
+            has_event_bounds = (
+                window_start_event_time is not None or window_end_event_time is not None
+            )
+            if has_commit_bounds and (has_event_bounds or event_time is not None):
+                raise ValueError(
+                    "Commit-time and event-time window bounds cannot be combined when registering statistics."
+                )
+            if (event_time is None) != (window_end_event_time is None):
+                raise ValueError(
+                    "Event-time statistics need both the event-time feature name and the window end bound."
+                )
             commit_time = int(float(datetime.now().timestamp()) * 1000)
             window_start = (
                 window_start_event_time

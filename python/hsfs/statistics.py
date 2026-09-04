@@ -144,11 +144,14 @@ class Statistics:
         _dict = {
             "computationTime": self._computation_time,
             "rowPercentage": self._row_percentage,
-            "windowStartCommitTime": self._window_start_commit_time,
-            "windowEndCommitTime": self._window_end_commit_time,
             "beforeTransformation": self._before_transformation,
         }
-        # FSTORE-2106: event-time window bounds — emit only when set.
+        # Window bounds are emitted only when set: a row carries either the
+        # commit-time family or the event-time family, never both.
+        if self._window_start_commit_time is not None:
+            _dict["windowStartCommitTime"] = self._window_start_commit_time
+        if self._window_end_commit_time is not None:
+            _dict["windowEndCommitTime"] = self._window_end_commit_time
         if self._window_start_event_time is not None:
             _dict["windowStartEventTime"] = self._window_start_event_time
         if self._window_end_event_time is not None:
