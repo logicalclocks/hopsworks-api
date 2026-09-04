@@ -664,6 +664,8 @@ class TestFeatureMonitoringConfigEngine:
 
         assert isinstance(resolved, Feature)
         assert resolved.name == "raw_event_ts"
+        # The type decides how filter bounds are formatted (timestamp -> datetime string).
+        assert resolved.type == "timestamp"
         # Feature only retains the source feature group's id, not the object itself.
         assert resolved.feature_group_id == source_fg.id
 

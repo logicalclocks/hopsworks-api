@@ -895,8 +895,12 @@ class FeatureMonitoringConfigEngine:
                 f"event_time feature '{event_time_name}' is no longer part of "
                 f"'{getattr(entity, 'name', entity)}'."
             )
+        # The type drives how filter bounds are formatted (timestamps become
+        # datetime strings), so it must travel with the feature.
         return Feature(
-            name=tdf.feature_group_feature_name, feature_group=tdf.feature_group
+            name=tdf.feature_group_feature_name,
+            type=tdf.type,
+            feature_group=tdf.feature_group,
         )
 
     # feature-type compatibility helpers
