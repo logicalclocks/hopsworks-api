@@ -669,6 +669,30 @@ class TestFeatureMonitoringConfigEngine:
         # Feature only retains the source feature group's id, not the object itself.
         assert resolved.feature_group_id == source_fg.id
 
+    def test_resolve_event_time_feature_on_feature_view_falls_back_to_left_fg(self):
+        """The default basis is the left FG's event time, which the view need not select."""
+        from hsfs.feature import Feature
+
+        config_engine = feature_monitoring_config_engine.FeatureMonitoringConfigEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_view_name=DEFAULT_FEATURE_VIEW_NAME,
+            feature_view_version=DEFAULT_FEATURE_VIEW_VERSION,
+        )
+        left_fg = MagicMock()
+        left_fg.event_time = "datetime"
+        left_fg.get_feature.return_value = Feature(
+            name="datetime", type="bigint", feature_group_id=7
+        )
+        fv = MagicMock()
+        fv.features = []  # datetime is not selected in the view
+        fv.query._left_feature_group = left_fg
+
+        resolved = config_engine._resolve_event_time_feature(fv, "datetime")
+
+        assert resolved.name == "datetime"
+        assert resolved.type == "bigint"
+        left_fg.get_feature.assert_called_once_with("datetime")
+
     def test_resolve_event_time_feature_on_feature_view_missing_raises(self):
         from hopsworks_common.client.exceptions import FeatureStoreException
 

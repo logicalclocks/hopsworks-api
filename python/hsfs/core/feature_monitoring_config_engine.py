@@ -890,18 +890,29 @@ class FeatureMonitoringConfigEngine:
         from hsfs.feature import Feature
 
         tdf = next((f for f in entity.features if f.name == event_time_name), None)
-        if tdf is None:
+        if tdf is not None:
+            # The type drives how filter bounds are formatted (timestamps become
+            # datetime strings), so it must travel with the feature.
+            return Feature(
+                name=tdf.feature_group_feature_name,
+                type=tdf.type,
+                feature_group=tdf.feature_group,
+            )
+        # The default basis is the left feature group's event time, which a feature
+        # view need not select. Filtering on an unselected feature is allowed, so
+        # resolve it on the left feature group directly.
+        left_fg = entity.query._left_feature_group
+        feature = (
+            left_fg.get_feature(event_time_name)
+            if left_fg is not None and left_fg.event_time == event_time_name
+            else None
+        )
+        if feature is None:
             raise FeatureStoreException(
                 f"event_time feature '{event_time_name}' is no longer part of "
                 f"'{getattr(entity, 'name', entity)}'."
             )
-        # The type drives how filter bounds are formatted (timestamps become
-        # datetime strings), so it must travel with the feature.
-        return Feature(
-            name=tdf.feature_group_feature_name,
-            type=tdf.type,
-            feature_group=tdf.feature_group,
-        )
+        return feature
 
     # feature-type compatibility helpers
 
