@@ -224,6 +224,12 @@ class LazyGroup(click.Group):
         ``ClickException`` message, the raw text is what the user reads. Both
         forms are rewritten so the output is the reason (most often a missing
         key scope) and the fix. Unrelated exceptions pass through untouched.
+
+        Args:
+            ctx: Click context for the root command.
+
+        Returns:
+            Whatever the invoked command returns.
         """
         try:
             return super().invoke(ctx)
