@@ -23,6 +23,7 @@ from hsfs.constructor import query
 from hsfs.core import monitoring_window_config as mwc
 from hsfs.core import monitoring_window_config_engine as mwce
 from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
+from hsfs.feature import Feature
 
 
 DEFAULT_FEATURE_NAME = "amount"
@@ -304,39 +305,99 @@ class TestMonitoringWindowConfigEngine:
         start_time = 1_700_000_000_000
         end_time = 1_700_086_400_000
 
-        # Act
+        # Act — model monitoring always resolves event_time="log_time" (FSTORE-2106),
+        # so the caller supplies the log_time Feature explicitly.
         _ = config_engine._fetch_feature_group_data(
             entity=unit_test_fg,
             feature_names=[DEFAULT_FEATURE_NAME],
             start_time=start_time,
             end_time=end_time,
             model_filter=("my_model", 3),
+            event_time_feature=Feature("log_time", type="timestamp"),
         )
 
-        # Assert: model_name + model_version + log_time>= + log_time<= = 4 filters.
+        # Assert: model_name + model_version + a combined log_time>= AND log_time< filter
+        # (hsfs.util._build_time_filter ANDs both bounds into one Logic filter) = 3 calls.
         # The previous bug constructed Filter("name") with one arg and crashed at runtime;
         # the second bug used as_of(exclude_until=...) which triggered Delta CDF on a
         # logging FG without delta.enableChangeDataFeed. Both must stay fixed.
-        assert filter_mock.call_count == 4
+        assert filter_mock.call_count == 3
         applied = [c.args[0] for c in filter_mock.call_args_list]
-        assert all(isinstance(f, filter_module.Filter) for f in applied)
-        names = [f._feature.name for f in applied]
-        conditions = [f._condition for f in applied]
-        assert names == ["model_name", "model_version", "log_time", "log_time"]
-        assert conditions == [
-            filter_module.Filter.EQ,
-            filter_module.Filter.EQ,
-            filter_module.Filter.GE,
-            filter_module.Filter.LE,
+        model_filters = applied[:2]
+        assert all(isinstance(f, filter_module.Filter) for f in model_filters)
+        assert [f._feature.name for f in model_filters] == [
+            "model_name",
+            "model_version",
         ]
-        assert applied[0]._value == "my_model"
-        assert applied[1]._value == "3"
+        assert [f._condition for f in model_filters] == [
+            filter_module.Filter.EQ,
+            filter_module.Filter.EQ,
+        ]
+        assert model_filters[0]._value == "my_model"
+        assert model_filters[1]._value == "3"
+
+        # The event-time filter is half-open: >= start, < end (FSTORE-2106), unlike the
+        # previous hardcoded log_time filter which was inclusive on both ends.
+        time_logic = applied[2]
+        assert isinstance(time_logic, filter_module.Logic)
+        assert time_logic._type == filter_module.Logic.AND
+        assert time_logic._left_f._feature.name == "log_time"
+        assert time_logic._left_f._condition == filter_module.Filter.GE
+        assert time_logic._right_f._feature.name == "log_time"
+        assert time_logic._right_f._condition == filter_module.Filter.LT
         # log_time filter values are formatted UTC strings for the timestamp column
         # (see Feature._get_filter_value when type=="timestamp").
-        assert isinstance(applied[2]._value, str)
-        assert isinstance(applied[3]._value, str)
+        assert isinstance(time_logic._left_f._value, str)
+        assert isinstance(time_logic._right_f._value, str)
         # And as_of() must NOT be called on the model-monitoring path — that's the CDF
         # trigger we are explicitly avoiding.
+        as_of_mock.assert_not_called()
+
+    def test_fetch_feature_group_data_with_event_time_feature(
+        self, mocker, backend_fixtures
+    ):
+        # FSTORE-2106: with an event_time_feature, the window is read as a plain
+        # (latest snapshot) filtered query — no model_filter needed.
+        unit_test_fg = feature_group.FeatureGroup.from_response_json(
+            backend_fixtures["feature_group"]["get"]["response"]
+        )
+        mocker.patch(ENGINE_GET_TYPE, return_value="spark")
+        select_query = query.Query.from_response_json(
+            backend_fixtures["query"]["get"]["response"]
+        )
+        mocker.patch(
+            "hsfs.feature_group.FeatureGroup.select",
+            return_value=select_query,
+        )
+        filter_mock = mocker.patch(
+            "hsfs.constructor.query.Query.filter",
+            return_value=select_query,
+        )
+        as_of_mock = mocker.patch(
+            "hsfs.constructor.query.Query.as_of",
+            return_value=select_query,
+        )
+        mocker.patch("hsfs.constructor.query.Query.read")
+        config_engine = mwce.MonitoringWindowConfigEngine()
+        start_time = 1_700_000_000_000
+        end_time = 1_700_086_400_000
+
+        # Act
+        _ = config_engine._fetch_feature_group_data(
+            entity=unit_test_fg,
+            feature_names=[DEFAULT_FEATURE_NAME],
+            start_time=start_time,
+            end_time=end_time,
+            event_time_feature=Feature(DEFAULT_FEATURE_NAME, type="timestamp"),
+        )
+
+        # Assert: one combined half-open filter, and as_of() is NOT called.
+        filter_mock.assert_called_once()
+        applied = filter_mock.call_args_list[0].args[0]
+        assert isinstance(applied, filter_module.Logic)
+        assert applied._type == filter_module.Logic.AND
+        assert applied._left_f._condition == filter_module.Filter.GE
+        assert applied._right_f._condition == filter_module.Filter.LT
         as_of_mock.assert_not_called()
 
     def test_fetch_feature_view_data(self, mocker, backend_fixtures):
@@ -389,6 +450,54 @@ class TestMonitoringWindowConfigEngine:
         )
         assert mock_vector_server.call_count == 0
 
+    def test_fetch_feature_view_data_with_event_time_feature(
+        self, mocker, backend_fixtures
+    ):
+        # FSTORE-2106: with an event_time_feature, the FV query is filtered instead of
+        # time-travelled with as_of(), so joined feature groups contribute current state.
+        mocker.patch(ENGINE_GET_TYPE, return_value="spark")
+        mocker.patch("hsfs.engine._get_instance")
+        mocker.patch(CLIENT_GET_INSTANCE)
+        unit_test_fv = feature_view.FeatureView.from_response_json(
+            backend_fixtures["feature_view"]["get"]["response"]
+        )
+        mocker.patch("hsfs.core.vector_server.VectorServer")
+        filter_mock = mocker.patch(
+            "hsfs.constructor.query.Query.filter",
+            return_value=query.Query.from_response_json(
+                backend_fixtures["query"]["get"]["response"]
+            ),
+        )
+        as_of_mock = mocker.patch(
+            "hsfs.constructor.query.Query.as_of",
+            return_value=query.Query.from_response_json(
+                backend_fixtures["query"]["get"]["response"]
+            ),
+        )
+        read_mock = mocker.patch("hsfs.constructor.query.Query.read")
+
+        config_engine = mwce.MonitoringWindowConfigEngine()
+        start_time = datetime.now() - timedelta(days=1)
+        end_time = datetime.now()
+
+        # Act
+        _ = config_engine._fetch_feature_view_data(
+            entity=unit_test_fv,
+            feature_names=[DEFAULT_FEATURE_NAME],
+            start_time=start_time,
+            end_time=end_time,
+            event_time_feature=Feature(DEFAULT_FEATURE_NAME, type="timestamp"),
+        )
+
+        # Assert
+        filter_mock.assert_called_once()
+        applied = filter_mock.call_args_list[0].args[0]
+        assert isinstance(applied, filter_module.Logic)
+        assert applied._left_f._condition == filter_module.Filter.GE
+        assert applied._right_f._condition == filter_module.Filter.LT
+        as_of_mock.assert_not_called()
+        assert read_mock.call_count == 1
+
     def test_fetch_entity_data_in_monitoring_window(self, backend_fixtures, mocker):
         # Arrange
         mocker.patch("hsfs.engine._get_type", return_value="spark")
@@ -435,6 +544,7 @@ class TestMonitoringWindowConfigEngine:
                     start_time=None,
                     end_time=None,
                     model_filter=None,
+                    event_time_feature=None,
                 ),
                 call().sample(fraction=0.5),
             ]
@@ -447,10 +557,145 @@ class TestMonitoringWindowConfigEngine:
                     start_time=None,
                     end_time=None,
                     model_filter=None,
+                    event_time_feature=None,
                 ),
                 call().sample(fraction=0.25),
             ]
         )
+
+    def test_run_single_window_monitoring_cache_lookup_uses_event_time_bounds(
+        self, mocker
+    ):
+        """FSTORE-2106: with event_time_feature set, the cache lookup uses event time.
+
+        The cached-statistics lookup sends event-time bounds and the feature name
+        instead of commit-time bounds.
+        """
+        fg = _make_hudi_fg("DELTA")
+        window_config = mwc.MonitoringWindowConfig(
+            window_config_type=mwc.WindowConfigType.ROLLING_TIME,
+            time_offset="1d",
+            row_percentage=1.0,
+        )
+        engine = mwce.MonitoringWindowConfigEngine()
+        mocker.patch.object(engine, "_init_statistics_engine")
+        stats_engine_mock = MagicMock()
+        found_fds = [FeatureDescriptiveStatistics(feature_name="amount", count=10)]
+        found_stats = MagicMock()
+        found_stats.feature_descriptive_statistics = found_fds
+        stats_engine_mock._get_by_time_window.return_value = found_stats
+        engine._statistics_engine = stats_engine_mock
+
+        result = engine._run_single_window_monitoring(
+            entity=fg,
+            monitoring_window_config=window_config,
+            feature_names=["amount"],
+            event_time_feature=Feature("event_ts", type="timestamp"),
+        )
+
+        assert result == found_fds
+        stats_engine_mock._get_by_time_window.assert_called_once()
+        call_kwargs = stats_engine_mock._get_by_time_window.call_args.kwargs
+        assert call_kwargs["event_time"] == "event_ts"
+        assert "start_event_time" in call_kwargs
+        assert "end_event_time" in call_kwargs
+        assert "start_commit_time" not in call_kwargs
+        assert "end_commit_time" not in call_kwargs
+
+    @pytest.mark.parametrize(
+        "window_type, expect_bounds",
+        [
+            (mwc.WindowConfigType.ALL_TIME, False),
+            (mwc.WindowConfigType.ROLLING_TIME, True),
+        ],
+    )
+    def test_run_single_window_monitoring_all_time_event_window_has_no_time_filter(
+        self, mocker, window_type, expect_bounds
+    ):
+        """FSTORE-2106: an ALL_TIME window on an event-time basis reads the latest snapshot.
+
+        No time filter is applied to the read, while the registered statistics still
+        carry the window's event-time end bound. A ROLLING_TIME window keeps its bounds.
+        """
+        fg = _make_hudi_fg("DELTA")
+        window_config = mwc.MonitoringWindowConfig(
+            window_config_type=window_type,
+            time_offset="1d" if expect_bounds else None,
+            row_percentage=1.0,
+        )
+        engine = mwce.MonitoringWindowConfigEngine()
+        mocker.patch.object(engine, "_init_statistics_engine")
+        stats_engine_mock = MagicMock()
+        stats_engine_mock._get_by_time_window.return_value = None
+        saved = MagicMock()
+        saved.feature_descriptive_statistics = [
+            FeatureDescriptiveStatistics(feature_name="amount", count=10)
+        ]
+        stats_engine_mock._compute_and_save_monitoring_statistics.return_value = saved
+        engine._statistics_engine = stats_engine_mock
+        fetch_mock = mocker.patch.object(
+            engine, "_fetch_entity_data_in_monitoring_window", return_value=MagicMock()
+        )
+
+        engine._run_single_window_monitoring(
+            entity=fg,
+            monitoring_window_config=window_config,
+            feature_names=["amount"],
+            event_time_feature=Feature("event_ts", type="timestamp"),
+        )
+
+        fetch_kwargs = fetch_mock.call_args.kwargs
+        assert fetch_kwargs["event_time_feature"].name == "event_ts"
+        if expect_bounds:
+            assert fetch_kwargs["start_time"] is not None
+            assert fetch_kwargs["end_time"] is not None
+        else:
+            assert fetch_kwargs["start_time"] is None
+            assert fetch_kwargs["end_time"] is None
+        save_kwargs = (
+            stats_engine_mock._compute_and_save_monitoring_statistics.call_args.kwargs
+        )
+        assert save_kwargs["event_time"] == "event_ts"
+        assert save_kwargs["window_end_event_time"] is not None
+        assert save_kwargs["window_start_commit_time"] is None
+        assert save_kwargs["window_end_commit_time"] is None
+
+    def test_run_single_window_monitoring_cache_lookup_uses_commit_bounds_without_event_time(
+        self, mocker
+    ):
+        """Without event_time_feature, the cache lookup keeps using commit time.
+
+        The cached-statistics lookup keeps sending commit-time bounds, matching
+        pre-FSTORE-2106 behaviour.
+        """
+        fg = _make_hudi_fg("DELTA")
+        window_config = mwc.MonitoringWindowConfig(
+            window_config_type=mwc.WindowConfigType.ROLLING_TIME,
+            time_offset="1d",
+            row_percentage=1.0,
+        )
+        engine = mwce.MonitoringWindowConfigEngine()
+        mocker.patch.object(engine, "_init_statistics_engine")
+        stats_engine_mock = MagicMock()
+        found_fds = [FeatureDescriptiveStatistics(feature_name="amount", count=10)]
+        found_stats = MagicMock()
+        found_stats.feature_descriptive_statistics = found_fds
+        stats_engine_mock._get_by_time_window.return_value = found_stats
+        engine._statistics_engine = stats_engine_mock
+
+        result = engine._run_single_window_monitoring(
+            entity=fg,
+            monitoring_window_config=window_config,
+            feature_names=["amount"],
+        )
+
+        assert result == found_fds
+        stats_engine_mock._get_by_time_window.assert_called_once()
+        call_kwargs = stats_engine_mock._get_by_time_window.call_args.kwargs
+        assert "start_commit_time" in call_kwargs
+        assert "end_commit_time" in call_kwargs
+        assert "event_time" not in call_kwargs
+        assert "start_event_time" not in call_kwargs
 
 
 # ---------------------------------------------------------------------------
@@ -670,6 +915,59 @@ class TestMergeDispatch:
         assert result == [synthetic_fds]
         # compute_and_save must NOT have been called when merge succeeds.
         stats_engine_mock.compute_and_save_monitoring_statistics.assert_not_called()
+
+    def test_event_time_feature_set_skips_merge_path_even_when_eligible(self, mocker):
+        """FSTORE-2106: an event_time_feature skips the merge path even when eligible.
+
+        A rolling HUDI FG with PDF profile_flags is otherwise merge-eligible, but the
+        merge path enumerates per-commit statistics and has no notion of an event-time
+        slice.
+        """
+        fg = _make_hudi_fg("HUDI")
+        window_config = _make_rolling_window_config()
+        pdf_profile_flags = {
+            "histograms": True,
+            "kll": True,
+            "histogram_bins": 20,
+            "for_distribution_comparison": True,
+        }
+
+        engine = mwce.MonitoringWindowConfigEngine()
+
+        mocker.patch.object(engine, "_init_statistics_engine")
+        stats_engine_mock = MagicMock()
+        stats_engine_mock._get_by_time_window.return_value = None
+        engine._statistics_engine = stats_engine_mock
+
+        resolve_mock = mocker.patch.object(
+            engine, "_resolve_rolling_reference_via_merge"
+        )
+        mocker.patch.object(
+            engine,
+            "_fetch_entity_data_in_monitoring_window",
+            return_value=MagicMock(),
+        )
+        computed_fds = [
+            FeatureDescriptiveStatistics(
+                feature_name="amount", feature_type="Fractional"
+            )
+        ]
+        computed_stats = MagicMock()
+        computed_stats.feature_descriptive_statistics = computed_fds
+        stats_engine_mock._compute_and_save_monitoring_statistics.return_value = (
+            computed_stats
+        )
+
+        result = engine._run_single_window_monitoring(
+            entity=fg,
+            monitoring_window_config=window_config,
+            feature_names=["amount"],
+            profile_flags=pdf_profile_flags,
+            event_time_feature=Feature("amount", type="timestamp"),
+        )
+
+        resolve_mock.assert_not_called()
+        assert result == computed_fds
 
     def test_rolling_iceberg_fg_with_pdf_flags_uses_merge_path(self):
         """Rolling-time + ICEBERG FG + kll=True profile_flags triggers merge path.

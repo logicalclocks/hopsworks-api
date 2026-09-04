@@ -87,6 +87,10 @@ NUMERIC_HIVE_TYPES = {"int", "bigint", "tinyint", "smallint", "float", "double"}
 # Phase-2 types: skip silently in fan-out but reject explicitly if named
 PHASE2_TYPES = {"timestamp", "date", "binary"}
 
+# FSTORE-2106: offline types accepted for a monitoring config's event_time feature,
+# mirroring FeaturestoreConstants.EVENT_TIME_FEATURE_TYPES on the backend.
+EVENT_TIME_FEATURE_TYPES = {"timestamp", "date", "bigint"}
+
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -94,6 +98,7 @@ if TYPE_CHECKING:
     from hsfs.core.feature_monitoring_result import FeatureMonitoringResult
     from hsfs.core.job import Job
     from hsfs.core.statistics_comparison_config import StatisticsComparisonConfig
+    from hsfs.feature import Feature
 
 
 class FeatureMonitoringConfigEngine:
@@ -264,6 +269,58 @@ class FeatureMonitoringConfigEngine:
             raise ValueError(
                 f"Invalid feature name. Feature name must be one of {valid_feature_names}."
             )
+
+    def _resolve_event_time(
+        self,
+        event_time: str | bool | None,
+        default_event_time: str | None,
+        valid_features: dict[str, str],
+    ) -> str | None:
+        """Resolve the `event_time` parameter of `create_feature_monitoring` and `create_scheduled_statistics`.
+
+        Shared by `FeatureGroupBase` and `FeatureView` so the resolution rules live in one place.
+        `None` defaults to the entity's own event-time feature when one is defined.
+        `False` forces commit-time windows.
+        A feature name is validated against the entity's features and their offline type before being accepted.
+        `True` has no meaning and is rejected.
+
+        Parameters:
+            event_time: The user-supplied value: `None`, `False`, or a feature name.
+            default_event_time: The entity's own event-time feature name, or `None` when the entity does not declare one.
+            valid_features: Mapping of feature name to offline type for the entity.
+
+        Raises:
+            FeatureStoreException: If `event_time` names a feature that does not exist on the entity, or whose offline type is not TIMESTAMP, DATE or BIGINT.
+            TypeError: If `event_time` is `True` or not a str, bool or None.
+
+        Returns:
+            The resolved event-time feature name, or `None` for commit-time windows.
+        """
+        if event_time is False:
+            return None
+        if event_time is None:
+            return default_event_time
+        if event_time is True:
+            raise TypeError(
+                "event_time=True is not supported. Pass the name of the event-time "
+                "feature, None to use the entity's event time, or False for commit time."
+            )
+        if not isinstance(event_time, str):
+            raise TypeError("event_time must be of type str, bool or None.")
+
+        if event_time not in valid_features:
+            raise FeatureStoreException(
+                f"event_time feature '{event_time}' does not exist on this entity. "
+                f"Valid features are: {sorted(valid_features)}."
+            )
+        feature_type = valid_features[event_time]
+        if feature_type is None or feature_type.lower() not in EVENT_TIME_FEATURE_TYPES:
+            raise FeatureStoreException(
+                f"event_time feature '{event_time}' has type '{feature_type}'. "
+                f"Only features of type {sorted(EVENT_TIME_FEATURE_TYPES)} can be used "
+                "as the event-time basis of a monitoring window."
+            )
+        return event_time
 
     def _validate_statistics_metric(self, metric: str):
         metric_lower = metric.lower()
@@ -571,6 +628,21 @@ class FeatureMonitoringConfigEngine:
         if config.model_name is not None and config.model_version is not None:
             model_filter = (config.model_name, config.model_version)
 
+        # FSTORE-2106: resolve the config's event_time feature name to a Feature object
+        # carrying its source feature group, so the window engine can build a filter
+        # instead of time-travelling by commit. Shared by the detection and reference
+        # window runs below — both read the same entity for ROLLING_TIME/ALL_TIME
+        # windows, and TRAINING_DATASET references never use it.
+        event_time_feature = self._resolve_event_time_feature(entity, config.event_time)
+        if model_filter is not None and event_time_feature is None:
+            # Model monitoring has no commit-time path: the logging FG cannot be read
+            # with as_of. The backend persists log_time on these configs; fall back to
+            # it here in case a config created before FSTORE-2106 reaches this job
+            # without the field.
+            from hsfs.feature import Feature
+
+            event_time_feature = Feature("log_time", type="timestamp")
+
         # Idea D — commit-anchored detection window for the model-monitoring path.
         #
         # For model/deployment monitoring on a logging FG (model_filter is set):
@@ -672,6 +744,7 @@ class FeatureMonitoringConfigEngine:
                         profile_flags=profile_flags,
                         end_commit_time_override=end_commit_time,
                         model_filter=model_filter,
+                        event_time_feature=event_time_feature,
                     )
                 )
             except RestAPIError as e:
@@ -752,6 +825,7 @@ class FeatureMonitoringConfigEngine:
                         profile_flags=profile_flags,
                         end_commit_time_override=ref_commit_time_override,
                         model_filter=ref_model_filter,
+                        event_time_feature=event_time_feature,
                     )
                 )
             except RestAPIError as e:
@@ -777,6 +851,68 @@ class FeatureMonitoringConfigEngine:
             reference_statistics=reference_statistics,
             detection_window_commit_time=detection_window_commit_time,
         )
+
+    def _resolve_event_time_feature(
+        self,
+        entity: feature_group.FeatureGroup | feature_view.FeatureView,
+        event_time_name: str | None,
+    ) -> Feature | None:
+        """Resolve a monitoring config's `event_time` name to a `Feature` bound to its source.
+
+        For a feature group the feature already carries its own feature group.
+        For a feature view the name is looked up among `entity.features`, which are `TrainingDatasetFeature` objects.
+        Those may originate from a joined feature group rather than the view's left feature group, so the returned `Feature` is built with that source feature group instead.
+
+        Parameters:
+            entity: The feature group or feature view the monitoring job reads from.
+            event_time_name: The config's resolved event-time feature name, or `None`.
+
+        Raises:
+            FeatureStoreException: If `event_time_name` no longer names a feature on the entity.
+
+        Returns:
+            A `Feature` carrying its source feature group, or `None` for commit-time windows.
+        """
+        if event_time_name is None:
+            return None
+
+        from hsfs import feature_group as _fg_mod
+
+        if isinstance(entity, _fg_mod.FeatureGroup):
+            feature = entity.get_feature(event_time_name)
+            if feature is None:
+                raise FeatureStoreException(
+                    f"event_time feature '{event_time_name}' is no longer part of "
+                    f"'{getattr(entity, 'name', entity)}'."
+                )
+            return feature
+
+        from hsfs.feature import Feature
+
+        tdf = next((f for f in entity.features if f.name == event_time_name), None)
+        if tdf is not None:
+            # The type drives how filter bounds are formatted (timestamps become
+            # datetime strings), so it must travel with the feature.
+            return Feature(
+                name=tdf.feature_group_feature_name,
+                type=tdf.type,
+                feature_group=tdf.feature_group,
+            )
+        # The default basis is the left feature group's event time, which a feature
+        # view need not select. Filtering on an unselected feature is allowed, so
+        # resolve it on the left feature group directly.
+        left_fg = entity.query._left_feature_group
+        feature = (
+            left_fg.get_feature(event_time_name)
+            if left_fg is not None and left_fg.event_time == event_time_name
+            else None
+        )
+        if feature is None:
+            raise FeatureStoreException(
+                f"event_time feature '{event_time_name}' is no longer part of "
+                f"'{getattr(entity, 'name', entity)}'."
+            )
+        return feature
 
     # feature-type compatibility helpers
 
@@ -885,6 +1021,7 @@ class FeatureMonitoringConfigEngine:
         end_date_time: str | int | date | datetime | pd.Timestamp | None = None,
         cron_expression: str | None = "0 0 12 ? * * *",
         valid_features: dict[str, str] | None = None,
+        event_time: str | None = None,
     ) -> fmc.FeatureMonitoringConfig:
         """Builds the default scheduled statistics config, default detection window is full snapshot.
 
@@ -905,6 +1042,9 @@ class FeatureMonitoringConfigEngine:
                 cron expression defining the schedule for computing statistics. The expression
                 must be in UTC timezone and based on Quartz cron syntax. Default is '0 0 12 ? * * *',
                 every day at 12pm UTC.
+            event_time:
+                Resolved name of the feature the detection window is sliced by.
+                `None` means commit-time windows.
 
         Returns:
             A Feature Monitoring Configuration to compute the statistics of a snapshot of all data present in the entity.
@@ -939,6 +1079,7 @@ class FeatureMonitoringConfigEngine:
                 "enabled": True,
             },
             valid_features=valid_features,
+            event_time=event_time,
         ).with_detection_window()
 
     def _build_default_feature_monitoring_config(
@@ -950,6 +1091,7 @@ class FeatureMonitoringConfigEngine:
         end_date_time: str | int | date | datetime | pd.Timestamp | None = None,
         cron_expression: str | None = "0 0 12 ? * * *",
         valid_features: dict[str, str] | None = None,
+        event_time: str | None = None,
     ) -> fmc.FeatureMonitoringConfig:
         """Builds the default scheduled statistics config, default detection window is full snapshot.
 
@@ -969,6 +1111,9 @@ class FeatureMonitoringConfigEngine:
                 cron expression defining the schedule for computing statistics. The expression
                 must be in UTC timezone and based on Quartz cron syntax. Default is '0 0 12 ? * * *',
                 every day at 12pm UTC.
+            event_time:
+                Resolved name of the feature the detection and reference windows are sliced by.
+                `None` means commit-time windows.
 
         Returns:
             A Feature Monitoring Configuration to compute the statistics of a snapshot of all data present in the entity.
@@ -997,4 +1142,5 @@ class FeatureMonitoringConfigEngine:
             },
             valid_feature_names=valid_feature_names,
             valid_features=valid_features,
+            event_time=event_time,
         ).with_detection_window()

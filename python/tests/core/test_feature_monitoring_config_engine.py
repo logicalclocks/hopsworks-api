@@ -456,6 +456,258 @@ class TestFeatureMonitoringConfigEngine:
         with pytest.raises(ValueError, match=r"Invalid metric"):
             config_engine._validate_statistics_metric("invalid_metric")
 
+    # ------------------------------------------------------------------
+    # FSTORE-2106 — event_time resolution
+    # ------------------------------------------------------------------
+
+    def test_resolve_event_time_none_uses_default_when_entity_has_one(self):
+        config_engine = feature_monitoring_config_engine.FeatureMonitoringConfigEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+
+        resolved = config_engine._resolve_event_time(
+            event_time=None,
+            default_event_time="datetime",
+            valid_features={"datetime": "timestamp", "amount": "double"},
+        )
+
+        assert resolved == "datetime"
+
+    def test_resolve_event_time_none_falls_back_to_commit_time_without_default(self):
+        config_engine = feature_monitoring_config_engine.FeatureMonitoringConfigEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+
+        resolved = config_engine._resolve_event_time(
+            event_time=None,
+            default_event_time=None,
+            valid_features={"amount": "double"},
+        )
+
+        assert resolved is None
+
+    def test_resolve_event_time_false_forces_commit_time(self):
+        config_engine = feature_monitoring_config_engine.FeatureMonitoringConfigEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+
+        resolved = config_engine._resolve_event_time(
+            event_time=False,
+            default_event_time="datetime",
+            valid_features={"datetime": "timestamp"},
+        )
+
+        assert resolved is None
+
+    def test_resolve_event_time_explicit_valid_name_accepted(self):
+        config_engine = feature_monitoring_config_engine.FeatureMonitoringConfigEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+
+        resolved = config_engine._resolve_event_time(
+            event_time="ts",
+            default_event_time="datetime",
+            valid_features={"datetime": "timestamp", "ts": "bigint"},
+        )
+
+        assert resolved == "ts"
+
+    @pytest.mark.parametrize("valid_type", ["timestamp", "date", "bigint", "BIGINT"])
+    def test_resolve_event_time_accepts_all_valid_types_case_insensitive(
+        self, valid_type
+    ):
+        config_engine = feature_monitoring_config_engine.FeatureMonitoringConfigEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+
+        resolved = config_engine._resolve_event_time(
+            event_time="ts",
+            default_event_time=None,
+            valid_features={"ts": valid_type},
+        )
+
+        assert resolved == "ts"
+
+    def test_resolve_event_time_explicit_missing_feature_raises(self):
+        from hopsworks_common.client.exceptions import FeatureStoreException
+
+        config_engine = feature_monitoring_config_engine.FeatureMonitoringConfigEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+
+        with pytest.raises(FeatureStoreException, match="does not exist"):
+            config_engine._resolve_event_time(
+                event_time="missing",
+                default_event_time=None,
+                valid_features={"amount": "double"},
+            )
+
+    def test_resolve_event_time_explicit_invalid_type_raises(self):
+        from hopsworks_common.client.exceptions import FeatureStoreException
+
+        config_engine = feature_monitoring_config_engine.FeatureMonitoringConfigEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+
+        with pytest.raises(FeatureStoreException, match="has type 'double'"):
+            config_engine._resolve_event_time(
+                event_time="amount",
+                default_event_time=None,
+                valid_features={"amount": "double"},
+            )
+
+    def test_resolve_event_time_invalid_type_raises_type_error(self):
+        config_engine = feature_monitoring_config_engine.FeatureMonitoringConfigEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+
+        with pytest.raises(TypeError, match="event_time must be of type"):
+            config_engine._resolve_event_time(
+                event_time=123,
+                default_event_time=None,
+                valid_features={"amount": "double"},
+            )
+
+    def test_resolve_event_time_true_raises_explicit_type_error(self):
+        config_engine = feature_monitoring_config_engine.FeatureMonitoringConfigEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+
+        with pytest.raises(TypeError, match="event_time=True is not supported"):
+            config_engine._resolve_event_time(
+                event_time=True,
+                default_event_time="datetime",
+                valid_features={"datetime": "bigint"},
+            )
+
+    # ------------------------------------------------------------------
+    # FSTORE-2106 — event_time -> Feature resolution for the read path
+    # ------------------------------------------------------------------
+
+    def test_resolve_event_time_feature_none_returns_none(self):
+        config_engine = feature_monitoring_config_engine.FeatureMonitoringConfigEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+
+        assert config_engine._resolve_event_time_feature(MagicMock(), None) is None
+
+    def test_resolve_event_time_feature_on_feature_group(self, backend_fixtures):
+        from hsfs import feature_group as feature_group_mod
+
+        config_engine = feature_monitoring_config_engine.FeatureMonitoringConfigEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+        fg = feature_group_mod.FeatureGroup.from_response_json(
+            backend_fixtures["feature_group"]["get"]["response"]
+        )
+        fg.event_time = "intt"  # an existing feature on the fixture
+
+        resolved = config_engine._resolve_event_time_feature(fg, fg.event_time)
+
+        assert resolved is not None
+        assert resolved.name == "intt"
+
+    def test_resolve_event_time_feature_on_feature_group_missing_raises(
+        self, backend_fixtures
+    ):
+        """A persisted event_time that no longer names a feature must fail loudly.
+
+        Returning None here would silently send the run down the commit-time path.
+        """
+        from hopsworks_common.client.exceptions import FeatureStoreException
+        from hsfs import feature_group as feature_group_mod
+
+        config_engine = feature_monitoring_config_engine.FeatureMonitoringConfigEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+        fg = feature_group_mod.FeatureGroup.from_response_json(
+            backend_fixtures["feature_group"]["get"]["response"]
+        )
+
+        with pytest.raises(FeatureStoreException, match="no longer part of"):
+            config_engine._resolve_event_time_feature(fg, "dropped_feature")
+
+    def test_resolve_event_time_feature_on_feature_view_uses_source_feature_group(
+        self,
+    ):
+        from hsfs.feature import Feature
+        from hsfs.training_dataset_feature import TrainingDatasetFeature
+
+        config_engine = feature_monitoring_config_engine.FeatureMonitoringConfigEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_view_name=DEFAULT_FEATURE_VIEW_NAME,
+            feature_view_version=DEFAULT_FEATURE_VIEW_VERSION,
+        )
+        source_fg = MagicMock()
+        tdf = TrainingDatasetFeature(
+            name="event_ts",
+            type="timestamp",
+            featuregroup=source_fg,
+            feature_group_feature_name="raw_event_ts",
+        )
+        fv = MagicMock()
+        fv.features = [tdf]
+
+        resolved = config_engine._resolve_event_time_feature(fv, "event_ts")
+
+        assert isinstance(resolved, Feature)
+        assert resolved.name == "raw_event_ts"
+        # The type decides how filter bounds are formatted (timestamp -> datetime string).
+        assert resolved.type == "timestamp"
+        # Feature only retains the source feature group's id, not the object itself.
+        assert resolved.feature_group_id == source_fg.id
+
+    def test_resolve_event_time_feature_on_feature_view_falls_back_to_left_fg(self):
+        """The default basis is the left FG's event time, which the view need not select."""
+        from hsfs.feature import Feature
+
+        config_engine = feature_monitoring_config_engine.FeatureMonitoringConfigEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_view_name=DEFAULT_FEATURE_VIEW_NAME,
+            feature_view_version=DEFAULT_FEATURE_VIEW_VERSION,
+        )
+        left_fg = MagicMock()
+        left_fg.event_time = "datetime"
+        left_fg.get_feature.return_value = Feature(
+            name="datetime", type="bigint", feature_group_id=7
+        )
+        fv = MagicMock()
+        fv.features = []  # datetime is not selected in the view
+        fv.query._left_feature_group = left_fg
+
+        resolved = config_engine._resolve_event_time_feature(fv, "datetime")
+
+        assert resolved.name == "datetime"
+        assert resolved.type == "bigint"
+        left_fg.get_feature.assert_called_once_with("datetime")
+
+    def test_resolve_event_time_feature_on_feature_view_missing_raises(self):
+        from hopsworks_common.client.exceptions import FeatureStoreException
+
+        config_engine = feature_monitoring_config_engine.FeatureMonitoringConfigEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_view_name=DEFAULT_FEATURE_VIEW_NAME,
+            feature_view_version=DEFAULT_FEATURE_VIEW_VERSION,
+        )
+        fv = MagicMock()
+        fv.features = []
+        fv.name = DEFAULT_FEATURE_VIEW_NAME
+
+        with pytest.raises(FeatureStoreException, match="is no longer part of"):
+            config_engine._resolve_event_time_feature(fv, "missing")
+
     def _build_mock_fm_config(self, feature_names, with_reference_window=True):
         """Build a minimal FeatureMonitoringConfig mock for run_feature_monitoring tests."""
         fs_configs = [
@@ -471,6 +723,7 @@ class TestFeatureMonitoringConfigEngine:
         config.feature_statistics_configs = fs_configs
         config.detection_window_config = MagicMock()
         config.reference_window_config = MagicMock() if with_reference_window else None
+        config.event_time = None
         return config
 
     def test_run_feature_monitoring_empty_reference_window(self, mocker):
@@ -613,6 +866,7 @@ class TestFeatureMonitoringConfigEngine:
         config.feature_statistics_configs = fs_configs
         config.detection_window_config = MagicMock()
         config.reference_window_config = MagicMock()
+        config.event_time = None
         return config
 
     def test_run_feature_monitoring_passes_profile_flags_for_distribution_config(

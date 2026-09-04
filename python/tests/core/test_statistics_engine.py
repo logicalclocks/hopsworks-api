@@ -706,6 +706,50 @@ class TestStatisticsEngine:
         assert mock_statistics_api.return_value._get.call_count == 1
         assert mock_statistics_api.return_value._get_all.call_count == 0
 
+    def test_get_by_time_window_event_time(self, mocker):
+        # FSTORE-2106: event-time bounds are forwarded to the API layer instead of
+        # commit-time bounds.
+        # Arrange
+        feature_store_id = 99
+
+        mock_statistics_api = mocker.patch("hsfs.core.statistics_api.StatisticsApi")
+
+        s_engine = statistics_engine.StatisticsEngine(feature_store_id, "featuregroup")
+
+        # Act — millisecond-since-epoch values (as produced by get_window_start_end_times).
+        start_event_time = 1_700_000_000_000
+        end_event_time = 1_700_086_400_000
+        s_engine._get_by_time_window(
+            metadata_instance=None,
+            start_event_time=start_event_time,
+            end_event_time=end_event_time,
+            event_time="datetime",
+            feature_names=None,
+        )
+
+        # Assert
+        assert mock_statistics_api.return_value._get.call_count == 1
+        call_kwargs = mock_statistics_api.return_value._get.call_args.kwargs
+        assert call_kwargs["start_event_time"] == start_event_time
+        assert call_kwargs["end_event_time"] == end_event_time
+        assert call_kwargs["event_time"] == "datetime"
+        assert call_kwargs["start_commit_time"] is None
+        assert call_kwargs["end_commit_time"] is None
+
+    def test_get_by_time_window_rejects_mixed_bounds(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.core.statistics_api.StatisticsApi")
+        s_engine = statistics_engine.StatisticsEngine(99, "featuregroup")
+
+        # Act / Assert
+        with pytest.raises(ValueError, match="cannot be combined"):
+            s_engine._get_by_time_window(
+                metadata_instance=None,
+                start_commit_time=1,
+                end_commit_time=2,
+                event_time="datetime",
+            )
+
     def test_get_by_time_window_stats_not_found(self, mocker):
         # Arrange
         feature_store_id = 99
@@ -929,6 +973,81 @@ class TestStatisticsEngine:
         assert fds_by_name["loc_delta"].count == 0
         # Assert: a warning was logged
         assert mock_logger.warning.call_count == 1
+
+    @pytest.mark.parametrize(
+        "kwargs, match",
+        [
+            (
+                {
+                    "window_start_commit_time": 1,
+                    "window_end_commit_time": 2,
+                    "event_time": "datetime",
+                    "window_end_event_time": 2,
+                },
+                "cannot be combined",
+            ),
+            ({"event_time": "datetime"}, "both the event-time feature name"),
+            ({"window_end_event_time": 2}, "both the event-time feature name"),
+        ],
+    )
+    def test_compute_and_save_monitoring_statistics_rejects_inconsistent_windows(
+        self, mocker, kwargs, match
+    ):
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        mocker.patch("hsfs.core.statistics_api.StatisticsApi")
+        s_engine = statistics_engine.StatisticsEngine(99, "featuregroup")
+
+        with pytest.raises(ValueError, match=match):
+            s_engine._compute_and_save_monitoring_statistics(
+                metadata_instance=mocker.Mock(),
+                feature_dataframe=mocker.Mock(),
+                row_percentage=1.0,
+                feature_name=["amount"],
+                **kwargs,
+            )
+
+    def test_compute_and_save_monitoring_statistics_event_time_bounds(self, mocker):
+        # FSTORE-2106: event-time bounds and event_time are set on the resulting
+        # Statistics instead of the commit-time bounds.
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        mocker.patch("hsfs.core.statistics_api.StatisticsApi")
+
+        s_engine = statistics_engine.StatisticsEngine(feature_store_id, "featuregroup")
+
+        fg = feature_group.FeatureGroup(
+            name="test_fg",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            partition_key=[],
+            id=10,
+        )
+
+        feature_dataframe = mocker.Mock()
+        feature_dataframe.head.return_value = []  # empty dataframe, skips profiling
+
+        # Act
+        result = s_engine._compute_and_save_monitoring_statistics(
+            metadata_instance=fg,
+            feature_dataframe=feature_dataframe,
+            window_start_event_time=1_700_000_000_000,
+            window_end_event_time=1_700_086_400_000,
+            event_time="datetime",
+            row_percentage=1.0,
+            feature_name=["amount"],
+        )
+
+        # Assert: event-time fields set, commit-time bounds left None.
+        assert result.window_start_event_time == 1_700_000_000_000
+        assert result.window_end_event_time == 1_700_086_400_000
+        assert result.event_time == "datetime"
+        assert result.window_start_commit_time is None
+        assert result.window_end_commit_time is None
 
     def test_parse_deequ_statistics_exact_uniqueness(self, mocker):
         # Arrange

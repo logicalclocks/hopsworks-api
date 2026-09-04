@@ -1035,6 +1035,26 @@ class TestFeatureView:
         # Assert
         assert root_feature_group_event_time == "event_time"
 
+    def test_event_time_valid_features_adds_unselected_root_event_time(self, mocker):
+        # FSTORE-2106: the left FG's event time can be named as a monitoring basis even
+        # when the view does not select it, matching what event_time=None resolves to.
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg1.select(["fg1_feature"]).join(fg2.select(["fg2_feature"])),
+            featurestore_id=99,
+            featurestore_name="test_fs",
+        )
+        selected = {"fg1_feature": "float", "fg2_feature": "float"}
+
+        valid = fv._event_time_valid_features(selected)
+
+        assert valid["event_time"] == "timestamp"
+        assert set(selected) < set(valid)
+        assert "event_time" not in selected  # the selectable map is left untouched
+
     def test_delete_feature_view_force(self, mocker, backend_fixtures):
         # Arrange
         mock_engine = mocker.patch(

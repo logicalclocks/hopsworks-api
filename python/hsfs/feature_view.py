@@ -4323,6 +4323,7 @@ class FeatureView:
         start_date_time: int | str | datetime | date | pd.Timestamp | None = None,
         end_date_time: int | str | datetime | date | pd.Timestamp | None = None,
         cron_expression: str | None = "0 0 12 ? * * *",
+        event_time: str | bool | None = None,
     ) -> fmc.FeatureMonitoringConfig:
         """Create a job to compute statistics on snapshot of feature data on a schedule.
 
@@ -4352,12 +4353,16 @@ class FeatureView:
             description: Description of the feature monitoring configuration.
             start_date_time: Start date and time from which to start computing statistics.
             end_date_time: End date and time at which to stop computing statistics.
-            cron_expression: Cron expression to use to schedule the job. The cron expression
-                must be in UTC and follow the Quartz specification. Default is '0 0 12 ? * * *',
-                every day at 12pm UTC.
+            cron_expression: Cron expression to use to schedule the job.
+                The cron expression must be in UTC and follow the Quartz specification.
+                The default value means "every day at 12pm UTC".
+            event_time: The feature the detection window is sliced by.
+                When `None`, uses the left feature group's own event-time feature if one is defined, otherwise commit time.
+                Pass a feature name to slice by a different feature instead; it must exist on this feature view, and may come from a joined feature group, with an offline type of TIMESTAMP, DATE or BIGINT.
+                Pass `False` to force commit-time windows even when the left feature group declares an event-time feature.
 
         Raises:
-            hopsworks.client.exceptions.FeatureStoreException: If the feature view is not registered in Hopsworks
+            hopsworks.client.exceptions.FeatureStoreException: If the feature view is not registered in Hopsworks, or if event_time names a feature that does not exist or has an unsupported type.
 
         Returns:
             Configuration with minimal information about the feature monitoring.
@@ -4377,6 +4382,14 @@ class FeatureView:
         elif not isinstance(feature_names, list):
             feature_names = [feature_names]
 
+        resolved_event_time = (
+            self._feature_monitoring_config_engine._resolve_event_time(
+                event_time=event_time,
+                default_event_time=self._root_feature_group_event_time_column_name,
+                valid_features=self._event_time_valid_features(valid_features),
+            )
+        )
+
         return self._feature_monitoring_config_engine._build_default_scheduled_statistics_config(
             name=name,
             feature_names=feature_names,
@@ -4386,6 +4399,7 @@ class FeatureView:
             cron_expression=cron_expression,
             end_date_time=end_date_time,
             valid_features=valid_features,
+            event_time=resolved_event_time,
         )
 
     @public
@@ -4396,6 +4410,7 @@ class FeatureView:
         start_date_time: int | str | datetime | date | pd.Timestamp | None = None,
         end_date_time: int | str | datetime | date | pd.Timestamp | None = None,
         cron_expression: str | None = "0 0 12 ? * * *",
+        event_time: str | bool | None = None,
     ) -> fmc.FeatureMonitoringConfig:
         """Enable feature monitoring to compare statistics on snapshots of feature data over time.
 
@@ -4435,9 +4450,13 @@ class FeatureView:
             cron_expression: Cron expression to use to schedule the job.
                 The cron expression must be in UTC and follow the Quartz specification.
                 The default value means "every day at 12pm UTC".
+            event_time: The feature the detection and reference windows are sliced by.
+                When `None`, uses the left feature group's own event-time feature if one is defined, otherwise commit time.
+                Pass a feature name to slice by a different feature instead; it must exist on this feature view, and may come from a joined feature group, with an offline type of TIMESTAMP, DATE or BIGINT.
+                Pass `False` to force commit-time windows even when the left feature group declares an event-time feature.
 
         Raises:
-            hopsworks.client.exceptions.FeatureStoreException: If the feature view is not registered in Hopsworks.
+            hopsworks.client.exceptions.FeatureStoreException: If the feature view is not registered in Hopsworks, or if event_time names a feature that does not exist or has an unsupported type.
 
         Returns:
             Configuration with minimal information about the feature monitoring.
@@ -4449,6 +4468,13 @@ class FeatureView:
             )
 
         valid_features = {feat.name: feat.type for feat in self._features}
+        resolved_event_time = (
+            self._feature_monitoring_config_engine._resolve_event_time(
+                event_time=event_time,
+                default_event_time=self._root_feature_group_event_time_column_name,
+                valid_features=self._event_time_valid_features(valid_features),
+            )
+        )
         return self._feature_monitoring_config_engine._build_default_feature_monitoring_config(
             name=name,
             description=description,
@@ -4457,6 +4483,7 @@ class FeatureView:
             end_date_time=end_date_time,
             cron_expression=cron_expression,
             valid_features=valid_features,
+            event_time=resolved_event_time,
         )
 
     @public
@@ -4576,12 +4603,15 @@ class FeatureView:
             )
 
         logging_fg = self.feature_logging.get_feature_group()
+        # FSTORE-2106: model monitoring always slices by the logging FG's log_time
+        # column — the basis is not a user choice here, unlike create_feature_monitoring.
         config = logging_fg.create_feature_monitoring(
             name=name,
             description=description,
             start_date_time=start_date_time,
             end_date_time=end_date_time,
             cron_expression=cron_expression,
+            event_time="log_time",
         )
         # Stamp model fields onto the config — they are persisted via to_dict() and
         # threaded through to the FM job, where they become a Filter on the logging FG.
@@ -6108,6 +6138,29 @@ class FeatureView:
                 and feature.name not in self.inference_helper_columns
             ]
         return self.__untransformed_feature_names[version]
+
+    def _event_time_valid_features(
+        self, valid_features: dict[str, str]
+    ) -> dict[str, str]:
+        """Features a monitoring configuration may slice its windows by.
+
+        The left feature group's event time is included even when the view does not select it.
+        It is the default time basis, so naming it explicitly must be accepted as well.
+
+        Parameters:
+            valid_features: Mapping of the view's selected feature names to their offline types.
+
+        Returns:
+            A new mapping with the left feature group's event-time column added when missing.
+        """
+        root_event_time = self._root_feature_group_event_time_column_name
+        if not root_event_time or root_event_time in valid_features:
+            return valid_features
+        left_fg = self.query._left_feature_group
+        feature = left_fg.get_feature(root_event_time) if left_fg is not None else None
+        if feature is None:
+            return valid_features
+        return {**valid_features, root_event_time: feature.type}
 
     @property
     def _label_column_names(self) -> set[str]:

@@ -972,6 +972,85 @@ class TestFeatureMonitoringConfigModelFields:
         assert "modelVersion" not in d
 
 
+class TestFeatureMonitoringConfigEventTime:
+    """FSTORE-2106: round-trip and serialization of event_time on FeatureMonitoringConfig."""
+
+    def _build(self, **overrides):
+        kwargs = {
+            "feature_store_id": 67,
+            "feature_group_id": 42,
+            "feature_monitoring_type": FeatureMonitoringType.STATISTICS_COMPARISON,
+            "name": "event_time_monitoring",
+            "feature_statistics_configs": [],
+        }
+        kwargs.update(overrides)
+        return fmc.FeatureMonitoringConfig(**kwargs)
+
+    def test_default_event_time_is_none(self):
+        cfg = self._build()
+        assert cfg.event_time is None
+
+    def test_constructor_accepts_event_time(self):
+        cfg = self._build(event_time="datetime")
+        assert cfg.event_time == "datetime"
+
+    def test_to_dict_emits_event_time_when_set(self):
+        from hsfs.core.monitoring_window_config import MonitoringWindowConfig
+
+        cfg = self._build(event_time="datetime")
+        cfg._detection_window_config = MonitoringWindowConfig(
+            window_config_type=WindowConfigType.ALL_TIME, row_percentage=1.0
+        )
+        d = cfg.to_dict()
+        assert d["eventTime"] == "datetime"
+
+    def test_to_dict_omits_event_time_when_unset(self):
+        from hsfs.core.monitoring_window_config import MonitoringWindowConfig
+
+        cfg = self._build()
+        cfg._detection_window_config = MonitoringWindowConfig(
+            window_config_type=WindowConfigType.ALL_TIME, row_percentage=1.0
+        )
+        d = cfg.to_dict()
+        assert "eventTime" not in d
+
+    def test_from_response_json_deserializes_event_time(self):
+        cfg = fmc.FeatureMonitoringConfig.from_response_json(
+            {
+                "id": 1,
+                "featureStoreId": 67,
+                "featureGroupId": 42,
+                "name": "cfg",
+                "featureMonitoringType": "STATISTICS_COMPUTATION",
+                "detectionWindowConfig": {
+                    "windowConfigType": "ALL_TIME",
+                    "rowPercentage": 1.0,
+                },
+                "featureStatisticsConfigs": [],
+                "eventTime": "datetime",
+            }
+        )
+        assert cfg.event_time == "datetime"
+
+    def test_from_response_json_missing_event_time_defaults_to_none(self):
+        # Older backends / persisted configs predating this field omit it entirely.
+        cfg = fmc.FeatureMonitoringConfig.from_response_json(
+            {
+                "id": 1,
+                "featureStoreId": 67,
+                "featureGroupId": 42,
+                "name": "cfg",
+                "featureMonitoringType": "STATISTICS_COMPUTATION",
+                "detectionWindowConfig": {
+                    "windowConfigType": "ALL_TIME",
+                    "rowPercentage": 1.0,
+                },
+                "featureStatisticsConfigs": [],
+            }
+        )
+        assert cfg.event_time is None
+
+
 class TestWithReferenceTrainingDatasetModelValidation:
     """FSTORE-2050: with_reference_training_dataset validates against the model's TD version."""
 
@@ -1141,6 +1220,7 @@ class TestFeatureViewCreateModelMonitoring:
             start_date_time=None,
             end_date_time=None,
             cron_expression="0 0 12 ? * * *",
+            event_time="log_time",
         )
         # Returned config carries the model fields and the resolved TD version.
         assert result is inner_config
