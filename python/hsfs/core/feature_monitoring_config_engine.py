@@ -278,21 +278,20 @@ class FeatureMonitoringConfigEngine:
     ) -> str | None:
         """Resolve the `event_time` parameter of `create_feature_monitoring` and `create_scheduled_statistics`.
 
-        Shared by `FeatureGroupBase` and `FeatureView` so the resolution rules live in
-        one place. `None` defaults to the entity's own event-time feature when one is
-        defined, `False` forces commit-time windows, and a feature name is validated
-        against the entity's features and their offline type before being accepted.
+        Shared by `FeatureGroupBase` and `FeatureView` so the resolution rules live in one place.
+        `None` defaults to the entity's own event-time feature when one is defined.
+        `False` forces commit-time windows.
+        A feature name is validated against the entity's features and their offline type before being accepted.
+        `True` has no meaning and is rejected.
 
         Parameters:
             event_time: The user-supplied value: `None`, `False`, or a feature name.
-            default_event_time: The entity's own event-time feature name, or `None`
-                when the entity does not declare one.
+            default_event_time: The entity's own event-time feature name, or `None` when the entity does not declare one.
             valid_features: Mapping of feature name to offline type for the entity.
 
         Raises:
-            FeatureStoreException: If `event_time` names a feature that does not exist
-                on the entity, or whose offline type is not TIMESTAMP, DATE or BIGINT.
-            TypeError: If `event_time` is not a str, bool or None.
+            FeatureStoreException: If `event_time` names a feature that does not exist on the entity, or whose offline type is not TIMESTAMP, DATE or BIGINT.
+            TypeError: If `event_time` is `True` or not a str, bool or None.
 
         Returns:
             The resolved event-time feature name, or `None` for commit-time windows.
@@ -301,6 +300,11 @@ class FeatureMonitoringConfigEngine:
             return None
         if event_time is None:
             return default_event_time
+        if event_time is True:
+            raise TypeError(
+                "event_time=True is not supported. Pass the name of the event-time "
+                "feature, None to use the entity's event time, or False for commit time."
+            )
         if not isinstance(event_time, str):
             raise TypeError("event_time must be of type str, bool or None.")
 
@@ -855,11 +859,9 @@ class FeatureMonitoringConfigEngine:
     ) -> Feature | None:
         """Resolve a monitoring config's `event_time` name to a `Feature` bound to its source.
 
-        For a feature group the feature already carries its own feature group. For a
-        feature view the name is looked up among `entity.features` (`TrainingDatasetFeature`
-        objects), which may originate from a joined feature group rather than the view's
-        left feature group, so the returned `Feature` is built with that source feature
-        group instead.
+        For a feature group the feature already carries its own feature group.
+        For a feature view the name is looked up among `entity.features`, which are `TrainingDatasetFeature` objects.
+        Those may originate from a joined feature group rather than the view's left feature group, so the returned `Feature` is built with that source feature group instead.
 
         Parameters:
             entity: The feature group or feature view the monitoring job reads from.
@@ -1025,9 +1027,9 @@ class FeatureMonitoringConfigEngine:
                 cron expression defining the schedule for computing statistics. The expression
                 must be in UTC timezone and based on Quartz cron syntax. Default is '0 0 12 ? * * *',
                 every day at 12pm UTC.
-            event_time: str, optional
-                Resolved name of the feature the detection window is sliced by. `None`
-                means commit-time windows.
+            event_time:
+                Resolved name of the feature the detection window is sliced by.
+                `None` means commit-time windows.
 
         Returns:
             A Feature Monitoring Configuration to compute the statistics of a snapshot of all data present in the entity.
@@ -1094,9 +1096,9 @@ class FeatureMonitoringConfigEngine:
                 cron expression defining the schedule for computing statistics. The expression
                 must be in UTC timezone and based on Quartz cron syntax. Default is '0 0 12 ? * * *',
                 every day at 12pm UTC.
-            event_time: str, optional
-                Resolved name of the feature the detection and reference windows are
-                sliced by. `None` means commit-time windows.
+            event_time:
+                Resolved name of the feature the detection and reference windows are sliced by.
+                `None` means commit-time windows.
 
         Returns:
             A Feature Monitoring Configuration to compute the statistics of a snapshot of all data present in the entity.

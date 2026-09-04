@@ -14,6 +14,7 @@
 #   limitations under the License.
 #
 
+import pytest
 from hsfs.core import statistics_api
 
 
@@ -83,6 +84,13 @@ class TestBuildGetQueryParams:
         )
 
         assert not any("commit_time" in f for f in params["filter_by"])
+
+    def test_commit_and_event_time_bounds_together_raise(self):
+        api = self._api()
+        with pytest.raises(ValueError, match="cannot be combined"):
+            api._build_get_query_params(
+                start_commit_time=1, end_commit_time=2, event_time="datetime"
+            )
 
     def test_no_window_bounds_falls_back_to_computation_time_sort(self):
         api = self._api()

@@ -736,6 +736,20 @@ class TestStatisticsEngine:
         assert call_kwargs["start_commit_time"] is None
         assert call_kwargs["end_commit_time"] is None
 
+    def test_get_by_time_window_rejects_mixed_bounds(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.core.statistics_api.StatisticsApi")
+        s_engine = statistics_engine.StatisticsEngine(99, "featuregroup")
+
+        # Act / Assert
+        with pytest.raises(ValueError, match="cannot be combined"):
+            s_engine._get_by_time_window(
+                metadata_instance=None,
+                start_commit_time=1,
+                end_commit_time=2,
+                event_time="datetime",
+            )
+
     def test_get_by_time_window_stats_not_found(self, mocker):
         # Arrange
         feature_store_id = 99

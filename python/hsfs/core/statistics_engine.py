@@ -530,6 +530,14 @@ class StatisticsEngine:
         Returns:
             Statistics metadata containing a list of single feature descriptive statistics.
         """
+        if (start_commit_time is not None or end_commit_time is not None) and (
+            start_event_time is not None
+            or end_event_time is not None
+            or event_time is not None
+        ):
+            raise ValueError(
+                "Commit-time and event-time window bounds cannot be combined in one statistics lookup."
+            )
         start_commit_time = util._convert_event_time_to_timestamp(start_commit_time)
         end_commit_time = util._convert_event_time_to_timestamp(end_commit_time)
         start_event_time = util._convert_event_time_to_timestamp(start_event_time)

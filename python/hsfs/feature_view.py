@@ -4353,9 +4353,9 @@ class FeatureView:
             description: Description of the feature monitoring configuration.
             start_date_time: Start date and time from which to start computing statistics.
             end_date_time: End date and time at which to stop computing statistics.
-            cron_expression: Cron expression to use to schedule the job. The cron expression
-                must be in UTC and follow the Quartz specification. Default is '0 0 12 ? * * *',
-                every day at 12pm UTC.
+            cron_expression: Cron expression to use to schedule the job.
+                The cron expression must be in UTC and follow the Quartz specification.
+                The default value means "every day at 12pm UTC".
             event_time: The feature the detection window is sliced by.
                 When `None`, uses the left feature group's own event-time feature if one is defined, otherwise commit time.
                 Pass a feature name to slice by a different feature instead; it must exist on this feature view, and may come from a joined feature group, with an offline type of TIMESTAMP, DATE or BIGINT.

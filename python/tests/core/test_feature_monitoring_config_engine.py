@@ -576,6 +576,19 @@ class TestFeatureMonitoringConfigEngine:
                 valid_features={"amount": "double"},
             )
 
+    def test_resolve_event_time_true_raises_explicit_type_error(self):
+        config_engine = feature_monitoring_config_engine.FeatureMonitoringConfigEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+
+        with pytest.raises(TypeError, match="event_time=True is not supported"):
+            config_engine._resolve_event_time(
+                event_time=True,
+                default_event_time="datetime",
+                valid_features={"datetime": "bigint"},
+            )
+
     # ------------------------------------------------------------------
     # FSTORE-2106 — event_time -> Feature resolution for the read path
     # ------------------------------------------------------------------

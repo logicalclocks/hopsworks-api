@@ -338,6 +338,15 @@ class StatisticsApi:
             limit: Limit for pagination queries
             with_content: Whether include feature descriptive statistics in the response or not
         """
+        if (start_commit_time is not None or end_commit_time is not None) and (
+            start_event_time is not None
+            or end_event_time is not None
+            or event_time is not None
+        ):
+            raise ValueError(
+                "Commit-time and event-time window bounds cannot be combined in one statistics query."
+            )
+
         query_params: dict[str, int | str | list[str]] = {"offset": offset}
         if limit is not None:
             query_params["limit"] = limit

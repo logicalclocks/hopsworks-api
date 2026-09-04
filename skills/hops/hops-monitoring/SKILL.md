@@ -110,11 +110,11 @@ Feature views use the **same API** (`fv.create_feature_monitoring(...)`), and co
 compare serving data to a training-dataset baseline with `.with_reference_training_dataset(...)`.
 
 **Time basis of the windows** — `create_feature_monitoring` / `create_scheduled_statistics`
-take `event_time`: `None` (default) slices detection/reference windows by the entity's own
-event-time feature when one is defined, otherwise by commit time; a feature name slices by
-that feature instead (must be TIMESTAMP, DATE or BIGINT); `False` forces commit-time windows
-even when an event-time feature is defined. `fv.create_model_monitoring(...)` always slices
-by `log_time` and ignores this parameter.
+take `event_time`.
+`None` (default) slices detection/reference windows by the entity's own event-time feature when one is defined, otherwise by commit time.
+A feature name slices by that feature instead (must be TIMESTAMP, DATE or BIGINT).
+`False` forces commit-time windows even when an event-time feature is defined.
+`fv.create_model_monitoring(...)` always slices by `log_time` and ignores this parameter.
 
 **Comparison metrics** — numerical: `mean`, `min`, `max`, `sum`, `std_dev`, `count`,
 `completeness`, `distinctness`, `entropy`, `uniqueness`, `approximate_num_distinct_values`,
