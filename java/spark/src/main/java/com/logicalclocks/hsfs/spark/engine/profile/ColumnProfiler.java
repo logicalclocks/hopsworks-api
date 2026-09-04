@@ -39,6 +39,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -213,19 +214,27 @@ public class ColumnProfiler {
         // sample stddev. Use stddev_pop to match the Deequ baseline byte-for-byte.
         exprs.add(functions.stddev_pop(cn).alias(nn + "__stddev"));
         exprs.add(functions.sum(cn).alias(nn + "__sum"));
-        // NaN-free copies for the histogram. Spark ranks NaN above every other double, so
-        // one NaN makes __max NaN and every range derived from it NaN too. The emitted
-        // minimum/maximum keep Spark's values for Deequ parity; only the binning uses
-        // these. Same pass, no extra Spark job.
-        Column finite = functions.when(functions.not(functions.isnan(cn)), cn);
+        // Finite-only copies for the binning: one NaN makes __max NaN and one infinity
+        // makes it infinite, and neither works as a bin edge. The emitted minimum/maximum
+        // keep Spark's values for Deequ parity. Same pass, no extra Spark job.
+        Column finite = functions.when(isFinite(cn), cn);
         exprs.add(functions.min(finite).alias(nn + "__min_finite"));
         exprs.add(functions.max(finite).alias(nn + "__max_finite"));
-        exprs.add(functions.count(finite).alias(nn + "__nonnan"));
+        exprs.add(functions.count(finite).alias(nn + "__nfinite"));
       }
     }
     Column first = exprs.get(0);
     Column[] rest = exprs.subList(1, exprs.size()).toArray(new Column[0]);
     return df.agg(first, rest).first();
+  }
+
+  /**
+   * Spark predicate selecting the finite values of a double column. Spark orders NaN above
+   * +Infinity, so one comparison excludes NaN and both infinities. Matches what
+   * {@link KllAggregator} feeds its sketch, so the histogram and the buckets bin the same rows.
+   */
+  static Column isFinite(Column doubleCol) {
+    return functions.abs(doubleCol).lt(functions.lit(Double.POSITIVE_INFINITY));
   }
 
   // ---------------------------------------------------------------------------
@@ -392,30 +401,39 @@ public class ColumnProfiler {
       builder.correlations(correlationMap.get(nn));
     }
 
-    // Bin over the finite values: minVal/maxVal are NaN as soon as the column holds one
-    // NaN, which would label every bin "NaN to NaN", and nonNullVal counts NaN rows that
-    // do not belong in any bin. Both are null when nothing finite exists, and the
-    // histogram is then omitted rather than emitted as garbage.
+    // Bin over the finite values: minVal/maxVal go non-finite as soon as the column holds
+    // one NaN or infinity. From the same agg() pass; min/max are null exactly when the
+    // column has nothing finite.
     Double minFinite = aggRow.getAs(nn + "__min_finite");
     Double maxFinite = aggRow.getAs(nn + "__max_finite");
-    long nonNanVal = ((Number) aggRow.getAs(nn + "__nonnan")).longValue();
+    long finiteVal = ((Number) aggRow.getAs(nn + "__nfinite")).longValue();
+    // A bin grid needs a finite width. Finite bounds are not enough: a span wider than
+    // Double.MAX_VALUE overflows the subtraction to infinity, which collapses every split
+    // point and makes getCDF throw just as an infinite bound would.
+    boolean binnable = minFinite != null && maxFinite != null
+        && Double.isFinite(maxFinite - minFinite);
 
-    if (histogram && minFinite != null && maxFinite != null) {
-      List<Map<String, Object>> hist = histogramBuilder.buildNumeric(
-          df, nn, minFinite, maxFinite, histogramBins, nonNanVal);
+    if (histogram) {
+      // An empty list says "binned, nothing to bin"; omitting the key makes the SDK's
+      // FeatureGroup._are_statistics_missing read the registered statistics as incomplete
+      // and relaunch the statistics job on every compute_statistics() call.
+      List<Map<String, Object>> hist = Collections.emptyList();
+      if (binnable) {
+        hist = histogramBuilder.buildNumeric(
+            df, nn, minFinite, maxFinite, histogramBins, finiteVal);
+      }
       builder.histogram(hist);
     }
 
-    if (kll && nonNullVal > 0) {
+    if (kll && finiteVal > 0) {
       byte[] kllBytes = computeKll(df, nn);
       KllDoublesSketch sketch = KllAggregator.heapify(kllBytes);
-      // Spark counts NaN as non-null but the sketch skips it, so an all-NaN column
-      // yields an empty sketch. getQuantiles here and getCDF in the serializer both
-      // throw on one, so emit no KLL for it.
       if (!sketch.isEmpty()) {
-        builder.kllBytes(kllBytes);
-        double[] percentiles = sketch.getQuantiles(PERCENTILE_FRACTIONS);
-        builder.approxPercentiles(percentiles);
+        builder.approxPercentiles(sketch.getQuantiles(PERCENTILE_FRACTIONS));
+        // The buckets, unlike the percentiles, need a finite grid over the sketch's range.
+        if (Double.isFinite(sketch.getMaxItem() - sketch.getMinItem())) {
+          builder.kllBytes(kllBytes);
+        }
       }
     } else if (!kll && nonNullVal > 0) {
       double[] percentiles = computeApproxPercentiles(df, nn);

@@ -50,7 +50,7 @@ class HistogramBuilder {
    * @param minValue pre-computed minimum over the finite values (non-null, from agg row)
    * @param maxValue pre-computed maximum over the finite values (non-null, from agg row)
    * @param histogramBins number of bins
-   * @param totalRows total non-null, non-NaN rows (denominator for ratio)
+   * @param totalRows total finite rows (denominator for ratio)
    * @return list of histogram entry maps with keys: value, count, ratio
    */
   List<Map<String, Object>> buildNumeric(Dataset<Row> df,
@@ -73,9 +73,10 @@ class HistogramBuilder {
       );
     }
 
-    // NaN belongs to no bin: it is outside [minValue, maxValue] by construction, and
-    // floor((NaN - min) / width) casts to 0, which would pile every NaN row into bin 0.
-    Dataset<Row> binned = df.filter(col.isNotNull().and(functions.not(functions.isnan(col))))
+    // Non-finite values belong to no bin and must not reach binExpr: NaN floors to bin 0,
+    // and floor(Infinity) is Long.MAX_VALUE, whose cast to int throws CAST_OVERFLOW under
+    // Spark 4's ANSI mode and fails the job before least() can clamp it.
+    Dataset<Row> binned = df.filter(col.isNotNull().and(ColumnProfiler.isFinite(col)))
         .withColumn("_bin", binExpr)
         .groupBy("_bin")
         .count();

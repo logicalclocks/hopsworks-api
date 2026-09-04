@@ -320,11 +320,101 @@ public class ColumnProfilerSmokeTest {
     Assertions.assertEquals(5, bucketTotal,
         "bucket counts must be scaled by the sketch weight, not numRecordsNonNull");
 
-    // Nothing finite to bin: the histogram is omitted rather than emitted as NaN bins.
+    // Nothing finite to bin: an empty histogram rather than NaN-labelled bins, and the key
+    // stays present so the SDK does not read the registered statistics as incomplete and
+    // relaunch the statistics job on every compute_statistics().
     JsonNode allNan = findColumn(columns, "all_nan");
     Assertions.assertNotNull(allNan, "all_nan column profile must be present");
-    Assertions.assertFalse(allNan.has("histogram"),
-        "a column with no finite values must not emit a histogram");
+    Assertions.assertTrue(allNan.has("histogram"),
+        "the histogram key must stay present for a column with nothing to bin");
+    Assertions.assertEquals(0, allNan.get("histogram").size(),
+        "a column with no finite values must emit no bins");
+  }
+
+  @Test
+  void binsInfiniteValuesOverTheFiniteRange() throws Exception {
+    // An infinity is as unusable as a NaN in a bin grid, and worse in the KLL path: it
+    // used to enter the sketch, so getMaxItem() returned Infinity, every split point
+    // collapsed to Infinity or NaN and getCDF failed the whole statistics job with
+    // "Values must be unique, monotonically increasing and not NaN".
+    // huge_range holds only finite values, but its span overflows a double subtraction to
+    // infinity, so a finiteness check per value is not enough to make a bin grid safe.
+    StructType schema = new StructType(new StructField[]{
+      DataTypes.createStructField("mixed", DataTypes.DoubleType, true),
+      DataTypes.createStructField("all_inf", DataTypes.DoubleType, true),
+      DataTypes.createStructField("huge_range", DataTypes.DoubleType, true),
+    });
+    List<Row> rows = new ArrayList<>();
+    for (int i = 1; i <= 8; i++) {
+      rows.add(RowFactory.create((double) i, Double.POSITIVE_INFINITY, 0.0));
+    }
+    rows.add(RowFactory.create(Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY,
+        -Double.MAX_VALUE));
+    rows.add(RowFactory.create(Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY,
+        Double.MAX_VALUE));
+    rows.add(RowFactory.create(Double.NaN, Double.POSITIVE_INFINITY, 0.0));
+    Dataset<Row> df = SparkEngine.getInstance().getSparkSession().createDataFrame(rows, schema);
+
+    String json = new ColumnProfiler().profile(df, null, false, true, 20, false, true);
+    JsonNode columns = new ObjectMapper().readTree(json).get("columns");
+
+    // mixed holds 1..8 plus +Inf, -Inf and NaN: bins span [1, 8] and hold eight rows.
+    JsonNode mixed = findColumn(columns, "mixed");
+    Assertions.assertNotNull(mixed, "mixed column profile must be present");
+    // minimum/maximum stay as Spark computes them, for Deequ parity: -Infinity is the
+    // smallest double, and NaN outranks even +Infinity.
+    Assertions.assertEquals("-Infinity", mixed.get("minimum").asText(),
+        "minimum must still report the infinity Spark sees");
+    Assertions.assertEquals("NaN", mixed.get("maximum").asText(),
+        "maximum must still report what Spark sees, which NaN dominates");
+
+    JsonNode histogram = mixed.get("histogram");
+    Assertions.assertEquals(20, histogram.size(), "histogram must have 20 bins");
+    long histTotal = 0;
+    for (JsonNode bin : histogram) {
+      String label = bin.get("value").asText();
+      Assertions.assertFalse(label.contains("NaN") || label.contains("Infinity"),
+          "no bin label may be derived from a non-finite range: " + label);
+      histTotal += bin.get("count").asLong();
+    }
+    Assertions.assertEquals(8, histTotal,
+        "histogram must count the eight finite values only; a non-finite value reaching "
+            + "binExpr throws CAST_OVERFLOW under ANSI mode");
+    Assertions.assertTrue(histogram.get(0).get("value").asText().startsWith("1.00 to"),
+        "first bin must start at the finite minimum: " + histogram.get(0).get("value").asText());
+
+    JsonNode buckets = mixed.get("kll").get("buckets");
+    Assertions.assertEquals(1.0, buckets.get(0).get("low_value").asDouble(), 1e-9,
+        "first bucket must start at the finite minimum");
+    Assertions.assertEquals(8.0, buckets.get(19).get("high_value").asDouble(), 1e-9,
+        "last bucket must end at the finite maximum, not at Infinity");
+    long bucketTotal = 0;
+    for (JsonNode bucket : buckets) {
+      bucketTotal += bucket.get("count").asLong();
+    }
+    Assertions.assertEquals(8, bucketTotal, "bucket counts must match the sketch weight");
+    Assertions.assertEquals(1.0, mixed.get("approxPercentiles").get(0).asDouble(), 1e-9,
+        "percentiles must be estimated from the finite values only");
+
+    // Nothing finite at all: same contract as an all-NaN column.
+    JsonNode allInf = findColumn(columns, "all_inf");
+    Assertions.assertNotNull(allInf, "all_inf column profile must be present");
+    Assertions.assertFalse(allInf.has("kll"),
+        "a column with no finite values must not be emitted as kll");
+    Assertions.assertFalse(allInf.has("approxPercentiles"),
+        "a column with no finite values must not yield approxPercentiles");
+    Assertions.assertEquals(0, allInf.get("histogram").size(),
+        "a column with no finite values must emit no bins");
+
+    // Finite bounds, infinite span: the grid is still unbuildable, so treat it the same way.
+    JsonNode huge = findColumn(columns, "huge_range");
+    Assertions.assertNotNull(huge, "huge_range column profile must be present");
+    Assertions.assertEquals(0, huge.get("histogram").size(),
+        "a span that overflows to infinity must emit no bins");
+    Assertions.assertFalse(huge.has("kll"),
+        "a span that overflows to infinity must not be emitted as kll (getCDF rejects it)");
+    Assertions.assertEquals(99, huge.get("approxPercentiles").size(),
+        "the percentiles do not need a bin grid and must survive");
   }
 
   // ---------------------------------------------------------------------------
