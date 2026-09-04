@@ -5,16 +5,13 @@ description: Use when the user asks where something lives in the Hopsworks UI or
 
 # Hopsworks UI — Navigation Map
 
-A knowledge skill: it describes where things live in the Hopsworks web UI so you can guide a user to the right page.
-It is not a workflow. For creating or operating resources, use the matching action skill (links at the bottom).
+A knowledge skill: it describes where things live in the Hopsworks web UI so you can guide a user to the right page. It is not a workflow. For creating or operating resources, use the matching action skill (links at the bottom).
 
-The UI is **project-scoped**: pick a project, then everything below is a left sidebar inside that project.
-The sidebar is grouped into section headers (AI/ML, Agents, Compute, Analytics, Configuration) with pages under each.
+The UI is **project-scoped**: pick a project, then everything below is a left sidebar inside that project.  The sidebar is grouped into section headers (AI/ML, Agents, Compute, Analytics, Configuration) with pages under each.
 
 ## Source of truth
 
-This map is derived by hand from the frontend, not maintained independently.
-When routes or sidebar entries change, re-derive it from:
+This map is derived by hand from the frontend, not maintained independently.  When routes or sidebar entries change, re-derive it from:
 
 - `hopsworks-front/src/layouts/app/navigation/useAppNavigation.tsx` — the sidebar tree, order, and section headers.
 - `hopsworks-front/src/routes/routeNames.ts` — the route paths behind each entry.

@@ -135,32 +135,27 @@ Reading commit metadata is Connect-safe: hsfs deliberately reads `_delta_log/*.j
 
 ### Partitioning is format-specific — this is the most common mistake
 
-`partitioned_by` and `partition_key` are **not interchangeable**, and the transform grammar changed:
+`partitioned_by` and `partition_key` are **not interchangeable**. Delta has no
+partition transforms: materialize the grain as real columns and use
+`partition_key` (or `clustered_by` for liquid clustering). Iceberg and Hudi take
+transform expressions on `event_time` in `partitioned_by`, and the bare-grain
+form `["year","month","day"]` is the removed legacy form.
 
 ```python
-# DELTA — no partition transforms exist. Materialize the grain as real
-# columns yourself and use partition_key (identity partitioning):
-df = df.withColumn("event_date", F.to_date("event_ts")) \
-       .withColumn("event_hour", F.hour("event_ts"))
+# DELTA — identity partitioning on derived columns
+df = df.withColumn("event_date", F.to_date("event_ts")).withColumn("event_hour", F.hour("event_ts"))
 fs.get_or_create_feature_group(..., time_travel_format="DELTA",
                                partition_key=["event_date", "event_hour"])
 # -> event_date=2026-08-31/event_hour=0..23 on disk
-# (or use clustered_by=[...] for Delta liquid clustering instead)
 
-# ICEBERG / HUDI — hidden partitioning via transform expressions on event_time.
-# No partition columns are added to the schema; readers filter on event_ts.
+# ICEBERG / HUDI — hidden partitioning via a transform on event_time
 fs.get_or_create_feature_group(..., time_travel_format="ICEBERG",
                                partitioned_by=["hour(event_ts)"])
-# -> data/event_ts_hour=2026-08-31-00 .. -23 on disk
+# -> data/event_ts_hour=2026-08-31-00 .. -23 on disk; no partition column in the schema
 ```
 
-Rules learned the hard way:
-
-- `partitioned_by` on `time_travel_format="DELTA"` raises: *"partitioned_by is not supported on DELTA: Delta has no partition transforms. Use clustered_by for liquid clustering or partition_key for identity partitions."*
-- Bare grain names — `partitioned_by=["year","month","day","hour"]` — are the **removed** legacy form and raise *"looks like the removed grain form. Write it as a transform on your event_time column instead, e.g. 'hour(event_ts)'"*. A feature group created with the old form can still be read but **cannot be written** by a current client.
-- Transforms: `identity(col)` (or a bare column name), `bucket(N, col)`, `truncate(W, col)`, `year/month/week/day/hour(col)`, `void(col)`, each optionally `as <field_name>` (alias is Iceberg-only).
-- Iceberg allows **at most one temporal transform per source column** — `["year(ts)","month(ts)","day(ts)"]` is rejected. Pick the finest grain you need; `hour(ts)` already prunes coarser ranges.
-- Set either `partition_key` or `partitioned_by`, never both. `partitioned_by` requires `event_time` and an offline (non-stream) FG; `hour` needs a `timestamp` event_time, not a `date`.
+The full grammar, the per-format rules and the error messages the backend
+raises are in **hops-fg** (`references/table-layout.md`).
 
 ### Iceberg pipelines cannot run in the terminal
 
@@ -226,14 +221,14 @@ An append-mode pipeline is **not idempotent** — re-running it doubles the rows
 
 ## Spark Program Advice
 
-🔹 Filter and select early. The cheapest data to process is the data you never read. But verify with .explain(), Catalyst often pushes filters for you, except across outer joins and inside UDFs.
-🔹 Combine aggregations into one groupBy. Two separate groupBys on the same key = two shuffles for no reason.
-🔹 Never orderBy without limit on large data. orderBy().limit(10) is optimized together, a global sort IS NOT.
-🔹 default cache() is MEMORY_AND_DISK for DataFrames, not MEMORY_ONLY. And your cache is a tenant, not an owner: execution memory evicts it whenever it needs room.
-🔹 A cached DataFrame is an optimization barrier. Filter BEFORE caching: the order of two lines decides whether you cache 5% of your data or all of it.
-🔹 Broadcast joins kill the shuffle. Under 10 MB Spark does it automatically; for slightly bigger reference tables, do it explicitly.
-🔹 200 default shuffle partitions is wrong for almost everyone. Tune it to your data size or let AQE do it.
-🔹 Scan once on hopsfs or S3 if possible
+- Filter and select early. The cheapest data to process is the data you never read. But verify with .explain(), Catalyst often pushes filters for you, except across outer joins and inside UDFs.
+- Combine aggregations into one groupBy. Two separate groupBys on the same key = two shuffles for no reason.
+- Never orderBy without limit on large data. orderBy().limit(10) is optimized together, a global sort IS NOT.
+- default cache() is MEMORY_AND_DISK for DataFrames, not MEMORY_ONLY. And your cache is a tenant, not an owner: execution memory evicts it whenever it needs room.
+- A cached DataFrame is an optimization barrier. Filter BEFORE caching: the order of two lines decides whether you cache 5% of your data or all of it.
+- Broadcast joins kill the shuffle. Under 10 MB Spark does it automatically; for slightly bigger reference tables, do it explicitly.
+- 200 default shuffle partitions is wrong for almost everyone. Tune it to your data size or let AQE do it.
+- Scan once on hopsfs or S3 if possible
 
 ## Related skills
 

@@ -14,7 +14,7 @@ description: Use when writing Python or PySpark code for batch inference with Ho
 ```bash
 hops model list             # confirm the model exists before scoring
 hops fv list                # confirm the feature view exists
-hops td list                # confirm a training dataset version exists for batch scoring
+hops td list <fv-name>      # confirm a training dataset version exists for batch scoring
 ```
 
 ## Ask the user (only when state is ambiguous)
@@ -407,26 +407,6 @@ preds_fg = fs.get_or_create_feature_group(
 )
 preds_fg.insert(predictions_df)   # predictions_df = keys + event_time + prediction column
 ```
-
----
-
-## Quick Reference
-
-| Task | Code |
-|---|---|
-| Get model | `mr.get_model("name", version=1)` |
-| Get best model | `mr.get_best_model("name", metric="f1", direction="max")` |
-| Download model | `model_dir = model.download()` |
-| Init batch scoring | `fv.init_batch_scoring(training_dataset_version=1)` |
-| Get batch data | `fv.get_batch_data(start_time=..., end_time=..., dataframe_type="pandas")` |
-| Batch data (all) | `fv.get_batch_data(dataframe_type="pandas")` |
-| With primary keys | `fv.get_batch_data(primary_key=True)` |
-| Raw (untransformed) | `fv.get_batch_data(transformed=False)` |
-| Create spine group | `fs.get_or_create_spine_group(name=..., primary_key=[...], event_time=..., dataframe=df)` |
-| Batch with spine | `fv.get_batch_data(spine=spine_group)` |
-| FV from model | `fv = model.get_feature_view(init=True, online=False)` |
-| Model metrics | `model.training_metrics` |
-| Model framework | `model.framework` |
 
 ---
 

@@ -20,7 +20,7 @@ hops job info <job-name>                           # after: execution finished?
 
 ## Environment
 
-The stock `dbt-pipeline` environment ships `dbt-core`, `dbt-trino` (cluster runs), `dbt-duckdb` (local model development), and the `dbt_run_graph` module (execution graph, below). No environment build is needed; clone it via [hops-environments](../../hops/hops-environments/SKILL.md) only to add libraries.
+The stock `dbt-pipeline` environment ships `dbt-core`, `dbt-trino` (cluster runs), `dbt-duckdb` (local model development), and the `dbt_run_graph` module (execution graph, below). No environment build is needed; clone it via [hops-environments](../../platform/hops-environments/SKILL.md) only to add libraries.
 
 ## The dbt project
 
@@ -100,7 +100,7 @@ runner.invoke(["compile", *common, "--select", MODEL])   # writes compiled model
 build = runner.invoke(["build", *common, "--select", MODEL])  # runs the data tests
 ```
 
-`build` (not `run`) includes validation: on an ephemeral model it executes the model's data tests, and `run_results.json` records status, timing and failing-row counts per test. Gate the ingestion on `build.success`. Then read the compiled model SQL from `<run_dir>/compiled/`, execute it over a Trino cursor, and upsert the rows into a feature group with `fg.multi_part_insert()` (see [hops-fg](../../hops/hops-fg/SKILL.md)).
+`build` (not `run`) includes validation: on an ephemeral model it executes the model's data tests, and `run_results.json` records status, timing and failing-row counts per test. Gate the ingestion on `build.success`. Then read the compiled model SQL from `<run_dir>/compiled/`, execute it over a Trino cursor, and upsert the rows into a feature group with `fg.multi_part_insert()` (see [hops-fg](../../ml/hops-fg/SKILL.md)).
 
 ## The execution graph
 
@@ -139,6 +139,6 @@ On older images whose `dbt-pipeline` predates the bundled module, stage `dbt_run
 ## Related skills
 
 - [hops-trino-sql](../hops-trino-sql/SKILL.md): table naming, partition pruning, interactive queries.
-- [hops-fg](../../hops/hops-fg/SKILL.md): the feature group the results land in.
-- [hops-job](../../hops/hops-job/SKILL.md): job creation, scheduling, Airflow chaining.
-- [hops-environments](../../hops/hops-environments/SKILL.md): cloning `dbt-pipeline` to add libraries.
+- [hops-fg](../../ml/hops-fg/SKILL.md): the feature group the results land in.
+- [hops-job](../../platform/hops-job/SKILL.md): job creation, scheduling, Airflow chaining.
+- [hops-environments](../../platform/hops-environments/SKILL.md): cloning `dbt-pipeline` to add libraries.

@@ -5,25 +5,13 @@ description: Use when writing Python code that creates, queries, or manages Hops
 
 # Hopsworks Feature Views — Python SDK Best Practices
 
-A feature view defines a set of features from one or more feature groups, joined together via a Query. It is the read interface of the feature store — the V between F and T/I in the FTI pattern.
+A feature view defines a set of features from one or more feature groups, joined together via a Query. It is metadata-only (stores no data) and is the **read interface** of the feature store — the V between F and T/I in the FTI pattern — used for reproducible training datasets, online feature vectors for serving, and offline batch data. It is the feature store's mechanism for preventing training/serving skew: it returns the same ordered features and applies the same model-dependent (MDT) and on-demand (ODT) transformations in training and inference pipelines.
 
 ## Contract
 
 - **Input:** one or more feature groups, a feature selection (`select`/`join`) forming a Query, an optional label column, and optional transformation functions.
 - **Output:** a named, versioned feature view that produces reproducible training datasets, online feature vectors for serving, and offline batch data.
 - **Pre-condition:** the source feature groups already exist. For online serving every feature group in the view must be `online_enabled` (sole exception: all-on-demand views). The label, if any, must be in the query selection.
-
-## What Is a Feature View
-
-A feature view defines a set of features from one or more feature groups, joined together via a Query. It is the single interface used for:
-
-- Creating reproducible training datasets
-- Retrieving online feature vectors for model serving
-- Batch scoring with offline data
-
-It is metadata-only (stores no data) and is the feature store's mechanism for preventing training/serving skew: it returns the same ordered features and applies the same model-dependent (MDT) and on-demand (ODT) transformations in training and inference pipelines.
-
----
 
 ## Smoke-test
 
@@ -81,18 +69,14 @@ import hopsworks
 project = hopsworks.login()
 fs = project.get_feature_store()
 
-# Get feature groups
 transactions_fg = fs.get_feature_group("transactions", version=1)
 users_fg = fs.get_feature_group("users", version=1)
 
-# Select specific features
 query = (
-    transactions_fg.select(["user_id", "amount", "merchant", "timestamp"])
+    transactions_fg.select(["user_id", "amount", "merchant", "timestamp", "is_fraud"])
     .join(users_fg.select(["user_id", "age", "country"]), on=["user_id"])
 )
 ```
-
-#### Feature Selection Methods
 
 | Method | Description |
 |---|---|
@@ -101,35 +85,18 @@ query = (
 | `fg.select_except(["col1"])` | Select all except named features |
 | `fg.select_all(include_primary_key=False, include_event_time=False)` | Select all, excluding keys/timestamps |
 
-#### Join Types
+Joins: `join_type` is `"left"` (default), `"inner"`, `"right"`, `"full"`, `"cross"`, or `"left_semi_join"`; `left_on`/`right_on` join on differently named keys; `prefix` avoids column-name clashes.
 
 ```python
 query = fg1.select_all().join(fg2.select_all(), on=["shared_key"], join_type="left")
-```
-
-Supported join types: `"left"` (default), `"inner"`, `"right"`, `"full"`, `"cross"`, `"left_semi_join"`.
-
-For different key names on each side:
-
-```python
-query = fg1.select_all().join(
-    fg2.select_all(),
-    left_on=["user_id"],
-    right_on=["customer_id"],
-    join_type="inner",
-)
-```
-
-Use `prefix` to avoid column name clashes when joining feature groups with overlapping column names:
-
-```python
+query = fg1.select_all().join(fg2.select_all(), left_on=["user_id"], right_on=["customer_id"], join_type="inner")
 query = fg1.select_all().join(fg2.select_all(), on=["id"], prefix="fg2_")
 ```
 
 ### 2. Create the Feature View
 
 ```python
-feature_view = fs.create_feature_view(
+feature_view = fs.create_feature_view(          # or fs.get_or_create_feature_view(...) for idempotent creation
     name="fraud_detection_fv",
     version=1,
     description="Features for fraud detection model",
@@ -141,29 +108,16 @@ feature_view = fs.create_feature_view(
 )
 ```
 
-Or get-or-create (idempotent):
-
-```python
-feature_view = fs.get_or_create_feature_view(
-    name="fraud_detection_fv",
-    version=1,
-    query=query,
-    labels=["is_fraud"],
-)
-```
-
 **Set a description.** Pass `description=` on the feature view so it is not an empty envelope in the UI. Per-feature descriptions come from the source feature groups, so describe the columns at the FG (see hops-fg), not here.
 
-> **The label must be in the query selection.** `labels=[...]` only marks which *already-selected* columns are targets; it does not add them. If the label is not in your `select(...)` (or is dropped by `select_except([...])`), create fails with `FeatureStoreException: Feature name '<label>' could not be found in query`. Select the label, then name it in `labels=`. (The examples above assume `is_fraud` is part of `query`.)
-
-### Key Parameters
+> **The label must be in the query selection.** `labels=[...]` only marks which *already-selected* columns are targets; it does not add them. If the label is not in your `select(...)` (or is dropped by `select_except([...])`), create fails with `FeatureStoreException: Feature name '<label>' could not be found in query`. Select the label, then name it in `labels=`.
 
 | Parameter | Type | Description |
 |---|---|---|
 | `name` | `str` | Feature view name |
 | `query` | `Query` | Query defining feature selection and joins |
 | `version` | `int` | Version number (auto-increments if None) |
-| `labels` | `list[str]` | Which *selected* features are the prediction target. Must be present in the query selection (`labels=` marks, it does not select). Excluded from feature vectors at inference |
+| `labels` | `list[str]` | Which *selected* features are the prediction target (one or several). Returned as a separate `y` by the training-data methods; excluded from feature vectors at inference and from `get_batch_data()` by default |
 | `inference_helper_columns` | `list[str]` | Features not used in model but available during inference (e.g., for post-processing). Excluded from `get_feature_vector()`, available via `get_inference_helper()` |
 | `training_helper_columns` | `list[str]` | Features not in model schema but useful during training (e.g., for sampling, or for slicing evaluation data by a sensitive attribute like gender to check for bias without training on it). Excluded at inference time |
 | `transformation_functions` | `list` | Model-dependent transformations (see below) |
@@ -173,19 +127,7 @@ feature_view = fs.get_or_create_feature_view(
 
 ## Online Model Serving Requirement
 
-**All feature groups in the feature view must be `online_enabled` for online feature vector retrieval.** If any feature group is not online-enabled, `init_serving()` will raise an error.
-
-The only exception: if **all** features in the feature view are on-demand (computed at runtime by transformation functions, not stored in any feature group), then online-enabled is not required.
-
-```python
-# This will fail at init_serving() if users_fg is NOT online_enabled
-feature_view = fs.create_feature_view(
-    name="my_fv",
-    query=transactions_fg.select_all().join(users_fg.select_all()),
-    ...
-)
-feature_view.init_serving()  # raises FeatureStoreException
-```
+**All feature groups in the feature view must be `online_enabled` for online feature vector retrieval.** If any feature group is not online-enabled, `init_serving()` raises `FeatureStoreException`. The only exception: if **all** features in the feature view are on-demand (computed at runtime by transformation functions, not stored in any feature group), then online-enabled is not required.
 
 ---
 
@@ -198,22 +140,7 @@ Feature groups with an `embedding_index` (vector embeddings) **can** be included
 - Use `find_neighbors()` on the feature view to perform similarity search, which then automatically retrieves the full feature vector for each neighbor
 
 ```python
-from hsfs.embedding import EmbeddingIndex, EmbeddingFeature, SimilarityFunctionType
-
-# Feature group with embeddings
-embedding_index = EmbeddingIndex()
-embedding_index.add_embedding(name="user_vector", dimension=384)
-
-embedding_fg = fs.get_or_create_feature_group(
-    name="user_embeddings",
-    embedding_index=embedding_index,
-    primary_key=["user_id"],
-    online_enabled=True,
-    stream=True,
-    ...
-)
-
-# Include in feature view
+# embedding_fg was created with embedding_index=EmbeddingIndex(...) (see hops-fg)
 fv = fs.create_feature_view(
     name="recommendation_fv",
     query=embedding_fg.select_all().join(profile_fg.select_all(), on=["user_id"]),
@@ -257,56 +184,28 @@ combined = (fg.amount > 100) & (fg.status == "active")
 either = (fg.country == "US") | (fg.country == "CA")
 ```
 
-### Filters on the Query (Feature View Definition)
-
-Filters applied to the query are baked into the feature view and always active:
+### Where filters apply
 
 ```python
+# On the query: baked into the feature view and always active
 query = (
     transactions_fg.select_all()
     .filter(transactions_fg.amount > 0)
-    .join(
-        users_fg.select_all().filter(users_fg.active == True),
-        on=["user_id"],
-    )
+    .join(users_fg.select_all().filter(users_fg.active == True), on=["user_id"])
 )
 fv = fs.create_feature_view(name="my_fv", query=query, ...)
-```
 
-### Filters on Training Data (`extra_filter`)
-
-Apply additional filters when creating training data without changing the feature view definition:
-
-```python
+# On training data: extra_filter is stored with the training dataset metadata
+# and reapplied by get_batch_data(); start_time/end_time filter on event_time
 version, job = fv.create_training_data(
     extra_filter=(transactions_fg.merchant != "test_merchant") & (users_fg.age >= 18),
     start_time="2025-01-01",
     end_time="2025-06-01",
-)
-```
-
-The `extra_filter` is stored with the training dataset metadata and automatically reapplied when reading with `get_batch_data()`.
-
-### Time-Based Filters
-
-Training data methods support `start_time` / `end_time` parameters that filter on the feature group's `event_time` column:
-
-```python
-version, job = fv.create_training_data(
-    start_time="2025-01-01",
-    end_time="2025-06-01",
     description="H1 2025 training data",
 )
-```
 
-### Filters on Vector Similarity Search
-
-```python
-neighbors = fv.find_neighbors(
-    embedding=[0.1, 0.2, 0.3],
-    k=5,
-    filter=(fg.category == "electronics") & (fg.price < 1000),
-)
+# On similarity search
+neighbors = fv.find_neighbors(embedding=[0.1, 0.2, 0.3], k=5, filter=(fg.category == "electronics") & (fg.price < 1000))
 ```
 
 ---
@@ -334,31 +233,6 @@ fv.get_feature_vector(entry={"user_id": 123}, request_parameters={"current_locat
 
 ---
 
-## Labels
-
-Labels are features used as the prediction target. They are:
-
-- **Included** in training data (returned as a separate DataFrame)
-- **Excluded** from feature vectors at inference time
-- **Excluded** from `get_batch_data()` output by default
-
-```python
-fv = fs.create_feature_view(
-    name="churn_fv",
-    query=query,
-    labels=["churned"],     # single label
-    # labels=["label1", "label2"],  # multi-label
-)
-
-# Training: labels returned separately
-X_train, X_test, y_train, y_test = fv.get_train_test_split(training_dataset_version=1)
-
-# Inference: labels excluded automatically
-vector = fv.get_feature_vector(entry={"customer_id": 42})
-```
-
----
-
 ## Training Data
 
 ### Create and Materialize Training Data
@@ -375,26 +249,16 @@ version, job = fv.create_training_data(
 )
 
 # Train/test split (random)
-version, job = fv.create_train_test_split(
-    test_size=0.2,
-    seed=42,
-    data_format="parquet",
-)
+version, job = fv.create_train_test_split(test_size=0.2, seed=42, data_format="parquet")
 
 # Train/test split (time-based)
 version, job = fv.create_train_test_split(
-    train_start="2024-01-01",
-    train_end="2025-01-01",
-    test_start="2025-01-01",
-    test_end="2025-04-01",
+    train_start="2024-01-01", train_end="2025-01-01",
+    test_start="2025-01-01", test_end="2025-04-01",
 )
 
 # Train/validation/test split
-version, job = fv.create_train_validation_test_split(
-    validation_size=0.1,
-    test_size=0.1,
-    seed=42,
-)
+version, job = fv.create_train_validation_test_split(validation_size=0.1, test_size=0.1, seed=42)
 ```
 
 ### Retrieve Materialized Training Data
@@ -408,35 +272,21 @@ X, y = fv.get_training_data(
     training_helper_columns=False,
 )
 
-X_train, X_test, y_train, y_test = fv.get_train_test_split(
-    training_dataset_version=1,
-    dataframe_type="polars",
-)
+X_train, X_test, y_train, y_test = fv.get_train_test_split(training_dataset_version=1, dataframe_type="polars")
 
 X_train, X_val, X_test, y_train, y_val, y_test = fv.get_train_validation_test_split(
-    training_dataset_version=1,
-    dataframe_type="pandas",
+    training_dataset_version=1, dataframe_type="pandas",
 )
 ```
 
 ### In-Memory Training Data (No Materialization)
 
-For quick iteration, get training data directly as DataFrames without materializing to storage:
+For quick iteration, get training data directly as DataFrames without materializing to storage. These still create metadata for reproducibility but skip writing to storage.
 
 ```python
-X, y = fv.training_data(
-    start_time="2025-01-01",
-    end_time="2025-04-01",
-    dataframe_type="polars",
-)
-
-X_train, X_test, y_train, y_test = fv.train_test_split(
-    test_size=0.2,
-    dataframe_type="polars",
-)
+X, y = fv.training_data(start_time="2025-01-01", end_time="2025-04-01", dataframe_type="polars")
+X_train, X_test, y_train, y_test = fv.train_test_split(test_size=0.2, dataframe_type="polars")
 ```
-
-These still create metadata for reproducibility but skip writing to storage.
 
 ### Training Data Parameters
 
@@ -456,42 +306,30 @@ These still create metadata for reproducibility but skip writing to storage.
 
 ## Online Feature Vector Retrieval
 
-### Initialize Serving
-
 ```python
 fv.init_serving(
     training_dataset_version=1,  # version with transformation statistics
     external=None,               # auto-detect environment
 )
-```
 
-### Single Feature Vector
-
-```python
 vector = fv.get_feature_vector(
     entry={"user_id": 123},
     return_type="pandas",     # "list" (default), "pandas", "polars", "numpy"
 )
-```
+vectors = fv.get_feature_vectors(entry=[{"user_id": 123}, {"user_id": 456}], return_type="pandas")
 
-### Batch Feature Vectors
+# Runtime values from the application that override or supplement stored features
+vector = fv.get_feature_vector(entry={"user_id": 123}, passed_features={"device_type": "mobile", "session_duration": 45.2})
 
-```python
-vectors = fv.get_feature_vectors(
-    entry=[{"user_id": 123}, {"user_id": 456}],
-    return_type="pandas",
-)
-```
+# On-demand transformation inputs
+vector = fv.get_feature_vector(entry={"user_id": 123}, request_parameters={"query_text": "running shoes"})
 
-### Passed Features (Runtime Values)
+# Inference helper columns are retrieved separately from the feature vector
+helpers = fv.get_inference_helper(entry={"user_id": 123}, return_type="dict")   # "pandas" (default), "dict", "polars"
 
-Provide feature values from the application that override or supplement stored features:
-
-```python
-vector = fv.get_feature_vector(
-    entry={"user_id": 123},
-    passed_features={"device_type": "mobile", "session_duration": 45.2},
-)
+# Control transformations
+raw_vector = fv.get_feature_vector(entry={"user_id": 123}, transform=False)          # untransformed
+vector = fv.get_feature_vector(entry={"user_id": 123}, on_demand_features=False)     # skip on-demand features
 ```
 
 Feature value priority (highest to lowest):
@@ -500,51 +338,13 @@ Feature value priority (highest to lowest):
 3. Online feature store — stored values
 4. On-demand computation — computed features
 
-### Request Parameters (On-Demand Features)
-
-```python
-vector = fv.get_feature_vector(
-    entry={"user_id": 123},
-    request_parameters={"query_text": "running shoes"},
-)
-```
-
-### Inference Helper Columns
-
-Retrieved separately from the feature vector:
-
-```python
-helpers = fv.get_inference_helper(
-    entry={"user_id": 123},
-    return_type="dict",   # "pandas" (default), "dict", "polars"
-)
-```
-
-### Control Transformations
-
-```python
-# Get untransformed feature vector
-raw_vector = fv.get_feature_vector(
-    entry={"user_id": 123},
-    transform=False,
-)
-
-# Skip on-demand features
-vector = fv.get_feature_vector(
-    entry={"user_id": 123},
-    on_demand_features=False,
-)
-```
-
 ---
 
 ## Batch Scoring (Offline)
 
 ```python
-# Initialize batch scoring (optional — called automatically)
-fv.init_batch_scoring(training_dataset_version=1)
+fv.init_batch_scoring(training_dataset_version=1)   # optional — called automatically
 
-# Get batch data with transformations applied
 batch_df = fv.get_batch_data(
     start_time="2025-03-01",
     end_time="2025-04-01",
@@ -641,30 +441,6 @@ batch_df = fv.get_batch_data(
 )
 batch_predictions = model.predict(batch_df)
 ```
-
----
-
-## Quick Reference
-
-| Task | Code |
-|---|---|
-| Create feature view | `fs.create_feature_view(name=..., query=..., labels=[...])` |
-| Get feature view | `fs.get_feature_view("name", version=1)` |
-| Select features | `fg.select(["col1", "col2"])` |
-| Select all except | `fg.select_except(["col1"])` |
-| Join feature groups | `fg1.select_all().join(fg2.select_all(), on=["key"])` |
-| Filter query | `.filter((fg.col > 10) & (fg.col2 == "x"))` |
-| Create training data | `fv.create_training_data(start_time=..., end_time=...)` |
-| Train/test split | `fv.create_train_test_split(test_size=0.2)` |
-| Get training data | `fv.get_training_data(training_dataset_version=1)` |
-| In-memory training data | `fv.training_data(start_time=..., end_time=...)` |
-| Init online serving | `fv.init_serving(training_dataset_version=1)` |
-| Get feature vector | `fv.get_feature_vector(entry={"pk": val})` |
-| Batch feature vectors | `fv.get_feature_vectors(entry=[{"pk": v1}, {"pk": v2}])` |
-| Get inference helpers | `fv.get_inference_helper(entry={"pk": val})` |
-| Batch scoring | `fv.get_batch_data(start_time=..., end_time=...)` |
-| Similarity search | `fv.find_neighbors(embedding=[...], k=10)` |
-| Delete feature view | `fv.delete()` |
 
 ---
 

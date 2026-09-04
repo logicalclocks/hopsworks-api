@@ -39,36 +39,18 @@ quickest path to list/inspect/clean up (delete takes `--yes`). Re-run
 
 ---
 
-Feature groups (FGs) are referenced in superset as either:
-delta.<project_name>_featurestore.<featuregroup_name>_<version>
-or
-hudi.<project_name>_featurestore.<featuregroup_name>_<version>
-depending on whether they are a delta offline feature group or a hudi offline feature group.
-For example, the delta FG, transactions, in the jim project is referenced as:
-
-SELECT * FROM delta.jim_featurestore.transactions_1;
-
 Hopsworks exposes Apache Superset as a managed service. This skill covers the
 Python SDK wrapper for the Superset REST API (`project.get_superset_api()`),
 how to surface Hopsworks feature groups as Superset datasets via Trino, and
-the modern viz_type keys + param schemas this Superset version expects.
+the modern viz_type keys + param schemas this Superset version expects. It
+also builds monitoring dashboards over a model's **logging feature group**
+(the logs an inference pipeline writes are an offline FG, so they chart the
+same way) and debugs chart errors like `Item with key "X" is not registered`
+or `Empty query?`.
 
 The Python client lives in the Hopsworks venv:
 `hopsworks_common/core/superset_api.py` (inside
 `/srv/hops/venv/lib/python3.13/site-packages/` on a Hopsworks host).
-
----
-
-## When to use this skill
-
-Use this skill whenever the user wants to:
-- Render a feature group (or any Trino table) in Superset
-- Create / update / delete Superset charts, datasets, or dashboards programmatically
-- Wire a Hopsworks feature group into an existing Superset dashboard
-- Build a custom monitoring dashboard over a model's **logging feature group**
-  (feature drift, prediction distributions, KPI degradation) — the logs an
-  inference pipeline writes are an offline FG, so they chart the same way
-- Debug Superset chart errors like `Item with key "X" is not registered` or `Empty query?`
 
 ---
 
@@ -83,11 +65,6 @@ import hopsworks
 project = hopsworks.login()
 api = project.get_superset_api()
 ```
-
-**Pre-condition / smoke-test.** Superset must be enabled on the cluster and the FG
-you chart must be materialized to the offline (Trino) store. See the **Smoke-test**
-section above to confirm reachability (CLI: `hops superset dataset list`; Python:
-`api.list_databases()` → find the Trino DB id, see §2).
 
 Methods available on `api`:
 
@@ -149,7 +126,7 @@ Feature groups are **not** exposed as Superset-native tables. They are queried
 through the Trino database connection with this naming pattern:
 
 ```
-delta.<project>_featurestore.<feature_group>_<version>
+<catalog>.<project>_featurestore.<feature_group>_<version>   # catalog = delta | hudi | iceberg
 ```
 
 Example (project `af`, feature group `customers` v1):
@@ -159,11 +136,11 @@ SELECT * FROM delta.af_featurestore.customers_1
 ```
 
 Rules:
-- Catalog is `delta` for all offline feature groups (Delta format).
+- Catalog is the FG's table format: `delta` (the default), `hudi`, or `iceberg` (`hops fg info` shows it).
 - Schema is `<project>_featurestore` (project name is lowercase).
 - Table name is `<fg_name>_<version>` — the version suffix is required.
 - The Trino DB connection in Superset defaults its catalog to `hive`, so you
-  **must** fully qualify with `delta.` or the query resolves to the wrong catalog.
+  **must** fully qualify with the catalog or the query resolves to the wrong one.
 - Trino database id varies per Hopsworks install — never hardcode it. Always
   resolve it with `api.list_databases()` / `find_trino_db_id(api)` below.
 
@@ -435,27 +412,11 @@ if __name__ == "__main__":
 | `Dataset ... already exists` | Non-idempotent create | Use `ensure_dataset` (list-then-create) |
 | `400 {"message":{"description":["Unknown field."]}}` | SDK signature includes `description` but Superset REST rejects it | Drop `description` from `create_dataset`/`create_chart`/`create_dashboard` calls |
 | Chart renders but absent from dashboard | Only `position_json` was set | Also call `update_chart(cid, dashboards=[dashboard_id])` |
-| Trino query "Schema not found" | Missing `delta.` prefix | Use `SELECT * FROM delta.<project>_featurestore.<fg>_<version>` |
+| Trino query "Schema not found" | Missing catalog prefix | Use `SELECT * FROM delta.<project>_featurestore.<fg>_<version>` (`hudi.` / `iceberg.` for those formats) |
 | Trino query "Table not found" | Missing `_<version>` suffix | FG tables are always suffixed with version (`customers_1`, not `customers`) |
 | Bars come out unsorted | `x_axis_sort` doesn't match a metric label | Make `x_axis_sort` equal to the metric's `label` field |
 | Time-series bar shows one bar | X axis is a string but `x_axis_force_categorical` missing | Add `x_axis_force_categorical: true` |
 | Auth error from `api._request` | Session expired across long runs | Re-fetch `project.get_superset_api()` |
-
----
-
-## Quick Reference
-
-| Task | Code |
-|---|---|
-| Get Superset API | `api = project.get_superset_api()` |
-| List Trino DBs | `api.list_databases()` |
-| FG as Trino table | `delta.<project>_featurestore.<fg>_<version>` |
-| Create virtual dataset | `api.create_dataset(database_id=..., table_name=..., schema=..., sql=...)` |
-| Create chart | `api.create_chart(slice_name=..., viz_type=..., datasource_id=..., params=json.dumps({...}))` |
-| Link chart to dashboard | `api.update_chart(chart_id, dashboards=[dashboard_id])` |
-| Create dashboard | `api.create_dashboard(dashboard_title=..., published=True, position_json=...)` |
-| Delete | `api.delete_chart(id)` / `api.delete_dataset(id)` / `api.delete_dashboard(id)` |
-| Paginate any list | `api._request("GET", f"/api/v1/{resource}/?q=(page:{p},page_size:100)")` |
 
 ---
 

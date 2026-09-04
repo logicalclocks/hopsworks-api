@@ -258,6 +258,6 @@ Rules the backend enforces:
 
 ## Next steps
 - [hops-job](../hops-job/SKILL.md) — run a job in the cloned environment.
-- [hops-app](../hops-app/SKILL.md) — Streamlit app on a cloned `python-app-pipeline`.
-- [hops-online-inference](../hops-online-inference/SKILL.md) — deployment env for predictor dependencies.
-- [hops-agent-deployment](../hops-agent-deployment/SKILL.md) — agent serving env.
+- [hops-app](../../dashboards/hops-app/SKILL.md) — Streamlit app on a cloned `python-app-pipeline`.
+- [hops-online-inference](../../ml/hops-online-inference/SKILL.md) — deployment env for predictor dependencies.
+- [hops-agent-deployment](../../agents/hops-agent-deployment/SKILL.md) — agent serving env.

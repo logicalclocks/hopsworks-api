@@ -9,4 +9,4 @@ list is `hops skills list --bucket data`.
 - [hops-spark](hops-spark/SKILL.md) — PySpark on Hopsworks (Spark Connect + Delta config).
 - [hops-table-maintenance](hops-table-maintenance/SKILL.md) — Diagnose and fix table layout in offline feature groups (compaction, clustering, snapshot cleanup).
 - [hops-trino-sql](hops-trino-sql/SKILL.md) — Query feature store tables via Trino SQL with the `hops` CLI.
-- [unstructured-data](unstructured-data/SKILL.md) — Parse unstructured files into a feature group.
+- [hops-unstructured-data](hops-unstructured-data/SKILL.md) — Parse unstructured files into a feature group.

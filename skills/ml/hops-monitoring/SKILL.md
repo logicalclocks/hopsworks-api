@@ -183,4 +183,4 @@ fv.log(logging_data=vector, predictions=pred)   # also: untransformed_features, 
 - [hops-fg](../hops-fg/SKILL.md) — set `statistics_config` / attach a suite at creation.
 - [hops-fv](../hops-fv/SKILL.md) — enable `logging_enabled`; serving-time monitoring.
 - [hops-online-inference](../hops-online-inference/SKILL.md) — log feature vectors from a deployment.
-- [hops-superset](../hops-superset/SKILL.md) — chart the statistics / monitoring history.
+- [hops-superset](../../dashboards/hops-superset/SKILL.md) — chart the statistics / monitoring history.

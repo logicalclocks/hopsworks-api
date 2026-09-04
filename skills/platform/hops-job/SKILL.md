@@ -59,33 +59,32 @@ Pick the environment for the job's role: `python-feature-pipeline` (feature
 pipelines), `pandas-training-pipeline` (training). Inference environments (e.g.
 `pandas-inference-pipeline`) are deployment-only and cannot run as jobs.
 
-# Orchestrating Hopsworks Jobs with Airflow
-- Airflow is the **workflow orchestrator**: it runs a DAG of jobs (tasks) with dependencies between them. Use it when you want to chain Hopsworks jobs together — e.g. derived-feature pipelines that run only after their upstream parents succeed — or trigger a job in response to an event like a file landing in HopsFS. One DAG to monitor beats five separate jobs. For a single pipeline, a plain scheduled job is enough.
+## Orchestrating Hopsworks Jobs with Airflow
 
-Here is an example of an airflow program that runs a Hopsworks Job:
+Airflow is the **workflow orchestrator**: it runs a DAG of jobs (tasks) with dependencies between them. Use it when you want to chain Hopsworks jobs together — e.g. derived-feature pipelines that run only after their upstream parents succeed — or trigger a job in response to an event like a file landing in HopsFS. One DAG to monitor beats five separate jobs. For a single pipeline, a plain scheduled job is enough.
+
+A minimal DAG that runs one Hopsworks job (`HopsworksJobSuccessSensor` / `HopsworksHdfsSensor` from `hopsworks.airflow.sensors` add the wait-for-job and file-landed triggers):
 
 ```python
-import os
 from datetime import datetime
 from airflow import DAG
 from hopsworks.airflow.operators import HopsworksLaunchOperator
-from hopsworks.airflow.sensors import HopsworksJobSuccessSensor, HopsworksHdfsSensor
 
 # Project-scoped Hopsworks API key. The operators / sensors below pick this up
 # via the same env-var fallback that jobs / notebooks / terminal use. Re-key
 # the DAG (regenerate from the UI) to rotate.
 
 with DAG(
-    dag_id="p_jim_119__filesensor",
+    dag_id="p_<project>_<id>__feature_pipeline",
     start_date=datetime(2025, 1, 1),
     schedule=None,
     catchup=False,
-    tags=["hopsworks", "p:119", "p_slug:jim"],
+    tags=["hopsworks", "p:<project id>"],
 ) as dag:
-    hello_0 = HopsworksLaunchOperator(
-        task_id="hello_0",
-        project_id=119,
-        job_name="hello",
+    feature_pipeline = HopsworksLaunchOperator(
+        task_id="feature_pipeline",
+        project_id=<project id>,
+        job_name="feature-pipeline",
         args="",
     )
 ```

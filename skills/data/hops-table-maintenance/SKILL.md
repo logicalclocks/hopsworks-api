@@ -126,7 +126,7 @@ otherwise.
 
 ## Phase 4: execute through the Hopsworks API
 
-The supported path is [`FeatureGroup.optimize()`](../../hops/hops-fg/SKILL.md):
+The supported path is [`FeatureGroup.optimize()`](../../ml/hops-fg/SKILL.md):
 it validates the format, follows the feature group's stored layout
 (clustering, sort order, z-order columns), and defaults to the safe rewrite
 (incremental `OPTIMIZE` on Delta; Iceberg `rewriteDataFiles` with

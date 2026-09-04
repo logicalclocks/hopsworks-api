@@ -108,5 +108,5 @@ deployment = ms.deploy_agent(
 
 - Scheduled/batch coding agent instead of a served one: **hops-agent-task**.
 - Model-backed online predictor: **hops-online-inference**.
-- Agent serving dependencies: [hops-environments](../hops-environments/SKILL.md) — clone an agent env and install requirements.
+- Agent serving dependencies: [hops-environments](../../platform/hops-environments/SKILL.md) — clone an agent env and install requirements.
 - Give the agent feature-store access for RAG: **hops-fv** (online feature vectors). Pass entity IDs (e.g. `user_id`) in the query so the agent can look up application state from the feature store.

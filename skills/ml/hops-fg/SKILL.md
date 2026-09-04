@@ -129,158 +129,30 @@ fg = fs.get_or_create_feature_group(
 
 ---
 
-## Table format & event-time partitioning
+## Table format and layout
 
-### Table format (`time_travel_format`)
+The offline table is a lakehouse table whose format is chosen at creation with
+`time_travel_format`: `"DELTA"` (default), `"ICEBERG"` (needs `pyiceberg`),
+`"HUDI"` (what online/`stream=True` FGs use), or `None`. The layout knobs are
+**format-specific and not interchangeable**; the backend rejects the wrong
+combination:
 
-An offline feature group is stored in a lakehouse table format, selected at creation with `time_travel_format`:
+| Knob | DELTA | ICEBERG | HUDI | Note |
+|---|---|---|---|---|
+| `partition_key=["col"]` | ✅ | ✅ | ✅ | hive-style partitions on real columns |
+| `partitioned_by=["day(ts)"]` | ❌ rejected | ✅ hidden partitioning, no new columns | ✅ grain columns materialized | transforms: `identity`, `bucket(N,c)`, `truncate(W,c)`, `year/month/week/day/hour(c)`, `void`; the bare-grain form `["year","month"]` was removed; requires `event_time` and a non-stream FG |
+| `clustered_by=[...]` | ✅ liquid clustering (≤4 cols) | ❌ | ❌ | excludes `partition_key`; **Spark-only writes** (delta-rs cannot write clustered tables), so pass `stream=True` from Python |
+| `zorder_by=[...]` | ❌ (use `clustered_by`) | ✅ via `fg.optimize()` | ✅ inline on write | ≤4 columns |
+| `sort_order=[...]` | ❌ | ✅ | ❌ | excludes `zorder_by` |
+| `fg.optimize()` | `OPTIMIZE` (incremental; `full=True` reclusters) | `rewriteDataFiles` (`rewrite_all=True` for the first pass after a backfill) | ❌ rejected | **needs Spark** for clustered Delta and all Iceberg |
 
-- `"DELTA"` (default) — Delta Lake. Direct offline write from the Python client.
-- `"ICEBERG"` — Apache Iceberg. Direct offline write from the Python client. Requires the `pyiceberg` library (`pip install pyiceberg`, or install Hopsworks with the `python` extra); a missing library fails fast with a clear error.
-- `"HUDI"` — Apache Hudi. Used by online-enabled (`stream=True`) feature groups, and also valid for offline direct write.
-- `None` — no time travel.
+Rules that bite:
 
-```python
-fg = fs.get_or_create_feature_group(
-    name="events",
-    version=1,
-    primary_key=["id"],
-    event_time="event_ts",
-    time_travel_format="ICEBERG",
-    online_enabled=False,
-)
-```
+- **Iceberg hidden partitioning is invisible in the schema.** `hops fg features` shows a blank PARTITION column and the UI no partition key even though the table *is* partitioned. Check `fg.get_partition_spec()`, not the column list.
+- **The whole Iceberg write path needs a JVM** (PyIceberg reaches HopsFS through JNI `libhdfs`), including the empty first commit, so an Iceberg feature pipeline is a **PYSPARK job**, not a Python one. Spark Connect (the terminal) cannot create Iceberg tables or run Delta upserts either; see **hops-spark**.
+- **Delta cannot partition and liquid-cluster at once.** Either derive a day column and cluster on both, or switch to Iceberg (`partitioned_by` + `zorder_by`). Say which trade-off you took.
 
-The Catalog UI shows the format as a badge (Delta / Hudi / Iceberg) on each feature group.
-
-### Partitioning the offline table
-
-Two mechanisms, and which one is available depends on the format:
-
-- `partition_key=["col", ...]` — hive-style partitioning on **real columns**. Works on any format.
-- `partitioned_by=["day(event_ts)", ...]` — **native partition transforms**. ICEBERG and HUDI only.
-
-They are mutually exclusive.
-
-#### `partitioned_by` — native partition transforms
-
-Each element is a transform expression over a source column, optionally aliased with `as <field_name>` (Iceberg only). Supported: `identity(col)` (or a bare column name), `bucket(N, col)`, `truncate(W, col)`, `year(col)`, `month(col)`, `week(col)`, `day(col)`, `hour(col)`, `void(col)`.
-
-```python
-fg = fs.get_or_create_feature_group(
-    name="clickstream",
-    version=1,
-    primary_key=["click_id"],
-    event_time="event_timestamp",
-    time_travel_format="ICEBERG",
-    partitioned_by=["day(event_timestamp)"],
-    online_enabled=False,
-)
-```
-
-| Format | Accepted transforms | How it materializes |
-|---|---|---|
-| ICEBERG | `identity`, `bucket`, `truncate`, `void`, `year`, `month`, `day`, `hour` | Compiled into the table's `PartitionSpec` — **hidden partitioning**, no new columns. At most one temporal transform per source column (`day(ts)` already prunes at year level). |
-| HUDI | `identity` plus `year`/`month`/`week`/`day`/`hour` | Grain columns are **materialized** as real hive-style partition columns named after the grain. Temporal transforms must use the `event_time` column. No aliases. |
-| DELTA | **rejected** | Delta has no partition transforms. Use `partition_key` for identity partitions, or `clustered_by` for liquid clustering. |
-
-The bare-grain form `partitioned_by=["year", "month", "day"]` was **removed** and is now rejected with a migration hint. Write transforms on the event-time column instead: `["year(event_ts)", "month(event_ts)", "day(event_ts)"]`.
-
-**Hidden partitioning is invisible in the schema.** On Iceberg the partition field (`event_timestamp_day`) lives in the partition spec, not the column list — so `hops fg features <name>` shows a blank PARTITION column and the UI shows no partition key even though the table *is* partitioned. Do not conclude the partitioning failed; ask the table:
-
-```python
-fg.get_partition_spec()   # ['event_timestamp_day: day(event_timestamp)']
-```
-
-From Spark, Iceberg's `partitions` metadata table is the ground truth (one row per partition value, with record and file counts):
-
-```python
-spark.read.format("iceberg").load(fg.location.replace("hopsfs://", "hdfs://") + "#partitions").show()
-```
-
-Reads filter transparently: a time-range read is rewritten to the partition predicates, so you query by `event_time` and the engine prunes.
-
-```python
-df = fg.read(start_time="2026-01-01", end_time="2026-02-01", dataframe_type="polars")
-```
-
-### Clustering the offline data (`clustered_by`, `zorder_by`, `sort_order`)
-
-Partitioning prunes on one coarse dimension. Clustering co-locates rows on the columns you actually filter by, so the engine skips *files within* a partition. The available knob depends on the format — they are not interchangeable.
-
-| Knob | Format | What it does |
-|---|---|---|
-| `clustered_by=[...]` | **DELTA only** | Delta **liquid clustering**. At most 4 columns. |
-| `zorder_by=[...]` | **ICEBERG**, **HUDI** | Z-order curve over the columns, at most 4. Iceberg applies it through `fg.optimize()`; Hudi through inline clustering on write. DELTA rejects it — `clustered_by` covers that case. |
-| `sort_order=[...]` | **ICEBERG only** | Persistent write sort order, e.g. `["merchant_id asc", "amount desc nulls last"]`. New writes are range-distributed and sorted; `fg.optimize(strategy="sort")` rewrites existing files. Mutually exclusive with `zorder_by`. |
-| `bucket_index={...}` | **HUDI only** | `{"field": <primary key col>, "num_buckets": N}`, engine `"simple"`. |
-
-#### Delta liquid clustering (`clustered_by`)
-
-```python
-fg = fs.get_or_create_feature_group(
-    name="clickstream", version=1,
-    primary_key=["click_id"], event_time="event_timestamp",
-    time_travel_format="DELTA",
-    clustered_by=["event_day", "category_id"],   # at most 4 columns
-    online_enabled=False, stream=True,           # Spark-only write, see below
-)
-```
-
-Two rules that bite:
-
-1. **`clustered_by` and `partition_key` are mutually exclusive.** Delta does not support liquid clustering on a hive-partitioned table — liquid clustering *replaces* partitioning. So "partition by day **and** liquid-cluster by category" is not expressible on Delta. Either derive a day column and cluster on both (`clustered_by=["event_day", "category_id"]`), or switch to Iceberg (`partitioned_by=["day(ts)"]` + `zorder_by=["category_id"]`) when you need genuine partitions. Say which trade-off you took; do not silently drop half the request.
-2. **Clustered Delta feature groups are writable by Spark only.** Liquid clustering uses the Clustering and DomainMetadata Delta writer table features, which delta-rs does not implement. From a Python environment pass `stream=True` so writes route through the Spark materialization job.
-
-Clustering columns need per-file statistics: Delta only indexes the first `delta.dataSkippingNumIndexedCols` columns (default 32), so keep clustering columns early in the schema.
-
-Inspect and change the clustering (both require Spark):
-
-```python
-fg.get_clustering_columns()            # read the live Delta domain metadata
-fg.update_clustering(["category_id"])  # change the columns...
-fg.optimize(full=True)                 # ...then recluster existing data
-fg.disable_clustering()
-```
-
-#### Iceberg / Hudi z-order (`zorder_by`)
-
-`zorder_by` is metadata at creation; on Iceberg the rewrite that actually reorders data files is `fg.optimize()`:
-
-```python
-fg = fs.get_or_create_feature_group(
-    name="clickstream", version=1,
-    primary_key=["click_id"], event_time="event_timestamp",
-    time_travel_format="ICEBERG",
-    partitioned_by=["day(event_timestamp)"],
-    zorder_by=["category_id"],
-    online_enabled=False,
-)
-fg.insert(df)
-fg.optimize(rewrite_all=True)   # initial full z-order after a backfill
-fg.optimize()                   # cheap incremental maintenance thereafter
-```
-
-`rewrite_all=True` matters for the first pass: the Iceberg rewrite planner skips file groups below its size thresholds, which right after a backfill is usually all of them. On Hudi there is nothing to call — inline clustering applies the order on write.
-
-Z-order pays off when the clustering column is **skewed and selective**. A uniformly distributed column spreads every value across every file and buys nothing.
-
-#### `fg.optimize()` — layout maintenance
-
-| Format | Behaviour |
-|---|---|
-| ICEBERG | Iceberg `rewriteDataFiles`. `strategy` is `"zorder"` (over `columns`, default `zorder_by`), `"sort"` (the table's `sort_order`), or `"binpack"`; left unset it follows the FG's stored layout in that order. `rewrite_all`, `target_file_size_mb`, `where` tune it. **Requires Spark.** |
-| DELTA | `OPTIMIZE`, which incrementally clusters when `clustered_by` is set. `full=True` runs `OPTIMIZE FULL` to recluster everything after the clustering columns changed. `strategy="zorder"` is the legacy path and works only on *unclustered* tables — Delta rejects ZORDER BY on a clustered table. Clustered FGs require Spark; without Spark only unclustered compaction is available. |
-| HUDI | Rejected — layout maintenance runs through Hudi inline clustering on writes. |
-
-#### Practical caveats
-
-- **The whole Iceberg write path needs a JVM.** PyIceberg reaches HopsFS through PyArrow's JNI `libhdfs`. A Python environment without a JVM fails with `OSError: Unable to load libjvm` — including on the initial *empty table creation*, so even `stream=True` does not rescue it. Run the pipeline as a **PYSPARK job**. Iceberg `optimize()` is a Spark action regardless.
-- If the cluster runs a remote shuffle service (e.g. Apache Uniffle's `RssShuffleManager`), an Iceberg `rewriteDataFiles` shuffle can die with `IllegalAccessError` on Iceberg's shaded netty/parquet classes, or a JVM SIGSEGV. Force the built-in shuffle on the SparkSession **builder**, before the context exists — setting it in the job config does not stick:
-
-  ```python
-  spark = SparkSession.builder.config("spark.shuffle.manager", "sort").getOrCreate()
-  ```
+Grammar, per-format behaviour, inspection (`get_partition_spec`, `get_clustering_columns`, `update_clustering`), and the shuffle-manager caveat: [references/table-layout.md](references/table-layout.md). Diagnosing an existing table: **hops-table-maintenance**.
 
 ---
 
@@ -302,11 +174,6 @@ Use `insert(df, wait=True)` when:
 - **Low on CPU/memory**: `wait=True` for online FGs ensures only one Spark materialization job runs at a time. Multiple concurrent async inserts can each launch a Spark job, exhausting cluster resources.
 - **Pipeline ordering matters**: downstream steps depend on data being fully materialized.
 - **Debugging insert failures**: async mode may silently swallow errors.
-
-```python
-# Safe pattern for resource-constrained environments
-fg.insert(df, wait=True)
-```
 
 ### Batch / Multi-Part Insert (for large datasets)
 
@@ -336,44 +203,22 @@ After finalizing, trigger materialization manually (see Materialization section)
 
 Before writing a feature pipeline, estimate whether the data fits in RAM:
 
-### Quick Estimate
-
 ```
 Memory ≈ rows × columns × avg_bytes_per_value × overhead_factor
 ```
 
-- Numeric (int/float): ~8 bytes
-- String: ~50-200 bytes (varies)
+- Numeric (int/float): ~8 bytes; string: ~50-200 bytes (varies)
 - Overhead factor: ~2-3x (Polars/Pandas internal bookkeeping, intermediate results)
 
 **Example:** 1M rows × 40 columns × 8 bytes × 3 ≈ 960 MB — fits in most environments.
 
-### If Data Is Too Large for RAM
+If the data does not fit, or a pipeline OOMs (usually from reading every source FG at once, or rolling-window intermediates):
 
-1. **Read in partitions** — use `fg.read()` with `start_time`/`end_time` to read slices by event time:
-   ```python
-   df = fg.read(start_time="2026-01-01", end_time="2026-02-01", dataframe_type="polars")
-   ```
-
-2. **Process in batches** — compute features on chunks and use multi-part insert:
-   ```python
-   with fg.multi_part_insert() as writer:
-       for chunk in chunks:
-           features = compute_features(chunk)
-           writer.insert(features)
-   ```
-
-3. **Reduce intermediate DataFrames** — use `del df` aggressively after each step; avoid keeping multiple copies of large DataFrames.
-
-4. **Use Polars over Pandas** — Polars is more memory-efficient (columnar, zero-copy operations, lazy evaluation).
-
-### If a Feature Pipeline OOMs
-
-1. **Identify the memory spike**: usually it's reading all source FGs into memory simultaneously, or computing rolling window features that create large intermediates.
-2. **Reduce concurrent reads**: read one source FG at a time, compute what you need, then drop it before reading the next.
-3. **Switch to batched inserts**: use multi-part insert so you don't need to hold the full output in memory.
-4. **Reduce read scope**: read only the columns you need via a feature view with `select()`, or filter by time range.
-5. **Use Spark**: for very large data, switch to PySpark which can spill to disk.
+1. **Read in slices** by event time: `fg.read(start_time="2026-01-01", end_time="2026-02-01", dataframe_type="polars")`, and only the columns you need (a feature view `select()`, or `hops fg preview --columns` to check).
+2. **Read one source FG at a time**, compute, `del` it before reading the next; do not keep copies of large frames.
+3. **Insert in batches** with multi-part insert so the full output is never held in memory.
+4. **Prefer Polars over Pandas** (columnar, zero-copy, lazy).
+5. **Switch to PySpark** for very large data; it spills to disk (**hops-spark**).
 
 ---
 
@@ -464,9 +309,14 @@ print(job.job_schedule)  # full schedule details
 
 ## Vector Embeddings
 
-When a feature group contains vector embeddings (for similarity search), follow these rules:
-
-### Keep Embedding FGs Minimal
+A feature group with an `embedding_index` is backed by the **vector database**
+(OpenSearch), not RonDB. Vector DBs are optimized for read-heavy similarity
+search, not frequent updates, and every update to ANY feature in the FG triggers
+a vector DB write (re-indexing). So keep embedding FGs **minimal**: the primary
+key, the vector, and only static or rarely-changing metadata. Put
+frequently-updated features (real-time counters, scores, `last_login`) in a
+**separate** RonDB-backed online FG with the same primary key, and join them in
+the feature view.
 
 ```python
 from hsfs.embedding import EmbeddingIndex, EmbeddingFeature, SimilarityFunctionType
@@ -486,62 +336,10 @@ fg = fs.get_or_create_feature_group(
     features=[
         Feature("doc_id", "bigint"),
         Feature("text_embedding", "array<float>"),
-        # Include as FEW other features as possible
-        # Only include features that rarely change
+        # as few other features as possible, and only ones that rarely change
     ],
     online_enabled=True,
     stream=True,
-)
-```
-
-### Why Minimal?
-
-- Embedding FGs are backed by a **vector database** (OpenSearch), not RonDB.
-- Vector DBs are optimized for read-heavy similarity search, **not** frequent updates.
-- Every update to ANY feature in the FG triggers a vector DB write (re-indexing).
-- If you have frequently-updated features (e.g., real-time counters, scores), put them in a **separate** online FG backed by RonDB, which handles high-frequency small updates well.
-
-### Anti-Pattern
-
-```python
-# BAD: mixing embeddings with frequently-updated features
-fg = fs.get_or_create_feature_group(
-    name="user_profile",
-    embedding_index=embedding_index,
-    features=[
-        Feature("user_id", "bigint"),
-        Feature("profile_embedding", "array<float>"),
-        Feature("last_login", "timestamp"),        # updates often!
-        Feature("session_count", "int"),            # updates often!
-        Feature("recent_click_score", "double"),    # updates often!
-    ],
-    ...
-)
-```
-
-```python
-# GOOD: separate FGs for embeddings vs frequently-updated features
-embedding_fg = fs.get_or_create_feature_group(
-    name="user_embeddings",
-    embedding_index=embedding_index,
-    features=[
-        Feature("user_id", "bigint"),
-        Feature("profile_embedding", "array<float>"),
-        # Only static/rarely-changing metadata here
-    ],
-    ...
-)
-
-activity_fg = fs.get_or_create_feature_group(
-    name="user_activity",
-    online_enabled=True, stream=True,  # RonDB-backed, handles frequent updates
-    features=[
-        Feature("user_id", "bigint"),
-        Feature("last_login", "timestamp"),
-        Feature("session_count", "int"),
-        Feature("recent_click_score", "double"),
-    ],
-    ...
 )
 ```
 
@@ -629,11 +427,10 @@ results = fg.find_neighbors(
 
 ## Deleting Rows from a Feature Group
 
-Pass a DataFrame identifying the rows to remove.
-Both stores of an online-enabled FG are affected by default; an FG without an online store is deleted from offline only.
-
-For an **offline (Delta) FG with an `event_time`**, the merge key is the primary key **plus** the `event_time` column (plus any partition columns).
-A primary-key-only DataFrame fails with `DeltaError: No field named <event_time>`, so include every key column:
+`fg.remove_rows(df)` deletes the rows matching the DataFrame's keys. Both stores
+of an online-enabled FG are affected by default; `storage="offline"` /
+`storage="online"` deletes from one store only, and a single-store delete is
+never reconciled later.
 
 ```python
 import polars as pl
@@ -647,31 +444,11 @@ rows_to_delete = pl.DataFrame({
 fg.remove_rows(rows_to_delete)
 ```
 
-Only rows matching on all key columns are deleted.
-
-`fg.commit_delete_record(...)` is the deprecated name for the same method, and it always deletes offline only.
-
-### The online leg
-
-An online-enabled FG has its rows removed from the online store as well, with no argument needed:
-
-```python
-fg.remove_rows(rows_to_delete)
-```
-
-Pass `storage="offline"` to leave the online store untouched, or `storage="online"` to delete from the online store alone and skip the offline commit.
-A single-store delete is not reconciled later: the rows stay in the other store until they are deleted there too.
-
-The online delete matches on the primary key alone, so every non-key column in the DataFrame is ignored for the online leg, `event_time` included.
-The key columns the offline merge requires are still required; they just do not affect which online rows are removed.
-
-Stream FGs are included: the online delete works for all of DELTA, ICEBERG, and HUDI.
-The one thing to know is that a stream FG's inserts reach the offline table through its materialization job, while the delete is applied to that table directly.
-Deleting a row whose insert has not been materialized yet removes it online but finds nothing offline, and the materialization job then writes the row.
-Run the materialization job before the delete, or re-run the delete after it, to keep the two stores in step.
-
-Deleting online is not supported on an FG with an embedding index, whose online data lives in the vector database.
-Such an FG is deleted from offline only, with a warning that the two stores now differ, and passing `storage="online"` on one raises.
+- **Offline (Delta) with an `event_time`:** the merge key is the primary key **plus** `event_time` (plus partition columns). A primary-key-only DataFrame fails with `DeltaError: No field named <event_time>`.
+- **Online:** matches on the primary key alone; the other columns are still required for the offline merge but do not affect which online rows go.
+- **Stream FGs** (DELTA, ICEBERG, HUDI all supported): inserts reach the offline table through the materialization job while the delete hits it directly. Deleting a row whose insert is not yet materialized removes it online and the job then writes it offline; run the materialization job first, or re-run the delete after it.
+- **Embedding-index FGs:** online delete is unsupported (the online data lives in the vector DB). The delete is offline-only with a warning; `storage="online"` raises.
+- `fg.commit_delete_record(...)` is the deprecated name and always deletes offline only.
 
 ---
 
@@ -760,42 +537,6 @@ derived_fg.insert(features_df, wait=False)
 # 5. Materialize (once, after all inserts)
 derived_fg.materialization_job.run(await_termination=True)
 ```
-
----
-
-## Quick Reference
-
-| Task | Code |
-|---|---|
-| Create FG | `fs.get_or_create_feature_group(name=..., version=1, ...)` |
-| Offline table format | `time_travel_format="DELTA"` (default), `"ICEBERG"`, `"HUDI"`, or `None` |
-| Native partition transform | `partitioned_by=["day(event_ts)"]` (ICEBERG / HUDI; DELTA rejects it) |
-| Hive-style partition | `partition_key=["col"]` (any format) |
-| Delta liquid clustering | `clustered_by=["a","b"]` (DELTA only; excludes `partition_key`; Spark-only writes) |
-| Z-order clustering | `zorder_by=["a","b"]` (ICEBERG / HUDI) |
-| Iceberg sort order | `sort_order=["a asc","b desc"]` (ICEBERG only) |
-| Apply the layout | `fg.optimize(rewrite_all=True)` first, then `fg.optimize()` (needs Spark) |
-| Inspect the live layout | `fg.get_partition_spec()` / `fg.get_clustering_columns()` |
-| Change Delta clustering | `fg.update_clustering([...])` then `fg.optimize(full=True)` |
-| Insert data | `fg.insert(df, wait=False)` |
-| Insert safely (low resources) | `fg.insert(df, wait=True)` |
-| Multi-part insert | `with fg.multi_part_insert() as w: w.insert(batch)` |
-| Finalize multi-part | `fg.finalize_multi_part_insert()` |
-| Read (Polars) | `fg.read(dataframe_type="polars")` |
-| Read (time range) | `fg.read(start_time=..., end_time=..., dataframe_type="polars")` |
-| Read (filtered) | `fg.filter(fg.col > X).read(dataframe_type="polars")` |
-| Preview rows | `print(fg.show(n=10))` (returns a DataFrame) |
-| Similarity search | `fg.find_neighbors(vector, k=5, filter=...)` |
-| Delete rows (both stores) | `fg.remove_rows(df)` (df = primary_key cols + event_time; online matches on primary key only) |
-| Delete rows from one store | `fg.remove_rows(df, storage="offline")` or `storage="online"` |
-| Add a column (same version) | `fg.append_features([Feature("c", "double")])` / `hops fg append-features <name> --features "c:double"` |
-| Drop/retype a column | not in place: create a new FG version |
-| Disable statistics | `statistics_config=False` |
-| Set provenance | `parents=[parent_fg1, parent_fg2]` |
-| Trigger materialization | `fg.materialization_job.run(await_termination=True)` |
-| Schedule materialization | `offline_backfill_every_hr=4` (at creation) |
-| Delete FG | `fg.delete()` |
-| Get FG | `fs.get_feature_group("name", version=1)` |
 
 ---
 

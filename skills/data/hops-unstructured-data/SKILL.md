@@ -1,5 +1,5 @@
 ---
-name: unstructured-data
+name: hops-unstructured-data
 description: Parses unstructured data from files and writes it to a feature group.
 ---
 
