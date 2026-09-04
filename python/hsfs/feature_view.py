@@ -4386,7 +4386,7 @@ class FeatureView:
             self._feature_monitoring_config_engine._resolve_event_time(
                 event_time=event_time,
                 default_event_time=self._root_feature_group_event_time_column_name,
-                valid_features=valid_features,
+                valid_features=self._event_time_valid_features(valid_features),
             )
         )
 
@@ -4472,7 +4472,7 @@ class FeatureView:
             self._feature_monitoring_config_engine._resolve_event_time(
                 event_time=event_time,
                 default_event_time=self._root_feature_group_event_time_column_name,
-                valid_features=valid_features,
+                valid_features=self._event_time_valid_features(valid_features),
             )
         )
         return self._feature_monitoring_config_engine._build_default_feature_monitoring_config(
@@ -6138,6 +6138,29 @@ class FeatureView:
                 and feature.name not in self.inference_helper_columns
             ]
         return self.__untransformed_feature_names[version]
+
+    def _event_time_valid_features(
+        self, valid_features: dict[str, str]
+    ) -> dict[str, str]:
+        """Features a monitoring configuration may slice its windows by.
+
+        The left feature group's event time is included even when the view does not select it.
+        It is the default time basis, so naming it explicitly must be accepted as well.
+
+        Parameters:
+            valid_features: Mapping of the view's selected feature names to their offline types.
+
+        Returns:
+            A new mapping with the left feature group's event-time column added when missing.
+        """
+        root_event_time = self._root_feature_group_event_time_column_name
+        if not root_event_time or root_event_time in valid_features:
+            return valid_features
+        left_fg = self.query._left_feature_group
+        feature = left_fg.get_feature(root_event_time) if left_fg is not None else None
+        if feature is None:
+            return valid_features
+        return {**valid_features, root_event_time: feature.type}
 
     @property
     def _label_column_names(self) -> set[str]:
