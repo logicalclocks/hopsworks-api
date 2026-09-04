@@ -35,6 +35,9 @@ import java.util.Iterator;
  * it to the driver, where sketches are merged. This is the recommended pattern for
  * pure-Java aggregators that cannot implement {@code java.io.Serializable}.
  *
+ * <p>Only finite values are fed to the sketch: callers derive bin edges from its min/max, and
+ * a column with nothing finite yields an <em>empty</em> sketch, which most operations reject.
+ *
  * <p>K=2048 matches the Deequ baseline's effective sketch resolution (Deequ also used K=2048).
  * Normalised rank error is ~0.13%, tight enough for extreme-quantile monitoring on wide-range
  * integer columns where K=200 showed ≥3% tail error. Larger K = more memory per sketch;
@@ -100,7 +103,7 @@ public class KllAggregator {
         Row row = rows.next();
         if (!row.isNullAt(0)) {
           double value = ((Number) row.get(0)).doubleValue();
-          if (!Double.isNaN(value)) {
+          if (Double.isFinite(value)) {
             sketch.update(value);
           }
         }

@@ -191,12 +191,12 @@ class ProfileJsonSerializer {
   /**
    * Bins the sketch over its own range and weight rather than the column's.
    *
-   * <p>KllAggregator never feeds NaN to the sketch, while Spark ranks NaN above every other
-   * double and counts it as non-null: the column maximum is NaN as soon as one NaN is
-   * present, and numRecordsNonNull counts rows the sketch never saw. Reading either from the
-   * profile would put every bin edge in the wrong place and scale every count by the NaN
-   * fraction. The sketch's own min/max/N are always finite and always describe exactly the
-   * values it holds.
+   * <p>KllAggregator feeds the sketch finite values only, while the profile's maximum goes
+   * non-finite as soon as the column holds one NaN or infinity and numRecordsNonNull counts
+   * rows the sketch never saw. Reading either from the profile misplaces every bin edge and
+   * scales every count by the non-finite fraction; a non-finite bound also collapses the
+   * split points, which {@code getCDF} rejects. The sketch's own min/max/N are finite by
+   * construction and describe exactly the values it holds.
    *
    * <p>getMinItem/getMaxItem throw on an empty sketch; ColumnProfiler only sets kllBytes
    * for a non-empty one, so this is unreachable with an empty sketch.
