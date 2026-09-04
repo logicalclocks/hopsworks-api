@@ -198,7 +198,7 @@ calling any SDK method you have not used in this project, list the real surface:
 
 ```bash
 python3 -c "import hopsworks; print([m for m in dir(hopsworks.login().get_trino_api()) if not m.startswith('_')])"
-# ['connect', 'create_engine', 'get_basic_auth', 'get_host', 'get_port']
+# ['connect', 'create_engine', 'get_basic_auth', 'get_host', 'get_port', 'project_name']
 ```
 
 ```python
