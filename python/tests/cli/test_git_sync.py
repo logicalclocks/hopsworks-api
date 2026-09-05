@@ -25,13 +25,55 @@ def test_ssh_host_parsing():
 def _state(url="git@github.com:org/repo.git"):
     return {
         "root": "/tmp/repo",
-        "root_rel_cwd": "",
         "remotes": {"origin": url},
         "remote": "origin",
         "url": url,
         "branch": "main",
         "head": "deadbeef",
     }
+
+
+def _init_repo(path: Path) -> None:
+    """A real repository with one commit, a remote and a subdirectory."""
+    import subprocess
+
+    def git(*args):
+        subprocess.run(["git", *args], cwd=path, check=True, capture_output=True)
+
+    path.mkdir()
+    git("init", "-q", "-b", "main")
+    git("config", "user.email", "t@example.com")
+    git("config", "user.name", "t")
+    (path / "README").write_text("x\n")
+    git("add", "README")
+    git("commit", "-q", "-m", "init")
+    git("remote", "add", "origin", "git@github.com:org/repo.git")
+    (path / "sub").mkdir()
+
+
+def test_repo_root_is_the_only_place_that_syncs(tmp_path, monkeypatch, capsys):
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+
+    monkeypatch.chdir(repo)
+    state = git_sync._repo_state()
+    assert state is not None
+    assert (state["branch"], state["remote"]) == ("main", "origin")
+    assert state["url"] == "git@github.com:org/repo.git"
+    assert "root_rel_cwd" not in state
+    assert capsys.readouterr().out == ""
+
+    monkeypatch.chdir(repo / "sub")
+    assert git_sync._repo_state() is None
+    assert git_sync._NOT_REPO_ROOT in capsys.readouterr().out
+
+
+def test_outside_any_repo_says_so_on_stdout(tmp_path, monkeypatch, capsys):
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    monkeypatch.chdir(plain)
+    assert git_sync._repo_state() is None
+    assert capsys.readouterr().out.strip() == git_sync._NOT_REPO_ROOT
 
 
 def test_not_a_git_dir_is_silent_none(monkeypatch):
@@ -108,7 +150,6 @@ def test_token_method_rewrites_remotes_to_https_and_ships_no_key(monkeypatch):
 
     got = git_sync.maybe_collect(object(), "Users/lex")
     assert got == {
-        "root_rel_cwd": "",
         "remote": "origin",
         "branch": "main",
         "head": "deadbeef",
@@ -244,7 +285,6 @@ def test_always_happy_path_returns_manifest_git(monkeypatch, tmp_path):
 
     got = git_sync.maybe_collect(object(), "Users/lex")
     assert got == {
-        "root_rel_cwd": "",
         "remote": "origin",
         "branch": "main",
         "head": "deadbeef",

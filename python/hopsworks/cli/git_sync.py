@@ -19,8 +19,8 @@ pod, chosen by the user the first time and remembered:
 Passphrase-protected keys are unsupported (no agent runs on the pod).
 
 Everything here is gated and consent-driven: nothing is collected or uploaded
-unless the cwd is a git work tree, the branch's remote is an SSH remote, and
-the user answered yes (or has a persisted "always"). The consent answer and
+unless the cwd is the root of a git work tree, the branch's remote is an SSH
+or HTTPS remote, and the user answered yes (or has a persisted "always"). The consent answer and
 the chosen key path persist in ``~/.hops.toml`` under a ``[gitsync]`` table of
 their own — deliberately not in the ``[default]`` profile, whose save path
 rewrites a fixed set of keys and would drop ours. ``hops session reset``
@@ -44,6 +44,9 @@ from hopsworks.cli import config, output
 from hopsworks.cli.commands import git as git_cmd
 
 
+_NOT_REPO_ROOT = (
+    "The current working dir is not a github repo, so no git sync performed"
+)
 _UNSUPPORTED_REMOTE = "git sync needs an SSH or HTTPS remote"
 _UNSUPPORTED_KEY = "git sync not supported for passphrase-protected ssh keys"
 # The key generated for Hopsworks when the user asks for a new one; kept apart
@@ -195,15 +198,27 @@ def _gh_add_key(pub: Path) -> bool | None:
 
 
 def _repo_state() -> dict | None:
-    """The cwd's git context, or None when the cwd is not inside a work tree.
+    """The cwd's git context, or None when the cwd is not the root of a work tree.
 
+    The pod clones the repository and resumes the session at its root, so a
+    push from a subdirectory would land somewhere else than it was pushed from;
+    it is refused with the same line as a directory outside any repository.
     Detached HEAD or a branch without a remote also return None, after a short
     info line: there is nothing the pod could check out and pull.
     """
     rc, inside = _git(["rev-parse", "--is-inside-work-tree"])
-    if rc != 0 or inside != "true":
-        return None
     _, root = _git(["rev-parse", "--show-toplevel"])
+    if (
+        rc != 0
+        or inside != "true"
+        or not root
+        or Path(root).resolve() != Path.cwd().resolve()
+    ):
+        # On stdout, unlike the other info lines: it answers the question a user
+        # asks when nothing happened, and scripts read stdout.
+        if not output.JSON_MODE:
+            click.echo(_NOT_REPO_ROOT)
+        return None
     _, branch = _git(["rev-parse", "--abbrev-ref", "HEAD"])
     if not root or not branch or branch == "HEAD":
         output.info("git sync skipped: detached HEAD.")
@@ -222,14 +237,8 @@ def _repo_state() -> dict | None:
         if rc == 0 and u:
             remotes[name] = u
     _, head = _git(["rev-parse", "HEAD"])
-    root_path = Path(root)
-    try:
-        rel = str(Path.cwd().resolve().relative_to(root_path.resolve()))
-    except ValueError:
-        rel = "."
     return {
-        "root": str(root_path),
-        "root_rel_cwd": "" if rel == "." else rel,
+        "root": root,
         "remotes": remotes,
         "remote": remote,
         "url": url,
@@ -663,7 +672,6 @@ def maybe_collect(dataset_api, teleport_user_root: str) -> dict | None:
         return None
 
     common = {
-        "root_rel_cwd": state["root_rel_cwd"],
         "remote": state["remote"],
         "branch": state["branch"],
         "head": state["head"],
