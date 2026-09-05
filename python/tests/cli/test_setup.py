@@ -176,3 +176,140 @@ def test_setup_internal_mode_does_not_write_config(tmp_home, monkeypatch):
 
     assert result.exit_code == 0, result.output
     assert not (tmp_home / ".hops.toml").exists()
+
+
+def _flow_post(create=None, wait=None):
+    """A ``requests.post`` stand-in routing /create and /wait to canned payloads."""
+    created = mock.Mock()
+    created.json.return_value = create or {
+        "flowId": "tf-abc",
+        "waitSecret": "sekret",
+        "webUrl": "https://c.app.hopsworks.ai/token-flow/tf-abc",
+    }
+    created.raise_for_status = mock.Mock()
+    waited = mock.Mock()
+    waited.json.return_value = wait or {
+        "apiKey": "FRESH.KEY",
+        "workspaceUsername": "demo",
+        "apiKeyName": "jim-laptop",
+        "timeout": False,
+    }
+    waited.raise_for_status = mock.Mock()
+
+    def _post(url, *args, **kwargs):
+        return waited if "/wait/" in url else created
+
+    return _post
+
+
+def test_setup_signs_in_again_when_the_cached_key_is_dead(tmp_home):
+    """A stale key must not end the command: re-running `hops setup` reconnects."""
+    config.save(
+        config.HopsConfig(
+            host="https://c.app.hopsworks.ai",
+            api_key="STALE.KEY",
+            api_key_name="old-key",
+            project="demo",
+        )
+    )
+    verified = mock.Mock()
+    verified.name = "demo"
+
+    with (
+        mock.patch.object(setup_mod.requests, "post", side_effect=_flow_post()),
+        mock.patch.object(setup_mod, "_open_browser", return_value=True),
+        mock.patch.object(
+            setup_mod.auth,
+            "verify",
+            side_effect=[RuntimeError("key revoked"), verified],
+        ) as verify,
+    ):
+        result = CliRunner().invoke(cli, ["setup"])
+
+    assert result.exit_code == 0, result.output
+    assert verify.call_count == 2  # the dead cached key, then the fresh one
+    assert "signing in again" in result.output
+    assert config.load().api_key == "FRESH.KEY"
+
+
+def test_setup_success_prints_a_single_line(tmp_home):
+    config.save(
+        config.HopsConfig(
+            host="https://c.app.hopsworks.ai",
+            api_key="CACHED.KEY",
+            api_key_name="jim-laptop",
+            project="demo",
+        )
+    )
+    verified = mock.Mock()
+    verified.name = "demo"
+
+    with mock.patch.object(setup_mod.auth, "verify", return_value=verified):
+        result = CliRunner().invoke(cli, ["setup"])
+
+    lines = [line for line in result.output.splitlines() if line.strip()]
+    assert lines == ["✓ Connected to https://c.app.hopsworks.ai as demo"], result.output
+
+
+def test_setup_failure_prints_one_line_naming_the_host(tmp_home):
+    with (
+        mock.patch.object(
+            setup_mod.requests,
+            "post",
+            side_effect=setup_mod.requests.RequestException("connection refused"),
+        ),
+        mock.patch.object(setup_mod.auth, "verify"),
+    ):
+        result = CliRunner().invoke(
+            cli, ["setup", "--host", "https://c.app.hopsworks.ai", "--force"]
+        )
+
+    assert result.exit_code != 0
+    assert (
+        "Failed to connect to https://c.app.hopsworks.ai: connection refused"
+        in result.output
+    )
+
+
+def test_reason_keeps_one_clipped_line():
+    long_error = "first line of the failure\nurl: https://c.example\nbody: " + "x" * 500
+
+    assert setup_mod._reason(long_error) == "first line of the failure"
+    assert len(setup_mod._reason("y" * 400)) == 160
+
+
+def test_setup_failure_names_the_tls_remedy(tmp_home):
+    """A self-signed cluster is the common case; the flags that fix it live here."""
+    with (
+        mock.patch.object(
+            setup_mod.requests,
+            "post",
+            side_effect=setup_mod.requests.exceptions.SSLError(
+                "certificate verify failed"
+            ),
+        ),
+        mock.patch.object(setup_mod.auth, "verify"),
+    ):
+        result = CliRunner().invoke(
+            cli, ["setup", "--host", "https://self-signed.example", "--force"]
+        )
+
+    assert result.exit_code != 0
+    assert "certificate verify failed" in result.output
+    assert "--insecure" in result.output and "--ca-bundle" in result.output
+
+
+def test_setup_failure_without_tls_trouble_has_no_hint(tmp_home):
+    with (
+        mock.patch.object(
+            setup_mod.requests,
+            "post",
+            side_effect=setup_mod.requests.RequestException("connection refused"),
+        ),
+        mock.patch.object(setup_mod.auth, "verify"),
+    ):
+        result = CliRunner().invoke(
+            cli, ["setup", "--host", "https://c.app.hopsworks.ai", "--force"]
+        )
+
+    assert "--insecure" not in result.output

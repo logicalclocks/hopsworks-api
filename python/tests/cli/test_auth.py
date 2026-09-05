@@ -27,9 +27,13 @@ def test_login_defaults_to_python_engine(monkeypatch):
     assert seen == {"hostname_verification": False, "engine": "python"}
 
 
-def test_cli_quiets_sdk_info_logging(monkeypatch, tmp_path):
-    """Every command runs with the root logger at WARNING, hiding SDK chatter."""
-    monkeypatch.setenv("HOME", str(tmp_path))
+def test_cli_quiets_sdk_info_logging(tmp_home):
+    """Every command runs with the root logger at WARNING, hiding SDK chatter.
+
+    Uses ``tmp_home`` rather than only setting ``$HOME``: ``config.CONFIG_PATH`` is
+    resolved at import time, so overriding the variable alone left this reading the
+    developer's own config and calling their cluster.
+    """
     logging.getLogger().setLevel(logging.INFO)
     CliRunner().invoke(cli, ["project", "list"])
     assert logging.getLogger().level == logging.WARNING

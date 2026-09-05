@@ -14,6 +14,7 @@ import platform
 import re
 import secrets
 import socket
+import ssl
 import time
 import urllib.parse
 import webbrowser
@@ -300,8 +301,7 @@ def setup_cmd(
         _handle_internal(cfg)
         return None
 
-    if not force and cfg.is_authenticated():
-        _verify_and_report(cfg)
+    if not force and cfg.is_authenticated() and _cached_key_works(cfg):
         return None
 
     host = cfg.host or click.prompt("Hopsworks host", default=config.DEFAULT_HOST)
@@ -339,25 +339,22 @@ def setup_cmd(
         # Skip the browser-flow block below by jumping to the verify+save tail.
         return _finalize_setup(host, api_key, project, server_key_name, cfg)
     except requests.RequestException as exc:
-        raise click.ClickException(f"Could not start token flow: {exc}") from exc
+        raise _failed(host, exc) from exc
 
     flow_id = created["flowId"]
     wait_secret = created["waitSecret"]
     web_url = _prefer_host_scheme(created["webUrl"], host)
 
     opened = _open_browser(web_url, headless=no_browser)
-    output.info("")
-    output.info("The hops CLI needs to authenticate with Hopsworks.")
     if opened:
         output.info("Opening your browser: %s", web_url)
     else:
-        output.info("Visit this URL in a browser to continue:")
-        output.info("  %s", web_url)
+        output.info("Visit this URL in a browser to continue: %s", web_url)
 
     try:
         completed = _wait_for_key(api_base, flow_id, wait_secret, timeout, verify)
     except requests.RequestException as exc:
-        raise click.ClickException(f"Token flow failed: {exc}") from exc
+        raise _failed(host, exc) from exc
 
     api_key = completed.get("apiKey")
     project = completed.get("workspaceUsername")
@@ -370,7 +367,7 @@ def setup_cmd(
     server_key_name = completed.get("apiKeyName")
 
     if not api_key:
-        raise click.ClickException("Server did not return an API key.")
+        raise _failed(host, "the server did not return an API key")
 
     _finalize_setup(host, api_key, project, server_key_name, cfg)
     return None
@@ -393,10 +390,9 @@ def _finalize_setup(
     try:
         auth.verify(host=host, api_key_value=api_key, project=project)
     except Exception as exc:  # noqa: BLE001 - SDK raises a bag of types
-        raise click.ClickException(
-            f"Server returned an API key but verification failed: {exc}. "
-            "No changes written to ~/.hops.toml. Re-run `hops setup`."
-        ) from exc
+        # Nothing is written until the key verifies, so a failure here leaves the
+        # previous configuration intact and `hops setup` can simply be run again.
+        raise _failed(host, exc) from exc
 
     cfg.host = host
     cfg.api_key = api_key
@@ -404,16 +400,7 @@ def _finalize_setup(
     cfg.project = project
     config.save(cfg)
 
-    output.success(
-        "✓ Connected to %s as %s",
-        host.replace("https://", "").replace("http://", ""),
-        project or "(no project)",
-    )
-    output.info(
-        "Token written to %s with api-key name %s",
-        config.CONFIG_PATH,
-        server_key_name or "(server-assigned)",
-    )
+    output.success("✓ Connected to %s as %s", host, project or "(no project)")
 
 
 def _handle_internal(cfg: config.HopsConfig) -> None:
@@ -435,24 +422,65 @@ def _handle_internal(cfg: config.HopsConfig) -> None:
     )
 
 
-def _verify_and_report(cfg: config.HopsConfig) -> None:
-    """Already-configured short-circuit: verify the cached key, print status, exit 0."""
+def _reason(exc: object) -> str:
+    """The first line of ``exc``, clipped, so one failure prints as one line.
+
+    SDK errors run to several lines and embed the whole response body; the rest
+    is recoverable from the logs when someone needs it.
+    """
+    first = str(exc).strip().splitlines()
+    text = first[0] if first else exc.__class__.__name__
+    return text if len(text) <= 160 else text[:157] + "..."
+
+
+def _failed(host: str, exc: object) -> click.ClickException:
+    """The one line every failing path of this command prints.
+
+    A TLS failure names its remedy, since the flags that fix it are on this very
+    command and the raw urllib3 message never mentions them.
+    """
+    hint = ""
+    if isinstance(exc, BaseException) and _is_ssl_error(exc):
+        hint = (
+            " (self-signed certificate? re-run with --insecure, or --ca-bundle <path>)"
+        )
+    return click.ClickException(f"Failed to connect to {host}: {_reason(exc)}{hint}")
+
+
+def _is_ssl_error(exc: BaseException) -> bool:
+    """Whether ``exc`` or anything it wraps is a TLS verification failure."""
+    seen = set()
+    while exc is not None and id(exc) not in seen:
+        if isinstance(exc, (requests.exceptions.SSLError, ssl.SSLError)):
+            return True
+        seen.add(id(exc))
+        exc = exc.__cause__ or exc.__context__
+    return False
+
+
+def _cached_key_works(cfg: config.HopsConfig) -> bool:
+    """Report whether the cached key still authenticates, and say so in one line.
+
+    A key that no longer works is not a failure of this command: the caller falls
+    through to the browser flow, so `hops setup` ends connected whether it was run
+    once or ten times, and `--force` is for replacing a key that still works.
+    """
     try:
         project = auth.verify(
             host=cfg.host or "",
             api_key_value=cfg.api_key or "",
             project=cfg.project,
         )
-    except Exception as exc:  # noqa: BLE001
-        output.warn(
-            "Cached key in %s no longer works: %s. Re-run with --force to refresh.",
-            config.CONFIG_PATH,
-            exc,
+    except Exception as exc:  # noqa: BLE001 - SDK raises a bag of types
+        output.info(
+            "Cached key for %s no longer works (%s); signing in again.",
+            cfg.host or "?",
+            _reason(exc),
         )
-        raise click.ClickException("Authentication failed.") from exc
+        return False
     output.success(
-        "✓ Connected to %s as %s (key: %s)",
-        (cfg.host or "").replace("https://", "").replace("http://", ""),
+        "✓ Connected to %s as %s",
+        cfg.host or "?",
         getattr(project, "name", cfg.project or "?"),
-        cfg.api_key_name or "unnamed",
     )
+    return True
