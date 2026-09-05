@@ -1,12 +1,12 @@
 ---
 name: hops-agent-task
-description: Use when creating, running, or scheduling an agent task in Hopsworks - a coding agent (Claude Code or OpenAI Codex) that executes a prompt as a Hopsworks job, once or on a cron schedule. Auto-invoke when the user wants an autonomous or scheduled AI task or workflow, an "agent job", a nightly report or maintenance sweep described in natural language, or asks about agentJobConfiguration, permission presets, agent refs, or where an agent's result lands. Input a prompt (plus permissions, refs, schedule); output an AGENT job whose executions write result.md.
+description: Use when creating, running, or scheduling an agent task in Hopsworks - a coding agent (Claude Code, OpenAI Codex or GitHub Copilot) that executes a prompt as a Hopsworks job, once or on a cron schedule. Auto-invoke when the user wants an autonomous or scheduled AI task or workflow, an "agent job", a nightly report or maintenance sweep described in natural language, or asks about agentJobConfiguration, permission presets, agent refs, or where an agent's result lands. Input a prompt (plus permissions, refs, schedule); output an AGENT job whose executions write result.md.
 ---
 
 # Hopsworks Agent Tasks
 
 An agent task is a Hopsworks **job of type `AGENT`**: a coding agent (Claude
-Code by default, or OpenAI Codex) runs your **prompt** once, non-interactively,
+Code by default, OpenAI Codex, or GitHub Copilot) runs your **prompt** once, non-interactively,
 in a pod on the cluster with the `hops` CLI, the Python SDK and the project's
 HopsFS at hand, writes its result to HopsFS and exits. It is a *background*
 agent for routine, well-specified work (a nightly data-quality report, table
@@ -16,7 +16,7 @@ endpoint use **hops-agent-deployment**.
 
 Prefer a deterministic prompt (a fixed checklist with a fixed deliverable) over
 an open-ended one: cheaper, more reliable, and reviewable. The agent cannot ask
-questions at run time (`claude -p` / `codex exec`), so the prompt must state the
+questions at run time (`claude -p` / `codex exec` / `copilot -p`), so the prompt must state the
 inputs, the steps, the definition of done, and where to write the result.
 
 ## Contract
@@ -34,7 +34,7 @@ hops job logs <name> --stdout --tail 200    # the last execution's result (stdou
 
 ## Ask the user (only when state is ambiguous)
 - **The deliverable.** A report in `result.md`, rows written to a feature group, a Slack post? The prompt has to say where the result goes.
-- **Provider and model.** `claude` (default; model from the cluster's `agent_default_model`) or `codex` (`gpt-*` models via `cliArgs`).
+- **Provider and model.** `claude` (default; model from the cluster's `agent_default_model`), `codex` (`gpt-*` models) or `copilot` (copilot's own ids such as `claude-sonnet-4.5`, or `auto`). Leave `model` empty for codex and copilot to take their own default.
 - **Permissions.** Start narrow: `READ_ONLY` for reporting, `OPERATOR` when it must run `hops`/`python` and write under `/hopsfs`. Custom lists only when a preset does not fit.
 - **Once or scheduled**, and the cron.
 - **Context.** Which feature groups, feature views, models, deployments or jobs it should know about (`refs`).
@@ -42,10 +42,14 @@ hops job logs <name> --stdout --tail 200    # the last execution's result (stdou
 
 ## Authentication (check this first)
 The pod authenticates with the user's AI-provider key, injected as an env var:
-`ANTHROPIC_API_KEY` for `claude`, `OPENAI_API_KEY` for `codex`. Keys are stored
-once per user on the platform (`POST /users/ai/provider` with
-`{"providerType": "ANTHROPIC" | "OPENAI", "apiKey": "..."}`; `GET` lists them),
-and every stored key is injected regardless of provider. A per-job
+`ANTHROPIC_API_KEY` for `claude`, `OPENAI_API_KEY` for `codex`, `GH_TOKEN` for
+`copilot`. Keys are stored once per user on the platform (`POST /users/ai/provider`
+with `{"providerType": "ANTHROPIC" | "OPENAI" | "GITHUB", "apiKey": "..."}`; `GET`
+lists them), and every stored key is injected regardless of provider. Copilot
+takes an OAuth token or a **fine-grained** personal access token and refuses a
+classic `ghp_` PAT outright. A login made in the terminal (`claude`, `codex`, or
+`copilot` then `/login`) is reused by the pod too, so a user who has signed in
+there needs no stored key. A per-job
 `envVars: ["ANTHROPIC_API_KEY=..."]` overrides the account value (env precedence:
 per-job `envVars` > account env vars > AI-provider secrets). A run that fails at
 once with an authentication error in `stderr.log` means no key reached the pod.
@@ -100,15 +104,15 @@ The UI form (**Agents → Agent Tasks → Create Agent Task**) has the same fiel
 | Field | Notes |
 |---|---|
 | `appName`, `prompt` | required; the prompt is the whole task specification |
-| `provider` | `claude` (default) or `codex` |
-| `model` | `claude-*` for claude, `gpt-*` for codex; default from `agent_default_model` |
+| `provider` | `claude` (default), `codex` or `copilot` |
+| `model` | `claude-*` for claude, `gpt-*` for codex, copilot's own ids (`claude-sonnet-4.5`, `auto`); the `agent_default_model` default applies to claude only |
 | `maxTurns` | claude only; default from `agent_default_max_turns` (50) |
 | `maxBudgetUsd` | claude only; max 100; the agent stops when spent |
 | `permissionPreset` / `permissions` | a preset name, or a custom list of `Bash(...)`, `Read(...)`, `Write(...)` patterns; a custom list overrides the preset |
 | `refs` | `[{"type": feature_group\|feature_view\|model\|deployment\|job, "name", "version"}]`; version required for FG/FV/model. Each becomes a JSON file under `/context/` (e.g. `/context/fg_transactions_v1.json`) and is listed in the agent's instructions |
 | `skillsRef` | project-relative `.md` (e.g. `Resources/agent-skills.md`) appended to the agent's instructions |
 | `hooks` | claude only: `[{"event": PreToolUse\|PostToolUse\|Stop, "matcher": "Bash(hops *)", "command": "..."}]` |
-| `cliArgs` | codex only: extra flags appended after `codex exec -s workspace-write -C <home>` (e.g. `--search --model gpt-5`) |
+| `cliArgs` | codex and copilot: extra flags appended after the provider's defaults (codex: `--search --model gpt-5`; copilot: `--deny-tool=shell(rm:*)`, and a copilot `--deny-tool` beats every allow) |
 | `environmentName` | `agent-task` (default) or a clone of it; anything else is rejected with 400 |
 | `envVars` | `["KEY=VALUE", ...]`; names with the `HOPS_`, `HOPSWORKS_`, `HOPSFS_`, `AGENT_` prefixes are reserved (400) |
 | `resourceConfig` | `{"cores", "memory" (MB), "gpus"}` |
@@ -125,7 +129,10 @@ The UI form (**Agents → Agent Tasks → Create Agent Task**) has the same fiel
 Note that `READ_ONLY` does not include `hops fg stats` or `hops fg list`; a
 reporting task that needs them takes a custom list such as
 `["Bash(hops fg *)", "Bash(hops fv *)", "Read(*)"]`. `Bash(*)` is unrestricted;
-use it only when the user asks.
+use it only when the user asks. For `copilot` the same list is translated to its
+grammar (`Bash(hops fg *)` → `--allow-tool=shell(hops fg:*)`, `Write(...)` →
+`--allow-tool=write`, `Read(*)` dropped since copilot does not gate reads), so
+write the list in the claude form whatever the provider.
 
 ## Run, override, schedule, stop (CLI)
 
