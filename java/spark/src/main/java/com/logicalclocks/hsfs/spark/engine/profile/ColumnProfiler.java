@@ -200,7 +200,9 @@ public class ColumnProfiler {
       String nn = col.name;
 
       exprs.add(functions.count(cc).alias(nn + "__nonnull"));
-      exprs.add(functions.sum(functions.when(cc.isNull(), 1).otherwise(0)).alias(nn + "__nullcount"));
+      // count(when(isNull)) rather than sum(when(isNull, 1).otherwise(0)): sum returns NULL
+      // over zero rows, and the read side unboxes this into a long.
+      exprs.add(functions.count(functions.when(cc.isNull(), 1)).alias(nn + "__nullcount"));
       exprs.add(functions.approx_count_distinct(cc).alias(nn + "__approx_distinct"));
       if (exactUniqueness) {
         exprs.add(functions.countDistinct(cc).alias(nn + "__exact_distinct"));
@@ -333,10 +335,9 @@ public class ColumnProfiler {
       boolean histogram, int histogramBins, boolean kll, boolean exactUniqueness) {
     String nn = col.name;
 
-    // count(col) returns Long; sum(when(...).otherwise(0)) returns Long when the sum
-    // fits, but Spark can pass it back as Integer internally — cast via Number for safety.
+    // Both are count()s, so an empty dataframe yields 0 rather than a NULL to unbox.
     long nonNull = aggRow.getAs(nn + "__nonnull");
-    long nullCount = ((Number) aggRow.getAs(nn + "__nullcount")).longValue();
+    long nullCount = aggRow.getAs(nn + "__nullcount");
     long total = nonNull + nullCount;
     long approxDistinct = aggRow.getAs(nn + "__approx_distinct");
     // exactNumDistinctValues + derived stats (distinctness/uniqueness/entropy) are only

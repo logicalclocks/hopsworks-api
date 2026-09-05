@@ -74,8 +74,9 @@ class HistogramBuilder {
     }
 
     // Non-finite values belong to no bin and must not reach binExpr: NaN floors to bin 0,
-    // and floor(Infinity) is Long.MAX_VALUE, whose cast to int throws CAST_OVERFLOW under
-    // Spark 4's ANSI mode and fails the job before least() can clamp it.
+    // and floor(Infinity) is Long.MAX_VALUE, which least() clamps into the last bin - or,
+    // where ANSI mode is on, fails the job outright on the cast to int. Hopsworks pins
+    // spark.sql.ansi.enabled=false, so the default is the silent miscount, not the error.
     Dataset<Row> binned = df.filter(col.isNotNull().and(ColumnProfiler.isFinite(col)))
         .withColumn("_bin", binExpr)
         .groupBy("_bin")

@@ -379,7 +379,7 @@ public class ColumnProfilerSmokeTest {
     }
     Assertions.assertEquals(8, histTotal,
         "histogram must count the eight finite values only; a non-finite value reaching "
-            + "binExpr throws CAST_OVERFLOW under ANSI mode");
+            + "binExpr is clamped into a real bin, or throws where ANSI mode is on");
     Assertions.assertTrue(histogram.get(0).get("value").asText().startsWith("1.00 to"),
         "first bin must start at the finite minimum: " + histogram.get(0).get("value").asText());
 
@@ -415,6 +415,31 @@ public class ColumnProfilerSmokeTest {
         "a span that overflows to infinity must not be emitted as kll (getCDF rejects it)");
     Assertions.assertEquals(99, huge.get("approxPercentiles").size(),
         "the percentiles do not need a bin grid and must survive");
+  }
+
+  @Test
+  void profilesAnEmptyDataframeWithoutThrowing() throws Exception {
+    // A training-dataset split can come out empty, and compute_and_save_split_statistics
+    // profiles each split without an emptiness check. sum() returns NULL over zero rows,
+    // so unboxing the null count failed the statistics job before any column was profiled.
+    StructType schema = new StructType(new StructField[]{
+      DataTypes.createStructField("num", DataTypes.DoubleType, true),
+      DataTypes.createStructField("txt", DataTypes.StringType, true),
+    });
+    Dataset<Row> empty = SparkEngine.getInstance().getSparkSession()
+        .createDataFrame(new ArrayList<Row>(), schema);
+
+    // Every statistics flag on, then every flag off: the null count is read either way.
+    for (boolean on : new boolean[]{true, false}) {
+      String json = new ColumnProfiler().profile(empty, null, on, on, 20, on, on);
+      JsonNode num = findColumn(new ObjectMapper().readTree(json).get("columns"), "num");
+      Assertions.assertNotNull(num, "num column profile must be present with flags=" + on);
+      Assertions.assertEquals(0, num.get("numRecordsNull").asLong(),
+          "an empty dataframe has no null records");
+      Assertions.assertEquals(0, num.get("numRecordsNonNull").asLong(),
+          "an empty dataframe has no non-null records");
+      Assertions.assertFalse(num.has("kll"), "an empty dataframe must not be emitted as kll");
+    }
   }
 
   // ---------------------------------------------------------------------------
