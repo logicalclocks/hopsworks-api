@@ -2,8 +2,8 @@
 
 The mental model is a hand-off. ``push`` hands the session you are in to a
 Hopsworks terminal pod (Claude Code is pre-installed in that image); the pod
-lands it on its own, so you can close the laptop and keep driving it from the
-browser Terminal tab. ``pull`` reclaims it back onto this machine. ``new``
+lands it as soon as its browser Terminal tab is open, and from then on you can
+close the laptop and keep driving it from that tab. ``pull`` reclaims it back onto this machine. ``new``
 starts a fresh session straight on the pod, ``list`` shows where things are,
 ``stop`` kills the terminal pod, and ``mirror`` (alias ``attach``) streams the
 live pod terminal to your laptop.
@@ -489,6 +489,27 @@ def _await_landing(dataset_api, dest_dir: str, session_id: str, pushed_at: str) 
     return False
 
 
+def _pod_holds(
+    dataset_api, dest_dir: str, session_id: str, holder: str, project_id: int
+) -> bool:
+    """Whether a live pod has landed this session, so it may still be writing it.
+
+    Push names the pod in the baton before the pod has done anything, and the
+    pod lands only once a browser Terminal tab has opened a shell in it, so a
+    ``pod:`` holder plus a running terminal does not mean the pod has the
+    session: a staged push nobody opened a tab for would wedge both push and
+    pull behind ``--force`` with nothing to protect. The pod's ack for the
+    CURRENT manifest is the evidence. A manifest that cannot be read keeps the
+    gate closed rather than guessing.
+    """
+    if not holder.startswith("pod:") or not _pod_alive(project_id):
+        return False
+    manifest = _read_remote_json(dataset_api, f"{dest_dir}/{session_id}.teleport.json")
+    if not manifest:
+        return True
+    return _landed(dataset_api, dest_dir, session_id, manifest.get("pushed_at"))
+
+
 def _launch_pod(project) -> str | None:
     """Start (or reuse) the project's terminal pod; return its ``wsUrl``.
 
@@ -630,20 +651,21 @@ def push(
     dataset_api = project.get_dataset_api()
     dest_dir = f"{_teleport_root()}/{slug}"
 
-    # Ownership gate, mirroring pull: a baton naming a LIVE pod holder means the
-    # pod's copy is canonical and may carry appends never pulled. Re-pushing the
-    # laptop's copy would overwrite the transport and, when the pod lands it,
-    # `cp -f` the pod's live transcript too -- silently destroying that work.
-    # A dead pod, a laptop-held baton, or a --fork push is not gated.
-    if not fork:
+    # Ownership gate, mirroring pull: a live pod that has landed this session
+    # holds the canonical copy and may carry appends never pulled. Re-pushing
+    # the laptop's copy would overwrite the transport and, when the pod lands
+    # it, `cp -f` the pod's live transcript too -- silently destroying that
+    # work. A dead pod, a staged push the pod never landed, a laptop-held baton,
+    # or a --fork push is not gated.
+    if not fork and not force:
         existing = _read_baton(dataset_api, dest_dir, resolved_id)
         holder = (existing or {}).get("holder", "")
-        if holder.startswith("pod:") and _pod_alive(project.id) and not force:
+        if _pod_holds(dataset_api, dest_dir, resolved_id, holder, project.id):
             raise click.ClickException(
                 f"A live pod holds this session ({holder}); it may have work you "
-                f"have not pulled. `hops session pull` first to bring it back, or "
-                f"`push --force` to overwrite the pod's copy (its un-pulled work "
-                f"is lost)."
+                f"have not pulled. `hops session stop && hops session pull` first "
+                f"to bring it back, or `push --force` to overwrite the pod's copy "
+                f"(its un-pulled work is lost)."
             )
 
     # Git sync runs first: it is the interactive part (consent, key prompt,
@@ -776,10 +798,18 @@ def push(
         output.success(
             "✓ Landed on pod %s — open the Terminal tab to resume", project.name
         )
+        return
+    if ws_url:
+        output.info("Not landed yet — the pod lands it once its Terminal tab is open.")
+        # webbrowser.open reporting success says nothing about the tab having
+        # connected, so the URL is worth repeating here.
+        if opened:
+            output.info("Terminal: %s", terminal_url)
+        output.info("Or land it manually:")
     else:
-        output.info("Not landed yet — the pod will pick it up, or land it manually:")
-        for step in landing:
-            output.info("  %s", step)
+        output.info("No terminal pod to land it; land it manually:")
+    for step in landing:
+        output.info("  %s", step)
 
 
 @session_group.command("new")
@@ -866,8 +896,11 @@ def new(
         )
     else:
         output.info(
-            "Not landed yet — a fresh Claude session will open in the terminal shortly."
+            "Not landed yet — a fresh Claude session opens once the Terminal tab "
+            "is open."
         )
+        if opened:
+            output.info("Terminal: %s", terminal_url)
 
 
 @session_group.command("pull")
@@ -966,19 +999,22 @@ def pull(
     me = f"laptop:{host}"
 
     # --- Ownership gate: --force is required only to take the baton from a
-    # holder that may still be writing (a live pod, or another laptop we have
-    # no liveness oracle for). A dead pod, or a baton we already hold, is a
-    # frictionless reclaim.
-    pod_live = False
+    # holder that may still be writing (a live pod that has landed the session,
+    # or another laptop we have no liveness oracle for). A dead pod, a push the
+    # pod never landed, or a baton we already hold, is a frictionless reclaim.
+    pod_holds = False
     if baton:
         holder = baton.get("holder", "")
         if holder.startswith("pod:"):
-            pod_live = _pod_alive(project.id)
-            if pod_live and not force:
+            pod_holds = _pod_holds(
+                dataset_api, dest_dir, session_id, holder, project.id
+            )
+            if pod_holds and not force:
                 raise click.ClickException(
-                    f"The pod still holds a live terminal session for "
-                    f"{holder}. Close it there first, or `pull --force` to take "
-                    f"the baton anyway (the pod's later writes become orphans)."
+                    f"A live pod has landed this session ({holder}) and may "
+                    f"still be writing it. `hops session stop` first, or `pull "
+                    f"--force` to take the baton anyway (the pod's later writes "
+                    f"become orphans)."
                 )
         elif holder.startswith("laptop:") and holder != me and not force:
             raise click.ClickException(
@@ -1100,16 +1136,18 @@ def pull(
         # skips the stamp (nothing to version against). Best-effort, like the
         # baton.
         #
-        # Skipped while the pod is alive (the --force path): the stamp is a
-        # server-side overwrite of a name the pod has in its FUSE dentry cache,
-        # so the pod's own later write to it could land in the stale unlinked
-        # inode and vanish -- the lost-write trap every other marker avoids.
-        # A live pod has already landed this manifest anyway.
+        # Skipped when a live pod has landed this push (the --force path): that
+        # pod wrote the marker itself at land time and has the name in its FUSE
+        # dentry cache, so a server-side overwrite could send its own later
+        # write into the stale unlinked inode -- the lost-write trap every other
+        # marker avoids. A dead pod, or a live one that never landed the push,
+        # has not touched the name, and without the stamp the next Terminal tab
+        # would boot-land the reclaimed copy.
         manifest = (
             _read_remote_json(dataset_api, f"{dest_dir}/{session_id}.teleport.json")
             or {}
         )
-        pushed_at = None if pod_live else manifest.get("pushed_at")
+        pushed_at = None if pod_holds else manifest.get("pushed_at")
         if pushed_at:
             with tempfile.TemporaryDirectory() as tmp:
                 marker = Path(tmp) / f"{session_id}.teleport.json.consumed"

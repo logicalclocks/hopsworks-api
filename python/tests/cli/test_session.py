@@ -483,6 +483,7 @@ class _PushDataset:
     def upload(self, local_path, upload_path, overwrite=False) -> None:
         name = Path(local_path).name
         self.uploads.append(name)
+        self._files[f"{upload_path}/{name}"] = Path(local_path).read_text()
         if self._ack_on_manifest and name.endswith(".teleport.json"):
             sid = name[: -len(".teleport.json")]
             manifest = json.loads(Path(local_path).read_text())
@@ -498,7 +499,13 @@ class _PushDataset:
     def download(self, remote, local_path, overwrite=False) -> None:
         if remote not in self._files:
             raise _rest_error(404)
-        Path(local_path).write_text(json.dumps(self._files[remote]))
+        value = self._files[remote]
+        Path(local_path).write_text(
+            value if isinstance(value, str) else json.dumps(value)
+        )
+
+    def list(self, path: str) -> list[str]:
+        return [p for p in self._files if p.startswith(path + "/")]
 
 
 class _FakeProject:
@@ -583,13 +590,28 @@ def test_push_happy_path_is_three_check_lines(tmp_path, monkeypatch):
     assert "sid1.teleport.json" in ds.uploads
 
 
-def _with_pod_baton(ds, slug, alive, monkeypatch):
-    """Stage a baton naming the pod as holder and pin the pod's liveness."""
+_PUSHED = "2026-09-05T08:00:00+00:00"
+
+
+def _with_pod_baton(ds, slug, alive, monkeypatch, landed=True):
+    """Stage a pod-held baton and its manifest, plus the landing ack when landed.
+
+    Also pins the pod's liveness.
+    """
     ds._files[f"{_ROOT}/{slug}/sid1.baton.json"] = {
         "session_id": "sid1",
         "holder": "pod:demo",
         "transferred_lines": 1,
     }
+    ds._files[f"{_ROOT}/{slug}/sid1.teleport.json"] = {
+        "session_id": "sid1",
+        "pushed_at": _PUSHED,
+    }
+    if landed:
+        ds._files[f"{_ROOT}/{slug}/sid1.landed.json"] = {
+            "landed_at": "then",
+            "pushed_at": _PUSHED,
+        }
     monkeypatch.setattr(session, "_pod_alive", lambda pid: alive)
 
 
@@ -623,6 +645,29 @@ def test_push_proceeds_when_the_pod_holder_is_dead(tmp_path, monkeypatch):
     assert "sid1.jsonl" in ds.uploads
 
 
+def test_push_proceeds_when_the_live_pod_never_landed_the_push(tmp_path, monkeypatch):
+    # The baton names the pod from the moment of the push, but the pod lands
+    # only once a Terminal tab has opened a shell in it. Until then it holds
+    # nothing worth protecting, and the stale ack of an older land (always
+    # present in the fixture) must not count as evidence either.
+    runner, ds, slug = _push_setup(tmp_path, monkeypatch, landed=True)
+    _with_pod_baton(ds, slug, alive=True, monkeypatch=monkeypatch, landed=False)
+    result = runner.invoke(session.session_group, ["push"], catch_exceptions=False)
+    assert result.exit_code == 0
+    assert "sid1.jsonl" in ds.uploads
+
+
+def test_push_keeps_the_gate_when_the_manifest_cannot_be_read(tmp_path, monkeypatch):
+    # Without the manifest there is no way to tell whether the pod landed the
+    # push, so the gate stays closed rather than guessing.
+    runner, ds, slug = _push_setup(tmp_path, monkeypatch, landed=True)
+    _with_pod_baton(ds, slug, alive=True, monkeypatch=monkeypatch, landed=False)
+    del ds._files[f"{_ROOT}/{slug}/sid1.teleport.json"]
+    result = runner.invoke(session.session_group, ["push"])
+    assert result.exit_code != 0
+    assert "sid1.jsonl" not in ds.uploads
+
+
 def test_push_writes_the_baton_after_the_manifest(tmp_path, monkeypatch):
     # A failed manifest upload must never leave the store naming a pod holder
     # for a session that pod will never receive.
@@ -641,5 +686,68 @@ def test_push_prints_landing_kit_when_not_landed(tmp_path, monkeypatch):
     assert result.exit_code == 0
     text = _all_output(result)
     assert "Not landed yet" in text
+    assert "Terminal tab is open" in text
+    # The browser reported the tab as opened, yet nothing landed: the URL is
+    # shown anyway so the user can open the tab that does the landing.
+    assert "https://hops:8182/p/7?terminal=open" in text
     assert "claude --resume sid1" in text
     assert "Push marker" not in text
+
+
+def _pull_setup(tmp_path, monkeypatch, alive: bool, landed: bool):
+    """Wire a fake store holding one pushed session; return (runner, ds, slug, root)."""
+    from click.testing import CliRunner
+
+    workdir = tmp_path / "proj"
+    workdir.mkdir()
+    monkeypatch.setattr(Path, "cwd", classmethod(lambda cls: workdir))
+    slug = session._cwd_slug()
+    claude_root = tmp_path / "claude"
+    monkeypatch.setattr(session, "_CLAUDE_PROJECTS", claude_root)
+    monkeypatch.setattr(session, "_teleport_root", lambda: _ROOT)
+    ds = _PushDataset({f"{_ROOT}/{slug}/sid1.jsonl": '{"line": 1}\n'})
+    _with_pod_baton(ds, slug, alive=alive, monkeypatch=monkeypatch, landed=landed)
+    monkeypatch.setattr(session.conn, "get_project", lambda ctx: _FakeProject(ds))
+
+    class _Client:
+        _base_url = "https://hops:8182"
+
+    monkeypatch.setattr(session.client, "_get_instance", lambda: _Client())
+    return CliRunner(), ds, slug, claude_root
+
+
+def test_pull_refuses_while_a_live_pod_has_landed_the_session(tmp_path, monkeypatch):
+    runner, ds, slug, _ = _pull_setup(tmp_path, monkeypatch, alive=True, landed=True)
+    result = runner.invoke(session.session_group, ["pull"])
+    assert result.exit_code != 0
+    assert "has landed this session" in _all_output(result)
+    assert "sid1.baton.json" not in ds.uploads
+
+
+def test_pull_reclaims_a_push_the_live_pod_never_landed(tmp_path, monkeypatch):
+    # A running terminal pod nobody opened a tab for has not landed the push,
+    # so the reclaim needs no --force and the store must record the hand-back.
+    runner, ds, slug, root = _pull_setup(
+        tmp_path, monkeypatch, alive=True, landed=False
+    )
+    result = runner.invoke(session.session_group, ["pull"], catch_exceptions=False)
+    assert result.exit_code == 0, _all_output(result)
+    assert (root / slug / "sid1.jsonl").read_text() == '{"line": 1}\n'
+    baton = json.loads(ds._files[f"{_ROOT}/{slug}/sid1.baton.json"])
+    assert baton["holder"].startswith("laptop:")
+    # Consumed with the push's own stamp, or the next Terminal tab would
+    # boot-land the reclaimed copy as a ghost tab.
+    assert ds._files[f"{_ROOT}/{slug}/sid1.teleport.json.consumed"] == _PUSHED
+
+
+def test_pull_force_from_a_landed_live_pod_leaves_the_consumed_marker_to_the_pod(
+    tmp_path, monkeypatch
+):
+    # The pod wrote that marker itself at land time; overwriting a name it has
+    # cached is the lost-write trap the other markers avoid.
+    runner, ds, slug, _ = _pull_setup(tmp_path, monkeypatch, alive=True, landed=True)
+    result = runner.invoke(
+        session.session_group, ["pull", "--force"], catch_exceptions=False
+    )
+    assert result.exit_code == 0, _all_output(result)
+    assert f"{_ROOT}/{slug}/sid1.teleport.json.consumed" not in ds._files
