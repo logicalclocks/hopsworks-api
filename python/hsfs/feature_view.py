@@ -5963,6 +5963,22 @@ class FeatureView:
         embedding_fg_ids = [fg.id for fg in self._get_embedding_fgs()]
         return set(embedding_fg_ids + self._get_spine_fg_ids())
 
+    def _close(self) -> None:
+        """Release the online store connection pools this feature view holds.
+
+        Idempotent, and safe on a feature view that never initialised serving.
+        `init_serving` can be called again afterwards.
+
+        Needed because the pools cannot be reclaimed by garbage collection: each
+        one is owned by a client that its own running task thread keeps
+        reachable. A pool holds one connection per feature group in the view, so
+        a long-lived process that initialises serving for many feature views can
+        exhaust the online store's `max_connections`.
+        """
+        for server in (self.__vector_server, self.__batch_scoring_server):
+            if server is not None:
+                server._close()
+
     @property
     def _vector_server(self) -> vector_server.VectorServer:
         if not self.__vector_server:

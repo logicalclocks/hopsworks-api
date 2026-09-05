@@ -1918,6 +1918,17 @@ class VectorServer:
             )
         return per_serving_key_features
 
+    def _close(self) -> None:
+        """Release the online store connection pool this server holds.
+
+        Idempotent, and safe on a server that never initialised the SQL client.
+        Serving can be initialised again afterwards; a fresh client is built.
+        """
+        if self._sql_client is not None:
+            self._sql_client._close()
+            self._sql_client = None
+            self._serving_initialized = False
+
     @property
     def sql_client(
         self,
