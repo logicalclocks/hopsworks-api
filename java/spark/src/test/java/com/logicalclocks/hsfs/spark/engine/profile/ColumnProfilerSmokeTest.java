@@ -442,6 +442,31 @@ public class ColumnProfilerSmokeTest {
     }
   }
 
+  @Test
+  void profilesAColumnNamedCount() throws Exception {
+    // "count" passes the feature-name rules and is an ordinary thing to call a feature.
+    // The uniqueness pass grouped on the column itself, so the count() output collided
+    // with it and the select failed with AMBIGUOUS_REFERENCE, taking the whole job down.
+    StructType schema = new StructType(new StructField[]{
+      DataTypes.createStructField("count", DataTypes.DoubleType, true),
+      DataTypes.createStructField("label", DataTypes.StringType, true),
+    });
+    List<Row> rows = new ArrayList<>();
+    for (int i = 0; i < 10; i++) {
+      rows.add(RowFactory.create((double) (i % 5), "v" + (i % 5)));
+    }
+    Dataset<Row> df = SparkEngine.getInstance().getSparkSession().createDataFrame(rows, schema);
+
+    // exactUniqueness on: this is the pass that groups per column.
+    String json = new ColumnProfiler().profile(df, null, false, true, 20, true, true);
+    JsonNode col = findColumn(new ObjectMapper().readTree(json).get("columns"), "count");
+    Assertions.assertNotNull(col, "the column named 'count' must be profiled");
+    Assertions.assertEquals(5, col.get("exactNumDistinctValues").asLong(),
+        "each of the five values appears twice");
+    Assertions.assertEquals(0.0, col.get("uniqueness").asDouble(), 1e-9,
+        "no value is a singleton, so uniqueness is 0");
+  }
+
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------

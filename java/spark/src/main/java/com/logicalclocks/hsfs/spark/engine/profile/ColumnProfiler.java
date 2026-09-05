@@ -265,9 +265,13 @@ public class ColumnProfiler {
 
   private ValueFrequencyStats computeColumnValueFrequencyStats(Dataset<Row> df,
       String columnName) {
-    Column cc = functions.col(columnName);
-    List<Row> rows = df.filter(cc.isNotNull())
-        .groupBy(cc)
+    // Project to a fixed name before grouping. A feature may legitimately be called
+    // "count" (the name passes the feature-name rules), and grouping on it directly
+    // leaves two "count" columns in the result, so the select below cannot resolve.
+    Column cc = functions.col(columnName).alias("_v");
+    List<Row> rows = df.select(cc)
+        .filter(functions.col("_v").isNotNull())
+        .groupBy(functions.col("_v"))
         .count()
         .select(functions.col("count"))
         .collectAsList();
