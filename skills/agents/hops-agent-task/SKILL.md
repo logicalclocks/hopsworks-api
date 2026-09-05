@@ -47,7 +47,9 @@ The pod authenticates with the user's AI-provider key, injected as an env var:
 with `{"providerType": "ANTHROPIC" | "OPENAI" | "GITHUB", "apiKey": "..."}`; `GET`
 lists them), and every stored key is injected regardless of provider. Copilot
 takes an OAuth token or a **fine-grained** personal access token and refuses a
-classic `ghp_` PAT outright. A login made in the terminal (`claude`, `codex`, or
+classic `ghp_` PAT outright. A copilot task with no `GITHUB` key falls back to the token
+of the user's github.com git provider (`project.get_git_api().set_provider("GitHub",
+user, token, host="github.com")`), so a PAT stored for git also signs copilot in. A login made in the terminal (`claude`, `codex`, or
 `copilot` then `/login`) is reused by the pod too, so a user who has signed in
 there needs no stored key. A per-job
 `envVars: ["ANTHROPIC_API_KEY=..."]` overrides the account value (env precedence:
