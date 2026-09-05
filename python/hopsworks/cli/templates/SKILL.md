@@ -263,6 +263,29 @@ hops search ls "transactions" --keyword fraud --keyword production
 hops search ls --tag "ownership:owner=jim" --tag "lifecycle:env=prod"
 ```
 
+## Session (teleport)
+
+Move a Claude Code session between this machine and a Hopsworks terminal pod (Claude Code is pre-installed in the pod image). `push` hands the session you are in to the pod, which lands it on its own; `pull` reclaims it; `new` starts a fresh one on the pod; `mirror` streams the live pod terminal to your laptop.
+
+```bash
+hops session push [SESSION_ID]     # Hand the current session to the pod (baton hand-off)
+hops session push --fork           # Copy instead of hand off (local stays canonical)
+hops session new [--prompt "..."]  # Start a fresh session on the pod
+hops session pull [SESSION_ID]     # Reclaim a session onto this machine
+hops session pull --force          # Steal the baton from a live pod
+hops session list [--all]          # Show sessions and where each lives
+hops session stop                  # Stop the pod terminal from the CLI
+hops session mirror [--write]      # Attach to the live pod terminal (alias: attach)
+hops git provider list             # Git provider tokens registered with Hopsworks
+hops git provider set --provider github --username <you>   # Register a personal access token (prompted, hidden)
+```
+
+Notes:
+1. Push and new wait briefly for the pod's landing ack, then print `Landed on pod`. On a cold start (the push that boots the pod) it may print `Not landed yet`; it still lands via the pod boot shell.
+2. The watcher lands a pushed session only once a terminal is open (a tmux session exists). Open the terminal tab first, then run `hops session new`.
+3. Sessions stage per working directory (a slug of the cwd). `claude --resume` resolves only from a path that hashes to the same slug, which `pull` prints for you.
+4. `push` can sync your git checkout to the pod. It asks once how the pod should authenticate: an existing SSH key, a new passphrase-free key it generates for Hopsworks (`ssh-keygen`, then `gh ssh-key add` when the GitHub CLI is logged in; Linux/macOS/WSL only), or a provider personal access token registered with Hopsworks (the pod clones over HTTPS; the only option for an HTTPS remote). The answer is remembered in `~/.hops.toml`.
+
 ## Context and LLM Integration
 
 ```bash

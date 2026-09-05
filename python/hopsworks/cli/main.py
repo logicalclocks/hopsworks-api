@@ -49,6 +49,8 @@ _LAZY_SUBCOMMANDS: dict[str, str] = {
     "trino": "hopsworks.cli.commands.trino:trino_group",
     "sql": "hopsworks.cli.commands.trino:trino_query",  # top-level alias of `trino query`
     "context": "hopsworks.cli.commands.context:context_cmd",
+    "session": "hopsworks.cli.commands.session:session_group",
+    "git": "hopsworks.cli.commands.git:git_group",
     "skills": "hopsworks.cli.commands.skills:skills_group",
     "init": "hopsworks.cli.commands.init:init_cmd",
     "update": "hopsworks.cli.commands.update:update_cmd",
