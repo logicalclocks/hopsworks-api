@@ -44,7 +44,8 @@ hops job logs <name> --stdout --tail 200    # the last execution's result (stdou
 The pod authenticates with the user's AI-provider key, injected as an env var:
 `ANTHROPIC_API_KEY` for `claude`, `OPENAI_API_KEY` for `codex`, `GH_TOKEN` for
 `copilot`. Keys are stored once per user on the platform (`POST /users/ai/provider`
-with `{"providerType": "ANTHROPIC" | "OPENAI" | "GITHUB", "apiKey": "..."}`; `GET`
+with `{"providerType": "ANTHROPIC" | "OPENAI" | "GITHUB", "name": "<label>", "apiKey": "..."}`;
+`GET`
 lists them), and every stored key is injected regardless of provider. Copilot
 takes an OAuth token or a **fine-grained** personal access token and refuses a
 classic `ghp_` PAT outright. A copilot task with no `GITHUB` key falls back to the token
