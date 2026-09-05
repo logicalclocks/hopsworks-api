@@ -37,9 +37,10 @@ class _FakePool:
 
 class TestAsyncTaskThread:
     def test_stop_does_not_shadow_the_thread_internal(self):
-        """`threading.Thread._stop` marks a thread finished; overriding it breaks
-        `is_alive()` and `join()` for every instance, because CPython calls it
-        from `_wait_for_tstate_lock`.
+        """Overriding `threading.Thread._stop` breaks every thread's `is_alive()`.
+
+        CPython calls `_stop` from `_wait_for_tstate_lock` to mark a thread
+        finished, so an override also breaks `join()` for every instance.
         """
         assert AsyncTaskThread._stop is threading.Thread._stop
 
