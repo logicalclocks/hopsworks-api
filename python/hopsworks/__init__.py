@@ -662,7 +662,9 @@ def get_env_vars_api() -> env_var_api.EnvVarsApi:
 def _set_active_project(project):
     _client = client._get_instance()
     if _client._is_external():
-        _client._provide_project(project.name)
+        # login already fetched this project; hand the id over instead of
+        # letting the client look it up a second time.
+        _client._provide_project(project.name, project_id=project.id)
 
 
 @public

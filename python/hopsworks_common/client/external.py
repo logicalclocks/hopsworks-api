@@ -105,12 +105,13 @@ class Client(base.Client):
 
         self._provide_project(project)
 
-    def _provide_project(self, project):
+    def _provide_project(self, project, project_id=None):
         self._project_name = project
         _logger.debug("Project name: %s", self._project_name)
 
-        project_info = self._get_project_info(project)
-        self._project_id = str(project_info["projectId"])
+        if project_id is None:
+            project_id = self._get_project_info(project)["projectId"]
+        self._project_id = str(project_id)
         _logger.debug("Setting Project ID: %s", self._project_id)
 
         self._username = self._get_username()
