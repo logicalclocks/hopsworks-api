@@ -228,6 +228,245 @@ public class ColumnProfilerSmokeTest {
     Assertions.assertEquals(9, col.get("exactNumDistinctValues").asLong());
   }
 
+  @Test
+  void profilesAllNaNColumnWithoutThrowing() throws Exception {
+    // Spark counts NaN as non-null, but KllAggregator skips NaN when building the
+    // sketch, so an all-NaN column used to reach getQuantiles with an empty sketch
+    // and fail the whole job with SketchesArgumentException. some_nan is the
+    // counterpart the emptiness check must not swallow: NaN is present but not
+    // exclusive, so the sketch holds the finite values and KLL is still emitted.
+    StructType schema = new StructType(new StructField[]{
+      DataTypes.createStructField("all_nan", DataTypes.DoubleType, true),
+      DataTypes.createStructField("some_nan", DataTypes.DoubleType, true),
+    });
+    List<Row> rows = new ArrayList<>();
+    for (int i = 0; i < 10; i++) {
+      rows.add(RowFactory.create(Double.NaN, i % 2 == 0 ? Double.NaN : (double) i));
+    }
+    Dataset<Row> df = SparkEngine.getInstance().getSparkSession().createDataFrame(rows, schema);
+
+    String json = new ColumnProfiler().profile(df, null, false, false, 20, false, true);
+    JsonNode columns = new ObjectMapper().readTree(json).get("columns");
+
+    JsonNode allNan = findColumn(columns, "all_nan");
+    Assertions.assertNotNull(allNan, "all_nan column profile must be present");
+    Assertions.assertFalse(allNan.has("approxPercentiles"),
+        "an empty sketch must not yield approxPercentiles");
+    Assertions.assertFalse(allNan.has("kll"),
+        "an empty sketch must not be emitted as kll (the serializer calls getCDF on it)");
+
+    JsonNode someNan = findColumn(columns, "some_nan");
+    Assertions.assertNotNull(someNan, "some_nan column profile must be present");
+    Assertions.assertTrue(someNan.has("kll"),
+        "a sketch holding the finite values must still be emitted as kll");
+    Assertions.assertEquals(99, someNan.get("approxPercentiles").size(),
+        "a non-empty sketch must still yield the full percentile vector");
+    Assertions.assertEquals(1.0, someNan.get("approxPercentiles").get(0).asDouble(), 1e-9,
+        "percentiles must be estimated from the finite values only");
+  }
+
+  @Test
+  void binsPartlyNaNColumnOverItsFiniteRange() throws Exception {
+    // Spark ranks NaN above every other double and counts it as non-null, so a column
+    // holding one NaN reported maximum=NaN. Both bin grids were derived from that: the
+    // histogram labelled all 20 bins "NaN to NaN", and the KLL buckets fell back to a
+    // width-1.0 grid and scaled their counts by numRecordsNonNull, which counts the NaN
+    // rows the sketch never saw.
+    StructType schema = new StructType(new StructField[]{
+      DataTypes.createStructField("all_nan", DataTypes.DoubleType, true),
+      DataTypes.createStructField("some_nan", DataTypes.DoubleType, true),
+    });
+    List<Row> rows = new ArrayList<>();
+    for (int i = 0; i < 10; i++) {
+      rows.add(RowFactory.create(Double.NaN, i % 2 == 0 ? Double.NaN : (double) i));
+    }
+    Dataset<Row> df = SparkEngine.getInstance().getSparkSession().createDataFrame(rows, schema);
+
+    String json = new ColumnProfiler().profile(df, null, false, true, 20, false, true);
+    JsonNode columns = new ObjectMapper().readTree(json).get("columns");
+
+    // some_nan holds 1, 3, 5, 7, 9 plus five NaN: bins span [1, 9] and hold five rows.
+    JsonNode someNan = findColumn(columns, "some_nan");
+    Assertions.assertNotNull(someNan, "some_nan column profile must be present");
+    JsonNode histogram = someNan.get("histogram");
+    Assertions.assertNotNull(histogram, "some_nan must have a histogram");
+    Assertions.assertEquals(20, histogram.size(), "histogram must have 20 bins");
+
+    long histTotal = 0;
+    double ratioTotal = 0.0;
+    for (JsonNode bin : histogram) {
+      Assertions.assertFalse(bin.get("value").asText().contains("NaN"),
+          "no bin label may be derived from a NaN range: " + bin.get("value").asText());
+      histTotal += bin.get("count").asLong();
+      ratioTotal += bin.get("ratio").asDouble();
+    }
+    Assertions.assertEquals(5, histTotal, "histogram must count the five finite values only");
+    Assertions.assertEquals(1.0, ratioTotal, 1e-9, "bin ratios must sum to 1 over non-NaN rows");
+    Assertions.assertTrue(histogram.get(0).get("value").asText().startsWith("1.00 to"),
+        "first bin must start at the finite minimum, not NaN: "
+            + histogram.get(0).get("value").asText());
+
+    // The KLL buckets bin the sketch over its own range and weight.
+    JsonNode buckets = someNan.get("kll").get("buckets");
+    Assertions.assertEquals(20, buckets.size(), "kll must have 20 buckets");
+    Assertions.assertEquals(1.0, buckets.get(0).get("low_value").asDouble(), 1e-9,
+        "first bucket must start at the sketch minimum");
+    Assertions.assertEquals(9.0, buckets.get(19).get("high_value").asDouble(), 1e-9,
+        "last bucket must end at the sketch maximum, not a width-1.0 fallback grid");
+    long bucketTotal = 0;
+    for (JsonNode bucket : buckets) {
+      bucketTotal += bucket.get("count").asLong();
+    }
+    Assertions.assertEquals(5, bucketTotal,
+        "bucket counts must be scaled by the sketch weight, not numRecordsNonNull");
+
+    // Nothing finite to bin: an empty histogram rather than NaN-labelled bins, and the key
+    // stays present so the SDK does not read the registered statistics as incomplete and
+    // relaunch the statistics job on every compute_statistics().
+    JsonNode allNan = findColumn(columns, "all_nan");
+    Assertions.assertNotNull(allNan, "all_nan column profile must be present");
+    Assertions.assertTrue(allNan.has("histogram"),
+        "the histogram key must stay present for a column with nothing to bin");
+    Assertions.assertEquals(0, allNan.get("histogram").size(),
+        "a column with no finite values must emit no bins");
+  }
+
+  @Test
+  void binsInfiniteValuesOverTheFiniteRange() throws Exception {
+    // An infinity is as unusable as a NaN in a bin grid, and worse in the KLL path: it
+    // used to enter the sketch, so getMaxItem() returned Infinity, every split point
+    // collapsed to Infinity or NaN and getCDF failed the whole statistics job with
+    // "Values must be unique, monotonically increasing and not NaN".
+    // huge_range holds only finite values, but its span overflows a double subtraction to
+    // infinity, so a finiteness check per value is not enough to make a bin grid safe.
+    StructType schema = new StructType(new StructField[]{
+      DataTypes.createStructField("mixed", DataTypes.DoubleType, true),
+      DataTypes.createStructField("all_inf", DataTypes.DoubleType, true),
+      DataTypes.createStructField("huge_range", DataTypes.DoubleType, true),
+    });
+    List<Row> rows = new ArrayList<>();
+    for (int i = 1; i <= 8; i++) {
+      rows.add(RowFactory.create((double) i, Double.POSITIVE_INFINITY, 0.0));
+    }
+    rows.add(RowFactory.create(Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY,
+        -Double.MAX_VALUE));
+    rows.add(RowFactory.create(Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY,
+        Double.MAX_VALUE));
+    rows.add(RowFactory.create(Double.NaN, Double.POSITIVE_INFINITY, 0.0));
+    Dataset<Row> df = SparkEngine.getInstance().getSparkSession().createDataFrame(rows, schema);
+
+    String json = new ColumnProfiler().profile(df, null, false, true, 20, false, true);
+    JsonNode columns = new ObjectMapper().readTree(json).get("columns");
+
+    // mixed holds 1..8 plus +Inf, -Inf and NaN: bins span [1, 8] and hold eight rows.
+    JsonNode mixed = findColumn(columns, "mixed");
+    Assertions.assertNotNull(mixed, "mixed column profile must be present");
+    // minimum/maximum stay as Spark computes them, for Deequ parity: -Infinity is the
+    // smallest double, and NaN outranks even +Infinity.
+    Assertions.assertEquals("-Infinity", mixed.get("minimum").asText(),
+        "minimum must still report the infinity Spark sees");
+    Assertions.assertEquals("NaN", mixed.get("maximum").asText(),
+        "maximum must still report what Spark sees, which NaN dominates");
+
+    JsonNode histogram = mixed.get("histogram");
+    Assertions.assertEquals(20, histogram.size(), "histogram must have 20 bins");
+    long histTotal = 0;
+    for (JsonNode bin : histogram) {
+      String label = bin.get("value").asText();
+      Assertions.assertFalse(label.contains("NaN") || label.contains("Infinity"),
+          "no bin label may be derived from a non-finite range: " + label);
+      histTotal += bin.get("count").asLong();
+    }
+    Assertions.assertEquals(8, histTotal,
+        "histogram must count the eight finite values only; a non-finite value reaching "
+            + "binExpr is clamped into a real bin, or throws where ANSI mode is on");
+    Assertions.assertTrue(histogram.get(0).get("value").asText().startsWith("1.00 to"),
+        "first bin must start at the finite minimum: " + histogram.get(0).get("value").asText());
+
+    JsonNode buckets = mixed.get("kll").get("buckets");
+    Assertions.assertEquals(1.0, buckets.get(0).get("low_value").asDouble(), 1e-9,
+        "first bucket must start at the finite minimum");
+    Assertions.assertEquals(8.0, buckets.get(19).get("high_value").asDouble(), 1e-9,
+        "last bucket must end at the finite maximum, not at Infinity");
+    long bucketTotal = 0;
+    for (JsonNode bucket : buckets) {
+      bucketTotal += bucket.get("count").asLong();
+    }
+    Assertions.assertEquals(8, bucketTotal, "bucket counts must match the sketch weight");
+    Assertions.assertEquals(1.0, mixed.get("approxPercentiles").get(0).asDouble(), 1e-9,
+        "percentiles must be estimated from the finite values only");
+
+    // Nothing finite at all: same contract as an all-NaN column.
+    JsonNode allInf = findColumn(columns, "all_inf");
+    Assertions.assertNotNull(allInf, "all_inf column profile must be present");
+    Assertions.assertFalse(allInf.has("kll"),
+        "a column with no finite values must not be emitted as kll");
+    Assertions.assertFalse(allInf.has("approxPercentiles"),
+        "a column with no finite values must not yield approxPercentiles");
+    Assertions.assertEquals(0, allInf.get("histogram").size(),
+        "a column with no finite values must emit no bins");
+
+    // Finite bounds, infinite span: the grid is still unbuildable, so treat it the same way.
+    JsonNode huge = findColumn(columns, "huge_range");
+    Assertions.assertNotNull(huge, "huge_range column profile must be present");
+    Assertions.assertEquals(0, huge.get("histogram").size(),
+        "a span that overflows to infinity must emit no bins");
+    Assertions.assertFalse(huge.has("kll"),
+        "a span that overflows to infinity must not be emitted as kll (getCDF rejects it)");
+    Assertions.assertEquals(99, huge.get("approxPercentiles").size(),
+        "the percentiles do not need a bin grid and must survive");
+  }
+
+  @Test
+  void profilesAnEmptyDataframeWithoutThrowing() throws Exception {
+    // A training-dataset split can come out empty, and compute_and_save_split_statistics
+    // profiles each split without an emptiness check. sum() returns NULL over zero rows,
+    // so unboxing the null count failed the statistics job before any column was profiled.
+    StructType schema = new StructType(new StructField[]{
+      DataTypes.createStructField("num", DataTypes.DoubleType, true),
+      DataTypes.createStructField("txt", DataTypes.StringType, true),
+    });
+    Dataset<Row> empty = SparkEngine.getInstance().getSparkSession()
+        .createDataFrame(new ArrayList<Row>(), schema);
+
+    // Every statistics flag on, then every flag off: the null count is read either way.
+    for (boolean on : new boolean[]{true, false}) {
+      String json = new ColumnProfiler().profile(empty, null, on, on, 20, on, on);
+      JsonNode num = findColumn(new ObjectMapper().readTree(json).get("columns"), "num");
+      Assertions.assertNotNull(num, "num column profile must be present with flags=" + on);
+      Assertions.assertEquals(0, num.get("numRecordsNull").asLong(),
+          "an empty dataframe has no null records");
+      Assertions.assertEquals(0, num.get("numRecordsNonNull").asLong(),
+          "an empty dataframe has no non-null records");
+      Assertions.assertFalse(num.has("kll"), "an empty dataframe must not be emitted as kll");
+    }
+  }
+
+  @Test
+  void profilesAColumnNamedCount() throws Exception {
+    // "count" passes the feature-name rules and is an ordinary thing to call a feature.
+    // The uniqueness pass grouped on the column itself, so the count() output collided
+    // with it and the select failed with AMBIGUOUS_REFERENCE, taking the whole job down.
+    StructType schema = new StructType(new StructField[]{
+      DataTypes.createStructField("count", DataTypes.DoubleType, true),
+      DataTypes.createStructField("label", DataTypes.StringType, true),
+    });
+    List<Row> rows = new ArrayList<>();
+    for (int i = 0; i < 10; i++) {
+      rows.add(RowFactory.create((double) (i % 5), "v" + (i % 5)));
+    }
+    Dataset<Row> df = SparkEngine.getInstance().getSparkSession().createDataFrame(rows, schema);
+
+    // exactUniqueness on: this is the pass that groups per column.
+    String json = new ColumnProfiler().profile(df, null, false, true, 20, true, true);
+    JsonNode col = findColumn(new ObjectMapper().readTree(json).get("columns"), "count");
+    Assertions.assertNotNull(col, "the column named 'count' must be profiled");
+    Assertions.assertEquals(5, col.get("exactNumDistinctValues").asLong(),
+        "each of the five values appears twice");
+    Assertions.assertEquals(0.0, col.get("uniqueness").asDouble(), 1e-9,
+        "no value is a singleton, so uniqueness is 0");
+  }
+
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------

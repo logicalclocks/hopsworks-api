@@ -47,10 +47,10 @@ class HistogramBuilder {
    *
    * @param df source dataframe
    * @param columnName column to histogram
-   * @param minValue pre-computed column minimum (non-null, from agg row)
-   * @param maxValue pre-computed column maximum (non-null, from agg row)
+   * @param minValue pre-computed minimum over the finite values (non-null, from agg row)
+   * @param maxValue pre-computed maximum over the finite values (non-null, from agg row)
    * @param histogramBins number of bins
-   * @param totalRows total non-null rows (denominator for ratio)
+   * @param totalRows total finite rows (denominator for ratio)
    * @return list of histogram entry maps with keys: value, count, ratio
    */
   List<Map<String, Object>> buildNumeric(Dataset<Row> df,
@@ -73,7 +73,11 @@ class HistogramBuilder {
       );
     }
 
-    Dataset<Row> binned = df.filter(col.isNotNull())
+    // Non-finite values belong to no bin and must not reach binExpr: NaN floors to bin 0,
+    // and floor(Infinity) is Long.MAX_VALUE, which least() clamps into the last bin - or,
+    // where ANSI mode is on, fails the job outright on the cast to int. Hopsworks pins
+    // spark.sql.ansi.enabled=false, so the default is the silent miscount, not the error.
+    Dataset<Row> binned = df.filter(col.isNotNull().and(ColumnProfiler.isFinite(col)))
         .withColumn("_bin", binExpr)
         .groupBy("_bin")
         .count();
