@@ -9,8 +9,6 @@ commands and ``hops login``.
 
 from __future__ import annotations
 
-import contextlib
-import io
 import logging
 import urllib.parse
 from typing import TYPE_CHECKING, Any
@@ -83,9 +81,7 @@ def login(
             ``http://``.
         api_key_value: API key; omit to let the SDK pick up its own env/cache.
         project: Default project to attach to.
-        engine: SDK engine; defaults to ``python``. Left unset, the SDK picks
-            ``spark`` whenever pyspark is importable and then needs a Spark
-            session configured for Hopsworks, which a laptop never has.
+        engine: Optional SDK engine override (``python``, ``spark``, …).
         internal: When True, call ``hopsworks.login()`` with no args so the
             SDK reads its in-pod credentials from environment variables.
         hostname_verification: Whether to verify Hopsworks' TLS certificate;
@@ -97,7 +93,6 @@ def login(
     """
     import hopsworks  # noqa: PLC0415 - intentionally lazy
 
-    engine = engine or "python"
     if internal:
         # Let the SDK do its own ``REST_ENDPOINT`` + ``$SECRETS_DIR/token.jwt``
         # discovery. ``project``/``engine`` still apply at the SDK layer.
@@ -106,7 +101,7 @@ def login(
             kwargs["project"] = project
         if engine:
             kwargs["engine"] = engine
-        return _quiet_login(hopsworks, kwargs)
+        return hopsworks.login(**kwargs)
 
     parsed = urllib.parse.urlparse(host if "://" in host else "https://" + host)
     scheme = (parsed.scheme or "https").lower()
@@ -126,18 +121,7 @@ def login(
         kwargs["project"] = project
     if engine:
         kwargs["engine"] = engine
-    return _quiet_login(hopsworks, kwargs)
-
-
-def _quiet_login(hopsworks: Any, kwargs: dict[str, Any]) -> Project:
-    """``hopsworks.login`` without its ``print`` banner.
-
-    The SDK prints "Logged in to project, explore it here <url>" to stdout on
-    every login. A CLI reports through ``output.*`` and its stdout carries the
-    command payload (``--json``, pipelines), so the banner is discarded.
-    """
-    with contextlib.redirect_stdout(io.StringIO()):
-        return hopsworks.login(**kwargs)
+    return hopsworks.login(**kwargs)
 
 
 def verify(

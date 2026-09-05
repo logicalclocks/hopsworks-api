@@ -12,10 +12,8 @@ from __future__ import annotations
 import os
 import platform
 import re
-import secrets
 import socket
 import time
-import urllib.parse
 import webbrowser
 from typing import Any
 
@@ -32,36 +30,17 @@ KEY_NAME_REGEX = re.compile(r"^[a-zA-Z0-9_-]{1,45}$")
 
 
 def _suggest_key_name() -> str:
-    """Produce a default API key name like ``jim-laptop-k3x9``.
+    """Produce a default API key name like ``jim-laptop`` or ``jdowling-dev``.
 
     Uses ``$USER`` and the short hostname; any character outside ``[a-z0-9_-]``
     is stripped so the result satisfies the backend's validation regex on the
-    first try. The suffix makes every run's suggestion unique: a setup whose
-    key was minted but whose verification failed leaves that key on the
-    server, and a retry suggesting the same name is refused as a duplicate.
-    Length is clipped to 45.
+    first try. Length is clipped to 45.
     """
     user = os.environ.get("USER") or os.environ.get("USERNAME") or "hops"
     host = socket.gethostname().split(".", 1)[0] or platform.node().split(".", 1)[0]
     raw = f"{user}-{host}".lower()
     sanitized = re.sub(r"[^a-z0-9_-]+", "-", raw).strip("-") or "hops-cli"
-    suffix = secrets.token_hex(2)
-    return f"{sanitized[:40]}-{suffix}"
-
-
-def _prefer_host_scheme(web_url: str, host: str) -> str:
-    """Give ``web_url`` the scheme of ``host`` when both name the same server.
-
-    Behind the ingress the backend sees plain http and builds the flow URL
-    from that, so the CLI would print an http link to a cluster the user
-    reached over https (the browser then redirects, and the page's service
-    worker fails on the mixed origin).
-    """
-    web = urllib.parse.urlsplit(web_url)
-    wanted = urllib.parse.urlsplit(host)
-    if web.netloc != wanted.netloc or web.scheme == wanted.scheme:
-        return web_url
-    return urllib.parse.urlunsplit((wanted.scheme,) + web[1:])
+    return sanitized[:45]
 
 
 def _open_browser(url: str, headless: bool) -> bool:
@@ -295,8 +274,6 @@ def setup_cmd(
         insecure: When True, skip TLS verification entirely (with warning).
     """
     cfg = config.load(flag_host=host_flag)
-    if host_flag and not cfg.internal:
-        _forget_other_cluster(cfg, host_flag)
 
     # The global --verify/--no-verify flag is accepted on every command and
     # lands on the shared config via the root's eager callback. An explicit
@@ -361,7 +338,7 @@ def setup_cmd(
 
     flow_id = created["flowId"]
     wait_secret = created["waitSecret"]
-    web_url = _prefer_host_scheme(created["webUrl"], host)
+    web_url = created["webUrl"]
 
     opened = _open_browser(web_url, headless=no_browser)
     output.info("")
@@ -371,6 +348,8 @@ def setup_cmd(
     else:
         output.info("Visit this URL in a browser to continue:")
         output.info("  %s", web_url)
+    output.info("")
+    output.info("Waiting for authentication...")
 
     try:
         completed = _wait_for_key(api_base, flow_id, wait_secret, timeout, verify)
@@ -392,31 +371,6 @@ def setup_cmd(
 
     _finalize_setup(host, api_key, project, server_key_name, cfg)
     return None
-
-
-def _forget_other_cluster(cfg: config.HopsConfig, host_flag: str) -> None:
-    """Drop the cached key and project when ``--host`` names another cluster.
-
-    ``config.load`` layers the flag host over the cached profile, so the cached
-    key kept ``is_authenticated()`` true and the short-circuit verified the old
-    project against the new host ("project X not found") instead of setting the
-    new cluster up. The project is chosen again in the token flow.
-    """
-    cached_host = config.load().host
-    if not cached_host:
-        return
-    if auth.normalize_host(cached_host) == auth.normalize_host(host_flag):
-        return
-    output.info(
-        "Host %s differs from the cached %s; setting up the new cluster from scratch.",
-        auth.normalize_host(host_flag),
-        cached_host,
-    )
-    cfg.api_key = None
-    cfg.api_key_name = None
-    cfg.project = None
-    cfg.project_id = None
-    cfg.feature_store_id = None
 
 
 def _finalize_setup(

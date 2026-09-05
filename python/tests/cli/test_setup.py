@@ -6,7 +6,6 @@ so the test can exercise branching without pulling in ``hopsworks``.
 
 from __future__ import annotations
 
-import re
 from unittest import mock
 
 import pytest
@@ -38,18 +37,7 @@ def test_suggest_key_name_sanitizes(monkeypatch):
     monkeypatch.setenv("USER", "Jim.Dowling")
     monkeypatch.setattr(setup_mod.socket, "gethostname", lambda: "dev16.hops.works")
     name = setup_mod._suggest_key_name()
-    assert re.fullmatch(r"jim-dowling-dev16-[0-9a-f]{4}", name), name
-    assert name != setup_mod._suggest_key_name()  # unique per run
-
-
-def test_prefer_host_scheme():
-    f = setup_mod._prefer_host_scheme
-    assert (
-        f("http://c.example/token-flow/tf-1", "https://c.example")
-        == "https://c.example/token-flow/tf-1"
-    )
-    assert f("http://other/x", "https://c.example") == "http://other/x"
-    assert f("https://c.example/x", "https://c.example") == "https://c.example/x"
+    assert name == "jim-dowling-dev16"
 
 
 def test_setup_short_circuits_when_cached_key_works(tmp_home, monkeypatch):
@@ -177,59 +165,6 @@ def _run_token_flow(argv):
         result = CliRunner().invoke(cli, argv)
     assert result.exit_code == 0, result.output
     return post
-
-
-def test_setup_new_host_drops_cached_project(tmp_home):
-    """--host for another cluster must not verify the cached project there."""
-    config.save(
-        config.HopsConfig(
-            host="https://old.example",
-            api_key="OLD.KEY",
-            api_key_name="jim-laptop",
-            project="blah",
-            project_id=7,
-        )
-    )
-    create_mock = mock.Mock()
-    create_mock.json.return_value = {
-        "flowId": "tf-new",
-        "waitSecret": "s",
-        "webUrl": "https://new.example/token-flow/tf-new",
-    }
-    wait_mock = mock.Mock()
-    wait_mock.json.return_value = {
-        "apiKey": "NEW.KEY",
-        "workspaceUsername": "fresh",
-        "apiKeyName": "jim-laptop",
-        "timeout": False,
-    }
-
-    def _post(url, *args, **kwargs):
-        return wait_mock if "/wait/" in url else create_mock
-
-    with (
-        mock.patch.object(setup_mod.requests, "post", side_effect=_post),
-        mock.patch.object(setup_mod, "_open_browser", return_value=True),
-        mock.patch.object(setup_mod.auth, "verify") as verify,
-    ):
-        verify.return_value = mock.Mock()
-        verify.return_value.name = "fresh"
-        result = CliRunner().invoke(
-            cli, ["setup", "--host", "https://new.example", "--key-name", "jim-laptop"]
-        )
-
-    assert result.exit_code == 0, result.output
-    verify.assert_called_once()
-    assert verify.call_args.kwargs["project"] == "fresh"
-    assert verify.call_args.kwargs["host"] == "https://new.example"
-    saved = config.load()
-    assert (saved.host, saved.api_key, saved.project) == (
-        "https://new.example",
-        "NEW.KEY",
-        "fresh",
-    )
-    assert saved.project_id is None
-    assert "differs from the cached" in result.output
 
 
 def test_setup_honors_explicit_global_no_verify(tmp_home):
