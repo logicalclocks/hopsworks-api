@@ -80,15 +80,35 @@ ext_fg.save()
 
 ## Create a connector
 
-Connectors are not UI-only. Create one from the CLI; the subcommand sends the backend type discriminator for you:
+Connectors are not UI-only. `hops datasource create <type>` exists for every type the UI offers and sends the backend type discriminator for you. `hops datasource create <type> --help` lists the options; the ones the backend always requires are marked `[required]`, and the rules between options (which credentials an auth type needs, Oracle's host or wallet) are checked before anything is sent.
 
 ```bash
 hops datasource create jdbc <name> --url "jdbc:postgresql://host:5432/db" --user U --password P
+hops datasource create sql <name> --database-type POSTGRESQL --host H --port 5432 --database D --user U --password P
+hops datasource create sql <name> --database-type ORACLE --wallet-path /Projects/<project>/Resources/wallet --wallet-password W --port 1522 --database TNS_ALIAS --user U --password P
 hops datasource create s3 <name> --bucket my-bucket --access-key AK --secret-key SK --region eu-north-1
+hops datasource create gcs <name> --bucket my-bucket --key-path /Projects/<project>/Resources/key.json
+hops datasource create adls <name> --account-name A --generation 2 --container-name C --directory-id T --application-id APP --service-credential S
+hops datasource create hopsfs <name> --dataset Resources
 hops datasource create snowflake <name> --url https://acct.snowflakecomputing.com --user U --password P --database D --schema S --warehouse W
-hops datasource create bigquery <name> --project-id proj --dataset ds --key-path /path/key.json
+hops datasource create bigquery <name> --project-id proj --dataset ds --key-path /Projects/<project>/Resources/key.json
+hops datasource create redshift <name> --cluster-identifier C --endpoint E --database D --port 5439 --user U --password P
+hops datasource create glue <name> --database D --region eu-north-1 --iam-role arn:aws:iam::123456789012:role/R
+hops datasource create unity-catalog <name> --workspace-url https://dbc-xxx.cloud.databricks.com --access-token T
+hops datasource create unity-catalog <name> --workspace-url https://dbc-xxx.cloud.databricks.com --auth-method OAUTH_M2M --oauth-endpoint WORKSPACE --client-id C --client-secret S
+hops datasource create sap-hana <name> --host H --user U --password P
+hops datasource create mongodb <name> --connection-string mongodb+srv://cluster.mongodb.net --database D --user U --password P
+hops datasource create kafka <name> --bootstrap-servers broker:9092 --security-protocol PLAINTEXT --external
+hops datasource create opensearch <name> --host H --port 9200 --user U --password P
+hops datasource create google-sheets <name> --spreadsheet-id ID --key-path /Projects/<project>/Resources/key.json
+hops datasource create rest <name> --base-url https://api.example.com --auth-type API_KEY --api-key K
+hops datasource create crm <name> --crm-type HUBSPOT --api-key K
 hops datasource delete <name> --yes
 ```
+
+Files a connector points at (`--key-path`, truststores, keystores, wallets) are HopsFS paths and must be absolute: `/Projects/<project>/Resources/key.json`, not `Resources/key.json`. Upload the file first.
+
+Every option that carries a secret (passwords, keys, tokens) can be set as `HOPSWORKS_DS_<OPTION>` in the environment instead of on the command line, for example `HOPSWORKS_DS_PASSWORD` or `HOPSWORKS_DS_CLIENT_SECRET`, so the value stays out of the shell history and the process list. The `--help` text names the variable for each.
 
 **Confirm before deleting.** `hops datasource delete` removes the storage connector irreversibly; confirm the exact name with the user, and never delete one that feature groups still read from unless they asked.
 
