@@ -739,8 +739,8 @@ def push(
             output.warn(
                 "This looks like the session you are in, so it stays live on "
                 "this machine. The baton points to %s; close it here, then "
-                "`hops session stop && hops session pull` to reclaim it "
-                "(the pod holds it live, so a plain pull would refuse).",
+                "`hops session pull` to reclaim it (once the pod has landed it, "
+                "`hops session stop` first, or pull refuses).",
                 project.name,
             )
         else:
