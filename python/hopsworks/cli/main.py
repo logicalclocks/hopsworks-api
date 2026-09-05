@@ -11,6 +11,7 @@ like ``--help`` measurably slow (~2 s+); deferring keeps them snappy.
 from __future__ import annotations
 
 import importlib
+import logging
 import sys
 from typing import TYPE_CHECKING
 
@@ -237,6 +238,10 @@ def cli(
         verify_flag: True for ``--verify``, False for ``--no-verify``, None if neither was passed.
         json_flag: When True, every output helper switches to JSON mode.
     """
+    # The SDK's package import already ran logging.basicConfig(level=INFO), so
+    # its client/engine chatter ("Initializing external client", "Connection
+    # closed") would print on every command; a CLI reports through output.*.
+    logging.getLogger().setLevel(logging.WARNING)
     output.set_json_mode(json_flag)
     if api_key_stdin:
         if api_key_flag:
