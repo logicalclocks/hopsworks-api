@@ -40,6 +40,7 @@ from hsfs.core import (
     feature_group_api,
     feature_group_engine,
     feature_view_engine,
+    keywords_api,
     search_api,
     storage_connector_api,
     training_dataset_api,
@@ -593,7 +594,7 @@ class FeatureStore:
         """
         from hsfs.core import share_api
 
-        share_api.ShareApi(self._id)._share_feature_store(target_project)
+        share_api.ShareApi()._share_feature_store(target_project)
 
     @public
     @usage._method_logger
@@ -621,7 +622,7 @@ class FeatureStore:
         """
         from hsfs.core import share_api
 
-        return share_api.ShareApi(self._id)._list_feature_store_shares()
+        return share_api.ShareApi()._list_feature_store_shares()
 
     @public
     @usage._method_logger
@@ -641,7 +642,7 @@ class FeatureStore:
         """
         from hsfs.core import share_api
 
-        share_api.ShareApi(self._id)._unshare_feature_store(target_project)
+        share_api.ShareApi()._unshare_feature_store(target_project)
 
     @public
     def sql(
@@ -1906,8 +1907,11 @@ class FeatureStore:
             description: A string describing the contents of the training dataset to improve discoverability for Data Scientists.
             data_format: The data format used to save the training dataset.
             coalesce:
-                If true the training dataset data will be coalesced into a single partition before writing.
-                The resulting training dataset will be a single file per split.
+                Applies to Spark materialization only, and is ignored when the training dataset is
+                materialized by the Feature Query Service.
+                Where it applies, the training dataset data will be coalesced into a single
+                partition before writing, and the resulting training dataset will be a single file
+                per split.
             storage_connector:
                 Storage connector defining the sink location for the training dataset, defaults to `None`, and materializes training dataset on HopsFS. **[DEPRECATED: Use `data_source` instead.]**
             splits:
@@ -3001,3 +3005,18 @@ class FeatureStore:
             limit=limit,
             global_search=global_search,
         )
+
+    @public
+    @usage._method_logger
+    def get_all_keywords(self) -> list[str]:
+        """Retrieve the keyword vocabulary in use across the whole cluster.
+
+        Despite being accessed through a feature store, the vocabulary is cluster-wide, not project-scoped: it contains every keyword attached to any artifact in any project.
+
+        Returns:
+            List of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return keywords_api.KeywordsApi()._get_all()

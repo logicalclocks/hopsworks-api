@@ -31,7 +31,11 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from hopsworks_apigen import public
 from hopsworks_common import client, util
-from hopsworks_common.client.exceptions import DataSourceException
+from hopsworks_common.client.exceptions import (
+    DataSourceException,
+    FeatureStoreException,
+)
+from hopsworks_common.core import trino_catalog_api
 from hopsworks_common.core.constants import HAS_NUMPY, HAS_POLARS
 from hopsworks_common.core.opensearch_api import OPENSEARCH_CONFIG
 from hopsworks_common.core.rest_endpoint import RestEndpointConfig
@@ -118,6 +122,7 @@ class StorageConnector(ABC):
         self._featurestore_id = featurestore_id
 
         self._storage_connector_api = storage_connector_api.StorageConnectorApi()
+        self._trino_catalog_api = trino_catalog_api.TrinoCatalogApi()
         self._data_source_api = data_source_api.DataSourceApi()
 
     @classmethod
@@ -236,6 +241,110 @@ class StorageConnector(ABC):
             The updated storage connector.
         """
         return self._storage_connector_api._update(self)
+
+    @public
+    def get_trino_catalog_template(self) -> dict[str, Any]:
+        """A Trino catalog proposed from this data source, to review before creating it.
+
+        Nothing is created by asking for this.
+        The connector type and properties are derived from what this data source already holds.
+        Credential properties come back as a reference to a Hopsworks secret or credential-file bundle rather than a value, so no credential is sent to the caller.
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+            fs = project.get_feature_store()
+
+            sc = fs.get_data_source("my_snowflake_connector").storage_connector
+            template = sc.get_trino_catalog_template()
+            if template["supported"]:
+                print(template["connectorType"], template["properties"])
+            else:
+                print("cannot be mapped:", template["reason"])
+            ```
+
+        Returns:
+            `supported`, and `reason` when it is false. Otherwise `suggestedName`,
+            `connectorType` and `properties`.
+        """
+        return self._trino_catalog_api.get_catalog_template(
+            self._name, self._featurestore_id
+        )
+
+    @public
+    def create_trino_catalog(
+        self,
+        name: str | None = None,
+        properties: dict[str, str] | None = None,
+        test_connection: bool = True,
+    ) -> dict[str, Any]:
+        """Make this data source queryable from the query engine, as a Trino catalog.
+
+        The catalog is derived from this data source, so nothing has to be supplied: credentials are read from the data source when the catalog is created and stored as a reference, never as a plaintext copy.
+        It becomes queryable once the query engine restarts, on the cluster's schedule or immediately via `project.get_trino_catalog_api().restart()` as an administrator.
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+            fs = project.get_feature_store()
+
+            sc = fs.get_data_source("my_snowflake_connector").storage_connector
+            catalog = sc.create_trino_catalog()
+            print(catalog["name"], catalog["status"])
+            ```
+
+        Parameters:
+            name: Catalog name, which must start with `<project>__` in lowercase. Defaults to the
+                name the template suggests, derived from this data source's own name.
+            properties: Replace the derived properties entirely; keys are not merged with the template's.
+                Start from the template's `properties` and apply your edits.
+            test_connection: Verify the definition can reach the source before creating it, where the cluster supports it.
+                On failure nothing is created and the engine's own error is raised, so an unreachable source is caught now rather than after a restart.
+
+        Returns:
+            The created catalog, including the `status` it is waiting in.
+
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException: If this data source cannot be mapped
+                to a Trino catalog; the message says why.
+            hopsworks.client.exceptions.RestAPIError: If the connection test fails, or the backend
+                encounters an error when handling the request.
+        """
+        template = self.get_trino_catalog_template()
+        if not template.get("supported"):
+            raise FeatureStoreException(
+                f"Data source '{self._name}' cannot be mapped to a Trino catalog: "
+                f"{template.get('reason')}"
+            )
+
+        catalog_name = name if name is not None else template["suggestedName"]
+        catalog_properties = (
+            properties if properties is not None else template["properties"]
+        )
+        connector_type = template["connectorType"]
+
+        if test_connection and self._trino_catalog_api.get_capabilities().get(
+            "testConnectionAvailable"
+        ):
+            self._trino_catalog_api.test_connection(
+                catalog_name,
+                connector_type,
+                catalog_properties,
+                data_source_name=self._name,
+                featurestore_id=self._featurestore_id,
+            )
+
+        return self._trino_catalog_api.create_catalog(
+            catalog_name,
+            connector_type,
+            catalog_properties,
+            data_source_name=self._name,
+            featurestore_id=self._featurestore_id,
+        )
 
     @public
     @property
@@ -1679,7 +1788,12 @@ class SnowflakeConnector(StorageConnector):
     def connector_options(self) -> dict[str, Any] | None:
         """Prepare a Python dictionary with the needed arguments for you to connect to a Snowflake database.
 
-        It is useful for the `snowflake.connector` Python library.
+        It is useful for the `snowflake.connector` Python library, which this client does
+        not depend on and does not install. Install it yourself to use the example below:
+
+        ```bash
+        pip install snowflake-connector-python
+        ```
 
         ```python
         import snowflake.connector
@@ -1698,11 +1812,15 @@ class SnowflakeConnector(StorageConnector):
         }
         if self._password:
             props["password"] = self._password
-        else:
+        elif self._token:
             props["authenticator"] = "oauth"
             props["token"] = self._token
+        elif self._private_key:
+            props["private_key"] = self._private_key_der()
         if self._warehouse:
             props["warehouse"] = self._warehouse
+        if self._role:
+            props["role"] = self._role
         if self._application:
             props["application"] = self._application
         return props
@@ -1734,13 +1852,29 @@ class SnowflakeConnector(StorageConnector):
 
         return props
 
-    def _read_private_key(self) -> str | None:
-        """Reads the private key from the specified key path."""
-        p_key = serialization.load_pem_private_key(
+    def _load_private_key(self):
+        return serialization.load_pem_private_key(
             self._private_key.encode(),
             password=self._passphrase.encode() if self._passphrase else None,
             backend=default_backend(),
         )
+
+    def _private_key_der(self) -> bytes:
+        """Return the private key as unencrypted PKCS#8 DER.
+
+        That is the only form `snowflake.connector.connect` accepts for its
+        `private_key` argument; the spark-snowflake `pem_private_key` option
+        takes the header-stripped string from `_read_private_key` instead.
+        """
+        return self._load_private_key().private_bytes(
+            encoding=serialization.Encoding.DER,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        )
+
+    def _read_private_key(self) -> str | None:
+        """Reads the private key from the specified key path."""
+        p_key = self._load_private_key()
 
         private_key_bytes = p_key.private_bytes(
             encoding=serialization.Encoding.PEM,

@@ -38,6 +38,7 @@ from hsfs import (
     util,
 )
 from hsfs.client import exceptions
+from hsfs.constructor import fs_query as fs_query_mod
 from hsfs.constructor import hudi_feature_group_alias, query
 from hsfs.core import data_source as ds
 from hsfs.core import online_ingestion, training_dataset_engine
@@ -80,11 +81,18 @@ from pyspark.sql.types import (
 
 
 hopsworks_common.connection._hsfs_engine_type = "spark"
+_PANDAS_UNSUPPORTED_BY_PYSPARK = tuple(
+    int(part) for part in pd.__version__.split(".")[:2]
+) < (2, 2)
 
 
 @pytest.mark.skipif(
     sys.platform.startswith("win"),
     reason="Spark tests transiently fail on Windows.",
+)
+@pytest.mark.skipif(
+    _PANDAS_UNSUPPORTED_BY_PYSPARK,
+    reason="PySpark 4.1 requires pandas >= 2.2.0.",
 )
 class TestSpark:
     # Helper Functions
@@ -617,6 +625,61 @@ class TestSpark:
 
         # Assert
         assert mock_sc_read.return_value.createOrReplaceTempView.call_count == 1
+
+    def test_register_pushdown_query(self, mocker, backend_fixtures):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+
+        spark_engine = spark.Engine()
+
+        json = backend_fixtures["fs_query"]["get"]["response"]
+        fs_query = fs_query_mod.FsQuery.from_response_json(json)
+
+        # A warehouse that folds unquoted identifiers hands back upper-case columns, while
+        # feature names in the feature store are always lower case.
+        mocker.patch(
+            "hsfs.storage_connector.JdbcConnector.read",
+            return_value=spark_engine._spark_session.createDataFrame(
+                [("key", 1)], ["PK1", "Value_2"]
+            ),
+        )
+
+        # Act
+        result = spark_engine._register_pushdown_query(fs_query)
+
+        # Assert
+        # The view name carries a unique suffix, so match the prefix and read the view back.
+        assert result.startswith("SELECT * FROM pushdown_result_hopsworks_")
+        assert spark_engine._spark_session.sql(result).columns == ["pk1", "value_2"]
+
+    def test_register_pushdown_query_uses_a_distinct_view_per_call(
+        self, mocker, backend_fixtures
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+
+        spark_engine = spark.Engine()
+
+        json = backend_fixtures["fs_query"]["get"]["response"]
+        fs_query = fs_query_mod.FsQuery.from_response_json(json)
+
+        mocker.patch(
+            "hsfs.storage_connector.JdbcConnector.read",
+            side_effect=[
+                spark_engine._spark_session.createDataFrame([("a",)], ["PK1"]),
+                spark_engine._spark_session.createDataFrame([("b",)], ["PK1"]),
+            ],
+        )
+
+        # Act
+        first = spark_engine._register_pushdown_query(fs_query)
+        second = spark_engine._register_pushdown_query(fs_query)
+
+        # Assert
+        # Two reads in one session must not answer from each other's result.
+        assert first != second
+        assert spark_engine._spark_session.sql(first).collect()[0][0] == "a"
+        assert spark_engine._spark_session.sql(second).collect()[0][0] == "b"
 
     def test_register_hudi_temporary_table(self, mocker):
         # Arrange
@@ -2133,6 +2196,8 @@ class TestSpark:
                 "kafka.ssl.keystore.password": "test_ssl_keystore_password",
                 "kafka.ssl.key.password": "test_ssl_key_password",
             },
+            operation=None,
+            storage="online",
         )
         mock_spark_engine_serialize_to_avro.assert_called_once()
 
@@ -2207,8 +2272,147 @@ class TestSpark:
                 "kafka.ssl.key.password": "test_ssl_key_password",
                 "online_ingestion_options": {"disable_online_ingestion_count": True},
             },
+            operation=None,
+            storage="online",
         )
         mock_spark_engine_serialize_to_avro.assert_called_once()
+
+    def test_pad_online_delete_dataframe(self):
+        # Arrange
+        spark_engine = spark.Engine()
+
+        features = [
+            feature.Feature(name="id", type="bigint", primary=True),
+            feature.Feature(name="name", type="string"),
+            feature.Feature(name="scores", type="array<bigint>"),
+            feature.Feature(name="created", type="timestamp"),
+        ]
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=["id"],
+            partition_key=[],
+            id=10,
+            features=features,
+        )
+
+        delete_df = spark_engine._spark_session.createDataFrame(
+            pd.DataFrame(data={"id": [1, 2], "ignored": ["a", "b"]})
+        )
+
+        # Act
+        padded = spark_engine._pad_online_delete_dataframe(fg, delete_df)
+
+        # Assert - every feature is present with its declared type, non-key values are
+        # null, and a column the feature group does not have is dropped
+        assert padded.columns == ["id", "name", "scores", "created"]
+        assert {
+            field.name: field.dataType.simpleString() for field in padded.schema
+        } == {
+            "id": "bigint",
+            "name": "string",
+            "scores": "array<bigint>",
+            "created": "timestamp",
+        }
+        assert [row.asDict() for row in padded.orderBy("id").collect()] == [
+            {"id": 1, "name": None, "scores": None, "created": None},
+            {"id": 2, "name": None, "scores": None, "created": None},
+        ]
+
+    def test_pad_online_delete_dataframe_keeps_composite_primary_key(self):
+        # Arrange
+        spark_engine = spark.Engine()
+
+        features = [
+            feature.Feature(name="id", type="bigint", primary=True),
+            feature.Feature(name="region", type="string", primary=True),
+            feature.Feature(name="measurement", type="double"),
+        ]
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=["id", "region"],
+            partition_key=[],
+            id=10,
+            features=features,
+        )
+
+        delete_df = spark_engine._spark_session.createDataFrame(
+            pd.DataFrame(data={"id": [1], "region": ["eu"], "measurement": [3.5]})
+        )
+
+        # Act
+        padded = spark_engine._pad_online_delete_dataframe(fg, delete_df)
+
+        # Assert - both key columns keep the caller's values, and a value the caller
+        # passed for a non-key feature is overridden with null
+        assert padded.collect()[0].asDict() == {
+            "id": 1,
+            "region": "eu",
+            "measurement": None,
+        }
+
+    def test_delete_online_dataframe_disable_online_ingestion_count(
+        self, mocker, backend_fixtures
+    ):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hopsworks_common.client._is_external", return_value=False)
+        mocker.patch("hsfs.engine.spark.Engine._serialize_to_avro")
+        mock_get_headers = mocker.patch("hsfs.engine.spark.Engine._get_headers")
+
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
+        mock_engine_get_instance.return_value._get_spark_version.return_value = "3.1.0"
+        mock_engine_get_instance.return_value._add_file.return_value = (
+            "result_from_add_file"
+        )
+
+        mock_storage_connector_api = mocker.patch(
+            "hsfs.core.storage_connector_api.StorageConnectorApi"
+        )
+        json_data = backend_fixtures["storage_connector"]["get_kafka_external"][
+            "response"
+        ]
+        sc = storage_connector.StorageConnector.from_response_json(json_data)
+        mock_storage_connector_api.return_value._get_kafka_connector.return_value = sc
+
+        spark_engine = spark.Engine()
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            id=10,
+            online_topic_name="test_online_topic_name",
+        )
+        fg.feature_store = mocker.Mock()
+
+        df = pd.DataFrame(data={"col_0": [1, 2], "col_1": ["test_1", "test_2"]})
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+        # the padding is covered by its own tests; keep the frame countable here
+        mocker.patch(
+            "hsfs.engine.spark.Engine._pad_online_delete_dataframe",
+            return_value=spark_df,
+        )
+
+        # Act
+        spark_engine._delete_online_dataframe(
+            feature_group=fg,
+            dataframe=spark_df,
+            write_options={
+                "online_ingestion_options": {"disable_online_ingestion_count": True}
+            },
+        )
+
+        # Assert - num_entries should be None when disable_online_ingestion_count is True
+        assert mock_get_headers.call_args[0][1] is None
+        assert mock_get_headers.call_args[1]["operation"] == "delete"
+        # the tombstone is for OnlineFS alone: the offline delete already hit the table
+        assert mock_get_headers.call_args[1]["storage"] == "online"
 
     def test_serialize_to_avro(self, mocker):
         # Arrange

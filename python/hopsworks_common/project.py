@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Literal
 
 import humps
 from hopsworks_apigen import deprecated, public
-from hopsworks_common import alert, client, util
+from hopsworks_common import alert, client, project_member, util
 from hopsworks_common.core import (
     alerts_api,
     app_api,
@@ -30,9 +30,11 @@ from hopsworks_common.core import (
     job_api,
     kafka_api,
     opensearch_api,
+    project_members_api,
     search_api,
     superset_api,
     trino_api,
+    trino_catalog_api,
 )
 
 
@@ -70,7 +72,7 @@ class Project:
         services=None,
         datasets=None,
         creation_status=None,
-        project_namespace=None,
+        namespace=None,
         **kwargs,
     ):
         self._id = project_id
@@ -88,9 +90,11 @@ class Project:
         self._dataset_api = dataset_api.DatasetApi()
         self._environment_api = environment_api.EnvironmentApi()
         self._alerts_api = alerts_api.AlertsApi()
+        self._project_members_api = project_members_api.ProjectMembersApi()
         self._search_api = search_api.SearchApi()
-        self._project_namespace = project_namespace
+        self._project_namespace = namespace
         self._trino_api = None
+        self._trino_catalog_api = None
         self._superset_api = None
 
     @classmethod
@@ -315,6 +319,92 @@ class Project:
         return self._alerts_api
 
     @public
+    def get_members_api(self) -> project_members_api.ProjectMembersApi:
+        """Get the project members API for the project.
+
+        Use this to manage who has access to the project and at which role.
+
+        Returns:
+            The Project Members Api handle.
+        """
+        return self._project_members_api
+
+    @public
+    def get_members(self) -> list[project_member.ProjectMember]:
+        """Get all members of the project.
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+
+            for member in project.get_members():
+                print(member.email, member.role)
+            ```
+
+        Returns:
+            List of `ProjectMember` objects, one per user who has access to the project.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._project_members_api.get_members()
+
+    @public
+    def add_member(self, email: str, role: str) -> project_member.ProjectMember:
+        """Add a user to the project.
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+
+            project.add_member("alice@example.com", "Data scientist")
+            ```
+
+        Parameters:
+            email: Email address of the user to add.
+            role: The project role to grant, one of `Data owner`, `Data scientist`,
+                `Observer`, `Feature store restricted`.
+
+        Returns:
+            The newly added `ProjectMember`.
+
+        Raises:
+            ValueError: If `role` is not a settable project role.
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if the caller is not a project owner.
+        """
+        return self._project_members_api.add_member(email, role)
+
+    @public
+    def remove_member(self, email: str, delete_home_dir: bool = False) -> None:
+        """Remove a user from the project.
+
+        Danger: Deletes the member's project files when `delete_home_dir=True`
+            All files under this member's home directory in the project are
+            permanently deleted and cannot be recovered.
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+
+            project.remove_member("alice@example.com")
+            ```
+
+        Parameters:
+            email: Email address of the member to remove.
+            delete_home_dir: Whether to also delete the member's home directory in the project.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if a data scientist tries to remove someone other than themselves.
+        """
+        self._project_members_api.remove_member(email, delete_home_dir=delete_home_dir)
+
+    @public
     def get_search_api(self) -> search_api.SearchApi:
         """Get the search api for the project.
 
@@ -333,6 +423,31 @@ class Project:
         if self._trino_api is None:
             self._trino_api = trino_api.TrinoApi(project=self)
         return self._trino_api
+
+    @public
+    def get_trino_catalog_api(self) -> trino_catalog_api.TrinoCatalogApi:
+        """Get the Trino catalog API for the project.
+
+        Distinct from `get_trino_api`, which connects to the query engine and runs queries. This one
+        manages which sources the engine can query, and the restart that applies a change.
+
+        Example:
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+            catalog_api = project.get_trino_catalog_api()
+
+            for catalog in catalog_api.get_catalogs():
+                print(catalog["name"], catalog["status"])
+            ```
+
+        Returns:
+            The Trino catalog API handle.
+        """
+        if self._trino_catalog_api is None:
+            self._trino_catalog_api = trino_catalog_api.TrinoCatalogApi()
+        return self._trino_catalog_api
 
     @public
     def get_superset_api(self) -> superset_api.SupersetApi:

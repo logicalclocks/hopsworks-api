@@ -249,9 +249,13 @@ class FeatureView:
         self._transformation_n_processes: int | None = None
 
         # Lazy initialization for column names used in feature logging.
-        self.__label_column_names = None
-        self.__transformed_feature_names = None
-        self.__untransformed_feature_names = None
+        # Keyed by training dataset version: a one_hot_encoder makes the transformed
+        # schema depend on the training statistics, so two versions of the same feature
+        # view do not agree on their column sets.
+        self.__training_dataset_schemas = {}
+        self.__label_column_names = {}
+        self.__transformed_feature_names = {}
+        self.__untransformed_feature_names = {}
         self.__required_serving_key_names = None
         self.__root_feature_group_event_time_column_name = None
         self.__extra_logging_column_names = None
@@ -486,7 +490,6 @@ class FeatureView:
                 self.init_batch_scoring(1)
             else:
                 raise e
-        self._serving_training_dataset_version = training_dataset_version
         # Compatibility with 3.7
         if init_sql_client is None:
             init_sql_client = kwargs.get("init_online_store_sql_client")
@@ -500,6 +503,11 @@ class FeatureView:
                 util.VersionWarning,
                 stacklevel=1,
             )
+
+        # Recorded after the default is applied, not before.
+        # Serving goes on to use version 1, and feature logging reads this to decide both
+        # which schema the logged columns come from and which version it stamps on the row.
+        self._serving_training_dataset_version = training_dataset_version
 
         # initiate single vector server
         self._vector_server._init_serving(
@@ -1513,7 +1521,7 @@ class FeatureView:
         return self._feature_view_engine._add_tag(self, name, value)
 
     @public
-    def get_tag(self, name: str) -> tag.Tag | None:
+    def get_tag(self, name: str) -> Any | None:
         """Get the tags of a feature view.
 
         Example:
@@ -1540,7 +1548,7 @@ class FeatureView:
         return self._feature_view_engine._get_tag(self, name)
 
     @public
-    def get_tags(self) -> dict[str, tag.Tag]:
+    def get_tags(self) -> dict[str, Any]:
         """Returns all tags attached to a feature view.
 
         Example:
@@ -1556,12 +1564,128 @@ class FeatureView:
             ```
 
         Returns:
-            The dictionary of tags.
+            The dictionary of tag names and values.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._feature_view_engine._get_tags(self)
+
+    @public
+    def get_tag_metadata(self, name: str) -> tag.Tag | None:
+        """Get a tag with its metadata, including the time it was attached.
+
+        Unlike [`FeatureView.get_tag`][hsfs.feature_view.FeatureView.get_tag], which returns only the tag's value, this returns the [`Tag`][hopsworks.tag.Tag] object, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Example:
+            ```python
+            fv_tag = feature_view.get_tag_metadata("example_tag")
+            print(fv_tag.value, fv_tag.created_on)
+            ```
+
+        Parameters:
+            name: Name of the tag to get.
+
+        Returns:
+            The tag object or `None` if it does not exist.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._feature_view_engine._get_tag_metadata(self, name)
+
+    @public
+    def get_tags_metadata(self) -> dict[str, tag.Tag]:
+        """Returns all tags attached to a feature view, with their metadata.
+
+        Unlike [`FeatureView.get_tags`][hsfs.feature_view.FeatureView.get_tags], which returns only the tag values, this keeps the [`Tag`][hopsworks.tag.Tag] objects, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Returns:
+            The dictionary of tag names to tag objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._feature_view_engine._get_tags_metadata(self)
+
+    @public
+    def get_keywords(self) -> list[str]:
+        """Retrieve all keywords attached to a feature view.
+
+        A keyword is a plain label without a value, used to categorize and search for artifacts.
+
+        Returns:
+            List of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._feature_view_engine._get_keywords(self)
+
+    @public
+    def get_keywords_metadata(self) -> dict[str, datetime | None]:
+        """Retrieve all keywords attached to a feature view, with the time each was attached.
+
+        Returns:
+            Dictionary of keyword to attachment time.
+            The time is `None` when it is unknown, for example for a keyword attached before Hopsworks recorded attachment times.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._feature_view_engine._get_keywords_metadata(self)
+
+    @public
+    def set_keywords(self, keywords: list[str]) -> list[str]:
+        """Replace the whole keyword set of a feature view.
+
+        Keywords not in `keywords` are removed.
+
+        Parameters:
+            keywords: The new keyword set.
+
+        Returns:
+            The updated list of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._feature_view_engine._set_keywords(self, keywords)
+
+    @public
+    def add_keywords(self, keywords: str | list[str]) -> list[str]:
+        """Add keywords to a feature view, keeping the existing ones.
+
+        This reads the current keywords and writes back their union with `keywords`, so a concurrent `add_keywords` or [`FeatureView.set_keywords`][hsfs.feature_view.FeatureView.set_keywords] call can lose additions.
+        When the full keyword set is known, prefer [`FeatureView.set_keywords`][hsfs.feature_view.FeatureView.set_keywords].
+
+        Parameters:
+            keywords: A keyword or a list of keywords to add.
+
+        Returns:
+            The updated list of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        if isinstance(keywords, str):
+            keywords = [keywords]
+        return self._feature_view_engine._add_keywords(self, keywords)
+
+    @public
+    def delete_keyword(self, keyword: str) -> list[str]:
+        """Remove a single keyword from a feature view.
+
+        Parameters:
+            keyword: The keyword to remove.
+
+        Returns:
+            The updated list of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._feature_view_engine._delete_keyword(self, keyword)
 
     @public
     def get_parent_feature_groups(self) -> explicit_provenance.Links | None:
@@ -1839,8 +1963,14 @@ class FeatureView:
                 The filters will be also applied in `get_batch_data`.
             data_format: The data format used to save the training dataset.
             coalesce:
-                If true the training dataset data will be coalesced into a single partition before writing.
-                The resulting training dataset will be a single file per split.
+                Applies to Spark materialization only, and is ignored when the
+                training dataset is materialized by the Feature Query Service, which
+                is the usual path on the Python engine for an unsplit,
+                transformation-free Parquet dataset with no transformation context
+                and no user-supplied sink.
+                Where it applies, the training dataset data will be coalesced into a
+                single partition before writing, and the resulting training dataset
+                will be a single file per split.
             seed: Optionally, define a seed to create the random splits with, in order to guarantee reproducability.
             statistics_config:
                 A configuration object, or a dictionary with keys:
@@ -2132,8 +2262,13 @@ class FeatureView:
                 The filters will be also applied in `get_batch_data`.
             data_format: The data format used to save the training dataset,
                 defaults to `"parquet"`-format.
-            coalesce: If true the training dataset data will be coalesced into
-                a single partition before writing. The resulting training dataset
+            coalesce: Applies to Spark materialization only, and is ignored when the
+                training dataset is materialized by the Feature Query Service, which
+                is the usual path on the Python engine for an unsplit,
+                transformation-free Parquet dataset with no transformation context
+                and no user-supplied sink.
+                Where it applies, the training dataset data will be coalesced into a
+                single partition before writing, and the resulting training dataset
                 will be a single file per split. Default False.
             seed: Optionally, define a seed to create the random splits with, in order
                 to guarantee reproducability, defaults to `None`.
@@ -2420,8 +2555,13 @@ class FeatureView:
                 The filters will be also applied in `get_batch_data`.
             data_format: The data format used to save the training dataset,
                 defaults to `"parquet"`-format.
-            coalesce: If true the training dataset data will be coalesced into
-                a single partition before writing. The resulting training dataset
+            coalesce: Applies to Spark materialization only, and is ignored when the
+                training dataset is materialized by the Feature Query Service, which
+                is the usual path on the Python engine for an unsplit,
+                transformation-free Parquet dataset with no transformation context
+                and no user-supplied sink.
+                Where it applies, the training dataset data will be coalesced into a
+                single partition before writing, and the resulting training dataset
                 will be a single file per split. Default False.
             seed: Optionally, define a seed to create the random splits with, in order
                 to guarantee reproducability, defaults to `None`.
@@ -3593,7 +3733,7 @@ class FeatureView:
     @usage._method_logger
     def get_training_dataset_tag(
         self, training_dataset_version: int, name: str
-    ) -> tag.Tag | None:
+    ) -> Any | None:
         """Get the tags of a training dataset.
 
         Example:
@@ -3629,7 +3769,7 @@ class FeatureView:
     @usage._method_logger
     def get_training_dataset_tags(
         self, training_dataset_version: int
-    ) -> dict[str, tag.Tag]:
+    ) -> dict[str, Any]:
         """Returns all tags attached to a training dataset.
 
         Example:
@@ -3650,13 +3790,169 @@ class FeatureView:
             training_dataset_version: The training dataset version to get tags for.
 
         Returns:
-            Dictionary of tags.
+            Dictionary of tag names and values.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
         return self._feature_view_engine._get_tags(
             self, training_dataset_version=training_dataset_version
+        )
+
+    @public
+    @usage._method_logger
+    def get_training_dataset_tag_metadata(
+        self, training_dataset_version: int, name: str
+    ) -> tag.Tag | None:
+        """Get a training dataset tag with its metadata, including the time it was attached.
+
+        Unlike [`FeatureView.get_training_dataset_tag`][hsfs.feature_view.FeatureView.get_training_dataset_tag], which returns only the tag's value, this returns the [`Tag`][hopsworks.tag.Tag] object, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Parameters:
+            training_dataset_version: training dataset version
+            name: Name of the tag to get.
+
+        Returns:
+            The tag object or `None` if it does not exist.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+        """
+        return self._feature_view_engine._get_tag_metadata(
+            self, name, training_dataset_version=training_dataset_version
+        )
+
+    @public
+    @usage._method_logger
+    def get_training_dataset_tags_metadata(
+        self, training_dataset_version: int
+    ) -> dict[str, tag.Tag]:
+        """Returns all tags attached to a training dataset, with their metadata.
+
+        Unlike [`FeatureView.get_training_dataset_tags`][hsfs.feature_view.FeatureView.get_training_dataset_tags], which returns only the tag values, this keeps the [`Tag`][hopsworks.tag.Tag] objects, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Parameters:
+            training_dataset_version: The training dataset version to get tags for.
+
+        Returns:
+            Dictionary of tag names to tag objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+        """
+        return self._feature_view_engine._get_tags_metadata(
+            self, training_dataset_version=training_dataset_version
+        )
+
+    @public
+    @usage._method_logger
+    def get_training_dataset_keywords(self, training_dataset_version: int) -> list[str]:
+        """Retrieve all keywords attached to a training dataset.
+
+        A keyword is a plain label without a value, used to categorize and search for artifacts.
+
+        Parameters:
+            training_dataset_version: training dataset version
+
+        Returns:
+            List of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+        """
+        return self._feature_view_engine._get_keywords(
+            self, training_dataset_version=training_dataset_version
+        )
+
+    @public
+    @usage._method_logger
+    def get_training_dataset_keywords_metadata(
+        self, training_dataset_version: int
+    ) -> dict[str, datetime | None]:
+        """Retrieve all keywords attached to a training dataset, with the time each was attached.
+
+        Parameters:
+            training_dataset_version: training dataset version
+
+        Returns:
+            Dictionary of keyword to attachment time.
+            The time is `None` when it is unknown, for example for a keyword attached before Hopsworks recorded attachment times.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+        """
+        return self._feature_view_engine._get_keywords_metadata(
+            self, training_dataset_version=training_dataset_version
+        )
+
+    @public
+    @usage._method_logger
+    def set_training_dataset_keywords(
+        self, training_dataset_version: int, keywords: list[str]
+    ) -> list[str]:
+        """Replace the whole keyword set of a training dataset.
+
+        Keywords not in `keywords` are removed.
+
+        Parameters:
+            training_dataset_version: training dataset version
+            keywords: The new keyword set.
+
+        Returns:
+            The updated list of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+        """
+        return self._feature_view_engine._set_keywords(
+            self, keywords, training_dataset_version=training_dataset_version
+        )
+
+    @public
+    @usage._method_logger
+    def add_training_dataset_keywords(
+        self, training_dataset_version: int, keywords: str | list[str]
+    ) -> list[str]:
+        """Add keywords to a training dataset, keeping the existing ones.
+
+        This reads the current keywords and writes back their union with `keywords`, so a concurrent add or [`FeatureView.set_training_dataset_keywords`][hsfs.feature_view.FeatureView.set_training_dataset_keywords] call can lose additions.
+        When the full keyword set is known, prefer [`FeatureView.set_training_dataset_keywords`][hsfs.feature_view.FeatureView.set_training_dataset_keywords].
+
+        Parameters:
+            training_dataset_version: training dataset version
+            keywords: A keyword or a list of keywords to add.
+
+        Returns:
+            The updated list of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+        """
+        if isinstance(keywords, str):
+            keywords = [keywords]
+        return self._feature_view_engine._add_keywords(
+            self, keywords, training_dataset_version=training_dataset_version
+        )
+
+    @public
+    @usage._method_logger
+    def delete_training_dataset_keyword(
+        self, training_dataset_version: int, keyword: str
+    ) -> list[str]:
+        """Remove a single keyword from a training dataset.
+
+        Parameters:
+            training_dataset_version: training dataset version
+            keyword: The keyword to remove.
+
+        Returns:
+            The updated list of keywords.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
+        """
+        return self._feature_view_engine._delete_keyword(
+            self, keyword, training_dataset_version=training_dataset_version
         )
 
     @public
@@ -5731,42 +6027,118 @@ class FeatureView:
             )
         return self.__fully_qualified_event_time
 
+    def _schema_requires_training_statistics(self) -> bool:
+        """Whether the training dataset schema depends on which training dataset produced it.
+
+        Only a one_hot_encoder does that: the encoded column set follows the categories seen in the training statistics.
+        Every other transformation has a fixed output schema, so for those the version is not just unnecessary but costly — resolving one makes the schema lookup validate that the training dataset still exists, which is a request, and a failure if it has since been deleted.
+        """
+        return any(
+            tf.hopsworks_udf.function_name == "one_hot_encoder"
+            for tf in self.transformation_functions
+        )
+
+    def _schema_training_dataset_version(
+        self, training_dataset_version: int | None = None
+    ) -> int | None:
+        """Training dataset version the transformed schema should be resolved against.
+
+        `None` when the schema does not depend on the training statistics: those feature views have one schema rather than one per version, and asking for a version there would only cost a training-dataset lookup.
+        Otherwise an explicit version wins, because the caller knows which training dataset the data it is describing belongs to.
+        This mirrors how [`FeatureView.log`][hsfs.feature_view.FeatureView.log] resolves the version it stamps on the log, so the columns and the stamp cannot disagree.
+        Failing that, serving and batch scoring each record the version they were initialised with, and the last version this feature view accessed is the final fallback.
+        """
+        if not self._schema_requires_training_statistics():
+            return None
+        batch_scoring_server = self.__batch_scoring_server
+        return (
+            training_dataset_version
+            or self._serving_training_dataset_version
+            or (
+                batch_scoring_server.training_dataset_version
+                if batch_scoring_server
+                else None
+            )
+            or self.get_last_accessed_training_dataset()
+        )
+
+    def _cached_training_dataset_schema(
+        self, training_dataset_version: int | None = None
+    ) -> list[training_dataset_feature.TrainingDatasetFeature]:
+        """Training dataset schema for the given version, or for the version currently in use.
+
+        Cached because feature logging asks for it on every logged row, and kept per version so that logging against one training dataset never serves another one's columns.
+        """
+        version = self._schema_training_dataset_version(training_dataset_version)
+        if version not in self.__training_dataset_schemas:
+            self.__training_dataset_schemas[version] = self.get_training_dataset_schema(
+                version
+            )
+        return self.__training_dataset_schemas[version]
+
+    def _get_label_column_names(
+        self, training_dataset_version: int | None = None
+    ) -> set[str]:
+        """Label column names as of the given training dataset version."""
+        version = self._schema_training_dataset_version(training_dataset_version)
+        if version not in self.__label_column_names:
+            self.__label_column_names[version] = {
+                feature.name
+                for feature in self._cached_training_dataset_schema(version)
+                if feature.label
+            }
+        return self.__label_column_names[version]
+
+    def _get_transformed_feature_names(
+        self, training_dataset_version: int | None = None
+    ) -> list[str]:
+        """Transformed feature names as of the given training dataset version.
+
+        These line the transformed vector up with the logging feature group's columns, so the version has to be the one the vector was produced against.
+        """
+        version = self._schema_training_dataset_version(training_dataset_version)
+        if version not in self.__transformed_feature_names:
+            self.__transformed_feature_names[version] = [
+                feature.name
+                for feature in self._cached_training_dataset_schema(version)
+                if feature.name not in self._get_label_column_names(version)
+                and feature.name not in self.training_helper_columns
+                and feature.name not in self.inference_helper_columns
+            ]
+        return self.__transformed_feature_names[version]
+
+    def _get_untransformed_feature_names(
+        self, training_dataset_version: int | None = None
+    ) -> list[str]:
+        """Untransformed feature names as of the given training dataset version.
+
+        The names come from the feature view's own features rather than the training dataset schema, but which of them are labels does depend on the version.
+        """
+        version = self._schema_training_dataset_version(training_dataset_version)
+        if version not in self.__untransformed_feature_names:
+            self.__untransformed_feature_names[version] = [
+                feature.name
+                for feature in self.features
+                if feature.name not in self._get_label_column_names(version)
+                and feature.name not in self.training_helper_columns
+                and feature.name not in self.inference_helper_columns
+            ]
+        return self.__untransformed_feature_names[version]
+
     @property
     def _label_column_names(self) -> set[str]:
-        """Get label column names."""
-        if self.__label_column_names is None:
-            training_dataset_schema = self.get_training_dataset_schema()
-            self.__label_column_names = {
-                feature.name for feature in training_dataset_schema if feature.label
-            }
-        return self.__label_column_names
+        """Label column names for the training dataset version currently in use."""
+        return self._get_label_column_names()
 
     @property
     def _transformed_feature_names(self) -> list[str]:
-        """Get transformed feature names."""
-        if self.__transformed_feature_names is None:
-            training_dataset_schema = self.get_training_dataset_schema()
-            self.__transformed_feature_names = [
-                feature.name
-                for feature in training_dataset_schema
-                if feature.name not in self._label_column_names
-                and feature.name not in self.training_helper_columns
-                and feature.name not in self.inference_helper_columns
-            ]
-        return self.__transformed_feature_names
+        """Transformed feature names for the training dataset version currently in use."""
+        return self._get_transformed_feature_names()
 
     @property
     def _untransformed_feature_names(self) -> list[str]:
-        """Get untransformed feature names."""
-        if self.__untransformed_feature_names is None:
-            self.__untransformed_feature_names = [
-                feature.name
-                for feature in self.features
-                if feature.name not in self._label_column_names
-                and feature.name not in self.training_helper_columns
-                and feature.name not in self.inference_helper_columns
-            ]
-        return self.__untransformed_feature_names
+        """Untransformed feature names for the training dataset version currently in use."""
+        return self._get_untransformed_feature_names()
 
     @property
     def _required_serving_key_names(self) -> list[str]:

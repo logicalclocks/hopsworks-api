@@ -16,8 +16,9 @@
     </modules>
 
     <properties>
-        <maven.compiler.source>1.8</maven.compiler.source>
-        <maven.compiler.target>1.8</maven.compiler.target>
+        <maven-scala-plugin.version>2.15.2</maven-scala-plugin.version>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
         <guava.version>30.1.1-jre</guava.version>
         <httpclient.version>4.5.6</httpclient.version>
         <httpcore.version>4.4.13</httpcore.version>
@@ -26,28 +27,63 @@
         <handy.version>2.1.8</handy.version>
         <lombok.version>1.18.36</lombok.version>
         <lombok.plugin.version>1.18.20.0</lombok.plugin.version>
-        <fasterxml.jackson.databind.version>2.10.0</fasterxml.jackson.databind.version>
+        <fasterxml.jackson.databind.version>2.21.4</fasterxml.jackson.databind.version>
         <datasketches.version>6.2.0</datasketches.version>
-        <spark.version>3.5.5.1</spark.version>
-        <hudi.version>1.0.2.1</hudi.version>
-        <awssdk.version>2.10.40</awssdk.version>
-        <scala.version>2.12.10</scala.version>
-        <scala-short.version>2.12</scala-short.version>
-        <dbutils.version>0.0.5</dbutils.version>
+        <spark.version>4.1.3.0</spark.version>
+        <hudi.groupId>io.hops.hudi</hudi.groupId>
+        <hudi.version>1.2.0</hudi.version>
+        <awssdk.version>2.45.1</awssdk.version>
+        <scala.version>2.13.17</scala.version>
+        <scala-short.version>2.13</scala-short.version>
         <json.version>20231013</json.version>
         <hoverfly.version>0.12.2</hoverfly.version>
         <junit.version>5.9.1</junit.version>
         <surefire-plugin.version>2.22.0</surefire-plugin.version>
         <mockito.version>4.3.1</mockito.version>
-        <avro.version>1.11.4</avro.version>
+        <avro.version>1.12.1</avro.version>
         <commons-text.version>1.13.1</commons-text.version>
         <skipHops>true</skipHops>
 
-        <artifact.spark.version>spark3.5</artifact.spark.version>
+        <artifact.spark.version>spark4.1</artifact.spark.version>
 
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <delombok.output>${project.basedir}/delombok</delombok.output>
+        <delombok.output>${project.build.directory}/generated-sources/delombok</delombok.output>
     </properties>
+
+    <!-- The published hsfs-spark / hsfs-flink artifacts are `jar-with-dependencies`
+         uber jars (maven-assembly-plugin, below), and spark_install.sh drops them
+         straight into /srv/hops/spark/hopsworks-jars in the
+         hopsworks-base:spark-feature-pipeline image. Every compile- and
+         runtime-scope dependency here is therefore scanned as a shipped library,
+         which is easy to forget when reading these poms as if they only described a
+         thin client SDK.
+
+         netty is not declared anywhere in this project. It arrives at runtime scope
+         underneath software.amazon.awssdk:netty-nio-client, which the ssm / sts /
+         secretsmanager clients pull in as their async HTTP transport, and it landed
+         in the published jar at three versions at once (4.1.119, 4.1.136 and 4.2.7),
+         because nothing reconciled the AWS SDK 4.1 line against the 4.2 line Spark
+         brings in as `provided`.
+
+         Pinned to 4.2.17.Final, matching the Spark fork. A bom import applies to
+         every netty artifact regardless of scope, including the ones Spark provides,
+         so pinning the 4.1 line here would not just constrain the AWS SDK, it would
+         downgrade Spark's netty too. Spark 4.1 needs 4.2 classes
+         (io.netty.channel.kqueue.KQueueIoHandler and the rest of the 4.2 IoHandler
+         API) and TestStorageConnector fails with NoClassDefFoundError on a 4.1 pin.
+         4.2.x is also what the AWS SDK already runs against in production, since
+         these jars load inside a Spark image whose own netty is 4.2. -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-bom</artifactId>
+                <version>4.2.17.Final</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <dependency>
@@ -157,6 +193,15 @@
             <plugin>
                 <groupId>org.scala-tools</groupId>
                 <artifactId>maven-scala-plugin</artifactId>
+                <!-- Pinned because an unversioned plugin is resolved from
+                     Central's metadata on every build, so the build depends on
+                     a network round trip it does not need. Central answered 429
+                     Too Many Requests and the whole reactor failed at
+                     hsfs-parent with "Plugin not found in any plugin
+                     repository", which reads as a missing plugin rather than a
+                     rate limit. 2.15.2 is the last release of this plugin, and
+                     it is what the unversioned resolution selected anyway. -->
+                <version>${maven-scala-plugin.version}</version>
                 <configuration>
                     <scalaVersion>${scala.version}</scalaVersion>
                 </configuration>
@@ -293,19 +338,19 @@
 
     <profiles>
         <profile>
-            <id>spark-3.3</id>
+            <id>spark-4.1</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
             <properties>
-                <artifact.spark.version>spark3.3</artifact.spark.version>
-            </properties>
-        </profile>
-        <profile>
-            <id>spark-3.5</id>
-            <properties>
-                <spark.version>3.5.5.1</spark.version>
-                <deequ.version>2.0.7-spark-3.5</deequ.version>
-                <artifact.spark.version>spark3.5</artifact.spark.version>
-                <fasterxml.jackson.databind.version>2.15.2</fasterxml.jackson.databind.version>
-                <kafka.version>3.4.1</kafka.version>
+                <spark.version>4.1.3.0</spark.version>
+                <hudi.groupId>io.hops.hudi</hudi.groupId>
+                <hudi.version>1.2.0</hudi.version>
+                <scala.version>2.13.17</scala.version>
+                <scala-short.version>2.13</scala-short.version>
+                <avro.version>1.12.1</avro.version>
+                <fasterxml.jackson.databind.version>2.21.4</fasterxml.jackson.databind.version>
+                <artifact.spark.version>spark4.1</artifact.spark.version>
             </properties>
         </profile>
         <!-- Needs to be included when running mvn deploy or mvn install -->
@@ -342,7 +387,28 @@
                 <enabled>true</enabled>
             </snapshots>
         </repository>
-        
+        <repository>
+            <id>spark</id>
+            <name>Hops Spark Repository</name>
+            <url>https://nexus.hops.works/repository/spark/</url>
+            <releases>
+                <enabled>true</enabled>
+            </releases>
+            <snapshots>
+                <enabled>true</enabled>
+            </snapshots>
+        </repository>
+        <repository>
+            <id>hudi</id>
+            <name>Hops Hudi Repository</name>
+            <url>https://nexus.hops.works/repository/hudi/</url>
+            <releases>
+                <enabled>true</enabled>
+            </releases>
+            <snapshots>
+                <enabled>true</enabled>
+            </snapshots>
+        </repository>
     </repositories>
 
     <distributionManagement>

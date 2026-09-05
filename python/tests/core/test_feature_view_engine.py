@@ -28,6 +28,7 @@ from hsfs import (
     split_statistics,
     training_dataset,
 )
+from hsfs.builtin_transformations import one_hot_encoder
 from hsfs.client.exceptions import FeatureStoreException
 from hsfs.constructor import fs_query
 from hsfs.constructor.query import Query
@@ -1919,6 +1920,127 @@ class TestFeatureViewEngine:
             assert td_feature.name == expected_td_feature.name
             assert td_feature.type == expected_td_feature.type
             assert td_feature.label == expected_td_feature.label
+
+    def test_compute_training_dataset_statistics_disabled_skips_read(self, mocker):
+        # The split read-back exists only to feed statistics.
+        # With statistics_config=False the previous behaviour still re-read
+        # every split of the freshly written dataset and then discarded the
+        # dataframes, which on a large training dataset is the most expensive
+        # step of creation.
+        # The gate has to suppress the read, not only the statistics call.
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
+        )
+        mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_schema",
+            return_value=[],
+        )
+        mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine._get_batch_query")
+        mocker.patch("hsfs.engine._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        mock_td_engine = mocker.patch(
+            "hsfs.core.training_dataset_engine.TrainingDatasetEngine"
+        )
+        mock_statistics_engine = mocker.patch(
+            "hsfs.core.statistics_engine.StatisticsEngine"
+        )
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=query,
+        )
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={},
+            statistics_config=False,
+        )
+
+        # Act
+        fv_engine._compute_training_dataset(
+            feature_view_obj=fv,
+            user_write_options={},
+            training_dataset_obj=td,
+            training_dataset_version=None,
+        )
+
+        # Assert
+        assert mock_td_engine.return_value._read.call_count == 0
+        assert (
+            mock_statistics_engine.return_value._compute_and_save_statistics.call_count
+            == 0
+        )
+        assert (
+            mock_statistics_engine.return_value._compute_and_save_split_statistics.call_count
+            == 0
+        )
+
+    def test_compute_training_dataset_statistics_enabled_reads(self, mocker):
+        # The twin of the disabled test: the gate must not over-suppress.
+        # With statistics enabled (the default) the read-back and the statistics
+        # computation both still happen on the Spark engine.
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_metadata"
+        )
+        mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_schema",
+            return_value=[],
+        )
+        mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine._get_batch_query")
+        mocker.patch("hsfs.engine._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        mock_td_engine = mocker.patch(
+            "hsfs.core.training_dataset_engine.TrainingDatasetEngine"
+        )
+        mock_fv_engine_compute_statistics = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._compute_training_dataset_statistics"
+        )
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=query,
+        )
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+        td = training_dataset.TrainingDataset(
+            name="test",
+            location="location",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={},
+        )
+
+        # Act
+        fv_engine._compute_training_dataset(
+            feature_view_obj=fv,
+            user_write_options={},
+            training_dataset_obj=td,
+            training_dataset_version=None,
+        )
+
+        # Assert
+        assert mock_td_engine.return_value._read.call_count == 1
+        assert mock_fv_engine_compute_statistics.call_count == 1
 
     def test_compute_training_dataset_td_transformations(self, mocker):
         # Arrange
@@ -4587,8 +4709,6 @@ class TestFeatureViewEngine:
 
         query = fg5.select_features().join(fg6.select_all())
 
-        from hsfs.builtin_transformations import one_hot_encoder
-
         fv = feature_view.FeatureView(
             name="fv_name",
             query=query,
@@ -4638,3 +4758,83 @@ class TestFeatureViewEngine:
             "fg2_feature1",
             "fg2_feature2",
         }
+
+    def test_get_feature_logging_data_resolves_names_against_the_logged_version(
+        self, mocker
+    ):
+        """The version stamped on the log and the version the columns come from must be the same one.
+
+        `FeatureView.log` resolves the version from an explicit argument, the model, serving state or the last accessed dataset, and passes it down here.
+        Reading the derived names without it sends them back to serving state, so a one-hot encoded row can be labelled with one training dataset's columns and stamped with another's.
+        """
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mocked_engine = mocker.Mock()
+        mocker.patch("hsfs.engine._get_instance", return_value=mocked_engine)
+        mocked_engine._get_feature_logging_df.return_value = (pd.DataFrame, None, None)
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=["primary_key"],
+            event_time="event_time",
+            partition_key=[],
+            features=[
+                feature.Feature("primary_key", primary=True, type="bigint"),
+                feature.Feature("event_time", type="timestamp"),
+                feature.Feature("feature_1", type="float"),
+            ],
+            id=11,
+            stream=False,
+            featurestore_name="test_fs",
+        )
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=fg.select_all(),
+        )
+        fv.schema = [
+            TrainingDatasetFeature(name="feature_1", type="double"),
+            TrainingDatasetFeature(name="label", type="bigint", label=True),
+        ]
+        fv._serving_keys = [
+            ServingKey(feature_name="primary_key", join_index=0, feature_group=fg)
+        ]
+        fv._FeatureView__extra_logging_column_names = []
+        # Serving was initialised against a different training dataset than the one being logged.
+        fv._serving_training_dataset_version = 2
+
+        transformed_names = mocker.patch.object(
+            fv, "_get_transformed_feature_names", return_value=["feature_1"]
+        )
+        untransformed_names = mocker.patch.object(
+            fv, "_get_untransformed_feature_names", return_value=["feature_1"]
+        )
+        label_names = mocker.patch.object(
+            fv, "_get_label_column_names", return_value={"label"}
+        )
+
+        # Act
+        fv_engine._get_feature_logging_data(
+            fv=fv,
+            logging_feature_group=fg,
+            transformed_features=pd.DataFrame({"feature_1": [0.1]}),
+            predictions=pd.DataFrame({"label": [1]}),
+            training_dataset_version=5,
+            return_list=False,
+        )
+
+        # Assert: all three name sets are resolved against 5, the version being logged, not 2.
+        transformed_names.assert_called_once_with(5)
+        untransformed_names.assert_called_once_with(5)
+        label_names.assert_called_once_with(5)

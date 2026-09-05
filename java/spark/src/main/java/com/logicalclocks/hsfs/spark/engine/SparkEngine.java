@@ -41,8 +41,10 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeoutException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -59,6 +61,7 @@ import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SaveMode;
 import org.apache.spark.sql.SparkSession;
+import org.apache.spark.sql.avro.SchemaConverters;
 import org.apache.spark.sql.functions;
 import org.apache.spark.sql.streaming.DataStreamReader;
 import org.apache.spark.sql.streaming.DataStreamWriter;
@@ -94,6 +97,7 @@ import com.logicalclocks.hsfs.FeatureGroupBase;
 import com.logicalclocks.hsfs.FeatureStoreException;
 import com.logicalclocks.hsfs.HudiOperationType;
 import com.logicalclocks.hsfs.Split;
+import com.logicalclocks.hsfs.Storage;
 import com.logicalclocks.hsfs.StorageConnector;
 import com.logicalclocks.hsfs.TimeTravelFormat;
 import com.logicalclocks.hsfs.TrainingDatasetFeature;
@@ -544,12 +548,31 @@ public class SparkEngine extends EngineBase {
   public void writeOnlineDataframe(FeatureGroupBase featureGroupBase, Dataset<Row> dataset,
                                    Map<String, String> writeOptions)
       throws FeatureStoreException, IOException {
+    writeOnlineDataframe(featureGroupBase, dataset, writeOptions, null);
+  }
+
+  /**
+   * Writes feature group dataframe to kafka for online-fs ingestion.
+   *
+   * @param featureGroupBase
+   * @param dataset
+   * @param writeOptions options map; see {@link #writeOnlineDataframe(FeatureGroupBase, Dataset, Map)}
+   * @param storage which consumer of the topic is meant to ingest these records: {@link Storage#ONLINE}
+   *     when the offline leg is written straight to the table (or does not exist), so that the offline
+   *     materialization job does not write the same rows a second time; null when the topic is the only
+   *     source of both stores and both consumers read the records
+   * @throws FeatureStoreException
+   * @throws IOException
+   */
+  public void writeOnlineDataframe(FeatureGroupBase featureGroupBase, Dataset<Row> dataset,
+                                   Map<String, String> writeOptions, Storage storage)
+      throws FeatureStoreException, IOException {
     Map<String, String> kafkaConfig = SparkEngine.getInstance().getKafkaConfig(featureGroupBase, writeOptions);
     Long numEntries = Boolean.parseBoolean(
         writeOptions.getOrDefault("online_ingestion_options.disable_online_ingestion_count", "false"))
         ? null : dataset.count();
     onlineFeatureGroupToAvro(featureGroupBase, encodeComplexFeatures(featureGroupBase, dataset))
-        .withColumn("headers", getHeader(featureGroupBase, numEntries, writeOptions))
+        .withColumn("headers", getHeader(featureGroupBase, numEntries, writeOptions, null, storage))
         .write()
         .format(Constants.KAFKA_FORMAT)
         .options(kafkaConfig)
@@ -584,10 +607,89 @@ public class SparkEngine extends EngineBase {
     return query;
   }
 
+  /**
+   * Produces an online delete tombstone for every row in the dataset.
+   *
+   * <p>Each message carries the row encoded against the feature group Avro schema plus an
+   * {@code operation: delete} header; OnlineFS deletes the row by primary key and ignores the values.
+   * The dataset needs to carry only the primary key: non-key columns are filled with null so the Avro
+   * schema serializes.
+   *
+   * <p>The deletes are tracked by the same online ingestion record as an insert, and reported under
+   * its {@code DELETED} status, so the removed rows are counted apart from written ones.
+   *
+   * <p>The tombstone is marked {@link Storage#ONLINE}: removeRows applies the offline delete straight
+   * to the table, so the offline materialization job has to skip it rather than re-insert the key the
+   * delete removed.
+   *
+   * @param featureGroupBase the online-enabled feature group
+   * @param dataset the rows to delete
+   * @param writeOptions kafka write options
+   */
+  public void deleteOnlineDataframe(FeatureGroupBase featureGroupBase, Dataset<Row> dataset,
+                                    Map<String, String> writeOptions)
+      throws FeatureStoreException, IOException {
+    Map<String, String> kafkaConfig = SparkEngine.getInstance().getKafkaConfig(featureGroupBase, writeOptions);
+    Dataset<Row> padded = padOnlineDeleteDataset(featureGroupBase, dataset);
+    Long numEntries = Boolean.parseBoolean(
+        writeOptions.getOrDefault("online_ingestion_options.disable_online_ingestion_count", "false"))
+        ? null : padded.count();
+    onlineFeatureGroupToAvro(featureGroupBase, encodeComplexFeatures(featureGroupBase, padded))
+        .withColumn("headers",
+            getHeader(featureGroupBase, numEntries, writeOptions, "delete", Storage.ONLINE))
+        .write()
+        .format(Constants.KAFKA_FORMAT)
+        .options(kafkaConfig)
+        .option("topic", featureGroupBase.getOnlineTopicName())
+        .save();
+  }
+
+  /**
+   * Builds the delete tombstone from the primary key only: keeps the caller's primary-key columns
+   * and forces every other feature group column to a typed null.
+   *
+   * <p>Non-key columns are ignored for the online delete (OnlineFS deletes by primary key and
+   * discards the values), so overriding them here honors the removeRows contract and prevents a
+   * stale or type-incompatible caller value from failing Avro serialization after the offline
+   * delete has already committed. Feature group schemas wrap every field in a
+   * {@code ["null", <type>]} union, so a null fill always serializes.
+   */
+  private Dataset<Row> padOnlineDeleteDataset(FeatureGroupBase featureGroupBase, Dataset<Row> dataset)
+      throws FeatureStoreException, IOException {
+    // LinkedHashSet, not HashSet: the set is what the projection is built from, so keep the
+    // declared key order rather than a hash order. FeatureGroupBase is used raw here, which
+    // erases getPrimaryKeys() to a raw List, so read the keys back off the typed set.
+    Set<String> primaryKeys = new LinkedHashSet<>(featureGroupBase.getPrimaryKeys());
+    List<Column> columns = new ArrayList<>();
+    for (String primaryKey : primaryKeys) {
+      columns.add(col(primaryKey));
+    }
+    for (Schema.Field field : featureGroupBase.getDeserializedAvroSchema().getFields()) {
+      if (primaryKeys.contains(field.name())) {
+        continue;
+      }
+      DataType sparkType = SchemaConverters.toSqlType(field.schema()).dataType();
+      columns.add(lit(null).cast(sparkType).as(field.name()));
+    }
+    return dataset.select(columns.toArray(new Column[0]));
+  }
+
   private Column getHeader(FeatureGroupBase featureGroup, Long numEntries, Map<String, String> options)
       throws FeatureStoreException, IOException {
+    return getHeader(featureGroup, numEntries, options, null);
+  }
+
+  private Column getHeader(FeatureGroupBase featureGroup, Long numEntries, Map<String, String> options,
+                           String operation)
+      throws FeatureStoreException, IOException {
+    return getHeader(featureGroup, numEntries, options, operation, null);
+  }
+
+  private Column getHeader(FeatureGroupBase featureGroup, Long numEntries, Map<String, String> options,
+                           String operation, Storage storage)
+      throws FeatureStoreException, IOException {
     return array(
-      FeatureGroupUtils.getHeaders(featureGroup, numEntries, options).entrySet().stream()
+      FeatureGroupUtils.getHeaders(featureGroup, numEntries, options, operation, storage).entrySet().stream()
       .map(entry -> struct(
         lit(entry.getKey()).as("key"),
         lit(entry.getValue()).as("value")
@@ -666,7 +768,8 @@ public class SparkEngine extends EngineBase {
         .mode(SaveMode.Append)
         // write options cannot be null
         .options(writeOptions == null ? new HashMap<>() : writeOptions)
-        .partitionBy(featureGroupUtils.getPartitionColumns(featureGroup))
+        .partitionBy(JavaConverters.seqAsJavaList(featureGroupUtils.getPartitionColumns(featureGroup))
+            .toArray(new String[0]))
         .saveAsTable(featureGroupUtils.getTableName(featureGroup));
   }
 

@@ -19,11 +19,11 @@ from __future__ import annotations
 import json
 import warnings
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import humps
 from hopsworks_apigen import public
-from hopsworks_common import alert, client, usage, util
+from hopsworks_common import alert, client, tag, usage, util
 from hopsworks_common.client.exceptions import JobException
 from hopsworks_common.core import alerts_api, execution_api, job_api
 from hopsworks_common.engine import execution_engine
@@ -53,12 +53,14 @@ class Job:
         items=None,
         count=None,
         job_schedule=None,
+        description=None,
         **kwargs,
     ):
         self._id = id
         self._name = name
         self._creation_time = creation_time
         self._config = config
+        self._description = description
         self._job_type = job_type
         self._creator = creator
         self._executions = executions
@@ -124,6 +126,27 @@ class Job:
 
     @public
     @property
+    def description(self):
+        """Description of the job.
+
+        An old server does not send the scalar field; the description then comes from the job configuration.
+        """
+        if self._description is not None:
+            return self._description
+        if isinstance(self._config, dict):
+            return self._config.get("description")
+        return None
+
+    @description.setter
+    def description(self, description: str):
+        # Written into the config too, so the existing save() persists it. Guarded like the getter:
+        # a config that did not deserialize to a dict should fail the save, not this assignment.
+        self._description = description
+        if isinstance(self._config, dict):
+            self._config["description"] = description
+
+    @public
+    @property
     def job_type(self):
         """Type of the job."""
         return self._job_type
@@ -151,12 +174,6 @@ class Job:
     def href(self):
         """The URL of the job in Hopsworks UI, use `get_url` instead."""
         return self._href
-
-    @public
-    @property
-    def config(self):
-        """Configuration for the job."""
-        return self._config
 
     @public
     @usage._method_logger
@@ -603,6 +620,99 @@ class Job:
             self._name, job_schedule.to_dict()
         )
         return self._job_schedule
+
+    @public
+    @usage._method_logger
+    def add_tag(self, name: str, value: Any) -> None:
+        """Attach a tag to the job.
+
+        A tag consists of a name-value pair.
+        Tag names are unique identifiers across the whole cluster.
+        The value of a tag can be any valid json - primitives, arrays or json objects.
+
+        ```python
+        job.add_tag(name="example_tag", value="42")
+        ```
+
+        Parameters:
+            name: Name of the tag to be added.
+            value: Value of the tag to be added.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        self._job_api._add_tag(self, name, value)
+
+    @public
+    @usage._method_logger
+    def delete_tag(self, name: str) -> None:
+        """Delete a tag attached to the job.
+
+        Parameters:
+            name: Name of the tag to be removed.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        self._job_api._delete_tag(self, name)
+
+    @public
+    def get_tag(self, name: str) -> Any | None:
+        """Get the value of a tag attached to the job.
+
+        Parameters:
+            name: Name of the tag to get.
+
+        Returns:
+            Tag value or `None` if it does not exist.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._job_api._get_tag(self, name)
+
+    @public
+    def get_tags(self) -> dict[str, Any]:
+        """Retrieve all tags attached to the job.
+
+        Returns:
+            Dictionary of tag names and values.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._job_api._get_tags(self)
+
+    @public
+    def get_tag_metadata(self, name: str) -> tag.Tag | None:
+        """Get a tag with its metadata, including the time it was attached.
+
+        Unlike [`Job.get_tag`][hopsworks.job.Job.get_tag], which returns only the tag's value, this returns the [`Tag`][hopsworks.tag.Tag] object, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Parameters:
+            name: Name of the tag to get.
+
+        Returns:
+            The tag object or `None` if it does not exist.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._job_api._get_tags_metadata(self, name).get(name)
+
+    @public
+    def get_tags_metadata(self) -> dict[str, tag.Tag]:
+        """Retrieve all tags attached to the job, with their metadata.
+
+        Unlike [`Job.get_tags`][hopsworks.job.Job.get_tags], which returns only the tag values, this keeps the [`Tag`][hopsworks.tag.Tag] objects, whose [`Tag.created_on`][hopsworks_common.tag.Tag.created_on] is the attachment time.
+
+        Returns:
+            Dictionary of tag names to tag objects.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._job_api._get_tags_metadata(self)
 
     def json(self) -> str:
         return json.dumps(self, cls=util.Encoder)

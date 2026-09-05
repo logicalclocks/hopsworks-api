@@ -27,6 +27,7 @@ import com.logicalclocks.hsfs.FeatureGroupBase;
 import com.logicalclocks.hsfs.FeatureGroupCommit;
 import com.logicalclocks.hsfs.FeatureStoreException;
 import com.logicalclocks.hsfs.OnlineIngestion;
+import com.logicalclocks.hsfs.Storage;
 
 import lombok.SneakyThrows;
 import org.apache.avro.Schema;
@@ -258,11 +259,35 @@ public class FeatureGroupUtils {
 
   public static Map<String, byte[]> getHeaders(FeatureGroupBase featureGroup, Long numEntries)
       throws FeatureStoreException, IOException {
-    return getHeaders(featureGroup, numEntries, null);
+    return getHeaders(featureGroup, numEntries, null, null);
   }
 
   public static Map<String, byte[]> getHeaders(FeatureGroupBase featureGroup, Long numEntries,
       Map<String, String> options) throws FeatureStoreException, IOException {
+    return getHeaders(featureGroup, numEntries, options, null);
+  }
+
+  public static Map<String, byte[]> getHeaders(FeatureGroupBase featureGroup, Long numEntries,
+      Map<String, String> options, String operation) throws FeatureStoreException, IOException {
+    return getHeaders(featureGroup, numEntries, options, operation, null);
+  }
+
+  /**
+   * Kafka headers for the records of one write to the online topic.
+   *
+   * @param featureGroup FeatureGroupBase Feature Group hsfs metadata object
+   * @param numEntries number of records this write produces, reported by the online ingestion
+   * @param options options map; supported keys under {@code "online_ingestion_options.*"}
+   * @param operation {@code "delete"} for an online delete tombstone, null for an upsert
+   * @param storage which consumer of the topic is meant to ingest these records:
+   *     {@link Storage#ONLINE} for OnlineFS alone, {@link Storage#OFFLINE} for the offline
+   *     materialization job alone, null when both read them
+   * @throws FeatureStoreException If Client is not connected to Hopsworks
+   * @throws IOException Generic IO exception.
+   */
+  public static Map<String, byte[]> getHeaders(FeatureGroupBase featureGroup, Long numEntries,
+      Map<String, String> options, String operation, Storage storage)
+      throws FeatureStoreException, IOException {
     Map<String, byte[]> headerMap = new HashMap<>();
 
     headerMap.put("projectId",
@@ -271,12 +296,28 @@ public class FeatureGroupUtils {
     headerMap.put("subjectId",
         String.valueOf(featureGroup.getSubject().getId()).getBytes(StandardCharsets.UTF_8));
 
+    // operation header tells OnlineFS whether the message is an upsert (absent) or a
+    // delete tombstone ("delete"); OnlineFS deletes the row by primary key on "delete".
+    if (operation != null) {
+      headerMap.put("operation", operation.getBytes(StandardCharsets.UTF_8));
+    }
+
+    // storage header names the consumer these records are meant for: "online" is skipped by the
+    // offline materialization job, "offline" is skipped by OnlineFS, absent is read by both.
+    // Only set it when the records have a single destination, leaving it out is the cheaper
+    // default.
+    if (storage != null) {
+      headerMap.put("storage", storage.name().toLowerCase().getBytes(StandardCharsets.UTF_8));
+    }
+
     if (options != null
         && Boolean.parseBoolean(options.get("online_ingestion_options.upsert_if_newer"))) {
       headerMap.put("upsertIfNewer", new byte[]{'1'});
     }
 
-    if (featureGroup.getOnlineEnabled()) {
+    // An offline-only write reaches no online store, so it gets no online ingestion to report
+    // progress against: creating one would leave it forever short of its entries.
+    if (featureGroup.getOnlineEnabled() && storage != Storage.OFFLINE) {
       OnlineIngestion onlineIngestion = new OnlineIngestionApi()
           .createOnlineIngestion(featureGroup, new OnlineIngestion(numEntries));
 

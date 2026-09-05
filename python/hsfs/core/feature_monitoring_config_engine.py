@@ -697,6 +697,7 @@ class FeatureMonitoringConfigEngine:
             # same entity (logging FG) as the detection window — i.e. time-based windows.
             # For TRAINING_DATASET / other entity-divorced reference window types, the
             # filter is meaningless (the TD has no model_name/model_version columns).
+            from hsfs import feature_view as _fv_mod
             from hsfs.core import monitoring_window_config as _mwc
 
             ref_window_type = config.reference_window_config.window_config_type
@@ -717,10 +718,35 @@ class FeatureMonitoringConfigEngine:
                 and detection_window_commit_time is not None
                 else None
             )
+            # Only a feature view can resolve a TRAINING_DATASET reference; handed the
+            # logging feature group a model-monitoring config is attached to, the window
+            # engine silently compares the inference log against itself.
+            reference_entity = entity
+            if (
+                ref_window_type == _mwc.WindowConfigType.TRAINING_DATASET
+                and not isinstance(entity, _fv_mod.FeatureView)
+            ):
+                # Both halves are needed: get_feature_view defaults a missing version to
+                # 1 with only a warning, which would quietly compare against the wrong
+                # feature view instead of failing.
+                if (
+                    config.feature_view_name is None
+                    or config.feature_view_version is None
+                ):
+                    raise FeatureStoreException(
+                        "A training dataset reference window needs a feature view, but "
+                        f"monitoring config '{config_name}' names "
+                        f"{config.feature_view_name!r} version "
+                        f"{config.feature_view_version!r}."
+                    )
+                reference_entity = entity.feature_store.get_feature_view(
+                    name=config.feature_view_name,
+                    version=config.feature_view_version,
+                )
             try:
                 reference_statistics = (
                     self._monitoring_window_config_engine._run_single_window_monitoring(
-                        entity=entity,
+                        entity=reference_entity,
                         monitoring_window_config=config.reference_window_config,
                         feature_names=feature_names,
                         profile_flags=profile_flags,

@@ -313,6 +313,101 @@ def td_lineage(
     lineage.render(label, sections)
 
 
+@td_group.command("keywords")
+@click.argument("feature_view")
+@click.argument("td_version", type=int)
+@click.option("--fv-version", "fv_version", type=int, help="Feature view version.")
+@click.pass_context
+def td_keywords(
+    ctx: click.Context, feature_view: str, td_version: int, fv_version: int | None
+) -> None:
+    """Show all keywords attached to a training dataset.
+
+    Args:
+        ctx: Click context.
+        feature_view: Feature view name.
+        td_version: Training dataset version.
+        fv_version: Feature view version; latest if omitted.
+    """
+    fv = _get_fv(ctx, feature_view, fv_version)
+    try:
+        keywords = fv.get_training_dataset_keywords_metadata(td_version)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not read keywords: {exc}") from exc
+
+    if output.JSON_MODE:
+        output.print_json(
+            {k: output.format_ts(v, empty=None) for k, v in (keywords or {}).items()}
+        )
+        return
+    rows = [[k, output.format_ts(v)] for k, v in (keywords or {}).items()]
+    output.print_table(["KEYWORD", "ADDED"], rows)
+
+
+@td_group.command("add-keyword")
+@click.argument("feature_view")
+@click.argument("td_version", type=int)
+@click.argument("keyword")
+@click.option("--fv-version", "fv_version", type=int, help="Feature view version.")
+@click.pass_context
+def td_add_keyword(
+    ctx: click.Context,
+    feature_view: str,
+    td_version: int,
+    keyword: str,
+    fv_version: int | None,
+) -> None:
+    """Attach a keyword to a training dataset.
+
+    Args:
+        ctx: Click context.
+        feature_view: Feature view name.
+        td_version: Training dataset version.
+        keyword: The keyword.
+        fv_version: Feature view version; latest if omitted.
+    """
+    fv = _get_fv(ctx, feature_view, fv_version)
+    try:
+        fv.add_training_dataset_keywords(td_version, [keyword])
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not add keyword: {exc}") from exc
+    output.success(
+        "✓ Added keyword '%s' to %s td v%s", keyword, feature_view, td_version
+    )
+
+
+@td_group.command("remove-keyword")
+@click.argument("feature_view")
+@click.argument("td_version", type=int)
+@click.argument("keyword")
+@click.option("--fv-version", "fv_version", type=int, help="Feature view version.")
+@click.pass_context
+def td_remove_keyword(
+    ctx: click.Context,
+    feature_view: str,
+    td_version: int,
+    keyword: str,
+    fv_version: int | None,
+) -> None:
+    """Remove a keyword from a training dataset.
+
+    Args:
+        ctx: Click context.
+        feature_view: Feature view name.
+        td_version: Training dataset version.
+        keyword: The keyword.
+        fv_version: Feature view version; latest if omitted.
+    """
+    fv = _get_fv(ctx, feature_view, fv_version)
+    try:
+        fv.delete_training_dataset_keyword(td_version, keyword)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not remove keyword: {exc}") from exc
+    output.success(
+        "✓ Removed keyword '%s' from %s td v%s", keyword, feature_view, td_version
+    )
+
+
 def _get_fv(ctx: click.Context, name: str, version: int | None) -> Any:
     fs = session.get_feature_store(ctx)
     try:
