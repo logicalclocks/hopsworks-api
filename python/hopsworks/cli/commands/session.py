@@ -139,7 +139,9 @@ def _resolve_local_session(slug: str, session_id: str | None) -> Path:
             most-recently-written session under this slug (the active one).
 
     Returns:
-        Path to the resolved ``<session-id>.jsonl``.
+        Path to the resolved ``<session-id>.jsonl``, or to its ``.jsonl.away``
+        twin when an earlier push already handed the session off, so that a
+        repeated push ships the same content instead of failing.
 
     Raises:
         click.ClickException: When no session directory or file is found, or
@@ -153,18 +155,22 @@ def _resolve_local_session(slug: str, session_id: str | None) -> Path:
             f"session is in."
         )
     if session_id:
-        candidate = proj_dir / f"{session_id}.jsonl"
-        if not candidate.is_file():
-            raise click.ClickException(
-                f"Session {session_id} not found under {proj_dir}."
-            )
-        return candidate
-    sessions = sorted(
-        proj_dir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True
-    )
-    if not sessions:
-        raise click.ClickException(f"No .jsonl sessions under {proj_dir}.")
-    return sessions[0]
+        for name in (f"{session_id}.jsonl", f"{session_id}.jsonl.away"):
+            candidate = proj_dir / name
+            if candidate.is_file():
+                return candidate
+        raise click.ClickException(f"Session {session_id} not found under {proj_dir}.")
+    for pattern in ("*.jsonl", "*.jsonl.away"):
+        sessions = sorted(
+            proj_dir.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True
+        )
+        if sessions:
+            return sessions[0]
+    raise click.ClickException(f"No .jsonl sessions under {proj_dir}.")
+
+
+def _session_id_of(transcript: Path) -> str:
+    return transcript.name.split(".", 1)[0]
 
 
 def _is_missing_path(exc: RestAPIError) -> bool:
@@ -333,6 +339,41 @@ def _read_baton(dataset_api, dest_dir: str, sid: str) -> dict | None:
                 f"The baton for {sid} is unreadable; refusing to guess ownership. "
                 f"Inspect or remove {remote} in the teleport store."
             ) from exc
+
+
+def _staged_lines_ahead(
+    dataset_api, dest_dir: str, session_id: str, local_lines: list[str]
+) -> int:
+    """How many lines the staged transcript holds that ``local_lines`` does not.
+
+    Zero when nothing is staged, or when the staged copy is the local one or a
+    prefix of it. Lines past the common prefix are work this machine never had
+    (a pod's synced-back appends, a push from another machine), which a push
+    would destroy. Nothing staged reads as zero only on a real 404; any other
+    failure raises, since guessing here is what the check exists to prevent.
+    """
+    remote = f"{dest_dir}/{session_id}.jsonl"
+    with tempfile.TemporaryDirectory() as tmp:
+        local = Path(tmp) / "staged.jsonl"
+        try:
+            dataset_api.download(remote, local_path=str(local), overwrite=True)
+        except RestAPIError as exc:
+            if _is_missing_path(exc):
+                return 0
+            raise click.ClickException(
+                f"Could not read the staged session: {exc}"
+            ) from exc
+        except Exception as exc:  # noqa: BLE001
+            raise click.ClickException(
+                f"Could not read the staged session: {exc}"
+            ) from exc
+        remote_lines = local.read_text(errors="ignore").splitlines()
+    common = 0
+    for a, b in zip(local_lines, remote_lines, strict=False):
+        if a != b:
+            break
+        common += 1
+    return len(remote_lines) - common
 
 
 def _pod_alive(project_id: int) -> bool:
@@ -578,11 +619,6 @@ def session_group() -> None:
 @session_group.command("push")
 @click.argument("session_id", required=False)
 @click.option(
-    "--overwrite",
-    is_flag=True,
-    help="Overwrite a session JSONL already staged for this slug.",
-)
-@click.option(
     "--fork",
     is_flag=True,
     help="Copy the session instead of handing it off: the local copy stays "
@@ -616,7 +652,6 @@ def session_group() -> None:
 def push(
     ctx: click.Context,
     session_id: str | None,
-    overwrite: bool,
     fork: bool,
     model: str | None,
     prompt: str | None,
@@ -633,10 +668,13 @@ def push(
     it is the session you are currently in, which stays live locally). `--fork`
     keeps a live local copy instead.
 
+    Running it again re-stages the same session. It refuses only when the
+    staged copy holds lines this machine does not have, until `hops session
+    pull` brings them back or `--force` discards them.
+
     Args:
         ctx: Click context.
         session_id: Explicit session id, or None for the active one.
-        overwrite: Re-upload even if a JSONL for this slug already exists.
         fork: Copy instead of hand off; leave the local session canonical.
         model: Model the pod resumes with.
         prompt: First instruction fed to the resumed session, or None.
@@ -645,7 +683,8 @@ def push(
     """
     slug = _cwd_slug()
     jsonl = _resolve_local_session(slug, session_id)
-    resolved_id = jsonl.stem
+    resolved_id = _session_id_of(jsonl)
+    already_away = jsonl.name.endswith(".away")
 
     project = conn.get_project(ctx)
     dataset_api = project.get_dataset_api()
@@ -658,8 +697,9 @@ def push(
     # work. A dead pod, a staged push the pod never landed, a laptop-held baton,
     # or a --fork push is not gated.
     if not fork and not force:
-        existing = _read_baton(dataset_api, dest_dir, resolved_id)
-        holder = (existing or {}).get("holder", "")
+        holder = (_read_baton(dataset_api, dest_dir, resolved_id) or {}).get(
+            "holder", ""
+        )
         if _pod_holds(dataset_api, dest_dir, resolved_id, holder, project.id):
             raise click.ClickException(
                 f"A live pod holds this session ({holder}); it may have work you "
@@ -682,21 +722,28 @@ def push(
     # count exactly the bytes that were shipped — counting the live file after
     # the upload could include lines the pod never received, and pull would then
     # misread a plain divergence as "no common history" (common < baseline).
+    # The staged copy is always replaced (a repeated push is a no-op), except
+    # when it holds lines this snapshot does not: that is work the overwrite
+    # would destroy, so it takes a pull or --force first.
     with tempfile.TemporaryDirectory() as tmp:
-        snapshot = Path(tmp) / jsonl.name
+        snapshot = Path(tmp) / f"{resolved_id}.jsonl"
         shutil.copyfile(jsonl, snapshot)
-        with snapshot.open(errors="ignore") as f:
-            lines = sum(1 for _ in f)
+        local_lines = snapshot.read_text(errors="ignore").splitlines()
+        lines = len(local_lines)
+        if not force:
+            ahead = _staged_lines_ahead(dataset_api, dest_dir, resolved_id, local_lines)
+            if ahead:
+                raise click.ClickException(
+                    f"The staged copy of this session has {ahead} line(s) this "
+                    f"machine does not (work synced back from the pod, or a push "
+                    f"from another machine). `hops session pull` first to bring "
+                    f"it back, or `push --force` to overwrite it."
+                )
         try:
             dataset_api.upload(
-                local_path=str(snapshot), upload_path=dest_dir, overwrite=overwrite
+                local_path=str(snapshot), upload_path=dest_dir, overwrite=True
             )
         except Exception as exc:  # noqa: BLE001
-            if "already exists" in str(exc):
-                raise click.ClickException(
-                    "Session already staged for this directory — pass --overwrite "
-                    "to replace it."
-                ) from exc
             raise click.ClickException(f"Failed to ship session: {exc}") from exc
     output.success("✓ Pushed session %s to %s", resolved_id, project.name)
 
@@ -733,8 +780,9 @@ def push(
 
     # Only now that the hand-off is fully staged, rename the local transcript
     # aside so it is not resumed by accident — except the session you are in
-    # (its file is held open by a live `claude`), which stays live locally.
-    if not fork:
+    # (its file is held open by a live `claude`), which stays live locally. A
+    # transcript an earlier push already renamed aside stays where it is.
+    if not fork and not already_away:
         if _is_active_session(jsonl):
             output.warn(
                 "This looks like the session you are in, so it stays live on "

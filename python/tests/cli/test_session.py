@@ -668,6 +668,41 @@ def test_push_keeps_the_gate_when_the_manifest_cannot_be_read(tmp_path, monkeypa
     assert "sid1.jsonl" not in ds.uploads
 
 
+def test_push_twice_is_idempotent(tmp_path, monkeypatch):
+    # The first push renames the local transcript aside; the second finds it
+    # there, ships the same content over the staged copy without any flag, and
+    # leaves the local state as it was. The pod has not landed the push (no
+    # Terminal tab was opened), which is the case a repeat must not refuse.
+    runner, ds, slug = _push_setup(tmp_path, monkeypatch, landed=False)
+    slug_dir = tmp_path / "claude" / slug
+    for _ in range(2):
+        result = runner.invoke(session.session_group, ["push"], catch_exceptions=False)
+        assert result.exit_code == 0, _all_output(result)
+    assert ds.uploads.count("sid1.jsonl") == 2
+    assert sorted(p.name for p in slug_dir.iterdir()) == [
+        "sid1.away.json",
+        "sid1.jsonl.away",
+    ]
+
+
+def test_push_refuses_to_clobber_a_staged_copy_that_advanced(tmp_path, monkeypatch):
+    # Lines the staged copy has and this machine lacks are work (a pod's
+    # synced-back appends, another machine's push) the overwrite would destroy.
+    runner, ds, slug = _push_setup(tmp_path, monkeypatch, landed=True)
+    ds._files[f"{_ROOT}/{slug}/sid1.jsonl"] = '{"line": 1}\n{"line": 2}\n'
+    result = runner.invoke(session.session_group, ["push"])
+    assert result.exit_code != 0
+    text = _all_output(result)
+    assert "1 line(s) this machine does not" in text and "hops session pull" in text
+    assert "sid1.jsonl" not in ds.uploads
+
+    result = runner.invoke(
+        session.session_group, ["push", "--force"], catch_exceptions=False
+    )
+    assert result.exit_code == 0
+    assert "sid1.jsonl" in ds.uploads
+
+
 def test_push_writes_the_baton_after_the_manifest(tmp_path, monkeypatch):
     # A failed manifest upload must never leave the store naming a pod holder
     # for a session that pod will never receive.
@@ -737,6 +772,19 @@ def test_pull_reclaims_a_push_the_live_pod_never_landed(tmp_path, monkeypatch):
     assert baton["holder"].startswith("laptop:")
     # Consumed with the push's own stamp, or the next Terminal tab would
     # boot-land the reclaimed copy as a ghost tab.
+    assert ds._files[f"{_ROOT}/{slug}/sid1.teleport.json.consumed"] == _PUSHED
+
+
+def test_pull_twice_is_idempotent(tmp_path, monkeypatch):
+    runner, ds, slug, root = _pull_setup(
+        tmp_path, monkeypatch, alive=False, landed=True
+    )
+    for _ in range(2):
+        result = runner.invoke(session.session_group, ["pull"], catch_exceptions=False)
+        assert result.exit_code == 0, _all_output(result)
+    assert (root / slug / "sid1.jsonl").read_text() == '{"line": 1}\n'
+    baton = json.loads(ds._files[f"{_ROOT}/{slug}/sid1.baton.json"])
+    assert baton["holder"].startswith("laptop:")
     assert ds._files[f"{_ROOT}/{slug}/sid1.teleport.json.consumed"] == _PUSHED
 
 
