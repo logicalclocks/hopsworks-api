@@ -437,6 +437,41 @@ def _terminal_ui_url(project_id: int) -> str:
     return f"{base}/p/{project_id}?terminal=open"
 
 
+def _open_browser(url: str) -> bool:
+    """Ask the desktop to open ``url``; True only when a browser took it.
+
+    ``webbrowser.open`` answers True as soon as a browser process has started,
+    whatever happens to it next, so where the desktop offers ``xdg-open`` that
+    is used instead and its exit status is what counts: it hands the URL to the
+    user's default browser and exits at once. Anything else falls back to
+    ``webbrowser``.
+    """
+    opener = shutil.which("xdg-open")
+    if opener:
+        try:
+            done = subprocess.run(
+                [opener, url], capture_output=True, timeout=10, check=False
+            )
+            return done.returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            return False
+    with contextlib.suppress(Exception):
+        return bool(webbrowser.open(url))
+    return False
+
+
+def _say_terminal(url: str, opened: bool) -> None:
+    """Print the terminal URL, with what the browser did about it.
+
+    The URL is always shown: an opener's success says nothing about the tab
+    having loaded or the user being logged in there.
+    """
+    if opened:
+        output.info("Opening the terminal in your browser: %s", url)
+    else:
+        output.info("Open the terminal in your browser: %s", url)
+
+
 def _build_manifest(
     session_id: str,
     slug: str,
@@ -814,8 +849,7 @@ def push(
     # just carries the URL. Best-effort — a headless box has no browser.
     opened = False
     if open_ui and not output.JSON_MODE:
-        with contextlib.suppress(Exception):
-            opened = webbrowser.open(terminal_url)
+        opened = _open_browser(terminal_url)
 
     if output.JSON_MODE:
         # No poll in machine mode: one instant ack check, the caller re-lists
@@ -835,8 +869,7 @@ def push(
         )
         return
 
-    if not opened:
-        output.info("Terminal: %s", terminal_url)
+    _say_terminal(terminal_url, opened)
     # The landing kit only matters when the pod did NOT self-land, so wait
     # briefly for its ack and keep the happy path to the three ✓ lines. No pod
     # (feature disabled) means no ack will ever come: skip straight to the kit.
@@ -849,10 +882,6 @@ def push(
         return
     if ws_url:
         output.info("Not landed yet — the pod lands it once its Terminal tab is open.")
-        # webbrowser.open reporting success says nothing about the tab having
-        # connected, so the URL is worth repeating here.
-        if opened:
-            output.info("Terminal: %s", terminal_url)
         output.info("Or land it manually:")
     else:
         output.info("No terminal pod to land it; land it manually:")
@@ -915,8 +944,7 @@ def new(
     terminal_url = _terminal_ui_url(project.id)
     opened = False
     if open_ui and not output.JSON_MODE:
-        with contextlib.suppress(Exception):
-            opened = webbrowser.open(terminal_url)
+        opened = _open_browser(terminal_url)
 
     if output.JSON_MODE:
         # No poll in machine mode: one instant ack check, the caller re-lists
@@ -934,8 +962,7 @@ def new(
             }
         )
         return
-    if not opened:
-        output.info("Terminal: %s", terminal_url)
+    _say_terminal(terminal_url, opened)
     if ws_url and _await_landing(
         dataset_api, dest_dir, session_id, manifest["pushed_at"]
     ):
@@ -947,8 +974,6 @@ def new(
             "Not landed yet — a fresh Claude session opens once the Terminal tab "
             "is open."
         )
-        if opened:
-            output.info("Terminal: %s", terminal_url)
 
 
 @session_group.command("pull")

@@ -556,7 +556,7 @@ def _push_setup(tmp_path, monkeypatch, landed: bool):
     monkeypatch.setattr(
         session.terminal_api, "start_session", lambda pid: {"wsUrl": "/terminal/ws"}
     )
-    monkeypatch.setattr(session.webbrowser, "open", lambda url: True)
+    monkeypatch.setattr(session, "_open_browser", lambda url: True)
     monkeypatch.setattr(session.time, "sleep", lambda s: None)
 
     class _Client:
@@ -722,8 +722,8 @@ def test_push_prints_landing_kit_when_not_landed(tmp_path, monkeypatch):
     text = _all_output(result)
     assert "Not landed yet" in text
     assert "Terminal tab is open" in text
-    # The browser reported the tab as opened, yet nothing landed: the URL is
-    # shown anyway so the user can open the tab that does the landing.
+    # The URL is always shown, opened or not: the user may need the tab that
+    # does the landing.
     assert "https://hops:8182/p/7?terminal=open" in text
     assert "claude --resume sid1" in text
     assert "Push marker" not in text
@@ -862,3 +862,31 @@ def test_reset_asks_before_touching_anything(tmp_path, monkeypatch):
     result = runner.invoke(session.session_group, ["reset"], input="n\n")
     assert result.exit_code != 0
     assert ds.removed == [] and forgot == []
+
+
+@pytest.mark.parametrize(
+    ("opened", "lead"), [(True, "Opening the terminal"), (False, "Open the terminal")]
+)
+def test_the_terminal_url_is_shown_whatever_the_browser_said(
+    tmp_path, monkeypatch, opened, lead
+):
+    runner, ds, slug = _push_setup(tmp_path, monkeypatch, landed=True)
+    monkeypatch.setattr(session, "_open_browser", lambda url: opened)
+    result = runner.invoke(session.session_group, ["push"], catch_exceptions=False)
+    text = _all_output(result)
+    assert lead in text and "https://hops:8182/p/7?terminal=open" in text
+
+
+def test_open_browser_trusts_xdg_open_exit_status_not_a_started_process(monkeypatch):
+    calls = []
+
+    class _Done:
+        def __init__(self, rc):
+            self.returncode = rc
+
+    monkeypatch.setattr(session.shutil, "which", lambda name: "/usr/bin/xdg-open")
+    monkeypatch.setattr(
+        session.subprocess, "run", lambda *a, **k: calls.append(a[0]) or _Done(3)
+    )
+    assert session._open_browser("https://h/p/1?terminal=open") is False
+    assert calls == [["/usr/bin/xdg-open", "https://h/p/1?terminal=open"]]
