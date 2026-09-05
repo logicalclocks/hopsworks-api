@@ -519,8 +519,8 @@ def _choose_method(
     output.info("  [1] an existing SSH private key")
     if can_generate:
         output.info(
-            "  [2] a new passphrase-free SSH key created for Hopsworks "
-            "(added to GitHub with gh when it is logged in)"
+            "  [2] a new passphrase-free SSH key created for Hopsworks and "
+            "registered with GitHub. Prerequisite: 'gh' must be installed."
         )
     else:
         output.info(
