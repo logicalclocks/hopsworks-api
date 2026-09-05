@@ -142,8 +142,9 @@ class ProjectApi:
         query_params = {"projectName": name}
         headers = {"content-type": "application/json"}
 
-        # No "services": the backend decides which services a project gets, and adds the
-        # ones the cluster runs (Trino, Superset). A client list only ever went stale;
+        # No "services" key.
+        # The backend decides which services a project gets.
+        # It adds the ones the cluster runs, such as Trino and Superset.
         # hopsworks-ee#3299 defaults the set for a request that names none.
         data = {
             "projectName": name,
