@@ -12,6 +12,7 @@ methods where available.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 import click
@@ -114,7 +115,7 @@ def connector_create() -> None:
     """Create a storage connector (subcommand per backend)."""
 
 
-@connector_create.command("jdbc")
+@connector_create.command("jdbc", help="Register a JDBC connector.")
 @click.argument("name")
 @click.option("--url", required=True, help="JDBC connection URL.")
 @click.option("--user", help='Connection user, stored as "user".')
@@ -155,7 +156,7 @@ def connector_create_jdbc(
     _create_connector(ctx, body)
 
 
-@connector_create.command("s3")
+@connector_create.command("s3", help="Register an S3 connector.")
 @click.argument("name")
 @click.option("--bucket", required=True, help="S3 bucket name.")
 @click.option("--access-key", help="AWS access key ID.")
@@ -199,7 +200,7 @@ def connector_create_s3(
     _create_connector(ctx, body)
 
 
-@connector_create.command("snowflake")
+@connector_create.command("snowflake", help="Register a Snowflake connector.")
 @click.argument("name")
 @click.option("--url", required=True, help="Snowflake account URL.")
 @click.option("--user", required=True, help="User name.")
@@ -253,7 +254,7 @@ def connector_create_snowflake(
     _create_connector(ctx, body)
 
 
-@connector_create.command("bigquery")
+@connector_create.command("bigquery", help="Register a BigQuery connector.")
 @click.argument("name")
 @click.option("--project-id", "project_id", required=True, help="GCP project ID.")
 @click.option("--dataset", help="BigQuery dataset.")
@@ -292,7 +293,7 @@ def connector_create_bigquery(
     _create_connector(ctx, body)
 
 
-@connector_create.command("mongodb")
+@connector_create.command("mongodb", help="Register a MongoDB connector.")
 @click.argument("name")
 @click.option(
     "--connection-string",
@@ -376,6 +377,538 @@ def connector_create_mongodb(
     if auth_mechanism:
         body["authMechanism"] = auth_mechanism
     _create_connector(ctx, body)
+
+
+# region Connector specs
+#
+# The five commands above are written out by hand; the thirteen below differ only in
+# their fields, so they are declared and built rather than copied. Each entry names the
+# DTO Jackson expects on ``type``, the ``storageConnectorType`` enum value, and the
+# options, whose ``json`` is the DTO property (dotted for the payloads that nest).
+
+
+@dataclass(frozen=True)
+class _Opt:
+    """One CLI option and the connector property it fills."""
+
+    flag: str
+    json: str
+    help: str
+    required: bool = False
+    kind: str = "str"
+    choices: tuple[str, ...] = ()
+    default: str | None = None
+
+
+@dataclass(frozen=True)
+class _Spec:
+    """A connector type: what to send, and what to ask for."""
+
+    dto: str
+    connector_type: str
+    summary: str
+    opts: tuple[_Opt, ...]
+    epilog: str = ""
+
+
+_ARGS = _Opt(
+    "--argument",
+    "arguments",
+    'Extra connector argument as "key=value". Repeat for several.',
+    kind="args",
+)
+
+_SPECS: dict[str, _Spec] = {
+    "hopsfs": _Spec(
+        "featurestoreHopsfsConnectorDTO",
+        "HOPSFS",
+        "Register a HopsFS connector over a project dataset.",
+        (
+            _Opt(
+                "--dataset",
+                "datasetName",
+                "Dataset the connector reads and writes.",
+                required=True,
+            ),
+        ),
+    ),
+    "redshift": _Spec(
+        "featurestoreRedshiftConnectorDTO",
+        "REDSHIFT",
+        "Register an Amazon Redshift connector.",
+        (
+            _Opt(
+                "--cluster-identifier",
+                "clusterIdentifier",
+                "Redshift cluster identifier.",
+                required=True,
+            ),
+            _Opt("--database", "databaseName", "Database name."),
+            _Opt(
+                "--endpoint", "databaseEndpoint", "Cluster endpoint, without the port."
+            ),
+            _Opt("--port", "databasePort", "Database port.", kind="int"),
+            _Opt("--user", "databaseUserName", "Database user."),
+            _Opt(
+                "--password",
+                "databasePassword",
+                "Database password. Omit when using --iam-role.",
+            ),
+            _Opt("--iam-role", "iamRole", "IAM role to assume instead of a password."),
+            _Opt("--group", "databaseGroup", "Database group."),
+            _Opt("--driver", "databaseDriver", "JDBC driver class."),
+            _Opt("--table", "tableName", "Default table."),
+            _Opt(
+                "--auto-create",
+                "autoCreate",
+                "Let Redshift create the user on connect.",
+                kind="flag",
+            ),
+            _ARGS,
+        ),
+    ),
+    "adls": _Spec(
+        "featurestoreADLSConnectorDTO",
+        "ADLS",
+        "Register an Azure Data Lake Storage connector.",
+        (
+            _Opt(
+                "--account-name", "accountName", "Storage account name.", required=True
+            ),
+            _Opt("--container-name", "containerName", "Container name.", required=True),
+            _Opt("--generation", "generation", "ADLS generation, 1 or 2.", kind="int"),
+            _Opt("--directory-id", "directoryId", "Azure AD directory (tenant) id."),
+            _Opt("--application-id", "applicationId", "Application (client) id."),
+            _Opt(
+                "--service-credential",
+                "serviceCredential",
+                "Service principal credential.",
+            ),
+        ),
+    ),
+    "kafka": _Spec(
+        "featureStoreKafkaConnectorDTO",
+        "KAFKA",
+        "Register an external Kafka connector.",
+        (
+            _Opt(
+                "--bootstrap-servers",
+                "bootstrapServers",
+                "Comma-separated broker list.",
+                required=True,
+            ),
+            _Opt(
+                "--security-protocol",
+                "securityProtocol",
+                "Broker security protocol.",
+                choices=("PLAINTEXT", "SSL", "SASL_PLAINTEXT", "SASL_SSL"),
+            ),
+            _Opt(
+                "--ssl-truststore-location",
+                "sslTruststoreLocation",
+                "Truststore, as a full HopsFS path.",
+            ),
+            _Opt(
+                "--ssl-truststore-password",
+                "sslTruststorePassword",
+                "Truststore password.",
+            ),
+            _Opt(
+                "--ssl-keystore-location",
+                "sslKeystoreLocation",
+                "Keystore, as a full HopsFS path.",
+            ),
+            _Opt(
+                "--ssl-keystore-password", "sslKeystorePassword", "Keystore password."
+            ),
+            _Opt("--ssl-key-password", "sslKeyPassword", "Key password."),
+            _Opt(
+                "--ssl-endpoint-identification-algorithm",
+                "sslEndpointIdentificationAlgorithm",
+                'Endpoint identification algorithm. "" turns hostname verification off.',
+                # The backend upper-cases this without a null check, so omitting it
+                # answers 500 rather than a validation error.
+                default="HTTPS",
+                choices=("HTTPS", ""),
+            ),
+            _Opt(
+                "--external",
+                "externalKafka",
+                "Cluster is outside Hopsworks.",
+                kind="flag",
+            ),
+        ),
+    ),
+    "gcs": _Spec(
+        "featureStoreGcsConnectorDTO",
+        "GCS",
+        "Register a Google Cloud Storage connector.",
+        (
+            _Opt("--bucket", "bucket", "GCS bucket.", required=True),
+            _Opt(
+                "--key-path",
+                "keyPath",
+                "Service-account key file, as a full HopsFS path "
+                "(/Projects/<project>/Resources/key.json).",
+                required=True,
+            ),
+            _Opt(
+                "--algorithm",
+                "algorithm",
+                "Customer-supplied encryption algorithm.",
+                choices=("AES256",),
+            ),
+            _Opt(
+                "--encryption-key", "encryptionKey", "Customer-supplied encryption key."
+            ),
+            _Opt(
+                "--encryption-key-hash",
+                "encryptionKeyHash",
+                "Hash of the encryption key.",
+            ),
+        ),
+    ),
+    "opensearch": _Spec(
+        "featurestoreOpensearchConnectorDTO",
+        "OPENSEARCH",
+        "Register an OpenSearch connector.",
+        (
+            _Opt("--host", "host", "OpenSearch host.", required=True),
+            _Opt("--port", "port", "OpenSearch port.", kind="int"),
+            _Opt("--scheme", "scheme", "http or https.", choices=("http", "https")),
+            _Opt("--user", "username", "User name."),
+            _Opt("--password", "password", "Password."),
+            _Opt(
+                "--truststore-path",
+                "trustStorePath",
+                "Truststore, as a full HopsFS path.",
+            ),
+            _Opt("--truststore-password", "trustStorePassword", "Truststore password."),
+            _Opt("--no-verify", "verify", "Skip TLS verification.", kind="flag_false"),
+            _ARGS,
+        ),
+    ),
+    "sql": _Spec(
+        "featurestoreSqlConnectorDTO",
+        "SQL",
+        "Register a SQL database connector.",
+        (
+            _Opt(
+                "--database-type",
+                "databaseType",
+                "Database engine.",
+                required=True,
+                choices=("MYSQL", "POSTGRESQL", "ORACLE"),
+            ),
+            _Opt("--host", "host", "Database host.", required=True),
+            _Opt("--port", "port", "Database port.", kind="int"),
+            _Opt("--database", "database", "Database name."),
+            _Opt("--user", "user", "Database user."),
+            _Opt("--password", "password", "Database password."),
+            _Opt(
+                "--wallet-path", "walletPath", "Oracle wallet, as a full HopsFS path."
+            ),
+            _Opt("--wallet-password", "walletPassword", "Oracle wallet password."),
+            _ARGS,
+        ),
+    ),
+    "sap-hana": _Spec(
+        "featureStoreSapHanaConnectorDTO",
+        "SAP_HANA",
+        "Register an SAP HANA connector.",
+        (
+            _Opt("--host", "host", "HANA host.", required=True),
+            _Opt("--port", "port", "HANA port.", kind="int"),
+            _Opt("--database", "database", "Database name."),
+            _Opt("--schema", "schema", "Schema name."),
+            _Opt("--table", "table", "Default table."),
+            _Opt("--user", "user", "User name."),
+            _Opt("--password", "password", "Password."),
+            _Opt("--application", "application", "Application name reported to HANA."),
+            _ARGS,
+        ),
+    ),
+    "unity-catalog": _Spec(
+        "featurestoreUnityCatalogConnectorDTO",
+        "UNITY_CATALOG",
+        "Register a Databricks Unity Catalog connector.",
+        (
+            _Opt(
+                "--workspace-url",
+                "workspaceUrl",
+                "Databricks workspace URL.",
+                required=True,
+            ),
+            _Opt(
+                "--auth-method",
+                "authMethod",
+                "Authentication method.",
+                choices=("PAT", "OAUTH_M2M"),
+            ),
+            _Opt(
+                "--access-token",
+                "accessToken",
+                "Personal access token, for --auth-method PAT.",
+            ),
+            _Opt(
+                "--client-id",
+                "clientId",
+                "Service principal id, for --auth-method OAUTH_M2M.",
+            ),
+            _Opt(
+                "--client-secret",
+                "clientSecret",
+                "Service principal secret, for --auth-method OAUTH_M2M.",
+            ),
+            _Opt(
+                "--default-catalog",
+                "defaultCatalog",
+                "Catalog used when a query names none.",
+            ),
+            _Opt("--aws-region", "awsRegion", "AWS region of the workspace."),
+            _Opt("--account-id", "accountId", "Databricks account id."),
+            _Opt("--account-host", "accountHost", "Databricks account host."),
+            _ARGS,
+        ),
+    ),
+    "glue": _Spec(
+        "featurestoreGlueConnectorDTO",
+        "GLUE",
+        "Register an AWS Glue Data Catalog connector.",
+        (
+            _Opt("--database", "database", "Glue database.", required=True),
+            _Opt("--region", "region", "AWS region.", required=True),
+            _Opt(
+                "--catalog-id",
+                "catalogId",
+                "Glue catalog id; defaults to the account's.",
+            ),
+            _Opt("--iam-role", "iamRole", "IAM role to assume."),
+            _Opt("--access-key", "accessKey", "AWS access key id."),
+            _Opt("--secret-key", "secretKey", "AWS secret access key."),
+            _Opt("--session-token", "sessionToken", "AWS session token."),
+            _ARGS,
+        ),
+    ),
+    "google-sheets": _Spec(
+        "featurestoreGoogleSheetsConnectorDTO",
+        "GOOGLE_SHEETS",
+        "Register a Google Sheets connector.",
+        (
+            _Opt(
+                "--spreadsheet-id",
+                "spreadsheetId",
+                "Spreadsheet id from its URL.",
+                required=True,
+            ),
+            _Opt(
+                "--key-path",
+                "keyPath",
+                "Service-account key file, as a full HopsFS path "
+                "(/Projects/<project>/Resources/key.json).",
+                required=True,
+            ),
+        ),
+    ),
+    "rest": _Spec(
+        "featurestoreRESTConnectorDTO",
+        "REST",
+        "Register a REST API connector.",
+        (
+            _Opt(
+                "--base-url",
+                "clientConfig.baseUrl",
+                "Base URL every request is built on.",
+                required=True,
+            ),
+            _Opt(
+                "--auth-type",
+                "authConfig.authType",
+                "How requests authenticate.",
+                required=True,
+                choices=(
+                    "NONE",
+                    "API_KEY",
+                    "BEARER_TOKEN",
+                    "HTTP_BASIC",
+                    "OAUTH2_CLIENT",
+                ),
+            ),
+            _Opt("--api-key", "authConfig.apiKey", "API key, for --auth-type API_KEY."),
+            _Opt(
+                "--bearer-token",
+                "authConfig.bearerToken",
+                "Token, for --auth-type BEARER_TOKEN.",
+            ),
+            _Opt(
+                "--user",
+                "authConfig.username",
+                "User name, for --auth-type HTTP_BASIC.",
+            ),
+            _Opt(
+                "--password",
+                "authConfig.password",
+                "Password, for --auth-type HTTP_BASIC.",
+            ),
+            _Opt(
+                "--client-id",
+                "authConfig.clientId",
+                "Client id, for --auth-type OAUTH2_CLIENT.",
+            ),
+            _Opt(
+                "--client-secret",
+                "authConfig.clientSecret",
+                "Client secret, for --auth-type OAUTH2_CLIENT.",
+            ),
+            _Opt(
+                "--access-token",
+                "authConfig.accessToken",
+                "Access token, for --auth-type OAUTH2_CLIENT.",
+            ),
+            _Opt(
+                "--access-token-url",
+                "authConfig.accessTokenUrl",
+                "Token endpoint, for --auth-type OAUTH2_CLIENT.",
+            ),
+            _Opt(
+                "--token-timeout-minutes",
+                "authConfig.defaultTokenTimeoutMinutes",
+                "Minutes before a fetched token is refreshed.",
+                kind="int",
+            ),
+        ),
+        epilog="Example: hops datasource create rest weather --base-url https://api.example.com --auth-type API_KEY --api-key KEY",
+    ),
+    "crm": _Spec(
+        "featurestoreCRMConnectorDTO",
+        "CRM",
+        "Register a CRM or analytics connector.",
+        (
+            _Opt(
+                "--crm-type",
+                "crmType",
+                "Which service to connect to; it decides which other options apply.",
+                required=True,
+                choices=(
+                    "HUBSPOT",
+                    "SALESFORCE",
+                    "PIPEDRIVE",
+                    "FACEBOOK_ADS",
+                    "FRESHDESK",
+                    "GOOGLE_ADS",
+                    "GOOGLE_ANALYTICS",
+                    "SHOPIFY",
+                ),
+            ),
+            _Opt(
+                "--api-key",
+                "apiKey",
+                "API key or token. Required except for GOOGLE_ADS, GOOGLE_ANALYTICS and SHOPIFY.",
+            ),
+            _Opt("--user", "username", "User name, for SALESFORCE."),
+            _Opt("--password", "password", "Password, for SALESFORCE."),
+            _Opt("--account-id", "accountId", "Ad account id, for FACEBOOK_ADS."),
+            _Opt("--domain", "domain", "Account domain, for FRESHDESK."),
+            _Opt(
+                "--key-path",
+                "keyPath",
+                "Service-account key file as a full HopsFS path, for GOOGLE_ADS and GOOGLE_ANALYTICS.",
+            ),
+            _Opt("--property-id", "propertyId", "Property id, for GOOGLE_ANALYTICS."),
+            _Opt("--dev-token", "devToken", "Developer token, for GOOGLE_ADS."),
+            _Opt("--customer-id", "customerId", "Customer id, for GOOGLE_ADS."),
+            _Opt(
+                "--impersonated-email",
+                "impersonatedEmail",
+                "Impersonated user, for GOOGLE_ADS.",
+            ),
+            _Opt("--refresh-token", "refreshToken", "Refresh token, for GOOGLE_ADS."),
+            _Opt("--shop-url", "shopUrl", "Shop URL, for SHOPIFY."),
+            _Opt(
+                "--private-app-password",
+                "privateAppPassword",
+                "Private app password, for SHOPIFY.",
+            ),
+        ),
+    ),
+}
+
+
+def _set_path(body: dict[str, Any], path: str, value: Any) -> None:
+    """Assign ``value`` at a dotted ``path``, creating the objects it walks through."""
+    keys = path.split(".")
+    for key in keys[:-1]:
+        body = body.setdefault(key, {})
+    body[keys[-1]] = value
+
+
+def _parse_arguments(values: tuple[str, ...]) -> list[dict[str, str]]:
+    """Turn repeated ``key=value`` options into the arguments list connectors take."""
+    parsed = []
+    for item in values:
+        key, sep, value = item.partition("=")
+        if not sep or not key:
+            raise click.BadParameter(
+                f'expected "key=value", got {item!r}', param_hint="--argument"
+            )
+        parsed.append({"name": key, "value": value})
+    return parsed
+
+
+def _build_create_command(name: str, spec: _Spec) -> click.Command:
+    """Build the ``create <name>`` command for one connector type."""
+
+    def run(
+        ctx: click.Context, connector_name: str, description: str, **values: Any
+    ) -> None:
+        body: dict[str, Any] = {
+            "type": spec.dto,
+            "name": connector_name,
+            "storageConnectorType": spec.connector_type,
+            "description": description,
+        }
+        for opt in spec.opts:
+            value = values.get(opt.flag.lstrip("-").replace("-", "_"))
+            if value is None or value == () or (opt.kind == "flag" and not value):
+                continue
+            if opt.kind == "args":
+                _set_path(body, opt.json, _parse_arguments(value))
+            elif opt.kind == "flag_false":
+                _set_path(body, opt.json, False)
+            else:
+                _set_path(body, opt.json, value)
+        _create_connector(ctx, body)
+
+    # Click renders a command's docstring as its help, so the docstring is the
+    # summary alone; the options carry their own help and the parameters are
+    # generated, which leaves nothing for an Args section to say.
+    run.__doc__ = spec.summary
+    cmd = click.pass_context(run)
+    cmd = click.option("--description", default="", help="Free-form description.")(cmd)
+    for opt in reversed(spec.opts):
+        if opt.kind in ("flag", "flag_false"):
+            cmd = click.option(opt.flag, is_flag=True, help=opt.help)(cmd)
+        elif opt.kind == "args":
+            cmd = click.option(opt.flag, multiple=True, help=opt.help)(cmd)
+        else:
+            cmd = click.option(
+                opt.flag,
+                required=opt.required,
+                default=opt.default,
+                show_default=opt.default is not None,
+                type=click.Choice(opt.choices)
+                if opt.choices
+                else (int if opt.kind == "int" else str),
+                help=opt.help,
+            )(cmd)
+    cmd = click.argument("connector_name", metavar="NAME")(cmd)
+    return click.command(name, short_help=spec.summary, epilog=spec.epilog or None)(cmd)
+
+
+for _name, _spec in _SPECS.items():
+    connector_create.add_command(_build_create_command(_name, _spec))
+
+# endregion
 
 
 @datasource_group.command("delete")
