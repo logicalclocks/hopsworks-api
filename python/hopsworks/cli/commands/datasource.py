@@ -12,10 +12,13 @@ methods where available.
 
 from __future__ import annotations
 
+import re
+import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import click
+from click.core import ParameterSource
 from hopsworks.cli import output, session
 
 
@@ -111,6 +114,80 @@ def _connector_to_dict(sc: Any) -> dict[str, Any]:
     }
 
 
+# region Secret options
+#
+# A secret never has to travel on the command line. Every secret option also
+# reads ``HOPSWORKS_DS_<CONNECTOR>_<OPTION>`` from the environment, scoped to
+# the connector type so a variable exported for one connector cannot ride along
+# on another; accepts ``-`` to read one line from stdin; and, when required and
+# stdin is a terminal, asks for the value without echo.
+
+_SECRET_ENV_PREFIX = "HOPSWORKS_DS_"
+_STDIN_SECRET_KEY = "hops.datasource.secret_from_stdin"
+
+
+def _dest(flag: str) -> str:
+    """The keyword Click passes a ``--some-flag`` or ``--on/--off`` option under."""
+    return flag.split("/")[0].lstrip("-").replace("-", "_")
+
+
+def _env(connector: str, flag: str) -> str:
+    return f"{_SECRET_ENV_PREFIX}{connector.upper().replace('-', '_')}_{_dest(flag).upper()}"
+
+
+def _read_secret(
+    ctx: click.Context, param: click.Parameter, value: str | None, required: bool
+) -> str | None:
+    """Resolve a secret option at parse time.
+
+    ``-`` reads one line from stdin, once per command since stdin is consumed.
+    A required secret that was not given is prompted for without echo when
+    stdin is a terminal, and is a missing option otherwise, so a script or an
+    agent gets an error instead of a hang.
+    """
+    flag = param.opts[0]
+    if value == "-":
+        taken = ctx.meta.get(_STDIN_SECRET_KEY)
+        if taken:
+            raise click.UsageError(
+                f"Only one secret can be read from stdin; {taken} already was.", ctx
+            )
+        ctx.meta[_STDIN_SECRET_KEY] = flag
+        value = sys.stdin.readline().rstrip("\r\n")
+        if not value:
+            raise click.BadParameter("stdin was empty", ctx=ctx, param=param)
+    if value is None and required:
+        if _interactive():
+            value = click.prompt(flag.lstrip("-").replace("-", " "), hide_input=True)
+        else:
+            raise click.MissingParameter(ctx=ctx, param=param)
+    return value
+
+
+def _interactive() -> bool:
+    return sys.stdin.isatty()
+
+
+def _secret_option(
+    connector: str, flag: str, help: str, required: bool = False
+) -> Callable[[Any], Any]:
+    """``click.option`` for a secret-bearing option of ``connector``."""
+
+    def callback(ctx: click.Context, param: click.Parameter, value: str | None):
+        return _read_secret(ctx, param, value, required)
+
+    return click.option(
+        flag,
+        envvar=_env(connector, flag),
+        show_envvar=True,
+        callback=callback,
+        help=f"{help} Pass - to read it from stdin.",
+    )
+
+
+# endregion
+
+
 # region Write commands
 
 
@@ -123,12 +200,7 @@ def connector_create() -> None:
 @click.argument("name")
 @click.option("--url", required=True, help="JDBC connection URL.")
 @click.option("--user", help='Connection user, stored as "user".')
-@click.option(
-    "--password",
-    envvar="HOPSWORKS_DS_PASSWORD",
-    show_envvar=True,
-    help='Connection password, stored as "password".',
-)
+@_secret_option("jdbc", "--password", 'Connection password, stored as "password".')
 @click.option("--description", default="", help="Free-form description.")
 @click.pass_context
 def connector_create_jdbc(
@@ -169,12 +241,7 @@ def connector_create_jdbc(
 @click.argument("name")
 @click.option("--bucket", required=True, help="S3 bucket name.")
 @click.option("--access-key", help="AWS access key ID.")
-@click.option(
-    "--secret-key",
-    envvar="HOPSWORKS_DS_SECRET_KEY",
-    show_envvar=True,
-    help="AWS secret access key.",
-)
+@_secret_option("s3", "--secret-key", "AWS secret access key.")
 @click.option("--region", help="AWS region.")
 @click.option("--description", default="", help="Free-form description.")
 @click.pass_context
@@ -218,13 +285,7 @@ def connector_create_s3(
 @click.argument("name")
 @click.option("--url", required=True, help="Snowflake account URL.")
 @click.option("--user", required=True, help="User name.")
-@click.option(
-    "--password",
-    required=True,
-    envvar="HOPSWORKS_DS_PASSWORD",
-    show_envvar=True,
-    help="Password.",
-)
+@_secret_option("snowflake", "--password", "Password.", required=True)
 @click.option("--database", required=True, help="Database name.")
 @click.option("--schema", "db_schema", required=True, help="Schema name.")
 @click.option("--warehouse", required=True, help="Warehouse name.")
@@ -332,8 +393,8 @@ class _Opt:
     ``kind`` is ``str``, ``int``, ``flag`` (sent only when set), ``bool`` (an
     on/off pair, sent only when either is given) or ``args`` (repeatable
     ``key=value``, sent as the connector's argument list).
-    A ``secret`` option can also be read from ``HOPSWORKS_DS_<OPTION>`` so the
-    value stays out of the process arguments and the shell history.
+    A ``secret`` option also reads ``HOPSWORKS_DS_<CONNECTOR>_<OPTION>`` and
+    accepts ``-`` for stdin, so the value never has to be an argument.
     """
 
     flag: str
@@ -356,15 +417,6 @@ class _Spec:
     opts: tuple[_Opt, ...]
     check: Callable[[dict[str, Any]], str | None] | None = None
     epilog: str = ""
-
-
-def _dest(flag: str) -> str:
-    """The keyword Click passes a ``--some-flag`` or ``--on/--off`` option under."""
-    return flag.split("/")[0].lstrip("-").replace("-", "_")
-
-
-def _env(flag: str) -> str:
-    return _SECRET_ENV_PREFIX + _dest(flag).upper()
 
 
 def _given(values: dict[str, Any], flag: str) -> bool:
@@ -408,16 +460,28 @@ def _check_adls(v: dict[str, Any]) -> str | None:
     )
 
 
+_KAFKA_SSL_FLAGS = (
+    "--ssl-truststore-location",
+    "--ssl-truststore-password",
+    "--ssl-keystore-location",
+    "--ssl-keystore-password",
+    "--ssl-key-password",
+)
+
+
 def _check_kafka(v: dict[str, Any]) -> str | None:
-    if v["security_protocol"] != "SSL":
-        return None
-    return _needs(
-        v,
-        "--security-protocol SSL",
-        "--ssl-truststore-location",
-        "--ssl-keystore-location",
-        "--ssl-key-password",
-    )
+    protocol = v["security_protocol"]
+    if protocol == "SSL":
+        return _needs(
+            v,
+            "--security-protocol SSL",
+            "--ssl-truststore-location",
+            "--ssl-keystore-location",
+            "--ssl-key-password",
+        )
+    if protocol.endswith("PLAINTEXT"):
+        return _refuses(v, f"--security-protocol {protocol}", *_KAFKA_SSL_FLAGS)
+    return None
 
 
 def _check_gcs(v: dict[str, Any]) -> str | None:
@@ -429,7 +493,10 @@ def _check_gcs(v: dict[str, Any]) -> str | None:
 def _check_sql(v: dict[str, Any]) -> str | None:
     if v["database_type"] == "ORACLE":
         return _one_of(v, "--database-type ORACLE", "--host", "--wallet-path")
-    return _needs(v, f"--database-type {v['database_type']}", "--host")
+    context = f"--database-type {v['database_type']}"
+    return _needs(v, context, "--host") or _refuses(
+        v, context, "--wallet-path", "--wallet-password"
+    )
 
 
 _UC_OAUTH_FLAGS = (
@@ -464,12 +531,18 @@ def _check_unity_catalog(v: dict[str, Any]) -> str | None:
 
 def _check_glue(v: dict[str, Any]) -> str | None:
     if _given(v, "--iam-role"):
-        return _refuses(v, "--iam-role", "--access-key", "--secret-key")
+        return _refuses(
+            v, "--iam-role", "--access-key", "--secret-key", "--session-token"
+        )
     if _given(v, "--access-key") or _given(v, "--secret-key"):
         return _needs(v, "AWS access keys", "--access-key", "--secret-key")
+    if _given(v, "--session-token"):
+        return _needs(v, "--session-token", "--access-key", "--secret-key")
     return None
 
 
+# Required, then optional, per auth type; every other auth option is refused,
+# so a credential meant for another mode (or another shell) is never stored.
 _REST_AUTH_NEEDS = {
     "NONE": (),
     "API_KEY": ("--api-key",),
@@ -477,11 +550,20 @@ _REST_AUTH_NEEDS = {
     "HTTP_BASIC": ("--user", "--password"),
     "OAUTH2_CLIENT": ("--access-token-url", "--client-id", "--client-secret"),
 }
+_REST_AUTH_OPTIONAL = {"OAUTH2_CLIENT": ("--access-token", "--token-timeout-minutes")}
+_REST_AUTH_FLAGS = frozenset(
+    f
+    for flags in (*_REST_AUTH_NEEDS.values(), *_REST_AUTH_OPTIONAL.values())
+    for f in flags
+)
 
 
 def _check_rest(v: dict[str, Any]) -> str | None:
     auth = v["auth_type"]
-    return _needs(v, f"--auth-type {auth}", *_REST_AUTH_NEEDS[auth])
+    allowed = {*_REST_AUTH_NEEDS[auth], *_REST_AUTH_OPTIONAL.get(auth, ())}
+    return _needs(v, f"--auth-type {auth}", *_REST_AUTH_NEEDS[auth]) or _refuses(
+        v, f"--auth-type {auth}", *sorted(_REST_AUTH_FLAGS - allowed)
+    )
 
 
 _CRM_NEEDS = {
@@ -502,9 +584,14 @@ _CRM_NEEDS = {
 }
 
 
+_CRM_FLAGS = frozenset(f for flags in _CRM_NEEDS.values() for f in flags)
+
+
 def _check_crm(v: dict[str, Any]) -> str | None:
     crm = v["crm_type"]
-    return _needs(v, f"--crm-type {crm}", *_CRM_NEEDS[crm])
+    return _needs(v, f"--crm-type {crm}", *_CRM_NEEDS[crm]) or _refuses(
+        v, f"--crm-type {crm}", *sorted(_CRM_FLAGS - set(_CRM_NEEDS[crm]))
+    )
 
 
 def _check_mongodb(v: dict[str, Any]) -> str | None:
@@ -1075,6 +1162,14 @@ def _set_path(body: dict[str, Any], path: str, value: Any) -> None:
     body[keys[-1]] = value
 
 
+# Connector arguments are stored in a plain-text column and returned by the API,
+# so a credential must not travel in one (Kafka's sasl.jaas.config is the usual
+# offender); the connector's own secret options go to the secret store instead.
+_CREDENTIAL_KEY = re.compile(
+    r"(?i)(password|passwd|secret|token|credential|jaas|api[._-]?key|private[._-]?key)"
+)
+
+
 def _parse_arguments(flag: str, values: tuple[str, ...]) -> list[dict[str, str]]:
     """Turn repeated ``key=value`` options into the list of name/value pairs connectors take."""
     parsed = []
@@ -1084,15 +1179,21 @@ def _parse_arguments(flag: str, values: tuple[str, ...]) -> list[dict[str, str]]
             raise click.BadParameter(
                 f'expected "key=value", got {item!r}', param_hint=flag
             )
+        if _CREDENTIAL_KEY.search(key):
+            raise click.BadParameter(
+                f"{key!r} looks like a credential, and connector arguments are stored "
+                f"and returned in plain text; use the connector's own secret options.",
+                param_hint=flag,
+            )
         parsed.append({"name": key, "value": value})
     return parsed
 
 
-def _option(opt: _Opt) -> Callable[[Any], Any]:
-    """The ``click.option`` decorator for one spec option."""
-    kwargs: dict[str, Any] = {"help": opt.help}
+def _option(opt: _Opt, connector: str) -> Callable[[Any], Any]:
+    """The ``click.option`` decorator for one spec option of ``connector``."""
     if opt.secret:
-        kwargs.update(envvar=_env(opt.flag), show_envvar=True)
+        return _secret_option(connector, opt.flag, opt.help, opt.required)
+    kwargs: dict[str, Any] = {"help": opt.help}
     if opt.kind == "flag":
         return click.option(opt.flag, is_flag=True, **kwargs)
     if opt.kind == "bool":
@@ -1119,6 +1220,18 @@ def _build_create_command(name: str, spec: _Spec) -> click.Command:
     ) -> None:
         problem = spec.check(values) if spec.check else None
         if problem:
+            # A refused credential that arrived from the environment is invisible
+            # on the command line, so say where it came from.
+            from_env = [
+                f"{opt.flag} came from ${_env(name, opt.flag)}"
+                for opt in spec.opts
+                if opt.secret
+                and opt.flag in problem
+                and ctx.get_parameter_source(_dest(opt.flag))
+                is ParameterSource.ENVIRONMENT
+            ]
+            if from_env:
+                problem += " (" + "; ".join(from_env) + ")"
             raise click.UsageError(problem, ctx)
         body: dict[str, Any] = {
             "type": spec.dto,
@@ -1142,7 +1255,7 @@ def _build_create_command(name: str, spec: _Spec) -> click.Command:
     cmd = click.pass_context(run)
     cmd = click.option("--description", default="", help="Free-form description.")(cmd)
     for opt in reversed(spec.opts):
-        cmd = _option(opt)(cmd)
+        cmd = _option(opt, name)(cmd)
     cmd = click.argument("connector_name", metavar="NAME")(cmd)
     return click.command(name, short_help=spec.summary, epilog=spec.epilog or None)(cmd)
 

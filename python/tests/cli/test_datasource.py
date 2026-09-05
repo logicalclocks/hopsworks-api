@@ -293,20 +293,198 @@ def test_opensearch_tls_flag_is_not_the_cli_wide_no_verify():
     assert [call.args[2] for call in cb.call_args_list] == [False, None]
 
 
-def test_secrets_are_read_from_the_environment_when_not_passed():
+def test_secrets_are_read_from_the_connector_scoped_environment_variable():
     body = _create(
         ["sap-hana", "n", "--host", "h", "--user", "u"],
-        env={"HOPSWORKS_DS_PASSWORD": "from-env"},
+        env={"HOPSWORKS_DS_SAP_HANA_PASSWORD": "from-env"},
     )
 
     assert body["password"] == "from-env"
 
 
-def test_secret_options_name_their_environment_variable_in_help():
+def test_secret_options_name_their_environment_variable_and_stdin_in_help():
     result = CliRunner().invoke(cli, ["datasource", "create", "sql", "--help"])
 
-    assert "HOPSWORKS_DS_PASSWORD" in result.output
-    assert "HOPSWORKS_DS_WALLET_PASSWORD" in result.output
+    text = " ".join(result.output.split())
+    assert "HOPSWORKS_DS_SQL_PASSWORD" in text
+    assert "HOPSWORKS_DS_SQL_WALLET_PASSWORD" in text
+    assert "Pass - to read it from stdin" in text
+
+
+# Variables exported for other connectors, plus the unscoped names an earlier
+# revision used: none of them may reach a connector they were not meant for.
+_POLLUTED = {
+    "HOPSWORKS_DS_PASSWORD": "old-unscoped-password",
+    "HOPSWORKS_DS_API_KEY": "old-unscoped-key",
+    "HOPSWORKS_DS_SQL_PASSWORD": "sql-prod-secret",
+    "HOPSWORKS_DS_CRM_API_KEY": "hubspot-prod-key",
+    "HOPSWORKS_DS_S3_SECRET_KEY": "aws-secret",
+}
+
+
+def test_a_polluted_environment_leaves_other_connectors_alone():
+    body = _create(
+        ["rest", "public", "--base-url", "https://e.com", "--auth-type", "NONE"],
+        env=_POLLUTED,
+    )
+    assert body["authConfig"] == {"authType": "NONE"}
+
+    body = _create(["jdbc", "j", "--url", "jdbc:mysql://h/db"], env=_POLLUTED)
+    assert body["arguments"] == []
+
+    # A required secret is not satisfied by another connector's variable.
+    result, create = _invoke(
+        ["snowflake", "s", *_without(_MINIMAL["snowflake"], "--password")],
+        env=_POLLUTED,
+    )
+    assert result.exit_code == 2 and "--password" in result.output
+    create.assert_not_called()
+
+
+def test_a_credential_from_the_environment_that_the_mode_rejects_names_its_variable():
+    result, create = _invoke(
+        ["rest", "public", "--base-url", "https://e.com", "--auth-type", "NONE"],
+        env={"HOPSWORKS_DS_REST_API_KEY": "k"},
+    )
+
+    assert result.exit_code == 2
+    assert "--auth-type NONE does not take --api-key" in result.output
+    assert "HOPSWORKS_DS_REST_API_KEY" in result.output
+    create.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("argv", "refused"),
+    [
+        (
+            [
+                "rest",
+                "n",
+                "--base-url",
+                "https://a",
+                "--auth-type",
+                "NONE",
+                "--api-key",
+                "k",
+            ],
+            "--api-key",
+        ),
+        (
+            [
+                "rest",
+                "n",
+                "--base-url",
+                "https://a",
+                "--auth-type",
+                "API_KEY",
+                "--api-key",
+                "k",
+                "--password",
+                "p",
+            ],
+            "--password",
+        ),
+        (
+            ["crm", "n", "--crm-type", "HUBSPOT", "--api-key", "k", "--password", "p"],
+            "--password",
+        ),
+        (
+            [*["sql", "n"], *_MINIMAL["sql"], "--wallet-password", "w"],
+            "--wallet-password",
+        ),
+        (
+            [
+                "kafka",
+                "k",
+                "--bootstrap-servers",
+                "b",
+                "--security-protocol",
+                "PLAINTEXT",
+                "--ssl-key-password",
+                "p",
+            ],
+            "--ssl-key-password",
+        ),
+        ([*["glue", "n"], *_MINIMAL["glue"], "--session-token", "t"], "--access-key"),
+    ],
+)
+def test_credentials_outside_the_selected_mode_are_refused(argv, refused):
+    assert refused in _refused(argv)
+
+
+def test_a_secret_can_be_read_from_stdin():
+    with mock.patch.object(ds, "_create_connector") as create:
+        result = CliRunner().invoke(
+            cli,
+            [
+                "datasource",
+                "create",
+                "sap-hana",
+                "n",
+                "--host",
+                "h",
+                "--user",
+                "u",
+                "--password",
+                "-",
+            ],
+            input="from-stdin\n",
+        )
+
+    assert result.exit_code == 0, result.output
+    assert create.call_args.args[1]["password"] == "from-stdin"
+    assert "from-stdin" not in result.output
+
+
+def test_only_one_secret_can_come_from_stdin():
+    with mock.patch.object(ds, "_create_connector") as create:
+        result = CliRunner().invoke(
+            cli,
+            [
+                "datasource",
+                "create",
+                "sql",
+                "n",
+                *_MINIMAL["sql"],
+                "--password",
+                "-",
+                "--wallet-password",
+                "-",
+            ],
+            input="one\n",
+        )
+
+    assert result.exit_code == 2
+    assert "Only one secret can be read from stdin" in result.output
+    create.assert_not_called()
+
+
+def test_a_required_secret_is_prompted_for_without_echo_on_a_terminal(monkeypatch):
+    monkeypatch.setattr(ds, "_interactive", lambda: True)
+    with mock.patch.object(ds, "_create_connector") as create:
+        result = CliRunner().invoke(
+            cli,
+            ["datasource", "create", "sap-hana", "n", "--host", "h", "--user", "u"],
+            input="typed\n",
+        )
+
+    assert result.exit_code == 0, result.output
+    assert create.call_args.args[1]["password"] == "typed"
+    assert "typed" not in result.output
+
+
+@pytest.mark.parametrize(
+    "argument",
+    [
+        "sasl.jaas.config=PlainLoginModule required username=u password=p;",
+        "ssl.keystore.password=x",
+        "apiKey=k",
+    ],
+)
+def test_credential_bearing_connector_arguments_are_refused(argument):
+    output = _refused(["kafka", "k", *_MINIMAL["kafka"], "--option", argument])
+
+    assert "looks like a credential" in output
 
 
 def test_sql_oracle_takes_a_wallet_instead_of_a_host():
