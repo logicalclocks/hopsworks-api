@@ -13,10 +13,14 @@ methods where available.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import click
 from hopsworks.cli import output, session
+
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 @click.group("datasource")
@@ -119,7 +123,12 @@ def connector_create() -> None:
 @click.argument("name")
 @click.option("--url", required=True, help="JDBC connection URL.")
 @click.option("--user", help='Connection user, stored as "user".')
-@click.option("--password", help='Connection password, stored as "password".')
+@click.option(
+    "--password",
+    envvar="HOPSWORKS_DS_PASSWORD",
+    show_envvar=True,
+    help='Connection password, stored as "password".',
+)
 @click.option("--description", default="", help="Free-form description.")
 @click.pass_context
 def connector_create_jdbc(
@@ -160,7 +169,12 @@ def connector_create_jdbc(
 @click.argument("name")
 @click.option("--bucket", required=True, help="S3 bucket name.")
 @click.option("--access-key", help="AWS access key ID.")
-@click.option("--secret-key", help="AWS secret access key.")
+@click.option(
+    "--secret-key",
+    envvar="HOPSWORKS_DS_SECRET_KEY",
+    show_envvar=True,
+    help="AWS secret access key.",
+)
 @click.option("--region", help="AWS region.")
 @click.option("--description", default="", help="Free-form description.")
 @click.pass_context
@@ -204,7 +218,13 @@ def connector_create_s3(
 @click.argument("name")
 @click.option("--url", required=True, help="Snowflake account URL.")
 @click.option("--user", required=True, help="User name.")
-@click.option("--password", required=True, help="Password.")
+@click.option(
+    "--password",
+    required=True,
+    envvar="HOPSWORKS_DS_PASSWORD",
+    show_envvar=True,
+    help="Password.",
+)
 @click.option("--database", required=True, help="Database name.")
 @click.option("--schema", "db_schema", required=True, help="Schema name.")
 @click.option("--warehouse", required=True, help="Warehouse name.")
@@ -293,103 +313,28 @@ def connector_create_bigquery(
     _create_connector(ctx, body)
 
 
-@connector_create.command("mongodb", help="Register a MongoDB connector.")
-@click.argument("name")
-@click.option(
-    "--connection-string",
-    "connection_string",
-    required=True,
-    help="MongoDB URI (mongodb:// or mongodb+srv://) without embedded credentials.",
-)
-@click.option("--database", required=True, help="Database name.")
-@click.option("--collection", help="Default collection name.")
-@click.option("--user", help="Database user.")
-@click.option(
-    "--password", help="Database password (stored in the Hopsworks secret store)."
-)
-@click.option("--auth-source", "auth_source", help="MongoDB authSource (e.g. admin).")
-@click.option(
-    "--auth-mechanism",
-    "auth_mechanism",
-    help="MongoDB authMechanism (e.g. SCRAM-SHA-256).",
-)
-@click.option("--description", default="", help="Free-form description.")
-@click.pass_context
-def connector_create_mongodb(
-    ctx: click.Context,
-    name: str,
-    connection_string: str,
-    database: str,
-    collection: str | None,
-    user: str | None,
-    password: str | None,
-    auth_source: str | None,
-    auth_mechanism: str | None,
-    description: str,
-) -> None:
-    """Register a MongoDB connector.
-
-    The ``connection_string`` is a MongoDB URI without embedded credentials
-    (``mongodb://`` or ``mongodb+srv://``); ``user`` and ``password`` are
-    persisted into the Hopsworks secret store and spliced into the URI
-    server-side at read time.
-
-    Args:
-        ctx: Click context.
-        name: Connector name.
-        connection_string: MongoDB URI (`mongodb://host[:port]` or
-            `mongodb+srv://cluster.mongodb.net`) with no embedded
-            ``user:password@`` userinfo.
-        database: Default database the connector points at. The per-FG
-            ``DataSource.database`` overrides this at read time.
-        collection: Default collection (optional). Overridden per-FG by
-            ``DataSource.table``.
-        user: Database user. Persisted as a Hopsworks secret alongside
-            ``password`` and spliced into the URI at read time.
-        password: Database password. Persisted as a Hopsworks secret —
-            never logged or returned in connector responses.
-        auth_source: ``authSource`` URI parameter (typically ``admin``
-            for Atlas users created outside the target database).
-        auth_mechanism: ``authMechanism`` URI parameter (e.g.
-            ``SCRAM-SHA-256``, ``MONGODB-X509``). Leave unset to let the
-            server negotiate the default.
-        description: Free-form description shown in the data-source list.
-    """
-    # No MongoDB storage-connector subtype was confirmed against the backend
-    # (the FeaturestoreConnectorType enum has no MONGODB, and the live cluster
-    # rejects it), so the ``type`` discriminator the other connectors carry is
-    # left out here until a Mongo-capable backend confirms the right value.
-    body = {
-        "name": name,
-        "storageConnectorType": "MONGODB",
-        "connectionString": connection_string,
-        "database": database,
-        "description": description,
-    }
-    if collection:
-        body["collection"] = collection
-    if user:
-        body["user"] = user
-    if password:
-        body["password"] = password
-    if auth_source:
-        body["authSource"] = auth_source
-    if auth_mechanism:
-        body["authMechanism"] = auth_mechanism
-    _create_connector(ctx, body)
-
-
 # region Connector specs
 #
-# The five commands above are written out by hand; the thirteen below differ only in
+# The four commands above are written out by hand; the fourteen below differ only in
 # their fields, so they are declared and built rather than copied. Each entry names the
-# DTO Jackson expects on ``type``, the ``storageConnectorType`` enum value, and the
-# options, whose ``json`` is the DTO property (dotted for the payloads that nest).
+# DTO Jackson expects on ``type``, the ``storageConnectorType`` enum value, the options,
+# whose ``json`` is the DTO property (dotted for the payloads that nest), and a check
+# for the rules that hold between options, mirroring the backend's create validation
+# so a bad combination is refused before anything is sent.
+
+_SECRET_ENV_PREFIX = "HOPSWORKS_DS_"
 
 
 @dataclass(frozen=True)
 class _Opt:
-    """One CLI option and the connector property it fills."""
+    """One CLI option and the connector property it fills.
+
+    ``kind`` is ``str``, ``int``, ``flag`` (sent only when set), ``bool`` (an
+    on/off pair, sent only when either is given) or ``args`` (repeatable
+    ``key=value``, sent as the connector's argument list).
+    A ``secret`` option can also be read from ``HOPSWORKS_DS_<OPTION>`` so the
+    value stays out of the process arguments and the shell history.
+    """
 
     flag: str
     json: str
@@ -398,17 +343,172 @@ class _Opt:
     kind: str = "str"
     choices: tuple[str, ...] = ()
     default: str | None = None
+    secret: bool = False
 
 
 @dataclass(frozen=True)
 class _Spec:
-    """A connector type: what to send, and what to ask for."""
+    """A connector type: what to send, what to ask for, and what must go together."""
 
     dto: str
     connector_type: str
     summary: str
     opts: tuple[_Opt, ...]
+    check: Callable[[dict[str, Any]], str | None] | None = None
     epilog: str = ""
+
+
+def _dest(flag: str) -> str:
+    """The keyword Click passes a ``--some-flag`` or ``--on/--off`` option under."""
+    return flag.split("/")[0].lstrip("-").replace("-", "_")
+
+
+def _env(flag: str) -> str:
+    return _SECRET_ENV_PREFIX + _dest(flag).upper()
+
+
+def _given(values: dict[str, Any], flag: str) -> bool:
+    value = values.get(_dest(flag))
+    return value is not None and value is not False and value != "" and value != ()
+
+
+def _needs(values: dict[str, Any], context: str, *flags: str) -> str | None:
+    missing = [f for f in flags if not _given(values, f)]
+    return f"{context} needs {', '.join(missing)}." if missing else None
+
+
+def _refuses(values: dict[str, Any], context: str, *flags: str) -> str | None:
+    extra = [f for f in flags if _given(values, f)]
+    return f"{context} does not take {', '.join(extra)}." if extra else None
+
+
+def _one_of(values: dict[str, Any], context: str, *flags: str) -> str | None:
+    if sum(_given(values, f) for f in flags) == 1:
+        return None
+    return f"{context} takes exactly one of {', '.join(flags)}."
+
+
+def _check_redshift(v: dict[str, Any]) -> str | None:
+    if _given(v, "--iam-role") and _given(v, "--password"):
+        return "--iam-role and --password are alternatives; pass one."
+    return (
+        None
+        if v.get("auto_create")
+        else _needs(v, "redshift without --auto-create", "--user")
+    )
+
+
+def _check_adls(v: dict[str, Any]) -> str | None:
+    if v["generation"] not in (1, 2):
+        return "--generation must be 1 or 2."
+    return (
+        _needs(v, "--generation 2", "--container-name")
+        if v["generation"] == 2
+        else None
+    )
+
+
+def _check_kafka(v: dict[str, Any]) -> str | None:
+    if v["security_protocol"] != "SSL":
+        return None
+    return _needs(
+        v,
+        "--security-protocol SSL",
+        "--ssl-truststore-location",
+        "--ssl-keystore-location",
+        "--ssl-key-password",
+    )
+
+
+def _check_gcs(v: dict[str, Any]) -> str | None:
+    if not _given(v, "--algorithm"):
+        return None
+    return _needs(v, "--algorithm", "--encryption-key", "--encryption-key-hash")
+
+
+def _check_sql(v: dict[str, Any]) -> str | None:
+    if v["database_type"] == "ORACLE":
+        return _one_of(v, "--database-type ORACLE", "--host", "--wallet-path")
+    return _needs(v, f"--database-type {v['database_type']}", "--host")
+
+
+_UC_OAUTH_FLAGS = (
+    "--client-id",
+    "--client-secret",
+    "--oauth-endpoint",
+    "--account-id",
+    "--account-host",
+)
+
+
+def _check_unity_catalog(v: dict[str, Any]) -> str | None:
+    if v["auth_method"] == "PAT":
+        return _needs(v, "--auth-method PAT", "--access-token") or _refuses(
+            v, "--auth-method PAT", *_UC_OAUTH_FLAGS
+        )
+    problem = _needs(
+        v,
+        "--auth-method OAUTH_M2M",
+        "--oauth-endpoint",
+        "--client-id",
+        "--client-secret",
+    ) or _refuses(v, "--auth-method OAUTH_M2M", "--access-token")
+    if problem:
+        return problem
+    if v["oauth_endpoint"] == "WORKSPACE":
+        return _refuses(
+            v, "--oauth-endpoint WORKSPACE", "--account-id", "--account-host"
+        )
+    return _needs(v, "--oauth-endpoint ACCOUNT", "--account-id", "--account-host")
+
+
+def _check_glue(v: dict[str, Any]) -> str | None:
+    if _given(v, "--iam-role"):
+        return _refuses(v, "--iam-role", "--access-key", "--secret-key")
+    if _given(v, "--access-key") or _given(v, "--secret-key"):
+        return _needs(v, "AWS access keys", "--access-key", "--secret-key")
+    return None
+
+
+_REST_AUTH_NEEDS = {
+    "NONE": (),
+    "API_KEY": ("--api-key",),
+    "BEARER_TOKEN": ("--bearer-token",),
+    "HTTP_BASIC": ("--user", "--password"),
+    "OAUTH2_CLIENT": ("--access-token-url", "--client-id", "--client-secret"),
+}
+
+
+def _check_rest(v: dict[str, Any]) -> str | None:
+    auth = v["auth_type"]
+    return _needs(v, f"--auth-type {auth}", *_REST_AUTH_NEEDS[auth])
+
+
+_CRM_NEEDS = {
+    "HUBSPOT": ("--api-key",),
+    "PIPEDRIVE": ("--api-key",),
+    "SALESFORCE": ("--api-key", "--user", "--password"),
+    "FRESHDESK": ("--api-key", "--domain"),
+    "FACEBOOK_ADS": ("--api-key", "--account-id"),
+    "GOOGLE_ANALYTICS": ("--key-path", "--property-id"),
+    "GOOGLE_ADS": (
+        "--key-path",
+        "--dev-token",
+        "--customer-id",
+        "--impersonated-email",
+        "--refresh-token",
+    ),
+    "SHOPIFY": ("--shop-url", "--private-app-password"),
+}
+
+
+def _check_crm(v: dict[str, Any]) -> str | None:
+    crm = v["crm_type"]
+    return _needs(v, f"--crm-type {crm}", *_CRM_NEEDS[crm])
+
+
+def _check_mongodb(v: dict[str, Any]) -> str | None:
+    return _needs(v, "--password", "--user") if _given(v, "--password") else None
 
 
 _ARGS = _Opt(
@@ -416,6 +516,16 @@ _ARGS = _Opt(
     "arguments",
     'Extra connector argument as "key=value". Repeat for several.',
     kind="args",
+)
+_OPTIONS = _Opt(
+    "--option",
+    "options",
+    'Extra client property as "key=value". Repeat for several.',
+    kind="args",
+)
+_KEY_PATH_HELP = (
+    "Service-account key file, as a full HopsFS path "
+    "(/Projects/<project>/Resources/key.json)."
 )
 
 _SPECS: dict[str, _Spec] = {
@@ -443,16 +553,24 @@ _SPECS: dict[str, _Spec] = {
                 "Redshift cluster identifier.",
                 required=True,
             ),
-            _Opt("--database", "databaseName", "Database name."),
             _Opt(
-                "--endpoint", "databaseEndpoint", "Cluster endpoint, without the port."
+                "--endpoint",
+                "databaseEndpoint",
+                "Cluster endpoint, without the port.",
+                required=True,
             ),
-            _Opt("--port", "databasePort", "Database port.", kind="int"),
-            _Opt("--user", "databaseUserName", "Database user."),
+            _Opt("--database", "databaseName", "Database name.", required=True),
+            _Opt("--port", "databasePort", "Database port.", required=True, kind="int"),
+            _Opt(
+                "--user",
+                "databaseUserName",
+                "Database user. Required unless --auto-create.",
+            ),
             _Opt(
                 "--password",
                 "databasePassword",
-                "Database password. Omit when using --iam-role.",
+                "Database password. Not with --iam-role.",
+                secret=True,
             ),
             _Opt("--iam-role", "iamRole", "IAM role to assume instead of a password."),
             _Opt("--group", "databaseGroup", "Database group."),
@@ -466,6 +584,7 @@ _SPECS: dict[str, _Spec] = {
             ),
             _ARGS,
         ),
+        check=_check_redshift,
     ),
     "adls": _Spec(
         "featurestoreADLSConnectorDTO",
@@ -475,16 +594,39 @@ _SPECS: dict[str, _Spec] = {
             _Opt(
                 "--account-name", "accountName", "Storage account name.", required=True
             ),
-            _Opt("--container-name", "containerName", "Container name.", required=True),
-            _Opt("--generation", "generation", "ADLS generation, 1 or 2.", kind="int"),
-            _Opt("--directory-id", "directoryId", "Azure AD directory (tenant) id."),
-            _Opt("--application-id", "applicationId", "Application (client) id."),
+            _Opt(
+                "--generation",
+                "generation",
+                "ADLS generation, 1 or 2.",
+                required=True,
+                kind="int",
+            ),
+            _Opt(
+                "--container-name",
+                "containerName",
+                "Container name. Required for --generation 2.",
+            ),
+            _Opt(
+                "--directory-id",
+                "directoryId",
+                "Azure AD directory (tenant) id.",
+                required=True,
+            ),
+            _Opt(
+                "--application-id",
+                "applicationId",
+                "Application (client) id.",
+                required=True,
+            ),
             _Opt(
                 "--service-credential",
                 "serviceCredential",
                 "Service principal credential.",
+                required=True,
+                secret=True,
             ),
         ),
+        check=_check_adls,
     ),
     "kafka": _Spec(
         "featureStoreKafkaConnectorDTO",
@@ -501,27 +643,37 @@ _SPECS: dict[str, _Spec] = {
                 "--security-protocol",
                 "securityProtocol",
                 "Broker security protocol.",
+                required=True,
                 choices=("PLAINTEXT", "SSL", "SASL_PLAINTEXT", "SASL_SSL"),
             ),
             _Opt(
                 "--ssl-truststore-location",
                 "sslTruststoreLocation",
-                "Truststore, as a full HopsFS path.",
+                "Truststore, as a full HopsFS path. Required for SSL.",
             ),
             _Opt(
                 "--ssl-truststore-password",
                 "sslTruststorePassword",
                 "Truststore password.",
+                secret=True,
             ),
             _Opt(
                 "--ssl-keystore-location",
                 "sslKeystoreLocation",
-                "Keystore, as a full HopsFS path.",
+                "Keystore, as a full HopsFS path. Required for SSL.",
             ),
             _Opt(
-                "--ssl-keystore-password", "sslKeystorePassword", "Keystore password."
+                "--ssl-keystore-password",
+                "sslKeystorePassword",
+                "Keystore password.",
+                secret=True,
             ),
-            _Opt("--ssl-key-password", "sslKeyPassword", "Key password."),
+            _Opt(
+                "--ssl-key-password",
+                "sslKeyPassword",
+                "Key password. Required for SSL.",
+                secret=True,
+            ),
             _Opt(
                 "--ssl-endpoint-identification-algorithm",
                 "sslEndpointIdentificationAlgorithm",
@@ -537,7 +689,9 @@ _SPECS: dict[str, _Spec] = {
                 "Cluster is outside Hopsworks.",
                 kind="flag",
             ),
+            _OPTIONS,
         ),
+        check=_check_kafka,
     ),
     "gcs": _Spec(
         "featureStoreGcsConnectorDTO",
@@ -545,13 +699,7 @@ _SPECS: dict[str, _Spec] = {
         "Register a Google Cloud Storage connector.",
         (
             _Opt("--bucket", "bucket", "GCS bucket.", required=True),
-            _Opt(
-                "--key-path",
-                "keyPath",
-                "Service-account key file, as a full HopsFS path "
-                "(/Projects/<project>/Resources/key.json).",
-                required=True,
-            ),
+            _Opt("--key-path", "keyPath", _KEY_PATH_HELP, required=True),
             _Opt(
                 "--algorithm",
                 "algorithm",
@@ -559,14 +707,18 @@ _SPECS: dict[str, _Spec] = {
                 choices=("AES256",),
             ),
             _Opt(
-                "--encryption-key", "encryptionKey", "Customer-supplied encryption key."
+                "--encryption-key",
+                "encryptionKey",
+                "Customer-supplied encryption key. Required with --algorithm.",
+                secret=True,
             ),
             _Opt(
                 "--encryption-key-hash",
                 "encryptionKeyHash",
-                "Hash of the encryption key.",
+                "Hash of the encryption key. Required with --algorithm.",
             ),
         ),
+        check=_check_gcs,
     ),
     "opensearch": _Spec(
         "featurestoreOpensearchConnectorDTO",
@@ -574,17 +726,27 @@ _SPECS: dict[str, _Spec] = {
         "Register an OpenSearch connector.",
         (
             _Opt("--host", "host", "OpenSearch host.", required=True),
-            _Opt("--port", "port", "OpenSearch port.", kind="int"),
+            _Opt("--port", "port", "OpenSearch port.", required=True, kind="int"),
             _Opt("--scheme", "scheme", "http or https.", choices=("http", "https")),
             _Opt("--user", "username", "User name."),
-            _Opt("--password", "password", "Password."),
+            _Opt("--password", "password", "Password.", secret=True),
             _Opt(
                 "--truststore-path",
                 "trustStorePath",
                 "Truststore, as a full HopsFS path.",
             ),
-            _Opt("--truststore-password", "trustStorePassword", "Truststore password."),
-            _Opt("--no-verify", "verify", "Skip TLS verification.", kind="flag_false"),
+            _Opt(
+                "--truststore-password",
+                "trustStorePassword",
+                "Truststore password.",
+                secret=True,
+            ),
+            _Opt(
+                "--tls-verify/--no-tls-verify",
+                "verify",
+                "Verify the OpenSearch certificate; the server verifies when unset.",
+                kind="bool",
+            ),
             _ARGS,
         ),
     ),
@@ -600,17 +762,34 @@ _SPECS: dict[str, _Spec] = {
                 required=True,
                 choices=("MYSQL", "POSTGRESQL", "ORACLE"),
             ),
-            _Opt("--host", "host", "Database host.", required=True),
-            _Opt("--port", "port", "Database port.", kind="int"),
-            _Opt("--database", "database", "Database name."),
-            _Opt("--user", "user", "Database user."),
-            _Opt("--password", "password", "Database password."),
             _Opt(
-                "--wallet-path", "walletPath", "Oracle wallet, as a full HopsFS path."
+                "--host",
+                "host",
+                "Database host. Required, except for ORACLE with --wallet-path.",
             ),
-            _Opt("--wallet-password", "walletPassword", "Oracle wallet password."),
+            _Opt("--port", "port", "Database port.", required=True, kind="int"),
+            _Opt(
+                "--database",
+                "database",
+                "Database name; the service name, SID or TNS alias for ORACLE.",
+                required=True,
+            ),
+            _Opt("--user", "user", "Database user.", required=True),
+            _Opt("--password", "password", "Database password.", secret=True),
+            _Opt(
+                "--wallet-path",
+                "walletPath",
+                "Oracle wallet, as a full HopsFS path. Replaces --host.",
+            ),
+            _Opt(
+                "--wallet-password",
+                "walletPassword",
+                "Oracle wallet password.",
+                secret=True,
+            ),
             _ARGS,
         ),
+        check=_check_sql,
     ),
     "sap-hana": _Spec(
         "featureStoreSapHanaConnectorDTO",
@@ -622,8 +801,8 @@ _SPECS: dict[str, _Spec] = {
             _Opt("--database", "database", "Database name."),
             _Opt("--schema", "schema", "Schema name."),
             _Opt("--table", "table", "Default table."),
-            _Opt("--user", "user", "User name."),
-            _Opt("--password", "password", "Password."),
+            _Opt("--user", "user", "User name.", required=True),
+            _Opt("--password", "password", "Password.", required=True, secret=True),
             _Opt("--application", "application", "Application name reported to HANA."),
             _ARGS,
         ),
@@ -643,12 +822,20 @@ _SPECS: dict[str, _Spec] = {
                 "--auth-method",
                 "authMethod",
                 "Authentication method.",
+                default="PAT",
                 choices=("PAT", "OAUTH_M2M"),
             ),
             _Opt(
                 "--access-token",
                 "accessToken",
                 "Personal access token, for --auth-method PAT.",
+                secret=True,
+            ),
+            _Opt(
+                "--oauth-endpoint",
+                "oauthEndpoint",
+                "Where the service principal is registered, for --auth-method OAUTH_M2M.",
+                choices=("WORKSPACE", "ACCOUNT"),
             ),
             _Opt(
                 "--client-id",
@@ -659,6 +846,17 @@ _SPECS: dict[str, _Spec] = {
                 "--client-secret",
                 "clientSecret",
                 "Service principal secret, for --auth-method OAUTH_M2M.",
+                secret=True,
+            ),
+            _Opt(
+                "--account-id",
+                "accountId",
+                "Databricks account id (a UUID), for --oauth-endpoint ACCOUNT.",
+            ),
+            _Opt(
+                "--account-host",
+                "accountHost",
+                "Databricks account host, for --oauth-endpoint ACCOUNT.",
             ),
             _Opt(
                 "--default-catalog",
@@ -666,10 +864,9 @@ _SPECS: dict[str, _Spec] = {
                 "Catalog used when a query names none.",
             ),
             _Opt("--aws-region", "awsRegion", "AWS region of the workspace."),
-            _Opt("--account-id", "accountId", "Databricks account id."),
-            _Opt("--account-host", "accountHost", "Databricks account host."),
             _ARGS,
         ),
+        check=_check_unity_catalog,
     ),
     "glue": _Spec(
         "featurestoreGlueConnectorDTO",
@@ -683,12 +880,13 @@ _SPECS: dict[str, _Spec] = {
                 "catalogId",
                 "Glue catalog id; defaults to the account's.",
             ),
-            _Opt("--iam-role", "iamRole", "IAM role to assume."),
+            _Opt("--iam-role", "iamRole", "IAM role to assume. Not with access keys."),
             _Opt("--access-key", "accessKey", "AWS access key id."),
-            _Opt("--secret-key", "secretKey", "AWS secret access key."),
-            _Opt("--session-token", "sessionToken", "AWS session token."),
+            _Opt("--secret-key", "secretKey", "AWS secret access key.", secret=True),
+            _Opt("--session-token", "sessionToken", "AWS session token.", secret=True),
             _ARGS,
         ),
+        check=_check_glue,
     ),
     "google-sheets": _Spec(
         "featurestoreGoogleSheetsConnectorDTO",
@@ -701,13 +899,7 @@ _SPECS: dict[str, _Spec] = {
                 "Spreadsheet id from its URL.",
                 required=True,
             ),
-            _Opt(
-                "--key-path",
-                "keyPath",
-                "Service-account key file, as a full HopsFS path "
-                "(/Projects/<project>/Resources/key.json).",
-                required=True,
-            ),
+            _Opt("--key-path", "keyPath", _KEY_PATH_HELP, required=True),
         ),
     ),
     "rest": _Spec(
@@ -726,19 +918,19 @@ _SPECS: dict[str, _Spec] = {
                 "authConfig.authType",
                 "How requests authenticate.",
                 required=True,
-                choices=(
-                    "NONE",
-                    "API_KEY",
-                    "BEARER_TOKEN",
-                    "HTTP_BASIC",
-                    "OAUTH2_CLIENT",
-                ),
+                choices=tuple(_REST_AUTH_NEEDS),
             ),
-            _Opt("--api-key", "authConfig.apiKey", "API key, for --auth-type API_KEY."),
+            _Opt(
+                "--api-key",
+                "authConfig.apiKey",
+                "API key, for --auth-type API_KEY.",
+                secret=True,
+            ),
             _Opt(
                 "--bearer-token",
                 "authConfig.bearerToken",
                 "Token, for --auth-type BEARER_TOKEN.",
+                secret=True,
             ),
             _Opt(
                 "--user",
@@ -749,6 +941,7 @@ _SPECS: dict[str, _Spec] = {
                 "--password",
                 "authConfig.password",
                 "Password, for --auth-type HTTP_BASIC.",
+                secret=True,
             ),
             _Opt(
                 "--client-id",
@@ -759,11 +952,13 @@ _SPECS: dict[str, _Spec] = {
                 "--client-secret",
                 "authConfig.clientSecret",
                 "Client secret, for --auth-type OAUTH2_CLIENT.",
+                secret=True,
             ),
             _Opt(
                 "--access-token",
                 "authConfig.accessToken",
                 "Access token, for --auth-type OAUTH2_CLIENT.",
+                secret=True,
             ),
             _Opt(
                 "--access-token-url",
@@ -777,6 +972,7 @@ _SPECS: dict[str, _Spec] = {
                 kind="int",
             ),
         ),
+        check=_check_rest,
         epilog="Example: hops datasource create rest weather --base-url https://api.example.com --auth-type API_KEY --api-key KEY",
     ),
     "crm": _Spec(
@@ -789,24 +985,16 @@ _SPECS: dict[str, _Spec] = {
                 "crmType",
                 "Which service to connect to; it decides which other options apply.",
                 required=True,
-                choices=(
-                    "HUBSPOT",
-                    "SALESFORCE",
-                    "PIPEDRIVE",
-                    "FACEBOOK_ADS",
-                    "FRESHDESK",
-                    "GOOGLE_ADS",
-                    "GOOGLE_ANALYTICS",
-                    "SHOPIFY",
-                ),
+                choices=tuple(_CRM_NEEDS),
             ),
             _Opt(
                 "--api-key",
                 "apiKey",
                 "API key or token. Required except for GOOGLE_ADS, GOOGLE_ANALYTICS and SHOPIFY.",
+                secret=True,
             ),
             _Opt("--user", "username", "User name, for SALESFORCE."),
-            _Opt("--password", "password", "Password, for SALESFORCE."),
+            _Opt("--password", "password", "Password, for SALESFORCE.", secret=True),
             _Opt("--account-id", "accountId", "Ad account id, for FACEBOOK_ADS."),
             _Opt("--domain", "domain", "Account domain, for FRESHDESK."),
             _Opt(
@@ -815,21 +1003,66 @@ _SPECS: dict[str, _Spec] = {
                 "Service-account key file as a full HopsFS path, for GOOGLE_ADS and GOOGLE_ANALYTICS.",
             ),
             _Opt("--property-id", "propertyId", "Property id, for GOOGLE_ANALYTICS."),
-            _Opt("--dev-token", "devToken", "Developer token, for GOOGLE_ADS."),
+            _Opt(
+                "--dev-token",
+                "devToken",
+                "Developer token, for GOOGLE_ADS.",
+                secret=True,
+            ),
             _Opt("--customer-id", "customerId", "Customer id, for GOOGLE_ADS."),
             _Opt(
                 "--impersonated-email",
                 "impersonatedEmail",
                 "Impersonated user, for GOOGLE_ADS.",
             ),
-            _Opt("--refresh-token", "refreshToken", "Refresh token, for GOOGLE_ADS."),
+            _Opt(
+                "--refresh-token",
+                "refreshToken",
+                "Refresh token, for GOOGLE_ADS.",
+                secret=True,
+            ),
             _Opt("--shop-url", "shopUrl", "Shop URL, for SHOPIFY."),
             _Opt(
                 "--private-app-password",
                 "privateAppPassword",
                 "Private app password, for SHOPIFY.",
+                secret=True,
             ),
         ),
+        check=_check_crm,
+    ),
+    "mongodb": _Spec(
+        "featurestoreMongoConnectorDTO",
+        "MONGODB",
+        "Register a MongoDB connector.",
+        (
+            _Opt(
+                "--connection-string",
+                "connectionString",
+                "mongodb:// or mongodb+srv:// URI without credentials; "
+                "pass those as --user and --password.",
+                required=True,
+            ),
+            _Opt("--database", "database", "Database name.", required=True),
+            _Opt("--collection", "collection", "Default collection."),
+            _Opt("--user", "user", "Database user."),
+            _Opt(
+                "--password",
+                "password",
+                "Database password, kept in the Hopsworks secret store.",
+                secret=True,
+            ),
+            _Opt(
+                "--auth-source", "authSource", "authSource URI parameter, e.g. admin."
+            ),
+            _Opt(
+                "--auth-mechanism",
+                "authMechanism",
+                "authMechanism URI parameter, e.g. SCRAM-SHA-256.",
+            ),
+            _OPTIONS,
+        ),
+        check=_check_mongodb,
     ),
 }
 
@@ -842,17 +1075,40 @@ def _set_path(body: dict[str, Any], path: str, value: Any) -> None:
     body[keys[-1]] = value
 
 
-def _parse_arguments(values: tuple[str, ...]) -> list[dict[str, str]]:
-    """Turn repeated ``key=value`` options into the arguments list connectors take."""
+def _parse_arguments(flag: str, values: tuple[str, ...]) -> list[dict[str, str]]:
+    """Turn repeated ``key=value`` options into the list of name/value pairs connectors take."""
     parsed = []
     for item in values:
         key, sep, value = item.partition("=")
         if not sep or not key:
             raise click.BadParameter(
-                f'expected "key=value", got {item!r}', param_hint="--argument"
+                f'expected "key=value", got {item!r}', param_hint=flag
             )
         parsed.append({"name": key, "value": value})
     return parsed
+
+
+def _option(opt: _Opt) -> Callable[[Any], Any]:
+    """The ``click.option`` decorator for one spec option."""
+    kwargs: dict[str, Any] = {"help": opt.help}
+    if opt.secret:
+        kwargs.update(envvar=_env(opt.flag), show_envvar=True)
+    if opt.kind == "flag":
+        return click.option(opt.flag, is_flag=True, **kwargs)
+    if opt.kind == "bool":
+        return click.option(opt.flag, default=None, **kwargs)
+    if opt.kind == "args":
+        return click.option(opt.flag, multiple=True, **kwargs)
+    if opt.choices:
+        kwargs["type"] = click.Choice(opt.choices)
+    elif opt.kind == "int":
+        kwargs["type"] = int
+    # Click 8.3 and later read an explicit ``default=None`` as "None is a valid
+    # value" and stop enforcing ``required``, so the default is only passed when
+    # there is one.
+    if opt.default is not None:
+        kwargs.update(default=opt.default, show_default=True)
+    return click.option(opt.flag, required=opt.required, **kwargs)
 
 
 def _build_create_command(name: str, spec: _Spec) -> click.Command:
@@ -861,6 +1117,9 @@ def _build_create_command(name: str, spec: _Spec) -> click.Command:
     def run(
         ctx: click.Context, connector_name: str, description: str, **values: Any
     ) -> None:
+        problem = spec.check(values) if spec.check else None
+        if problem:
+            raise click.UsageError(problem, ctx)
         body: dict[str, Any] = {
             "type": spec.dto,
             "name": connector_name,
@@ -868,15 +1127,12 @@ def _build_create_command(name: str, spec: _Spec) -> click.Command:
             "description": description,
         }
         for opt in spec.opts:
-            value = values.get(opt.flag.lstrip("-").replace("-", "_"))
+            value = values.get(_dest(opt.flag))
             if value is None or value == () or (opt.kind == "flag" and not value):
                 continue
             if opt.kind == "args":
-                _set_path(body, opt.json, _parse_arguments(value))
-            elif opt.kind == "flag_false":
-                _set_path(body, opt.json, False)
-            else:
-                _set_path(body, opt.json, value)
+                value = _parse_arguments(opt.flag, value)
+            _set_path(body, opt.json, value)
         _create_connector(ctx, body)
 
     # Click renders a command's docstring as its help, so the docstring is the
@@ -886,21 +1142,7 @@ def _build_create_command(name: str, spec: _Spec) -> click.Command:
     cmd = click.pass_context(run)
     cmd = click.option("--description", default="", help="Free-form description.")(cmd)
     for opt in reversed(spec.opts):
-        if opt.kind in ("flag", "flag_false"):
-            cmd = click.option(opt.flag, is_flag=True, help=opt.help)(cmd)
-        elif opt.kind == "args":
-            cmd = click.option(opt.flag, multiple=True, help=opt.help)(cmd)
-        else:
-            cmd = click.option(
-                opt.flag,
-                required=opt.required,
-                default=opt.default,
-                show_default=opt.default is not None,
-                type=click.Choice(opt.choices)
-                if opt.choices
-                else (int if opt.kind == "int" else str),
-                help=opt.help,
-            )(cmd)
+        cmd = _option(opt)(cmd)
     cmd = click.argument("connector_name", metavar="NAME")(cmd)
     return click.command(name, short_help=spec.summary, epilog=spec.epilog or None)(cmd)
 
