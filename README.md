@@ -10,7 +10,7 @@
 | python/hopsworks/app/\_\_init\_\_.py                                             |        2 |        2 |      0% |       5-6 |
 | python/hopsworks/cli/\_\_init\_\_.py                                             |        0 |        0 |    100% |           |
 | python/hopsworks/cli/\_\_main\_\_.py                                             |        3 |        3 |      0% |       3-7 |
-| python/hopsworks/cli/auth.py                                                     |       39 |        5 |     87% |38, 101, 103, 121, 123 |
+| python/hopsworks/cli/auth.py                                                     |       45 |        2 |     96% |   40, 106 |
 | python/hopsworks/cli/commands/\_\_init\_\_.py                                    |        0 |        0 |    100% |           |
 | python/hopsworks/cli/commands/agent.py                                           |      169 |       43 |     75% |39-40, 70-86, 144-145, 171-172, 197-198, 231-232, 237-238, 241-242, 310-322, 332-333, 335-336, 356, 359-360, 373-374, 408-416, 429 |
 | python/hopsworks/cli/commands/alert.py                                           |      321 |      117 |     64% |68-69, 107-108, 125-126, 129-135, 175-176, 178-179, 202-203, 228-250, 297-312, 340-341, 344-345, 347-348, 363-370, 436-437, 454-455, 457-458, 483-484, 502-509, 537-538, 540-541, 567-575, 607-608, 612-613, 639-647, 675-688, 701-702, 710-715, 720-726, 735, 739, 741 |
@@ -26,9 +26,9 @@
 | python/hopsworks/cli/commands/job.py                                             |      375 |      176 |     53% |32, 35-42, 52, 54-58, 78-79, 108-109, 113-126, 130-143, 191-206, 275-327, 379, 388-389, 398, 447-468, 481-489, 536, 539-542, 549-550, 554-555, 564-565, 568-569, 720-721, 724, 737-751, 767-768, 784-791, 804-809, 826-831, 846-851, 866-872, 878, 882, 890-891, 893, 900-901, 907, 916-919 |
 | python/hopsworks/cli/commands/login.py                                           |       27 |       17 |     37% |     53-84 |
 | python/hopsworks/cli/commands/model.py                                           |      163 |       54 |     67% |66-69, 72, 91-107, 112, 207, 212-215, 219-223, 238-239, 272-273, 291-298, 339-346, 351, 356, 360-361 |
-| python/hopsworks/cli/commands/project.py                                         |       52 |       36 |     31% |22-43, 56-74, 85-96, 100 |
+| python/hopsworks/cli/commands/project.py                                         |       52 |       34 |     35% |23-43, 56-74, 85-96 |
 | python/hopsworks/cli/commands/search.py                                          |       56 |       38 |     32% |78-126, 135-141, 150-160 |
-| python/hopsworks/cli/commands/setup.py                                           |      159 |       53 |     67% |53-60, 81, 85-91, 113, 151-169, 204, 305, 315-321, 333-334, 340-341, 354, 376-377, 411-412, 427-433 |
+| python/hopsworks/cli/commands/setup.py                                           |      194 |       47 |     76% |75-82, 103, 107-113, 135, 173-191, 226, 328, 339-342, 354, 358-359, 372, 390, 419-422, 444-445 |
 | python/hopsworks/cli/commands/skills.py                                          |       95 |       33 |     65% |31-32, 39-41, 47, 66-67, 69, 141-154, 168-190 |
 | python/hopsworks/cli/commands/superset.py                                        |      138 |       38 |     72% |51-52, 91-101, 116-122, 141-142, 155, 199-200, 217, 220-221, 255, 278-279, 295-301, 328-330, 336-337, 345 |
 | python/hopsworks/cli/commands/td.py                                              |      189 |       77 |     59% |53-54, 60-61, 132-133, 141, 184-212, 239-253, 332-344, 369-374, 401-406, 415-416, 427, 430-432, 443, 447-448, 455-463 |
@@ -38,9 +38,9 @@
 | python/hopsworks/cli/config.py                                                   |      155 |       22 |     86% |75, 89, 105, 109-110, 119-121, 140, 144, 149-151, 168-169, 245, 247, 331-337 |
 | python/hopsworks/cli/joinspec.py                                                 |       18 |        0 |    100% |           |
 | python/hopsworks/cli/lineage.py                                                  |       33 |        4 |     88% | 55, 62-64 |
-| python/hopsworks/cli/main.py                                                     |       67 |        7 |     90% |59-60, 168, 242-244, 256 |
+| python/hopsworks/cli/main.py                                                     |       69 |        7 |     90% |60-61, 169, 247-249, 261 |
 | python/hopsworks/cli/output.py                                                   |       85 |       10 |     88% |73, 95, 112-113, 124-133, 223, 235, 247, 258 |
-| python/hopsworks/cli/session.py                                                  |       52 |        8 |     85% |72, 90-91, 107, 109-111, 129 |
+| python/hopsworks/cli/session.py                                                  |       49 |        8 |     84% |70, 82-83, 99, 101-103, 121 |
 | python/hopsworks/cli/templates/\_\_init\_\_.py                                   |        0 |        0 |    100% |           |
 | python/hopsworks/client/\_\_init\_\_.py                                          |       15 |        0 |    100% |           |
 | python/hopsworks/client/auth/\_\_init\_\_.py                                     |        4 |        4 |      0% |       5-8 |
@@ -480,7 +480,7 @@
 | python/hsml/utils/schema/tensor.py                                               |        8 |        0 |    100% |           |
 | python/hsml/utils/schema/tensor\_schema.py                                       |       34 |        0 |    100% |           |
 | python/hsml/version.py                                                           |        2 |        2 |      0% |     17-22 |
-| **TOTAL**                                                                        | **42113** | **12482** | **70%** |           |
+| **TOTAL**                                                                        | **42153** | **12471** | **70%** |           |
 
 
 ## Setup coverage badge
