@@ -327,3 +327,41 @@ def test_stage_key_uploads_key_and_pub_when_absent(tmp_path, monkeypatch):
     ds = _DS()
     assert git_sync._stage_key(ds, "Users/lex", key) == "id_ed25519"
     assert ds.uploads == ["id_ed25519", "id_ed25519.pub"]
+
+
+def test_forget_prefs_drops_only_the_gitsync_table(tmp_path, monkeypatch):
+    cfg = tmp_path / "hops.toml"
+    cfg.write_text(
+        '[default]\nhost = "https://h"\n\n[gitsync]\nanswer = "always"\nmethod = "ssh"\n'
+    )
+    monkeypatch.setattr(git_sync.config, "CONFIG_PATH", cfg)
+
+    assert git_sync.forget_prefs() is True
+    assert git_sync._prefs() == {}
+    assert 'host = "https://h"' in cfg.read_text()
+    # Nothing left to forget: the second call reports so and changes nothing.
+    assert git_sync.forget_prefs() is False
+
+
+def test_forget_prefs_without_a_config_file_is_nothing_to_forget(tmp_path, monkeypatch):
+    monkeypatch.setattr(git_sync.config, "CONFIG_PATH", tmp_path / "absent.toml")
+    assert git_sync.forget_prefs() is False
+
+
+def test_staged_keys_are_listed_and_removed_by_name():
+    class _DS:
+        files = {"Users/lex/.ssh/id_ed25519", "Users/lex/.ssh/id_ed25519.pub"}
+
+        def list(self, path):
+            return sorted(self.files)
+
+        def remove(self, path):
+            self.files.remove(path)
+
+    ds = _DS()
+    assert git_sync.staged_keys(ds, "Users/lex") == ["id_ed25519", "id_ed25519.pub"]
+    assert git_sync.unstage_keys(ds, "Users/lex", ["id_ed25519", "id_ed25519.pub"]) == [
+        "id_ed25519",
+        "id_ed25519.pub",
+    ]
+    assert ds.files == set()

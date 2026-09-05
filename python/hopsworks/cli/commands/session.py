@@ -1389,6 +1389,73 @@ def stop(ctx: click.Context) -> None:
     output.success("✓ Stopped the terminal for %s", project.name)
 
 
+@session_group.command("reset")
+@click.option("--yes", is_flag=True, help="Skip confirmation.")
+@click.pass_context
+def reset(ctx: click.Context, yes: bool) -> None:
+    """Forget how git sync authenticates the pod, so the next push asks again.
+
+    Clears the remembered consent, method and key path, and removes the SSH
+    keys staged in your private ``Users/<username>/.ssh/`` area, so a changed
+    or replaced key is uploaded afresh by the next push. Staged sessions are
+    untouched, and so are provider tokens (``hops git provider delete``).
+
+    Args:
+        ctx: Click context.
+        yes: Skip confirmation when True.
+    """
+    project = conn.get_project(ctx)
+    dataset_api = project.get_dataset_api()
+    user_root = _teleport_root().rsplit("/", 1)[0]
+
+    remembered = git_sync._prefs()
+    staged = git_sync.staged_keys(dataset_api, user_root)
+    if not remembered and not staged:
+        if output.JSON_MODE:
+            output.print_json({"project": project.name, "removed": [], "forgot": False})
+            return
+        output.info("Nothing to reset: no git sync choice remembered, no key staged.")
+        return
+
+    if not yes and not output.JSON_MODE:
+        what = []
+        if remembered:
+            what.append("the remembered git sync choice")
+        if staged:
+            what.append(f"{len(staged)} staged key file(s): {', '.join(staged)}")
+        click.confirm(f"Forget {' and '.join(what)}?", abort=True)
+
+    removed = git_sync.unstage_keys(dataset_api, user_root, staged)
+    forgot = git_sync.forget_prefs()
+
+    # Only a confirmed running pod earns the note: the pod copies the staged key
+    # once and keeps its copy for its lifetime.
+    pod_running = False
+    with contextlib.suppress(Exception):
+        sess = terminal_api.get_session(project.id)
+        pod_running = bool(sess and sess.get("running"))
+
+    if output.JSON_MODE:
+        output.print_json(
+            {
+                "project": project.name,
+                "removed": removed,
+                "forgot": forgot,
+                "pod_running": pod_running,
+            }
+        )
+        return
+    for name in removed:
+        output.success("✓ Removed staged key %s", name)
+    if forgot:
+        output.success("✓ Forgot the git sync choice; the next push asks again")
+    if pod_running:
+        output.info(
+            "The running terminal pod keeps its copy of the old key; "
+            "`hops session stop` before the next push so it copies the new one."
+        )
+
+
 # Detach key for `session mirror`: Ctrl-] (GS, 0x1d), the telnet/ssh escape.
 _MIRROR_DETACH = b"\x1d"
 # Bounded reconnects when the WebSocket drops (proxy idle timeout, token expiry).

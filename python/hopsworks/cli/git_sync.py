@@ -23,7 +23,9 @@ unless the cwd is a git work tree, the branch's remote is an SSH remote, and
 the user answered yes (or has a persisted "always"). The consent answer and
 the chosen key path persist in ``~/.hops.toml`` under a ``[gitsync]`` table of
 their own — deliberately not in the ``[default]`` profile, whose save path
-rewrites a fixed set of keys and would drop ours.
+rewrites a fixed set of keys and would drop ours. ``hops session reset``
+(:func:`forget_prefs`, :func:`unstage_keys`) drops that table and the staged
+keys, so the next push asks again and uploads afresh.
 """
 
 from __future__ import annotations
@@ -276,6 +278,81 @@ def _save_prefs(**updates) -> None:
         output.warn("Could not persist the git-sync preference (%s).", exc)
 
 
+def forget_prefs() -> bool:
+    """Drop the ``[gitsync]`` table so the next push asks everything again.
+
+    The rest of the config file is left as it is; a missing or unreadable file
+    counts as nothing remembered.
+
+    Returns:
+        Whether anything was remembered.
+    """
+    import tomli_w
+
+    try:
+        import tomllib
+    except ImportError:  # pragma: no cover - 3.10 path
+        import tomli as tomllib
+    try:
+        with config.CONFIG_PATH.open("rb") as f:
+            existing = tomllib.load(f)
+    except (OSError, ValueError):
+        return False
+    if not existing.pop("gitsync", None):
+        return False
+    fd = os.open(str(config.CONFIG_PATH), os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "wb") as f:
+        tomli_w.dump(existing, f)
+    return True
+
+
+def _ssh_dir(teleport_user_root: str) -> str:
+    return f"{teleport_user_root}/.ssh"
+
+
+def staged_keys(dataset_api, teleport_user_root: str) -> list[str]:
+    """List the key files staged for the pod.
+
+    Args:
+        dataset_api: The project's dataset API.
+        teleport_user_root: The user's private HopsFS home, ``Users/<username>``.
+
+    Returns:
+        The file names under ``Users/<username>/.ssh/``, empty when none.
+    """
+    with contextlib.suppress(Exception):
+        return sorted(
+            Path(p).name for p in dataset_api.list(_ssh_dir(teleport_user_root))
+        )
+    return []
+
+
+def unstage_keys(dataset_api, teleport_user_root: str, names: list[str]) -> list[str]:
+    """Remove staged key files by name.
+
+    Best-effort per file: a failure is reported and the rest still go, since a
+    half-cleared directory is still closer to a fresh start than an aborted one.
+
+    Args:
+        dataset_api: The project's dataset API.
+        teleport_user_root: The user's private HopsFS home, ``Users/<username>``.
+        names: File names under ``Users/<username>/.ssh/`` to remove.
+
+    Returns:
+        The names actually removed.
+    """
+    removed = []
+    for name in names:
+        path = f"{_ssh_dir(teleport_user_root)}/{name}"
+        try:
+            dataset_api.remove(path)
+        except Exception as exc:  # noqa: BLE001
+            output.warn("Could not remove %s (%s).", path, exc)
+            continue
+        removed.append(name)
+    return removed
+
+
 def _default_key(host: str) -> Path:
     """The key ssh would use for ``host``: first existing IdentityFile, else id_rsa."""
     try:
@@ -401,7 +478,7 @@ def _stage_key(dataset_api, teleport_user_root: str, key: Path) -> str | None:
     local key and warning on a mismatch. The home is mode 0700, so containment
     comes from the directory, matching the teleport transcript store.
     """
-    ssh_dir = f"{teleport_user_root}/.ssh"
+    ssh_dir = _ssh_dir(teleport_user_root)
     key_name = key.name
     pub_line = _public_key_line(key)
     staged: list[str] = []
@@ -418,7 +495,7 @@ def _stage_key(dataset_api, teleport_user_root: str, key: Path) -> str | None:
                 if pub_line and staged_pub.split()[:2] != pub_line.split()[:2]:
                     output.warn(
                         "A different key named %s is already staged; keeping it. "
-                        "Rename your key or remove the staged one to replace.",
+                        "Rename your key, or `hops session reset` to replace it.",
                         key_name,
                     )
         return key_name
@@ -536,11 +613,18 @@ def _choose_method(
 
 
 def maybe_collect(dataset_api, teleport_user_root: str) -> dict | None:
-    """Run the git-sync gates and consent flow; return the manifest ``git`` object.
+    """Run the git-sync gates and consent flow.
 
-    None means no sync (not a git dir, unsupported remote or key, declined, or
-    a gate could not pass non-interactively). The session push itself always
-    proceeds regardless.
+    The session push itself always proceeds regardless of the outcome here.
+
+    Args:
+        dataset_api: The project's dataset API.
+        teleport_user_root: The user's private HopsFS home, ``Users/<username>``.
+
+    Returns:
+        The manifest's ``git`` object, or None for no sync (not a git dir,
+        unsupported remote or key, declined, or a gate that could not pass
+        non-interactively).
     """
     state = _repo_state()
     if state is None:

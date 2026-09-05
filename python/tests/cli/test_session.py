@@ -799,3 +799,66 @@ def test_pull_force_from_a_landed_live_pod_leaves_the_consumed_marker_to_the_pod
     )
     assert result.exit_code == 0, _all_output(result)
     assert f"{_ROOT}/{slug}/sid1.teleport.json.consumed" not in ds._files
+
+
+def _reset_setup(tmp_path, monkeypatch, staged: bool, remembered: bool, running: bool):
+    """Wire a fake store with (or without) staged keys; return (runner, ds, forgot)."""
+    from click.testing import CliRunner
+
+    root = _ROOT.rsplit("/", 1)[0]
+    files = (
+        {f"{root}/.ssh/id_ed25519": "k", f"{root}/.ssh/id_ed25519.pub": "ssh-ed25519 A"}
+        if staged
+        else {}
+    )
+    ds = _PushDataset(files)
+    monkeypatch.setattr(session, "_teleport_root", lambda: _ROOT)
+    monkeypatch.setattr(session.conn, "get_project", lambda ctx: _FakeProject(ds))
+    monkeypatch.setattr(
+        session.git_sync, "_prefs", lambda: {"answer": "always"} if remembered else {}
+    )
+    forgot = []
+    monkeypatch.setattr(
+        session.git_sync, "forget_prefs", lambda: forgot.append(True) or remembered
+    )
+    monkeypatch.setattr(
+        session.terminal_api, "get_session", lambda pid: {"running": running}
+    )
+    return CliRunner(), ds, forgot
+
+
+def test_reset_forgets_the_choice_and_removes_the_staged_keys(tmp_path, monkeypatch):
+    runner, ds, forgot = _reset_setup(
+        tmp_path, monkeypatch, staged=True, remembered=True, running=True
+    )
+    result = runner.invoke(
+        session.session_group, ["reset", "--yes"], catch_exceptions=False
+    )
+    assert result.exit_code == 0, _all_output(result)
+    text = _all_output(result)
+    assert sorted(Path(p).name for p in ds.removed) == ["id_ed25519", "id_ed25519.pub"]
+    assert forgot == [True]
+    assert "Forgot the git sync choice" in text
+    # A running pod keeps the key it copied, so the user is told how to refresh.
+    assert "hops session stop" in text
+
+
+def test_reset_with_nothing_remembered_or_staged_is_a_noop(tmp_path, monkeypatch):
+    runner, ds, forgot = _reset_setup(
+        tmp_path, monkeypatch, staged=False, remembered=False, running=False
+    )
+    result = runner.invoke(
+        session.session_group, ["reset", "--yes"], catch_exceptions=False
+    )
+    assert result.exit_code == 0
+    assert "Nothing to reset" in _all_output(result)
+    assert ds.removed == [] and forgot == []
+
+
+def test_reset_asks_before_touching_anything(tmp_path, monkeypatch):
+    runner, ds, forgot = _reset_setup(
+        tmp_path, monkeypatch, staged=True, remembered=True, running=False
+    )
+    result = runner.invoke(session.session_group, ["reset"], input="n\n")
+    assert result.exit_code != 0
+    assert ds.removed == [] and forgot == []
