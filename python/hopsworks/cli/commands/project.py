@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import click
 from hopsworks.cli import auth, config, output, session
 
@@ -65,13 +67,33 @@ def project_use(ctx: click.Context, name: str) -> None:
 
     cfg.project = getattr(project, "name", name)
     cfg.project_id = getattr(project, "id", None)
-    try:
-        fs = project.get_feature_store()
-        cfg.feature_store_id = getattr(fs, "id", None)
-    except Exception:  # noqa: BLE001 - some projects have no FS
-        cfg.feature_store_id = None
+    cfg.feature_store_id = _feature_store_id(project)
     config.save(cfg)
     output.success("✓ Active project set to %s", cfg.project)
+
+
+def _feature_store_id(project: Any) -> int | None:
+    """The project's feature store id, without building a feature store object.
+
+    ``project.get_feature_store()`` imports hsfs, and with it pandas, pyarrow and
+    the engine: close to three seconds on a laptop, spent on a number the REST
+    response already carries and that only ``hops project info`` ever prints.
+    ``None`` when the project has no feature store.
+    """
+    from hopsworks_common import (  # noqa: PLC0415 - keeps `hops --help` light
+        client,
+        util,
+    )
+
+    _client = client._get_instance()
+    store = util._append_feature_store_suffix(getattr(project, "name", "") or "")
+    try:
+        raw = _client._send_request(
+            "GET", ["project", _client._project_id, "featurestores", store]
+        )
+    except Exception:  # noqa: BLE001 - a project need not have a feature store
+        return None
+    return raw.get("featurestoreId")
 
 
 @project_group.command("info")
