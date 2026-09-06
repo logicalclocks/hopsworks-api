@@ -343,16 +343,17 @@ public class ColumnProfilerSmokeTest {
       DataTypes.createStructField("mixed", DataTypes.DoubleType, true),
       DataTypes.createStructField("all_inf", DataTypes.DoubleType, true),
       DataTypes.createStructField("huge_range", DataTypes.DoubleType, true),
+      DataTypes.createStructField("subnormal_range", DataTypes.DoubleType, true),
     });
     List<Row> rows = new ArrayList<>();
     for (int i = 1; i <= 8; i++) {
-      rows.add(RowFactory.create((double) i, Double.POSITIVE_INFINITY, 0.0));
+      rows.add(RowFactory.create((double) i, Double.POSITIVE_INFINITY, 0.0, 0.0));
     }
     rows.add(RowFactory.create(Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY,
-        -Double.MAX_VALUE));
+        -Double.MAX_VALUE, 0.0));
     rows.add(RowFactory.create(Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY,
-        Double.MAX_VALUE));
-    rows.add(RowFactory.create(Double.NaN, Double.POSITIVE_INFINITY, 0.0));
+        Double.MAX_VALUE, Double.MIN_VALUE));
+    rows.add(RowFactory.create(Double.NaN, Double.POSITIVE_INFINITY, 0.0, 0.0));
     Dataset<Row> df = SparkEngine.getInstance().getSparkSession().createDataFrame(rows, schema);
 
     String json = new ColumnProfiler().profile(df, null, false, true, 20, false, true);
@@ -406,7 +407,18 @@ public class ColumnProfilerSmokeTest {
     Assertions.assertEquals(0, allInf.get("histogram").size(),
         "a column with no finite values must emit no bins");
 
-    // Finite bounds, infinite span: the grid is still unbuildable, so treat it the same way.
+    // Finite bounds, unusable span: same treatment. huge_range overflows the subtraction
+    // to infinity; subnormal_range underflows the division, so every split point would
+    // land on the minimum. Neither can produce a strictly increasing grid.
+    JsonNode subnormal = findColumn(columns, "subnormal_range");
+    Assertions.assertNotNull(subnormal, "subnormal_range column profile must be present");
+    Assertions.assertEquals(0, subnormal.get("histogram").size(),
+        "a span whose width underflows to zero must emit no bins, not 20 identical ones");
+    Assertions.assertFalse(subnormal.has("kll"),
+        "a span whose width underflows to zero must not be emitted as kll");
+    Assertions.assertEquals(99, subnormal.get("approxPercentiles").size(),
+        "the percentiles do not need a bin grid and must survive");
+
     JsonNode huge = findColumn(columns, "huge_range");
     Assertions.assertNotNull(huge, "huge_range column profile must be present");
     Assertions.assertEquals(0, huge.get("histogram").size(),

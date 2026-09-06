@@ -231,6 +231,29 @@ public class ColumnProfiler {
   }
 
   /**
+   * True when an equi-width grid of {@code bins} over {@code [min, max]} has strictly
+   * increasing edges, which is what {@code getCDF} demands of its split points and what
+   * keeps a bin label from being derived from a bound it does not describe.
+   *
+   * <p>Finite bounds are not sufficient in either direction. A span wider than
+   * Double.MAX_VALUE overflows the subtraction to infinity and collapses every split point;
+   * a span below {@code bins * Double.MIN_VALUE} underflows the division to zero, so every
+   * split point lands on {@code min} instead. A zero span is fine: the histogram emits a
+   * single bin for it and the bucket grid falls back to a width of 1.
+   */
+  static boolean hasUsableBinGrid(double min, double max, int bins) {
+    double range = max - min;
+    if (!Double.isFinite(range)) {
+      return false;
+    }
+    if (range == 0.0) {
+      return true;
+    }
+    double width = range / bins;
+    return width > 0 && min + width > min;
+  }
+
+  /**
    * Spark predicate selecting the finite values of a double column. Spark orders NaN above
    * +Infinity, so one comparison excludes NaN and both infinities. Matches what
    * {@link KllAggregator} feeds its sketch, so the histogram and the buckets bin the same rows.
@@ -412,11 +435,8 @@ public class ColumnProfiler {
     Double minFinite = aggRow.getAs(nn + "__min_finite");
     Double maxFinite = aggRow.getAs(nn + "__max_finite");
     long finiteVal = ((Number) aggRow.getAs(nn + "__nfinite")).longValue();
-    // A bin grid needs a finite width. Finite bounds are not enough: a span wider than
-    // Double.MAX_VALUE overflows the subtraction to infinity, which collapses every split
-    // point and makes getCDF throw just as an infinite bound would.
     boolean binnable = minFinite != null && maxFinite != null
-        && Double.isFinite(maxFinite - minFinite);
+        && hasUsableBinGrid(minFinite, maxFinite, histogramBins);
 
     if (histogram) {
       // An empty list says "binned, nothing to bin"; omitting the key makes the SDK's
@@ -435,8 +455,9 @@ public class ColumnProfiler {
       KllDoublesSketch sketch = KllAggregator.heapify(kllBytes);
       if (!sketch.isEmpty()) {
         builder.approxPercentiles(sketch.getQuantiles(PERCENTILE_FRACTIONS));
-        // The buckets, unlike the percentiles, need a finite grid over the sketch's range.
-        if (Double.isFinite(sketch.getMaxItem() - sketch.getMinItem())) {
+        // The buckets, unlike the percentiles, need a usable grid over the sketch's range.
+        if (hasUsableBinGrid(sketch.getMinItem(), sketch.getMaxItem(),
+            ProfileJsonSerializer.KLL_BUCKETS)) {
           builder.kllBytes(kllBytes);
         }
       }

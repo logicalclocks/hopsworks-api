@@ -59,6 +59,9 @@ class ProfileJsonSerializer {
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
+  /** Buckets in the KLL-derived histogram. ColumnProfiler needs it to check the grid. */
+  static final int KLL_BUCKETS = 20;
+
   /**
    * Serialises a list of column profiles to the Deequ-compatible JSON envelope.
    *
@@ -205,7 +208,7 @@ class ProfileJsonSerializer {
     double minValue = sketch.getMinItem();
     double maxValue = sketch.getMaxItem();
     long totalRows = sketch.getN();
-    int numBuckets = 20;
+    int numBuckets = KLL_BUCKETS;
     double range = maxValue - minValue;
     double binWidth = range > 0 ? range / numBuckets : 1.0;
 
