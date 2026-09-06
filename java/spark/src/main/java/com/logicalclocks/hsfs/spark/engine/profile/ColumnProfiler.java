@@ -231,14 +231,14 @@ public class ColumnProfiler {
   }
 
   /**
-   * True when an equi-width grid of {@code bins} over {@code [min, max]} has strictly
-   * increasing edges, which is what {@code getCDF} demands of its split points and what
-   * keeps a bin label from being derived from a bound it does not describe.
+   * True when the equi-width grid of {@code bins} over {@code [min, max]} has strictly
+   * increasing edges - what {@code getCDF} demands of its split points, and what a bin label
+   * needs in order to describe the bound it names.
    *
-   * <p>Finite bounds are not sufficient in either direction. A span wider than
-   * Double.MAX_VALUE overflows the subtraction to infinity and collapses every split point;
-   * a span below {@code bins * Double.MIN_VALUE} underflows the division to zero, so every
-   * split point lands on {@code min} instead. A zero span is fine: the histogram emits a
+   * <p>Checked literally, edge by edge, because every shortcut has a hole: a finite range
+   * can overflow to infinity, a finite width can underflow to zero, and a width that is
+   * finite and positive can still be smaller than the spacing of doubles at {@code min}, so
+   * that later edges round onto earlier ones. A zero range is fine: the histogram emits a
    * single bin for it and the bucket grid falls back to a width of 1.
    */
   static boolean hasUsableBinGrid(double min, double max, int bins) {
@@ -250,7 +250,16 @@ public class ColumnProfiler {
       return true;
     }
     double width = range / bins;
-    return width > 0 && min + width > min;
+    double previous = min;
+    for (int i = 1; i < bins; i++) {
+      // The same formula HistogramBuilder and ProfileJsonSerializer use for their edges.
+      double edge = min + i * width;
+      if (!(edge > previous)) {
+        return false;
+      }
+      previous = edge;
+    }
+    return true;
   }
 
   /**
@@ -430,11 +439,11 @@ public class ColumnProfiler {
     }
 
     // Bin over the finite values: minVal/maxVal go non-finite as soon as the column holds
-    // one NaN or infinity. From the same agg() pass; min/max are null exactly when the
-    // column has nothing finite.
+    // one NaN or infinity. All three come from the same agg() pass, and min/max are null
+    // exactly when the column has nothing finite.
     Double minFinite = aggRow.getAs(nn + "__min_finite");
     Double maxFinite = aggRow.getAs(nn + "__max_finite");
-    long finiteVal = ((Number) aggRow.getAs(nn + "__nfinite")).longValue();
+    long finiteVal = aggRow.getAs(nn + "__nfinite");
     boolean binnable = minFinite != null && maxFinite != null
         && hasUsableBinGrid(minFinite, maxFinite, histogramBins);
 
@@ -453,6 +462,8 @@ public class ColumnProfiler {
     if (kll && finiteVal > 0) {
       byte[] kllBytes = computeKll(df, nn);
       KllDoublesSketch sketch = KllAggregator.heapify(kllBytes);
+      // finiteVal > 0 already implies a non-empty sketch; kept because buildKllBuckets
+      // depends on it directly, not on how the caller happened to gate the call.
       if (!sketch.isEmpty()) {
         builder.approxPercentiles(sketch.getQuantiles(PERCENTILE_FRACTIONS));
         // The buckets, unlike the percentiles, need a usable grid over the sketch's range.

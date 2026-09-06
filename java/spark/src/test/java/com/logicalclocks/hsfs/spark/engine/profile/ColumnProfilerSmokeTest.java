@@ -337,23 +337,17 @@ public class ColumnProfilerSmokeTest {
     // used to enter the sketch, so getMaxItem() returned Infinity, every split point
     // collapsed to Infinity or NaN and getCDF failed the whole statistics job with
     // "Values must be unique, monotonically increasing and not NaN".
-    // huge_range holds only finite values, but its span overflows a double subtraction to
-    // infinity, so a finiteness check per value is not enough to make a bin grid safe.
     StructType schema = new StructType(new StructField[]{
       DataTypes.createStructField("mixed", DataTypes.DoubleType, true),
       DataTypes.createStructField("all_inf", DataTypes.DoubleType, true),
-      DataTypes.createStructField("huge_range", DataTypes.DoubleType, true),
-      DataTypes.createStructField("subnormal_range", DataTypes.DoubleType, true),
     });
     List<Row> rows = new ArrayList<>();
     for (int i = 1; i <= 8; i++) {
-      rows.add(RowFactory.create((double) i, Double.POSITIVE_INFINITY, 0.0, 0.0));
+      rows.add(RowFactory.create((double) i, Double.POSITIVE_INFINITY));
     }
-    rows.add(RowFactory.create(Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY,
-        -Double.MAX_VALUE, 0.0));
-    rows.add(RowFactory.create(Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY,
-        Double.MAX_VALUE, Double.MIN_VALUE));
-    rows.add(RowFactory.create(Double.NaN, Double.POSITIVE_INFINITY, 0.0, 0.0));
+    rows.add(RowFactory.create(Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY));
+    rows.add(RowFactory.create(Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY));
+    rows.add(RowFactory.create(Double.NaN, Double.POSITIVE_INFINITY));
     Dataset<Row> df = SparkEngine.getInstance().getSparkSession().createDataFrame(rows, schema);
 
     String json = new ColumnProfiler().profile(df, null, false, true, 20, false, true);
@@ -406,27 +400,45 @@ public class ColumnProfilerSmokeTest {
         "a column with no finite values must not yield approxPercentiles");
     Assertions.assertEquals(0, allInf.get("histogram").size(),
         "a column with no finite values must emit no bins");
+  }
 
-    // Finite bounds, unusable span: same treatment. huge_range overflows the subtraction
-    // to infinity; subnormal_range underflows the division, so every split point would
-    // land on the minimum. Neither can produce a strictly increasing grid.
-    JsonNode subnormal = findColumn(columns, "subnormal_range");
-    Assertions.assertNotNull(subnormal, "subnormal_range column profile must be present");
-    Assertions.assertEquals(0, subnormal.get("histogram").size(),
-        "a span whose width underflows to zero must emit no bins, not 20 identical ones");
-    Assertions.assertFalse(subnormal.has("kll"),
-        "a span whose width underflows to zero must not be emitted as kll");
-    Assertions.assertEquals(99, subnormal.get("approxPercentiles").size(),
-        "the percentiles do not need a bin grid and must survive");
+  @Test
+  void emitsNoBinsWhenTheGridCannotIncrease() throws Exception {
+    // Three columns made of nothing but finite values, each of which defeats a weaker
+    // guard than "the edges strictly increase":
+    //   huge_range      the range overflows a double subtraction to infinity
+    //   subnormal_range the width, range / 20, underflows to zero
+    //   snowflake_ids   LongType ids at ~1e18 minted within one millisecond: the width is
+    //                   finite and positive but smaller than the spacing of doubles there,
+    //                   so later edges round onto earlier ones
+    // Each used to reach getCDF with duplicate split points and fail the whole job.
+    StructType schema = new StructType(new StructField[]{
+      DataTypes.createStructField("huge_range", DataTypes.DoubleType, true),
+      DataTypes.createStructField("subnormal_range", DataTypes.DoubleType, true),
+      DataTypes.createStructField("snowflake_ids", DataTypes.LongType, true),
+    });
+    List<Row> rows = new ArrayList<>();
+    long firstId = 1_700_000_000_000_000_000L;
+    for (int i = 0; i <= 20; i++) {
+      rows.add(RowFactory.create(0.0, 0.0, firstId + i * 200L));
+    }
+    rows.add(RowFactory.create(-Double.MAX_VALUE, Double.MIN_VALUE, firstId));
+    rows.add(RowFactory.create(Double.MAX_VALUE, 0.0, firstId));
+    Dataset<Row> df = SparkEngine.getInstance().getSparkSession().createDataFrame(rows, schema);
 
-    JsonNode huge = findColumn(columns, "huge_range");
-    Assertions.assertNotNull(huge, "huge_range column profile must be present");
-    Assertions.assertEquals(0, huge.get("histogram").size(),
-        "a span that overflows to infinity must emit no bins");
-    Assertions.assertFalse(huge.has("kll"),
-        "a span that overflows to infinity must not be emitted as kll (getCDF rejects it)");
-    Assertions.assertEquals(99, huge.get("approxPercentiles").size(),
-        "the percentiles do not need a bin grid and must survive");
+    String json = new ColumnProfiler().profile(df, null, false, true, 20, false, true);
+    JsonNode columns = new ObjectMapper().readTree(json).get("columns");
+
+    for (String name : new String[]{"huge_range", "subnormal_range", "snowflake_ids"}) {
+      JsonNode col = findColumn(columns, name);
+      Assertions.assertNotNull(col, name + " column profile must be present");
+      Assertions.assertEquals(0, col.get("histogram").size(),
+          name + ": an unusable grid must emit no bins, not 20 identical ones");
+      Assertions.assertFalse(col.has("kll"),
+          name + ": an unusable grid must not be emitted as kll (getCDF rejects it)");
+      Assertions.assertEquals(99, col.get("approxPercentiles").size(),
+          name + ": the percentiles do not need a bin grid and must survive");
+    }
   }
 
   @Test

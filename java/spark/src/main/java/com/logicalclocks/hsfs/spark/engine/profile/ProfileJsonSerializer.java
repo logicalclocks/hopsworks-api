@@ -202,7 +202,10 @@ class ProfileJsonSerializer {
    * construction and describe exactly the values it holds.
    *
    * <p>getMinItem/getMaxItem throw on an empty sketch; ColumnProfiler only sets kllBytes
-   * for a non-empty one, so this is unreachable with an empty sketch.
+   * for a non-empty one, so this is unreachable with an empty sketch. Likewise, getCDF
+   * rejects split points that do not strictly increase; ColumnProfiler.hasUsableBinGrid
+   * checks that with the same {@code min + i * binWidth} formula used below, so the two
+   * must change together.
    */
   private List<Map<String, Object>> buildKllBuckets(KllDoublesSketch sketch) {
     double minValue = sketch.getMinItem();
