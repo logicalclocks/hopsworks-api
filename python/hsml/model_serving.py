@@ -52,6 +52,7 @@ _SAFE_GIT_BRANCH_NAME_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 
 
 if TYPE_CHECKING:
+    from hsml.deployment_schema import DeploymentSchema
     from hsml.deployment_tracing_config import DeploymentTracingConfig
     from hsml.inference_batcher import InferenceBatcher
     from hsml.inference_endpoint import InferenceEndpoint
@@ -221,6 +222,9 @@ class ModelServing:
         vllm_image_tag: str | None = None,
         tracing: DeploymentTracingConfig | dict | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
+        schema: DeploymentSchema | dict | None = None,
+        passed_features: list[str] | None = None,
+        default_predictor: bool | None = None,
     ) -> Predictor:
         """Create a Predictor metadata object.
 
@@ -269,6 +273,9 @@ class ModelServing:
             tags: Optionally the tags to attach to the deployment when it is created, in the same shapes accepted by feature groups.
                 A single [`Tag`][hopsworks.tag.Tag], a `{"name": "owner", "value": "team-a"}` dict, or a list of either, for example `[{"name": "owner", "value": "team-a"}]`.
                 The tags ride the create request, so any mandatory deployment tags missing from them cause the backend to reject the creation.
+            schema: Deployment schema describing the prediction requests; see [`Model.deploy`][hsml.model.Model.deploy].
+            passed_features: Feature view features whose values clients send with each request; see [`Model.deploy`][hsml.model.Model.deploy].
+            default_predictor: Whether the library's default predictor serves the model; see [`Model.deploy`][hsml.model.Model.deploy].
 
         Returns:
             The predictor metadata object.
@@ -293,6 +300,76 @@ class ModelServing:
             vllm_variant=vllm_variant,
             vllm_image_tag=vllm_image_tag,
             tracing=tracing,
+            tags=tags,
+            schema=schema,
+            passed_features=passed_features,
+            default_predictor=default_predictor,
+        )
+
+    @public
+    @usage._method_logger
+    def create_feature_view_predictor(
+        self,
+        feature_view: Any,
+        name: str | None = None,
+        description: str | None = None,
+        training_dataset_version: int | None = None,
+        passed_features: list[str] | None = None,
+        schema: DeploymentSchema | dict | None = None,
+        script_file: str | None = None,
+        resources: PredictorResources | dict | None = None,
+        scaling_configuration: PredictorScalingConfig | dict | None = None,
+        environment: str | None = None,
+        env_vars: dict | None = None,
+        tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
+    ) -> Predictor:
+        """Create the predictor of a feature view deployment, which serves transformed feature vectors without a model.
+
+        Same contract as a model deployment with the default predictor; the
+        response carries one feature vector per request row under
+        `predictions` and the column names under `columns`.
+
+        Note: Lazy
+            This method is lazy and does not persist any metadata or deploy anything on its own.
+            To create a deployment using this predictor, call the `deploy()` method.
+
+        Parameters:
+            feature_view: The feature view to serve.
+            name: Deployment name; defaults to the view name and version without special characters.
+            description: Deployment description.
+            training_dataset_version: Training dataset whose statistics the transformations use; defaults to the last one accessed in this session.
+            passed_features: Features of the view whose values clients send with each request.
+            schema: A refinement of the inferred deployment schema, keeping its fields.
+            script_file: A script subclassing `hsml.default_predictor.DefaultPredict` that ends with the `run_kserve_wrapper()` hand-over.
+            resources: Resources to be allocated for the predictor.
+            scaling_configuration: Scaling configuration for the predictor.
+            environment: The inference environment to use.
+            env_vars: Environment variables to set on the predictor.
+            tags: Tags to attach to the deployment when it is created.
+
+        Example:
+            ```python
+            predictor = ms.create_feature_view_predictor(
+                feature_view, name="transactionsfv", passed_features=["amount"]
+            )
+            deployment = ms.create_deployment(predictor)
+            ```
+
+        Returns:
+            The predictor metadata object.
+        """
+        return Predictor.for_feature_view(
+            feature_view,
+            name=name,
+            description=description,
+            training_dataset_version=training_dataset_version,
+            passed_features=passed_features,
+            schema=schema,
+            script_file=script_file,
+            resources=resources,
+            scaling_configuration=scaling_configuration,
+            environment=environment,
+            env_vars=env_vars,
             tags=tags,
         )
 
