@@ -35,7 +35,6 @@ from hopsworks_common.core import (
     services_api,
     variable_api,
 )
-from hopsworks_common.core.opensearch import OpenSearchClientSingleton
 from hopsworks_common.decorators import _connected, _not_connected
 from requests.exceptions import ConnectionError
 from typing_extensions import Self
@@ -155,8 +154,52 @@ class Connection:
         self._api_key_value = api_key_value
         self._connected = False
         self._backend_version = None
+        self._feature_store_api_cache = None
+        self._model_registry_api_cache = None
+        self._model_serving_api_cache = None
+        self._serving_defaults_loaded = False
+        self._serving_defaults_loading = False
 
         self._connect()
+
+    # The hsfs/hsml API objects are built on first use. Constructing them imports
+    # hsfs and hsml (pandas, pyarrow, sqlalchemy, boto: ~0.7 s), which a caller
+    # that only needs the REST client, such as the hops CLI, never pays for.
+    @property
+    def _feature_store_api(self):
+        if self._feature_store_api_cache is None:
+            from hsfs.core import feature_store_api
+
+            self._feature_store_api_cache = feature_store_api.FeatureStoreApi()
+        return self._feature_store_api_cache
+
+    @_feature_store_api.setter
+    def _feature_store_api(self, value) -> None:
+        self._feature_store_api_cache = value
+
+    @property
+    def _model_registry_api(self):
+        if self._model_registry_api_cache is None:
+            from hsml.core import model_registry_api
+
+            self._model_registry_api_cache = model_registry_api.ModelRegistryApi()
+        return self._model_registry_api_cache
+
+    @_model_registry_api.setter
+    def _model_registry_api(self, value) -> None:
+        self._model_registry_api_cache = value
+
+    @property
+    def _model_serving_api(self):
+        if self._model_serving_api_cache is None:
+            from hsml.core import model_serving_api
+
+            self._model_serving_api_cache = model_serving_api.ModelServingApi()
+        return self._model_serving_api_cache
+
+    @_model_serving_api.setter
+    def _model_serving_api(self, value) -> None:
+        self._model_serving_api_cache = value
 
     @usage._method_logger
     @_connected
@@ -211,6 +254,7 @@ class Connection:
         Returns:
             A model serving handle object to perform operations on.
         """
+        self._load_serving_defaults()
         return self._model_serving_api._get()
 
     @usage._method_logger
@@ -315,7 +359,8 @@ class Connection:
         regexMatcher = re.compile(versionPattern)
 
         client_version = version.__version__
-        self.backend_version = self._variable_api._get_version("hopsworks")
+        if self._backend_version is None:
+            self.backend_version = self._variable_api._get_version("hopsworks")
 
         major_minor_client = regexMatcher.search(client_version).group(0)
         major_minor_backend = regexMatcher.search(self._backend_version).group(0)
@@ -397,20 +442,15 @@ class Connection:
                 )
 
             client._set_connection(self)
-            from hsfs.core import feature_store_api
-            from hsml.core import model_registry_api, model_serving_api
-
             global _hsfs_engine_type
             _hsfs_engine_type = self._engine
-            self._feature_store_api = feature_store_api.FeatureStoreApi()
-            self._model_registry_api = model_registry_api.ModelRegistryApi()
-            self._model_serving_api = model_serving_api.ModelServingApi()
             self._project_api = project_api.ProjectApi()
             self._hosts_api = hosts_api.HostsApi()
             self._services_api = services_api.ServicesApi()
             self._secret_api = secret_api.SecretsApi()
             self._variable_api = variable_api.VariableApi()
-            usage._init_usage(self._host, self._variable_api._get_version("hopsworks"))
+            self.backend_version = self._variable_api._get_version("hopsworks")
+            usage._init_usage(self._host, self._backend_version)
 
             self._provide_project()
         except (TypeError, ConnectionError):
@@ -435,23 +475,59 @@ class Connection:
         if not self._project:
             return
 
-        from hsfs import engine
+        if self._engine not in ("python", "training"):
+            # Spark engines must come up while the project is being set (the
+            # session needs the certificates before user code runs); the Python
+            # engine initialises itself on first use instead of importing hsfs
+            # here.
+            from hsfs import engine
 
-        engine._get_instance()
-        if self._variable_api._get_data_science_profile_enabled():
-            # load_default_configuration has to be called before using hsml
-            # but after a project is provided to client
-            try:
-                # istio client, default resources,...
-                self._model_serving_api._load_default_configuration()
-            except RestAPIError as e:
-                if e.response.error_code == 403 and e.error_code == 320004:
-                    print(
-                        'The used API key does not include "SERVING" scope, the related functionality will be disabled.'
-                    )
-                    _logger.debug(f"The ignored exception: {e}")
-                else:
-                    raise e
+            engine._get_instance()
+
+    def _load_serving_defaults(self) -> None:
+        """Load the model-serving defaults and the istio client, once.
+
+        Called on first use of anything serving-related (see
+        ``client._load_serving_defaults``) rather than during login, so a caller
+        that never deploys a model pays neither the requests nor the import.
+        """
+        if (
+            self._serving_defaults_loaded
+            or self._serving_defaults_loading
+            or not self._connected
+            or not self._project
+        ):
+            return
+        # Loading reads the serving settings itself (via the client getters), so
+        # the in-progress flag stops that recursion; ``loaded`` is only set once
+        # the load succeeded, or was deliberately skipped, so a transient error
+        # leaves the next call free to retry.
+        self._serving_defaults_loading = True
+        try:
+            serving_available = self._variable_api._get_data_science_profile_enabled()
+            if serving_available:
+                try:
+                    # istio client, default resources,...
+                    self._model_serving_api._load_default_configuration()
+                except RestAPIError as e:
+                    if e.response.error_code == 403 and e.error_code == 320004:
+                        print(
+                            'The used API key does not include "SERVING" scope, the related functionality will be disabled.'
+                        )
+                        _logger.debug(f"The ignored exception: {e}")
+                        serving_available = False
+                    else:
+                        raise e
+            if not serving_available:
+                # Serving is off for this session: give the getters definite
+                # values (no KServe, no instance limits, no Knative domain)
+                # instead of None.
+                client._set_kserve_installed(False)
+                client._set_serving_num_instances_limits([-1, -1])
+                client._set_knative_domain("")
+            self._serving_defaults_loaded = True
+        finally:
+            self._serving_defaults_loading = False
 
     def _close(self) -> None:
         """Close a connection gracefully.
@@ -470,13 +546,24 @@ class Connection:
         if not self._connected:
             return  # the connection is already closed
 
-        from hsfs import engine
-
-        if OpenSearchClientSingleton._instance:
-            OpenSearchClientSingleton._close_all()
+        opensearch = sys.modules.get("hopsworks_common.core.opensearch")
+        if opensearch is not None and opensearch.OpenSearchClientSingleton._instance:
+            opensearch.OpenSearchClientSingleton._close_all()
         client._stop()
-        engine._stop()
+        # Nothing to stop unless hsfs was actually used on this connection.
+        if "hsfs.engine" in sys.modules:
+            from hsfs import engine
+
+            engine._stop()
+        # hsfs.engine._get_type() answers from this; after close it must fail
+        # again rather than report the closed connection's engine.
+        global _hsfs_engine_type
+        _hsfs_engine_type = None
         self._feature_store_api = None
+        self._model_registry_api = None
+        self._model_serving_api = None
+        self._serving_defaults_loaded = False
+        self._serving_defaults_loading = False
         self._connected = False
         _logger.info("Connection closed.")
 
