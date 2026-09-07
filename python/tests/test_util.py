@@ -24,7 +24,7 @@ import hopsworks_common.util
 import pytest
 import pytz
 from hopsworks_common import util
-from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.client.exceptions import FeatureStoreException, JobException
 from hopsworks_common.constants import MODEL
 from hopsworks_common.core.constants import HAS_AIOMYSQL, HAS_SQLALCHEMY
 from hsfs.embedding import EmbeddingFeature, EmbeddingIndex
@@ -971,3 +971,20 @@ class TestUtil:
                 match="Event loop is not running. Please invoke this co-routine from a running loop or provide an event loop.",
             ):
                 asyncio.run(util_sql._create_async_engine(online_connector, True, 1))
+
+
+class TestValidateJobConf:
+    def test_agent_job_configuration_needs_no_app_path(self):
+        # An agent task's instructions are its `prompt`; there is no script to
+        # resolve, so the appPath requirement must not apply.
+        config = {
+            "type": "agentJobConfiguration",
+            "appName": "nightly-report",
+            "prompt": "Summarise yesterday's feature group statistics.",
+        }
+
+        assert util._validate_job_conf(config, "proj") is config
+
+    def test_python_job_configuration_requires_app_path(self):
+        with pytest.raises(JobException):
+            util._validate_job_conf({"type": "pythonJobConfiguration"}, "proj")
