@@ -1,6 +1,6 @@
 ---
 name: hops-collaboration
-description: Use when managing project membership and when sharing in Hopsworks. Share feature store / feature group / dataset data across projects. 
+description: Use when managing project membership and when sharing in Hopsworks. Share feature store / feature group / dataset data across projects.
 ---
 
 # Project Members, Platform Users, and Sharing
