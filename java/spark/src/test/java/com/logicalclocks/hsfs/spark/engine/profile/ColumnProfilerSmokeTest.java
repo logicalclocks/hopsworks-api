@@ -491,6 +491,40 @@ public class ColumnProfilerSmokeTest {
         "no value is a singleton, so uniqueness is 0");
   }
 
+  @Test
+  void profilesAStringColumnNamedCount() throws Exception {
+    // The numeric path above groups on a synthetic "_bin"; the categorical histogram grouped
+    // on the column itself. For a String or Boolean feature named "count" that does not throw
+    // the way the uniqueness pass did: Spark resolves orderBy(desc("count")) against the
+    // grouping column, so the bins came out ordered by value and the top-N cut kept the
+    // lexically largest values instead of the most frequent ones.
+    StructType schema = new StructType(new StructField[]{
+      DataTypes.createStructField("count", DataTypes.StringType, true),
+    });
+    // Frequency order is the reverse of lexical order, and there are more distinct values
+    // than bins, so binding "count" to the wrong column changes both the order and the
+    // survivors of the top-N cut: v00 appears 25 times, v01 24 times, ... v24 once.
+    List<Row> rows = new ArrayList<>();
+    for (int v = 0; v < 25; v++) {
+      for (int n = 0; n < 25 - v; n++) {
+        rows.add(RowFactory.create(String.format("v%02d", v)));
+      }
+    }
+    Dataset<Row> df = SparkEngine.getInstance().getSparkSession().createDataFrame(rows, schema);
+
+    String json = new ColumnProfiler().profile(df, null, false, true, 20, true, false);
+    JsonNode col = findColumn(new ObjectMapper().readTree(json).get("columns"), "count");
+    Assertions.assertNotNull(col, "the column named 'count' must be profiled");
+    Assertions.assertEquals(25, col.get("exactNumDistinctValues").asLong());
+    JsonNode hist = col.get("histogram");
+    Assertions.assertEquals(20, hist.size(), "top-20 of 25 distinct values");
+    for (int i = 0; i < 20; i++) {
+      Assertions.assertEquals(String.format("v%02d", i), hist.get(i).get("value").asText(),
+          "bins are ordered by frequency, most frequent first: " + hist);
+      Assertions.assertEquals(25 - i, hist.get(i).get("count").asLong());
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------

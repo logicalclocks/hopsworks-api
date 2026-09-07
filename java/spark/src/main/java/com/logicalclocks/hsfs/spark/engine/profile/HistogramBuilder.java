@@ -119,9 +119,15 @@ class HistogramBuilder {
       String columnName,
       int histogramBins,
       long totalRows) {
+    // Project to a fixed name before grouping, as ColumnProfiler's uniqueness pass does. For
+    // a feature named "count", grouping on the column itself leaves two "count" columns, and
+    // Spark resolves the orderBy against the grouping one rather than failing: the bins come
+    // out ordered by value, and the top-N cut keeps the wrong values.
+    Column value = functions.col(columnName).alias("_v");
     Dataset<Row> grouped = df
-        .filter(functions.col(columnName).isNotNull())
-        .groupBy(functions.col(columnName))
+        .select(value)
+        .filter(functions.col("_v").isNotNull())
+        .groupBy(functions.col("_v"))
         .count()
         .orderBy(functions.desc("count"))
         .limit(histogramBins);
