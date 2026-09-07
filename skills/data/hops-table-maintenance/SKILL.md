@@ -40,7 +40,7 @@ Resolve the table format first: `_delta_log/` means Delta, `metadata/` with
 `time_travel_format` says the same thing through the API.
 
 Run the bundled scanner (install its deps once with
-`uv pip install deltalake duckdb`; add `pyiceberg` for Iceberg tables):
+`uv pip install deltalake duckdb pyarrow`; add `pyiceberg` for Iceberg tables):
 
 ```bash
 python3 ~/.claude/skills/hops-table-maintenance/scripts/lakehouse_doctor.py analyze \

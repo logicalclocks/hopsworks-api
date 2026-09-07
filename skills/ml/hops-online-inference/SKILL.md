@@ -97,7 +97,7 @@ deployment = model.deploy(
         scale_metric=ScaleMetric.CONCURRENCY,   # required — omitting it fails with HTTP 422
         target=70,                              # target concurrent requests per pod
     ),
-    environment="inference-pipeline",  # Python environment name
+    environment="pandas-inference-pipeline",  # Python environment name
 )
 
 deployment.start(await_running=600)  # wait up to 600 seconds

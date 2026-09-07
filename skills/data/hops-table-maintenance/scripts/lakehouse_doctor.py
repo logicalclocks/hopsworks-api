@@ -27,11 +27,15 @@ OVERSIZED_FILE_BYTES = 2 * 1024 * 1024 * 1024
 def detect_format(table: Path) -> str:
     if (table / "_delta_log").is_dir():
         return "delta"
-    if (table / "metadata").is_dir() and list((table / "metadata").glob("*.metadata.json")):
+    if (table / "metadata").is_dir() and list(
+        (table / "metadata").glob("*.metadata.json")
+    ):
         return "iceberg"
     if (table / ".hoodie").is_dir():
         return "hudi"
-    raise SystemExit(f"{table}: no _delta_log/, metadata/*.metadata.json or .hoodie/ found")
+    raise SystemExit(
+        f"{table}: no _delta_log/, metadata/*.metadata.json or .hoodie/ found"
+    )
 
 
 def file_organization(sizes: list[int]) -> dict:
@@ -41,9 +45,13 @@ def file_organization(sizes: list[int]) -> dict:
         "active_files": len(sizes),
         "total_bytes": sum(sizes),
         "median_file_bytes": int(statistics.median(sizes)),
-        "small_file_ratio": round(sum(1 for s in sizes if s < SMALL_FILE_BYTES) / len(sizes), 3),
+        "small_file_ratio": round(
+            sum(1 for s in sizes if s < SMALL_FILE_BYTES) / len(sizes), 3
+        ),
         "oversized_files": sum(1 for s in sizes if s > OVERSIZED_FILE_BYTES),
-        "estimated_compaction_rewrite_bytes": sum(s for s in sizes if s < SMALL_FILE_BYTES),
+        "estimated_compaction_rewrite_bytes": sum(
+            s for s in sizes if s < SMALL_FILE_BYTES
+        ),
     }
 
 
@@ -57,7 +65,9 @@ def partition_statistics(per_partition: dict[str, dict]) -> dict:
         "max_partition_bytes": max(byte_counts),
         "median_partition_bytes": int(median_bytes),
         "skew_ratio": round(max(byte_counts) / median_bytes, 1),
-        "partitions_below_small_file_size": sum(1 for b in byte_counts if b < SMALL_FILE_BYTES),
+        "partitions_below_small_file_size": sum(
+            1 for b in byte_counts if b < SMALL_FILE_BYTES
+        ),
     }
 
 
@@ -87,25 +97,40 @@ def analyze_delta(table: Path) -> dict:
     try:
         from deltalake import DeltaTable
     except ImportError:
-        raise SystemExit("deltalake is not installed: uv pip install deltalake")
-
-    dt = DeltaTable(str(table))
+        raise SystemExit("deltalake is not installed: uv pip install deltalake pyarrow")
     # deltalake >= 1.0 returns an arro3 table with no to_pylist; pyarrow
     # accepts it through the Arrow C stream interface either way.
-    import pyarrow
+    try:
+        import pyarrow
+    except ImportError:
+        raise SystemExit("pyarrow is not installed: uv pip install deltalake pyarrow")
+
+    dt = DeltaTable(str(table))
+
     adds = pyarrow.table(dt.get_add_actions(flatten=True)).to_pylist()
     sizes = [a["size_bytes"] for a in adds]
 
     per_partition: dict[str, dict] = {}
-    part_cols = [k[len("partition."):] for k in (adds[0] if adds else {}) if k.startswith("partition.")]
+    part_cols = [
+        k[len("partition.") :]
+        for k in (adds[0] if adds else {})
+        if k.startswith("partition.")
+    ]
     for a in adds:
-        key = "/".join(f"{c}={a.get('partition.' + c)}" for c in part_cols) or "<unpartitioned>"
+        key = (
+            "/".join(f"{c}={a.get('partition.' + c)}" for c in part_cols)
+            or "<unpartitioned>"
+        )
         slot = per_partition.setdefault(key, {"files": 0, "bytes": 0})
         slot["files"] += 1
         slot["bytes"] += a["size_bytes"]
 
-    stat_cols = sorted({k[len("min."):] for k in (adds[0] if adds else {}) if k.startswith("min.")})
-    ranges = {c: [(a.get(f"min.{c}"), a.get(f"max.{c}")) for a in adds] for c in stat_cols}
+    stat_cols = sorted(
+        {k[len("min.") :] for k in (adds[0] if adds else {}) if k.startswith("min.")}
+    )
+    ranges = {
+        c: [(a.get(f"min.{c}"), a.get(f"max.{c}")) for a in adds] for c in stat_cols
+    }
 
     history = dt.history()
     return {
@@ -115,7 +140,9 @@ def analyze_delta(table: Path) -> dict:
         "column_overlap": column_overlap(ranges),
         "snapshot_history": {"version": dt.version(), "commits_retained": len(history)},
         "format_specific": {
-            "deletion_vectors": sum(1 for a in adds if a.get("deletionVector.storageType")),
+            "deletion_vectors": sum(
+                1 for a in adds if a.get("deletionVector.storageType")
+            ),
         },
     }
 
@@ -185,7 +212,9 @@ def analyze_hudi(table: Path) -> dict:
     active = _hudi_active_base_files(table)
     parquet = [p.stat().st_size for p in active]
     logs = [p for p in table.rglob("*.log.*") if ".hoodie" not in p.parts]
-    timeline = list((table / ".hoodie").glob("*.commit")) + list((table / ".hoodie").glob("*.deltacommit"))
+    timeline = list((table / ".hoodie").glob("*.commit")) + list(
+        (table / ".hoodie").glob("*.deltacommit")
+    )
 
     per_partition: dict[str, dict] = {}
     for p in active:
@@ -211,7 +240,11 @@ def cmd_analyze(args: argparse.Namespace) -> None:
     table = Path(args.table).resolve()
     fmt = args.format if args.format != "auto" else detect_format(table)
     evidence = {"table": str(table), "format": fmt}
-    evidence.update({"delta": analyze_delta, "iceberg": analyze_iceberg, "hudi": analyze_hudi}[fmt](table))
+    evidence.update(
+        {"delta": analyze_delta, "iceberg": analyze_iceberg, "hudi": analyze_hudi}[fmt](
+            table
+        )
+    )
     text = json.dumps(evidence, indent=2, default=str)
     if args.output:
         Path(args.output).write_text(text + "\n")
@@ -234,71 +267,103 @@ def cmd_plan(args: argparse.Namespace) -> None:
     actions = []
 
     if fo.get("active_files", 0) > 16 and fo.get("small_file_ratio", 0) > 0.5:
-        actions.append({
-            "type": "compact",
-            "target_file_size_mb": TARGET_FILE_BYTES // (1024 * 1024),
-            "scope": "start with the most recent partitions, widen after verification",
-            "estimated_rewrite_gb": round(fo.get("estimated_compaction_rewrite_bytes", 0) / 2**30, 1),
-            "api": "FeatureGroup.optimize() (Delta/Iceberg; safe incremental defaults)",
-            "confidence": 0.9,
-            "requires_approval": True,
-        })
+        actions.append(
+            {
+                "type": "compact",
+                "target_file_size_mb": TARGET_FILE_BYTES // (1024 * 1024),
+                "scope": "start with the most recent partitions, widen after verification",
+                "estimated_rewrite_gb": round(
+                    fo.get("estimated_compaction_rewrite_bytes", 0) / 2**30, 1
+                ),
+                "api": "FeatureGroup.optimize() (Delta/Iceberg; safe incremental defaults)",
+                "confidence": 0.9,
+                "requires_approval": True,
+            }
+        )
     if ps.get("skew_ratio", 0) > 10 and ps.get("partition_count", 0) > 1:
-        actions.append({
-            "type": "review_partitioning",
-            "detail": f"largest partition is {ps['skew_ratio']}x the median; "
-                      "consider a coarser transform or bucket/clustering instead",
-            "confidence": 0.6,
-            "requires_approval": True,
-        })
-    if ps.get("partition_count", 0) > 5000 and ps.get("partitions_below_small_file_size", 0) > 2500:
-        actions.append({
-            "type": "coarsen_partitioning",
-            "detail": "thousands of tiny partition directories",
-            "confidence": 0.7,
-            "requires_approval": True,
-        })
+        actions.append(
+            {
+                "type": "review_partitioning",
+                "detail": f"largest partition is {ps['skew_ratio']}x the median; "
+                "consider a coarser transform or bucket/clustering instead",
+                "confidence": 0.6,
+                "requires_approval": True,
+            }
+        )
+    if (
+        ps.get("partition_count", 0) > 5000
+        and ps.get("partitions_below_small_file_size", 0) > 2500
+    ):
+        actions.append(
+            {
+                "type": "coarsen_partitioning",
+                "detail": "thousands of tiny partition directories",
+                "confidence": 0.7,
+                "requires_approval": True,
+            }
+        )
     # Clustering needs workload evidence: file stats alone cannot tell a hot
     # filter column from an incidental one, and clustering on the wrong key
     # is an expensive full rewrite that helps nothing.
     overlap = e.get("column_overlap", {})
     hot = [c for c in filter_cols if overlap.get(c, 0) > 0.5]
     if hot:
-        actions.append({
-            "type": "sort_or_cluster",
-            "columns": hot,
-            "detail": "files interleave heavily on columns your queries filter by",
-            "confidence": 0.8,
-            "requires_approval": True,
-        })
+        actions.append(
+            {
+                "type": "sort_or_cluster",
+                "columns": hot,
+                "detail": "files interleave heavily on columns your queries filter by",
+                "confidence": 0.8,
+                "requires_approval": True,
+            }
+        )
     if fs.get("delete_file_ratio", 0) > 0.1:
-        actions.append({"type": "rewrite_data_and_delete_files",
-                        "scope": "restrict with a where filter; widen after verification",
-                        "confidence": 0.85, "requires_approval": True})
+        actions.append(
+            {
+                "type": "rewrite_data_and_delete_files",
+                "scope": "restrict with a where filter; widen after verification",
+                "confidence": 0.85,
+                "requires_approval": True,
+            }
+        )
     if fs.get("manifests", 0) > 100:
-        actions.append({"type": "rewrite_manifests", "confidence": 0.85, "requires_approval": True})
+        actions.append(
+            {"type": "rewrite_manifests", "confidence": 0.85, "requires_approval": True}
+        )
     snapshots = e.get("snapshot_history", {})
     if max(snapshots.get("snapshots", 0), snapshots.get("commits_retained", 0)) > 100:
-        actions.append({"type": "expire_snapshots",
-                        "detail": "destructive: removes time travel history",
-                        "confidence": 0.7, "requires_approval": True})
+        actions.append(
+            {
+                "type": "expire_snapshots",
+                "detail": "destructive: removes time travel history",
+                "confidence": 0.7,
+                "requires_approval": True,
+            }
+        )
     if fs.get("log_to_base_ratio", 0) > 0.5:
         # Hopsworks runs Hudi maintenance through inline clustering on writes and rejects
         # ad hoc procedures (FeatureGroup.optimize() refuses HUDI), so this is a review
         # item, never a command to run.
-        actions.append({"type": "review_hudi_write_config",
-                        "detail": "high log-to-base ratio; Hudi layout maintenance runs "
-                                  "through inline clustering on writes in Hopsworks, so "
-                                  "review the feature group's write configuration rather "
-                                  "than running ad hoc procedures",
-                        "confidence": 0.8, "requires_approval": True})
+        actions.append(
+            {
+                "type": "review_hudi_write_config",
+                "detail": "high log-to-base ratio; Hudi layout maintenance runs "
+                "through inline clustering on writes in Hopsworks, so "
+                "review the feature group's write configuration rather "
+                "than running ad hoc procedures",
+                "confidence": 0.8,
+                "requires_approval": True,
+            }
+        )
 
     print(f"table: {e['table']}")
     print(f"format: {e['format']}")
     if filter_cols:
         print(f"workload_filter_columns: {','.join(filter_cols)}")
     else:
-        print("workload_filter_columns: none  # clustering suppressed without workload evidence")
+        print(
+            "workload_filter_columns: none  # clustering suppressed without workload evidence"
+        )
     print("actions:" if actions else "actions: []  # table looks healthy")
     for a in actions:
         print(yaml_action(a))
@@ -309,7 +374,9 @@ def main() -> None:
     sub = parser.add_subparsers(dest="cmd", required=True)
     a = sub.add_parser("analyze", help="scan one table and emit evidence JSON")
     a.add_argument("table")
-    a.add_argument("--format", choices=["auto", "delta", "iceberg", "hudi"], default="auto")
+    a.add_argument(
+        "--format", choices=["auto", "delta", "iceberg", "hudi"], default="auto"
+    )
     a.add_argument("--output")
     a.set_defaults(func=cmd_analyze)
     p = sub.add_parser("plan", help="turn evidence JSON into a plan YAML")
