@@ -64,5 +64,5 @@ python3 ~/.claude/skills/hops-eda/scripts/fv-eda.py <fv_name> 1 > eda-<ml-system
 
 ## Related skills
 - [hops-eda](../hops-eda/SKILL.md) — runs the profiler and writes the EDA report (the action).
-- [hops-fv](../../hops/hops-fv/SKILL.md) — point-in-time correct splits and transformations that address what EDA finds.
-- [hops-train](../../hops/hops-train/SKILL.md) — training once the data is understood.
+- [hops-fv](../hops-fv/SKILL.md) — point-in-time correct splits and transformations that address what EDA finds.
+- [hops-train](../hops-train/SKILL.md) — training once the data is understood.
