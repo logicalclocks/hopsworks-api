@@ -30,7 +30,17 @@ _HOST_TO_PROVIDER = {v: k for k, v in _DEFAULT_HOST.items()}
 
 
 def canonical_provider(name: str) -> str:
-    """Map a user spelling (``github``, ``GitHub``) to the backend label."""
+    """Map a user spelling (``github``, ``GitHub``) to the backend label.
+
+    Args:
+        name: The provider as the user typed it, in any case.
+
+    Returns:
+        The label the backend uses (``GitHub``, ``GitLab``, ``BitBucket``).
+
+    Raises:
+        click.BadParameter: When ``name`` is none of the known providers.
+    """
     label = _PROVIDERS.get((name or "").strip().lower())
     if not label:
         raise click.BadParameter(
@@ -44,17 +54,39 @@ def default_host(provider: str) -> str:
 
 
 def provider_for_host(host: str) -> str | None:
-    """The provider label a well-known host belongs to, or None for a custom host."""
+    """Resolve the provider behind a Git host name.
+
+    Args:
+        host: The remote's host, such as ``github.com``.
+
+    Returns:
+        The provider label for a well-known host, or None for a custom host.
+    """
     return _HOST_TO_PROVIDER.get((host or "").lower())
 
 
 def list_providers() -> list:
-    """The providers registered for the logged-in user (needs a live client)."""
+    """Read the providers registered for the logged-in user.
+
+    Needs a live client.
+
+    Returns:
+        The registered provider entries, empty when there are none.
+    """
     return git_provider_api.GitProviderApi()._get_providers() or []
 
 
 def find_provider(provider: str, host: str):
-    """The registered provider matching ``provider`` and ``host``, or None."""
+    """Look up the registered entry for a provider at a host.
+
+    Args:
+        provider: The backend provider label.
+        host: The Git host; a registered entry without a host counts as the
+            provider's default host.
+
+    Returns:
+        The matching registered provider, or None when there is none.
+    """
     for p in list_providers():
         if (p.git_provider or "").lower() == provider.lower() and (
             (p.host or default_host(provider)).lower() == host.lower()
@@ -64,7 +96,19 @@ def find_provider(provider: str, host: str):
 
 
 def register_provider(provider: str, username: str, token: str, host: str):
-    """Store ``token`` for ``provider``@``host``; replaces an existing entry."""
+    """Store a personal access token for a provider at a host.
+
+    An existing entry for the same provider and host is replaced.
+
+    Args:
+        provider: The backend provider label.
+        username: The account the token belongs to.
+        token: The personal access token.
+        host: The Git host the token is for.
+
+    Returns:
+        The backend's response to the registration.
+    """
     return git_provider_api.GitProviderApi()._set_provider(
         provider, username, token, host
     )
