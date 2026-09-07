@@ -5,7 +5,7 @@
 
     <groupId>com.logicalclocks</groupId>
     <artifactId>hsfs-utils</artifactId>
-    <version>5.1.0-RC0</version>
+    <version>5.1.0-RC1</version>
 
     <properties>
         <hops.version>3.4.3.2-EE-RC3</hops.version>
