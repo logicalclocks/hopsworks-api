@@ -75,8 +75,14 @@ def _set_instance(
 
 
 def _get_type() -> str:
-    if _engine:
-        return hopsworks_common.connection._hsfs_engine_type
+    # The connection knows the engine type before the engine object exists (the
+    # Python engine is built on first use), so callers that only branch on the
+    # type must not force that construction.
+    engine_type = hopsworks_common.connection._hsfs_engine_type
+    if not engine_type and _engine:
+        engine_type = _engine_type
+    if engine_type:
+        return engine_type
     raise Exception("Couldn't find execution engine. Try reconnecting to Hopsworks.")
 
 

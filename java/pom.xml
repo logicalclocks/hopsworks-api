@@ -27,7 +27,7 @@
         <handy.version>2.1.8</handy.version>
         <lombok.version>1.18.36</lombok.version>
         <lombok.plugin.version>1.18.20.0</lombok.plugin.version>
-        <fasterxml.jackson.databind.version>2.21.2</fasterxml.jackson.databind.version>
+        <fasterxml.jackson.databind.version>2.21.4</fasterxml.jackson.databind.version>
         <datasketches.version>6.2.0</datasketches.version>
         <spark.version>4.1.3.0</spark.version>
         <hudi.groupId>io.hops.hudi</hudi.groupId>
@@ -49,6 +49,41 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <delombok.output>${project.build.directory}/generated-sources/delombok</delombok.output>
     </properties>
+
+    <!-- The published hsfs-spark / hsfs-flink artifacts are `jar-with-dependencies`
+         uber jars (maven-assembly-plugin, below), and spark_install.sh drops them
+         straight into /srv/hops/spark/hopsworks-jars in the
+         hopsworks-base:spark-feature-pipeline image. Every compile- and
+         runtime-scope dependency here is therefore scanned as a shipped library,
+         which is easy to forget when reading these poms as if they only described a
+         thin client SDK.
+
+         netty is not declared anywhere in this project. It arrives at runtime scope
+         underneath software.amazon.awssdk:netty-nio-client, which the ssm / sts /
+         secretsmanager clients pull in as their async HTTP transport, and it landed
+         in the published jar at three versions at once (4.1.119, 4.1.136 and 4.2.7),
+         because nothing reconciled the AWS SDK 4.1 line against the 4.2 line Spark
+         brings in as `provided`.
+
+         Pinned to 4.2.17.Final, matching the Spark fork. A bom import applies to
+         every netty artifact regardless of scope, including the ones Spark provides,
+         so pinning the 4.1 line here would not just constrain the AWS SDK, it would
+         downgrade Spark's netty too. Spark 4.1 needs 4.2 classes
+         (io.netty.channel.kqueue.KQueueIoHandler and the rest of the 4.2 IoHandler
+         API) and TestStorageConnector fails with NoClassDefFoundError on a 4.1 pin.
+         4.2.x is also what the AWS SDK already runs against in production, since
+         these jars load inside a Spark image whose own netty is 4.2. -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-bom</artifactId>
+                <version>4.2.17.Final</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <dependency>
@@ -314,7 +349,7 @@
                 <scala.version>2.13.17</scala.version>
                 <scala-short.version>2.13</scala-short.version>
                 <avro.version>1.12.1</avro.version>
-                <fasterxml.jackson.databind.version>2.21.2</fasterxml.jackson.databind.version>
+                <fasterxml.jackson.databind.version>2.21.4</fasterxml.jackson.databind.version>
                 <artifact.spark.version>spark4.1</artifact.spark.version>
             </properties>
         </profile>
