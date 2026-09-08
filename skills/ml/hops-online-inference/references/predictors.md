@@ -1,6 +1,43 @@
 # predictor.py variants
 
-Copy-paste `predictor.py` skeletons for the four lookup patterns. Each loads its model with the `load_model_file` helper from the parent skill's "Writing predictor.py Files" section.
+Before writing any of these, check whether the default predictor already covers the case: a `mr.python` model registered with `feature_view=` and deployed without a script gets feature lookup, passed features, request parameters, transformations, schema validation, and feature logging from `hsml.default_predictor.DefaultPredict` (parent skill, "Default predictor (no script)").
+Write a script only to load a model the default loader cannot (anything but a single pickle or joblib file), to post-process predictions, or for a feature view the model is not linked to.
+Prefer subclassing:
+
+### Default predictor subclass
+
+```python
+# predictor.py — deploy with model.deploy(script_file="predictor.py", default_predictor=True, passed_features=[...])
+from hsml.default_predictor import DefaultPredict
+
+
+class Predict(DefaultPredict):
+    def load_model(self, model_files_path):
+        import xgboost
+
+        booster = xgboost.XGBClassifier()
+        booster.load_model(f"{model_files_path}/model.json")
+        return booster
+
+    def model_predict(self, feature_vectors):
+        # feature_vectors is the transformed DataFrame; the base class selects the
+        # model input columns in model schema order before calling the model
+        return super().model_predict(feature_vectors)
+```
+
+For a feature view deployment (`fv.deploy(script_file="predictor.py")`) add the hand-over footer, because the backend starts model-less deployments as `python predictor.py`:
+
+```python
+from hsml.default_predictor import run_kserve_wrapper
+
+if __name__ == "__main__":
+    run_kserve_wrapper()
+```
+
+The contract itself is in [deployment-schema.md](deployment-schema.md).
+
+Copy-paste `predictor.py` skeletons for the four lookup patterns follow.
+Each loads its model with the `load_model_file` helper from the parent skill's "Writing predictor.py Files" section.
 
 ### Basic Predictor
 
