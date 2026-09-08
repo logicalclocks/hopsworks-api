@@ -802,6 +802,13 @@ class ServingEngine:
         - ``stop_on_status`` matches the current ``deployment.get_state().status``, or
         - the caller breaks out of the loop / closes the generator.
 
+        Continuation is not lossless in one case, and says so when it happens.
+        ``since`` filters by whole seconds, so a resume re-reads the second the
+        cursor sits in; a replica writing more in that second than one read can
+        return can never be resumed past it. After a few such reads the cursor
+        for that replica is abandoned for a fresh tail and a line marking the
+        skipped range is yielded in place of the lines that were lost.
+
         Parameters:
             deployment_instance: The deployment whose logs to tail.
             component: Which deployment component to tail (``predictor``, ``transformer``).
@@ -832,6 +839,15 @@ class ServingEngine:
         # overlap-suffix dedup as a fallback.
         cursor_by_pod: dict[str, tuple[str, int]] = {}
         previous_lines_by_pod: dict[str, list[str]] = {}
+        # Stall recovery. ``since`` filters by whole seconds, so a resume always
+        # re-fetches the whole second the cursor sits in. When that second holds
+        # more than the backend's per-read byte budget, every read returns the
+        # same head, the cursor cannot advance, and without this the generator
+        # polls that prefix for ever and never reaches the next second. Counted
+        # per container instance, since only the busy replica is stuck.
+        stalled_by_instance: dict[str, int] = {}
+        reseeds_by_instance: dict[str, int] = {}
+        pre_reseed_cursor: dict[str, tuple[str, int]] = {}
 
         # ``since="now"`` is a UX shorthand: start streaming brand-new lines
         # only. Resolved here on the first call to a real ISO-8601 timestamp
@@ -885,12 +901,55 @@ class ServingEngine:
                         last_timestamp = chunk.timestamp
                     continue
                 saw_kubernetes_chunk = True
-                chunk_pod = chunk.instance_name or ""
+                # Keyed by container instance, not by pod name: a restarted
+                # container starts a new log at zero, and resuming it from the
+                # dead instance's cursor would skip everything it printed.
+                chunk_pod = self._instance_key(chunk)
                 pods_in_response.add(chunk_pod)
+                if chunk.skipped or chunk.read_failed:
+                    # A note, not log lines. Surfacing it as content would seed
+                    # a cursor from prose.
+                    continue
                 new_lines = (chunk.content or "").splitlines()
+                before = cursor_by_pod.get(chunk_pod)
                 remainder = self._advance_pod_cursor(
                     cursor_by_pod, chunk_pod, new_lines
                 )
+                if chunk.truncated and not remainder:
+                    stalled_by_instance[chunk_pod] = (
+                        stalled_by_instance.get(chunk_pod, 0) + 1
+                    )
+                    if (
+                        stalled_by_instance[chunk_pod] >= self._MAX_STALLED_READS
+                        and reseeds_by_instance.get(chunk_pod, 0)
+                        < self._MAX_FRUITLESS_RESEEDS
+                    ):
+                        # Abandon the cursor and take a fresh tail. The jump is
+                        # reported: this is a gap, not a continuation, and the
+                        # caller must not be told otherwise.
+                        pre_reseed_cursor[chunk_pod] = cursor_by_pod.pop(
+                            chunk_pod, before
+                        )
+                        stalled_by_instance[chunk_pod] = 0
+                        reseeds_by_instance[chunk_pod] = (
+                            reseeds_by_instance.get(chunk_pod, 0) + 1
+                        )
+                        new_chunks.append(
+                            deployable_component_logs.DeployableComponentLogs(
+                                instance_name=chunk.instance_name,
+                                content=self._GAP_NOTICE,
+                            )
+                        )
+                elif remainder:
+                    stalled_by_instance[chunk_pod] = 0
+                    # Only progress past where the reseed restarted from counts.
+                    # A reseed re-delivers lines already seen, and treating that
+                    # as progress reset the budget and made the reseed cap
+                    # unreachable.
+                    resumed = pre_reseed_cursor.get(chunk_pod)
+                    if resumed is None or cursor_by_pod.get(chunk_pod, ("", 0)) > resumed:
+                        reseeds_by_instance[chunk_pod] = 0
+                        pre_reseed_cursor.pop(chunk_pod, None)
                 if remainder is None:
                     # No kubelet timestamps: an old backend that ignored the
                     # request param. Fall back to overlap-suffix dedup of the
@@ -919,6 +978,14 @@ class ServingEngine:
                 for known_pod in list(cursor_by_pod):
                     if known_pod not in pods_in_response:
                         del cursor_by_pod[known_pod]
+                for tracked in (
+                    stalled_by_instance,
+                    reseeds_by_instance,
+                    pre_reseed_cursor,
+                ):
+                    for known_pod in list(tracked):
+                        if known_pod not in pods_in_response:
+                            del tracked[known_pod]
 
             if new_chunks:
                 yield self._format_log_chunks(new_chunks)
@@ -932,6 +999,24 @@ class ServingEngine:
                 return
 
             time.sleep(interval)
+
+    # Truncated-but-empty reads tolerated before a cursor is abandoned, and
+    # reseeds allowed without real progress in between. Both mirror the browser
+    # reader so the two clients report the same gaps at the same points.
+    _MAX_STALLED_READS = 2
+    _MAX_FRUITLESS_RESEEDS = 2
+
+    _GAP_NOTICE = (
+        "-- lines skipped: this replica writes more in one second than a single read "
+        "can return; jumped to the newest output --"
+    )
+
+    @staticmethod
+    def _instance_key(chunk) -> str:
+        return "|".join(
+            str(part) if part is not None else ""
+            for part in (chunk.instance_name, chunk.pod_uid, chunk.restart_count)
+        )
 
     # Matches the kubelet's RFC 3339 line prefix requested via timestamps=true,
     # e.g. "2026-08-07T12:34:56.123456789Z log text".

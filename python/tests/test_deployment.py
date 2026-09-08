@@ -1051,8 +1051,91 @@ class TestDeployment:
 
     # read_logs / tail_logs (programmatic, never print)
 
+    def test_tail_logs_kubernetes_recovers_from_a_capped_cursor_second(
+        self, mocker, backend_fixtures
+    ):
+        """A second holding more than one read's budget used to stall for ever.
+
+        The kubelet filters ``since`` by whole seconds, so a resume re-reads the
+        cursor's second. When that second exceeds the byte budget every read
+        returns the same capped prefix, the cursor cannot advance, and the
+        generator polled it indefinitely: the line in the next second was never
+        delivered. Recovery abandons the cursor and reports the gap.
+        """
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch("hopsworks_common.util._get_members", return_value=["predictor"])
+
+        capped = "\n".join(
+            f"2026-09-08T10:00:00.{i:09d}Z line-{i}" for i in range(200)
+        ) + "\n"
+        # Every resume returns the same capped prefix of the same second.
+        stalled = [self._make_chunk(content=capped, truncated=True)]
+        # After the reseed the fresh tail finally reaches the next second.
+        recovered = [
+            self._make_chunk(content="2026-09-08T10:00:01.000000000Z next-second\n")
+        ]
+        mocker.patch(
+            "hsml.core.serving_api.ServingApi._get_logs",
+            side_effect=[stalled, stalled, stalled, recovered],
+        )
+        mocker.patch("time.sleep")
+        monot = mocker.patch("time.monotonic")
+        monot.side_effect = [0.0, 1.0, 2.0, 3.0, 99.0]
+
+        chunks = list(d.tail_logs(source="kubernetes", timeout=10.0, since=None))
+
+        joined = "\n".join(chunks)
+        assert "line-0" in joined
+        # The stall was reported rather than passed off as a continuation.
+        assert "lines skipped" in joined
+        # And the read past the capped second was actually delivered.
+        assert "next-second" in joined
+
+    def test_tail_logs_kubernetes_stops_reseeding_after_the_budget(
+        self, mocker, backend_fixtures
+    ):
+        """A reseed re-delivers lines already seen, which is not progress.
+
+        Counting it as progress reset the recovery budget on every reseed, so
+        the advertised cap never applied and an unrecoverable log was reseeded
+        for as long as it was polled.
+        """
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch("hopsworks_common.util._get_members", return_value=["predictor"])
+
+        capped = "\n".join(
+            f"2026-09-08T10:00:00.{i:09d}Z line-{i}" for i in range(200)
+        ) + "\n"
+        stalled = [self._make_chunk(content=capped, truncated=True)]
+        polls = 21
+        mocker.patch(
+            "hsml.core.serving_api.ServingApi._get_logs",
+            side_effect=[stalled] * polls,
+        )
+        mocker.patch("time.sleep")
+        monot = mocker.patch("time.monotonic")
+        # One call sets the deadline, then one per poll; the last one trips it,
+        # so the generator makes exactly `polls` reads and stops.
+        monot.side_effect = [0.0] + [0.1] * (polls - 1) + [99.0]
+
+        chunks = list(d.tail_logs(source="kubernetes", timeout=10.0, since=None))
+
+        gaps = "\n".join(chunks).count("lines skipped")
+        assert gaps <= 2, f"reseeded {gaps} times, past the budget of 2"
+
     def _make_chunk(
-        self, instance_name="i-0", content="line\n", timestamp=None, doc_id=None
+        self,
+        instance_name="i-0",
+        content="line\n",
+        timestamp=None,
+        doc_id=None,
+        truncated=False,
+        skipped=False,
+        read_failed=False,
+        pod_uid=None,
+        restart_count=None,
     ):
         # Pure Python stand-in for DeployableComponentLogs — only the
         # attributes the engine touches are needed.
@@ -1063,6 +1146,11 @@ class TestDeployment:
             content=content,
             timestamp=timestamp,
             doc_id=doc_id,
+            truncated=truncated,
+            skipped=skipped,
+            read_failed=read_failed,
+            pod_uid=pod_uid,
+            restart_count=restart_count,
         )
 
     def test_read_logs_returns_string_no_capsys_output(
