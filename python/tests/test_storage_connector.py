@@ -697,6 +697,73 @@ class TestSnowflakeConnector:
         assert "pem_private_key" in spark_options
         assert spark_options["pem_private_key"] == expected_bytes
 
+    def test_connector_options_password(self, backend_fixtures):
+        json = backend_fixtures["storage_connector"]["get_snowflake"]["response"]
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        props = sc.connector_options()
+
+        assert props["password"] == "test_password"
+        assert "authenticator" not in props
+        assert "private_key" not in props
+
+    def test_connector_options_token(self, backend_fixtures):
+        json = backend_fixtures["storage_connector"]["get_snowflake"]["response"]
+        json.pop("password", None)
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        props = sc.connector_options()
+
+        assert props["authenticator"] == "oauth"
+        assert props["token"] == "test_token"
+        assert "private_key" not in props
+
+    def test_connector_options_private_key(self, mocker, backend_fixtures):
+        json = backend_fixtures["storage_connector"]["get_snowflake"]["response"]
+        json.pop("password", None)
+        json.pop("token", None)
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        expected_der = b"\x30\x82\x04\xbe"
+        sc._private_key_der = mocker.Mock(return_value=expected_der)
+
+        props = sc.connector_options()
+
+        assert props["private_key"] == expected_der
+        # snowflake.connector rejects an "oauth" authenticator with a null token,
+        # so the key pair branch must not leave one behind.
+        assert "authenticator" not in props
+        assert "token" not in props
+
+    def test_connector_options_role(self, backend_fixtures):
+        json = backend_fixtures["storage_connector"]["get_snowflake"]["response"]
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        props = sc.connector_options()
+
+        assert props["role"] == "test_role"
+
+    def test_private_key_der_round_trips(self, backend_fixtures):
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric import rsa
+
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        pem = key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        ).decode()
+
+        json = backend_fixtures["storage_connector"]["get_snowflake"]["response"]
+        sc = storage_connector.StorageConnector.from_response_json(json)
+        sc._private_key = pem
+        sc._passphrase = None
+
+        der = sc._private_key_der()
+
+        assert not der.startswith(b"-----BEGIN")
+        assert serialization.load_der_private_key(der, password=None) is not None
+
 
 class TestJdbcConnector:
     def test_spark_options_arguments_none(self):

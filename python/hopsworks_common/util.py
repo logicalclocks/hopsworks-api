@@ -46,8 +46,14 @@ from hopsworks_common.git_file_status import GitFileStatus
 from six import string_types
 
 
-if HAS_PANDAS:
-    import pandas as pd
+def _pandas():
+    """pandas, if something has imported it; else None.
+
+    A pandas object can only exist once pandas is imported, so the isinstance
+    checks below need nothing more, and ``import hopsworks`` no longer pays the
+    ~0.4 s pandas import for callers that never use a DataFrame.
+    """
+    return sys.modules.get("pandas") if HAS_PANDAS else None
 
 
 FEATURE_STORE_NAME_SUFFIX = "_featurestore"
@@ -56,6 +62,7 @@ FEATURE_STORE_NAME_SUFFIX = "_featurestore"
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    import pandas as pd
     from hsfs import feature_group
 
 
@@ -91,7 +98,10 @@ class NumpyEncoder(json.JSONEncoder):
                 return np.vectorize(encode_binary)(obj), True
             return obj.tolist(), True
 
-        if isinstance(obj, datetime) or (HAS_PANDAS and isinstance(obj, pd.Timestamp)):
+        pd = _pandas()
+        if isinstance(obj, datetime) or (
+            pd is not None and isinstance(obj, pd.Timestamp)
+        ):
             return obj.isoformat(), True
         if isinstance(obj, (bytes, bytearray)):
             return encode_binary(obj), True
@@ -564,10 +574,16 @@ def _convert_to_project_rel_path(path, current_proj_name):
 
 @also_available_as("hopsworks.util._validate_job_conf")
 def _validate_job_conf(config, project_name):
-    # User is required to set the appPath programmatically after getting the configuration
+    # User is required to set the appPath programmatically after getting the
+    # configuration. Docker, ingestion and agent jobs carry no script: an agent
+    # task's instructions are its `prompt`.
     if (
-        config["type"] != "dockerJobConfiguration"
-        and config["type"] != "ingestionJobConfiguration"
+        config["type"]
+        not in (
+            "dockerJobConfiguration",
+            "ingestionJobConfiguration",
+            "agentJobConfiguration",
+        )
         and "appPath" not in config
     ):
         raise JobException("'appPath' not set in job configuration")
@@ -663,11 +679,12 @@ def _handle_tensor_input(input_tensor):
 
 @also_available_as("hsml.util._handle_dataframe_input")
 def _handle_dataframe_input(input_ex):
-    if HAS_PANDAS and isinstance(input_ex, pd.DataFrame):
+    pd = _pandas()
+    if pd is not None and isinstance(input_ex, pd.DataFrame):
         if not input_ex.empty:
             return input_ex.iloc[0].tolist()
         raise ValueError(f"input_example of type {type(input_ex)} can not be empty")
-    if HAS_PANDAS and isinstance(input_ex, pd.Series):
+    if pd is not None and isinstance(input_ex, pd.Series):
         if not input_ex.empty:
             return input_ex.tolist()
         raise ValueError(f"input_example of type {type(input_ex)} can not be empty")

@@ -36,4 +36,7 @@ def init(host, port, project=None, api_key_value=None, scheme="http"):
 
 def _get_instance() -> hopsworks.Client | external.Client | None:
     global _client
+    if _client is None:
+        # The serving defaults (which set this client up) load on first use.
+        _main._load_serving_defaults()
     return _client
