@@ -1,6 +1,6 @@
 ---
 name: hops-collaboration
-description: Use when managing who has access to a Hopsworks project or platform, or sharing feature store / feature group / dataset data across projects or with individual restricted members — adding/removing project members, changing project roles, registering/administering platform users (admin-only), or sharing/granting access to feature stores, feature groups, specific features, or generic datasets.
+description: Use when managing project membership and when sharing in Hopsworks. Share feature store / feature group / dataset data across projects. 
 ---
 
 # Project Members, Platform Users, and Sharing
