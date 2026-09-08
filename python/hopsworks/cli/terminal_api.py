@@ -42,7 +42,7 @@ def start_session(project_id: int, hours: int | None = None) -> dict:
     return _client._send_request(
         "POST",
         ["project", project_id, "terminal", "start"],
-        query_params={"hours": hours} if hours else None,
+        query_params={"hours": hours} if hours is not None else None,
     )
 
 
@@ -66,7 +66,7 @@ def extend_session(project_id: int, hours: int | None = None) -> dict:
     return _client._send_request(
         "POST",
         ["project", project_id, "terminal", "extend"],
-        query_params={"hours": hours} if hours else None,
+        query_params={"hours": hours} if hours is not None else None,
     )
 
 
