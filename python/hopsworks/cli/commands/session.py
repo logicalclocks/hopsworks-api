@@ -1023,7 +1023,7 @@ def new(
 def pull(
     ctx: click.Context, session_id: str | None, ours: bool, theirs: bool, force: bool
 ) -> None:
-    """Pull a session staged in HopsFS back onto this machine and take the baton.
+    """Pull a terminal session back onto this machine and take the baton.
 
     Downloads the transcript from ``Users/<username>/teleport/<slug>/`` into
     ``~/.claude/projects/<slug>/`` and prints the resume command. Given a
