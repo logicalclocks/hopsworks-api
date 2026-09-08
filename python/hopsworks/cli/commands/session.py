@@ -1,4 +1,4 @@
-"""``hops session`` — move a Claude Code session between this machine and a pod.
+"""``hops session`` — move a coding agent session between this machine and a pod.
 
 The mental model is a hand-off. ``push`` hands the session you are in to a
 Hopsworks terminal pod (Claude Code is pre-installed in that image); the pod
@@ -150,7 +150,7 @@ def _resolve_local_session(slug: str, session_id: str | None) -> Path:
     proj_dir = _CLAUDE_PROJECTS / slug
     if not proj_dir.is_dir():
         raise click.ClickException(
-            f"No Claude Code sessions found for this directory "
+            f"No coding agent sessions found for this directory "
             f"(looked in {proj_dir}). Run this from the directory your "
             f"session is in."
         )
@@ -671,7 +671,7 @@ def _locate_session(dataset_api, session_id: str) -> tuple[str, str | None] | No
     "hops session pull",
 )
 def session_group() -> None:
-    """Move a Claude Code session between this machine and a terminal pod."""
+    """Move a coding agent session between this machine and a terminal pod."""
 
 
 @session_group.command("push")
@@ -716,7 +716,7 @@ def push(
     open_ui: bool,
     force: bool,
 ) -> None:
-    """Push the current Claude Code session onto a Hopsworks terminal pod.
+    """Push the current coding agent session onto a Hopsworks terminal pod.
 
     Resolves the active session for this directory (or the ``SESSION_ID`` given
     as an argument), uploads its transcript into the project's HopsFS, starts
@@ -933,7 +933,7 @@ def push(
 def new(
     ctx: click.Context, model: str | None, prompt: str | None, open_ui: bool
 ) -> None:
-    """Start a fresh Claude Code session directly on a terminal pod.
+    """Start a fresh coding agent session directly on a terminal pod.
 
     Unlike ``push`` there is nothing to ship: this stages a ``mode=new`` manifest
     (no transcript) so the pod's landing hook opens a brand-new ``claude`` in a

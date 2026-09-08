@@ -55,7 +55,7 @@ def test_resolve_session_unknown_id_errors(sessions_dir):
 
 def test_resolve_session_no_dir_errors(tmp_path, monkeypatch):
     monkeypatch.setattr(session, "_CLAUDE_PROJECTS", tmp_path)
-    with pytest.raises(Exception, match="No Claude Code sessions"):
+    with pytest.raises(Exception, match="No coding agent sessions"):
         session._resolve_local_session("-nope", None)
 
 

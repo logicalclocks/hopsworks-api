@@ -265,7 +265,7 @@ hops search ls --tag "ownership:owner=jim" --tag "lifecycle:env=prod"
 
 ## Session (teleport)
 
-Move a Claude Code session between this machine and a Hopsworks terminal pod (Claude Code is pre-installed in the pod image). `push` hands the session you are in to the pod, which lands it on its own; `pull` reclaims it; `new` starts a fresh one on the pod; `mirror` streams the live pod terminal to your laptop.
+Move a coding agent session between this machine and a Hopsworks terminal pod (Claude Code is pre-installed in the pod image). `push` hands the session you are in to the pod, which lands it on its own; `pull` reclaims it; `new` starts a fresh one on the pod; `mirror` streams the live pod terminal to your laptop.
 
 ```bash
 hops session push [SESSION_ID]     # Hand the current session to the pod (baton hand-off)
