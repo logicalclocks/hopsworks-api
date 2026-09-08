@@ -4956,7 +4956,7 @@ class FeatureGroup(FeatureGroupBase):
             storage: The storage to delete from, `"offline"` or `"online"`, mirroring [`insert`][hsfs.feature_group.FeatureGroup.insert].
                 Left unset it follows the feature group: both stores when it is online-enabled, offline alone when it is not.
                 Set it to `"offline"` to delete from the offline table only, or `"online"` to delete from the online store only.
-                On a feature group with an embedding index the online store is the vector database, and the rows are removed from it by primary key.
+                On a feature group with an embedding index, the online store is the vector database, and the rows are removed from it by primary key.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
