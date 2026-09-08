@@ -232,6 +232,33 @@ class ServingApi:
         endpoints_json = _client._send_request("GET", path_params)
         return inference_endpoint.InferenceEndpoint.from_response_json(endpoints_json)
 
+    def _get_schema(
+        self,
+        deployment_id: int,
+        schema_id: str | None = None,
+        format: str = "schema",
+    ) -> dict[str, Any]:
+        """Fetch a deployment schema document from the backend.
+
+        Parameters:
+            deployment_id: Id of the deployment.
+            schema_id: A schema the deployment has published; defaults to the one its current revision serves.
+            format: `schema`, `jsonschema`, or `openapi`.
+
+        Returns:
+            The document as parsed JSON.
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "serving",
+            str(deployment_id),
+            "schema",
+        ]
+        query_params = {"format": format, "schemaId": schema_id}
+        return _client._send_request("GET", path_params, query_params=query_params)
+
     def _put(self, deployment_instance: deployment.Deployment) -> deployment.Deployment:
         """Save deployment metadata to model serving.
 

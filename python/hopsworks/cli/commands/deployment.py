@@ -79,11 +79,103 @@ def deployment_info(ctx: click.Context, name: str) -> None:
         ["Name", getattr(deployment, "name", "?")],
         ["Model", getattr(deployment, "model_name", "?")],
         ["Model version", getattr(deployment, "model_version", "?")],
+        ["Feature view", _feature_view_label(deployment)],
         ["Serving tool", getattr(deployment, "serving_tool", "-")],
         ["Model server", getattr(deployment, "model_server", "-")],
+        ["Schema", _schema_label(deployment)],
+        ["Schema id", getattr(deployment, "schema_id", None) or "-"],
         ["Status", _deployment_status_live(deployment)],
     ]
     output.print_table(["FIELD", "VALUE"], rows)
+
+
+@deployment_group.command("schema")
+@click.argument("name")
+@click.option(
+    "--json-schema",
+    "as_json_schema",
+    is_flag=True,
+    help="Print the request and response JSON Schema instead of the field table.",
+)
+@click.option(
+    "--openapi",
+    "as_openapi",
+    is_flag=True,
+    help="Print an OpenAPI 3.1 document for the prediction endpoint.",
+)
+@click.pass_context
+def deployment_schema(
+    ctx: click.Context, name: str, as_json_schema: bool, as_openapi: bool
+) -> None:
+    """Show the request contract of a deployment.
+
+    Args:
+        ctx: Click context.
+        name: Deployment name.
+        as_json_schema: Print JSON Schema documents.
+        as_openapi: Print an OpenAPI document.
+    """
+    deployment = _get_deployment(ctx, name)
+    try:
+        schema = deployment.schema
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not read the schema: {exc}") from exc
+    if schema is None:
+        raise click.ClickException(
+            f"Deployment '{name}' has no deployment schema. Deploy with the default "
+            "predictor or set deployment.schema and save()."
+        )
+    if as_openapi:
+        url = None
+        with contextlib.suppress(Exception):  # URL needs an Istio endpoint
+            url = deployment.get_inference_url()
+        output.print_json(schema.to_openapi(name, url=url))
+        return
+    if as_json_schema or output.JSON_MODE:
+        payload = schema.to_json_schema() if as_json_schema else schema.to_dict()
+        output.print_json(payload)
+        return
+
+    rows = []
+    for group in (
+        "serving_keys",
+        "passed_features",
+        "request_parameters",
+        "extra_logging_features",
+    ):
+        for field in getattr(schema, group):
+            rows.append(
+                [
+                    group,
+                    field.name,
+                    field.type or "unresolved",
+                    "yes" if field.nullable else "no",
+                    "no" if group == "extra_logging_features" else "yes",
+                ]
+            )
+    output.print_table(["GROUP", "NAME", "TYPE", "NULLABLE", "REQUIRED"], rows)
+    click.echo(f"schema id: {schema.schema_id}")
+    if schema.unresolved:
+        click.echo("unresolved types (not validated): " + ", ".join(schema.unresolved))
+
+
+def _feature_view_label(d: Any) -> str:
+    name = getattr(d, "feature_view_name", None)
+    if not name:
+        return "-"
+    return f"{name} v{getattr(d, 'feature_view_version', '?')}"
+
+
+def _schema_label(d: Any) -> str:
+    if not getattr(d, "schema_id", None):
+        return "-"
+    try:
+        schema = d.schema
+    except Exception:  # noqa: BLE001 - info must not fail on a missing file
+        return "unreadable"
+    if schema is None:
+        return "-"
+    return "inferred" if schema.inferred else "manual"
 
 
 @deployment_group.command("status")
@@ -151,8 +243,11 @@ def _deployment_to_dict(d: Any) -> dict[str, Any]:
         "name": getattr(d, "name", None),
         "model_name": getattr(d, "model_name", None),
         "model_version": getattr(d, "model_version", None),
+        "feature_view_name": getattr(d, "feature_view_name", None),
+        "feature_view_version": getattr(d, "feature_view_version", None),
         "serving_tool": getattr(d, "serving_tool", None),
         "model_server": getattr(d, "model_server", None),
+        "schema_id": getattr(d, "schema_id", None),
         "status": _deployment_status_live(d),
     }
 
@@ -181,6 +276,19 @@ def _deployment_to_dict(d: Any) -> dict[str, Any]:
     help="Serving backend.",
 )
 @click.option("--description", default="", help="Deployment description.")
+@click.option(
+    "--passed-feature",
+    "passed_features",
+    multiple=True,
+    help="Feature whose value clients send with each request (repeatable). "
+    "Only with the default predictor.",
+)
+@click.option(
+    "--no-default-predictor",
+    "no_default_predictor",
+    is_flag=True,
+    help="Never use the library's default predictor.",
+)
 @click.pass_context
 def deployment_create(
     ctx: click.Context,
@@ -191,12 +299,15 @@ def deployment_create(
     environment: str | None,
     serving_tool: str | None,
     description: str,
+    passed_features: tuple[str, ...],
+    no_default_predictor: bool,
 ) -> None:
     """Deploy a model from the registry.
 
     A local ``--script`` is uploaded to HopsFS first (the backend needs a
     HopsFS path); an existing HopsFS path is passed through. ``--env`` selects
-    the inference environment.
+    the inference environment. Without a script, a Python model registered
+    with a feature view gets the default predictor and a deployment schema.
 
     Args:
         ctx: Click context.
@@ -207,6 +318,8 @@ def deployment_create(
         environment: Inference environment name.
         serving_tool: ``KSERVE`` or ``DEFAULT``.
         description: Deployment description.
+        passed_features: Features clients send with each request.
+        no_default_predictor: Disable the default predictor.
     """
     project = session.get_project(ctx)
     mr = project.get_model_registry()
@@ -249,6 +362,8 @@ def deployment_create(
             script_file=script_file,
             environment=environment,
             serving_tool=(serving_tool or "").upper() or None,
+            passed_features=list(passed_features) or None,
+            default_predictor=False if no_default_predictor else None,
         )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Deployment creation failed: {exc}") from exc
@@ -259,6 +374,23 @@ def deployment_create(
         getattr(model, "version", "?"),
         getattr(deployment, "name", name or model_name),
     )
+    _report_schema(deployment)
+
+
+def _report_schema(deployment: Any) -> None:
+    schema_id = getattr(deployment, "schema_id", None)
+    if not schema_id:
+        return
+    with contextlib.suppress(Exception):  # the schema is pending in memory here
+        schema = deployment.schema
+        output.success(
+            "✓ Deployment schema %s with %d field(s)%s",
+            schema_id,
+            len(schema.columns),
+            f"; unresolved types: {', '.join(schema.unresolved)}"
+            if schema.unresolved
+            else "",
+        )
 
 
 @deployment_group.command("start")
@@ -325,9 +457,19 @@ def deployment_stop(ctx: click.Context, name: str, wait: int) -> None:
     type=click.Path(exists=True),
     help="JSON file with the request body.",
 )
+@click.option(
+    "--no-validate",
+    "no_validate",
+    is_flag=True,
+    help="Skip client-side validation against the deployment schema.",
+)
 @click.pass_context
 def deployment_predict(
-    ctx: click.Context, name: str, data: str | None, file_path: str | None
+    ctx: click.Context,
+    name: str,
+    data: str | None,
+    file_path: str | None,
+    no_validate: bool,
 ) -> None:
     """Send an inference request to a running deployment.
 
@@ -336,6 +478,7 @@ def deployment_predict(
         name: Deployment name.
         data: Inline JSON body.
         file_path: Alternative JSON file source.
+        no_validate: Skip client-side schema validation.
     """
     if not data and not file_path:
         raise click.UsageError("Provide --data or --file.")
@@ -347,7 +490,7 @@ def deployment_predict(
 
     deployment = _get_deployment(ctx, name)
     try:
-        response = deployment.predict(data=payload)
+        response = deployment.predict(data=payload, validate=not no_validate)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Predict failed: {exc}") from exc
 

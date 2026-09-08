@@ -62,6 +62,36 @@ Supported frameworks:
 
 ---
 
+## Default predictor (no script)
+
+A `mr.python` model registered with `feature_view=` and deployed without a `script_file` gets the library's **default predictor**: it validates the request, looks up and transforms the feature vector through the view, runs the model, and logs the request when the view has logging enabled. No `predictor.py` is written.
+
+```python
+model = mr.python.create_model(name="fraud_model", feature_view=fv)  # never model_schema= as well: it is deprecated
+model.save("./model_dir")            # exactly one .pkl / .pickle / .joblib inside
+
+deployment = model.deploy(
+    name="fraud_predictor",
+    passed_features=["amount"],      # sent by the client instead of being looked up
+    environment="inference-pipeline",
+)
+deployment.schema.describe()         # the request contract: group, field, type, nullable
+deployment.start(await_running=600)
+deployment.predict(inputs=[{"cc_num": 4473593503484549, "amount": 12.5}])
+```
+
+- Automatic for `mr.python` models only. For an sklearn model with a feature view pass `default_predictor=True`, or the KServe sklearn server keeps receiving raw vectors; `default_predictor=False` keeps the script-required behaviour.
+- Read or create a training dataset before `create_model` whenever the view has statistics-dependent transformations (`min_max_scaler`, `label_encoder`, ...), or `deploy()` refuses and names the transformation.
+- `passed_features` must be non-label features of the view, and the model's input columns must be transformed columns of the view. Both are checked before anything is uploaded, the second again at pod startup.
+- Nothing is looked up when `passed_features` names every stored non-label feature: the schema then has no serving keys and the view only computes on-demand features and transforms.
+- A model with no feature view deploys with `default_predictor=True, passed_features=[...]` naming its input columns in the model's order. Those are the whole request, their types unresolved, with no lookup, transformation or logging.
+- `fv.deploy()` serves a view with no model at all and answers with the transformed vectors, see below.
+
+Requests that do not match fail client-side with `ModelServingException`, and in the pod with a structured error (400 `SCHEMA_VALIDATION`, 413 `BATCH_TOO_LARGE`, 422 `TRANSFORMATION_FAILED`, ...).
+The contract, the error codes, the discovery endpoint for non-Python clients, enforcement and the logging buffers are in [references/deployment-schema.md](references/deployment-schema.md); subclassing the default predictor is in [references/predictors.md](references/predictors.md).
+
+---
+
 ## Deploying a Model
 
 The model comes from the registry (registered by the training pipeline, see
@@ -168,7 +198,7 @@ computation) are documented in [hops-fv](../hops-fv/SKILL.md). For serving, the
 two things that bite:
 
 - **Every feature group in the view must be `online_enabled`** or `init_serving()` raises. The only exception is a view whose features are all on-demand.
-- **On-demand transformations (ODTs)** compute features at request time from `request_parameters`. They are registered on the **feature group** (not the view) so the same versioned function also runs in the feature pipeline, which is what keeps them equivalent across backfill and serving. `fv.request_parameters` lists what a view needs; a missing parameter fails the request. ODTs cannot use training statistics, external feature groups do not support them, and a default-mode `@udf` runs on a **scalar** online, so Series-only methods surface as an HTTP 500 on the first predict. Definition, attachment, context, local testing and the transformation store: [hops-transformations](../hops-transformations/SKILL.md).
+- **On-demand transformations (ODTs)** compute features at request time from `request_parameters`. They are registered on the **feature group** (not the view) so the same versioned function also runs in the feature pipeline, which is what keeps them equivalent across backfill and serving. `fv.request_parameters` lists what a view needs; a missing parameter fails the request. Annotate the arguments that are request parameters (`def amount_ratio(amount: float, budget: float)`) so a deployment schema records their types; an unannotated one is unresolved and accepts any value. ODTs cannot use training statistics, external feature groups do not support them, and a default-mode `@udf` runs on a **scalar** online, so Series-only methods surface as an HTTP 500 on the first predict. Definition, attachment, context, local testing and the transformation store: [hops-transformations](../hops-transformations/SKILL.md).
 
 ```python
 print(fv.request_parameters)             # e.g. ["store_lat", "store_lon"]
@@ -263,7 +293,27 @@ deployment = model.deploy(
 
 ---
 
-## Deployment Without a Model (Custom HTTP Server)
+## Deployment Without a Model
+
+### Feature view deployment
+
+`fv.deploy()` serves the view's lookup and transformations with no model: the same request contract as a model deployment of that view, answering with one transformed vector per row and the column names.
+
+```python
+fv.train_test_split(test_size=0.2)   # pins the training dataset the transformations use
+deployment = fv.deploy(passed_features=["amount"], environment="inference-pipeline")
+deployment.start(await_running=600)
+deployment.predict(inputs=[{"cc_num": 4473593503484549, "amount": 12.5}])
+# {"predictions": [[0.31, -1.2, ...]], "columns": ["amount_scaled", "age_days", ...]}
+```
+
+`deployment.get_feature_view()` returns the view, and `has_feature_view`, `feature_view_name`, `feature_view_version` and `training_dataset_version` say what it serves.
+Monitoring is `deployment.create_feature_monitoring(...)`, which attaches to the view's logging feature group, since model monitoring needs a registered model.
+`get_inference_url()` answers `None` when the Istio ingress is not configured; the Hopsworks REST path serves as the fallback.
+A custom script for such a deployment needs the hand-over footer in [references/predictors.md](references/predictors.md).
+From the CLI: `hops fv deploy <name> --passed-feature amount`.
+
+### Custom HTTP server
 
 Deploy a custom server without a model from the registry:
 

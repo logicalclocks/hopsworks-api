@@ -301,7 +301,7 @@ class TestPredictor:
         mock_validate_serving_tool.assert_called_once_with(p_json["serving_tool"])
         assert mock_validate_resources.call_count == 1
         mock_validate_script_file.assert_called_once_with(
-            p_json["model_framework"], p_json["predictor"]
+            p_json["model_framework"], p_json["predictor"], False
         )
 
     # validate serving tool
@@ -651,7 +651,14 @@ class TestPredictor:
 
     def test_for_model(self, mocker):
         # Arrange
-        def spec(model, model_name, model_version, model_path):
+        def spec(
+            model,
+            model_name,
+            model_version,
+            model_path,
+            default_predictor=None,
+            schema=None,
+        ):
             pass
 
         mock_get_predictor_for_model = mocker.patch(
@@ -676,6 +683,8 @@ class TestPredictor:
             model_name=mock_model.name,
             model_version=mock_model.version,
             model_path=mock_model.model_path,
+            default_predictor=False,
+            schema=None,
         )
 
     # extract fields from json
@@ -1552,3 +1561,378 @@ class TestPredictor:
             "hopsworks_common.client._is_kserve_installed",
             return_value=is_kserve_installed,
         )
+
+
+class TestPredictorDefaultPredictor:
+    """`Predictor.for_model` resolution of the default predictor and the schema, and `for_feature_view`."""
+
+    def _mock(self, mocker, kserve=True):
+        mocker.patch(
+            "hopsworks_common.client._get_serving_num_instances_limits",
+            return_value=[-1],
+        )
+        mocker.patch(
+            "hopsworks_common.client._is_scale_to_zero_required", return_value=False
+        )
+        mocker.patch("hopsworks_common.client._is_saas_connection", return_value=False)
+        mocker.patch(
+            "hopsworks_common.client._is_kserve_installed", return_value=kserve
+        )
+
+    def _model(
+        self, mocker, framework=MODEL.FRAMEWORK_PYTHON, feature_view="fv", td_version=3
+    ):
+        from tests.test_deployment_schema import _fv
+
+        m = mocker.Mock()
+        m.name, m.version, m.model_path, m.framework = (
+            "m",
+            1,
+            "/Projects/p/Models/m",
+            framework,
+        )
+        m.training_dataset_version = td_version
+        m.model_schema = {
+            "output_schema": {"columnar_schema": [{"name": "label", "type": "int"}]}
+        }
+        m._feature_view = _fv() if feature_view else None
+        m.get_feature_view.return_value = m._feature_view
+        return m
+
+    def test_automatic_for_python_model_with_feature_view(self, mocker):
+        self._mock(mocker)
+        captured = {}
+        mocker.patch(
+            "hopsworks_common.util._get_predictor_for_model",
+            side_effect=lambda model, **kw: captured.update(kw) or "predictor",
+        )
+
+        predictor.Predictor.for_model(
+            self._model(mocker), name="d", passed_features=["amount"]
+        )
+
+        assert captured["default_predictor"] is True
+        assert [f.name for f in captured["schema"].passed_features] == ["amount"]
+        assert captured["schema"].output["columns"] == [
+            {"name": "label", "type": "int"}
+        ]
+        assert "passed_features" not in captured
+
+    @pytest.mark.parametrize(
+        "kwargs, framework, feature_view, kserve",
+        [
+            ({"script_file": "s.py"}, MODEL.FRAMEWORK_PYTHON, "fv", True),
+            ({"transformer": "t"}, MODEL.FRAMEWORK_PYTHON, "fv", True),
+            ({"api_protocol": "GRPC"}, MODEL.FRAMEWORK_PYTHON, "fv", True),
+            ({}, MODEL.FRAMEWORK_SKLEARN, "fv", True),
+            ({}, MODEL.FRAMEWORK_PYTHON, None, True),
+            ({}, MODEL.FRAMEWORK_PYTHON, "fv", False),
+        ],
+    )
+    def test_automatic_stays_off(self, mocker, kwargs, framework, feature_view, kserve):
+        self._mock(mocker, kserve=kserve)
+        captured = {}
+        mocker.patch(
+            "hopsworks_common.util._get_predictor_for_model",
+            side_effect=lambda model, **kw: captured.update(kw) or "predictor",
+        )
+
+        predictor.Predictor.for_model(
+            self._model(mocker, framework, feature_view), name="d", **kwargs
+        )
+
+        assert captured["default_predictor"] is False
+        assert captured["schema"] is None
+
+    def test_forced_without_feature_view_serves_the_passed_features(self, mocker):
+        self._mock(mocker)
+        captured = {}
+        mocker.patch(
+            "hopsworks_common.util._get_predictor_for_model",
+            side_effect=lambda model, **kw: captured.update(kw) or "predictor",
+        )
+        model = self._model(mocker, feature_view=None)
+        model.model_schema = None
+
+        predictor.Predictor.for_model(
+            model, name="d", default_predictor=True, passed_features=["amount", "age"]
+        )
+
+        schema = captured["schema"]
+        assert captured["default_predictor"] is True
+        assert schema.serving_keys == [] and schema.feature_view is None
+        assert [(f.name, f.type) for f in schema.passed_features] == [
+            ("amount", None),
+            ("age", None),
+        ]
+        assert schema.unresolved == ["amount", "age"]
+        with pytest.raises(ValueError, match="passed_features"):
+            predictor.Predictor.for_model(model, name="d", default_predictor=True)
+
+    def test_forced_reports_first_unmet_condition(self, mocker):
+        self._mock(mocker)
+        mocker.patch("hopsworks_common.util._get_predictor_for_model", return_value="p")
+
+        with pytest.raises(ValueError, match="framework is TENSORFLOW"):
+            predictor.Predictor.for_model(
+                self._model(mocker, MODEL.FRAMEWORK_TENSORFLOW),
+                name="d",
+                default_predictor=True,
+            )
+        no_fv = self._model(mocker, feature_view=None)
+        no_fv.model_schema = None
+        with pytest.raises(ValueError, match="no feature view"):
+            predictor.Predictor.for_model(no_fv, name="d", default_predictor=True)
+        with pytest.raises(ValueError, match="API protocol is GRPC"):
+            predictor.Predictor.for_model(
+                self._model(mocker),
+                name="d",
+                default_predictor=True,
+                api_protocol="GRPC",
+            )
+
+    def test_forced_sklearn_and_custom_script_keep_schema(self, mocker):
+        self._mock(mocker)
+        captured = {}
+        mocker.patch(
+            "hopsworks_common.util._get_predictor_for_model",
+            side_effect=lambda model, **kw: captured.update(kw) or "predictor",
+        )
+
+        predictor.Predictor.for_model(
+            self._model(mocker, MODEL.FRAMEWORK_SKLEARN),
+            name="d",
+            default_predictor=True,
+            script_file="sub.py",
+        )
+
+        assert captured["default_predictor"] is True
+        assert captured["script_file"] == "sub.py"
+        assert captured["schema"].inferred is True
+
+    def test_passed_features_without_default_predictor_or_schema_together(self, mocker):
+        self._mock(mocker)
+        mocker.patch("hopsworks_common.util._get_predictor_for_model", return_value="p")
+
+        with pytest.raises(ValueError, match="only applies to the default predictor"):
+            predictor.Predictor.for_model(
+                self._model(mocker),
+                name="d",
+                script_file="s.py",
+                passed_features=["amount"],
+            )
+        with pytest.raises(ValueError, match="either schema or passed_features"):
+            predictor.Predictor.for_model(
+                self._model(mocker),
+                name="d",
+                passed_features=["amount"],
+                schema={"serving_keys": ["cc_num"]},
+            )
+
+    def test_training_dataset_check_on_model(self, mocker):
+        from tests.test_deployment_schema import _fv, _tf
+
+        self._mock(mocker)
+        mocker.patch("hopsworks_common.util._get_predictor_for_model", return_value="p")
+        model = self._model(mocker, td_version=None)
+        model._feature_view = _fv(
+            transformation_functions=[_tf("min_max_scaler", ["amount"], True)]
+        )
+
+        with pytest.raises(
+            ValueError, match="min_max_scaler\\(amount\\).*create_model"
+        ):
+            predictor.Predictor.for_model(model, name="d")
+
+    def test_manual_schema_must_refine_inferred(self, mocker):
+        from hsml.deployment_schema import DeploymentSchema
+
+        self._mock(mocker)
+        captured = {}
+        mocker.patch(
+            "hopsworks_common.util._get_predictor_for_model",
+            side_effect=lambda model, **kw: captured.update(kw) or "predictor",
+        )
+        refined = DeploymentSchema(
+            serving_keys=["cc_num", "account_id"],
+            request_parameters=[{"name": "transaction_time", "type": "timestamp"}],
+        )
+
+        predictor.Predictor.for_model(
+            self._model(mocker), name="d", default_predictor=True, schema=refined
+        )
+        assert captured["schema"] is refined
+
+        with pytest.raises(ValueError, match="serving_keys differ"):
+            predictor.Predictor.for_model(
+                self._model(mocker),
+                name="d",
+                default_predictor=True,
+                schema=DeploymentSchema(serving_keys=["cc_num"]),
+            )
+
+    def test_manual_schema_carries_its_passed_features(self, mocker):
+        from hsml.deployment_schema import DeploymentSchema
+
+        self._mock(mocker)
+        captured = {}
+        mocker.patch(
+            "hopsworks_common.util._get_predictor_for_model",
+            side_effect=lambda model, **kw: captured.update(kw) or "predictor",
+        )
+        manual = DeploymentSchema(
+            serving_keys=["cc_num", "account_id"],
+            passed_features=[{"name": "amount", "type": "double"}],
+            request_parameters=[{"name": "transaction_time", "type": "timestamp"}],
+        )
+
+        predictor.Predictor.for_model(
+            self._model(mocker), name="d", default_predictor=True, schema=manual
+        )
+        assert captured["schema"] is manual
+
+        # the schema's passed features go through the same checks as passed_features=
+        with pytest.raises(ValueError, match="is a label"):
+            predictor.Predictor.for_model(
+                self._model(mocker),
+                name="d",
+                default_predictor=True,
+                schema=DeploymentSchema(
+                    serving_keys=["cc_num", "account_id"],
+                    passed_features=["fraud"],
+                    request_parameters=["transaction_time"],
+                ),
+            )
+
+    def test_feature_view_resolved_by_name_when_provenance_has_no_link_yet(
+        self, mocker
+    ):
+        from tests.test_deployment_schema import _fv
+
+        self._mock(mocker)
+        captured = {}
+        mocker.patch(
+            "hopsworks_common.util._get_predictor_for_model",
+            side_effect=lambda model, **kw: captured.update(kw) or "predictor",
+        )
+        model = self._model(mocker)
+        # right after save(): the response names the view, provenance knows nothing
+        model._feature_view = {"name": "fv", "version": 2}
+        model.get_feature_view.return_value = None
+        fs = mocker.Mock()
+        fs.get_feature_view.return_value = _fv()
+        mocker.patch(
+            "hopsworks._connected_project",
+            mocker.Mock(get_feature_store=lambda: fs),
+            create=True,
+        )
+
+        predictor.Predictor.for_model(model, name="d")
+
+        fs.get_feature_view.assert_called_once_with("fv", 2)
+        assert captured["default_predictor"] is True
+        assert captured["schema"] is not None
+
+    def test_reserved_env_vars_refused(self, mocker):
+        self._mock(mocker)
+        with pytest.raises(ValueError, match="SERVING_SCHEMA_ID"):
+            predictor.Predictor.for_model(
+                self._model(mocker), name="d", env_vars={"SERVING_SCHEMA_ID": "x"}
+            )
+
+    def test_for_feature_view(self, mocker):
+        from tests.test_deployment_schema import _fv
+
+        self._mock(mocker)
+        fv = _fv()
+        fv.get_last_accessed_training_dataset = lambda: 5
+
+        p = predictor.Predictor.for_feature_view(fv, passed_features=["amount"])
+
+        assert p.name == "fv2"
+        assert p.default_predictor is True
+        assert (
+            p.has_feature_view
+            and p.feature_view_name == "fv"
+            and p.feature_view_version == 2
+        )
+        assert p.env_vars["SERVING_TRAINING_DATASET_VERSION"] == "5"
+        assert p.env_vars["SERVING_SCRIPT_KIND"] == "predictor"
+        assert p.schema.output["kind"] == "feature_vectors"
+        assert [f.name for f in p.schema.passed_features] == ["amount"]
+        assert p.model_name is None and "modelName" not in p.to_dict()
+
+    def test_for_feature_view_manual_schema_with_passed_features(self, mocker):
+        from hsml.deployment_schema import DeploymentSchema
+
+        from tests.test_deployment_schema import _fv
+
+        self._mock(mocker)
+        fv = _fv()
+        fv.get_last_accessed_training_dataset = lambda: 5
+        manual = DeploymentSchema(
+            serving_keys=["cc_num", "account_id"],
+            passed_features=[{"name": "amount", "type": "double"}],
+            request_parameters=[{"name": "transaction_time", "type": "timestamp"}],
+            output={"kind": "feature_vectors", "columns": []},
+        )
+
+        p = predictor.Predictor.for_feature_view(fv, schema=manual)
+
+        assert p.schema == manual
+        assert [f.name for f in p.schema.passed_features] == ["amount"]
+
+    def test_for_feature_view_requires_training_dataset_for_statistics(self, mocker):
+        from tests.test_deployment_schema import _fv, _tf
+
+        self._mock(mocker)
+        fv = _fv(transformation_functions=[_tf("min_max_scaler", ["amount"], True)])
+        fv.get_last_accessed_training_dataset = lambda: None
+
+        with pytest.raises(
+            ValueError, match="min_max_scaler\\(amount\\).*deploy\\(\\)"
+        ):
+            predictor.Predictor.for_feature_view(fv)
+
+    def test_for_feature_view_script_needs_handover(self, mocker, tmp_path):
+        from tests.test_deployment_schema import _fv
+
+        self._mock(mocker)
+        script = tmp_path / "custom.py"
+        script.write_text("class Predict: pass\n")
+
+        with pytest.raises(ValueError, match="run_kserve_wrapper"):
+            predictor.Predictor.for_feature_view(
+                _fv(), training_dataset_version=1, script_file=str(script)
+            )
+
+        # mentioning the hand-over is not calling it
+        script.write_text(
+            "from hsml.default_predictor import run_kserve_wrapper\n"
+            "# call run_kserve_wrapper() at the end\n"
+        )
+        with pytest.raises(ValueError, match="run_kserve_wrapper"):
+            predictor.Predictor.for_feature_view(
+                _fv(), training_dataset_version=1, script_file=str(script)
+            )
+
+        # a call that never runs at import time does not hand over either
+        script.write_text(
+            "from hsml.default_predictor import run_kserve_wrapper\n"
+            "def main():\n"
+            "    run_kserve_wrapper()\n"
+        )
+        with pytest.raises(ValueError, match="run_kserve_wrapper"):
+            predictor.Predictor.for_feature_view(
+                _fv(), training_dataset_version=1, script_file=str(script)
+            )
+
+        script.write_text(
+            "from hsml import default_predictor\n"
+            'if __name__ == "__main__":\n'
+            "    default_predictor.run_kserve_wrapper()\n"
+        )
+        p = predictor.Predictor.for_feature_view(
+            _fv(), training_dataset_version=1, script_file=str(script)
+        )
+        assert p.script_file == str(script)

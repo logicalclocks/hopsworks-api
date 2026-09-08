@@ -15,12 +15,15 @@
 #
 from __future__ import annotations
 
+import contextlib
+import json
 import os
 import re
 import tempfile
 import time
 import uuid
 
+from hopsworks_common import client
 from hopsworks_common.client.exceptions import ModelServingException, RestAPIError
 from hopsworks_common.client.istio.utils.infer_type import InferInput
 from hopsworks_common.constants import (
@@ -32,11 +35,23 @@ from hopsworks_common.constants import (
 )
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
 from hopsworks_common.core import dataset_api, inode
-from hsml import deployable_component_logs
+from hsml import deployable_component_logs, default_predictor, deployment_schema
 from hsml.core import serving_api
 from hsml.engine import local_engine
-from hsml.utils.local_paths import _resolve_serving_file
+from hsml.utils.local_paths import _ensure_dataset_dir, _resolve_serving_file
 from tqdm.auto import tqdm
+
+
+def _structured_prediction_error(error: RestAPIError) -> dict | None:
+    """The `detail` object of a default predictor error response, or `None` for any other body."""
+    try:
+        body = error.response.json()
+    except Exception:  # noqa: BLE001 - not JSON, so not one of ours
+        return None
+    detail = body.get("detail") if isinstance(body, dict) else None
+    if isinstance(detail, dict) and "code" in detail:
+        return detail
+    return None
 
 
 def _render_chunk(chunk) -> str:
@@ -52,6 +67,10 @@ def _render_chunk(chunk) -> str:
     if content and not content.endswith("\n"):
         content += "\n"
     return content
+
+
+# RESTCodes.ServingErrorCode.SCHEMA_NOT_FOUND: the id is not a published schema
+_SCHEMA_NOT_FOUND = 240037
 
 
 class ServingEngine:
@@ -198,7 +217,8 @@ class ServingEngine:
                 self._stop(deployment_instance, await_status=0)
                 raise re
 
-        if state.status == PREDICTOR_STATE.STATUS_RUNNING:
+        # await_running=0 returns before the state is polled again
+        if state is not None and state.status == PREDICTOR_STATE.STATUS_RUNNING:
             if deployment_instance.model_server == PREDICTOR.MODEL_SERVER_VLLM:
                 print("Start prompting using any OpenAI API-compatible client.")
             elif not deployment_instance.has_model:
@@ -634,11 +654,142 @@ class ServingEngine:
         # basename), which are left untouched; only newly-assigned local
         # paths are re-uploaded.
         self._upload_local_serving_files(deployment_instance)
+        self._upload_default_predictor_stub(deployment_instance)
+        self._publish_schema(deployment_instance)
 
         if deployment_instance.id is None:
             self._create(deployment_instance)
             return
         self._update(deployment_instance, await_update)
+
+    def _upload_default_predictor_stub(self, deployment_instance):
+        """Give a default-predictor deployment without a script the library stub as its predictor script."""
+        predictor = deployment_instance._predictor
+        if not predictor.default_predictor or predictor.script_file is not None:
+            return
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            stub_path = os.path.join(tmp_dir, MODEL_SERVING.DEFAULT_PREDICTOR_SCRIPT)
+            with open(stub_path, "w", encoding="utf-8") as f:
+                f.write(default_predictor.STUB_SCRIPT)
+            predictor.script_file = _resolve_serving_file(
+                self._engine,
+                deployment_instance.name,
+                stub_path,
+                field_name="script_file",
+                subdir="predictor",
+                is_update=deployment_instance.id is not None,
+            )
+
+    def _schema_dir(self, deployment_name: str) -> str:
+        return (
+            f"{MODEL_SERVING.DEPLOYMENTS_DATASET}/{deployment_name}/"
+            f"{MODEL_SERVING.DEPLOYMENT_RESOURCES_DIR}/{MODEL_SERVING.DEPLOYMENT_SCHEMA_DIR}"
+        )
+
+    def _publish_schema(self, deployment_instance):
+        """Write the pending schema as immutable, content-addressed files and point the env vars at them.
+
+        Both happen before the `PUT`, so the revision the backend creates
+        already names files that exist and never change. The JSON Schema and
+        OpenAPI renderings go next to the schema for the backend's discovery
+        endpoint. The batch limit configured in the predictor's env vars is
+        part of the schema, so changing it publishes a new id. A transformer
+        gets the id too and is named the enforcer: it sees the client request
+        first, and the predictor behind it defers.
+        """
+        predictor = deployment_instance._predictor
+        # the property loads a fetched deployment's schema by id, so a save that
+        # only attaches a transformer or changes the batch limit still publishes
+        schema = predictor.schema
+        schema_id = schema.schema_id if schema is not None else predictor.schema_id
+        if schema_id is None:
+            return
+        if schema is not None:
+            configured = deployment_schema._configured_batch_rows(predictor.env_vars)
+            if configured is not None and configured != schema.max_batch_rows:
+                schema = schema._with_max_batch_rows(configured)
+                predictor._schema = schema
+                schema_id = schema.schema_id
+            self._write_schema_documents(deployment_instance.name, schema)
+        transformer = predictor.transformer
+        enforcer = (
+            MODEL_SERVING.SCHEMA_ENFORCER_TRANSFORMER
+            if transformer is not None
+            else MODEL_SERVING.SCHEMA_ENFORCER_PREDICTOR
+        )
+        for component in [predictor] + ([transformer] if transformer else []):
+            env_vars = dict(component.env_vars or {})
+            env_vars[MODEL_SERVING.DEPLOYMENT_SCHEMA_ID_ENV_VAR] = schema_id
+            # each pod validates, or defers, according to its own revision
+            env_vars[MODEL_SERVING.SCHEMA_ENFORCER_ENV_VAR] = enforcer
+            component.env_vars = env_vars
+
+    def _write_schema_documents(self, deployment_name: str, schema) -> None:
+        schema_dir = self._schema_dir(deployment_name)
+        documents = {
+            f"{schema.schema_id}.json": schema.json(),
+            f"{schema.schema_id}{MODEL_SERVING.DEPLOYMENT_SCHEMA_JSON_SCHEMA_SUFFIX}": json.dumps(
+                schema.to_json_schema()
+            ),
+            f"{schema.schema_id}{MODEL_SERVING.DEPLOYMENT_SCHEMA_OPENAPI_SUFFIX}": json.dumps(
+                schema.to_openapi(deployment_name)
+            ),
+        }
+        missing = {
+            name: content
+            for name, content in documents.items()
+            if not self._engine._dataset_api.exists(f"{schema_dir}/{name}")
+        }
+        if not missing:
+            return
+        _ensure_dataset_dir(self._engine, schema_dir)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            for name, content in missing.items():
+                local_path = os.path.join(tmp_dir, name)
+                with open(local_path, "w", encoding="utf-8") as f:
+                    f.write(content)
+                self._engine._upload(local_path, schema_dir, overwrite=False)
+
+    def _read_schema(self, predictor, schema_id: str):
+        """Fetch the schema a revision names, or `None` when it is gone.
+
+        The backend endpoint needs only the `SERVING` scope; a backend without
+        it answers a bare 404, and the schema file is then downloaded
+        directly, which needs dataset access. A 404 naming another error, such
+        as an unknown deployment, propagates.
+        """
+        if predictor.id is not None:
+            try:
+                schema_json = self._serving_api._get_schema(predictor.id, schema_id)
+                return deployment_schema.DeploymentSchema.from_response_json(
+                    schema_json
+                )
+            except RestAPIError as e:
+                if e.response.status_code != 404:
+                    raise
+                error_code = getattr(e, "error_code", None)
+                if error_code == _SCHEMA_NOT_FOUND:
+                    return None
+                if error_code:
+                    raise
+        project_name = client._get_instance()._project_name
+        path = f"/Projects/{project_name}/{self._schema_dir(predictor.name)}/{schema_id}.json"
+        response = self._dataset_api.read_content(path)
+        if response is None:
+            return None
+        content = getattr(response, "content", response)
+        if isinstance(content, (bytes, bytearray)):
+            content = content.decode("utf-8")
+        return deployment_schema.DeploymentSchema.from_response_json(
+            json.loads(content)
+        )
+
+    def _remove_schemas(self, deployment_name: str):
+        schema_dir = self._schema_dir(deployment_name)
+        if self._engine._dataset_api.exists(schema_dir):
+            self._engine._dataset_api.remove(
+                f"/Projects/{client._get_instance()._project_name}/{schema_dir}"
+            )
 
     def _upload_local_serving_files(self, deployment_instance):
         """Upload local ``script_file`` / ``config_file`` paths.
@@ -693,6 +844,9 @@ class ServingEngine:
             )
 
         self._serving_api._delete(deployment_instance)
+        # The backend may already have removed the deployment folder.
+        with contextlib.suppress(RestAPIError):
+            self._remove_schemas(deployment_instance.name)
         print("Deployment deleted successfully")
 
     def _get_state(self, deployment_instance):
@@ -1133,6 +1287,7 @@ class ServingEngine:
         deployment_instance,
         data: dict | list[InferInput],
         inputs: dict | list[dict],
+        validate: bool = True,
     ):
         # validate user-provided payload
         if deployment_instance.model_server == PREDICTOR.MODEL_SERVER_VLLM:
@@ -1146,6 +1301,8 @@ class ServingEngine:
         payload = self._build_inference_payload(
             deployment_instance.api_protocol, data, inputs
         )
+        if validate and deployment_instance.api_protocol == IE.API_PROTOCOL_REST:
+            payload = self._validate_against_schema(deployment_instance, payload)
 
         # if not KServe, send request through Hopsworks
         serving_tool = deployment_instance.predictor.serving_tool
@@ -1155,7 +1312,9 @@ class ServingEngine:
                 deployment_instance, payload, through_hopsworks
             )
         except RestAPIError as re:
-            if (
+            # The default predictor answers 404 ENTITY_NOT_FOUND with a
+            # structured body; only a bare 404 means the deployment is absent.
+            if _structured_prediction_error(re) is None and (
                 re.response.status_code == RestAPIError.STATUS_CODE_NOT_FOUND
                 or re.error_code
                 == ModelServingException.ERROR_CODE_DEPLOYMENT_NOT_RUNNING
@@ -1310,11 +1469,25 @@ class ServingEngine:
         # parse inputs
         return self._parse_inference_inputs(api_protocol, inputs)
 
+    def _validate_against_schema(self, deployment_instance, payload: dict) -> dict:
+        """Encode and validate the rows of a REST payload against the deployment schema, when there is one."""
+        schema = deployment_instance.schema
+        if schema is None or not isinstance(payload, dict):
+            return payload
+        key = "instances" if "instances" in payload else "inputs"
+        rows = deployment_schema._encode_instances(payload.get(key))
+        schema._raise_if_invalid(rows, deployment_instance.name)
+        return {**payload, key: rows}
+
     def _parse_inference_inputs(
         self, api_protocol, inputs: dict | list[dict], recursive_call=False
     ):
         if api_protocol == IE.API_PROTOCOL_REST:  # REST protocol
-            if not isinstance(inputs, list):
+            if isinstance(inputs, dict):
+                # A dict is one row keyed by field name; wrapping it twice
+                # would hand the predictor a one-element list instead of the row.
+                data = {"instances": [inputs]}
+            elif not isinstance(inputs, list):
                 data = {"instances": [[inputs]]}  # wrap inputs in a 2-dim list
             else:
                 data = {"instances": inputs}  # use given inputs list by default
