@@ -5,8 +5,8 @@ Hopsworks terminal pod (Claude Code is pre-installed in that image); the pod
 lands it as soon as its browser Terminal tab is open, and from then on you can
 close the laptop and keep driving it from that tab. ``pull`` reclaims it back onto this machine. ``new``
 starts a fresh session straight on the pod, ``list`` shows where things are,
-``stop`` kills the terminal pod, and ``mirror`` (alias ``attach``) streams the
-live pod terminal to your laptop.
+``stop`` kills the terminal pod, and ``mirror`` streams the live pod terminal
+to your laptop.
 
 The transport is symmetric. Each session is a JSONL that Claude Code stores at
 ``~/.claude/projects/<cwd-slug>/<session-id>.jsonl``; push uploads it into the
@@ -1790,7 +1790,7 @@ async def _mirror_session(project_id: int, write: bool) -> None:
 )
 @click.pass_context
 def mirror(ctx: click.Context, write: bool) -> None:
-    """Mirror this project's live terminal session on your laptop.
+    """Mirror the terminal session (active) to your laptop (mirror).
 
     Attaches to the running pod terminal over its WebSocket and streams it here
     in real time: read-only by default (observe the driver), or ``--write`` to
@@ -1828,7 +1828,3 @@ def mirror(ctx: click.Context, write: bool) -> None:
     except KeyboardInterrupt:
         pass
     output.success("Detached from %s terminal.", project.name)
-
-
-# The tmux/docker verb people reach for first; same command, second name.
-session_group.add_command(mirror, name="attach")
