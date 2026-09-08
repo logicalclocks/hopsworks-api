@@ -16,25 +16,58 @@ from __future__ import annotations
 from hopsworks_common import client
 
 
-def start_session(project_id: int) -> dict:
+def start_session(project_id: int, hours: int | None = None) -> dict:
     """Start (or return the already-running) terminal session for the caller.
 
     The backend spins up the per-user terminal pod with default compute when
     none is running and returns its connection descriptor: at least a session
-    id and a WebSocket URL (``wsUrl``) plus a short-lived token.
+    id, a WebSocket URL (``wsUrl``), a short-lived token and the minutes until
+    the session expires (``minutesUntilExpiration``). An already running
+    session keeps its own expiry.
 
     Args:
         project_id: The target project's numeric id.
+        hours: Session length to ask for, or None for the cluster default. A
+            backend that predates the parameter ignores it.
 
     Returns:
         The raw session descriptor from the backend.
 
     Raises:
         hopsworks.client.exceptions.RestAPIError: When the terminal feature is
-            disabled on the cluster, or the caller lacks access.
+            disabled on the cluster, the caller lacks access, or ``hours`` is
+            outside what the cluster allows.
     """
     _client = client._get_instance()
-    return _client._send_request("POST", ["project", project_id, "terminal", "start"])
+    return _client._send_request(
+        "POST",
+        ["project", project_id, "terminal", "start"],
+        query_params={"hours": hours} if hours else None,
+    )
+
+
+def extend_session(project_id: int, hours: int | None = None) -> dict:
+    """Push the caller's terminal session expiry further out.
+
+    Args:
+        project_id: The target project's numeric id.
+        hours: Hours to add, or None for the cluster's default extension.
+
+    Returns:
+        The session descriptor after the extension, with the new
+        ``minutesUntilExpiration``.
+
+    Raises:
+        hopsworks.client.exceptions.RestAPIError: When no terminal session is
+            running, the caller lacks access, or ``hours`` is outside what the
+            cluster allows.
+    """
+    _client = client._get_instance()
+    return _client._send_request(
+        "POST",
+        ["project", project_id, "terminal", "extend"],
+        query_params={"hours": hours} if hours else None,
+    )
 
 
 def get_proxy_token(project_id: int) -> str:

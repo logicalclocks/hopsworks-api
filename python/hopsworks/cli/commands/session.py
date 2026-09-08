@@ -41,7 +41,7 @@ import tempfile
 import time
 import uuid
 import webbrowser
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -586,17 +586,32 @@ def _pod_holds(
     return _landed(dataset_api, dest_dir, session_id, manifest.get("pushed_at"))
 
 
-def _launch_pod(project) -> str | None:
-    """Start (or reuse) the project's terminal pod; return its ``wsUrl``.
+# Hours a terminal started from the CLI asks for. The web terminal's default
+# is sized for an interactive tab; a session handed to the pod for the day
+# would die unannounced at the same age.
+_CLI_SESSION_HOURS = 12
 
-    Best-effort: the terminal feature may be disabled on the cluster, in which
-    case we warn and return None (the caller still stages the session and prints
-    the manual landing path).
+
+def _time_left(descriptor: dict | None) -> str | None:
+    """``"11h 59m (until 21:15)"`` from a session descriptor, or None without one."""
+    minutes = (descriptor or {}).get("minutesUntilExpiration")
+    if minutes is None:
+        return None
+    minutes = int(minutes)
+    ends = (datetime.now() + timedelta(minutes=minutes)).strftime("%H:%M")
+    return f"{minutes // 60}h {minutes % 60:02d}m (until {ends})"
+
+
+def _launch_pod(project) -> dict | None:
+    """Start (or reuse) the project's terminal pod; return its session descriptor.
+
+    Asks for a CLI-length session and says how long the terminal has left, with
+    the command that adds time. Best-effort: the terminal feature may be
+    disabled on the cluster, in which case we warn and return None (the caller
+    still stages the session and prints the manual landing path).
     """
     try:
-        started = terminal_api.start_session(project.id)
-        output.success("✓ Terminal pod ready for %s", project.name)
-        return (started or {}).get("wsUrl")
+        started = terminal_api.start_session(project.id, hours=_CLI_SESSION_HOURS)
     except Exception as exc:  # noqa: BLE001 - feature may be disabled on cluster
         output.warn(
             "Terminal pod not started (%s). Open the Terminal tab in the "
@@ -604,6 +619,14 @@ def _launch_pod(project) -> str | None:
             exc,
         )
         return None
+    output.success("✓ Terminal pod ready for %s", project.name)
+    left = _time_left(started)
+    if left:
+        output.info(
+            "Terminal session: %s left. `hops session extend [--hours N]` adds time.",
+            left,
+        )
+    return started or {}
 
 
 def _scan_slugs(dataset_api) -> list[str]:
@@ -782,7 +805,7 @@ def push(
             raise click.ClickException(f"Failed to ship session: {exc}") from exc
     output.success("✓ Pushed session %s to %s", resolved_id, project.name)
 
-    ws_url = _launch_pod(project)
+    ws_url = (_launch_pod(project) or {}).get("wsUrl")
 
     # Manifest before baton: the manifest is the pod watcher's trigger and the
     # hard-error step (a dropped manifest strands the session: staged, never
@@ -935,7 +958,7 @@ def new(
     with contextlib.suppress(Exception):
         dataset_api.mkdir(dest_dir)
 
-    ws_url = _launch_pod(project)
+    ws_url = (_launch_pod(project) or {}).get("wsUrl")
 
     manifest = _build_manifest(session_id, slug, "new", model, prompt)
     _upload_manifest(dataset_api, dest_dir, session_id, manifest)
@@ -1412,6 +1435,45 @@ def stop(ctx: click.Context) -> None:
         output.print_json({"project": project.name, "stopped": True})
         return
     output.success("✓ Stopped the terminal for %s", project.name)
+
+
+@session_group.command("extend")
+@click.option(
+    "--hours",
+    type=click.IntRange(1),
+    help="Hours to add. The cluster's default extension when omitted.",
+)
+@click.pass_context
+def extend(ctx: click.Context, hours: int | None) -> None:
+    """Give this project's terminal session more time before it is stopped.
+
+    A terminal started from the CLI lasts 12 hours; the web terminal's default
+    is shorter. Either kind can be extended here as often as needed, within the
+    per-request limit the cluster sets.
+
+    Args:
+        ctx: Click context.
+        hours: Hours to add, or None for the cluster's default extension.
+    """
+    project = conn.get_project(ctx)
+    try:
+        session_info = terminal_api.extend_session(project.id, hours)
+    except Exception as exc:  # noqa: BLE001 - no session, or hours refused
+        raise click.ClickException(
+            f"Could not extend the terminal session: {exc}"
+        ) from exc
+    left = _time_left(session_info)
+    if output.JSON_MODE:
+        output.print_json(
+            {
+                "project": project.name,
+                "minutes_left": (session_info or {}).get("minutesUntilExpiration"),
+            }
+        )
+        return
+    output.success(
+        "✓ Terminal session for %s has %s left", project.name, left or "more time"
+    )
 
 
 @session_group.command("reset")

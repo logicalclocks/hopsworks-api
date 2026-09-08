@@ -553,9 +553,16 @@ def _push_setup(tmp_path, monkeypatch, landed: bool):
     }
     ds = _PushDataset(files, ack_on_manifest=landed)
     monkeypatch.setattr(session.conn, "get_project", lambda ctx: _FakeProject(ds))
+    started_with: list = []
     monkeypatch.setattr(
-        session.terminal_api, "start_session", lambda pid: {"wsUrl": "/terminal/ws"}
+        session.terminal_api,
+        "start_session",
+        lambda pid, hours=None: (
+            started_with.append(hours)
+            or {"wsUrl": "/terminal/ws", "minutesUntilExpiration": 720}
+        ),
     )
+    monkeypatch.setattr(session, "_started_with", started_with, raising=False)
     monkeypatch.setattr(session, "_open_browser", lambda url: True)
     monkeypatch.setattr(session.time, "sleep", lambda s: None)
 
@@ -890,3 +897,62 @@ def test_open_browser_trusts_xdg_open_exit_status_not_a_started_process(monkeypa
     )
     assert session._open_browser("https://h/p/1?terminal=open") is False
     assert calls == [["/usr/bin/xdg-open", "https://h/p/1?terminal=open"]]
+
+
+def test_push_asks_for_a_twelve_hour_terminal_and_says_how_long_is_left(
+    tmp_path, monkeypatch
+):
+    runner, ds, slug = _push_setup(tmp_path, monkeypatch, landed=True)
+    result = runner.invoke(session.session_group, ["push"], catch_exceptions=False)
+    text = _all_output(result)
+
+    assert session._started_with == [12]
+    assert "Terminal session: 12h 00m (until" in text
+    assert "hops session extend" in text
+
+
+def _extend_setup(monkeypatch, reply):
+    from click.testing import CliRunner
+
+    calls: list = []
+
+    def fake_extend(pid, hours=None):
+        calls.append((pid, hours))
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+    monkeypatch.setattr(session.terminal_api, "extend_session", fake_extend)
+    monkeypatch.setattr(
+        session.conn, "get_project", lambda ctx: _FakeProject(_PushDataset({}))
+    )
+    return CliRunner(), calls
+
+
+def test_extend_adds_the_requested_hours_and_reports_the_new_time_left(monkeypatch):
+    runner, calls = _extend_setup(monkeypatch, {"minutesUntilExpiration": 960})
+    result = runner.invoke(
+        session.session_group, ["extend", "--hours", "8"], catch_exceptions=False
+    )
+
+    assert result.exit_code == 0, _all_output(result)
+    assert calls == [(7, 8)]
+    assert "16h 00m (until" in _all_output(result)
+
+
+def test_extend_without_hours_leaves_the_amount_to_the_cluster(monkeypatch):
+    runner, calls = _extend_setup(monkeypatch, {"minutesUntilExpiration": 300})
+    result = runner.invoke(session.session_group, ["extend"], catch_exceptions=False)
+
+    assert result.exit_code == 0
+    assert calls == [(7, None)]
+
+
+def test_extend_reports_a_refusal_instead_of_a_traceback(monkeypatch):
+    runner, calls = _extend_setup(
+        monkeypatch, RuntimeError("No active terminal session")
+    )
+    result = runner.invoke(session.session_group, ["extend"])
+
+    assert result.exit_code == 1
+    assert "No active terminal session" in _all_output(result)

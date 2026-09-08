@@ -275,6 +275,7 @@ hops session pull [SESSION_ID]     # Reclaim a session onto this machine
 hops session pull --force          # Steal the baton from a live pod
 hops session list [--all]          # Show sessions and where each lives
 hops session stop                  # Stop the pod terminal from the CLI
+hops session extend [--hours N]    # Give the pod terminal more time (CLI-started ones last 12h)
 hops session mirror [--write]      # Attach to the live pod terminal (alias: attach)
 hops git provider list             # Git provider tokens registered with Hopsworks
 hops git provider set --provider github --username <you>   # Register a personal access token (prompted, hidden)
