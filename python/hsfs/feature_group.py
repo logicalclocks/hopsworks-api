@@ -2386,6 +2386,7 @@ class FeatureGroupBase:
         start_date_time: int | str | datetime | date | pd.Timestamp | None = None,
         end_date_time: int | str | datetime | date | pd.Timestamp | None = None,
         cron_expression: str | None = "0 0 12 ? * * *",
+        event_time: str | bool | None = None,
     ) -> fmc.FeatureMonitoringConfig:
         """Create a job to compute statistics on snapshot of feature data on a schedule.
 
@@ -2424,13 +2425,18 @@ class FeatureGroupBase:
                 Cron expression to use to schedule the job.
                 The cron expression must be in UTC and follow the Quartz specification.
                 The default value means "every day at 12pm UTC".
+            event_time:
+                The feature the detection window is sliced by.
+                When `None`, uses this feature group's own event-time feature if one is defined, otherwise commit time.
+                Pass a feature name to slice by a different feature instead; it must exist on this feature group and have an offline type of TIMESTAMP, DATE or BIGINT.
+                Pass `False` to force commit-time windows even when this feature group declares an event-time feature.
 
         Returns:
             Configuration with minimal information about the feature monitoring.
             Additional information are required before feature monitoring is enabled.
 
         Raises:
-            hopsworks.client.exceptions.FeatureStoreException: If feature group is not registered with Hopsworks.
+            hopsworks.client.exceptions.FeatureStoreException: If feature group is not registered with Hopsworks, or if event_time names a feature that does not exist or has an unsupported type.
         """
         if not self._id:
             raise FeatureStoreException(
@@ -2446,6 +2452,14 @@ class FeatureGroupBase:
         elif not isinstance(feature_names, list):
             feature_names = [feature_names]
 
+        resolved_event_time = (
+            self._feature_monitoring_config_engine._resolve_event_time(
+                event_time=event_time,
+                default_event_time=self.event_time,
+                valid_features=valid_features,
+            )
+        )
+
         return self._feature_monitoring_config_engine._build_default_scheduled_statistics_config(
             name=name,
             feature_names=feature_names,
@@ -2455,6 +2469,7 @@ class FeatureGroupBase:
             end_date_time=end_date_time,
             cron_expression=cron_expression,
             valid_features=valid_features,
+            event_time=resolved_event_time,
         )
 
     @public
@@ -2465,6 +2480,7 @@ class FeatureGroupBase:
         start_date_time: int | str | datetime | date | pd.Timestamp | None = None,
         end_date_time: int | str | datetime | date | pd.Timestamp | None = None,
         cron_expression: str | None = "0 0 12 ? * * *",
+        event_time: str | bool | None = None,
     ) -> fmc.FeatureMonitoringConfig:
         """Enable feature monitoring to compare statistics on snapshots of feature data over time.
 
@@ -2507,13 +2523,18 @@ class FeatureGroupBase:
                 Cron expression to use to schedule the job.
                 The cron expression must be in UTC and follow the Quartz specification.
                 The default value means "every day at 12pm UTC".
+            event_time:
+                The feature the detection and reference windows are sliced by.
+                When `None`, uses this feature group's own event-time feature if one is defined, otherwise commit time.
+                Pass a feature name to slice by a different feature instead; it must exist on this feature group and have an offline type of TIMESTAMP, DATE or BIGINT.
+                Pass `False` to force commit-time windows even when this feature group declares an event-time feature.
 
         Returns:
             Configuration with minimal information about the feature monitoring.
             Additional information are required before feature monitoring is enabled.
 
         Raises:
-            hopsworks.client.exceptions.FeatureStoreException: If feature group is not registered with Hopsworks.
+            hopsworks.client.exceptions.FeatureStoreException: If feature group is not registered with Hopsworks, or if event_time names a feature that does not exist or has an unsupported type.
         """
         if not self._id:
             raise FeatureStoreException(
@@ -2521,6 +2542,13 @@ class FeatureGroupBase:
             )
 
         valid_features = {feat.name: feat.type for feat in self._features}
+        resolved_event_time = (
+            self._feature_monitoring_config_engine._resolve_event_time(
+                event_time=event_time,
+                default_event_time=self.event_time,
+                valid_features=valid_features,
+            )
+        )
         return self._feature_monitoring_config_engine._build_default_feature_monitoring_config(
             name=name,
             description=description,
@@ -2529,6 +2557,7 @@ class FeatureGroupBase:
             end_date_time=end_date_time,
             cron_expression=cron_expression,
             valid_features=valid_features,
+            event_time=resolved_event_time,
         )
 
     def __getattr__(self, name: str) -> Any:

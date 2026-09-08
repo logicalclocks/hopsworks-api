@@ -237,6 +237,32 @@ class TestStatistics:
         assert s.split_statistics is None
         assert s.before_transformation is False
 
+    def test_to_dict_emits_only_the_window_family_that_is_set(self):
+        commit_row = statistics.Statistics(
+            computation_time=1,
+            window_start_commit_time=10,
+            window_end_commit_time=20,
+        )
+        event_row = statistics.Statistics(
+            computation_time=1,
+            window_start_event_time=10,
+            window_end_event_time=20,
+            event_time="datetime",
+        )
+
+        commit_dict = commit_row.to_dict()
+        event_dict = event_row.to_dict()
+
+        assert commit_dict["windowStartCommitTime"] == 10
+        assert commit_dict["windowEndCommitTime"] == 20
+        assert "windowStartEventTime" not in commit_dict
+        assert "eventTime" not in commit_dict
+        assert event_dict["windowStartEventTime"] == 10
+        assert event_dict["windowEndEventTime"] == 20
+        assert event_dict["eventTime"] == "datetime"
+        assert "windowStartCommitTime" not in event_dict
+        assert "windowEndCommitTime" not in event_dict
+
     def test_from_response_json_empty(self, backend_fixtures):
         # Arrange
         json = backend_fixtures["statistics"]["get_empty"]["response"]
