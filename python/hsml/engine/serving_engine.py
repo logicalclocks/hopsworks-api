@@ -879,8 +879,10 @@ class ServingEngine:
         if state.status == PREDICTOR_STATE.STATUS_STARTING:
             print("Deployment is starting, server logs might not be ready yet")
 
+        # Kibana is gone with the OpenSearch pipeline: the deployment page is where the live
+        # reader and the log-history archives are now.
         print(
-            "Explore all the logs and filters in the Kibana logs at "
+            "Explore all the logs and filters on the deployment page at "
             + deployment_instance.get_url(),
             end="\n\n",
         )
