@@ -158,6 +158,48 @@ class TestIsSubHourCron:
 # ---------------------------------------------------------------------------
 
 
+class TestModelMonitoringFanOutFeatures:
+    def test_create_model_monitoring_fans_out_over_training_features_only(self):
+        """Fan-out covers the training features of the model's training dataset only.
+
+        Labels, serving keys and helper columns are excluded by the same resolver
+        feature logging uses, `_get_untransformed_feature_names`, asked for the
+        training dataset version recorded on the model.
+        """
+        from hsfs.feature_view import FeatureView
+
+        fv = MagicMock(spec=FeatureView)
+        fv.logging_enabled = True
+        fv._get_untransformed_feature_names.return_value = [
+            "sepal_length",
+            "petal_length",
+        ]
+        logging_fg = MagicMock()
+        config = MagicMock()
+        logging_fg.create_feature_monitoring.return_value = config
+        fv.feature_logging.get_feature_group.return_value = logging_fg
+
+        with (
+            patch("hsml.core.model_api.ModelApi._get") as mock_model_get,
+            patch("hsfs.feature_view.client._get_instance") as mock_client,
+        ):
+            mock_client.return_value._project_id = 1
+            mock_model_get.return_value.training_dataset_version = 2
+
+            returned = FeatureView.create_model_monitoring(
+                fv,
+                name="test",
+                model_name="iris",
+                model_version=1,
+                cron_expression="0 0 12 ? * * *",
+            )
+
+        assert returned is config
+        assert config._fanout_feature_names == {"sepal_length", "petal_length"}
+        fv._get_untransformed_feature_names.assert_called_once_with(2)
+        assert config._associated_model_td_version == 2
+
+
 class TestSubHourCronWarningOnModelMonitoring:
     def test_create_model_monitoring_sub_hour_warns(self):
         """create_model_monitoring with a sub-hour cron emits a UserWarning."""
