@@ -326,6 +326,96 @@ def fv_create(
     )
 
 
+@fv_group.command("deploy")
+@click.argument("name")
+@click.option("--version", type=int, help="Feature view version; defaults to latest.")
+@click.option(
+    "--deployment-name",
+    "deployment_name",
+    help="Deployment name; defaults to the feature view name.",
+)
+@click.option("--description", default=None, help="Deployment description.")
+@click.option(
+    "--passed-feature",
+    "passed_features",
+    multiple=True,
+    help="Feature whose value clients send with each request (repeatable).",
+)
+@click.option(
+    "--training-dataset-version",
+    "training_dataset_version",
+    type=int,
+    help="Training dataset whose statistics the transformations use.",
+)
+@click.option("--env", "environment", help="Inference environment name.")
+@click.option(
+    "--script",
+    "script_file",
+    help="Script subclassing DefaultPredict, local or HopsFS.",
+)
+@click.pass_context
+def fv_deploy(
+    ctx: click.Context,
+    name: str,
+    version: int | None,
+    deployment_name: str | None,
+    description: str | None,
+    passed_features: tuple[str, ...],
+    training_dataset_version: int | None,
+    environment: str | None,
+    script_file: str | None,
+) -> None:
+    """Deploy a feature view as an endpoint returning transformed feature vectors.
+
+    Args:
+        ctx: Click context.
+        name: Feature view name.
+        version: Feature view version.
+        deployment_name: Deployment name.
+        description: Deployment description.
+        passed_features: Features clients send with each request.
+        training_dataset_version: Training dataset version to pin.
+        environment: Inference environment name.
+        script_file: Custom ``DefaultPredict`` subclass script.
+    """
+    fv = _get_fv(ctx, name, version)
+    try:
+        deployment = fv.deploy(
+            name=deployment_name,
+            description=description,
+            training_dataset_version=training_dataset_version,
+            passed_features=list(passed_features) or None,
+            script_file=script_file,
+            environment=environment,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Deployment creation failed: {exc}") from exc
+
+    output.success(
+        "✓ Deployed feature view %s v%s as %s",
+        getattr(fv, "name", name),
+        getattr(fv, "version", "?"),
+        getattr(deployment, "name", deployment_name or name),
+    )
+    schema = getattr(deployment, "schema", None)
+    if schema is not None:
+        unresolved = ", ".join(schema.unresolved)
+        output.success(
+            "✓ Deployment schema %s with %d field(s)%s",
+            schema.schema_id,
+            len(schema.columns),
+            f"; unresolved types: {unresolved}" if unresolved else "",
+        )
+    if output.JSON_MODE:
+        output.print_json(
+            {
+                "name": getattr(deployment, "name", None),
+                "schema_id": getattr(deployment, "schema_id", None),
+                "unresolved": schema.unresolved if schema is not None else [],
+            }
+        )
+
+
 @fv_group.command("get")
 @click.argument("name")
 @click.option("--version", type=int, help="Feature view version.")

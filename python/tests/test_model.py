@@ -272,6 +272,9 @@ class TestModel:
             vllm_variant=None,
             vllm_image_tag=None,
             tags=None,
+            schema=None,
+            passed_features=None,
+            default_predictor=None,
         )
         mock_predictor.deploy.assert_called_once()
 
@@ -435,6 +438,54 @@ class TestModel:
 
         # Assert
         assert "tags" not in m.to_dict()
+
+    def test_update_from_response_json_keeps_resolved_training_dataset_version(self):
+        # a create answers 0 until the provenance link exists
+        m = model.Model(1, "test", training_dataset_version=2)
+        m.update_from_response_json(
+            {"id": 1, "name": "test", "version": 1, "trainingDatasetVersion": 0}
+        )
+        assert m.training_dataset_version == 2
+
+        m.update_from_response_json(
+            {"id": 1, "name": "test", "version": 1, "trainingDatasetVersion": 5}
+        )
+        assert m.training_dataset_version == 5
+
+        # 0 is the backend's "none", also for a model that never had one
+        fresh = model.Model(1, "test")
+        fresh.update_from_response_json(
+            {"id": 1, "name": "test", "version": 1, "trainingDatasetVersion": 0}
+        )
+        assert fresh.training_dataset_version is None
+
+    def test_update_from_response_json_keeps_the_feature_view_without_provenance(self):
+        view = object()
+        m = model.Model(1, "test", feature_view=view)
+        m.update_from_response_json({"id": 1, "name": "test", "version": 1})
+        assert m._feature_view is view
+
+        m.update_from_response_json(
+            {"id": 1, "name": "test", "version": 1, "featureView": {"name": "fv"}}
+        )
+        assert m._feature_view == {"name": "fv"}
+
+    def test_framework_models_keep_resolved_training_dataset_version(self):
+        from hsml.python.model import Model as PythonModel
+        from hsml.sklearn.model import Model as SklearnModel
+
+        for cls in (PythonModel, SklearnModel):
+            m = cls(1, "test", training_dataset_version=2)
+            m.update_from_response_json(
+                {
+                    "id": 1,
+                    "name": "test",
+                    "version": 1,
+                    "framework": m.framework,
+                    "trainingDatasetVersion": 0,
+                }
+            )
+            assert m.training_dataset_version == 2, cls
 
     # delete
 
@@ -668,6 +719,21 @@ class TestModel:
         mock_td_provenance.assert_called_once()
         assert not mock_fv.init_serving.called
         assert mock_fv.init_batch_scoring.called
+
+    def test_get_feature_view_without_training_dataset(self, mocker):
+        mock_fv = mocker.Mock()
+        mocker.patch(
+            "hsml.model.Model.get_feature_view_provenance",
+            return_value=explicit_provenance.Links(accessible=[mock_fv]),
+        )
+        mocker.patch(
+            "hsml.model.Model.get_training_dataset_provenance",
+            return_value=explicit_provenance.Links(accessible=[]),
+        )
+        mocker.patch("os.environ", return_value={})
+        m = model.Model(1, "test")
+        assert m.get_feature_view(online=True) is mock_fv
+        mock_fv.init_serving.assert_called_once_with(training_dataset_version=None)
 
     def test_get_feature_view_deployment(self, mocker):
         mock_fv = mocker.Mock()
