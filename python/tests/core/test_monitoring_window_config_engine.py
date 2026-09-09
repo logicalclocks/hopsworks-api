@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 from unittest.mock import MagicMock, call
 
 import pytest
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import feature_group, feature_view, util
 from hsfs.constructor import filter as filter_module
 from hsfs.constructor import query
@@ -602,6 +603,52 @@ class TestMonitoringWindowConfigEngine:
         assert "start_commit_time" not in call_kwargs
         assert "end_commit_time" not in call_kwargs
 
+    def test_run_single_window_monitoring_returns_only_monitored_features(self, mocker):
+        """A statistics row shared with another configuration is trimmed.
+
+        Registering on a window that already has a row appends to it and the
+        backend answers with the whole row, so features monitored by another
+        configuration must not leak into this one's statistics.
+        """
+        fg = _make_hudi_fg("DELTA")
+        window_config = mwc.MonitoringWindowConfig(
+            window_config_type=mwc.WindowConfigType.ROLLING_TIME,
+            time_offset="1d",
+            row_percentage=1.0,
+        )
+        engine = mwce.MonitoringWindowConfigEngine()
+        mocker.patch.object(engine, "_init_statistics_engine")
+        mocker.patch.object(engine, "_fetch_entity_data_in_monitoring_window")
+        stats_engine_mock = MagicMock()
+        stats_engine_mock._get_by_time_window.return_value = None
+        shared_row = MagicMock()
+        shared_row.feature_descriptive_statistics = [
+            FeatureDescriptiveStatistics(feature_name="age", count=10),
+            FeatureDescriptiveStatistics(feature_name="amount", count=10),
+            FeatureDescriptiveStatistics(feature_name="days", count=10),
+        ]
+        stats_engine_mock._compute_and_save_monitoring_statistics.return_value = (
+            shared_row
+        )
+        engine._statistics_engine = stats_engine_mock
+
+        result = engine._run_single_window_monitoring(
+            entity=fg,
+            monitoring_window_config=window_config,
+            feature_names=["amount"],
+            model_filter=("fraud_model", 1),
+            event_time_feature=Feature("log_time", type="timestamp"),
+        )
+
+        assert [fds.feature_name for fds in result] == ["amount"]
+
+    def test_select_feature_descriptive_statistics_missing_feature_raises(self):
+        with pytest.raises(FeatureStoreException, match="missing.*amount"):
+            mwce.MonitoringWindowConfigEngine._select_feature_descriptive_statistics(
+                [FeatureDescriptiveStatistics(feature_name="age", count=10)],
+                ["amount"],
+            )
+
     @pytest.mark.parametrize(
         "window_type, expect_bounds",
         [
@@ -814,7 +861,7 @@ class TestGetWindowStartEndTimesAnchor:
         )
         computed_stats = MagicMock()
         computed_stats.feature_descriptive_statistics = [mock_fds]
-        stats_engine_mock.compute_and_save_monitoring_statistics.return_value = (
+        stats_engine_mock._compute_and_save_monitoring_statistics.return_value = (
             computed_stats
         )
         mocker.patch.object(
