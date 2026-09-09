@@ -3382,6 +3382,23 @@ class VectorServer:
         init_sql_client: bool,
         default_client: str | None = None,
     ):
+        # Naming a client as the default is asking for it to be initialised. Only
+        # `default_client` carries that request: `init_rest_client` defaults to False, so
+        # `init_serving(default_client="rest")` used to fall through to the sql branch
+        # below and serve every read over SQL, the requested client neither honoured nor
+        # refused. RDRS serves typed point reads and RonSQL alike, picking per query, so
+        # nothing about a feature view rules the rest client out.
+        #
+        # Only the rest side needs this. A false `init_sql_client` is an explicit decline
+        # (it defaults to None), while a false `init_rest_client` is just the default, so
+        # there is no matching case to second-guess for "sql". The sql client is brought
+        # along unless it was declined, because a statement that fails the RonSQL EXPLAIN
+        # gate reclassifies onto the SQL client and needs one to land on.
+        if default_client == self.DEFAULT_REST_CLIENT:
+            init_rest_client = True
+            if init_sql_client is None:
+                init_sql_client = True
+
         if init_rest_client is False and init_sql_client is False:
             raise ValueError(
                 "At least one of the clients should be initialised. Set init_sql_client or init_rest_client to True."

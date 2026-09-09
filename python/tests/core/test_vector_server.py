@@ -121,6 +121,60 @@ class TestVectorServer:
 
         singleton.assert_called_once_with(transport=None, optional_config=None)
 
+    # `default_client` is the only argument that carries the request for a client:
+    # init_rest_client defaults to False, so naming "rest" used to fall through to the
+    # sql branch and serve every read over SQL with no error and no warning.
+    def test_default_client_rest_initialises_the_rest_client(self):
+        server = VectorServer(1, [])
+
+        server._set_default_client(
+            init_rest_client=False, init_sql_client=None, default_client="rest"
+        )
+
+        assert server.default_client == VectorServer.DEFAULT_REST_CLIENT
+        assert server._init_rest_client is True
+        # brought along so a statement that fails the RonSQL EXPLAIN gate has a client
+        # to reclassify onto
+        assert server._init_sql_client is True
+
+    def test_default_client_rest_respects_an_explicitly_declined_sql_client(self):
+        server = VectorServer(1, [])
+
+        server._set_default_client(
+            init_rest_client=False, init_sql_client=False, default_client="rest"
+        )
+
+        assert server.default_client == VectorServer.DEFAULT_REST_CLIENT
+        assert server._init_rest_client is True
+        assert server._init_sql_client is False
+
+    def test_default_client_defaults_to_sql(self):
+        server = VectorServer(1, [])
+
+        server._set_default_client(
+            init_rest_client=False, init_sql_client=None, default_client=None
+        )
+
+        assert server.default_client == VectorServer.DEFAULT_SQL_CLIENT
+        assert server._init_sql_client is True
+
+    def test_default_client_sql_is_unchanged(self):
+        server = VectorServer(1, [])
+
+        server._set_default_client(
+            init_rest_client=True, init_sql_client=True, default_client="sql"
+        )
+
+        assert server.default_client == VectorServer.DEFAULT_SQL_CLIENT
+
+    def test_no_client_at_all_still_raises(self):
+        server = VectorServer(1, [])
+
+        with pytest.raises(ValueError, match="At least one of the clients"):
+            server._set_default_client(
+                init_rest_client=False, init_sql_client=False, default_client=None
+            )
+
     @pytest.mark.parametrize(
         "timestamp_value, expected",
         [

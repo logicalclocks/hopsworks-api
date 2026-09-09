@@ -471,7 +471,12 @@ class FeatureView:
                 - `use_ssl`: boolean, optional.
                   Use SSL to connect to the online store.
                   Defaults to True.
-            default_client: Which client to default to if both are initialised.
+            default_client: Which client to serve from. `"rest"` initialises the rest
+                client on its own, since `init_rest_client` defaults to False and naming a
+                client as the default is asking for it to be used; the sql client comes
+                along too unless `init_sql_client=False`, so a statement that cannot be
+                served over RonSQL can still fall back. RDRS serves both typed point reads
+                and RonSQL, choosing per query.
             feature_logger:
                 Custom feature logger which [`FeatureView.log`][hsfs.feature_view.FeatureView.log] uses to log feature vectors.
                 If provided, feature vectors will not be inserted to logging feature group automatically when `FeatureView.log` is called.
