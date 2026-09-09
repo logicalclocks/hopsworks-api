@@ -20,7 +20,7 @@ import re
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, TypeVar
 
-from hopsworks_common.client.exceptions import RestAPIError
+from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
 from hsfs import feature_group, feature_view, util
 from hsfs.core import monitoring_window_config as mwc
 from hsfs.core import statistics_engine
@@ -490,7 +490,34 @@ class MonitoringWindowConfigEngine:
             "statistics should contain the feature descriptive statistics"
         )
 
-        return registered_stats.feature_descriptive_statistics
+        return self._select_feature_descriptive_statistics(
+            registered_stats.feature_descriptive_statistics, feature_names
+        )
+
+    @staticmethod
+    def _select_feature_descriptive_statistics(
+        descriptive_statistics: list[FeatureDescriptiveStatistics],
+        feature_names: list[str],
+    ) -> list[FeatureDescriptiveStatistics]:
+        """Keep only the statistics of the monitored features.
+
+        A statistics row is shared by every configuration whose window has the same
+        bounds: registering statistics on an existing row appends the new features and
+        the backend answers with the whole row, and the same happens when a lookup
+        matches a row computed for another configuration. Passing the extra features
+        on would make the comparison reject the reference statistics, which only
+        cover the monitored features.
+        """
+        if not feature_names:
+            return descriptive_statistics
+        by_name = {fds.feature_name: fds for fds in descriptive_statistics}
+        missing = [name for name in feature_names if name not in by_name]
+        if missing:
+            raise FeatureStoreException(
+                "Statistics are missing for the monitored features "
+                f"{missing}; only {sorted(by_name)} were returned."
+            )
+        return [by_name[name] for name in feature_names]
 
     def _fetch_entity_data_in_monitoring_window(
         self,
