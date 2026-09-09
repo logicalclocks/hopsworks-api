@@ -1127,6 +1127,101 @@ class TestDeployment:
         gaps = "\n".join(chunks).count("lines skipped")
         assert gaps <= 2, f"reseeded {gaps} times, past the budget of 2"
 
+    def test_tail_logs_kubernetes_reseed_actually_requests_a_fresh_tail(
+        self, mocker, backend_fixtures
+    ):
+        """Dropping the cursor is not a jump to the newest output.
+
+        With any cursor left, or a resolved ``since``, the next read is still
+        bounded by that instant and returns the same capped prefix: the gap
+        notice claimed a jump that never happened and the generator stayed
+        stuck. The reseed has to make the next request a tail read.
+        """
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch("hopsworks_common.util._get_members", return_value=["predictor"])
+
+        capped = "\n".join(
+            f"2026-09-09T10:00:00.{i:09d}Z line-{i}" for i in range(200)
+        ) + "\n"
+        since_values = []
+
+        def respond(*args, **kwargs):
+            since_values.append(kwargs.get("since"))
+            if kwargs.get("since") is None:
+                # The fresh tail: what the kubelet returns with no since bound.
+                return [
+                    self._make_chunk(
+                        content="2026-09-09T10:05:00.000000000Z newest-output\n"
+                    )
+                ]
+            return [self._make_chunk(content=capped, truncated=True)]
+
+        mocker.patch(
+            "hsml.core.serving_api.ServingApi._get_logs", side_effect=respond
+        )
+        mocker.patch("time.sleep")
+        monot = mocker.patch("time.monotonic")
+        monot.side_effect = [0.0] + [0.1] * 8 + [99.0]
+
+        # The default since resolves to "now", which is exactly the case that
+        # kept the reseed since-bounded.
+        chunks = list(d.tail_logs(source="kubernetes", timeout=10.0))
+
+        joined = "\n".join(chunks)
+        assert "lines skipped" in joined
+        # The claim in the notice has to be true: a request with no since bound.
+        assert None in since_values[1:], f"no fresh-tail request was made: {since_values}"
+        assert "newest-output" in joined
+
+    def test_tail_logs_kubernetes_holds_back_a_byte_cut_trailing_line(
+        self, mocker, backend_fixtures
+    ):
+        """A response cut mid-line must not commit that line to the cursor.
+
+        Emitting the fragment recorded its timestamp, so the complete line came
+        back on the next read and was discarded as already delivered. The tail
+        of the line was then lost with no marker.
+        """
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mocker.patch("hopsworks_common.util._get_members", return_value=["predictor"])
+
+        first = [
+            self._make_chunk(
+                content=(
+                    "2026-09-09T10:00:00.000000001Z previous-second\n"
+                    "2026-09-09T10:00:01.000000001Z message-cut-in-mi"
+                ),
+                truncated=True,
+            )
+        ]
+        second = [
+            self._make_chunk(
+                content=(
+                    "2026-09-09T10:00:01.000000001Z message-cut-in-middle\n"
+                    "2026-09-09T10:00:02.000000001Z next-line\n"
+                )
+            )
+        ]
+        mocker.patch(
+            "hsml.core.serving_api.ServingApi._get_logs", side_effect=[first, second]
+        )
+        mocker.patch("time.sleep")
+        monot = mocker.patch("time.monotonic")
+        monot.side_effect = [0.0, 0.1, 99.0]
+
+        chunks = list(d.tail_logs(source="kubernetes", timeout=10.0, since=None))
+        joined = "\n".join(chunks)
+
+        assert "previous-second" in joined
+        # The fragment is never delivered on its own.
+        assert "message-cut-in-mi\n" not in joined
+        assert not joined.endswith("message-cut-in-mi")
+        # The complete line arrives instead, and the stream carries on.
+        assert "message-cut-in-middle" in joined
+        assert "next-line" in joined
+
     def _make_chunk(
         self,
         instance_name="i-0",

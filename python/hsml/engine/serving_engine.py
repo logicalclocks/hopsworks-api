@@ -35,7 +35,7 @@ from hopsworks_common.constants import (
 )
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
 from hopsworks_common.core import dataset_api, inode
-from hsml import deployable_component_logs, default_predictor, deployment_schema
+from hsml import default_predictor, deployable_component_logs, deployment_schema
 from hsml.core import serving_api
 from hsml.engine import local_engine
 from hsml.utils.local_paths import _ensure_dataset_dir, _resolve_serving_file
@@ -1002,6 +1002,9 @@ class ServingEngine:
         stalled_by_instance: dict[str, int] = {}
         reseeds_by_instance: dict[str, int] = {}
         pre_reseed_cursor: dict[str, tuple[str, int]] = {}
+        # Set when a stalled instance abandons its cursor; makes the next read a
+        # tail read instead of another since-bounded one.
+        reseed_pending = False
 
         # ``since="now"`` is a UX shorthand: start streaming brand-new lines
         # only. Resolved here on the first call to a real ISO-8601 timestamp
@@ -1019,7 +1022,21 @@ class ServingEngine:
             # since is an absolute instant, so one value covers every pod: the
             # earliest cursor lags without losing, and each pod trims its own
             # overlap.
-            if cursor_by_pod:
+            #
+            # A reseed is the exception. Dropping the stalled instance's cursor
+            # is not enough to reach the newest output: with any cursor left, or
+            # any resolved ``since``, the next read is still bounded by that
+            # instant and returns the same capped prefix. The gap notice would
+            # then claim a jump that never happened. So a reseed clears every
+            # cursor and drops the resolved ``since`` for exactly one read,
+            # which is what makes it a tail read. That is why the reseed is
+            # coordinated rather than per-instance: one request carries one
+            # ``since``, so a fresh tail cannot be fetched for one replica
+            # without releasing the others, and the gap notice covers them all.
+            if reseed_pending:
+                since_param = None
+                reseed_pending = False
+            elif cursor_by_pod:
                 since_param = min(ts for ts, _ in cursor_by_pod.values())
             else:
                 since_param = last_timestamp
@@ -1064,10 +1081,20 @@ class ServingEngine:
                     # A note, not log lines. Surfacing it as content would seed
                     # a cursor from prose.
                     continue
-                new_lines = (chunk.content or "").splitlines()
+                content = chunk.content or ""
+                new_lines = content.splitlines()
+                # splitlines() erases whether the last line ended. A byte-capped
+                # response can stop mid-line, and emitting that fragment commits
+                # its timestamp to the cursor, so the complete line is discarded
+                # as already delivered on the next read and its tail is lost for
+                # good. Hold the fragment back instead: the next read re-fetches
+                # its second and delivers it whole. A line larger than the whole
+                # budget never completes, which is what the stall counter below
+                # is for.
+                last_line_complete = content.endswith(("\n", "\r"))
                 before = cursor_by_pod.get(chunk_pod)
                 remainder = self._advance_pod_cursor(
-                    cursor_by_pod, chunk_pod, new_lines
+                    cursor_by_pod, chunk_pod, new_lines, last_line_complete
                 )
                 if chunk.truncated and not remainder:
                     stalled_by_instance[chunk_pod] = (
@@ -1084,6 +1111,12 @@ class ServingEngine:
                         pre_reseed_cursor[chunk_pod] = cursor_by_pod.pop(
                             chunk_pod, before
                         )
+                        # Every cursor goes, not just this instance's: one
+                        # request carries one ``since``, so a leftover cursor
+                        # would keep the next read bounded and there would be no
+                        # tail to jump to.
+                        cursor_by_pod.clear()
+                        reseed_pending = True
                         stalled_by_instance[chunk_pod] = 0
                         reseeds_by_instance[chunk_pod] = (
                             reseeds_by_instance.get(chunk_pod, 0) + 1
@@ -1180,7 +1213,11 @@ class ServingEngine:
 
     @classmethod
     def _advance_pod_cursor(
-        cls, cursor_by_pod: dict[str, tuple[str, int]], pod: str, lines: list[str]
+        cls,
+        cursor_by_pod: dict[str, tuple[str, int]],
+        pod: str,
+        lines: list[str],
+        last_line_complete: bool = True,
     ) -> list[str] | None:
         """Strip kubelet timestamp prefixes and return the lines after this pod's cursor.
 
@@ -1195,6 +1232,12 @@ class ServingEngine:
         """
         if not any(cls._K8S_TS_PREFIX.match(line) for line in lines):
             return None
+        if not last_line_complete and lines:
+            # The trailing fragment is neither delivered nor recorded, so the
+            # cursor stays behind it and the next read returns the whole line.
+            lines = lines[:-1]
+            if not lines:
+                return []
         cursor_ts, cursor_ordinal = cursor_by_pod.get(pod, (None, 0))
         fresh: list[str] = []
         keep_continuation = cursor_ts is None
