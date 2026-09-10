@@ -221,7 +221,9 @@ class TestBatchLoggingMetaData:
         )
         mocker.patch.object(server, "_raise_transformation_warnings", return_value=None)
         # Every entry validates to itself, so none is skipped.
-        mocker.patch.object(server, "_validate_entry", side_effect=lambda entry, **k: entry)
+        mocker.patch.object(
+            server, "_validate_entry", side_effect=lambda entry, **k: entry
+        )
         # sql_client is a read-only property, so patch it on the class.
         mocker.patch.object(
             VectorServer,
