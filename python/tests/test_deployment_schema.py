@@ -981,3 +981,58 @@ class TestRequestParameterTypes:
         assert [(f.name, f.type) for f in schema.request_parameters] == [
             ("transaction_time", "bigint")
         ]
+
+
+class TestTimestampCoercion:
+    """A timestamp serving key has to reach the lookup as a datetime.
+
+    JSON has no timestamp type, so clients send RFC 3339 strings or epoch
+    milliseconds. Handing that string straight to the online lookup matched no
+    row, and the request failed with "Feature(s) ... is missing from vector"
+    even though the entity was there.
+    """
+
+    def _schema(self):
+        return ds.DeploymentSchema(
+            serving_keys=[
+                {"name": "user_id", "type": "bigint", "nullable": False},
+                {"name": "event_time", "type": "timestamp", "nullable": False},
+            ],
+            feature_view={"name": "fv", "version": 1},
+        )
+
+    def test_rfc3339_string_becomes_a_datetime(self):
+        rows = self._schema().rows(
+            [{"user_id": 7, "event_time": "2026-09-08T23:45:00"}]
+        )
+
+        assert rows[0]["event_time"] == datetime.datetime(2026, 9, 8, 23, 45)
+        assert rows[0]["user_id"] == 7
+
+    def test_trailing_z_is_utc(self):
+        rows = self._schema().rows(
+            [{"user_id": 7, "event_time": "2026-09-08T23:45:00Z"}]
+        )
+
+        assert rows[0]["event_time"] == datetime.datetime(
+            2026, 9, 8, 23, 45, tzinfo=datetime.timezone.utc
+        )
+
+    def test_epoch_milliseconds_become_a_datetime(self):
+        rows = self._schema().rows([{"user_id": 7, "event_time": 1789000000000}])
+
+        assert rows[0]["event_time"] == datetime.datetime.fromtimestamp(
+            1789000000.0, datetime.timezone.utc
+        )
+
+    def test_a_datetime_is_passed_through(self):
+        when = datetime.datetime(2026, 9, 8, 23, 45)
+
+        rows = self._schema().rows([{"user_id": 7, "event_time": when}])
+
+        assert rows[0]["event_time"] is when
+
+    def test_non_timestamp_fields_are_untouched(self):
+        rows = self._schema().rows([{"user_id": 7, "event_time": None}])
+
+        assert rows[0]["event_time"] is None

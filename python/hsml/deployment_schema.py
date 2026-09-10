@@ -470,12 +470,21 @@ class DeploymentSchema:
             One dict per row with every field of the schema.
         """
         columns = self.columns
+        # Timestamps cross the wire as strings or epoch milliseconds and have to be
+        # datetimes by the time anything uses them, so they are converted once here
+        # rather than in each of the lookup and the logging paths.
+        timestamps = {
+            f.name for f in columns if (f.type or "").lower() in _TIMESTAMP_TYPES
+        }
         rows = []
         for instance in instances:
             if isinstance(instance, dict):
-                rows.append({f.name: instance.get(f.name) for f in columns})
+                row = {f.name: instance.get(f.name) for f in columns}
             else:
-                rows.append(dict(zip((f.name for f in columns), instance, strict=True)))
+                row = dict(zip((f.name for f in columns), instance, strict=True))
+            for name in timestamps:
+                row[name] = _to_timestamp(row[name])
+            rows.append(row)
         return rows
 
     @public
@@ -814,6 +823,34 @@ def _parses_as_timestamp(value: str) -> bool:
     except ValueError:
         return False
     return True
+
+
+def _to_timestamp(value: Any) -> Any:
+    """A validated timestamp value as a datetime.
+
+    JSON has no timestamp type, so a timestamp arrives as an RFC 3339 string or as
+    epoch milliseconds.
+    Both have to become a datetime before the value is used: the online lookup
+    matches a timestamp primary key by value and finds nothing when handed a string,
+    and the feature logger avro-encodes what it is given into a timestamp-micros
+    column.
+    Anything else is returned unchanged, including a datetime that a caller passed
+    directly.
+    """
+    if isinstance(value, bool) or value is None:
+        return value
+    if isinstance(value, datetime.datetime):
+        return value
+    if isinstance(value, int):
+        return datetime.datetime.fromtimestamp(value / 1000, datetime.timezone.utc)
+    if isinstance(value, str):
+        try:
+            return datetime.datetime.fromisoformat(
+                value.replace("z", "Z").replace("Z", "+00:00")
+            )
+        except ValueError:
+            return value
+    return value
 
 
 def _parses_as_date(value: str) -> bool:
