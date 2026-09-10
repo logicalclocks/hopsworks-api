@@ -335,45 +335,6 @@ def connector_create_snowflake(
     _create_connector(ctx, body)
 
 
-@connector_create.command("bigquery", help="Register a BigQuery connector.")
-@click.argument("name")
-@click.option("--project-id", "project_id", required=True, help="GCP project ID.")
-@click.option("--dataset", help="BigQuery dataset.")
-@click.option("--key-path", "key_path", help="Path to the service-account JSON key.")
-@click.option("--description", default="", help="Free-form description.")
-@click.pass_context
-def connector_create_bigquery(
-    ctx: click.Context,
-    name: str,
-    project_id: str,
-    dataset: str | None,
-    key_path: str | None,
-    description: str,
-) -> None:
-    """Register a BigQuery connector.
-
-    Args:
-        ctx: Click context.
-        name: Connector name.
-        project_id: GCP project ID.
-        dataset: Optional BigQuery dataset.
-        key_path: Optional service-account key path.
-        description: Description.
-    """
-    body = {
-        "type": "featurestoreBigqueryConnectorDTO",
-        "name": name,
-        "storageConnectorType": "BIGQUERY",
-        "queryProject": project_id,
-        "description": description,
-    }
-    if dataset:
-        body["dataset"] = dataset
-    if key_path:
-        body["keyPath"] = key_path
-    _create_connector(ctx, body)
-
-
 # region Connector specs
 #
 # The four commands above are written out by hand; the fourteen below differ only in
@@ -596,6 +557,20 @@ def _check_crm(v: dict[str, Any]) -> str | None:
 
 def _check_mongodb(v: dict[str, Any]) -> str | None:
     return _needs(v, "--password", "--user") if _given(v, "--password") else None
+
+
+def _check_bigquery(v: dict[str, Any]) -> str | None:
+    if (
+        _given(v, "--project-id")
+        or _given(v, "--dataset")
+        or _given(v, "--query-table")
+    ):
+        return None
+    return _needs(
+        v,
+        "bigquery without a query project, dataset or table",
+        "--materialization-dataset",
+    )
 
 
 _ARGS = _Opt(
@@ -983,8 +958,7 @@ _SPECS: dict[str, _Spec] = {
             _Opt(
                 "--spreadsheet-id",
                 "spreadsheetId",
-                "Spreadsheet id from its URL.",
-                required=True,
+                "Spreadsheet id from its URL. Optional; a feature group can set its own.",
             ),
             _Opt("--key-path", "keyPath", _KEY_PATH_HELP, required=True),
         ),
@@ -1150,6 +1124,31 @@ _SPECS: dict[str, _Spec] = {
             _OPTIONS,
         ),
         check=_check_mongodb,
+    ),
+    "bigquery": _Spec(
+        "featurestoreBigqueryConnectorDTO",
+        "BIGQUERY",
+        "Register a Google BigQuery connector.",
+        (
+            _Opt(
+                "--parent-project",
+                "parentProject",
+                "GCP project billed for the query.",
+                required=True,
+            ),
+            _Opt("--key-path", "keyPath", _KEY_PATH_HELP, required=True),
+            _Opt("--project-id", "queryProject", "GCP project of the table to read."),
+            _Opt("--dataset", "dataset", "Dataset that contains the table."),
+            _Opt("--query-table", "queryTable", "Default table to read."),
+            _Opt(
+                "--materialization-dataset",
+                "materializationDataset",
+                "Dataset that materialized query results are written to. "
+                "Required when no project, dataset or table is given.",
+            ),
+            _ARGS,
+        ),
+        check=_check_bigquery,
     ),
 }
 

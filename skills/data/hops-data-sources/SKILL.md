@@ -93,7 +93,7 @@ hops datasource create gcs <name> --bucket my-bucket --key-path /Projects/<proje
 hops datasource create adls <name> --account-name A --generation 2 --container-name C --directory-id T --application-id APP --service-credential - < credential.txt
 hops datasource create hopsfs <name> --dataset Resources
 hops datasource create snowflake <name> --url https://acct.snowflakecomputing.com --user U --database D --schema S --warehouse W --password - < pw.txt
-hops datasource create bigquery <name> --project-id proj --dataset ds --key-path /Projects/<project>/Resources/key.json
+hops datasource create bigquery <name> --parent-project billed-proj --project-id proj --dataset ds --key-path /Projects/<project>/Resources/key.json
 hops datasource create redshift <name> --cluster-identifier C --endpoint E --database D --port 5439 --user U --password - < pw.txt
 hops datasource create glue <name> --database D --region eu-north-1 --iam-role arn:aws:iam::123456789012:role/R
 hops datasource create unity-catalog <name> --workspace-url https://dbc-xxx.cloud.databricks.com --access-token - < token.txt

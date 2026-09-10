@@ -64,7 +64,14 @@ _MINIMAL: dict[str, list[str]] = {
     ],
     "kafka": ["--bootstrap-servers", "b:9092", "--security-protocol", "PLAINTEXT"],
     "gcs": ["--bucket", "b", "--key-path", "/Projects/p/Resources/k.json"],
-    "bigquery": ["--project-id", "p"],
+    "bigquery": [
+        "--parent-project",
+        "p",
+        "--key-path",
+        "/Projects/p/k.json",
+        "--materialization-dataset",
+        "m",
+    ],
     "opensearch": ["--host", "h", "--port", "9200"],
     "sql": [
         "--database-type",
@@ -84,7 +91,7 @@ _MINIMAL: dict[str, list[str]] = {
     "unity-catalog": ["--workspace-url", "https://w", "--access-token", "t"],
     "mongodb": ["--connection-string", "mongodb://h", "--database", "d"],
     "glue": ["--database", "d", "--region", "eu-north-1"],
-    "google-sheets": ["--spreadsheet-id", "s", "--key-path", "/Projects/p/k.json"],
+    "google-sheets": ["--key-path", "/Projects/p/k.json"],
 }
 
 # The Jackson subtype name and the FeaturestoreConnectorType each command sends.
@@ -591,6 +598,44 @@ def test_gcs_encryption_needs_the_key_and_its_hash():
     base = ["gcs", "n", *_MINIMAL["gcs"], "--algorithm", "AES256"]
 
     assert "--encryption-key-hash" in _refused([*base, "--encryption-key", "k"])
+
+
+def test_bigquery_needs_a_parent_project_and_a_query_target():
+    """Parent project is billed; a query target or materialization is required.
+
+    --project-id is the queried project, not the parent.
+    """
+    assert "--parent-project" in _refused(
+        ["bigquery", "n", "--key-path", "/P/k.json", "--dataset", "d"]
+    )
+    assert "--materialization-dataset" in _refused(
+        ["bigquery", "n", "--parent-project", "p", "--key-path", "/P/k.json"]
+    )
+
+    body = _create(
+        [
+            "bigquery",
+            "n",
+            "--parent-project",
+            "bill",
+            "--project-id",
+            "data",
+            "--dataset",
+            "d",
+            "--key-path",
+            "/P/k.json",
+        ]
+    )
+    assert (body["parentProject"], body["queryProject"]) == ("bill", "data")
+    assert "materializationDataset" not in body
+
+
+def test_google_sheets_spreadsheet_id_is_optional():
+    """The connector can be created without it; a feature group sets its own."""
+    argv = ["google-sheets", "n", "--key-path", "/P/k.json"]
+
+    assert "spreadsheetId" not in _create(argv)
+    assert _create([*argv, "--spreadsheet-id", "s"])["spreadsheetId"] == "s"
 
 
 def test_mongodb_password_needs_a_user():
