@@ -5009,16 +5009,22 @@ class FeatureGroup(FeatureGroupBase):
 
         if delete_online:
             # Requires an OnlineFS (clusterj-onlinefs) that understands the
-            # `operation: delete` header (the release shipping the OnlineFS delete
-            # branch onward), and on a feature group with an embedding index also one
-            # whose vectordb committer routes tombstones to a vector database delete
-            # rather than indexing them as documents.
-            # Not runtime-gated: OnlineFS is not reachable from the
-            # client, and the backend version is not its proxy since backend, SDK and
-            # OnlineFS can be versioned/backported independently. A controlled
-            # deployment (helm bumps SDK images and OnlineFS together) keeps them in
-            # sync; against an OnlineFS without the delete branch the tombstone is a
-            # no-op-to-corrupting write, so pair a delete-capable OnlineFS with this SDK.
+            # `operation: delete` header, and on a feature group with an embedding index
+            # also one whose vectordb committer routes a tombstone to a vector database
+            # delete instead of indexing it as a document.
+            #
+            # That requirement is a deployment contract rather than a runtime check, and
+            # it is not negotiated: OnlineFS is not reachable from the client and
+            # publishes no capability of its own, and the backend version is not a proxy
+            # for it, since backend, SDK and OnlineFS are versioned and backported
+            # independently. Helm bumps the SDK images and OnlineFS together, so a
+            # cluster is internally consistent; what that does not cover is a client
+            # pinned to an SDK newer than the cluster it talks to, which the major.minor
+            # compatibility check at connection time lets through. Against such an
+            # OnlineFS the tombstone is applied as a write, not ignored: RonDB upserts a
+            # row carrying only the primary key, and the vector database replaces the
+            # document under that id with the tombstone payload. So pair a
+            # delete-capable OnlineFS with this SDK.
             self._feature_group_engine._delete_online_records(
                 self, delete_df, write_options or {}
             )
