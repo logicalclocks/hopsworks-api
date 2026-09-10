@@ -835,6 +835,13 @@ class VectorServer:
                 if isinstance(request_parameters_copy, dict)
                 else request_parameters_copy
             )
+            # A request without parameters leaves the copy None, and extending with
+            # that raises. The single-vector path above logs {} for the same case, so
+            # log one per row here: these lists are zipped with serving_keys, which
+            # just grew by len(entries), and a short list would misalign every
+            # subsequent row.
+            if not request_parameters_copy:
+                request_parameters_copy = [{} for _ in entries]
             logging_meta_data.serving_keys.extend(entries)
             logging_meta_data.request_parameters.extend(request_parameters_copy)
         for (

@@ -15,6 +15,7 @@
 #
 
 from datetime import datetime
+from types import SimpleNamespace
 from unittest.mock import PropertyMock
 
 import pytest
@@ -195,3 +196,84 @@ class TestVectorServer:
         server = VectorServer.__new__(VectorServer)
 
         assert server._handle_timestamp_based_on_dtype(timestamp_value) == expected
+
+
+class TestBatchLoggingMetaData:
+    """Logging metadata must stay aligned with the entries it describes.
+
+    `_get_feature_vectors` appends one serving-key entry per row and one
+    request-parameter entry per row; the feature logger zips them. A request
+    carrying no parameters left the copy as None, and extending a list with
+    None raised TypeError, which surfaced as TRANSFORMATION_FAILED and took
+    down every prediction of a logging-enabled deployment.
+    """
+
+    def _server(self, mocker, entries, captured):
+        """A VectorServer stubbed down to the batch assembly path under test."""
+        server = VectorServer.__new__(VectorServer)
+        server._feature_view_logging_enabled = True
+        server._inference_helper_col_name = []
+        server._fetch_inference_helpers_for_transformations = False
+        server._root_feature_group = SimpleNamespace(event_time="event_time")
+
+        mocker.patch.object(
+            server, "_which_client_and_ensure_initialised", return_value="sql"
+        )
+        mocker.patch.object(server, "_raise_transformation_warnings", return_value=None)
+        # Every entry validates to itself, so none is skipped.
+        mocker.patch.object(server, "_validate_entry", side_effect=lambda entry, **k: entry)
+        # sql_client is a read-only property, so patch it on the class.
+        mocker.patch.object(
+            VectorServer,
+            "sql_client",
+            new_callable=PropertyMock,
+            return_value=SimpleNamespace(
+                _get_batch_feature_vectors=lambda *a, **k: ([{} for _ in entries], None)
+            ),
+        )
+
+        def capture(*args, **kwargs):
+            captured["meta"] = kwargs.get("logging_meta_data")
+            return {"f": 1}
+
+        mocker.patch.object(server, "_assemble_feature_vector", side_effect=capture)
+        mocker.patch.object(
+            server, "_handle_feature_vector_return_type", side_effect=lambda v, **k: v
+        )
+        return server
+
+    def test_no_request_parameters_does_not_raise_and_stays_aligned(self, mocker):
+        """The regression: request_parameters=None must not reach list.extend."""
+        entries = [{"user_id": 1}, {"user_id": 2}, {"user_id": 3}]
+        captured = {}
+        server = self._server(mocker, entries, captured)
+
+        server._get_feature_vectors(
+            entries=entries,
+            passed_features=[],
+            vector_db_features=[],
+            request_parameters=None,
+            logging_data=True,
+        )
+
+        meta = captured["meta"]
+        assert meta is not None
+        assert meta.request_parameters == [{}, {}, {}]
+        assert len(meta.request_parameters) == len(meta.serving_keys) == len(entries)
+
+    def test_dict_request_parameters_are_broadcast_per_row(self, mocker):
+        entries = [{"user_id": 1}, {"user_id": 2}]
+        captured = {}
+        server = self._server(mocker, entries, captured)
+
+        server._get_feature_vectors(
+            entries=entries,
+            passed_features=[],
+            vector_db_features=[],
+            request_parameters={"now": 5},
+            logging_data=True,
+        )
+
+        meta = captured["meta"]
+        assert meta.request_parameters == [{"now": 5}, {"now": 5}]
+        assert len(meta.request_parameters) == len(meta.serving_keys) == len(entries)
