@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     from hsfs import feature_view
     from hsfs.core.feature_monitoring_config import FeatureMonitoringConfig
     from hsml import deployment
+    from hsml.deployment_schema import DeploymentSchema
     from hsml.inference_batcher import InferenceBatcher
     from hsml.inference_logger import InferenceLogger
     from hsml.resources import PredictorResources
@@ -383,8 +384,18 @@ class Model:
         vllm_variant: str | None = None,
         vllm_image_tag: str | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
+        schema: DeploymentSchema | dict | None = None,
+        passed_features: list[str] | None = None,
+        default_predictor: bool | None = None,
     ) -> deployment.Deployment:
         """Deploy the model.
+
+        A Python model registered with a feature view and deployed without a
+        script gets the library's default predictor: requests carry serving
+        keys, passed features, and request parameters as described by
+        `deployment.schema`, the predictor looks up and transforms the feature
+        vector, runs the model, and logs the request when the feature view has
+        logging enabled.
 
         Example:
             ```python
@@ -400,12 +411,23 @@ class Model:
             my_model = mr.get_model("my_model", version=1)
 
             my_deployment = my_model.deploy()
+
+            # a Python model registered with feature_view= deploys without a
+            # predictor script; clients send the serving keys and passed features
+            fraud_model = mr.get_model("fraud", version=1)
+            fraud_deployment = fraud_model.deploy(passed_features=["amount"])
+            fraud_deployment.start(await_running=600)
+            fraud_deployment.schema.describe()
+            fraud_deployment.predict(
+                inputs=[{"cc_num": 4473593503484549, "amount": 12.5}]
+            )
             ```
+
         Parameters:
             name: Name of the deployment.
             description: Description of the deployment.
             artifact_version: **Deprecated**. Version number of the model artifact to deploy, `CREATE` to create a new model artifact
-            or `MODEL-ONLY` to reuse the shared artifact containing only the model files.
+                or `MODEL-ONLY` to reuse the shared artifact containing only the model files.
             serving_tool: Serving tool used to deploy the model server.
             script_file: Path to a custom predictor script implementing the Predict class, either local or already uploaded to HopsFS.
             config_file: Model server configuration file to be passed to the model deployment, either local or already uploaded to HopsFS.
@@ -424,6 +446,12 @@ class Model:
             tags: Optionally the tags to attach to the deployment when it is created, in the same shapes accepted by feature groups.
                 A single [`Tag`][hopsworks.tag.Tag], a `{"name": "owner", "value": "team-a"}` dict, or a list of either, for example `[{"name": "owner", "value": "team-a"}]`.
                 The tags ride the create request, so any mandatory deployment tags missing from them cause the backend to reject the creation.
+            schema: Deployment schema describing the prediction requests. Inferred from the feature view when the default predictor is used;
+                a given schema must then keep the inferred fields and may only refine types and descriptions.
+            passed_features: Feature view features whose values clients send with each request instead of the online store providing them.
+                Only with the default predictor.
+            default_predictor: `None` selects the default predictor automatically for Python models with a feature view and no script,
+                `True` requires it (also for sklearn models, and together with a `script_file` that subclasses it), `False` never uses it.
 
         Returns:
             The deployment metadata object of a new or existing deployment.
@@ -452,6 +480,9 @@ class Model:
             vllm_variant=vllm_variant,
             vllm_image_tag=vllm_image_tag,
             tags=tags,
+            schema=schema,
+            passed_features=passed_features,
+            default_predictor=default_predictor,
         )
 
         return predictor.deploy()
@@ -583,16 +614,18 @@ class Model:
         if init:
             td_prov = self.get_training_dataset_provenance()
             td = explicit_provenance.Links.get_one_accessible_parent(td_prov)
+            # a model saved without a training dataset still has a view to serve
+            td_version = td.version if td is not None else None
             is_deployment = "DEPLOYMENT_NAME" in os.environ
             if online or is_deployment:
                 _logger.info(
                     "Initializing for batch and online retrieval of feature vectors"
                     + (" - within a deployment" if is_deployment else "")
                 )
-                fv.init_serving(training_dataset_version=td.version)
+                fv.init_serving(training_dataset_version=td_version)
             elif online is False:
                 _logger.info("Initializing for batch retrieval of feature vectors")
-                fv.init_batch_scoring(training_dataset_version=td.version)
+                fv.init_batch_scoring(training_dataset_version=td_version)
         return fv
 
     @public
@@ -748,13 +781,27 @@ class Model:
         return util._set_model_class(json_decamelized)
 
     def update_from_response_json(self, json_dict):
-        json_decamelized = humps.decamelize(json_dict)
-        if "type" in json_decamelized:  # backwards compatibility
-            _ = json_decamelized.pop("type")
-        if "tags" in json_decamelized:
-            _ = json_decamelized.pop("tags")
-        self.__init__(**json_decamelized)
+        self.__init__(**self._response_kwargs(json_dict))
         return self
+
+    def _response_kwargs(self, json_dict, *drop):
+        """Constructor arguments from a backend response, minus `drop` and the legacy keys."""
+        json_decamelized = humps.decamelize(json_dict)
+        for key in ("type", "tags", *drop):  # type: backwards compatibility
+            json_decamelized.pop(key, None)
+        # The backend answers 0 for "no training dataset version": on a create
+        # until the provenance link exists, and for a model that never had one.
+        # Keep what this side resolved (which may be None), or a deployment made
+        # right after save() would publish a schema for version 0.
+        if not json_decamelized.get("training_dataset_version"):
+            json_decamelized["training_dataset_version"] = (
+                self._training_dataset_version
+            )
+        # Likewise the feature view: the backend records it through the training
+        # dataset's provenance link, so a model without one comes back without it.
+        if json_decamelized.get("feature_view") is None:
+            json_decamelized["feature_view"] = self._feature_view
+        return json_decamelized
 
     def json(self):
         return json.dumps(self, cls=util.Encoder)

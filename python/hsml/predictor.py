@@ -14,7 +14,10 @@
 #   limitations under the License.
 from __future__ import annotations
 
+import ast
 import json
+import os
+import re
 from typing import Any
 
 import humps
@@ -30,6 +33,14 @@ from hopsworks_common.constants import (
 )
 from hsml import deployment
 from hsml.deployable_component import DeployableComponent
+from hsml.deployment_schema import (
+    OUTPUT_FEATURE_VECTORS,
+    DeploymentSchema,
+    _check_schema_refinement,
+    _check_training_dataset_version,
+    _infer_deployment_schema,
+    _infer_model_deployment_schema,
+)
 from hsml.deployment_tracing_config import DeploymentTracingConfig
 from hsml.inference_batcher import InferenceBatcher
 from hsml.inference_logger import InferenceLogger
@@ -91,10 +102,15 @@ class Predictor(DeployableComponent):
         git_resolved_branch: str | None = None,
         missing_mandatory_tags: list[dict[str, Any]] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
+        schema: DeploymentSchema | dict | None = None,
+        default_predictor: bool | None = None,
         **kwargs,
     ):
         self._missing_mandatory_tags = missing_mandatory_tags or []
         self._tags = tag.Tag._normalize(tags)
+        self._schema = util._get_obj_from_json(schema, DeploymentSchema)
+        self._schema_loaded = False
+        self._default_predictor = bool(default_predictor)
         serving_tool = (
             self._validate_serving_tool(serving_tool)
             or self._get_default_serving_tool()
@@ -135,7 +151,9 @@ class Predictor(DeployableComponent):
             inference_logger, InferenceLogger
         )
         self._transformer = util._get_obj_from_json(transformer, Transformer)
-        self._validate_script_file(self._model_framework, self._script_file)
+        self._validate_script_file(
+            self._model_framework, self._script_file, self._default_predictor
+        )
         self._api_protocol = api_protocol
         self._environment = environment
         self._project_namespace = project_namespace
@@ -217,8 +235,14 @@ class Predictor(DeployableComponent):
         return serving_tool
 
     @classmethod
-    def _validate_script_file(cls, model_framework, script_file):
-        if script_file is None and (model_framework == MODEL.FRAMEWORK_PYTHON):
+    def _validate_script_file(
+        cls, model_framework, script_file, default_predictor=False
+    ):
+        if (
+            script_file is None
+            and model_framework == MODEL.FRAMEWORK_PYTHON
+            and not default_predictor
+        ):
             raise ValueError(
                 "Predictor scripts are required in deployments for custom Python models."
             )
@@ -271,8 +295,117 @@ class Predictor(DeployableComponent):
         kwargs["model_path"] = model.model_path
         kwargs["model_version"] = model.version
 
+        _reject_reserved_env_vars(kwargs.get("env_vars"))
+        default_predictor = kwargs.pop("default_predictor", None)
+        schema = kwargs.pop("schema", None)
+        passed_features = kwargs.pop("passed_features", None)
+        if schema is not None and passed_features:
+            raise ValueError(
+                "Pass either schema or passed_features, not both: passed features are "
+                "already part of a schema."
+            )
+        use_default, feature_view = _resolve_default_predictor(
+            model, default_predictor, kwargs, passed_features
+        )
+        kwargs["default_predictor"] = use_default
+        kwargs["schema"] = _resolve_model_schema(
+            model, feature_view, use_default, schema, passed_features
+        )
+        if not use_default and passed_features:
+            raise ValueError(
+                "passed_features only applies to the default predictor. Pass "
+                "default_predictor=True, or describe the request with schema=."
+            )
+
         # get predictor for specific model, includes model type-related validations
         return util._get_predictor_for_model(model=model, **kwargs)
+
+    @public
+    @classmethod
+    def for_feature_view(
+        cls,
+        feature_view: Any,
+        name: str | None = None,
+        training_dataset_version: int | None = None,
+        passed_features: list[str] | None = None,
+        schema: DeploymentSchema | dict | None = None,
+        script_file: str | None = None,
+        **kwargs: Any,
+    ) -> Predictor:
+        """Build the predictor of a feature view deployment: the default predictor with no model.
+
+        Resolves the training dataset version from the last accessed training
+        dataset when not given, checks that statistics-dependent
+        transformations have one, infers the schema, and records the feature
+        view identity in the predictor env vars. Further keyword arguments,
+        such as `resources`, `environment`, or `env_vars`, pass through to
+        `Predictor`.
+
+        Parameters:
+            feature_view: The feature view to serve.
+            name: Deployment name; defaults to the view name and version without special characters.
+            training_dataset_version: Training dataset whose statistics the transformations use.
+            passed_features: Features of the view whose values clients send with each request.
+            schema: A refinement of the inferred deployment schema, keeping its fields.
+            script_file: A script subclassing `DefaultPredict` that ends with the `run_kserve_wrapper()` hand-over.
+
+        Returns:
+            The predictor, with the schema pending until the deployment is saved.
+        """
+        from hsml.python.feature_view_endpoint import FeatureViewEndpoint
+
+        _reject_reserved_env_vars(kwargs.get("env_vars"))
+        if name is None:
+            name = re.sub(
+                r"[^a-zA-Z0-9]", "", f"{feature_view.name}{feature_view.version}"
+            )
+        if training_dataset_version is None:
+            training_dataset_version = feature_view.get_last_accessed_training_dataset()
+        _check_training_dataset_version(
+            feature_view,
+            training_dataset_version,
+            f"feature view '{feature_view.name}' v{feature_view.version}",
+            "Pass training_dataset_version=<n> to deploy(), or read or create a "
+            "training dataset from this feature view in this session first.",
+        )
+        given = util._get_obj_from_json(schema, DeploymentSchema)
+        if given is not None:
+            if passed_features:
+                raise ValueError(
+                    "Pass either schema or passed_features, not both: passed features "
+                    "are already part of a schema."
+                )
+            # a manual schema carries its passed features; infer with the same ones
+            passed_features = [f.name for f in given.passed_features] or None
+        inferred = _infer_deployment_schema(
+            feature_view,
+            passed_features=passed_features,
+            training_dataset_version=training_dataset_version,
+            output_kind=OUTPUT_FEATURE_VECTORS,
+        )
+        if given is not None:
+            _check_schema_refinement(inferred, given)
+        if script_file is not None:
+            _check_feature_view_script(script_file)
+
+        env_vars = dict(kwargs.pop("env_vars", None) or {})
+        env_vars[MODEL_SERVING.SCRIPT_KIND_ENV_VAR] = (
+            MODEL_SERVING.SCRIPT_KIND_PREDICTOR
+        )
+        env_vars[MODEL_SERVING.FEATURE_VIEW_NAME_ENV_VAR] = feature_view.name
+        env_vars[MODEL_SERVING.FEATURE_VIEW_VERSION_ENV_VAR] = str(feature_view.version)
+        if training_dataset_version is not None:
+            env_vars[MODEL_SERVING.TRAINING_DATASET_VERSION_ENV_VAR] = str(
+                training_dataset_version
+            )
+        return FeatureViewEndpoint(
+            name=name,
+            script_file=script_file,
+            schema=given or inferred,
+            default_predictor=True,
+            env_vars=env_vars,
+            **kwargs,
+        )
 
     @public
     @classmethod
@@ -727,6 +860,64 @@ class Predictor(DeployableComponent):
 
     @public
     @property
+    def schema(self) -> DeploymentSchema | None:
+        """Deployment schema: the one set in this session, else the one the deployment's revision names, else `None`.
+
+        Reading a persisted schema downloads
+        `Deployments/<name>/resources/schema/<id>.json` once per object.
+        Setting a schema marks it pending; `save()` publishes it.
+        """
+        if self._schema is not None or self._schema_loaded:
+            return self._schema
+        self._schema_loaded = True
+        schema_id = self.schema_id
+        if schema_id is None:
+            return None
+        from hsml.engine import serving_engine
+
+        self._schema = serving_engine.ServingEngine()._read_schema(self, schema_id)
+        return self._schema
+
+    @schema.setter
+    def schema(self, schema: DeploymentSchema | dict | None):
+        self._schema = util._get_obj_from_json(schema, DeploymentSchema)
+        self._schema_loaded = False
+
+    @public
+    @property
+    def schema_id(self) -> str | None:
+        """Id of the schema this deployment's revision serves, from its env vars."""
+        if self._schema is not None:
+            return self._schema.schema_id
+        return (self._env_vars or {}).get(MODEL_SERVING.DEPLOYMENT_SCHEMA_ID_ENV_VAR)
+
+    @public
+    @property
+    def default_predictor(self) -> bool:
+        """Whether the library's default predictor serves this deployment."""
+        return self._default_predictor
+
+    @public
+    @property
+    def feature_view_name(self) -> str | None:
+        """Feature view served by a feature view deployment, else `None`."""
+        return (self._env_vars or {}).get(MODEL_SERVING.FEATURE_VIEW_NAME_ENV_VAR)
+
+    @public
+    @property
+    def feature_view_version(self) -> int | None:
+        """Feature view version served by a feature view deployment, else `None`."""
+        version = (self._env_vars or {}).get(MODEL_SERVING.FEATURE_VIEW_VERSION_ENV_VAR)
+        return int(version) if version is not None else None
+
+    @public
+    @property
+    def has_feature_view(self) -> bool:
+        """Whether this is a feature view deployment."""
+        return self.feature_view_name is not None
+
+    @public
+    @property
     def api_protocol(self):
         """API protocol enabled in the predictor (e.g., HTTP or GRPC)."""
         return self._api_protocol
@@ -855,13 +1046,17 @@ class Predictor(DeployableComponent):
 
     @public
     def get_inference_url(self) -> str | None:
-        """Get the KServe inference URL for standard model deployments.
+        """Get the KServe inference URL for standard model deployments and feature view deployments.
 
         Returns the full URL with `:predict` suffix for KServe inference protocol.
         This method only returns a URL for standard model deployments (non-vLLM,
-        with a model attached).
+        with a model attached) and for feature view deployments.
 
-        If Istio client is not available, falls back to Hopsworks REST API path.
+        If Istio client is not available, falls back to Hopsworks REST API path
+        for model deployments. A feature view deployment is only reachable
+        through Istio, because the Hopsworks REST proxy forwards requests for
+        deployments without a model to the pod root, not to the KServe predict
+        route; `None` is returned when Istio is unavailable.
 
         Returns:
             Inference URL with `:predict` suffix, or `None` if not a standard model deployment.
@@ -876,7 +1071,9 @@ class Predictor(DeployableComponent):
 
         # Only for standard model deployments (has model, not vLLM)
         has_model = self._model_name is not None and self._model_version is not None
-        if not has_model or self._model_server == PREDICTOR.MODEL_SERVER_VLLM:
+        if self._model_server == PREDICTOR.MODEL_SERVER_VLLM or not (
+            has_model or self.has_feature_view
+        ):
             return None
 
         serving = serving_api.ServingApi()
@@ -886,6 +1083,8 @@ class Predictor(DeployableComponent):
         if istio_client is not None:
             path_parts = serving._get_istio_inference_path(self, base_only=False)
             return f"{istio_client._base_url}/{'/'.join(str(p) for p in path_parts)}"
+        if not has_model:
+            return None
 
         # Fallback to Hopsworks REST API path
         hopsworks_client = client._get_instance()
@@ -910,3 +1109,230 @@ class Predictor(DeployableComponent):
         if self._git_url is not None:
             git += f", git_auto_redeploy: {self._git_auto_redeploy!r}"
         return f"Predictor(name: {self._name!r}" + desc + git + ")"
+
+
+# region Default predictor resolution
+
+
+def _reject_reserved_env_vars(env_vars: dict[str, str] | None) -> None:
+    if not env_vars:
+        return
+    reserved = sorted(set(env_vars) & set(MODEL_SERVING.RESERVED_ENV_VARS))
+    if reserved:
+        raise ValueError(
+            f"Environment variables {reserved} are set by Hopsworks for this deployment "
+            "and cannot be overridden."
+        )
+
+
+def _resolve_feature_view(model):
+    feature_view = getattr(model, "_feature_view", None)
+    # A model fetched from the registry carries the backend's feature view
+    # JSON, not a usable object; only an in-session create_model keeps the real one.
+    if feature_view is not None and hasattr(feature_view, "serving_keys"):
+        return feature_view
+    resolved = model.get_feature_view(init=False)
+    if (
+        resolved is None
+        and isinstance(feature_view, dict)
+        and feature_view.get("name")
+        and feature_view.get("version") is not None
+    ):
+        # Right after save() the provenance link may not exist yet (it needs a
+        # training dataset), but the response still names the view.
+        import hopsworks
+
+        if not hopsworks._connected_project:
+            from hopsworks_common.client.exceptions import FeatureStoreException
+
+            raise FeatureStoreException(
+                f"Model '{model.name}' names feature view {feature_view['name']} "
+                f"v{feature_view['version']}, but no project is connected to resolve "
+                "it. Call hopsworks.login() first."
+            )
+        resolved = hopsworks._connected_project.get_feature_store().get_feature_view(
+            feature_view["name"], int(feature_view["version"])
+        )
+    return resolved
+
+
+def _resolve_default_predictor(model, default_predictor, kwargs, passed_features=None):
+    """Decide whether the default predictor serves `model`, per the resolution table of the spec.
+
+    Returns `(use_default, feature_view)`. Automatic mode only turns on for
+    `PYTHON` models with a feature view, no script, no transformer, REST, and
+    KServe; forced mode raises on the first unmet condition.
+    """
+    if default_predictor is False:
+        return False, None
+    # A model without a known framework is never picked automatically; users
+    # can still force the default predictor for it.
+    framework = getattr(model, "framework", None)
+    script_file = kwargs.get("script_file")
+    transformer = kwargs.get("transformer")
+    api_protocol = kwargs.get("api_protocol") or INFERENCE_ENDPOINTS.API_PROTOCOL_REST
+    serving_tool = kwargs.get("serving_tool") or Predictor._get_default_serving_tool()
+
+    if default_predictor is None:
+        eligible = (
+            framework == MODEL.FRAMEWORK_PYTHON
+            and script_file is None
+            and transformer is None
+            and api_protocol == INFERENCE_ENDPOINTS.API_PROTOCOL_REST
+            and serving_tool == PREDICTOR.SERVING_TOOL_KSERVE
+        )
+        if not eligible:
+            return False, None
+        feature_view = _resolve_feature_view(model)
+        return feature_view is not None, feature_view
+
+    problems = []
+    if framework not in (MODEL.FRAMEWORK_PYTHON, MODEL.FRAMEWORK_SKLEARN):
+        problems.append(
+            f"the model framework is {framework}, only PYTHON and SKLEARN are supported"
+        )
+    if transformer is not None:
+        problems.append("a transformer is configured")
+    if api_protocol != INFERENCE_ENDPOINTS.API_PROTOCOL_REST:
+        problems.append(f"the API protocol is {api_protocol}, only REST is supported")
+    if serving_tool != PREDICTOR.SERVING_TOOL_KSERVE:
+        problems.append(f"the serving tool is {serving_tool}, only KSERVE is supported")
+    feature_view = None
+    if not problems:
+        feature_view = _resolve_feature_view(model)
+        if (
+            feature_view is None
+            and not passed_features
+            and not _model_input_columns(model)
+        ):
+            problems.append(
+                "the model has no feature view; register it with "
+                "create_model(feature_view=...) or name its input columns with "
+                "passed_features=[...]"
+            )
+    if problems:
+        raise ValueError("The default predictor cannot be used: " + problems[0] + ".")
+    return True, feature_view
+
+
+def _model_input_columns(model) -> list[dict]:
+    model_schema = model.model_schema
+    if not model_schema:
+        return []
+    input_ = humps.decamelize(model_schema).get("input_schema") or {}
+    return [c for c in (input_.get("columnar_schema") or []) if c.get("name")]
+
+
+def _model_output_columns(model) -> list[dict] | None:
+    model_schema = model.model_schema
+    if not model_schema:
+        return None
+    output = humps.decamelize(model_schema).get("output_schema") or {}
+    columns = output.get("columnar_schema")
+    if not columns:
+        return None
+    return [
+        {"name": c.get("name"), "type": c.get("type")} for c in columns if c.get("name")
+    ]
+
+
+def _resolve_model_schema(model, feature_view, use_default, schema, passed_features):
+    given = util._get_obj_from_json(schema, DeploymentSchema)
+    if not use_default:
+        return given
+    if given is not None and passed_features is None:
+        # a manual schema carries its passed features; infer with the same ones
+        passed_features = [f.name for f in given.passed_features] or None
+    if feature_view is None:
+        inferred = _infer_model_deployment_schema(
+            model.name,
+            passed_features,
+            model_input_columns=_model_input_columns(model),
+            output_columns=_model_output_columns(model),
+        )
+        if given is not None:
+            _check_schema_refinement(inferred, given)
+            return given
+        return inferred
+    training_dataset_version = model.training_dataset_version
+    _check_training_dataset_version(
+        feature_view,
+        training_dataset_version,
+        f"model '{model.name}' v{model.version}",
+        "Pass training_dataset_version=<n> to create_model(), or read the training "
+        "dataset from the feature view before saving the model.",
+    )
+    inferred = _infer_deployment_schema(
+        feature_view,
+        passed_features=passed_features,
+        training_dataset_version=training_dataset_version,
+        output_columns=_model_output_columns(model),
+    )
+    if given is not None:
+        _check_schema_refinement(inferred, given)
+        return given
+    return inferred
+
+
+def _check_feature_view_script(script_file: str) -> None:
+    """Require the KServe wrapper hand-over in a feature view deployment's script.
+
+    Backends that honour `SERVING_SCRIPT_KIND=predictor` start the wrapper
+    themselves and never run the script's `__main__` block; older backends
+    start `python <script>`, so the footer is what makes the script serve.
+    """
+    if not os.path.isfile(script_file):
+        return
+    with open(script_file, encoding="utf-8") as f:
+        source = f.read()
+    try:
+        tree = ast.parse(source, filename=script_file)
+    except SyntaxError as e:
+        raise ValueError(f"{script_file} is not valid Python: {e}") from e
+    if not _hands_over_at_import(tree):
+        raise ValueError(
+            f"{script_file} must end with the hand-over to the KServe wrapper, because a "
+            "deployment without a model may be started as a plain script:\n\n"
+            "    from hsml.default_predictor import run_kserve_wrapper\n\n"
+            '    if __name__ == "__main__":\n'
+            "        run_kserve_wrapper()\n"
+        )
+
+
+def _hands_over_at_import(tree: ast.Module) -> bool:
+    """True when running the module calls `run_kserve_wrapper`: a top-level call, or one under `if __name__ == "__main__"`."""
+    for stmt in tree.body:
+        if isinstance(stmt, ast.If) and _tests_dunder_main(stmt.test):
+            statements = stmt.body
+        else:
+            statements = [stmt]
+        for statement in statements:
+            if isinstance(statement, ast.Expr) and _calls_run_kserve_wrapper(
+                statement.value
+            ):
+                return True
+    return False
+
+
+def _tests_dunder_main(test: ast.expr) -> bool:
+    if not (
+        isinstance(test, ast.Compare)
+        and len(test.ops) == 1
+        and isinstance(test.ops[0], ast.Eq)
+    ):
+        return False
+    parts = [test.left, *test.comparators]
+    names = {p.id for p in parts if isinstance(p, ast.Name)}
+    values = {p.value for p in parts if isinstance(p, ast.Constant)}
+    return names == {"__name__"} and values == {"__main__"}
+
+
+def _calls_run_kserve_wrapper(node: ast.AST) -> bool:
+    if not isinstance(node, ast.Call):
+        return False
+    func = node.func
+    name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
+    return name == "run_kserve_wrapper"
+
+
+# endregion
