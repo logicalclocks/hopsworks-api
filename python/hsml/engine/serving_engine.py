@@ -520,6 +520,8 @@ class ServingEngine:
         """
         if path is not None and not os.path.exists(path):
             raise ModelServingException(f"Path {path} does not exist")
+        if path is not None and not os.path.isdir(path):
+            raise ModelServingException(f"Path {path} is not a directory")
         if path is None:
             path = os.getcwd()
 
@@ -1046,10 +1048,9 @@ class ServingEngine:
                 self._serving_api._get_logs(
                     deployment_instance,
                     component,
-                    # Bounded first fetch; dropped by the API layer on a
-                    # resume, where a tail bound would discard exactly the
-                    # lines being resumed.
-                    tail=200,
+                    # Bounded first fetch; no bound on a resume, where a tail
+                    # would discard exactly the lines being resumed.
+                    tail=None if since_param is not None else 200,
                     source=source,
                     since=since_param,
                     until=None,
@@ -1136,7 +1137,10 @@ class ServingEngine:
                     # as progress reset the budget and made the reseed cap
                     # unreachable.
                     resumed = pre_reseed_cursor.get(chunk_pod)
-                    if resumed is None or cursor_by_pod.get(chunk_pod, ("", 0)) > resumed:
+                    if (
+                        resumed is None
+                        or cursor_by_pod.get(chunk_pod, ("", 0)) > resumed
+                    ):
                         reseeds_by_instance[chunk_pod] = 0
                         pre_reseed_cursor.pop(chunk_pod, None)
                 if remainder is None:

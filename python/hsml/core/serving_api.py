@@ -504,7 +504,7 @@ class ServingApi:
         self,
         deployment_instance: deployment.Deployment,
         component: str,
-        tail: int,
+        tail: int | None,
         source: str | None = None,
         since: str | None = None,
         until: str | None = None,
@@ -516,10 +516,11 @@ class ServingApi:
         Parameters:
             deployment_instance: Metadata object of the deployment to get logs from.
             component: Deployment component (e.g., predictor or transformer).
-            tail: Number of tailing lines to retrieve. Not sent when ``since``
-                is set: a tail bound keeps the newest N lines of the matched
-                range, which on a resume discards exactly the lines being
-                resumed.
+            tail: Number of tailing lines to retrieve, or ``None`` to send no
+                bound and let the backend apply its default. A cursor resume
+                passes ``None``: a tail bound keeps the newest N lines of the
+                matched range, which on a resume would discard exactly the
+                lines being resumed.
             source: ``"kubernetes"`` for live pod logs, or the deprecated
                 ``"opensearch"`` (served from the Kubernetes path by new
                 backends). Default ``None`` lets the backend pick the
@@ -545,7 +546,7 @@ class ServingApi:
             "logs",
         ]
         query_params: dict = {"component": component}
-        if since is None:
+        if tail is not None:
             query_params["tail"] = tail
         # Only forward optional params when set so the wire format stays
         # identical to the pre-CLI release for old call sites.

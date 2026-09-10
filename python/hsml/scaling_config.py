@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING
 import humps
 from hopsworks_apigen import public
 from hopsworks_common import client, util
-from hopsworks_common.constants import PREDICTOR, SCALING_CONFIG
+from hopsworks_common.constants import DEFAULT, PREDICTOR, SCALING_CONFIG
 
 
 if TYPE_CHECKING:
@@ -71,7 +71,8 @@ class LogPersistence(Enum):
 def _coerce_log_persistence(
     log_persistence: LogPersistence | str | Default | None,
 ) -> LogPersistence | None:
-    if log_persistence is None:
+    # DEFAULT and None both mean "leave it to the backend".
+    if log_persistence is None or log_persistence is DEFAULT:
         return None
     if isinstance(log_persistence, LogPersistence):
         return log_persistence
@@ -392,7 +393,12 @@ class ComponentScalingConfig(ABC):
     @public
     @property
     def log_persistence(self):
-        """Whether every instance uploads its logs to the project's Logs dataset when it stops. 'ALL_REPLICAS' or 'NONE'. The backend rejects 'ALL_REPLICAS' for TensorFlow Serving and vLLM, and for a KServe Python deployment with no predictor script, because those runtime images do not ship the hopsworks SDK the upload runs. Unset means the backend default: on where it is supported, off everywhere else."""
+        """Whether every instance uploads its logs to the project's Logs dataset when it stops.
+
+        'ALL_REPLICAS' or 'NONE'.
+        The backend rejects 'ALL_REPLICAS' for TensorFlow Serving and vLLM, and for a KServe Python deployment with no predictor script, because those runtime images do not ship the hopsworks SDK the upload runs.
+        Unset means the backend default: on where it is supported, off everywhere else.
+        """
         return self._log_persistence
 
     @log_persistence.setter
