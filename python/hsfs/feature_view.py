@@ -4665,6 +4665,16 @@ class FeatureView:
         config._model_name = model_name
         config._model_version = model_version
         config._associated_model_td_version = training_dataset_version
+        # The logging feature group also carries the serving keys, the helper columns,
+        # the predicted_* columns and the logging metadata columns.
+        # None of those exist in the training dataset the reference window reads, so a
+        # fan-out over them leaves the FM job without reference statistics and it fails.
+        # Fan out over the training features of the model's training dataset only, the
+        # same set feature logging resolves; a feature_name given explicitly is not
+        # restricted.
+        config._fanout_feature_names = set(
+            self._get_untransformed_feature_names(training_dataset_version)
+        )
         return config
 
     @public
