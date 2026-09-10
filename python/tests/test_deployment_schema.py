@@ -708,6 +708,49 @@ class TestInference:
 
         assert schema.serving_keys == []
 
+    def test_join_key_shared_by_both_sides_is_one_field(self):
+        """A join key that is also a primary key on both sides is one request field.
+
+        Joining transactions to customers on user_id makes user_id a serving key
+        of each: required on the left, and on the right the same name again
+        through `join_on`. Emitting both put the name in the schema twice and
+        every such view failed to deploy with "appears in more than one group".
+        """
+
+        def key(name, required, type_):
+            return SimpleNamespace(
+                required_serving_key=name,
+                feature_name=name,
+                required=required,
+                feature_group=SimpleNamespace(
+                    features=[
+                        SimpleNamespace(
+                            name=name,
+                            type=type_,
+                            label=False,
+                            inference_helper_column=False,
+                            training_helper_column=False,
+                            on_demand_transformation_function=None,
+                        )
+                    ]
+                ),
+            )
+
+        # The unrequired side is listed first, as the backend may return it, and
+        # it reports a different type; the required side has to win regardless.
+        fv = _fv(
+            serving_keys=[
+                key("user_id", required=False, type_="string"),
+                key("user_id", required=True, type_="bigint"),
+            ]
+        )
+
+        schema = ds._infer_deployment_schema(fv)
+
+        assert [(f.name, f.type) for f in schema.serving_keys] == [
+            ("user_id", "bigint")
+        ]
+
 
 class TestTrainingDatasetCheck:
     def test_raises_naming_statistics_dependent_transformations(self):

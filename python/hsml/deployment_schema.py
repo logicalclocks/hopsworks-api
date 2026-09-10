@@ -1420,14 +1420,25 @@ def _infer_deployment_schema(
         and not getattr(f, "on_demand_transformation_function", None)
         and name not in set(passed_features or [])
     ]
-    serving_keys = []
+    # A join key that is also a primary key of the joined feature group yields one
+    # serving key per side: required on the left, and on the right the same name
+    # again through `join_on`. Both name the single field a client sends, so they
+    # collapse to one column. Keeping the required side makes the resolved type
+    # independent of the order the backend returns the keys in.
+    by_name: dict[str, Any] = {}
     for sk in getattr(feature_view, "serving_keys", None) or [] if looked_up else []:
         name = sk.required_serving_key
         if isinstance(name, list):
             continue
-        serving_keys.append(
-            SchemaField(name, _serving_key_type(feature_view, sk), nullable=False)
-        )
+        if name not in by_name or (
+            getattr(sk, "required", False)
+            and not getattr(by_name[name], "required", False)
+        ):
+            by_name[name] = sk
+    serving_keys = [
+        SchemaField(name, _serving_key_type(feature_view, sk), nullable=False)
+        for name, sk in by_name.items()
+    ]
 
     passed = []
     for name in passed_features or []:
