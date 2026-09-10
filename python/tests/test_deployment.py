@@ -911,7 +911,9 @@ class TestDeployment:
         d.predict("data", "inputs")
 
         # Assert
-        mock_serving_engine_predict.assert_called_once_with(d, "data", "inputs")
+        mock_serving_engine_predict.assert_called_once_with(
+            d, "data", "inputs", validate=True
+        )
 
     # download artifact
 
@@ -1519,3 +1521,143 @@ class TestDeployment:
         )
         serving_json["projectNamespace"] = project_namespace
         return serving_json
+
+
+class TestDeploymentSchemaAndFeatureView:
+    def _deployment(self, mocker, env_vars=None, model_name=None):
+        mocker.patch(
+            "hopsworks_common.client._get_serving_num_instances_limits",
+            return_value=[-1],
+        )
+        mocker.patch(
+            "hopsworks_common.client._is_scale_to_zero_required", return_value=False
+        )
+        mocker.patch("hopsworks_common.client._is_saas_connection", return_value=False)
+        mocker.patch("hopsworks_common.client._is_kserve_installed", return_value=True)
+        p = predictor.Predictor(
+            name="dep",
+            model_server="PYTHON",
+            model_name=model_name,
+            model_version=1 if model_name else None,
+            script_file="s.py",
+            env_vars=env_vars,
+        )
+        return deployment.Deployment(predictor=p)
+
+    def test_feature_view_identity_from_env_vars(self, mocker):
+        d = self._deployment(
+            mocker,
+            env_vars={
+                "SERVING_FEATURE_VIEW_NAME": "fv",
+                "SERVING_FEATURE_VIEW_VERSION": "2",
+                "SERVING_TRAINING_DATASET_VERSION": "7",
+                "SERVING_SCHEMA_ID": "abc",
+            },
+        )
+
+        assert d.has_feature_view and not d.has_model
+        assert (
+            d.feature_view_name,
+            d.feature_view_version,
+            d.training_dataset_version,
+        ) == ("fv", 2, 7)
+        assert d.schema_id == "abc"
+        assert d.get_model() is None
+
+    def test_schema_read_lazily_by_id_and_cached(self, mocker):
+        from hsml.deployment_schema import DeploymentSchema
+
+        d = self._deployment(mocker, env_vars={"SERVING_SCHEMA_ID": "abc"})
+        schema = DeploymentSchema(serving_keys=["k"])
+        read = mocker.patch(
+            "hsml.engine.serving_engine.ServingEngine._read_schema", return_value=schema
+        )
+
+        assert d.schema is schema
+        assert d.schema is schema
+        read.assert_called_once()
+
+        d.schema = None
+        read.return_value = None
+        assert d.schema is None
+        assert d.schema is None
+        assert read.call_count == 2
+
+    def test_no_schema_without_env_var(self, mocker):
+        d = self._deployment(mocker)
+        read = mocker.patch("hsml.engine.serving_engine.ServingEngine._read_schema")
+
+        assert d.schema is None
+        read.assert_not_called()
+
+    def test_model_deployment_resolves_feature_view_and_td_through_model(self, mocker):
+        d = self._deployment(mocker, model_name="m")
+        model = mocker.Mock(training_dataset_version=4)
+        mocker.patch.object(deployment.Deployment, "get_model", return_value=model)
+
+        assert d.training_dataset_version == 4
+        assert d.get_feature_view() is model.get_feature_view.return_value
+        model.get_feature_view.assert_called_with(init=False)
+
+    def test_feature_monitoring_delegates_to_logging_feature_group(self, mocker):
+        d = self._deployment(
+            mocker,
+            env_vars={
+                "SERVING_FEATURE_VIEW_NAME": "fv",
+                "SERVING_FEATURE_VIEW_VERSION": "1",
+            },
+        )
+        fv = mocker.Mock(logging_enabled=True)
+        mocker.patch.object(deployment.Deployment, "get_feature_view", return_value=fv)
+        logging_fg = fv.feature_logging.get_feature_group.return_value
+
+        assert (
+            d.create_feature_monitoring("psi")
+            is logging_fg.create_feature_monitoring.return_value
+        )
+        assert (
+            d.get_monitoring_configs()
+            is logging_fg.get_feature_monitoring_configs.return_value
+        )
+        fv.feature_logging.get_feature_group.assert_called_with(transformed=True)
+        with pytest.raises(ModelServingException, match="create_feature_monitoring"):
+            d.create_model_monitoring("psi")
+
+        fv.logging_enabled = False
+        assert d.get_monitoring_configs() == []
+        with pytest.raises(ModelServingException, match="without logging enabled"):
+            d.create_feature_monitoring("psi")
+
+    def test_model_deployment_refuses_feature_monitoring(self, mocker):
+        d = self._deployment(mocker, model_name="m")
+        with pytest.raises(ModelServingException, match="create_model_monitoring"):
+            d.create_feature_monitoring("psi")
+
+    def test_reinfer_schema(self, mocker):
+        from hsml.deployment_schema import DeploymentSchema
+
+        from tests.test_deployment_schema import _fv
+
+        d = self._deployment(
+            mocker,
+            env_vars={
+                "SERVING_FEATURE_VIEW_NAME": "fv",
+                "SERVING_FEATURE_VIEW_VERSION": "2",
+                "SERVING_TRAINING_DATASET_VERSION": "1",
+            },
+        )
+        d.schema = DeploymentSchema(
+            serving_keys=["account_id", "cc_num"],
+            passed_features=["amount"],
+            output={"kind": "feature_vectors"},
+        )
+        mocker.patch.object(
+            deployment.Deployment, "get_feature_view", return_value=_fv()
+        )
+
+        schema = d.reinfer_schema()
+
+        assert [f.name for f in schema.passed_features] == ["amount"]
+        assert schema.output["kind"] == "feature_vectors"
+        assert schema.inferred is True
+        assert d.schema is schema

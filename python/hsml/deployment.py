@@ -20,7 +20,7 @@ from hopsworks_apigen import public
 from hopsworks_common import client, usage, util
 from hopsworks_common.client.exceptions import ModelServingException
 from hsml import predictor as predictor_mod
-from hsml.constants import DEPLOYABLE_COMPONENT, PREDICTOR_STATE
+from hsml.constants import DEPLOYABLE_COMPONENT, MODEL_SERVING, PREDICTOR_STATE
 from hsml.core import model_api, serving_api
 from hsml.engine import serving_engine
 
@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 
     from hsfs.core.feature_monitoring_config import FeatureMonitoringConfig
     from hsml.client.istio.utils.infer_type import InferInput
+    from hsml.deployment_schema import DeploymentSchema
     from hsml.deployment_tracing_config import DeploymentTracingConfig
     from hsml.inference_batcher import InferenceBatcher
     from hsml.inference_logger import InferenceLogger
@@ -305,15 +306,20 @@ class Deployment:
         self,
         data: dict | InferInput = None,
         inputs: list | dict = None,
+        validate: bool = True,
     ) -> dict:
         """Send inference requests to the deployment.
 
         One of data or inputs parameters must be set.
-        If both are set, inputs will be ignored.
+        Setting both raises `ModelServingException`.
+        When the deployment has a schema and the protocol is REST, the rows are
+        encoded and validated against it before the request is sent; the pod
+        validates again regardless.
 
         Parameters:
             data: Payload dictionary for the inference request including the model input(s).
             inputs: Model inputs used in the inference requests.
+            validate: Whether to validate the rows against `schema` before sending.
 
         Returns:
             Inference response.
@@ -343,20 +349,171 @@ class Deployment:
             predictions = my_deployment.predict(data)
             ```
         """
-        return self._serving_engine._predict(self, data, inputs)
+        return self._serving_engine._predict(self, data, inputs, validate=validate)
 
     @public
     def get_model(self):
-        """Retrieve the metadata object for the model being used by this deployment."""
+        """Retrieve the metadata object for the model being used by this deployment, or `None` when it has no model."""
+        if not self.has_model:
+            return None
         return self._model_api._get(
             self.model_name, self.model_version, self.model_registry_id
+        )
+
+    @public
+    def get_feature_view(self, init: bool = False) -> Any:
+        """Retrieve the feature view this deployment serves, or `None`.
+
+        A feature view deployment names its view in the deployment env vars; a
+        model deployment resolves it through the model's provenance.
+
+        Parameters:
+            init: Whether to initialise the view for serving with the deployment's training dataset version.
+
+        Returns:
+            The feature view, or `None` when the deployment has neither a feature view nor a model with one.
+
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException: If no project connection is available to reach the feature store.
+        """
+        feature_view = None
+        if self.has_feature_view:
+            # Same route as hsml.core.explicit_provenance: reach the feature
+            # store through the hopsworks project so hsml never imports hsfs.
+            import hopsworks
+
+            if not hopsworks._connected_project:
+                from hopsworks_common.client.exceptions import FeatureStoreException
+
+                raise FeatureStoreException(
+                    "Resolving the feature view of a deployment needs a project "
+                    "connection; use hopsworks.login() first."
+                )
+            feature_store = hopsworks._connected_project.get_feature_store()
+            feature_view = feature_store.get_feature_view(
+                self.feature_view_name, self.feature_view_version
+            )
+        elif self.has_model:
+            model = self.get_model()
+            feature_view = model.get_feature_view(init=False) if model else None
+        if feature_view is not None and init:
+            feature_view.init_serving(
+                training_dataset_version=self.training_dataset_version
+            )
+        return feature_view
+
+    @public
+    def reinfer_schema(self) -> DeploymentSchema:
+        """Re-infer the deployment schema from the current feature view and mark it pending.
+
+        Use after enabling logging or changing the view; `save()` then
+        publishes the new schema as a new revision. Passed features are kept.
+
+        Example:
+            ```python
+            feature_view.enable_logging(extra_log_columns={"channel": "string"})
+
+            deployment = ms.get_deployment("fraud")
+            deployment.reinfer_schema()  # `channel` becomes an optional request field
+            deployment.save()  # publishes the schema as a new revision
+            ```
+
+        Returns:
+            The re-inferred schema, also set on the deployment.
+
+        Raises:
+            hopsworks.client.exceptions.ModelServingException: If the deployment is not served by the default predictor and has no schema to refine.
+        """
+        from hsml.deployment_schema import (
+            OUTPUT_FEATURE_VECTORS,
+            OUTPUT_PREDICTIONS,
+            _infer_deployment_schema,
+        )
+
+        current = self.schema
+        if not self._predictor.default_predictor and current is None:
+            raise ModelServingException(
+                f"Deployment '{self.name}' has no schema to re-infer: it is not served "
+                "by the default predictor and none was set. Set deployment.schema "
+                "explicitly instead."
+            )
+        feature_view = self.get_feature_view(init=False)
+        if feature_view is None:
+            raise ModelServingException(
+                f"Deployment '{self.name}' has no feature view to infer a schema from."
+            )
+        passed = [f.name for f in current.passed_features] if current else None
+        output_kind = (
+            OUTPUT_FEATURE_VECTORS if not self.has_model else OUTPUT_PREDICTIONS
+        )
+        output_columns = None
+        if current and output_kind == OUTPUT_PREDICTIONS:
+            output_columns = current.output.get("columns")
+        self.schema = _infer_deployment_schema(
+            feature_view,
+            passed_features=passed,
+            training_dataset_version=self.training_dataset_version,
+            output_kind=output_kind,
+            output_columns=output_columns,
+        )
+        return self.schema
+
+    @public
+    def create_feature_monitoring(
+        self,
+        name: str,
+        description: str | None = None,
+        start_date_time: int | str | None = None,
+        end_date_time: int | str | None = None,
+        cron_expression: str | None = "0 0 12 ? * * *",
+    ) -> Any:
+        """Create a feature monitoring config on the logging feature group of a feature view deployment.
+
+        Model deployments use `create_model_monitoring()` instead. Finish the
+        returned builder with a detection window, a reference window or value,
+        a comparison, and `save()`.
+
+        Parameters:
+            name: Name of the feature monitoring configuration.
+            description: Description of the feature monitoring configuration.
+            start_date_time: Start date and time from which to start computing statistics.
+            end_date_time: End date and time at which to stop computing statistics.
+            cron_expression: Cron expression scheduling the job (UTC, Quartz).
+
+        Returns:
+            A `FeatureMonitoringConfig` builder.
+
+        Raises:
+            hopsworks.client.exceptions.ModelServingException: If this is a model deployment, or the feature view has no logging enabled.
+        """
+        if self.has_model:
+            raise ModelServingException(
+                "Model deployments are monitored per model version; use "
+                "create_model_monitoring() instead."
+            )
+        feature_view = self.get_feature_view(init=False)
+        if feature_view is None or not feature_view.logging_enabled:
+            raise ModelServingException(
+                f"Deployment '{self.name}' serves a feature view without logging enabled; "
+                "call feature_view.enable_logging() first."
+            )
+        logging_fg = feature_view.feature_logging.get_feature_group(transformed=True)
+        return logging_fg.create_feature_monitoring(
+            name=name,
+            description=description,
+            start_date_time=start_date_time,
+            end_date_time=end_date_time,
+            cron_expression=cron_expression,
         )
 
     @public
     def get_monitoring_configs(self) -> list[FeatureMonitoringConfig]:
         """Get the feature monitoring configurations for the model deployed by this deployment.
 
-        Delegates to the underlying model's ``get_monitoring_configs`` method.
+        For a model deployment these are the configs filtered by the model
+        version; for a feature view deployment the configs on the feature
+        view's logging feature group. Delegates to the underlying model's
+        ``get_monitoring_configs`` method.
 
         Example:
             ```python
@@ -377,7 +534,14 @@ class Deployment:
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
-        return self.get_model().get_monitoring_configs()
+        if self.has_model:
+            return self.get_model().get_monitoring_configs()
+        feature_view = self.get_feature_view(init=False)
+        if feature_view is None or not feature_view.logging_enabled:
+            return []
+        logging_fg = feature_view.feature_logging.get_feature_group(transformed=True)
+        configs = logging_fg.get_feature_monitoring_configs()
+        return configs or []
 
     @public
     def create_model_monitoring(
@@ -429,6 +593,11 @@ class Deployment:
             ``with_reference_*``, ``compare_on``/``compare_on_distribution``, and
             ``save()`` to register it.
         """
+        if not self.has_model:
+            raise ModelServingException(
+                f"Deployment '{self.name}' serves a feature view without a model; use "
+                "create_feature_monitoring() instead."
+            )
         model_meta = self.get_model()
         fv = model_meta.get_feature_view(init=False)
         if fv is None:
@@ -752,6 +921,54 @@ class Deployment:
     def has_model(self):
         """Whether the deployment has a model associated."""
         return self.model_name is not None and self.model_version is not None
+
+    @public
+    @property
+    def has_feature_view(self) -> bool:
+        """Whether this deployment serves a feature view without a model."""
+        return self._predictor.has_feature_view
+
+    @public
+    @property
+    def feature_view_name(self) -> str | None:
+        """Name of the feature view served by a feature view deployment."""
+        return self._predictor.feature_view_name
+
+    @public
+    @property
+    def feature_view_version(self) -> int | None:
+        """Version of the feature view served by a feature view deployment."""
+        return self._predictor.feature_view_version
+
+    @public
+    @property
+    def training_dataset_version(self) -> int | None:
+        """Training dataset version whose statistics the deployment's transformations use."""
+        version = (self._predictor.env_vars or {}).get(
+            MODEL_SERVING.TRAINING_DATASET_VERSION_ENV_VAR
+        )
+        if version is not None:
+            return int(version)
+        if self.has_model:
+            model = self.get_model()
+            return model.training_dataset_version if model else None
+        return None
+
+    @public
+    @property
+    def schema(self):
+        """Deployment schema, or `None`; see [`Predictor.schema`][hsml.predictor.Predictor.schema]."""
+        return self._predictor.schema
+
+    @schema.setter
+    def schema(self, schema):
+        self._predictor.schema = schema
+
+    @public
+    @property
+    def schema_id(self) -> str | None:
+        """Id of the schema this deployment's revision serves."""
+        return self._predictor.schema_id
 
     @public
     @property

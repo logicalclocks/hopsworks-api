@@ -47,7 +47,7 @@ def test_deployment_predict_parses_json_data(mock_project):
         cli, ["deployment", "predict", "fraud", "--data", '{"instances": [[1,2]]}']
     )
     assert result.exit_code == 0, result.output
-    deployment.predict.assert_called_with(data={"instances": [[1, 2]]})
+    deployment.predict.assert_called_with(data={"instances": [[1, 2]]}, validate=True)
 
 
 def test_deployment_logs(mock_project):

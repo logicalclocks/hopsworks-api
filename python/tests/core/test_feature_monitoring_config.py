@@ -850,6 +850,38 @@ class TestFeatureMonitoringConfigDistribution:
         assert "label" not in feature_names_monitored
         assert "active" not in feature_names_monitored
 
+    def test_fan_out_honours_fanout_feature_names(self):
+        # FeatureView.create_model_monitoring narrows the fan-out to the training
+        # features: the logging FG's predicted_*, serving key and metadata columns
+        # have no counterpart in the training-dataset reference.
+        valid_features = {
+            "amount": "double",
+            "predicted_label": "bigint",
+            "log_id": "string",
+            "model_name": "string",
+        }
+        cfg = self._build_config(valid_features=valid_features)
+        cfg._fanout_feature_names = {"amount"}
+        cfg.compare_on_distribution(metric="PSI", threshold=0.2)
+
+        feature_names_monitored = {
+            fs.feature_name for fs in cfg._feature_statistics_configs
+        }
+        assert feature_names_monitored == {"amount"}
+
+    def test_named_feature_not_restricted_by_fanout_feature_names(self):
+        valid_features = {"amount": "double", "predicted_label": "bigint"}
+        cfg = self._build_config(valid_features=valid_features)
+        cfg._fanout_feature_names = {"amount"}
+        cfg.compare_on_distribution(
+            metric="PSI", threshold=0.2, feature_name="predicted_label"
+        )
+
+        feature_names_monitored = {
+            fs.feature_name for fs in cfg._feature_statistics_configs
+        }
+        assert feature_names_monitored == {"predicted_label"}
+
     def test_empty_compatible_set_raises_valueerror(self):
         # All features are complex types → no compatible features
         valid_features = {
