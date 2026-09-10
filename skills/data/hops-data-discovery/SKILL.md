@@ -48,4 +48,4 @@ hops files list [path]                    # browse the project filesystem
 
 - **hops-trino-sql** — run SQL against the offline tables you discover.
 - **hops-fg** / **hops-fv** — create and read these via the Python SDK.
-- **hops-data-source** — mount a new external source as a feature group.
+- **hops-data-sources** — mount a new external source as a feature group, or ingest it via DLTHub.

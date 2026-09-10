@@ -1,6 +1,6 @@
 """``hops skills`` — discover the Hopsworks skills available to agents.
 
-Skills are Markdown playbooks (``SKILL.md``) shipped with this package and
+Skills are Markdown playbooks (``SKILL.md``) shipped in the repository and
 grouped into bucket folders (``ml``, ``data``, ``dashboards``, ``agents``, ...).
 This command discovers them dynamically from the skills directory, so the
 listing can never drift from what actually ships — unlike a hand-maintained
@@ -19,9 +19,11 @@ from hopsworks.cli import output
 def _skills_dir() -> Path | None:
     """Resolve the directory that holds the skill buckets.
 
-    Resolution order: the ``HOPS_SKILLS_DIR`` override, then the copy packaged
-    next to the installed ``hopsworks`` package, then a repo checkout located by
-    walking up from this file.
+    Resolution order: the ``HOPS_SKILLS_DIR`` override, then the source tree
+    cloned into the terminal images, then a source checkout of this repo.
+    Inside a Hopsworks terminal the override points at the directory that merges
+    the platform skills with the user's own, so the listing matches what the
+    agents there actually load.
 
     Returns:
         The skills directory, or ``None`` when none can be found.
@@ -31,19 +33,13 @@ def _skills_dir() -> Path | None:
         candidate = Path(env).expanduser()
         return candidate if candidate.is_dir() else None
 
-    try:
-        from importlib.resources import files
-
-        packaged = Path(str(files("hopsworks"))) / "skills"
-        if packaged.is_dir():
-            return packaged
-    except (ImportError, ModuleNotFoundError, TypeError):
-        pass
-
-    for parent in Path(__file__).resolve().parents:
-        candidate = parent / "skills"
-        if candidate.is_dir() and any(candidate.glob("*/*/SKILL.md")):
+    for candidate in (
+        Path("/opt/hopsworks-api/skills"),
+        Path(__file__).resolve().parents[4] / "skills",
+    ):
+        if candidate.is_dir():
             return candidate
+
     return None
 
 
@@ -98,8 +94,15 @@ def _parse_frontmatter(skill_md: Path) -> dict[str, str]:
 def _collect_skills(skills_dir: Path) -> list[dict[str, str]]:
     """Scan ``skills_dir`` and return one record per skill.
 
+    Both layouts are accepted.
+    The package ships skills grouped into buckets
+    (``<bucket>/<skill>/SKILL.md``), while a user's project home holds them
+    flat (``<skill>/SKILL.md``), because one level is what a coding agent
+    discovers.
+    A flat skill reports an empty bucket.
+
     Args:
-        skills_dir: Directory containing ``<bucket>/<skill>/SKILL.md`` files.
+        skills_dir: Directory containing the skills, in either layout.
 
     Returns:
         Records sorted by bucket then name, each with ``bucket``, ``name`` (the
@@ -107,14 +110,17 @@ def _collect_skills(skills_dir: Path) -> list[dict[str, str]]:
         declared ``name``, shown only when it differs), ``description`` and
         ``path`` keys.
     """
+    root = skills_dir.resolve()
+    found = list(skills_dir.glob("*/*/SKILL.md")) + list(skills_dir.glob("*/SKILL.md"))
     skills: list[dict[str, str]] = []
-    for skill_md in skills_dir.glob("*/*/SKILL.md"):
-        folder = skill_md.parent.name
+    for skill_md in found:
+        skill_root = skill_md.parent.parent.resolve()
         front = _parse_frontmatter(skill_md)
         declared = front["name"]
+        folder = skill_md.parent.name
         skills.append(
             {
-                "bucket": skill_md.parent.parent.name,
+                "bucket": "" if skill_root == root else skill_md.parent.parent.name,
                 "name": folder,
                 "frontmatter_name": declared if declared and declared != folder else "",
                 "description": front["description"],

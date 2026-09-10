@@ -123,7 +123,19 @@ class TestProject:
         project.remove_member("alice@example.com", delete_home_dir=True)
 
         project._project_members_api.remove_member.assert_called_once_with(
-            "alice@example.com", delete_home_dir=True
+            "alice@example.com", delete_home_dir=True, new_file_owner=None
+        )
+
+    def test_remove_member_passes_the_chosen_file_owner_through(self, mocker):
+        project = Project(project_name="my_project")
+        project._project_members_api = mocker.MagicMock()
+
+        project.remove_member("alice@example.com", new_file_owner="carol@example.com")
+
+        project._project_members_api.remove_member.assert_called_once_with(
+            "alice@example.com",
+            delete_home_dir=False,
+            new_file_owner="carol@example.com",
         )
 
     def test_get_members_api_returns_the_members_api(self, mocker):

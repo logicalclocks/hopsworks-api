@@ -25,11 +25,21 @@ class LocalEngine:
     def __init__(self):
         self._dataset_api = dataset_api.DatasetApi()
         self._model_api = model_api.ModelApi()
+        self._hdfs_api_instance = None
+        self._hdfs_api_resolved = False
 
-        try:
-            self._hdfs_api = hdfs_api.HdfsApi()
-        except Exception:
-            self._hdfs_api = None
+    @property
+    def _hdfs_api(self):
+        # HdfsApi() starts a libhdfs JVM (hundreds of MB) wherever
+        # LIBHDFS_DEFAULT_FS is set, which includes every model-less serving
+        # pod; only pay for it on the first file transfer.
+        if not self._hdfs_api_resolved:
+            self._hdfs_api_resolved = True
+            try:
+                self._hdfs_api_instance = hdfs_api.HdfsApi()
+            except Exception:
+                self._hdfs_api_instance = None
+        return self._hdfs_api_instance
 
     def _mkdir(self, remote_path: str):
         remote_path = self._prepend_project_path(remote_path)
