@@ -480,6 +480,36 @@ def test_a_required_secret_is_prompted_for_without_echo_on_a_terminal(monkeypatc
     assert "typed" not in result.output
 
 
+def test_an_empty_required_secret_is_treated_as_missing(monkeypatch):
+    """An empty value must not satisfy a required secret and carry an empty credential."""
+    monkeypatch.setattr(ds, "_interactive", lambda: False)
+
+    result, create = _invoke(
+        ["sap-hana", "n", "--host", "h", "--user", "u", "--password", ""]
+    )
+    assert result.exit_code == 2 and "--password" in result.output
+    create.assert_not_called()
+
+    result, create = _invoke(
+        ["sap-hana", "n", "--host", "h", "--user", "u"],
+        env={"HOPSWORKS_DS_SAP_HANA_PASSWORD": ""},
+    )
+    assert result.exit_code == 2 and "--password" in result.output
+    create.assert_not_called()
+
+
+def test_required_secret_options_are_marked_required_in_help():
+    """The callback enforces them, so --help must still say so."""
+    result = CliRunner().invoke(cli, ["datasource", "create", "sap-hana", "--help"])
+    text = " ".join(result.output.split())
+
+    # --password is required for sap-hana; --application is not.
+    password = text.split("--password", 1)[1].split("--")[0]
+    assert "[required]" in password
+    application = text.split("--application", 1)[1].split("--")[0]
+    assert "[required]" not in application
+
+
 @pytest.mark.parametrize(
     "argument",
     [

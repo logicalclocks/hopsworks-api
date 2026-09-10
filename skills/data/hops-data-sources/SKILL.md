@@ -80,9 +80,16 @@ ext_fg.save()
 
 ## Create a connector
 
-Connectors are not UI-only. `hops datasource create <type>` exists for every type the UI offers and sends the backend type discriminator for you. `hops datasource create <type> --help` lists the options; the ones the backend always requires are marked `[required]`, and the rules between options (which credentials an auth type needs, Oracle's host or wallet) are checked before anything is sent. An option that does not belong to the selected mode is refused, not silently stored.
+Connectors are not UI-only.
+`hops datasource create <type>` exists for every type the UI offers and sends the backend type discriminator for you.
+`hops datasource create <type> --help` lists the options; the ones the backend always requires are marked `[required]`, and the rules between options (which credentials an auth type needs, Oracle's host or wallet) are checked before anything is sent.
+An option that does not belong to the selected mode is refused, not silently stored.
 
-**Never put a secret on the command line.** Passwords, keys and tokens written as arguments end up in tool transcripts, process listings and shell history. Every secret option takes `-` to read the value from stdin, so feed it from a file the user already has (`--password - < /path/to/secret`), or export `HOPSWORKS_DS_<CONNECTOR>_<OPTION>` beforehand, outside the transcript (`HOPSWORKS_DS_SQL_PASSWORD`, `HOPSWORKS_DS_REST_API_KEY`, `HOPSWORKS_DS_UNITY_CATALOG_CLIENT_SECRET`); the variables are scoped to one connector type, and `--help` names them. Only one option per command can read stdin, so a connector with several secrets takes the rest from its variables. A required secret that is neither given nor exported is asked for without echo when a person is at the terminal, and is an error otherwise.
+**Never put a secret on the command line.**
+Passwords, keys and tokens written as arguments end up in tool transcripts, process listings and shell history.
+Every secret option takes `-` to read the value from stdin, so feed it from a file the user already has (`--password - < /path/to/secret`), or export `HOPSWORKS_DS_<CONNECTOR>_<OPTION>` beforehand, outside the transcript (`HOPSWORKS_DS_SQL_PASSWORD`, `HOPSWORKS_DS_REST_API_KEY`, `HOPSWORKS_DS_UNITY_CATALOG_CLIENT_SECRET`); the variables are scoped to one connector type, and `--help` names them.
+Only one option per command can read stdin, so a connector with several secrets takes the rest from its variables.
+A required secret that is neither given nor exported is asked for without echo when a person is at the terminal, and is an error otherwise.
 
 ```bash
 hops datasource create jdbc <name> --url "jdbc:postgresql://host:5432/db" --user U --password - < pw.txt

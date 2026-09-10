@@ -116,11 +116,12 @@ def _connector_to_dict(sc: Any) -> dict[str, Any]:
 
 # region Secret options
 #
-# A secret never has to travel on the command line. Every secret option also
-# reads ``HOPSWORKS_DS_<CONNECTOR>_<OPTION>`` from the environment, scoped to
-# the connector type so a variable exported for one connector cannot ride along
-# on another; accepts ``-`` to read one line from stdin; and, when required and
-# stdin is a terminal, asks for the value without echo.
+# A secret never has to travel on the command line.
+# Every secret option also reads ``HOPSWORKS_DS_<CONNECTOR>_<OPTION>`` from the
+# environment, scoped to the connector type so a variable exported for one
+# connector cannot ride along on another.
+# It also accepts ``-`` to read one line from stdin.
+# When required and stdin is a terminal, it asks for the value without echo.
 
 _SECRET_ENV_PREFIX = "HOPSWORKS_DS_"
 _STDIN_SECRET_KEY = "hops.datasource.secret_from_stdin"
@@ -156,7 +157,8 @@ def _read_secret(
         value = sys.stdin.readline().rstrip("\r\n")
         if not value:
             raise click.BadParameter("stdin was empty", ctx=ctx, param=param)
-    if value is None and required:
+    # An empty value (``--password ""`` or an empty env var) is missing, not a secret.
+    if not value and required:
         if _interactive():
             value = click.prompt(flag.lstrip("-").replace("-", " "), hide_input=True)
         else:
@@ -176,12 +178,16 @@ def _secret_option(
     def callback(ctx: click.Context, param: click.Parameter, value: str | None):
         return _read_secret(ctx, param, value, required)
 
+    text = f"{help} Pass - to read it from stdin."
+    if required:
+        # Click cannot flag a callback-enforced secret as required, so say it here.
+        text += "  [required]"
     return click.option(
         flag,
         envvar=_env(connector, flag),
         show_envvar=True,
         callback=callback,
-        help=f"{help} Pass - to read it from stdin.",
+        help=text,
     )
 
 
@@ -343,8 +349,6 @@ def connector_create_snowflake(
 # whose ``json`` is the DTO property (dotted for the payloads that nest), and a check
 # for the rules that hold between options, mirroring the backend's create validation
 # so a bad combination is refused before anything is sent.
-
-_SECRET_ENV_PREFIX = "HOPSWORKS_DS_"
 
 
 @dataclass(frozen=True)
