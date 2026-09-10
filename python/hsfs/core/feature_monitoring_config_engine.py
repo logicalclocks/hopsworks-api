@@ -605,11 +605,14 @@ class FeatureMonitoringConfigEngine:
                 # failing the monitoring job.
                 logger.warning(
                     "No offline commits for logging feature group '%s' (id=%s) backing "
-                    "model-monitoring config '%s'; offline data is not materialized yet. "
+                    "model-monitoring config '%s' (model_name=%s, model_version=%s); "
+                    "offline data is not materialized yet. "
                     "Treating the detection window as empty.",
                     getattr(entity, "name", "<unknown>"),
                     getattr(entity, "id", "<unknown>"),
                     config_name,
+                    model_filter[0],
+                    model_filter[1],
                 )
                 detection_window_unmaterialized = True
             else:
@@ -690,6 +693,26 @@ class FeatureMonitoringConfigEngine:
                     ]
                 else:
                     raise
+
+        if (
+            model_filter is not None
+            and not detection_window_unmaterialized
+            and all(fds.count == 0 for fds in detection_statistics)
+        ):
+            # Empty windows are persisted as regular results, so this is the only
+            # place a model name or version mismatch between the deployment's
+            # inference logs and the config becomes visible.
+            logger.warning(
+                "Model-monitoring config '%s' read no inference rows for model_name=%s, "
+                "model_version=%s from '%s' in the detection window ending at %s. "
+                "Check that the deployment logs its features with this model name and "
+                "version. Treating the detection window as empty.",
+                config_name,
+                model_filter[0],
+                model_filter[1],
+                getattr(entity, "name", "<unknown>"),
+                f"commit {end_commit_time}" if end_commit_time is not None else "now",
+            )
 
         reference_statistics = None
         if config.reference_window_config is not None:

@@ -14,12 +14,13 @@
 #   limitations under the License.
 #
 
+import logging
 from datetime import datetime
 from unittest.mock import MagicMock
 
 import pytest
 from hopsworks_common.client.exceptions import RestAPIError
-from hsfs import util
+from hsfs import feature_group, util
 from hsfs.core import feature_monitoring_config as fmc
 from hsfs.core import feature_monitoring_config_engine
 from hsfs.core import monitoring_window_config as mwc
@@ -726,3 +727,94 @@ class TestFeatureMonitoringConfigEngine:
             ValueError, match="specific_value is not allowed for distribution"
         ):
             config_engine._validate_statistics_comparison_config(mock_sc)
+
+    def _build_mock_model_monitoring_config(self, feature_names):
+        """Model-monitoring config mock: model filter set, no reference window."""
+        config = self._build_mock_fm_config(feature_names, with_reference_window=False)
+        config.model_name = "xgboost_mm"
+        config.model_version = 1
+        config.trigger_type = fmc.TriggerType.CRON
+        return config
+
+    def test_run_feature_monitoring_empty_model_window_names_model_filter(
+        self, mocker, caplog
+    ):
+        # Arrange: the filtered read of the logging FG returns no rows
+        feature_names = ["sepal_length"]
+        empty_fds = [FeatureDescriptiveStatistics(feature_name="sepal_length", count=0)]
+
+        config_engine = feature_monitoring_config_engine.FeatureMonitoringConfigEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+        mocker.patch.object(
+            config_engine._feature_monitoring_config_api,
+            "_get_by_name",
+            return_value=self._build_mock_model_monitoring_config(feature_names),
+        )
+        mocker.patch.object(
+            config_engine._monitoring_window_config_engine,
+            "_run_single_window_monitoring",
+            return_value=empty_fds,
+        )
+        mocker.patch.object(
+            config_engine._result_engine, "_run_and_save_statistics_comparison"
+        )
+        entity = MagicMock()
+        entity.name = "iris_mm_1_log"
+
+        # Act
+        with caplog.at_level(logging.WARNING):
+            config_engine._run_feature_monitoring(
+                entity=entity, config_name="mm_psi_sepal_length"
+            )
+
+        # Assert
+        assert (
+            "read no inference rows for model_name=xgboost_mm, model_version=1"
+            in caplog.text
+        )
+        # A feature view entity has no commit to anchor on
+        assert "detection window ending at now" in caplog.text
+        assert "iris_mm_1_log" in caplog.text
+
+    def test_run_feature_monitoring_unmaterialized_log_names_model_filter(
+        self, mocker, caplog
+    ):
+        # Arrange: the logging FG has no offline commit yet
+        feature_names = ["sepal_length"]
+
+        config_engine = feature_monitoring_config_engine.FeatureMonitoringConfigEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+        mocker.patch.object(
+            config_engine._feature_monitoring_config_api,
+            "_get_by_name",
+            return_value=self._build_mock_model_monitoring_config(feature_names),
+        )
+        mocker.patch.object(
+            config_engine, "_get_latest_fg_commit_time", return_value=None
+        )
+        mock_read = mocker.patch.object(
+            config_engine._monitoring_window_config_engine,
+            "_run_single_window_monitoring",
+        )
+        mock_save = mocker.patch.object(
+            config_engine._result_engine, "_run_and_save_statistics_comparison"
+        )
+        entity = MagicMock(spec=feature_group.FeatureGroup)
+        entity.name = "iris_mm_1_log"
+        entity.id = 7
+
+        # Act
+        with caplog.at_level(logging.WARNING):
+            config_engine._run_feature_monitoring(
+                entity=entity, config_name="mm_psi_sepal_length"
+            )
+
+        # Assert: nothing is read, the empty stats are saved, the warning names the model
+        mock_read.assert_not_called()
+        assert mock_save.call_args.kwargs["detection_statistics"][0].count == 0
+        assert "model_name=xgboost_mm, model_version=1" in caplog.text
+        assert caplog.text.count("Treating the detection window as empty") == 1

@@ -451,6 +451,17 @@ class MonitoringWindowConfigEngine:
             "statistics should contain the feature descriptive statistics"
         )
 
+        # Registering statistics for a window that already has a statistics row
+        # appends to that row and returns all of it, so a second config on the
+        # same entity and window gets back features it did not ask for.
+        # Keep only the requested ones.
+        if feature_names:
+            requested = set(feature_names)
+            return [
+                fds
+                for fds in registered_stats.feature_descriptive_statistics
+                if fds.feature_name in requested
+            ]
         return registered_stats.feature_descriptive_statistics
 
     def _fetch_entity_data_in_monitoring_window(
