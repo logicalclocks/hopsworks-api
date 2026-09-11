@@ -10208,3 +10208,29 @@ class TestPython:
                 self._get_val_multi(result, {"user_id": 1, "item_id": 10}, "val")
                 == "new"
             )
+
+    def test_get_logging_metadata_log_time_is_utc(self):
+        # Act
+        batch = python.Engine._get_logging_metadata(
+            size=2,
+            td_col_name="td_version",
+            time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
+            model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
+            training_dataset_version=1,
+            model_name="test_model",
+            model_version=1,
+        )
+        single = python.Engine._get_logging_metadata(
+            td_col_name="td_version",
+            time_col_name=constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME,
+            model_col_name=constants.FEATURE_LOGGING.MODEL_COLUMN_NAME,
+            model_name="test_model",
+            model_version=1,
+        )
+
+        # Assert: the log time is timezone-aware UTC whatever the process timezone is
+        log_time_col = constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME
+        assert str(batch[log_time_col].dt.tz) == "UTC"
+        assert single[log_time_col].tzinfo == timezone.utc
+        assert batch[constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME] == ["1", "1"]
+        assert single[constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME] == "1"

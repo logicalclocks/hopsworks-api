@@ -2041,27 +2041,30 @@ class FeatureViewEngine:
                 )
                 == training_dataset_version
             )
+        # The logging feature group stores model_version as a string.
+        # A model object takes precedence over an explicit name and version.
         if hsml_model:
             query = query.filter(
                 (
                     fg.get_feature(constants.FEATURE_LOGGING.MODEL_COLUMN_NAME)
                     == hsml_model.name
                 )
-                and (
+                & (
                     fg.get_feature(constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME)
-                    == hsml_model.version
+                    == str(hsml_model.version)
                 )
             )
-        if model_name:
-            query = query.filter(
-                fg.get_feature(constants.FEATURE_LOGGING.MODEL_COLUMN_NAME)
-                == model_name
-            )
-        if model_version:
-            query = query.filter(
-                fg.get_feature(constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME)
-                == model_version
-            )
+        else:
+            if model_name:
+                query = query.filter(
+                    fg.get_feature(constants.FEATURE_LOGGING.MODEL_COLUMN_NAME)
+                    == model_name
+                )
+            if model_version:
+                query = query.filter(
+                    fg.get_feature(constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME)
+                    == str(model_version)
+                )
         if filter:
             query = query.filter(
                 self._convert_to_log_fg_filter(fg, fv, filter, fv_feat_name_map)
@@ -2083,12 +2086,15 @@ class FeatureViewEngine:
             return None
 
         if isinstance(filter, Logic):
+            convert = lambda f: self._convert_to_log_fg_filter(  # noqa: E731
+                fg, fv, f, fv_feat_name_map
+            )
             return Logic(
                 filter.type,
-                left_f=self._convert_to_log_fg_filter(fv, filter.left_f),
-                right_f=self._convert_to_log_fg_filter(fv, filter.right_f),
-                left_l=self._convert_to_log_fg_filter(fv, filter.left_l),
-                right_l=self._convert_to_log_fg_filter(fv, filter.right_l),
+                left_f=convert(filter._left_f),
+                right_f=convert(filter._right_f),
+                left_l=convert(filter._left_l),
+                right_l=convert(filter._right_l),
             )
         if isinstance(filter, Filter):
             fv_feature_name = fv_feat_name_map.get(
@@ -2096,10 +2102,14 @@ class FeatureViewEngine:
             )
             if fv_feature_name is None:
                 raise FeatureStoreException(
-                    "Filter feature {filter.feature.name} does not exist in feature view feature."
+                    f"Filter feature '{filter.feature.name}' is not one of the "
+                    "features of the feature view being logged."
                 )
+            # The logging feature group's columns carry the feature view's
+            # names, which differ from the source feature group's whenever a
+            # join prefix or an explicit rename applies.
             return Filter(
-                fg.get_feature(filter.feature.name),
+                fg.get_feature(fv_feature_name),
                 filter.condition,
                 filter.value,
             )

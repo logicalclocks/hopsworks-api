@@ -4871,3 +4871,116 @@ class TestFeatureLoggingWithoutEventTime:
         assert event_time[0] == expected_data
         assert event_time[1] == expected_names
         assert event_time[2] == constants.FEATURE_LOGGING.EVENT_TIME
+
+    def test_read_feature_logs_model_filter(self, mocker):
+        # Arrange
+        fake_engine = mocker.Mock()
+        mocker.patch("hsfs.engine._get_instance", return_value=fake_engine)
+        fv_engine = feature_view_engine.FeatureViewEngine(feature_store_id=99)
+
+        logging_fg = mocker.Mock()
+        logging_fg.get_feature.side_effect = lambda name: feature.Feature(
+            name, type="string"
+        )
+        query = mocker.Mock()
+        query.filter.return_value = query
+        logging_fg.select_all.return_value = query
+        mocker.patch.object(fv_engine, "_get_logging_fg", return_value=logging_fg)
+        mocker.patch.object(fv_engine, "_get_fv_feature_name_map", return_value={})
+
+        hsml_model = mocker.Mock()
+        hsml_model.name = "xgboost_mm"
+        hsml_model.version = 1
+
+        # Act: the model object wins over an explicit version
+        fv_engine._read_feature_logs(
+            fv=mocker.Mock(), hsml_model=hsml_model, model_version=2
+        )
+
+        # Assert: both model filters apply as one conjunction, the version is
+        # compared as the string the logging feature group stores, and the
+        # explicit model_version is ignored
+        (model_logic,) = [c.args[0] for c in query.filter.call_args_list]
+        assert model_logic._type == model_logic.AND
+        assert model_logic._left_f._feature.name == "model_name"
+        assert model_logic._left_f._value == "xgboost_mm"
+        assert model_logic._right_f._feature.name == "model_version"
+        assert model_logic._right_f._value == "1"
+        fake_engine._read_feature_log.assert_called_once_with(
+            query, constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME
+        )
+
+        # Act: explicit name and version without a model object
+        query.filter.reset_mock()
+        fv_engine._read_feature_logs(
+            fv=mocker.Mock(), model_name="xgboost_mm", model_version=2
+        )
+
+        # Assert
+        name_filter, version_filter = [c.args[0] for c in query.filter.call_args_list]
+        assert name_filter._feature.name == "model_name"
+        assert name_filter._value == "xgboost_mm"
+        assert version_filter._feature.name == "model_version"
+        assert version_filter._value == "2"
+
+    def test_read_feature_logs_logic_filter(self, mocker):
+        # Arrange
+        fake_engine = mocker.Mock()
+        mocker.patch("hsfs.engine._get_instance", return_value=fake_engine)
+        fv_engine = feature_view_engine.FeatureViewEngine(feature_store_id=99)
+
+        logging_fg = mocker.Mock()
+        logging_fg.get_feature.side_effect = lambda name: feature.Feature(
+            name, type="double", feature_group_id=20
+        )
+        query = mocker.Mock()
+        query.filter.return_value = query
+        logging_fg.select_all.return_value = query
+        mocker.patch.object(fv_engine, "_get_logging_fg", return_value=logging_fg)
+        # The feature view renames the second feature, so its logging column is
+        # named after the feature view, not the source feature group.
+        mocker.patch.object(
+            fv_engine,
+            "_get_fv_feature_name_map",
+            return_value={
+                "5_sepal_length": "sepal_length",
+                "5_sepal_width": "iris_sepal_width",
+            },
+        )
+        user_filter = (
+            feature.Feature("sepal_length", type="double", feature_group_id=5) > 1.0
+        ) & (feature.Feature("sepal_width", type="double", feature_group_id=5) < 4.0)
+
+        # Act
+        fv_engine._read_feature_logs(fv=mocker.Mock(), filter=user_filter)
+
+        # Assert: the logic is rebuilt on the logging feature group, using the
+        # feature view's names
+        (logic,) = [c.args[0] for c in query.filter.call_args_list]
+        assert logic._type == logic.AND
+        assert logic._left_f._feature.feature_group_id == 20
+        assert logic._left_f._feature.name == "sepal_length"
+        assert logic._left_f._value == 1.0
+        assert logic._right_f._feature.feature_group_id == 20
+        assert logic._right_f._feature.name == "iris_sepal_width"
+        assert logic._right_f._value == 4.0
+
+    def test_read_feature_logs_filter_feature_not_in_feature_view(self, mocker):
+        # Arrange
+        fake_engine = mocker.Mock()
+        mocker.patch("hsfs.engine._get_instance", return_value=fake_engine)
+        fv_engine = feature_view_engine.FeatureViewEngine(feature_store_id=99)
+
+        logging_fg = mocker.Mock()
+        query = mocker.Mock()
+        query.filter.return_value = query
+        logging_fg.select_all.return_value = query
+        mocker.patch.object(fv_engine, "_get_logging_fg", return_value=logging_fg)
+        mocker.patch.object(fv_engine, "_get_fv_feature_name_map", return_value={})
+
+        # Act / Assert
+        with pytest.raises(FeatureStoreException, match="is not one of the features"):
+            fv_engine._read_feature_logs(
+                fv=mocker.Mock(),
+                filter=feature.Feature("nope", type="double", feature_group_id=5) > 1.0,
+            )
