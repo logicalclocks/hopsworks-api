@@ -275,6 +275,14 @@ def _deployment_to_dict(d: Any) -> dict[str, Any]:
     type=click.Choice(["KSERVE", "DEFAULT"], case_sensitive=False),
     help="Serving backend.",
 )
+@click.option(
+    "--knative/--standard",
+    "knative_mode",
+    default=None,
+    help="KServe mode: Knative (scale-to-zero) or Standard (no scale-to-zero, CPU/memory autoscaling or fixed replicas when min equals max). "
+    "Omit to let the backend decide (vLLM deployments default to Standard, others to Knative mode). "
+    "On an update, omitting it keeps the deployment's current mode.",
+)
 @click.option("--description", default="", help="Deployment description.")
 @click.option(
     "--passed-feature",
@@ -298,6 +306,7 @@ def deployment_create(
     script_file: str | None,
     environment: str | None,
     serving_tool: str | None,
+    knative_mode: bool | None,
     description: str,
     passed_features: tuple[str, ...],
     no_default_predictor: bool,
@@ -317,6 +326,7 @@ def deployment_create(
         script_file: Predictor script, local or HopsFS.
         environment: Inference environment name.
         serving_tool: ``KSERVE`` or ``DEFAULT``.
+        knative_mode: KServe Knative (True) vs Standard (False) mode; None lets the backend decide.
         description: Deployment description.
         passed_features: Features clients send with each request.
         no_default_predictor: Disable the default predictor.
@@ -364,6 +374,7 @@ def deployment_create(
             serving_tool=(serving_tool or "").upper() or None,
             passed_features=list(passed_features) or None,
             default_predictor=False if no_default_predictor else None,
+            knative_mode=knative_mode,
         )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Deployment creation failed: {exc}") from exc

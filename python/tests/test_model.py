@@ -275,6 +275,7 @@ class TestModel:
             schema=None,
             passed_features=None,
             default_predictor=None,
+            knative_mode=None,
         )
         mock_predictor.deploy.assert_called_once()
 
@@ -310,6 +311,22 @@ class TestModel:
 
         # Assert
         assert mock_predictor_for_model.call_args.kwargs["tags"] == tags
+        mock_predictor.deploy.assert_called_once()
+
+    def test_deploy_forwards_knative_mode(self, mocker, backend_fixtures):
+        # Arrange
+        m_json = backend_fixtures["model"]["get_python"]["response"]["items"][0]
+        mock_predictor = mocker.Mock()
+        mock_predictor_for_model = mocker.patch(
+            "hsml.predictor.Predictor.for_model", return_value=mock_predictor
+        )
+
+        # Act
+        m = model.Model.from_response_json(m_json)
+        m.deploy(name="test", knative_mode=False)
+
+        # Assert
+        assert mock_predictor_for_model.call_args.kwargs["knative_mode"] is False
         mock_predictor.deploy.assert_called_once()
 
     # get-time missing mandatory tag warning

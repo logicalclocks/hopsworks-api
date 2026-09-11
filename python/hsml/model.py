@@ -387,6 +387,7 @@ class Model:
         schema: DeploymentSchema | dict | None = None,
         passed_features: list[str] | None = None,
         default_predictor: bool | None = None,
+        knative_mode: bool | None = None,
     ) -> deployment.Deployment:
         """Deploy the model.
 
@@ -452,6 +453,9 @@ class Model:
                 Only with the default predictor.
             default_predictor: `None` selects the default predictor automatically for Python models with a feature view and no script,
                 `True` requires it (also for sklearn models, and together with a `script_file` that subclasses it), `False` never uses it.
+            knative_mode: Whether to deploy in KServe Knative mode.
+                `None` (default) lets the backend decide: LLM (vLLM) deployments default to Standard, every other deployment defaults to Knative mode; on an update, `None` keeps the deployment's current mode.
+                Standard mode does not scale to zero (minimum one instance). It autoscales on a CPU or memory metric between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum), and runs a fixed replica count without autoscaler when `min_instances == max_instances` (the default for LLM deployments).
 
         Returns:
             The deployment metadata object of a new or existing deployment.
@@ -483,6 +487,7 @@ class Model:
             schema=schema,
             passed_features=passed_features,
             default_predictor=default_predictor,
+            knative_mode=knative_mode,
         )
 
         return predictor.deploy()
