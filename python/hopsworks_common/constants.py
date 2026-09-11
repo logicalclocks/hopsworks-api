@@ -32,13 +32,18 @@ DEFAULT = Default()  # TODO: figure out what to do with it
 
 
 class JOBS:
-    SUCCESS_STATES = ["FINISHED", "SUCCEEDED"]
+    # COMPLETED is defensive: the monitors currently normalize it to FINISHED
+    # before persisting, but it is in the server's final-states set and would
+    # otherwise reproduce the same await_termination hang if ever persisted.
+    SUCCESS_STATES = ["FINISHED", "SUCCEEDED", "COMPLETED"]
     ERROR_STATES = [
         "FAILED",
         "KILLED",
         "FRAMEWORK_FAILURE",
         "APP_MASTER_START_FAILED",
         "INITIALIZATION_FAILED",
+        "SUBMISSION_FAILED",
+        "QUEUE_TIMEOUT",
     ]
 
 
