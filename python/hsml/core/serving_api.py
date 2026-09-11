@@ -504,27 +504,35 @@ class ServingApi:
         self,
         deployment_instance: deployment.Deployment,
         component: str,
-        tail: int,
+        tail: int | None,
         source: str | None = None,
         since: str | None = None,
         until: str | None = None,
         pod: str | None = None,
+        timestamps: bool = False,
     ) -> list[deployable_component_logs.DeployableComponentLogs]:
         """Get the logs of a deployment.
 
         Parameters:
             deployment_instance: Metadata object of the deployment to get logs from.
             component: Deployment component (e.g., predictor or transformer).
-            tail: Number of tailing lines to retrieve.
-            source: ``"opensearch"`` for historical logs from the project's
-                serving index (works for stopped deployments), ``"kubernetes"``
-                for live pod-tailing. Default ``None`` lets the backend
-                pick the legacy Kubernetes path.
-            since: ISO-8601 lower bound on the log timestamp; ignored on
-                the Kubernetes path.
+            tail: Number of tailing lines to retrieve, or ``None`` to send no
+                bound and let the backend apply its default. A cursor resume
+                passes ``None``: a tail bound keeps the newest N lines of the
+                matched range, which on a resume would discard exactly the
+                lines being resumed.
+            source: ``"kubernetes"`` for live pod logs, or the deprecated
+                ``"opensearch"`` (served from the Kubernetes path by new
+                backends). Default ``None`` lets the backend pick the
+                legacy Kubernetes path.
+            since: ISO-8601 lower bound on the log timestamp. New backends
+                honor it on the Kubernetes path (kubelet ``sinceTime``,
+                second granularity); old backends ignore it there.
             until: ISO-8601 upper bound on the log timestamp; ignored on
                 the Kubernetes path.
             pod: Restrict to a single instance / container name.
+            timestamps: Prefix each line with the kubelet timestamp, which
+                is what a caller needs to build a resume cursor.
 
         Returns:
             Deployment logs.
@@ -537,7 +545,9 @@ class ServingApi:
             deployment_instance.id,
             "logs",
         ]
-        query_params: dict = {"component": component, "tail": tail}
+        query_params: dict = {"component": component}
+        if tail is not None:
+            query_params["tail"] = tail
         # Only forward optional params when set so the wire format stays
         # identical to the pre-CLI release for old call sites.
         if source is not None:
@@ -548,6 +558,8 @@ class ServingApi:
             query_params["until"] = until
         if pod is not None:
             query_params["pod"] = pod
+        if timestamps:
+            query_params["timestamps"] = "true"
         return deployable_component_logs.DeployableComponentLogs.from_response_json(
             _client._send_request("GET", path_params, query_params=query_params)
         )
