@@ -191,3 +191,58 @@ class TestSearchResults:
         fg = result.feature_groups[0]
         assert fg.project.id == 123
         assert fg.project.name == "my_project"
+
+    def test_model_registry_search_result_from_response_json(self):
+        json_dict = {
+            "models": [
+                {
+                    "name": "test_model",
+                    "version": 2,
+                    "description": "test description",
+                    "parentProjectId": 1,
+                    "parentProjectName": "test_project",
+                    "tags": [{"key": "environment", "value": "production"}],
+                    "highlights": {
+                        "description": "<em>fraud</em> detection",
+                        "tags": [],
+                    },
+                },
+            ],
+            "deployments": [
+                {
+                    "name": "test_deployment",
+                    "version": 1,
+                    "description": "serving deployment",
+                    "parentProjectId": 1,
+                    "parentProjectName": "test_project",
+                    "tags": [],
+                    "highlights": {},
+                },
+            ],
+            "modelsFrom": 0,
+            "modelsTotal": 1,
+            "deploymentsFrom": 0,
+            "deploymentsTotal": 1,
+        }
+
+        result = search_results.ModelRegistrySearchResult(json_dict)
+
+        assert len(result.models) == 1
+        assert len(result.deployments) == 1
+        assert result.models[0].name == "test_model"
+        assert result.models[0].version == 2
+        assert result.models[0].tags == [{"key": "environment", "value": "production"}]
+        assert result.deployments[0].name == "test_deployment"
+        assert result.deployments[0].tags == []
+        assert result.models_total == 1
+        assert result.deployments_total == 1
+
+    def test_model_registry_search_result_with_empty_response(self):
+        result = search_results.ModelRegistrySearchResult({})
+
+        assert len(result.models) == 0
+        assert len(result.deployments) == 0
+        assert result.models_total == 0
+        assert result.deployments_total == 0
+        assert result.models_offset == 0
+        assert result.deployments_offset == 0
