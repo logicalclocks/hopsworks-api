@@ -1068,9 +1068,10 @@ class TestDeployment:
         d = deployment.Deployment(predictor=p)
         mocker.patch("hopsworks_common.util._get_members", return_value=["predictor"])
 
-        capped = "\n".join(
-            f"2026-09-08T10:00:00.{i:09d}Z line-{i}" for i in range(200)
-        ) + "\n"
+        capped = (
+            "\n".join(f"2026-09-08T10:00:00.{i:09d}Z line-{i}" for i in range(200))
+            + "\n"
+        )
         # Every resume returns the same capped prefix of the same second.
         stalled = [self._make_chunk(content=capped, truncated=True)]
         # After the reseed the fresh tail finally reaches the next second.
@@ -1107,9 +1108,10 @@ class TestDeployment:
         d = deployment.Deployment(predictor=p)
         mocker.patch("hopsworks_common.util._get_members", return_value=["predictor"])
 
-        capped = "\n".join(
-            f"2026-09-08T10:00:00.{i:09d}Z line-{i}" for i in range(200)
-        ) + "\n"
+        capped = (
+            "\n".join(f"2026-09-08T10:00:00.{i:09d}Z line-{i}" for i in range(200))
+            + "\n"
+        )
         stalled = [self._make_chunk(content=capped, truncated=True)]
         polls = 21
         mocker.patch(
@@ -1141,9 +1143,10 @@ class TestDeployment:
         d = deployment.Deployment(predictor=p)
         mocker.patch("hopsworks_common.util._get_members", return_value=["predictor"])
 
-        capped = "\n".join(
-            f"2026-09-09T10:00:00.{i:09d}Z line-{i}" for i in range(200)
-        ) + "\n"
+        capped = (
+            "\n".join(f"2026-09-09T10:00:00.{i:09d}Z line-{i}" for i in range(200))
+            + "\n"
+        )
         since_values = []
 
         def respond(*args, **kwargs):
@@ -1157,9 +1160,7 @@ class TestDeployment:
                 ]
             return [self._make_chunk(content=capped, truncated=True)]
 
-        mocker.patch(
-            "hsml.core.serving_api.ServingApi._get_logs", side_effect=respond
-        )
+        mocker.patch("hsml.core.serving_api.ServingApi._get_logs", side_effect=respond)
         mocker.patch("time.sleep")
         monot = mocker.patch("time.monotonic")
         monot.side_effect = [0.0] + [0.1] * 8 + [99.0]
@@ -1171,7 +1172,9 @@ class TestDeployment:
         joined = "\n".join(chunks)
         assert "lines skipped" in joined
         # The claim in the notice has to be true: a request with no since bound.
-        assert None in since_values[1:], f"no fresh-tail request was made: {since_values}"
+        assert None in since_values[1:], (
+            f"no fresh-tail request was made: {since_values}"
+        )
         assert "newest-output" in joined
 
     def test_tail_logs_kubernetes_holds_back_a_byte_cut_trailing_line(
