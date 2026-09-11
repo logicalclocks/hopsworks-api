@@ -5230,6 +5230,42 @@ class FeatureView:
                 )
             )
             self.enable_logging(extra_log_columns=logging_features)
+
+        if (
+            logging_data is not None
+            and untransformed_features is not None
+            and transformed_features is None
+            and self._looks_like_prediction_data(untransformed_features)
+        ):
+            if self.feature_logging is not None and self.feature_logging._is_legacy:
+                # Pre-FSTORE-1871 call style log(features, predictions[, transformed_features]):
+                # the current signature prepends logging_data, shifting every positional argument
+                # by one. The legacy dual-feature-group row is proof the calling code predates the
+                # shift, so re-bind the arguments to the old order.
+                _logger.info(
+                    "Detected the pre-4.6 `log(features, predictions)` call style on a feature view "
+                    "with legacy logging feature groups. Re-binding the arguments accordingly. "
+                    "Update the call to `log(features, predictions=...)` to silence this message."
+                )
+                (
+                    untransformed_features,
+                    predictions,
+                    transformed_features,
+                    logging_data,
+                ) = (
+                    logging_data,
+                    untransformed_features,
+                    predictions,
+                    None,
+                )
+            else:
+                warnings.warn(
+                    "The second positional argument of `log()` is `untransformed_features`, but the "
+                    "passed value matches this feature view's label schema. If you meant to log "
+                    "predictions (pre-4.6 call style `log(features, predictions)`), pass them "
+                    "explicitly as `log(features, predictions=...)`.",
+                    stacklevel=1,
+                )
         return self._feature_view_engine._log_features(
             self,
             feature_logging=self.feature_logging,
@@ -6235,3 +6271,34 @@ class FeatureView:
                 else []
             )
         return self.__extra_logging_column_names
+
+    def _looks_like_prediction_data(self, data) -> bool:
+        """Whether `data` matches this feature view's label schema.
+
+        Used to detect the pre-4.6 positional call style `log(features, predictions)`, whose second
+        positional argument binds to `untransformed_features` in the current signature.
+        """
+        label_names = self._label_column_names
+        if not label_names:
+            return False
+        columns = getattr(data, "columns", None)
+        if columns is not None:
+            return set(columns) == set(label_names)
+        if isinstance(data, dict):
+            return set(data.keys()) == set(label_names)
+        if isinstance(data, pd.Series) or (HAS_POLARS and isinstance(data, pl.Series)):
+            return len(label_names) == 1
+        if isinstance(data, (list, tuple)) or (
+            HAS_NUMPY and isinstance(data, np.ndarray)
+        ):
+            if len(data) == 0:
+                return False
+            first_row = data[0]
+            if isinstance(first_row, dict):
+                return set(first_row.keys()) == set(label_names)
+            if isinstance(first_row, (list, tuple)) or (
+                HAS_NUMPY and isinstance(first_row, np.ndarray)
+            ):
+                return len(first_row) == len(label_names)
+            return len(label_names) == 1
+        return False

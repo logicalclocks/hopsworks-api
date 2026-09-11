@@ -126,7 +126,7 @@ from hsfs.core import (
     transformation_function_engine,
 )
 from hsfs.core.constants import GE_MAJOR, HAS_AVRO, HAS_GREAT_EXPECTATIONS
-from hsfs.core.feature_logging import LoggingMetaData
+from hsfs.core.feature_logging import FeatureLogging, LoggingMetaData
 from hsfs.decorators import _uses_great_expectations
 from hsfs.storage_connector import StorageConnector
 from hsfs.training_dataset_split import TrainingDatasetSplit
@@ -2743,13 +2743,17 @@ class Engine:
                     col for col in df.columns if col != TEMP_JOIN_KEY
                 ]
 
-        # Renaming prediction columns
+        # Renaming prediction columns to the name they take in the logging feature group
+        # (predicted_<label>, or the bare label name for legacy pre-FSTORE-1871 feature groups).
         _, predictions_feature_names, _ = predictions
-        for prediction_feature_name in predictions_feature_names:
-            logging_df = logging_df.withColumnRenamed(
-                prediction_feature_name,
-                constants.FEATURE_LOGGING.PREFIX_PREDICTIONS + prediction_feature_name,
-            )
+        prediction_column_names = FeatureLogging._prediction_column_names(
+            predictions_feature_names or [], logging_feature_group_feature_names
+        )
+        for prediction_feature_name, target_name in prediction_column_names.items():
+            if target_name != prediction_feature_name:
+                logging_df = logging_df.withColumnRenamed(
+                    prediction_feature_name, target_name
+                )
 
         # Creating a json column for request parameters
         missing_request_parameters = []
@@ -2804,10 +2808,13 @@ class Engine:
         logging_df = logging_df.withColumn(
             model_col_name, lit(model_name).cast(StringType())
         )
-        logging_df = logging_df.withColumn(
-            constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME,
-            lit(model_version).cast(StringType()),
-        )
+        # Legacy (pre-FSTORE-1871) logging feature groups carry the version inside the
+        # hsml_model value and have no model_version column to receive it.
+        if model_col_name != constants.FEATURE_LOGGING.LEGACY_MODEL_COLUMN_NAME:
+            logging_df = logging_df.withColumn(
+                constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME,
+                lit(model_version).cast(StringType()),
+            )
         now = datetime.now()
         logging_df = logging_df.withColumn(
             time_col_name, lit(now).cast(TimestampType())
