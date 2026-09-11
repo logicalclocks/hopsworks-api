@@ -391,6 +391,36 @@ class TestFeatureGroup:
         assert len(features) == 2
         assert {f.name for f in features} == {"f1", "f2"}
 
+    def test_check_duplicates_delegates_to_api(self, mocker):
+        # Arrange
+        fg = get_test_feature_group()
+        mock_check = mocker.patch(
+            "hsfs.core.feature_group_api.FeatureGroupApi._check_duplicates",
+            return_value={"status": "SUCCEEDED", "suspected_duplicates": False},
+        )
+
+        # Act
+        result = fg.check_duplicates(recheck=True)
+
+        # Assert
+        mock_check.assert_called_once_with(fg, recheck=True)
+        assert result == {"status": "SUCCEEDED", "suspected_duplicates": False}
+
+    def test_not_check_duplicate_defaults_to_false(self):
+        fg = get_test_feature_group()
+        assert fg._not_check_duplicate is False
+
+    def test_not_check_duplicate_stored_when_set(self):
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=1,
+            primary_key=["pk"],
+            partition_key=[],
+            not_check_duplicate=True,
+        )
+        assert fg._not_check_duplicate is True
+
     def test_materialization_job(self, mocker):
         mock_job = mocker.Mock()
         mock_job_api = mocker.patch(
