@@ -26,7 +26,7 @@ from hopsworks_apigen import public
 from hopsworks_common import tag, usage, util
 from hopsworks_common.client.exceptions import RestAPIError
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
-from hopsworks_common.constants import PREDICTOR_STATE
+from hopsworks_common.constants import PREDICTOR, PREDICTOR_STATE
 from hopsworks_common.core import dataset_api as _dataset_api
 from hopsworks_common.core import environment_api as _environment_api
 from hsml.core import serving_api
@@ -200,6 +200,45 @@ class ModelServing:
         return self._serving_api._get_inference_endpoints()
 
     @public
+    def get_vllm_image_tags(
+        self, variant: str = PREDICTOR.VLLM_VARIANT_VLLM
+    ) -> list[str]:
+        """Get the vLLM runtime image tags a cluster administrator advertises.
+
+        Use this to pick a valid `vllm_image_tag` when creating an LLM deployment.
+        Tags come back newest first, so the first one is what a deployment gets when no tag is
+        given.
+        A deployment keeps the tag it was created with even if that tag stops being advertised,
+        so this list can be missing the tag an existing deployment uses.
+
+        Example:
+            ```python
+            # login and get Hopsworks Model Serving handle using .login() and .get_model_serving()
+
+            # list the tags this cluster advertises for standard vLLM
+            image_tags = ms.get_vllm_image_tags()
+            ```
+
+        Parameters:
+            variant: The vLLM variant to list tags for, `VLLM` or `VLLM_OMNI`.
+
+        Returns:
+            Advertised image tags, newest first. Empty if the variant advertises none.
+        """
+        variants = [PREDICTOR.VLLM_VARIANT_VLLM, PREDICTOR.VLLM_VARIANT_OMNI]
+        if variant not in variants:
+            raise ValueError(
+                "vLLM variant '{}' is not valid. Possible values are '{}'".format(
+                    variant, ", ".join(variants)
+                )
+            )
+        image_tags = self._serving_api._get_vllm_image_tags()
+        for item in image_tags["items"]:
+            if item["variant"] == variant:
+                return item["tags"] or []
+        return []
+
+    @public
     @usage._method_logger
     def create_predictor(
         self,
@@ -269,7 +308,7 @@ class ModelServing:
             scaling_configuration: Scaling configuration for the predictor.
             env_vars: Environment variables to set on the predictor.
             vllm_variant: vLLM image variant for vLLM deployments. One of `'VLLM'` or `'VLLM_OMNI'`. Ignored for non-vLLM model servers.
-            vllm_image_tag: vLLM image tag override. `None` uses the cluster default; if set, it should match one of the tags made available by a cluster administrator. Ignored for non-vLLM model servers.
+            vllm_image_tag: vLLM image tag override. `None` uses the cluster default, the newest advertised tag; if set, it must be one of the tags returned by `ModelServing.get_vllm_image_tags`. An existing deployment keeps its tag even if that tag stops being advertised. Ignored for non-vLLM model servers.
             tracing: Tracing configuration for the predictor.
             tags: Optionally the tags to attach to the deployment when it is created, in the same shapes accepted by feature groups.
                 A single [`Tag`][hopsworks.tag.Tag], a `{"name": "owner", "value": "team-a"}` dict, or a list of either, for example `[{"name": "owner", "value": "team-a"}]`.

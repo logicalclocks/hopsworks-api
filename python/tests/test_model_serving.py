@@ -782,3 +782,47 @@ class TestReadPackageName:
 
         with pytest.raises(ValueError, match="\\[project\\].name"):
             model_serving._read_package_name(str(tmp_path))
+
+
+class TestGetVllmImageTags:
+    """The helper users call to find a valid vllm_image_tag for a new deployment."""
+
+    RESPONSE = {
+        "items": [
+            {
+                "variant": "VLLM",
+                "tags": ["v0.21.0", "v0.15.0"],
+                "defaultTag": "v0.21.0",
+            },
+            {"variant": "VLLM_OMNI", "tags": ["v0.21.0"], "defaultTag": "v0.21.0"},
+        ]
+    }
+
+    def _stub(self, ms, mocker, response=None):
+        return mocker.patch.object(
+            ms._serving_api,
+            "_get_vllm_image_tags",
+            return_value=self.RESPONSE if response is None else response,
+        )
+
+    def test_defaults_to_standard_vllm(self, ms, mocker):
+        self._stub(ms, mocker)
+        assert ms.get_vllm_image_tags() == ["v0.21.0", "v0.15.0"]
+
+    def test_selects_the_requested_variant(self, ms, mocker):
+        self._stub(ms, mocker)
+        assert ms.get_vllm_image_tags(variant="VLLM_OMNI") == ["v0.21.0"]
+
+    def test_variant_advertising_nothing_returns_empty(self, ms, mocker):
+        self._stub(
+            ms,
+            mocker,
+            response={"items": [{"variant": "VLLM", "tags": [], "defaultTag": None}]},
+        )
+        assert ms.get_vllm_image_tags() == []
+
+    def test_rejects_unknown_variant(self, ms, mocker):
+        send = self._stub(ms, mocker)
+        with pytest.raises(ValueError):
+            ms.get_vllm_image_tags(variant="SGLANG")
+        send.assert_not_called()
