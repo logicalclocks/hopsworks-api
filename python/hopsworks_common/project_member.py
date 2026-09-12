@@ -129,7 +129,9 @@ class ProjectMember:
         return self
 
     @public
-    def remove(self, delete_home_dir: bool = False) -> None:
+    def remove(
+        self, delete_home_dir: bool = False, new_file_owner: str | None = None
+    ) -> None:
         """Remove this member from the project.
 
         Danger: Deletes the member's project files when `delete_home_dir=True`
@@ -148,12 +150,16 @@ class ProjectMember:
 
         Parameters:
             delete_home_dir: Whether to also delete the member's home directory in the project.
+            new_file_owner: Email address of the data owner that takes over this member's home directory.
+                Defaults to the data owner who has been in the project longest.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if a data scientist tries to remove someone other than themselves.
         """
         self._project_members_api.remove_member(
-            self.email, delete_home_dir=delete_home_dir
+            self.email,
+            delete_home_dir=delete_home_dir,
+            new_file_owner=new_file_owner,
         )
 
     def json(self) -> str:

@@ -37,11 +37,16 @@ from hsfs import (
     transformation_function,
     util,
 )
+from hsfs.builtin_transformations import min_max_scaler
 from hsfs.client import exceptions
 from hsfs.constructor import fs_query as fs_query_mod
 from hsfs.constructor import hudi_feature_group_alias, query
 from hsfs.core import data_source as ds
-from hsfs.core import online_ingestion, training_dataset_engine
+from hsfs.core import (
+    online_ingestion,
+    training_dataset_engine,
+    transformation_function_engine,
+)
 from hsfs.core.constants import GE_MAJOR, HAS_GREAT_EXPECTATIONS
 from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
 from hsfs.core.transformation_execution_dag import TransformationExecutionDAG
@@ -76,6 +81,7 @@ from pyspark.sql.types import (
     StringType,
     StructField,
     StructType,
+    TimestampNTZType,
     TimestampType,
 )
 
@@ -3794,6 +3800,91 @@ class TestSpark:
             assert result[column].schema == expected[column].schema
             assert result[column].collect() == expected[column].collect()
 
+    def test_time_series_split_timestamp_ntz(self, mocker):
+        # TimestampNTZType is not a TimestampType; only the plan shows a
+        # fall-through to the UDF, the rows come out right either way.
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+
+        spark_engine = spark.Engine()
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={"col1": None, "col2": None},
+            id=10,
+            train_start=1000000000,
+            train_end=1488600000,
+            test_end=1488718800,
+        )
+
+        d = {
+            "col_0": [1, 2],
+            "col_1": ["test_1", "test_2"],
+            "event_time": ["2017-03-04", "2017-03-05"],
+        }
+        df = pd.DataFrame(data=d)
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+        spark_df = spark_df.withColumn(
+            "event_time", spark_df["event_time"].cast(TimestampNTZType())
+        )
+        assert isinstance(spark_df.schema["event_time"].dataType, TimestampNTZType)
+
+        # Act
+        result = spark_engine._time_series_split(
+            training_dataset=td,
+            dataset=spark_df,
+            event_time="event_time",
+            drop_event_time=False,
+        )
+
+        # Assert
+        for split in result:
+            plan = result[split]._jdf.queryExecution().executedPlan().toString()
+            assert "BatchEvalPython" not in plan, plan
+            assert "ArrowEvalPython" not in plan, plan
+        assert [r["col_0"] for r in result["train"].collect()] == [1]
+        assert [r["col_0"] for r in result["test"].collect()] == [2]
+
+    def test_time_series_split_event_time_case_mismatch(self, mocker):
+        # must reach the UDF fallback, not raise KEY_NOT_EXISTS
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+
+        spark_engine = spark.Engine()
+
+        td = training_dataset.TrainingDataset(
+            name="test",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={"col1": None, "col2": None},
+            id=10,
+            train_start=1000000000,
+            train_end=1488600000,
+            test_end=1488718800,
+        )
+
+        df = pd.DataFrame({"col_0": [1, 2], "event_time": ["2017-03-04", "2017-03-05"]})
+        spark_df = spark_engine._spark_session.createDataFrame(df)
+        spark_df = spark_df.withColumn(
+            "event_time", spark_df["event_time"].cast(TimestampType())
+        )
+
+        # Act
+        result = spark_engine._time_series_split(
+            training_dataset=td,
+            dataset=spark_df,
+            event_time="EVENT_TIME",
+            drop_event_time=False,
+        )
+
+        # Assert
+        assert [r["col_0"] for r in result["train"].collect()] == [1]
+        assert [r["col_0"] for r in result["test"].collect()] == [2]
+
     def test_time_series_split_epoch_sec(self, mocker):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")
@@ -5933,6 +6024,160 @@ class TestSpark:
         # Assert
         assert result.schema == expected_spark_df.schema
         assert result.collect() == expected_spark_df.collect()
+
+    def test_fit_and_transform_coalesce_keeps_udf_above_the_merge(self, mocker):
+        # a UDF below the Coalesce runs once per parent partition (FSTORE-2109)
+        mocker.patch("hopsworks_common.client._get_instance")
+        hopsworks_common.connection._hsfs_engine_type = "spark"
+        spark_engine = spark.Engine()
+
+        @udf(int, drop=["col_0"])
+        def plus_one(col_0):
+            return col_0 + 1
+
+        tf = transformation_function.TransformationFunction(
+            99,
+            hopsworks_udf=plus_one,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+        fg1 = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=[feature.Feature(name="col_0", type=IntegerType(), index=0)],
+            id=11,
+            stream=False,
+        )
+        fv = feature_view.FeatureView(
+            name="test",
+            featurestore_id=99,
+            query=fg1.select_all(),
+            transformation_functions=[tf("col_0")],
+        )
+        td = training_dataset.TrainingDataset(
+            name="test",
+            version=1,
+            data_format="PARQUET",
+            featurestore_id=99,
+            splits={},
+            id=10,
+            coalesce=True,
+        )
+        spark_df = spark_engine._spark_session.createDataFrame(
+            pd.DataFrame({"col_0": list(range(20))})
+        ).repartition(4)
+
+        # Act
+        merged_first = transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
+            training_dataset=td,
+            feature_view_obj=fv,
+            dataset=spark_df,
+            pre_transform=lambda frame: frame.coalesce(1),
+        )
+        # the pre-change shape: transform first, merge afterwards
+        merged_last = transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
+            training_dataset=td, feature_view_obj=fv, dataset=spark_df
+        ).coalesce(1)
+
+        # Assert
+        def node_order(df):
+            plan = df._jdf.queryExecution().executedPlan().toString()
+            evals = [
+                plan.index(name)
+                for name in ("BatchEvalPython", "ArrowEvalPython")
+                if name in plan
+            ]
+            assert evals, plan
+            return min(evals), plan.index("Coalesce")
+
+        # a parent prints above its children
+        udf_pos, coalesce_pos = node_order(merged_first)
+        assert udf_pos < coalesce_pos
+        udf_pos_last, coalesce_pos_last = node_order(merged_last)
+        assert coalesce_pos_last < udf_pos_last
+        assert merged_first.rdd.getNumPartitions() == 1
+        assert merged_first.collect() == merged_last.collect()
+
+    def test_fit_and_transform_coalesce_fits_statistics_before_the_merge(self, mocker):
+        # Merging before the fit would also cure the OOM, but on different
+        # statistics.
+        mocker.patch("hopsworks_common.client._get_instance")
+        hopsworks_common.connection._hsfs_engine_type = "spark"
+        spark_engine = spark.Engine()
+
+        tf = transformation_function.TransformationFunction(
+            99,
+            hopsworks_udf=min_max_scaler("f1"),
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+        fg1 = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=[feature.Feature(name="f1", type=IntegerType(), index=0)],
+            id=11,
+            stream=False,
+        )
+        fv = feature_view.FeatureView(
+            name="test",
+            featurestore_id=99,
+            query=fg1.select_all(),
+            transformation_functions=[tf("f1")],
+        )
+        td = training_dataset.TrainingDataset(
+            name="test",
+            version=1,
+            data_format="PARQUET",
+            featurestore_id=99,
+            splits={},
+            id=10,
+            coalesce=True,
+        )
+        spark_df = spark_engine._spark_session.createDataFrame(
+            pd.DataFrame({"f1": [float(i) for i in range(20)]})
+        ).repartition(4)
+
+        profiled_partitions = []
+
+        def fake_compute(
+            training_dataset_obj,
+            columns,
+            label_encoder_features,
+            feature_dataframe,
+            feature_view_obj,
+        ):
+            profiled_partitions.append(feature_dataframe.rdd.getNumPartitions())
+            return mocker.Mock(
+                feature_descriptive_statistics=[
+                    FeatureDescriptiveStatistics(
+                        feature_name=c, min=0.0, max=19.0, mean=9.5
+                    )
+                    for c in columns
+                ]
+            )
+
+        mocker.patch.object(
+            transformation_function_engine.TransformationFunctionEngine,
+            "_compute_transformation_fn_statistics",
+            side_effect=fake_compute,
+        )
+
+        # Act
+        result = transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
+            training_dataset=td,
+            feature_view_obj=fv,
+            dataset=spark_df,
+            pre_transform=lambda frame: frame.coalesce(1),
+        )
+
+        # Assert
+        # profiled on all four partitions, merged only for the transform
+        assert profiled_partitions == [4]
+        assert result.rdd.getNumPartitions() == 1
 
     def test_apply_transformation_function_overwrite_feature(self, mocker):
         # An unaliased single-output UDF named after its input feature

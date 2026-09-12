@@ -57,13 +57,18 @@ try:
         col,
         concat,
         current_timestamp,
+        datediff,
+        expr,
         from_json,
+        length,
         lit,
         monotonically_increasing_id,
         regexp_replace,
         row_number,
         struct,
         udf,
+        unix_millis,
+        when,
     )
     from pyspark.sql.types import (
         ArrayType,
@@ -80,6 +85,7 @@ try:
         StringType,
         StructField,
         StructType,
+        TimestampNTZType,
         TimestampType,
     )
 
@@ -1165,15 +1171,20 @@ class Engine:
             # Statistics are always refit (training_dataset_version not
             # passed): an unsplit in-memory training dataset retrieved by
             # version is not consistent.
+            # coalesce(1) must land between the fit and the transformations
+            # (FSTORE-2109), so the engine applies it.
             dataset = transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
                 training_dataset,
                 feature_view_obj,
                 dataset,
                 transformation_context=transformation_context,
+                pre_transform=(
+                    (lambda frame: frame.coalesce(1))
+                    if training_dataset.coalesce
+                    else None
+                ),
             )
 
-            if training_dataset.coalesce:
-                dataset = dataset.coalesce(1)
             path = training_dataset.location + "/" + training_dataset.name
             return self._write_training_dataset_single(
                 dataset,
@@ -1353,13 +1364,14 @@ class Engine:
                 "Given event time should be in `datetime`, `date`, `str` or `int` type"
             )
 
-        # registering the UDF
-        _convert_event_time_to_timestamp = udf(
-            convert_event_time_to_timestamp, LongType()
-        )
+        # A Python UDF below the coalesced write pins a 64 MB HybridRowQueue
+        # per shuffle partition (FSTORE-2109); use a native expression when
+        # the column type allows one.
+        ts_col = self._event_time_epoch_millis(dataset, event_time)
+        if ts_col is None:
+            ts_col = udf(convert_event_time_to_timestamp, LongType())(col(event_time))
 
         result_dfs = {}
-        ts_col = _convert_event_time_to_timestamp(col(event_time))
         for split in training_dataset.splits:
             result_df = dataset.filter(ts_col >= split.start_time).filter(
                 ts_col < split.end_time
@@ -1368,6 +1380,40 @@ class Engine:
                 result_df = result_df.drop(event_time)
             result_dfs[split.name] = result_df
         return result_dfs
+
+    @staticmethod
+    def _event_time_epoch_millis(dataset, event_time):
+        """Epoch milliseconds of the event time column as a native expression.
+
+        Returns None when the column type has no native form.
+        """
+        # not schema[event_time]: that subscript is case sensitive, col() is not
+        event_time_type = next(
+            (f.dataType for f in dataset.schema.fields if f.name == event_time), None
+        )
+        if isinstance(event_time_type, TimestampNTZType):
+            # unix_millis rejects timestamp_ntz; with both operands NTZ the
+            # result does not depend on spark.sql.session.timeZone.
+            quoted = event_time.replace("`", "``")
+            return expr(
+                "timestampdiff(MILLISECOND, TIMESTAMP_NTZ '1970-01-01 00:00:00', "
+                f"`{quoted}`)"
+            )
+        if isinstance(event_time_type, TimestampType):
+            return unix_millis(col(event_time))
+        if isinstance(event_time_type, DateType):
+            # midnight UTC of that day, independent of the session zone
+            days = datediff(col(event_time), lit("1970-01-01")).cast(LongType())
+            return days * lit(86_400_000)
+        if isinstance(event_time_type, (IntegerType, LongType)):
+            # up to ten digits is seconds
+            value = col(event_time).cast(LongType())
+            return (
+                when(value == 0, lit(None).cast(LongType()))
+                .when(length(value.cast("string")) <= 10, value * lit(1000))
+                .otherwise(value)
+            )
+        return None
 
     def _write_training_dataset_splits(
         self,

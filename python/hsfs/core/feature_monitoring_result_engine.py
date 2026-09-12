@@ -15,12 +15,15 @@
 #
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import util
 from hsfs.core import distribution_distance
 from hsfs.core import feature_monitoring_config as fmc
+from hsfs.core import monitoring_window_config as mwc
 from hsfs.core.distribution_engine import (
     _WINDOW_DETECTION,
     _WINDOW_REFERENCE,
@@ -38,6 +41,9 @@ from hsfs.core.statistics_comparison_result import StatisticsComparisonResult
 if TYPE_CHECKING:
     from hsfs.core.feature_statistics_config import FeatureStatisticsConfig
     from hsfs.core.statistics_comparison_config import StatisticsComparisonConfig
+
+
+logger = logging.getLogger(__name__)
 
 
 class FeatureMonitoringResultEngine:
@@ -251,6 +257,14 @@ class FeatureMonitoringResultEngine:
         # FeatureMonitoringResultEngine instance doesn't carry state across runs.
         self._distribution_engine._clear_cache()
 
+        if (
+            reference_statistics is not None
+            and self._compares_model_logs_to_training_dataset(fm_config)
+        ):
+            detection_statistics = self._drop_features_without_reference(
+                detection_statistics, reference_statistics
+            )
+
         # validate fds
         self._validate_detection_and_reference_statistics(
             detection_statistics=detection_statistics,
@@ -328,6 +342,66 @@ class FeatureMonitoringResultEngine:
 
         # save and return
         return self._save(fm_result)
+
+    @staticmethod
+    def _compares_model_logs_to_training_dataset(
+        fm_config: fmc.FeatureMonitoringConfig,
+    ) -> bool:
+        """True for a model monitoring config whose reference is a training dataset.
+
+        That is the one setup where the detection side legitimately carries columns
+        the reference cannot answer for: the logging feature group's serving keys,
+        predicted_* and logging metadata columns against the training features of the
+        training dataset.
+        Every other config keeps the strict detection/reference validation.
+        """
+        reference = fm_config.reference_window_config
+        return (
+            fm_config.model_name is not None
+            and reference is not None
+            and reference.window_config_type == mwc.WindowConfigType.TRAINING_DATASET
+        )
+
+    def _drop_features_without_reference(
+        self,
+        detection_statistics: list[FeatureDescriptiveStatistics],
+        reference_statistics: list[FeatureDescriptiveStatistics],
+    ) -> list[FeatureDescriptiveStatistics]:
+        """Keep the detection features the reference window has statistics for.
+
+        Model monitoring only (see _compares_model_logs_to_training_dataset).
+        A training-dataset reference answers for the training features only, while the
+        detection window of a logging feature group can also cover serving keys,
+        predicted_* and logging metadata columns.
+        Those have nothing to compare against, so they are skipped with a warning
+        instead of failing the whole run.
+
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException: If no detection feature
+                has reference statistics.
+        """
+        reference_names = {fds.feature_name for fds in reference_statistics}
+        kept = [
+            fds for fds in detection_statistics if fds.feature_name in reference_names
+        ]
+        skipped = sorted(
+            fds.feature_name
+            for fds in detection_statistics
+            if fds.feature_name not in reference_names
+        )
+        if skipped and not kept:
+            raise FeatureStoreException(
+                f"None of the monitored features {skipped} have statistics in the "
+                "reference window, so there is nothing to compare. Check that the "
+                "monitored features exist in the reference training dataset."
+            )
+        if skipped:
+            logger.warning(
+                "Skipping features without reference statistics: %s. Only features "
+                "present in both the detection and the reference window are compared.",
+                skipped,
+            )
+        return kept
 
     def _validate_detection_and_reference_statistics(
         self,

@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import warnings
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import TYPE_CHECKING
@@ -23,7 +24,7 @@ from typing import TYPE_CHECKING
 import humps
 from hopsworks_apigen import public
 from hopsworks_common import client, util
-from hopsworks_common.constants import PREDICTOR, SCALING_CONFIG
+from hopsworks_common.constants import DEFAULT, PREDICTOR, SCALING_CONFIG
 
 
 if TYPE_CHECKING:
@@ -32,10 +33,17 @@ if TYPE_CHECKING:
 
 @public
 class ScaleMetric(Enum):
-    """Scaling metric for a predictor or transformer. Can be either 'CONCURRENCY' or 'RPS'."""
+    """Scaling metric for a predictor or transformer.
+
+    `CONCURRENCY` and `RPS` are Knative-only metrics, valid for KServe Knative deployments.
+    `CPU` and `MEMORY` drive CPU/memory-based autoscaling, valid for KServe Standard and non-KServe deployments.
+    In KServe Standard mode a deployment with `min_instances == max_instances` runs a fixed replica count and ignores the metric.
+    """
 
     CONCURRENCY = "CONCURRENCY"
     RPS = "RPS"
+    CPU = "CPU"
+    MEMORY = "MEMORY"
 
     @classmethod
     def _has_value(cls, value):
@@ -43,6 +51,48 @@ class ScaleMetric(Enum):
 
     def __str__(self):
         return self.value
+
+
+@public
+class LogPersistence(Enum):
+    """Whether a component archives its logs to the project's Logs dataset when an instance stops.
+
+    Each instance keeps its own logs on local disk and uploads them through the REST
+    API when it stops, including stops the platform initiates such as scale-to-zero.
+    Only deployments whose serving container runs a Hopsworks inference pipeline image
+    support archiving, since the upload runs the hopsworks SDK from that image. The
+    backend rejects `ALL_REPLICAS` for TensorFlow Serving and vLLM, and for a KServe
+    Python deployment with no predictor script, which runs the sklearnserver runtime.
+    """
+
+    NONE = "NONE"
+    ALL_REPLICAS = "ALL_REPLICAS"
+
+    @classmethod
+    def _has_value(cls, value):
+        return any(member.value == value for member in cls)
+
+    def __str__(self):
+        return self.value
+
+
+def _coerce_log_persistence(
+    log_persistence: LogPersistence | str | Default | None,
+) -> LogPersistence | None:
+    # DEFAULT and None both mean "leave it to the backend".
+    if log_persistence is None or log_persistence is DEFAULT:
+        return None
+    if isinstance(log_persistence, LogPersistence):
+        return log_persistence
+    if isinstance(log_persistence, str):
+        if not LogPersistence._has_value(log_persistence.upper()):
+            raise ValueError(
+                f"Invalid log_persistence: {log_persistence}. Must be one of {[e.value for e in LogPersistence]}"
+            )
+        return LogPersistence(log_persistence.upper())
+    raise ValueError(
+        f"log_persistence must be a string or LogPersistence, got {type(log_persistence)}"
+    )
 
 
 @public
@@ -59,6 +109,7 @@ class ComponentScalingConfig(ABC):
         panic_threshold_percentage: float | None = None,
         stable_window_seconds: int | None = None,
         scale_to_zero_retention_seconds: int | None = None,
+        log_persistence: LogPersistence | str | Default | None = None,
         **kwargs,
     ):
         """Initialize a ComponentScalingConfig instance.
@@ -72,6 +123,9 @@ class ComponentScalingConfig(ABC):
             panic_threshold_percentage: Percentage of the scale metric threshold to trigger scaling.
             stable_window_seconds: Interval in seconds for calculating the average metric.
             scale_to_zero_retention_seconds: Time in seconds to retain the last instance before scaling to zero.
+            log_persistence: Whether instances upload their logs to the Logs dataset when they stop.
+                Unset means the backend default: `ALL_REPLICAS` for a Python predictor,
+                `NONE` for everything else.
         """
         scale_metric = scale_metric
         if scale_metric:
@@ -97,6 +151,7 @@ class ComponentScalingConfig(ABC):
         self._panic_threshold_percentage = panic_threshold_percentage
         self._stable_window_seconds = stable_window_seconds
         self._scale_to_zero_retention_seconds = scale_to_zero_retention_seconds
+        self._log_persistence = _coerce_log_persistence(log_persistence)
 
     @public
     def describe(self):
@@ -111,7 +166,11 @@ class ComponentScalingConfig(ABC):
     @public
     @staticmethod
     def get_default_scaling_configuration(
-        serving_tool: str, min_instances: int | None, component_type: str = "predictor"
+        serving_tool: str,
+        min_instances: int | None,
+        component_type: str = "predictor",
+        effective_knative_mode: bool = True,
+        enforce_scale_to_zero: bool = True,
     ) -> ComponentScalingConfig:
         """Get the default scaling configuration based on the serving tool and number of instances.
 
@@ -119,19 +178,28 @@ class ComponentScalingConfig(ABC):
             serving_tool: the serving tool to use (e.g. kserve)
             min_instances: minimum number of instances, or None to use the default
             component_type: the component type (predictor or transformer)
+            effective_knative_mode: whether the deployment runs in KServe Knative mode.
+                Only meaningful when `serving_tool` is kserve.
+                Standard mode does not scale to zero and does not default to Knative-only autoscaling metrics.
+            enforce_scale_to_zero: whether to reject a non-zero minimum when the cluster requires scale-to-zero for Knative deployments.
+                Transformers are built before the deployment mode is known and skip this check.
+                The backend validates the assembled deployment mode-aware.
 
         Returns:
             The default scaling configuration for the given serving tool.
         """
+        kserve_knative = (
+            serving_tool == PREDICTOR.SERVING_TOOL_KSERVE and effective_knative_mode
+        )
         if min_instances is None:
             min_instances = (
                 0  # enable scale-to-zero by default if required
-                if serving_tool == PREDICTOR.SERVING_TOOL_KSERVE
-                and client._is_scale_to_zero_required()
+                if kserve_knative and client._is_scale_to_zero_required()
                 else SCALING_CONFIG.MIN_NUM_INSTANCES
             )
         if (
-            serving_tool == PREDICTOR.SERVING_TOOL_KSERVE
+            kserve_knative
+            and enforce_scale_to_zero
             and min_instances != 0
             and client._is_scale_to_zero_required()
         ):
@@ -144,7 +212,7 @@ class ComponentScalingConfig(ABC):
                 "Minimum number of instances cannot be 0 for deployments not using KServe. Please, set the minimum number of instances to at least 1."
             )
         kwargs = {"min_instances": min_instances}
-        if serving_tool == PREDICTOR.SERVING_TOOL_KSERVE:
+        if kserve_knative:
             kwargs["scale_metric"] = SCALING_CONFIG.SCALE_METRIC_CONCURRENCY
             kwargs["target"] = SCALING_CONFIG.DEFAULT_CONCURRENCY_TARGET
             kwargs["panic_threshold_percentage"] = (
@@ -181,7 +249,15 @@ class ComponentScalingConfig(ABC):
         )
         scale_metric = util._extract_field_from_json(json_decamelized, "scale_metric")
         if scale_metric:
-            kwargs["scale_metric"] = ScaleMetric(scale_metric)
+            # A newer backend may store metrics this client does not know yet (e.g. CPU/MEMORY on an older client).
+            # Runtime containers parse the deployment JSON with the client bundled in their image, so an unknown metric must not crash them.
+            if ScaleMetric._has_value(scale_metric):
+                kwargs["scale_metric"] = ScaleMetric(scale_metric)
+            else:
+                warnings.warn(
+                    f"Ignoring unknown scale metric '{scale_metric}' returned by the backend; upgrade the hopsworks client to manage it.",
+                    stacklevel=2,
+                )
         kwargs["target"] = util._extract_field_from_json(json_decamelized, "target")
         kwargs["panic_window_percentage"] = util._extract_field_from_json(
             json_decamelized, "panic_window_percentage"
@@ -195,6 +271,13 @@ class ComponentScalingConfig(ABC):
         kwargs["scale_to_zero_retention_seconds"] = util._extract_field_from_json(
             json_decamelized, "scale_to_zero_retention_seconds"
         )
+        # Round-tripped rather than dropped: reading a deployment and saving it back must not
+        # silently reset the stored choice to the backend default.
+        log_persistence = util._extract_field_from_json(
+            json_decamelized, "log_persistence"
+        )
+        if log_persistence:
+            kwargs["log_persistence"] = LogPersistence(log_persistence)
         if kwargs["min_instances"] is None:
             expected_location = (
                 f"'{scaling_key}' or 'scaling_configuration'"
@@ -236,6 +319,8 @@ class ComponentScalingConfig(ABC):
             json["scale_to_zero_retention_seconds"] = (
                 self._scale_to_zero_retention_seconds
             )
+        if self._log_persistence is not None:
+            json["log_persistence"] = str(self._log_persistence)
         return json
 
     @classmethod
@@ -246,7 +331,12 @@ class ComponentScalingConfig(ABC):
     @public
     @property
     def scale_metric(self):
-        """The metric to use for scaling. Can be either 'CONCURRENCY' or 'RPS'."""
+        """The metric to use for scaling.
+
+        `CONCURRENCY` and `RPS` are Knative-only metrics for KServe Knative deployments.
+        `CPU` and `MEMORY` drive CPU/memory-based autoscaling in KServe Standard mode.
+        Standard deployments default to `CPU` when `min_instances < max_instances`; with `min_instances == max_instances` no autoscaler is configured and the metric is cleared.
+        """
         return self._scale_metric
 
     @scale_metric.setter
@@ -267,7 +357,12 @@ class ComponentScalingConfig(ABC):
     @public
     @property
     def target(self):
-        """Target value for the selected scaling metric that the autoscaler should try to maintain during the stable window. For RPS, this is requests per second. For CONCURRENCY, this is concurrent number of requests."""
+        """Target value for the selected scaling metric that the autoscaler should try to maintain.
+
+        For `RPS`, this is requests per second.
+        For `CONCURRENCY`, this is the number of concurrent requests.
+        For `CPU` and `MEMORY`, this is the utilization percentage.
+        """
         return self._target
 
     @target.setter
@@ -277,7 +372,12 @@ class ComponentScalingConfig(ABC):
     @public
     @property
     def min_instances(self) -> int:
-        """Minimum number of instances to scale to. For deployments using kserve, this must be set to 0 to enable scaling to zero. Default is 0 for deployments using kserve and 1 for deployments not using kserve."""
+        """Minimum number of instances to scale to.
+
+        KServe Knative deployments scale to zero when this is 0, and the cluster may require it.
+        KServe Standard deployments do not scale to zero and need at least 1.
+        Defaults to 0 for KServe Knative deployments when the cluster requires scale-to-zero, otherwise to 1.
+        """
         return self._min_instances
 
     @min_instances.setter
@@ -287,7 +387,11 @@ class ComponentScalingConfig(ABC):
     @public
     @property
     def max_instances(self):
-        """Maximum number of instances to scale to. Maximum allowed is configured in the cluster settings by the cluster administrator. Must be at least 1 and greater than or equal to min_instances."""
+        """Maximum number of instances to scale to.
+
+        Maximum allowed is configured in the cluster settings by the cluster administrator. Must be at least 1 and greater than or equal to min_instances.
+        Defaults to the cluster maximum, except for LLM deployments in KServe Standard mode, which default to `min_instances` (fixed replica count).
+        """
         return self._max_instances
 
     @max_instances.setter
@@ -334,8 +438,23 @@ class ComponentScalingConfig(ABC):
     def scale_to_zero_retention_seconds(self, scale_to_zero_retention_seconds: int):
         self._scale_to_zero_retention_seconds = scale_to_zero_retention_seconds
 
+    @public
+    @property
+    def log_persistence(self):
+        """Whether every instance uploads its logs to the project's Logs dataset when it stops.
+
+        'ALL_REPLICAS' or 'NONE'.
+        The backend rejects 'ALL_REPLICAS' for TensorFlow Serving and vLLM, and for a KServe Python deployment with no predictor script, because those runtime images do not ship the hopsworks SDK the upload runs.
+        Unset means the backend default: on where it is supported, off everywhere else.
+        """
+        return self._log_persistence
+
+    @log_persistence.setter
+    def log_persistence(self, log_persistence: LogPersistence | str):
+        self._log_persistence = _coerce_log_persistence(log_persistence)
+
     def __repr__(self):
-        return f"ComponentScalingConfig(min_instances: {self._min_instances!r}, max_instances: {self._max_instances!r}, scale_metric: {self._scale_metric!r}, target: {self._target!r}, panic_window_percentage: {self._panic_window_percentage!r}, panic_threshold_percentage: {self._panic_threshold_percentage!r}, stable_window_seconds: {self._stable_window_seconds!r}, scale_to_zero_retention_seconds: {self._scale_to_zero_retention_seconds!r})"
+        return f"ComponentScalingConfig(min_instances: {self._min_instances!r}, max_instances: {self._max_instances!r}, scale_metric: {self._scale_metric!r}, target: {self._target!r}, panic_window_percentage: {self._panic_window_percentage!r}, panic_threshold_percentage: {self._panic_threshold_percentage!r}, stable_window_seconds: {self._stable_window_seconds!r}, scale_to_zero_retention_seconds: {self._scale_to_zero_retention_seconds!r}, log_persistence: {self._log_persistence!r})"
 
 
 @public
@@ -356,6 +475,7 @@ class PredictorScalingConfig(ComponentScalingConfig):
             panic_threshold_percentage (float | None, optional): Percentage of the scale metric threshold to trigger scaling.
             stable_window_seconds (int | None, optional): Interval in seconds for calculating the average metric.
             scale_to_zero_retention_seconds (int | None, optional): Time in seconds to retain the last instance before scaling to zero.
+            log_persistence (LogPersistence | str | Default | None, optional): Whether instances upload their logs to the Logs dataset when they stop.
 
         Raises:
             ValueError: If `min_instances` is not provided.
@@ -397,6 +517,7 @@ class TransformerScalingConfig(ComponentScalingConfig):
             panic_threshold_percentage (float | None, optional): Percentage of the scale metric threshold to trigger scaling.
             stable_window_seconds (int | None, optional): Interval in seconds for calculating the average metric.
             scale_to_zero_retention_seconds (int | None, optional): Time in seconds to retain the last instance before scaling to zero.
+            log_persistence (LogPersistence | str | Default | None, optional): Whether instances upload their logs to the Logs dataset when they stop.
 
         Raises:
             ValueError: If `min_instances` is not provided.
