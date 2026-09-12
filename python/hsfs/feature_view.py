@@ -4460,6 +4460,83 @@ class FeatureView:
         )
 
     @public
+    @usage._method_logger
+    def deploy(
+        self,
+        name: str | None = None,
+        description: str | None = None,
+        training_dataset_version: int | None = None,
+        passed_features: list[str] | None = None,
+        schema: Any = None,
+        script_file: str | None = None,
+        resources: Any = None,
+        scaling_configuration: Any = None,
+        environment: str | None = None,
+        env_vars: dict[str, str] | None = None,
+        tags: Any = None,
+    ) -> Any:
+        """Deploy this feature view as an online endpoint that returns transformed feature vectors.
+
+        The deployment accepts the same requests as a model deployment of this
+        view (serving keys, passed features, request parameters, see
+        `deployment.schema`) and answers with one transformed feature vector per
+        row under `predictions` plus the column names under `columns`. Requests
+        are logged when logging is enabled on the view, and feature monitoring
+        can be attached to the deployment's logs with
+        `deployment.create_feature_monitoring()`.
+
+        Example:
+            ```python
+            fv = fs.get_feature_view("transactions", version=1)
+            fv.get_training_data(1)  # pins the training dataset the transformations use
+
+            deployment = fv.deploy(passed_features=["amount"])
+            deployment.start()
+            deployment.predict(inputs=[{"cc_num": 4473593503484549, "amount": 12.5}])
+            ```
+
+        Parameters:
+            name: Deployment name; defaults to the view name and version without special characters.
+            description: Deployment description.
+            training_dataset_version: Training dataset whose statistics the model-dependent transformations use.
+                Defaults to the last training dataset accessed from this view in this session.
+            passed_features: Features of this view whose values clients send with each request.
+            schema: A refinement of the inferred deployment schema, keeping its fields but changing types or descriptions.
+            script_file: A script subclassing `hsml.default_predictor.DefaultPredict`; it must end with the `run_kserve_wrapper()` hand-over.
+            resources: Resources to be allocated for the predictor.
+            scaling_configuration: Scaling configuration for the predictor.
+            environment: The inference environment to use.
+            env_vars: Environment variables to set on the predictor.
+            tags: Tags to attach to the deployment when it is created.
+
+        Returns:
+            The deployment metadata object, created but not started.
+
+        Raises:
+            ValueError: If the view has statistics-dependent transformations and no training dataset version can be resolved, or a passed feature or schema does not match the view.
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
+        """
+        # Lazy import: hsml is a sibling SDK package and the rest of hsfs imports it
+        # the same way (see explicit_provenance.py).
+        from hsml.predictor import Predictor
+
+        predictor = Predictor.for_feature_view(
+            self,
+            name=name,
+            description=description,
+            training_dataset_version=training_dataset_version,
+            passed_features=passed_features,
+            schema=schema,
+            script_file=script_file,
+            resources=resources,
+            scaling_configuration=scaling_configuration,
+            environment=environment,
+            env_vars=env_vars,
+            tags=tags,
+        )
+        return predictor.deploy()
+
+    @public
     def create_model_monitoring(
         self,
         name: str,
@@ -4588,6 +4665,16 @@ class FeatureView:
         config._model_name = model_name
         config._model_version = model_version
         config._associated_model_td_version = training_dataset_version
+        # The logging feature group also carries the serving keys, the helper columns,
+        # the predicted_* columns and the logging metadata columns.
+        # None of those exist in the training dataset the reference window reads, so a
+        # fan-out over them leaves the FM job without reference statistics and it fails.
+        # Fan out over the training features of the model's training dataset only, the
+        # same set feature logging resolves; a feature_name given explicitly is not
+        # restricted.
+        config._fanout_feature_names = set(
+            self._get_untransformed_feature_names(training_dataset_version)
+        )
         return config
 
     @public

@@ -37,7 +37,7 @@ deployment name via `--name`; recreate over a stale deployment with
 
 - **Resources:** CPU cores, memory, GPUs for the predictor (requests vs limits).
 - **Environment:** which Python environment the predictor runs in.
-- **Scaling:** min/max instances, scale-to-zero, and target concurrency (`ScaleMetric.CONCURRENCY`).
+- **Scaling:** KServe mode (`knative_mode`), min/max instances, and the scale metric and its target.
 - **Before deleting** — `deployment.delete()` / `hops deployment delete --yes` tears down the running endpoint irreversibly; confirm the exact name with the user, and never tear down a deployment you created as a side effect (temp or test ones included) unless they asked.
 
 ## Model Deployment Overview
@@ -59,6 +59,36 @@ Supported frameworks:
 | PyTorch | PYTHON | **Yes** | Custom script required |
 | TensorFlow | TF_SERVING | No | Script not supported |
 | LLM (vLLM) | VLLM | Optional | OpenAI-compatible endpoint |
+
+---
+
+## Default predictor (no script)
+
+A `mr.python` model registered with `feature_view=` and deployed without a `script_file` gets the library's **default predictor**: it validates the request, looks up and transforms the feature vector through the view, runs the model, and logs the request when the view has logging enabled. No `predictor.py` is written.
+
+```python
+model = mr.python.create_model(name="fraud_model", feature_view=fv)  # never model_schema= as well: it is deprecated
+model.save("./model_dir")            # exactly one .pkl / .pickle / .joblib inside
+
+deployment = model.deploy(
+    name="fraud_predictor",
+    passed_features=["amount"],      # sent by the client instead of being looked up
+    environment="inference-pipeline",
+)
+deployment.schema.describe()         # the request contract: group, field, type, nullable
+deployment.start(await_running=600)
+deployment.predict(inputs=[{"cc_num": 4473593503484549, "amount": 12.5}])
+```
+
+- Automatic for `mr.python` models only. For an sklearn model with a feature view pass `default_predictor=True`, or the KServe sklearn server keeps receiving raw vectors; `default_predictor=False` keeps the script-required behaviour.
+- Read or create a training dataset before `create_model` whenever the view has statistics-dependent transformations (`min_max_scaler`, `label_encoder`, ...), or `deploy()` refuses and names the transformation.
+- `passed_features` must be non-label features of the view, and the model's input columns must be transformed columns of the view. Both are checked before anything is uploaded, the second again at pod startup.
+- Nothing is looked up when `passed_features` names every stored non-label feature: the schema then has no serving keys and the view only computes on-demand features and transforms.
+- A model with no feature view deploys with `default_predictor=True, passed_features=[...]` naming its input columns in the model's order. Those are the whole request, their types unresolved, with no lookup, transformation or logging.
+- `fv.deploy()` serves a view with no model at all and answers with the transformed vectors, see below.
+
+Requests that do not match fail client-side with `ModelServingException`, and in the pod with a structured error (400 `SCHEMA_VALIDATION`, 413 `BATCH_TOO_LARGE`, 422 `TRANSFORMATION_FAILED`, ...).
+The contract, the error codes, the discovery endpoint for non-Python clients, enforcement and the logging buffers are in [references/deployment-schema.md](references/deployment-schema.md); subclassing the default predictor is in [references/predictors.md](references/predictors.md).
 
 ---
 
@@ -94,7 +124,7 @@ deployment = model.deploy(
     scaling_configuration=PredictorScalingConfig(
         min_instances=1,
         max_instances=3,
-        scale_metric=ScaleMetric.CONCURRENCY,   # required — omitting it fails with HTTP 422
+        scale_metric=ScaleMetric.CONCURRENCY,   # Knative-only metric; only valid for KServe Knative deployments
         target=70,                              # target concurrent requests per pod
     ),
     environment="pandas-inference-pipeline",  # Python environment name
@@ -168,7 +198,7 @@ computation) are documented in [hops-fv](../hops-fv/SKILL.md). For serving, the
 two things that bite:
 
 - **Every feature group in the view must be `online_enabled`** or `init_serving()` raises. The only exception is a view whose features are all on-demand.
-- **On-demand transformations (ODTs)** compute features at request time from `request_parameters`. They are registered on the **feature group** (not the view) so the same versioned function also runs in the feature pipeline, which is what keeps them equivalent across backfill and serving. `fv.request_parameters` lists what a view needs; a missing parameter fails the request. ODTs cannot use training statistics, external feature groups do not support them, and a default-mode `@udf` runs on a **scalar** online, so Series-only methods surface as an HTTP 500 on the first predict. Definition, attachment, context, local testing and the transformation store: [hops-transformations](../hops-transformations/SKILL.md).
+- **On-demand transformations (ODTs)** compute features at request time from `request_parameters`. They are registered on the **feature group** (not the view) so the same versioned function also runs in the feature pipeline, which is what keeps them equivalent across backfill and serving. `fv.request_parameters` lists what a view needs; a missing parameter fails the request. Annotate the arguments that are request parameters (`def amount_ratio(amount: float, budget: float)`) so a deployment schema records their types; an unannotated one is unresolved and accepts any value. ODTs cannot use training statistics, external feature groups do not support them, and a default-mode `@udf` runs on a **scalar** online, so Series-only methods surface as an HTTP 500 on the first predict. Definition, attachment, context, local testing and the transformation store: [hops-transformations](../hops-transformations/SKILL.md).
 
 ```python
 print(fv.request_parameters)             # e.g. ["store_lat", "store_lon"]
@@ -195,16 +225,33 @@ predictor_resources = PredictorResources(
 
 ### Scaling
 
+`model.deploy(knative_mode=...)` picks the KServe mode: `True` for Knative (supports scale-to-zero and `CONCURRENCY`/`RPS` metrics), `False` for Standard (minimum one instance, autoscales on `CPU`/`MEMORY` between min and max instances; equal min and max run a fixed replica count with no autoscaler, the default for LLM deployments).
+Leave it `None` (default) to let the backend decide: vLLM deployments default to Standard, everything else to Knative.
+On an update, `None` keeps the deployment's current mode.
+
+Knative mode (`CONCURRENCY`/`RPS` metrics; the Knative-only window/panic/retention parameters are rejected in Standard mode):
+
 ```python
 from hsml.scaling_config import PredictorScalingConfig, ScaleMetric
 
 scaling = PredictorScalingConfig(
-    min_instances=1,              # minimum pods (0 for scale-to-zero)
+    min_instances=0,              # 0 enables scale-to-zero (required on scale-to-zero clusters)
     max_instances=5,              # maximum pods
     scale_metric=ScaleMetric.CONCURRENCY,  # or ScaleMetric.RPS
     target=70,                    # target concurrent requests per pod
     stable_window_seconds=60,     # averaging interval
     scale_to_zero_retention_seconds=300,  # keep last pod for 5 min
+)
+```
+
+Standard mode (`CPU`/`MEMORY` metrics; minimum one instance, no scale-to-zero):
+
+```python
+scaling = PredictorScalingConfig(
+    min_instances=1,              # at least 1 in Standard mode
+    max_instances=5,              # equal to min_instances runs a fixed replica count
+    scale_metric=ScaleMetric.CPU,  # or ScaleMetric.MEMORY
+    target=80,                    # target utilization percentage
 )
 ```
 
@@ -263,7 +310,27 @@ deployment = model.deploy(
 
 ---
 
-## Deployment Without a Model (Custom HTTP Server)
+## Deployment Without a Model
+
+### Feature view deployment
+
+`fv.deploy()` serves the view's lookup and transformations with no model: the same request contract as a model deployment of that view, answering with one transformed vector per row and the column names.
+
+```python
+fv.train_test_split(test_size=0.2)   # pins the training dataset the transformations use
+deployment = fv.deploy(passed_features=["amount"], environment="inference-pipeline")
+deployment.start(await_running=600)
+deployment.predict(inputs=[{"cc_num": 4473593503484549, "amount": 12.5}])
+# {"predictions": [[0.31, -1.2, ...]], "columns": ["amount_scaled", "age_days", ...]}
+```
+
+`deployment.get_feature_view()` returns the view, and `has_feature_view`, `feature_view_name`, `feature_view_version` and `training_dataset_version` say what it serves.
+Monitoring is `deployment.create_feature_monitoring(...)`, which attaches to the view's logging feature group, since model monitoring needs a registered model.
+`get_inference_url()` answers `None` when the Istio ingress is not configured; the Hopsworks REST path serves as the fallback.
+A custom script for such a deployment needs the hand-over footer in [references/predictors.md](references/predictors.md).
+From the CLI: `hops fv deploy <name> --passed-feature amount`.
+
+### Custom HTTP server
 
 Deploy a custom server without a model from the registry:
 

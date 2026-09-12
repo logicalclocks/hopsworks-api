@@ -126,7 +126,7 @@ def test_agent_query_requires_data_or_file(mock_project):
     assert "Provide --data or --file" in result.output
 
 
-def test_agent_logs_one_shot(mock_project):
+def test_agent_logs_one_shot_defaults_to_kubernetes_source(mock_project):
     ms = mock.MagicMock()
     agent = _agent_mock("my-agent")
     agent.read_logs.return_value = "line1\nline2"
@@ -136,9 +136,39 @@ def test_agent_logs_one_shot(mock_project):
     result = CliRunner().invoke(cli, ["agent", "logs", "my-agent", "--tail", "5"])
     assert result.exit_code == 0, result.output
     agent.read_logs.assert_called_with(
-        component="predictor", tail=5, source="opensearch", since=None, until=None
+        component="predictor", tail=5, source="kubernetes", since=None, until=None
     )
     assert "line1" in result.output
+
+
+def test_agent_logs_download_calls_download_logs(mock_project):
+    ms = mock.MagicMock()
+    agent = _agent_mock("my-agent")
+    agent.download_logs.return_value = ["/tmp/a.log", "/tmp/b.log"]
+    ms.get_deployment.return_value = agent
+    mock_project.get_model_serving.return_value = ms
+
+    result = CliRunner().invoke(cli, ["agent", "logs", "my-agent", "--download"])
+    assert result.exit_code == 0, result.output
+    agent.download_logs.assert_called_once_with()
+    agent.read_logs.assert_not_called()
+    assert "/tmp/a.log" in result.output
+    assert "/tmp/b.log" in result.output
+
+
+def test_agent_logs_download_conflicts_with_follow_and_source(mock_project):
+    ms = mock.MagicMock()
+    agent = _agent_mock("my-agent")
+    ms.get_deployment.return_value = agent
+    mock_project.get_model_serving.return_value = ms
+
+    for extra in (["--follow"], ["--source", "kubernetes"]):
+        result = CliRunner().invoke(
+            cli, ["agent", "logs", "my-agent", "--download", *extra]
+        )
+        assert result.exit_code != 0
+        assert "--download cannot be combined" in result.output
+    agent.download_logs.assert_not_called()
 
 
 def test_agent_delete(mock_project):

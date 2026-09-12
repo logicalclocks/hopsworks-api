@@ -379,7 +379,12 @@ class Project:
         return self._project_members_api.add_member(email, role)
 
     @public
-    def remove_member(self, email: str, delete_home_dir: bool = False) -> None:
+    def remove_member(
+        self,
+        email: str,
+        delete_home_dir: bool = False,
+        new_file_owner: str | None = None,
+    ) -> None:
         """Remove a user from the project.
 
         Danger: Deletes the member's project files when `delete_home_dir=True`
@@ -398,11 +403,15 @@ class Project:
         Parameters:
             email: Email address of the member to remove.
             delete_home_dir: Whether to also delete the member's home directory in the project.
+            new_file_owner: Email address of the data owner that takes over the removed member's home directory.
+                Defaults to the data owner who has been in the project longest.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request, for example if a data scientist tries to remove someone other than themselves.
         """
-        self._project_members_api.remove_member(email, delete_home_dir=delete_home_dir)
+        self._project_members_api.remove_member(
+            email, delete_home_dir=delete_home_dir, new_file_owner=new_file_owner
+        )
 
     @public
     def get_search_api(self) -> search_api.SearchApi:
