@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import click
 from hopsworks.cli import auth, config, output, session
 
@@ -14,33 +16,33 @@ def project_group() -> None:
 @project_group.command("list")
 @click.pass_context
 def project_list(ctx: click.Context) -> None:
-    """Show every project the current user can access.
+    """Show every project the current user is a member of.
 
     Args:
         ctx: Click context carrying the resolved ``HopsConfig``.
     """
     cfg = _require_auth(ctx)
-    project_obj = auth.login(
-        host=cfg.host or "", api_key_value=cfg.api_key, project=cfg.project
-    )
-    import hopsworks  # noqa: PLC0415
+    auth.login(host=cfg.host or "", api_key_value=cfg.api_key, project=cfg.project)
+    from hopsworks_common.core import project_api  # noqa: PLC0415
 
-    api = hopsworks.get_project_api() if hasattr(hopsworks, "get_project_api") else None
-    projects = []
-    if api is not None:
-        try:
-            projects = api._get_projects()
-        except Exception:  # noqa: BLE001
-            projects = []
-    if not projects:
-        # Fallback: the current session exposes at least the active project.
-        projects = [project_obj]
-
+    # One request: the team list already carries each project's id and name,
+    # where the SDK's _get_projects() would fetch every project again by name.
+    teams = project_api.ProjectApi()._get_project_teams() or []
     rows = []
-    for p in projects:
-        active = " *" if getattr(p, "name", None) == cfg.project else ""
-        rows.append([getattr(p, "id", "?"), f"{getattr(p, 'name', '?')}{active}"])
-    output.print_table(["ID", "NAME"], rows)
+    for team in sorted(
+        teams, key=lambda t: t.get("project", {}).get("name", "").lower()
+    ):
+        project = team.get("project", {})
+        active = "*" if project.get("name") == cfg.project else ""
+        rows.append(
+            [
+                project.get("id", "?"),
+                project.get("name", "?"),
+                team.get("teamRole", ""),
+                active,
+            ]
+        )
+    output.print_table(["ID", "NAME", "ROLE", "ACTIVE"], rows)
 
 
 @project_group.command("use")
@@ -65,13 +67,33 @@ def project_use(ctx: click.Context, name: str) -> None:
 
     cfg.project = getattr(project, "name", name)
     cfg.project_id = getattr(project, "id", None)
-    try:
-        fs = project.get_feature_store()
-        cfg.feature_store_id = getattr(fs, "id", None)
-    except Exception:  # noqa: BLE001 - some projects have no FS
-        cfg.feature_store_id = None
+    cfg.feature_store_id = _feature_store_id(project)
     config.save(cfg)
     output.success("✓ Active project set to %s", cfg.project)
+
+
+def _feature_store_id(project: Any) -> int | None:
+    """The project's feature store id, without building a feature store object.
+
+    ``project.get_feature_store()`` imports hsfs, and with it pandas, pyarrow and
+    the engine: close to three seconds on a laptop, spent on a number the REST
+    response already carries and that only ``hops project info`` ever prints.
+    ``None`` when the project has no feature store.
+    """
+    from hopsworks_common import (  # noqa: PLC0415 - keeps `hops --help` light
+        client,
+        util,
+    )
+
+    _client = client._get_instance()
+    store = util._append_feature_store_suffix(getattr(project, "name", "") or "")
+    try:
+        raw = _client._send_request(
+            "GET", ["project", _client._project_id, "featurestores", store]
+        )
+    except Exception:  # noqa: BLE001 - a project need not have a feature store
+        return None
+    return raw.get("featurestoreId")
 
 
 @project_group.command("info")

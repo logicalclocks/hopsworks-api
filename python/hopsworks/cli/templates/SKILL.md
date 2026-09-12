@@ -249,18 +249,21 @@ hops files unshare Resources/my_dir --target other_project
 ## Search
 
 ```bash
-# Project-scoped search across feature groups, feature views, training datasets, features
-hops search ls "transactions"
+# Project-scoped search across feature groups, feature views, training datasets, features,
+# jobs, apps, models, deployments and agents
+hops search "transactions"
 
 # Global search across every project the caller can see
-hops search ls "transactions" --global
+hops search "transactions" --global
 
-# Restrict to one entity type
-hops search ls "transactions" --type feature_group
+# Restrict to one entity type: feature_group, feature_view, training_dataset, feature,
+# job, app, model, deployment, agent
+hops search "transactions" --type feature_group
+hops search "fraud" --type model
 
 # Filter by keyword and/or schematized tag (repeatable)
-hops search ls "transactions" --keyword fraud --keyword production
-hops search ls --tag "ownership:owner=jim" --tag "lifecycle:env=prod"
+hops search "transactions" --keyword fraud --keyword production
+hops search --tag "ownership:owner=jim" --tag "lifecycle:env=prod"
 ```
 
 ## Context and LLM Integration
