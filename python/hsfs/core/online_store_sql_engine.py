@@ -117,8 +117,16 @@ class OnlineStoreSqlClient:
         """
         thread = self._async_task_thread
         if thread is not None:
-            thread._shutdown()
-            self._async_task_thread = None
+            if thread._shutdown():
+                self._async_task_thread = None
+            else:
+                # Keep the handle: the pool may still hold connections, and this
+                # is the only reference left that a later _close can retry.
+                _logger.warning(
+                    "Online store connection pool did not close within the "
+                    "shutdown timeout; keeping the task thread so a later close "
+                    "can retry it."
+                )
 
     def __del__(self):
         # Best effort only. See _close: this object is normally still reachable

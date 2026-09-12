@@ -1067,7 +1067,9 @@ class AsyncTaskThread(threading.Thread):
     def _shutdown(self, timeout: float = SHUTDOWN_TIMEOUT_S) -> bool:
         """Close the connection pool, end the event loop and let the thread exit.
 
-        Returns whether the event loop reached a closed state within the timeout.
+        Returns whether the shutdown finished: the pool closed, if there was one,
+        and the event loop reached a closed state, both within the timeout. A
+        caller that gets False still holds a pool worth retrying.
 
         Not named `_stop`.
         `threading.Thread._stop` is the internal method CPython calls from
@@ -1091,14 +1093,19 @@ class AsyncTaskThread(threading.Thread):
         if loop.is_closed():
             return True
 
+        pool_closed = True
         pool = self._connection_pool
         if pool is not None:
             closing = AsyncTask(
                 task_function=self._close_connection_pool, task_args=(pool,)
             )
             self.task_queue.put(closing)
-            closing.event.wait(timeout=timeout)
-            self._connection_pool = None
+            # Only let go of the pool once it is actually closed. Dropping the
+            # handle on a timeout would leave its connections open on the server
+            # with nothing left to retry the close.
+            pool_closed = closing.event.wait(timeout=timeout)
+            if pool_closed:
+                self._connection_pool = None
 
         self.stop_event.set()
         self.task_queue.put(AsyncTask(task_function=_noop_task))
@@ -1109,7 +1116,7 @@ class AsyncTaskThread(threading.Thread):
         deadline = time.monotonic() + timeout
         while not loop.is_closed() and time.monotonic() < deadline:
             time.sleep(0.05)
-        return loop.is_closed()
+        return pool_closed and loop.is_closed()
 
     def run(self):
         """Execute the async tasks for the queue."""

@@ -82,6 +82,20 @@ class TestAsyncTaskThread:
         assert pool.closed, "pool.close() was not called"
         assert pool.waited, "pool.wait_closed() was not awaited"
 
+    def test_a_failed_pool_close_keeps_the_pool_handle(self):
+        """A close that does not finish must not drop the handle or claim success.
+
+        The thread is never started, so nothing services the queue and the close
+        task cannot complete: the same state as a thread too wedged to drain it.
+        """
+        pool = _FakePool()
+        thread = AsyncTaskThread(connection_pool_initializer=_pool_initializer(pool))
+        thread._connection_pool = pool
+
+        assert thread._shutdown(timeout=0.05) is False
+        assert thread._connection_pool is pool, "pool handle was dropped"
+        assert not pool.closed
+
     def test_a_submitted_task_still_runs(self):
         thread = AsyncTaskThread()
         thread.start()
