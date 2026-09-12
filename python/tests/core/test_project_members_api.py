@@ -188,6 +188,33 @@ class TestProjectMembersApi:
         delete_call = client_instance._send_request.call_args_list[0]
         assert delete_call.kwargs["query_params"] == {"deleteHomeDir": "false"}
 
+    def test_remove_member_names_the_data_owner_that_takes_over_the_files(self, mocker):
+        api = ProjectMembersApi()
+        client_instance = _patch_client(mocker, None)
+
+        api.remove_member("bob@example.com", new_file_owner="carol@example.com")
+
+        delete_call = client_instance._send_request.call_args_list[0]
+        assert delete_call.kwargs["query_params"] == {
+            "deleteHomeDir": "false",
+            "newFileOwner": "carol@example.com",
+        }
+
+    def test_remove_member_omits_the_file_owner_when_none_is_chosen(self, mocker):
+        # The backend picks the longest-serving data owner when the parameter is absent, so sending
+        # it empty would be a different request than "no preference".
+        api = ProjectMembersApi()
+        client_instance = _patch_client(mocker, None)
+
+        api.remove_member("bob@example.com")
+
+        assert (
+            "newFileOwner"
+            not in client_instance._send_request.call_args_list[0].kwargs[
+                "query_params"
+            ]
+        )
+
 
 class TestProjectMember:
     def test_update_role_delegates_to_api_and_updates_local_state(self, mocker):
@@ -213,5 +240,19 @@ class TestProjectMember:
         member.remove(delete_home_dir=True)
 
         member._project_members_api.remove_member.assert_called_once_with(
-            "bob@example.com", delete_home_dir=True
+            "bob@example.com", delete_home_dir=True, new_file_owner=None
+        )
+
+    def test_remove_passes_the_chosen_file_owner_through(self, mocker):
+        member = ProjectMember.from_response_json(
+            _member("bob@example.com", "Data owner")
+        )[0]
+        member._project_members_api = MagicMock()
+
+        member.remove(new_file_owner="carol@example.com")
+
+        member._project_members_api.remove_member.assert_called_once_with(
+            "bob@example.com",
+            delete_home_dir=False,
+            new_file_owner="carol@example.com",
         )

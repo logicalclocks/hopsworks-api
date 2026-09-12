@@ -15,11 +15,15 @@
 #
 from __future__ import annotations
 
+import contextlib
+import json
 import os
+import re
 import tempfile
 import time
 import uuid
 
+from hopsworks_common import client
 from hopsworks_common.client.exceptions import ModelServingException, RestAPIError
 from hopsworks_common.client.istio.utils.infer_type import InferInput
 from hopsworks_common.constants import (
@@ -31,10 +35,23 @@ from hopsworks_common.constants import (
 )
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
 from hopsworks_common.core import dataset_api, inode
+from hsml import default_predictor, deployable_component_logs, deployment_schema
 from hsml.core import serving_api
 from hsml.engine import local_engine
-from hsml.utils.local_paths import _resolve_serving_file
+from hsml.utils.local_paths import _ensure_dataset_dir, _resolve_serving_file
 from tqdm.auto import tqdm
+
+
+def _structured_prediction_error(error: RestAPIError) -> dict | None:
+    """The `detail` object of a default predictor error response, or `None` for any other body."""
+    try:
+        body = error.response.json()
+    except Exception:  # noqa: BLE001 - not JSON, so not one of ours
+        return None
+    detail = body.get("detail") if isinstance(body, dict) else None
+    if isinstance(detail, dict) and "code" in detail:
+        return detail
+    return None
 
 
 def _render_chunk(chunk) -> str:
@@ -50,6 +67,10 @@ def _render_chunk(chunk) -> str:
     if content and not content.endswith("\n"):
         content += "\n"
     return content
+
+
+# RESTCodes.ServingErrorCode.SCHEMA_NOT_FOUND: the id is not a published schema
+_SCHEMA_NOT_FOUND = 240037
 
 
 class ServingEngine:
@@ -196,7 +217,8 @@ class ServingEngine:
                 self._stop(deployment_instance, await_status=0)
                 raise re
 
-        if state.status == PREDICTOR_STATE.STATUS_RUNNING:
+        # await_running=0 returns before the state is polled again
+        if state is not None and state.status == PREDICTOR_STATE.STATUS_RUNNING:
             if deployment_instance.model_server == PREDICTOR.MODEL_SERVER_VLLM:
                 print("Start prompting using any OpenAI API-compatible client.")
             elif not deployment_instance.has_model:
@@ -477,6 +499,77 @@ class ServingEngine:
 
         return local_path
 
+    def _download_logs(self, deployment_instance, path=None, latest=False):
+        """Download the HopsFS log archives of a deployment.
+
+        Each instance archives its own output when it exits, restarts, or is
+        stopped. Archives live in the project's ``Logs`` dataset, one file per
+        instance run under ``Logs/Serving/<deployment_name>/`` named
+        ``<UTC yyyyMMdd-HHmmss>_<pod>_<component>.log``.
+
+        Parameters:
+            deployment_instance: The deployment whose archived logs to download.
+            path: Local directory to download into; the current working directory when unset.
+            latest: Download only the most recent archives instead of all of them.
+
+        Returns:
+            The local paths of the downloaded archive files.
+
+        Raises:
+            hopsworks.client.exceptions.ModelServingException: If `path` does not exist or the deployment has no archived logs.
+        """
+        if path is not None and not os.path.exists(path):
+            raise ModelServingException(f"Path {path} does not exist")
+        if path is not None and not os.path.isdir(path):
+            raise ModelServingException(f"Path {path} is not a directory")
+        if path is None:
+            path = os.getcwd()
+
+        archives_path = f"{MODEL_SERVING.LOGS_DATASET}/{MODEL_SERVING.ARCHIVED_LOGS_DIR}/{deployment_instance.name}"
+        no_archives_msg = (
+            f"No archived logs found for deployment '{deployment_instance.name}' "
+            f"under {archives_path}. Instances archive their logs when they "
+            "exit, restart, or are stopped."
+        )
+        if not self._dataset_api.exists(archives_path):
+            raise ModelServingException(no_archives_msg)
+
+        _, items = self._dataset_api._list_dataset_path(
+            archives_path, inode.Inode, sort_by="NAME:desc"
+        )
+        # Inode paths are absolute (/Projects/<project>/...), and download() interpolates the path
+        # straight into the request, so passing them through yields a //Projects/... segment. The
+        # archives are flat files directly under archives_path, so rebuilding project-relative paths
+        # from the basename avoids having to strip a project prefix.
+        archive_paths = [
+            f"{archives_path}/{os.path.basename(entry.path)}"
+            for entry in items
+            if not entry.dir
+        ]
+        if latest and archive_paths:
+            # File names start with the UTC stop timestamp, so the
+            # lexicographically greatest prefix is the most recent stop.
+            latest_prefix = max(
+                os.path.basename(p).split("_", 1)[0] for p in archive_paths
+            )
+            archive_paths = [
+                p
+                for p in archive_paths
+                if os.path.basename(p).startswith(latest_prefix + "_")
+            ]
+        if not archive_paths:
+            raise ModelServingException(no_archives_msg)
+
+        download_dir = os.path.join(
+            path,
+            f"logs-deployment-{deployment_instance.name}_{str(uuid.uuid4())[:16]}",
+        )
+        os.makedirs(download_dir, exist_ok=True)
+        return [
+            self._dataset_api.download(p, download_dir, overwrite=True)
+            for p in archive_paths
+        ]
+
     def _create(self, deployment_instance):
         try:
             self._serving_api._put(deployment_instance)
@@ -563,11 +656,142 @@ class ServingEngine:
         # basename), which are left untouched; only newly-assigned local
         # paths are re-uploaded.
         self._upload_local_serving_files(deployment_instance)
+        self._upload_default_predictor_stub(deployment_instance)
+        self._publish_schema(deployment_instance)
 
         if deployment_instance.id is None:
             self._create(deployment_instance)
             return
         self._update(deployment_instance, await_update)
+
+    def _upload_default_predictor_stub(self, deployment_instance):
+        """Give a default-predictor deployment without a script the library stub as its predictor script."""
+        predictor = deployment_instance._predictor
+        if not predictor.default_predictor or predictor.script_file is not None:
+            return
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            stub_path = os.path.join(tmp_dir, MODEL_SERVING.DEFAULT_PREDICTOR_SCRIPT)
+            with open(stub_path, "w", encoding="utf-8") as f:
+                f.write(default_predictor.STUB_SCRIPT)
+            predictor.script_file = _resolve_serving_file(
+                self._engine,
+                deployment_instance.name,
+                stub_path,
+                field_name="script_file",
+                subdir="predictor",
+                is_update=deployment_instance.id is not None,
+            )
+
+    def _schema_dir(self, deployment_name: str) -> str:
+        return (
+            f"{MODEL_SERVING.DEPLOYMENTS_DATASET}/{deployment_name}/"
+            f"{MODEL_SERVING.DEPLOYMENT_RESOURCES_DIR}/{MODEL_SERVING.DEPLOYMENT_SCHEMA_DIR}"
+        )
+
+    def _publish_schema(self, deployment_instance):
+        """Write the pending schema as immutable, content-addressed files and point the env vars at them.
+
+        Both happen before the `PUT`, so the revision the backend creates
+        already names files that exist and never change. The JSON Schema and
+        OpenAPI renderings go next to the schema for the backend's discovery
+        endpoint. The batch limit configured in the predictor's env vars is
+        part of the schema, so changing it publishes a new id. A transformer
+        gets the id too and is named the enforcer: it sees the client request
+        first, and the predictor behind it defers.
+        """
+        predictor = deployment_instance._predictor
+        # the property loads a fetched deployment's schema by id, so a save that
+        # only attaches a transformer or changes the batch limit still publishes
+        schema = predictor.schema
+        schema_id = schema.schema_id if schema is not None else predictor.schema_id
+        if schema_id is None:
+            return
+        if schema is not None:
+            configured = deployment_schema._configured_batch_rows(predictor.env_vars)
+            if configured is not None and configured != schema.max_batch_rows:
+                schema = schema._with_max_batch_rows(configured)
+                predictor._schema = schema
+                schema_id = schema.schema_id
+            self._write_schema_documents(deployment_instance.name, schema)
+        transformer = predictor.transformer
+        enforcer = (
+            MODEL_SERVING.SCHEMA_ENFORCER_TRANSFORMER
+            if transformer is not None
+            else MODEL_SERVING.SCHEMA_ENFORCER_PREDICTOR
+        )
+        for component in [predictor] + ([transformer] if transformer else []):
+            env_vars = dict(component.env_vars or {})
+            env_vars[MODEL_SERVING.DEPLOYMENT_SCHEMA_ID_ENV_VAR] = schema_id
+            # each pod validates, or defers, according to its own revision
+            env_vars[MODEL_SERVING.SCHEMA_ENFORCER_ENV_VAR] = enforcer
+            component.env_vars = env_vars
+
+    def _write_schema_documents(self, deployment_name: str, schema) -> None:
+        schema_dir = self._schema_dir(deployment_name)
+        documents = {
+            f"{schema.schema_id}.json": schema.json(),
+            f"{schema.schema_id}{MODEL_SERVING.DEPLOYMENT_SCHEMA_JSON_SCHEMA_SUFFIX}": json.dumps(
+                schema.to_json_schema()
+            ),
+            f"{schema.schema_id}{MODEL_SERVING.DEPLOYMENT_SCHEMA_OPENAPI_SUFFIX}": json.dumps(
+                schema.to_openapi(deployment_name)
+            ),
+        }
+        missing = {
+            name: content
+            for name, content in documents.items()
+            if not self._engine._dataset_api.exists(f"{schema_dir}/{name}")
+        }
+        if not missing:
+            return
+        _ensure_dataset_dir(self._engine, schema_dir)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            for name, content in missing.items():
+                local_path = os.path.join(tmp_dir, name)
+                with open(local_path, "w", encoding="utf-8") as f:
+                    f.write(content)
+                self._engine._upload(local_path, schema_dir, overwrite=False)
+
+    def _read_schema(self, predictor, schema_id: str):
+        """Fetch the schema a revision names, or `None` when it is gone.
+
+        The backend endpoint needs only the `SERVING` scope; a backend without
+        it answers a bare 404, and the schema file is then downloaded
+        directly, which needs dataset access. A 404 naming another error, such
+        as an unknown deployment, propagates.
+        """
+        if predictor.id is not None:
+            try:
+                schema_json = self._serving_api._get_schema(predictor.id, schema_id)
+                return deployment_schema.DeploymentSchema.from_response_json(
+                    schema_json
+                )
+            except RestAPIError as e:
+                if e.response.status_code != 404:
+                    raise
+                error_code = getattr(e, "error_code", None)
+                if error_code == _SCHEMA_NOT_FOUND:
+                    return None
+                if error_code:
+                    raise
+        project_name = client._get_instance()._project_name
+        path = f"/Projects/{project_name}/{self._schema_dir(predictor.name)}/{schema_id}.json"
+        response = self._dataset_api.read_content(path)
+        if response is None:
+            return None
+        content = getattr(response, "content", response)
+        if isinstance(content, (bytes, bytearray)):
+            content = content.decode("utf-8")
+        return deployment_schema.DeploymentSchema.from_response_json(
+            json.loads(content)
+        )
+
+    def _remove_schemas(self, deployment_name: str):
+        schema_dir = self._schema_dir(deployment_name)
+        if self._engine._dataset_api.exists(schema_dir):
+            self._engine._dataset_api.remove(
+                f"/Projects/{client._get_instance()._project_name}/{schema_dir}"
+            )
 
     def _upload_local_serving_files(self, deployment_instance):
         """Upload local ``script_file`` / ``config_file`` paths.
@@ -622,6 +846,9 @@ class ServingEngine:
             )
 
         self._serving_api._delete(deployment_instance)
+        # The backend may already have removed the deployment folder.
+        with contextlib.suppress(RestAPIError):
+            self._remove_schemas(deployment_instance.name)
         print("Deployment deleted successfully")
 
     def _get_state(self, deployment_instance):
@@ -654,8 +881,10 @@ class ServingEngine:
         if state.status == PREDICTOR_STATE.STATUS_STARTING:
             print("Deployment is starting, server logs might not be ready yet")
 
+        # Kibana is gone with the OpenSearch pipeline: the deployment page is where the live
+        # reader and the log-history archives are now.
         print(
-            "Explore all the logs and filters in the Kibana logs at "
+            "Explore all the logs and filters on the deployment page at "
             + deployment_instance.get_url(),
             end="\n\n",
         )
@@ -663,17 +892,16 @@ class ServingEngine:
         return self._serving_api._get_logs(deployment_instance, component, tail)
 
     # ----- Programmatic log APIs (read_logs / tail_logs) ---------------------
-    # These never print and never short-circuit on deployment state. The
-    # OpenSearch source returns logs even when the deployment is stopped, so
-    # the legacy "deployment is stopping → return None" guard would just hide
-    # data that is in fact retrievable.
+    # These never print and never short-circuit on deployment state, so a
+    # deployment that is starting or stopping can still be read without the
+    # legacy "deployment is stopping → return None" guard hiding data.
 
     def _read_logs(
         self,
         deployment_instance,
         component: str = "predictor",
         tail: int = 100,
-        source: str = "opensearch",
+        source: str = "kubernetes",
         since: str | None = None,
         until: str | None = None,
         pod: str | None = None,
@@ -687,7 +915,7 @@ class ServingEngine:
             deployment_instance: The deployment whose logs to read.
             component: Which deployment component to read (``predictor``, ``transformer``).
             tail: Maximum number of recent log entries to fetch.
-            source: Log source (``opensearch`` or ``kubernetes``).
+            source: Log source (``kubernetes`` or ``opensearch``).
             since: ISO-8601 lower bound for log timestamps, if any.
             until: ISO-8601 upper bound for log timestamps, if any.
             pod: Specific pod name to read logs for, if any.
@@ -711,28 +939,39 @@ class ServingEngine:
         deployment_instance,
         component: str = "predictor",
         interval: float = 2.0,
-        source: str = "opensearch",
+        source: str = "kubernetes",
         since: str | None = "now",
         timeout: float | None = None,
         stop_on_status=None,
+        pod: str | None = None,
     ):
         """Yield only newly observed log chunks as plain text.
 
-        v1 streaming is client-side polling: each tick calls
-        :py:meth:`read_logs` with a moving ``since`` cursor and yields the
-        portion not already seen. Deduplication is by (timestamp, doc_id)
-        on the OpenSearch path and by content hash for the Kubernetes path
-        (which has neither field). The generator stops when:
+        v1 streaming is client-side polling: each tick fetches with a moving
+        ``since`` cursor and yields the portion not already seen.
+        Deduplication is by (timestamp, doc_id) on the OpenSearch path (old
+        backends). On the Kubernetes path lines are requested with kubelet
+        timestamps and a per-pod cursor advances past what was yielded, so a
+        poll transfers only the news; against an old backend that ignores
+        those params, the previous tail window is kept per pod and only the
+        non-overlapping suffix is emitted. The generator stops when:
 
         - ``timeout`` (seconds, optional) elapses,
         - ``stop_on_status`` matches the current ``deployment.get_state().status``, or
         - the caller breaks out of the loop / closes the generator.
 
+        Continuation is not lossless in one case, and says so when it happens.
+        ``since`` filters by whole seconds, so a resume re-reads the second the
+        cursor sits in; a replica writing more in that second than one read can
+        return can never be resumed past it. After a few such reads the cursor
+        for that replica is abandoned for a fresh tail and a line marking the
+        skipped range is yielded in place of the lines that were lost.
+
         Parameters:
             deployment_instance: The deployment whose logs to tail.
             component: Which deployment component to tail (``predictor``, ``transformer``).
             interval: Seconds between successive polls.
-            source: Log source (``opensearch`` or ``kubernetes``).
+            source: Log source (``kubernetes`` or ``opensearch``).
             since: ISO-8601 starting cursor, or ``"now"`` for new-only.
             timeout: Stop after this many seconds, if set.
             stop_on_status: Stop when the deployment status matches this value.
@@ -745,11 +984,31 @@ class ServingEngine:
         # successive overlapping windows.
         seen_doc_ids: set[str] = set()
         last_timestamp: str | None = since if (since and since != "now") else None
-        # Kubernetes path has no doc id / timestamp, so dedupe by content
-        # hash instead. Bound the set so a chatty deployment doesn't keep
-        # the dedupe state growing forever.
-        seen_hashes: set[int] = set()
-        seen_hashes_cap = 4096
+        # Kubernetes path: lines are requested with kubelet timestamps and a
+        # per-pod cursor advances past what was already yielded, so each poll
+        # transfers only what is new. ``since`` is applied by the kubelet at
+        # second granularity, so the cursor comparison below is what actually
+        # dedupes the overlap it re-sends. A cursor is (timestamp, ordinal):
+        # the ordinal counts the lines already delivered bearing exactly that
+        # timestamp, because coarse-clock runtimes can emit several lines per
+        # timestamp and a timestamp-only cursor would drop the later ones.
+        # Old backends ignore both params and return unprefixed tail windows;
+        # the previous window is kept per pod (keyed by instance name) for
+        # overlap-suffix dedup as a fallback.
+        cursor_by_pod: dict[str, tuple[str, int]] = {}
+        previous_lines_by_pod: dict[str, list[str]] = {}
+        # Stall recovery. ``since`` filters by whole seconds, so a resume always
+        # re-fetches the whole second the cursor sits in. When that second holds
+        # more than the backend's per-read byte budget, every read returns the
+        # same head, the cursor cannot advance, and without this the generator
+        # polls that prefix for ever and never reaches the next second. Counted
+        # per container instance, since only the busy replica is stuck.
+        stalled_by_instance: dict[str, int] = {}
+        reseeds_by_instance: dict[str, int] = {}
+        pre_reseed_cursor: dict[str, tuple[str, int]] = {}
+        # Set when a stalled instance abandons its cursor; makes the next read a
+        # tail read instead of another since-bounded one.
+        reseed_pending = False
 
         # ``since="now"`` is a UX shorthand: start streaming brand-new lines
         # only. Resolved here on the first call to a real ISO-8601 timestamp
@@ -764,43 +1023,162 @@ class ServingEngine:
         deadline = (time.monotonic() + timeout) if timeout else None
 
         while True:
+            # since is an absolute instant, so one value covers every pod: the
+            # earliest cursor lags without losing, and each pod trims its own
+            # overlap.
+            #
+            # A reseed is the exception. Dropping the stalled instance's cursor
+            # is not enough to reach the newest output: with any cursor left, or
+            # any resolved ``since``, the next read is still bounded by that
+            # instant and returns the same capped prefix. The gap notice would
+            # then claim a jump that never happened. So a reseed clears every
+            # cursor and drops the resolved ``since`` for exactly one read,
+            # which is what makes it a tail read. That is why the reseed is
+            # coordinated rather than per-instance: one request carries one
+            # ``since``, so a fresh tail cannot be fetched for one replica
+            # without releasing the others, and the gap notice covers them all.
+            if reseed_pending:
+                since_param = None
+                reseed_pending = False
+            elif cursor_by_pod:
+                since_param = min(ts for ts, _ in cursor_by_pod.values())
+            else:
+                since_param = last_timestamp
             chunks = (
                 self._serving_api._get_logs(
                     deployment_instance,
                     component,
-                    # Bounded per-poll fetch. Larger values just mean more work
-                    # for the dedupe pass; the SDK still yields only what's new.
-                    tail=200,
+                    # Bounded first fetch; no bound on a resume, where a tail
+                    # would discard exactly the lines being resumed.
+                    tail=None if since_param is not None else 200,
                     source=source,
-                    since=last_timestamp,
+                    since=since_param,
                     until=None,
-                    pod=None,
+                    pod=pod,
+                    timestamps=True,
                 )
                 or []
             )
 
             new_chunks = []
+            pods_in_response: set[str] = set()
+            saw_kubernetes_chunk = False
             for chunk in chunks:
                 if chunk.doc_id is not None:
                     if chunk.doc_id in seen_doc_ids:
                         continue
                     seen_doc_ids.add(chunk.doc_id)
-                else:
-                    key = hash((chunk.instance_name, chunk.content))
-                    if key in seen_hashes:
-                        continue
-                    if len(seen_hashes) >= seen_hashes_cap:
-                        # Drop the oldest half — set has no ordering, so we
-                        # just clear and start fresh; worst case we re-yield
-                        # at most ``seen_hashes_cap / 2`` already-seen lines
-                        # once before steady state is restored.
-                        seen_hashes = set()
-                    seen_hashes.add(key)
-                new_chunks.append(chunk)
-                if chunk.timestamp is not None and (
-                    last_timestamp is None or chunk.timestamp > last_timestamp
+                    new_chunks.append(chunk)
+                    if chunk.timestamp is not None and (
+                        last_timestamp is None or chunk.timestamp > last_timestamp
+                    ):
+                        last_timestamp = chunk.timestamp
+                    continue
+                saw_kubernetes_chunk = True
+                # Keyed by container instance, not by pod name: a restarted
+                # container starts a new log at zero, and resuming it from the
+                # dead instance's cursor would skip everything it printed.
+                chunk_pod = self._instance_key(chunk)
+                pods_in_response.add(chunk_pod)
+                if chunk.skipped or chunk.read_failed:
+                    # A note, not log lines. Surfacing it as content would seed
+                    # a cursor from prose.
+                    continue
+                content = chunk.content or ""
+                new_lines = content.splitlines()
+                # splitlines() erases whether the last line ended. A byte-capped
+                # response can stop mid-line, and emitting that fragment commits
+                # its timestamp to the cursor, so the complete line is discarded
+                # as already delivered on the next read and its tail is lost for
+                # good. Hold the fragment back instead: the next read re-fetches
+                # its second and delivers it whole. A line larger than the whole
+                # budget never completes, which is what the stall counter below
+                # is for.
+                last_line_complete = content.endswith(("\n", "\r"))
+                before = cursor_by_pod.get(chunk_pod)
+                remainder = self._advance_pod_cursor(
+                    cursor_by_pod, chunk_pod, new_lines, last_line_complete
+                )
+                if chunk.truncated and not remainder:
+                    stalled_by_instance[chunk_pod] = (
+                        stalled_by_instance.get(chunk_pod, 0) + 1
+                    )
+                    if (
+                        stalled_by_instance[chunk_pod] >= self._MAX_STALLED_READS
+                        and reseeds_by_instance.get(chunk_pod, 0)
+                        < self._MAX_FRUITLESS_RESEEDS
+                    ):
+                        # Abandon the cursor and take a fresh tail. The jump is
+                        # reported: this is a gap, not a continuation, and the
+                        # caller must not be told otherwise.
+                        pre_reseed_cursor[chunk_pod] = cursor_by_pod.pop(
+                            chunk_pod, before
+                        )
+                        # Every cursor goes, not just this instance's: one
+                        # request carries one ``since``, so a leftover cursor
+                        # would keep the next read bounded and there would be no
+                        # tail to jump to.
+                        cursor_by_pod.clear()
+                        reseed_pending = True
+                        stalled_by_instance[chunk_pod] = 0
+                        reseeds_by_instance[chunk_pod] = (
+                            reseeds_by_instance.get(chunk_pod, 0) + 1
+                        )
+                        new_chunks.append(
+                            deployable_component_logs.DeployableComponentLogs(
+                                instance_name=chunk.instance_name,
+                                content=self._GAP_NOTICE,
+                            )
+                        )
+                elif remainder:
+                    stalled_by_instance[chunk_pod] = 0
+                    # Only progress past where the reseed restarted from counts.
+                    # A reseed re-delivers lines already seen, and treating that
+                    # as progress reset the budget and made the reseed cap
+                    # unreachable.
+                    resumed = pre_reseed_cursor.get(chunk_pod)
+                    if (
+                        resumed is None
+                        or cursor_by_pod.get(chunk_pod, ("", 0)) > resumed
+                    ):
+                        reseeds_by_instance[chunk_pod] = 0
+                        pre_reseed_cursor.pop(chunk_pod, None)
+                if remainder is None:
+                    # No kubelet timestamps: an old backend that ignored the
+                    # request param. Fall back to overlap-suffix dedup of the
+                    # rolling tail windows.
+                    previous_lines = previous_lines_by_pod.get(chunk_pod)
+                    remainder = (
+                        new_lines
+                        if previous_lines is None
+                        else self._overlap_remainder(previous_lines, new_lines)
+                    )
+                    previous_lines_by_pod[chunk_pod] = new_lines
+                if remainder:
+                    # ``content`` is read-only on the DTO, so build a
+                    # new chunk holding only the unseen lines.
+                    new_chunks.append(
+                        deployable_component_logs.DeployableComponentLogs(
+                            instance_name=chunk.instance_name,
+                            content="\n".join(remainder),
+                        )
+                    )
+
+            # A replaced or scaled-away pod must not keep pinning since to its
+            # last position, or every later poll re-transfers a growing history
+            # for the pods that are still alive.
+            if saw_kubernetes_chunk:
+                for known_pod in list(cursor_by_pod):
+                    if known_pod not in pods_in_response:
+                        del cursor_by_pod[known_pod]
+                for tracked in (
+                    stalled_by_instance,
+                    reseeds_by_instance,
+                    pre_reseed_cursor,
                 ):
-                    last_timestamp = chunk.timestamp
+                    for known_pod in list(tracked):
+                        if known_pod not in pods_in_response:
+                            del tracked[known_pod]
 
             if new_chunks:
                 yield self._format_log_chunks(new_chunks)
@@ -814,6 +1192,117 @@ class ServingEngine:
                 return
 
             time.sleep(interval)
+
+    # Truncated-but-empty reads tolerated before a cursor is abandoned, and
+    # reseeds allowed without real progress in between. Both mirror the browser
+    # reader so the two clients report the same gaps at the same points.
+    _MAX_STALLED_READS = 2
+    _MAX_FRUITLESS_RESEEDS = 2
+
+    _GAP_NOTICE = (
+        "-- lines skipped: this replica writes more in one second than a single read "
+        "can return; jumped to the newest output --"
+    )
+
+    @staticmethod
+    def _instance_key(chunk) -> str:
+        return "|".join(
+            str(part) if part is not None else ""
+            for part in (chunk.instance_name, chunk.pod_uid, chunk.restart_count)
+        )
+
+    # Matches the kubelet's RFC 3339 line prefix requested via timestamps=true,
+    # e.g. "2026-08-07T12:34:56.123456789Z log text".
+    _K8S_TS_PREFIX = re.compile(
+        r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})) ?"
+    )
+
+    @classmethod
+    def _advance_pod_cursor(
+        cls,
+        cursor_by_pod: dict[str, tuple[str, int]],
+        pod: str,
+        lines: list[str],
+        last_line_complete: bool = True,
+    ) -> list[str] | None:
+        """Strip kubelet timestamp prefixes and return the lines after this pod's cursor.
+
+        Returns ``None`` when the lines carry no timestamps, signalling the
+        caller to use the rolling-window fallback instead. Timestamps compare
+        lexicographically: the kubelet emits them in one fixed UTC format.
+        Lines sharing the cursor's exact timestamp are skipped only up to the
+        cursor's ordinal, so a runtime emitting several lines per timestamp
+        does not lose the later ones. A line without a prefix (a continuation
+        of a long line) follows the keep-or-drop decision of the timestamped
+        line before it.
+        """
+        if not any(cls._K8S_TS_PREFIX.match(line) for line in lines):
+            return None
+        if not last_line_complete and lines:
+            # The trailing fragment is neither delivered nor recorded, so the
+            # cursor stays behind it and the next read returns the whole line.
+            lines = lines[:-1]
+            if not lines:
+                return []
+        cursor_ts, cursor_ordinal = cursor_by_pod.get(pod, (None, 0))
+        fresh: list[str] = []
+        keep_continuation = cursor_ts is None
+        max_ts = cursor_ts
+        max_ts_count = 0
+        equal_seen = 0
+        for line in lines:
+            match = cls._K8S_TS_PREFIX.match(line)
+            if match is None:
+                if keep_continuation:
+                    fresh.append(line)
+                continue
+            ts = match.group(1)
+            if cursor_ts is not None and ts < cursor_ts:
+                keep_continuation = False
+            elif ts == cursor_ts:
+                equal_seen += 1
+                keep_continuation = equal_seen > cursor_ordinal
+            else:
+                keep_continuation = True
+            if keep_continuation:
+                fresh.append(line[match.end() :])
+            if max_ts is None or ts > max_ts:
+                max_ts = ts
+                max_ts_count = 1
+            elif ts == max_ts:
+                max_ts_count += 1
+        if max_ts is not None:
+            if max_ts == cursor_ts:
+                # A since-bounded window re-sends the whole cursor second, so the
+                # in-window count subsumes the previous ordinal; max() guards the
+                # case where a byte cap cut the window short of it.
+                cursor_by_pod[pod] = (max_ts, max(cursor_ordinal, equal_seen))
+            else:
+                cursor_by_pod[pod] = (max_ts, max_ts_count)
+        return fresh
+
+    @staticmethod
+    def _overlap_remainder(
+        previous_lines: list[str], new_lines: list[str]
+    ) -> list[str]:
+        """Return the lines of a new tail window not covered by the previous one.
+
+        Finds the largest suffix of the previous window that is a prefix of
+        the new window and returns the remaining new lines. When no overlap
+        exists (the window rotated fully between polls), the whole new
+        window is returned.
+
+        Parameters:
+            previous_lines: Lines of the previous poll's tail window.
+            new_lines: Lines of the current poll's tail window.
+
+        Returns:
+            The lines of `new_lines` that were not already observed.
+        """
+        for overlap in range(min(len(previous_lines), len(new_lines)), 0, -1):
+            if previous_lines[-overlap:] == new_lines[:overlap]:
+                return new_lines[overlap:]
+        return new_lines
 
     @staticmethod
     def _format_log_chunks(chunks) -> str:
@@ -847,6 +1336,7 @@ class ServingEngine:
         deployment_instance,
         data: dict | list[InferInput],
         inputs: dict | list[dict],
+        validate: bool = True,
     ):
         # validate user-provided payload
         if deployment_instance.model_server == PREDICTOR.MODEL_SERVER_VLLM:
@@ -860,6 +1350,8 @@ class ServingEngine:
         payload = self._build_inference_payload(
             deployment_instance.api_protocol, data, inputs
         )
+        if validate and deployment_instance.api_protocol == IE.API_PROTOCOL_REST:
+            payload = self._validate_against_schema(deployment_instance, payload)
 
         # if not KServe, send request through Hopsworks
         serving_tool = deployment_instance.predictor.serving_tool
@@ -869,7 +1361,9 @@ class ServingEngine:
                 deployment_instance, payload, through_hopsworks
             )
         except RestAPIError as re:
-            if (
+            # The default predictor answers 404 ENTITY_NOT_FOUND with a
+            # structured body; only a bare 404 means the deployment is absent.
+            if _structured_prediction_error(re) is None and (
                 re.response.status_code == RestAPIError.STATUS_CODE_NOT_FOUND
                 or re.error_code
                 == ModelServingException.ERROR_CODE_DEPLOYMENT_NOT_RUNNING
@@ -1024,11 +1518,25 @@ class ServingEngine:
         # parse inputs
         return self._parse_inference_inputs(api_protocol, inputs)
 
+    def _validate_against_schema(self, deployment_instance, payload: dict) -> dict:
+        """Encode and validate the rows of a REST payload against the deployment schema, when there is one."""
+        schema = deployment_instance.schema
+        if schema is None or not isinstance(payload, dict):
+            return payload
+        key = "instances" if "instances" in payload else "inputs"
+        rows = deployment_schema._encode_instances(payload.get(key))
+        schema._raise_if_invalid(rows, deployment_instance.name)
+        return {**payload, key: rows}
+
     def _parse_inference_inputs(
         self, api_protocol, inputs: dict | list[dict], recursive_call=False
     ):
         if api_protocol == IE.API_PROTOCOL_REST:  # REST protocol
-            if not isinstance(inputs, list):
+            if isinstance(inputs, dict):
+                # A dict is one row keyed by field name; wrapping it twice
+                # would hand the predictor a one-element list instead of the row.
+                data = {"instances": [inputs]}
+            elif not isinstance(inputs, list):
                 data = {"instances": [[inputs]]}  # wrap inputs in a 2-dim list
             else:
                 data = {"instances": inputs}  # use given inputs list by default

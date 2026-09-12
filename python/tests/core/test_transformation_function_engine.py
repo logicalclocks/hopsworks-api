@@ -436,6 +436,187 @@ class TestTransformationFunctionEngine:
         # fitted ones.
         assert persisted["imputed_feature_1"].mean == 3.0
 
+    def _pre_transform_call_order(self, mocker, transformations, dataset):
+        # fit / pre / apply calls in the order one _fit_and_transform makes them
+        feature_store_id = 99
+        mocker.patch("hopsworks_common.client._get_instance")
+        engine._set_instance(engine=python.Engine(), engine_type="python")
+        self._fake_persisting_statistics(mocker)
+
+        order = []
+        real_compute = transformation_function_engine.TransformationFunctionEngine._compute_transformation_fn_statistics
+        real_no_save = statistics_engine.StatisticsEngine._compute_transformation_fn_statistics_no_save
+        real_apply = transformation_function_engine.TransformationFunctionEngine._apply_transformation_functions
+
+        def record_compute(*args, **kwargs):
+            order.append("fit")
+            return real_compute(*args, **kwargs)
+
+        def record_no_save(stats_engine, *args, **kwargs):
+            order.append("fit")
+            return real_no_save(stats_engine, *args, **kwargs)
+
+        def record_apply(*args, **kwargs):
+            order.append("apply")
+            return real_apply(*args, **kwargs)
+
+        mocker.patch.object(
+            transformation_function_engine.TransformationFunctionEngine,
+            "_compute_transformation_fn_statistics",
+            side_effect=record_compute,
+        )
+        mocker.patch.object(
+            statistics_engine.StatisticsEngine,
+            "_compute_transformation_fn_statistics_no_save",
+            autospec=True,
+            side_effect=record_no_save,
+        )
+        mocker.patch.object(
+            transformation_function_engine.TransformationFunctionEngine,
+            "_apply_transformation_functions",
+            side_effect=record_apply,
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="t",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            partition_key=[],
+            features=[feature.Feature(c) for c in dataset.columns],
+            id=11,
+            stream=False,
+        )
+        fv = feature_view.FeatureView(
+            name="t",
+            featurestore_id=feature_store_id,
+            query=fg.select_all(),
+            transformation_functions=transformations,
+        )
+        td = training_dataset.TrainingDataset(
+            name="t",
+            version=1,
+            data_format="CSV",
+            featurestore_id=feature_store_id,
+            splits={},
+            id=10,
+        )
+
+        def pre_transform(frame):
+            order.append("pre")
+            return frame
+
+        result = transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
+            training_dataset=td,
+            feature_view_obj=fv,
+            dataset=dataset,
+            pre_transform=pre_transform,
+        )
+        return order, result
+
+    def test_fit_and_transform_pre_transform_runs_after_the_fit(self, mocker):
+        feature_store_id = 99
+        mocker.patch("hopsworks_common.client._get_instance")
+        tf_scale = transformation_function.TransformationFunction(
+            feature_store_id,
+            hopsworks_udf=min_max_scaler("feature_1"),
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+        order, _ = self._pre_transform_call_order(
+            mocker,
+            [tf_scale],
+            pd.DataFrame({"feature_1": [1.0, 2.0, 3.0], "other": [10, 20, 30]}),
+        )
+
+        assert order == ["fit", "pre", "apply"]
+
+    def test_fit_and_transform_pre_transform_runs_without_statistics(self, mocker):
+        # nothing to fit, but coalesce=True still has to reach the write
+        feature_store_id = 99
+        mocker.patch("hopsworks_common.client._get_instance")
+
+        @udf(int)
+        def plus_one(feature_1):
+            return feature_1 + 1
+
+        tf_plus = transformation_function.TransformationFunction(
+            feature_store_id,
+            hopsworks_udf=plus_one,
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+        order, _ = self._pre_transform_call_order(
+            mocker,
+            [tf_plus],
+            pd.DataFrame({"feature_1": [1, 2, 3], "other": [10, 20, 30]}),
+        )
+
+        assert order == ["pre", "apply"]
+
+    def test_fit_and_transform_pre_transform_chained_runs_after_last_barrier(
+        self, mocker
+    ):
+        feature_store_id = 99
+        mocker.patch("hopsworks_common.client._get_instance")
+        tf_impute = transformation_function.TransformationFunction(
+            feature_store_id,
+            hopsworks_udf=impute_mean("feature_1").alias("imputed_feature_1"),
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+        tf_scale = transformation_function.TransformationFunction(
+            feature_store_id,
+            hopsworks_udf=min_max_scaler("imputed_feature_1").alias("scaled_feature_1"),
+            transformation_type=TransformationType.MODEL_DEPENDENT,
+        )
+        order, _ = self._pre_transform_call_order(
+            mocker,
+            [tf_impute, tf_scale],
+            pd.DataFrame(
+                {"feature_1": [1.0, None, 3.0, 5.0], "other": [10, 20, 30, 40]}
+            ),
+        )
+
+        assert order == ["fit", "apply", "fit", "pre", "apply"]
+        assert order.count("pre") == 1
+        # one application per stage: nothing executes twice
+        assert order.count("apply") == 2
+
+    def test_fit_and_transform_pre_transform_rejected_for_splits(self, mocker):
+        feature_store_id = 99
+        mocker.patch("hopsworks_common.client._get_instance")
+        engine._set_instance(engine=python.Engine(), engine_type="python")
+        fg = feature_group.FeatureGroup(
+            name="t",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=[],
+            partition_key=[],
+            features=[feature.Feature("feature_1")],
+            id=11,
+            stream=False,
+        )
+        fv = feature_view.FeatureView(
+            name="t",
+            featurestore_id=feature_store_id,
+            query=fg.select_all(),
+            transformation_functions=[],
+        )
+        td = training_dataset.TrainingDataset(
+            name="t",
+            version=1,
+            data_format="CSV",
+            featurestore_id=feature_store_id,
+            splits={},
+            id=10,
+        )
+
+        with pytest.raises(ValueError, match="single dataframe"):
+            transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
+                training_dataset=td,
+                feature_view_obj=fv,
+                dataset={"train": pd.DataFrame({"feature_1": [1.0]})},
+                pre_transform=lambda frame: frame,
+            )
+
     @staticmethod
     def _fake_persisting_statistics(mocker):
         # Skip the backend save in both persisting paths. The raw-feature fit

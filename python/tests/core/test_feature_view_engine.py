@@ -4838,3 +4838,36 @@ class TestFeatureViewEngine:
         transformed_names.assert_called_once_with(5)
         untransformed_names.assert_called_once_with(5)
         label_names.assert_called_once_with(5)
+
+
+class TestFeatureLoggingWithoutEventTime:
+    """A root feature group without an event time must not add a column named `None` to the log."""
+
+    @pytest.mark.parametrize(
+        "event_time_name, expected_names, expected_data",
+        [(None, [], None), ("ts", ["ts"], [[1], [2]])],
+    )
+    def test_event_time_component(
+        self, mocker, event_time_name, expected_names, expected_data
+    ):
+        mocker.patch("hopsworks_common.client._get_instance")
+        fake_engine = mocker.Mock()
+        fake_engine._get_feature_logging_df.return_value = (pd.DataFrame(), [], [])
+        mocker.patch("hsfs.engine._get_instance", return_value=fake_engine)
+        fv_engine = feature_view_engine.FeatureViewEngine(feature_store_id=99)
+        fv = MagicMock()
+        fv._root_feature_group_event_time_column_name = event_time_name
+        logging_fg = MagicMock()
+        logging_fg.columns = []
+
+        fv_engine._get_feature_logging_data(
+            fv=fv,
+            logging_feature_group=logging_fg,
+            logging_data=[[1, 2]],
+            event_time=[[1], [2]],
+        )
+
+        event_time = fake_engine._get_feature_logging_df.call_args.kwargs["event_time"]
+        assert event_time[0] == expected_data
+        assert event_time[1] == expected_names
+        assert event_time[2] == constants.FEATURE_LOGGING.EVENT_TIME
