@@ -215,6 +215,7 @@ class TestInferredMetadata:
             ],
             "suggestedPrimaryKey": ["user_id"],
             "suggestedEventTime": "event_time",
+            "suggestedDescription": "User events, one row per event.",
         }
 
         # Act
@@ -227,6 +228,10 @@ class TestInferredMetadata:
         assert inferred.features[0].type == "bigint"
         assert inferred.suggested_primary_key == ["user_id"]
         assert inferred.suggested_event_time == "event_time"
+        assert inferred.suggested_description == "User events, one row per event."
+        assert inferred.to_dict()["suggestedDescription"] == (
+            "User events, one row per event."
+        )
 
 
 class TestDataSourceApiInferMetadata:
@@ -292,6 +297,136 @@ class TestDataSourceApiInferMetadata:
             ]
         }
         assert isinstance(result, im.InferredMetadata)
+
+    def test_data_source_data_from_response_json_builds_feature_objects(self):
+        # Regression for the infer_metadata break (HWORKS-2876, d830e12f6):
+        # DataSourceData.from_response_json decamelized the backend JSON and
+        # passed the feature entries straight through, so `features` held raw
+        # dicts instead of Feature objects. Assert from_response_json — the path
+        # the API actually uses — yields Feature objects with readable name/type.
+        preview_data = dsd.DataSourceData.from_response_json(
+            {
+                "features": [
+                    {"name": "col_a", "type": "string"},
+                    {"name": "col_b", "type": "bigint"},
+                ],
+                "preview": [],
+            }
+        )
+
+        assert all(isinstance(f, feature.Feature) for f in preview_data.features)
+        assert [f.name for f in preview_data.features] == ["col_a", "col_b"]
+        assert [f.type for f in preview_data.features] == ["string", "bigint"]
+
+    def test_infer_metadata_handles_data_source_data_from_response_json(self):
+        # Regression for the infer_metadata break (HWORKS-2876, d830e12f6):
+        # _infer_metadata reads feature.name / feature.type, which raised
+        # "AttributeError: 'dict' object has no attribute 'name'" when
+        # DataSourceData.features held raw dicts. Build the preview the same way
+        # the client does at runtime — via from_response_json — so the regression
+        # would resurface here rather than only in production.
+        preview_data = dsd.DataSourceData.from_response_json(
+            {
+                "features": [
+                    {"name": "col_a", "type": "string"},
+                    {"name": "col_b", "type": "bigint"},
+                ],
+                "preview": [
+                    {
+                        "values": [
+                            {"value0": "col_a", "value1": "x1"},
+                            {"value0": "col_b", "value1": "1"},
+                        ]
+                    },
+                ],
+            }
+        )
+
+        sc = MagicMock()
+        sc._featurestore_id = 99
+        sc._name = "my_conn"
+
+        api = data_source_api.DataSourceApi()
+
+        captured: dict = {}
+
+        class _StubClient:
+            _project_id = 1
+
+            def _send_request(self, method, path_params, **kwargs):
+                captured["data"] = kwargs.get("data")
+                return {
+                    "features": [],
+                    "suggestedPrimaryKey": [],
+                    "suggestedEventTime": None,
+                }
+
+        # Act — must not raise AttributeError reading feature.name / feature.type.
+        with patch(
+            "hsfs.core.data_source_api.client._get_instance",
+            return_value=_StubClient(),
+        ):
+            result = api._infer_metadata(sc, preview_data)
+
+        # Assert — per-column samples are read off Feature objects, not dicts.
+        body = json.loads(captured["data"])
+        assert body == {
+            "columns": [
+                {"name": "col_a", "type": "string", "values": ["x1"]},
+                {"name": "col_b", "type": "bigint", "values": ["1"]},
+            ]
+        }
+        assert isinstance(result, im.InferredMetadata)
+
+    def test_infer_metadata_sends_source_column_names_verbatim(self):
+        # Feature.__init__ runs the feature-store autofix over `name`, so `feature.name` is
+        # lower-cased with spaces turned into underscores. The backend echoes the names we send
+        # back as `originalName`, and the caller matches those against the real source columns —
+        # so sending the sanitized form makes every suggestion unmatchable for any table whose
+        # columns are uppercase or contain spaces, which is the common case for Snowflake/Oracle.
+        preview_data = dsd.DataSourceData.from_response_json(
+            {
+                "features": [
+                    {"name": "USER_ID", "type": "bigint"},
+                    {"name": "Order Date", "type": "timestamp"},
+                ],
+                "preview": [
+                    {
+                        "values": [
+                            {"value0": "USER_ID", "value1": "7"},
+                            {"value0": "Order Date", "value1": "2026-01-01"},
+                        ]
+                    },
+                ],
+            }
+        )
+
+        sc = MagicMock()
+        sc._featurestore_id = 99
+        sc._name = "my_conn"
+
+        api = data_source_api.DataSourceApi()
+        captured: dict = {}
+
+        class _StubClient:
+            _project_id = 1
+
+            def _send_request(self, method, path_params, **kwargs):
+                captured["data"] = kwargs.get("data")
+                return {
+                    "features": [],
+                    "suggestedPrimaryKey": [],
+                    "suggestedEventTime": None,
+                }
+
+        with patch(
+            "hsfs.core.data_source_api.client._get_instance",
+            return_value=_StubClient(),
+        ):
+            api._infer_metadata(sc, preview_data)
+
+        body = json.loads(captured["data"])
+        assert [c["name"] for c in body["columns"]] == ["USER_ID", "Order Date"]
 
     def _make_rest_api_error(self, error_code: int) -> RestAPIError:
         # Build a real RestAPIError without going through HTTP — we just need
