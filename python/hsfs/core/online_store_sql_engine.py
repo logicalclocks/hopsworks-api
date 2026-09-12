@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 from datetime import datetime, timedelta, timezone
@@ -136,12 +137,36 @@ class OnlineStoreSqlClient:
 
         self._async_task_thread = None
 
+    def _close(self) -> None:
+        """Release the online store connection pool held by this client.
+
+        Idempotent, and safe to call on a client that never initialised serving.
+
+        Callers have to do this explicitly, because `__del__` cannot be relied on
+        here: the task thread is constructed with bound methods of this object,
+        so while it runs it keeps this object reachable, and a client that is
+        reachable is never finalized. Each pool holds one connection per feature
+        group in the view, so a process that initialises serving repeatedly can
+        exhaust the online store's `max_connections`.
+        """
+        thread = self._async_task_thread
+        if thread is not None:
+            if thread._shutdown():
+                self._async_task_thread = None
+            else:
+                # Keep the handle: the pool may still hold connections, and this
+                # is the only reference left that a later _close can retry.
+                _logger.warning(
+                    "Online store connection pool did not close within the "
+                    "shutdown timeout; keeping the task thread so a later close "
+                    "can retry it."
+                )
+
     def __del__(self):
-        # Safely stop the async task thread.
-        # The connection pool will be closed during garbage collection by aiomysql.
-        task_thread = getattr(self, "_async_task_thread", None)
-        if task_thread is not None and task_thread.is_alive():
-            task_thread._stop()
+        # Best effort only. See _close: this object is normally still reachable
+        # from its own task thread, so this does not run while that thread lives.
+        with contextlib.suppress(Exception):
+            self._close()
 
     def _fetch_prepared_statements(
         self,
