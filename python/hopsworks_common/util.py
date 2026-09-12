@@ -1021,6 +1021,9 @@ class AsyncTaskThread(threading.Thread):
         self._task_queue: queue.Queue[AsyncTask] = queue.Queue()
         self._event_loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
         self.stop_event = threading.Event()
+        # Set by run() once startup is done. _shutdown waits on it so it cannot
+        # stop the loop while run_until_complete is still initialising the pool.
+        self._ready = threading.Event()
         self._connection_pool_initializer: Callable | None = connection_pool_initializer
         self._connection_test_function: Callable | None = connection_test
         self._connection_pool_params: tuple = connection_pool_params
@@ -1089,6 +1092,12 @@ class AsyncTaskThread(threading.Thread):
         The loop is never closed from here. `run()` closes it in a `finally`, and
         closing a loop that is still running raises `RuntimeError`.
         """
+        # Let run() finish starting. Stopping the loop while run_until_complete
+        # is still initialising raises out of run(), which kills the thread with
+        # the loop never closed, so every wait here would then time out.
+        if self.is_alive():
+            self._ready.wait(timeout=timeout)
+
         loop = self._event_loop
         if loop.is_closed():
             return True
@@ -1121,13 +1130,16 @@ class AsyncTaskThread(threading.Thread):
     def run(self):
         """Execute the async tasks for the queue."""
         asyncio.set_event_loop(self._event_loop)
-        # Initialize the connection pool by using loop.run_until_complete to make sure the connection pool is initialized before the event loop starts running forever.
-        if self._connection_pool_initializer:
-            self._connection_pool = self._event_loop.run_until_complete(
-                self._connection_pool_initializer(*self._connection_pool_params)
-            )
-        self._event_loop.create_task(self._execute_task())
         try:
+            # Initialize the connection pool by using loop.run_until_complete to make sure the connection pool is initialized before the event loop starts running forever.
+            if self._connection_pool_initializer:
+                self._connection_pool = self._event_loop.run_until_complete(
+                    self._connection_pool_initializer(*self._connection_pool_params)
+                )
+            self._event_loop.create_task(self._execute_task())
+            # The pool exists and the loop is about to run, so a shutdown from
+            # another thread can now see the pool and stop the loop cleanly.
+            self._ready.set()
             self._event_loop.run_forever()
         except Exception as e:
             print(
@@ -1137,6 +1149,8 @@ class AsyncTaskThread(threading.Thread):
             self._event_loop.close()
             # raise e
         finally:
+            # Never leave a shutdown waiting on a thread that is already done.
+            self._ready.set()
             self._event_loop.close()
 
     def _submit(self, task: AsyncTask) -> Any:
