@@ -344,9 +344,21 @@ def test_datasource_create_carries_type_discriminator(mock_project):
     )
     assert sf["type"] == "featurestoreSnowflakeConnectorDTO"
     bq = _create_connector_body(
-        ["datasource", "create", "bigquery", "bq", "--project-id", "proj"]
+        [
+            "datasource",
+            "create",
+            "bigquery",
+            "bq",
+            "--parent-project",
+            "bill",
+            "--project-id",
+            "proj",
+            "--key-path",
+            "/Projects/p/k.json",
+        ]
     )
     assert bq["type"] == "featurestoreBigqueryConnectorDTO"
+    assert bq["parentProject"] == "bill"
 
 
 def test_datasource_delete_calls_rest(mock_project):
