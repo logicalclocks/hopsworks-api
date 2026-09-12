@@ -45,7 +45,7 @@ from hopsworks.cli.commands import git as git_cmd
 
 
 _NOT_REPO_ROOT = (
-    "The current working dir is not a github repo, so no git sync performed"
+    "The current working dir is not a git repository, so no git sync performed"
 )
 _UNSUPPORTED_REMOTE = "git sync needs an SSH or HTTPS remote"
 _UNSUPPORTED_KEY = "git sync not supported for passphrase-protected ssh keys"
