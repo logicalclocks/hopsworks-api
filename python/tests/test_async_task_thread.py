@@ -37,12 +37,19 @@ class _FakePool:
 
 class TestAsyncTaskThread:
     def test_stop_does_not_shadow_the_thread_internal(self):
-        """Overriding `threading.Thread._stop` breaks every thread's `is_alive()`.
+        """No class of ours may define `_stop`.
 
-        CPython calls `_stop` from `_wait_for_tstate_lock` to mark a thread
-        finished, so an override also breaks `join()` for every instance.
+        Up to Python 3.12 `threading.Thread._stop` is what CPython calls from
+        `_wait_for_tstate_lock` to mark a thread finished, so a subclass that
+        defines its own `_stop` breaks `is_alive()` and `join()` for every
+        thread. Python 3.13 removed the attribute, so the classes we own are
+        checked directly rather than compared against it.
         """
-        assert AsyncTaskThread._stop is threading.Thread._stop
+        ours = AsyncTaskThread.__mro__[
+            : AsyncTaskThread.__mro__.index(threading.Thread)
+        ]
+
+        assert [klass.__name__ for klass in ours if "_stop" in vars(klass)] == []
 
     def test_shutdown_ends_the_thread(self):
         thread = AsyncTaskThread()
