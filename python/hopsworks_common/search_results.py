@@ -338,7 +338,7 @@ class FeatureSearchResult(SearchResultItem):
 
 @public("hopsworks.core.search_api.FeaturestoreSearchResult")
 class FeaturestoreSearchResult:
-    """Container for all featurestore search results."""
+    """Every bucket of a search: feature store entities, jobs, apps, models, deployments and agents."""
 
     def __init__(self, response_data: dict):
         self._log = logging.getLogger(__name__)
@@ -356,6 +356,16 @@ class FeaturestoreSearchResult:
         self._features = [
             FeatureSearchResult(f) for f in response_data.get("features", [])
         ]
+        # Jobs, apps, models, deployments and agents share the same index and
+        # response shape; the type-specific fields (jobType, framework,
+        # servingTool, modelName) stay reachable through raw_data.
+        self._jobs = [SearchResultItem(j) for j in response_data.get("jobs", [])]
+        self._apps = [SearchResultItem(a) for a in response_data.get("apps", [])]
+        self._models = [SearchResultItem(m) for m in response_data.get("models", [])]
+        self._deployments = [
+            SearchResultItem(d) for d in response_data.get("deployments", [])
+        ]
+        self._agents = [SearchResultItem(a) for a in response_data.get("agents", [])]
 
         # Store metadata about result counts
         self._feature_groups_offset = response_data.get("featuregroupsFrom", 0)
@@ -366,6 +376,16 @@ class FeaturestoreSearchResult:
         self._training_datasets_total = response_data.get("trainingdatasetsTotal", 0)
         self._features_offset = response_data.get("featuresFrom", 0)
         self._features_total = response_data.get("featuresTotal", 0)
+        self._jobs_offset = response_data.get("jobsFrom", 0)
+        self._jobs_total = response_data.get("jobsTotal", 0)
+        self._apps_offset = response_data.get("appsFrom", 0)
+        self._apps_total = response_data.get("appsTotal", 0)
+        self._models_offset = response_data.get("modelsFrom", 0)
+        self._models_total = response_data.get("modelsTotal", 0)
+        self._deployments_offset = response_data.get("deploymentsFrom", 0)
+        self._deployments_total = response_data.get("deploymentsTotal", 0)
+        self._agents_offset = response_data.get("agentsFrom", 0)
+        self._agents_total = response_data.get("agentsTotal", 0)
 
     @public
     @property
@@ -390,6 +410,36 @@ class FeaturestoreSearchResult:
     def features(self) -> list[FeatureSearchResult]:
         """List of Feature search results."""
         return self._features
+
+    @public
+    @property
+    def jobs(self) -> list[SearchResultItem]:
+        """List of Job search results."""
+        return self._jobs
+
+    @public
+    @property
+    def apps(self) -> list[SearchResultItem]:
+        """List of App search results."""
+        return self._apps
+
+    @public
+    @property
+    def models(self) -> list[SearchResultItem]:
+        """List of Model search results."""
+        return self._models
+
+    @public
+    @property
+    def deployments(self) -> list[SearchResultItem]:
+        """List of Deployment search results."""
+        return self._deployments
+
+    @public
+    @property
+    def agents(self) -> list[SearchResultItem]:
+        """List of Agent search results."""
+        return self._agents
 
     @public
     @property
@@ -439,6 +489,66 @@ class FeaturestoreSearchResult:
         """Total number of Features matching the search."""
         return self._features_total
 
+    @public
+    @property
+    def jobs_offset(self) -> int:
+        """Total offset for the return list of jobs within the whole result."""
+        return self._jobs_offset
+
+    @public
+    @property
+    def jobs_total(self) -> int:
+        """Total number of Jobs matching the search."""
+        return self._jobs_total
+
+    @public
+    @property
+    def apps_offset(self) -> int:
+        """Total offset for the return list of apps within the whole result."""
+        return self._apps_offset
+
+    @public
+    @property
+    def apps_total(self) -> int:
+        """Total number of Apps matching the search."""
+        return self._apps_total
+
+    @public
+    @property
+    def models_offset(self) -> int:
+        """Total offset for the return list of models within the whole result."""
+        return self._models_offset
+
+    @public
+    @property
+    def models_total(self) -> int:
+        """Total number of Models matching the search."""
+        return self._models_total
+
+    @public
+    @property
+    def deployments_offset(self) -> int:
+        """Total offset for the return list of deployments within the whole result."""
+        return self._deployments_offset
+
+    @public
+    @property
+    def deployments_total(self) -> int:
+        """Total number of Deployments matching the search."""
+        return self._deployments_total
+
+    @public
+    @property
+    def agents_offset(self) -> int:
+        """Total offset for the return list of agents within the whole result."""
+        return self._agents_offset
+
+    @public
+    @property
+    def agents_total(self) -> int:
+        """Total number of Agents matching the search."""
+        return self._agents_total
+
     def json(self) -> dict:
         """Convert to JSON-serializable dictionary.
 
@@ -458,6 +568,21 @@ class FeaturestoreSearchResult:
             "features": [f.json() for f in self._features],
             "featuresFrom": self._features_offset,
             "featuresTotal": self._features_total,
+            "jobs": [i.json() for i in self._jobs],
+            "jobsFrom": self._jobs_offset,
+            "jobsTotal": self._jobs_total,
+            "apps": [i.json() for i in self._apps],
+            "appsFrom": self._apps_offset,
+            "appsTotal": self._apps_total,
+            "models": [i.json() for i in self._models],
+            "modelsFrom": self._models_offset,
+            "modelsTotal": self._models_total,
+            "deployments": [i.json() for i in self._deployments],
+            "deploymentsFrom": self._deployments_offset,
+            "deploymentsTotal": self._deployments_total,
+            "agents": [i.json() for i in self._agents],
+            "agentsFrom": self._agents_offset,
+            "agentsTotal": self._agents_total,
         }
 
     def __repr__(self):
