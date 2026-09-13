@@ -15,18 +15,18 @@
 #
 from __future__ import annotations
 
-import asyncio
 import base64
 import itertools
 import json
 import logging
 import threading
-import traceback
 import uuid
 from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from hopsworks_apigen import public
+from hopsworks_common.core.feature_logging_async import _AsyncLogWorker
+from hopsworks_common.core.feature_logging_buffer import _positive_env
 from hsfs.core.feature_logging_client import (
     _get_instance as get_feature_logging_client,
 )
@@ -38,8 +38,6 @@ from hsfs.feature_logger import FeatureLogger
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from hsfs.feature_view import FeatureView
 
 
@@ -56,100 +54,9 @@ class EventEncoder(json.JSONEncoder):
             return obj.isoformat()
         if isinstance(obj, date):
             # Convert to days since Unix epoch
-            epoch = datetime.date(1970, 1, 1)
+            epoch = date(1970, 1, 1)
             return (obj - epoch).days
-        return None
-
-
-class AsyncWorkerThread(threading.Thread):
-    """Thread class to run an asyncio event loop in a separate thread. The event loop is used to run async workers that processes logs."""
-
-    def __init__(
-        self, group=None, target=None, name=None, args=..., kwargs=None, *, daemon=None
-    ):
-        super().__init__(group, target, name, args, kwargs, daemon=daemon)
-        self._event_loop = asyncio.new_event_loop()
-        self._workers = []  # List to keep track of worker coroutines
-        self._tasks_queue = asyncio.Queue()  # Queue to manage tasks
-
-        self._stop_event = (
-            threading.Event()
-        )  # Stop event to stop input of new tasks after a close has been called.
-
-    def _submit_task(self, task: tuple[dict, dict]):
-        """Function to submit a task to the queue from a different thread so that it can be processed by workers.
-
-        Parameters:
-            task: Tuple that contains untransformed and transformed features to be logged.
-        """
-        if self._stop_event.is_set():
-            _logger.error("Cannot submit task. Workers are stopped.")
-        else:
-            asyncio.run_coroutine_threadsafe(
-                self._tasks_queue.put(task), self._event_loop
-            )
-
-    def _initialize_workers(self, num_workers: int, worker_function: Callable):
-        """Function to initialize workers as tasks in the event loop.
-
-        Parameters:
-            num_worker: Number of workers to be initialized.
-            worker_function: Function to be run by the workers.
-        """
-        for _ in range(num_workers):
-            worker = self._event_loop.create_task(self._worker(worker_function))
-            self._workers.append(worker)
-
-    def run(self):
-        """Thread functions that runs the event loop in the thread and close the event loop with feature logging after the loop is stopped."""
-        asyncio.set_event_loop(self._event_loop)
-
-        # Run the event loop
-        self._event_loop.run_forever()
-
-        # Closing the feature logging client inside the thread.
-        self._event_loop.run_until_complete(get_feature_logging_client()._close())
-
-        # Close the event loop
-        self._event_loop.close()
-
-    async def _worker(self, worker_function: Callable):
-        """Function to run the worker function in the event loop, until a None has been submitted to the queue.
-
-        Parameters:
-            worker_function: Function to be run by the workers.
-        """
-        while True:
-            task = await self._tasks_queue.get()
-            if task is None:
-                # Poison pill means shutdown
-                self._tasks_queue.task_done()
-                break
-            await worker_function(task)
-            self._tasks_queue.task_done()
-
-    def _close(self):
-        """Function to stop any more tasks from being submitted and start the graceful stop of the thread."""
-        # Stop any more tasks from being submitted using the stop event.
-        self._stop_event.set()
-
-        # Stop the event loop
-        asyncio.run_coroutine_threadsafe(self._finalize_event_loop(), self._event_loop)
-
-    async def _finalize_event_loop(self):
-        """Function that gracefully stops the event loop by stopping the workers and waiting for all tasks to be processed."""
-        # Stop workers
-        for _ in range(len(self._workers)):
-            await self._tasks_queue.put(None)  # Poison pill to stop workers
-
-        # Wait until all tasks in the queue are processed
-        await self._tasks_queue.join()
-
-        # Wait until all tasks in the queue are processed
-        await asyncio.gather(*self._workers)
-
-        # Stop the event loop
-        self._event_loop.stop()
+        return super().default(obj)
 
 
 @public
@@ -162,6 +69,7 @@ class AsyncFeatureLogger(FeatureLogger):
         deployment_name,
         max_concurrent_tasks=5,
         feature_logger_config: dict[str, Any] | None = None,
+        max_queue_size: int = 1000,
     ):
         self._max_concurrent_tasks = max_concurrent_tasks
         self._feature_view: FeatureView = None
@@ -172,7 +80,16 @@ class AsyncFeatureLogger(FeatureLogger):
         self._workers = []  # List to keep track of worker coroutines
 
         # Initialize workers in another so that we don't cause any issues with the event loop's running in the main thread.
-        self._async_worker_thread = AsyncWorkerThread()
+        self._async_worker_thread = _AsyncLogWorker(
+            max_queue_size=max_queue_size,
+            on_drop=self._on_drop,
+            close_client=lambda: get_feature_logging_client()._close(),
+        )
+        self._max_event_bytes = _positive_env(
+            "HOPSWORKS_FEATURE_LOGGER_MAX_EVENT_BYTES", 8 * 1024 * 1024
+        )
+        self._stats_lock = threading.Lock()
+        self._stats = dict.fromkeys(("submitted", "sent", "failed", "dropped"), 0)
 
         self._feature_logger_config = feature_logger_config
         if self._feature_logger_config is None:
@@ -196,12 +113,21 @@ class AsyncFeatureLogger(FeatureLogger):
         for untransformed_feature, transformed_feature in itertools.zip_longest(
             untransformed_features, transformed_features
         ):
-            try:
-                self._async_worker_thread._submit_task(
-                    (untransformed_feature, transformed_feature)
-                )
-            except asyncio.QueueFull:
-                _logger.error("Queue is full. Failed to log features.")
+            self._count("submitted")
+            self._async_worker_thread._submit_task(
+                (untransformed_feature, transformed_feature)
+            )
+
+    def _count(self, outcome, rows=1):
+        with self._stats_lock:
+            self._stats[outcome] += rows
+            total = self._stats[outcome]
+            snapshot = dict(self._stats)
+        if outcome in ("failed", "dropped") and (total == rows or total % 100 == 0):
+            _logger.error("Feature logging %s; counters=%s", outcome, snapshot)
+
+    def _on_drop(self, task, reason, rows=1):
+        self._count("dropped", rows)
 
     async def _send_events(self, task):
         try:
@@ -209,8 +135,6 @@ class AsyncFeatureLogger(FeatureLogger):
             transformed_feature = task[1]
 
             events = []
-            ce_id = str(uuid.uuid4())
-            ce_time = datetime.now(timezone.utc).isoformat()
             for transformed, feature_vector in [
                 (False, untransformed_feature),
                 (True, transformed_feature),
@@ -218,8 +142,6 @@ class AsyncFeatureLogger(FeatureLogger):
                 if feature_vector:
                     events.append(
                         self._create_cloud_event(
-                            ce_id,
-                            ce_time,
                             self._feature_view.feature_logging.get_feature_group(
                                 transformed
                             ),
@@ -231,34 +153,30 @@ class AsyncFeatureLogger(FeatureLogger):
                         )
                     )
 
-            responses = await get_feature_logging_client()._post(
-                json.dumps(events, cls=EventEncoder),
+            payload = json.dumps(events, cls=EventEncoder).encode("utf-8")
+            if len(payload) > self._max_event_bytes:
+                self._on_drop(task, "event byte limit")
+                return
+            await get_feature_logging_client()._post(
+                payload,
                 headers=self._create_cloud_headers(),
             )
-            _logger.debug(f"Feature logging events sent successfully: {responses}")
-        except Exception as e:
-            _logger.error(f"Failed to send events: {e}")
-            traceback.print_exc()
+            self._count("sent")
+        except Exception:  # noqa: BLE001 - delivery must not stop the logging worker
+            self._count("failed")
 
     def _create_cloud_headers(self):
         return {
-            "content-type": "application/cloudevents-batch+json; charset=UTF-8",
+            "content-type": "application/json",
             "ce-specversion": "1.0",
+            "ce-id": str(uuid.uuid4()),
+            "ce-time": datetime.now(timezone.utc).isoformat(),
             "ce-type": "serving.hops.works.logging.features",
             "ce-source": self._source or "http://localhost:8099",
         }
 
-    def _create_cloud_event(self, ce_id, ce_time, fg, features):
+    def _create_cloud_event(self, fg, features):
         return {
-            "specversion": "1.0",
-            "type": "serving.hops.works.logging.features",
-            "source": self._source,
-            "id": ce_id,
-            "time": ce_time,
-            "datacontenttype": "application/json",
-            "endpoint": "",
-            "inferenceservicename": self._deployment_name,
-            "namespace": self._namespace,
             "projectId": self._project_id,
             "featureGroupId": fg.id,
             "topicName": fg._online_topic_name,
@@ -287,7 +205,15 @@ class AsyncFeatureLogger(FeatureLogger):
         return _encode_row(complex_feature_encoder, feature_encoder, features)
 
     @public
-    def close(self):
-        """Close the async feature logger."""
-        # Close the async worker thread
-        self._async_worker_thread._close()
+    def close(self, timeout: float | None = None) -> bool:
+        """Stop admission and drain accepted rows within the shutdown deadline.
+
+        Parameters:
+            timeout: Maximum time to drain, or the configured shutdown limit.
+
+        Returns:
+            Whether all accepted rows finished before the deadline.
+        """
+        drained = self._async_worker_thread._close(timeout)
+        _logger.info("Feature logging counters at shutdown: %s", self._stats)
+        return drained

@@ -1421,10 +1421,16 @@ def _infer_deployment_schema(
         and name not in set(passed_features or [])
     ]
     serving_keys = []
+    seen_serving_keys = set()
     for sk in getattr(feature_view, "serving_keys", None) or [] if looked_up else []:
         name = sk.required_serving_key
         if isinstance(name, list):
             continue
+        # A view joining two feature groups on the same key reports that key once
+        # per group, while a request carries one value for it.
+        if name in seen_serving_keys:
+            continue
+        seen_serving_keys.add(name)
         serving_keys.append(
             SchemaField(name, _serving_key_type(feature_view, sk), nullable=False)
         )

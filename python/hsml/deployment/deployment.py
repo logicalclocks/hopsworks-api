@@ -19,9 +19,9 @@ from typing import TYPE_CHECKING, Any
 from hopsworks_apigen import public
 from hopsworks_common import client, usage, util
 from hopsworks_common.client.exceptions import ModelServingException
-from hsml import predictor as predictor_mod
 from hsml.constants import DEPLOYABLE_COMPONENT, MODEL_SERVING, PREDICTOR_STATE
 from hsml.core import model_api, serving_api
+from hsml.deployment import predictor as predictor_mod
 from hsml.engine import serving_engine
 
 
@@ -30,14 +30,15 @@ if TYPE_CHECKING:
 
     from hsfs.core.feature_monitoring_config import FeatureMonitoringConfig
     from hsml.client.istio.utils.infer_type import InferInput
-    from hsml.deployment_schema import DeploymentSchema
-    from hsml.deployment_tracing_config import DeploymentTracingConfig
-    from hsml.inference_batcher import InferenceBatcher
-    from hsml.inference_logger import InferenceLogger
-    from hsml.predictor_state import PredictorState
-    from hsml.resources import Resources
-    from hsml.scaling_config import PredictorScalingConfig
-    from hsml.transformer import Transformer
+    from hsml.deployment.inference_batcher import InferenceBatcher
+    from hsml.deployment.inference_logger import InferenceLogger
+    from hsml.deployment.logging_config import DeploymentLoggingConfig
+    from hsml.deployment.predictor_state import PredictorState
+    from hsml.deployment.resources import Resources
+    from hsml.deployment.scaling_config import PredictorScalingConfig
+    from hsml.deployment.schema import DeploymentSchema
+    from hsml.deployment.tracing_config import DeploymentTracingConfig
+    from hsml.deployment.transformer import Transformer
 
 
 @public
@@ -403,6 +404,28 @@ class Deployment:
         return feature_view
 
     @public
+    def commit_feature_logs(self, wait: bool = False) -> list[Any]:
+        """Run the commit job of the feature view this deployment logs through.
+
+        For a view on the `"job"` transport this commits every chunk that reached HopsFS, including what a stopped or killed replica left in the staging directory; for a `"realtime"` view it runs the materialization job.
+
+        Parameters:
+            wait: Whether to wait for the job to finish.
+
+        Returns:
+            The jobs that were started.
+
+        Raises:
+            hopsworks.client.exceptions.ModelServingException: If the deployment serves no feature view with logging enabled.
+        """
+        feature_view = self.get_feature_view(init=False)
+        if feature_view is None or not getattr(feature_view, "logging_enabled", False):
+            raise ModelServingException(
+                f"Deployment '{self.name}' serves no feature view with logging enabled."
+            )
+        return feature_view.materialize_log(wait=wait)
+
+    @public
     def reinfer_schema(self) -> DeploymentSchema:
         """Re-infer the deployment schema from the current feature view and mark it pending.
 
@@ -424,7 +447,7 @@ class Deployment:
         Raises:
             hopsworks.client.exceptions.ModelServingException: If the deployment is not served by the default predictor and has no schema to refine.
         """
-        from hsml.deployment_schema import (
+        from hsml.deployment.schema import (
             OUTPUT_FEATURE_VECTORS,
             OUTPUT_PREDICTIONS,
             _infer_deployment_schema,
@@ -957,7 +980,7 @@ class Deployment:
     @public
     @property
     def schema(self):
-        """Deployment schema, or `None`; see [`Predictor.schema`][hsml.predictor.Predictor.schema]."""
+        """Deployment schema, or `None`; see [`Predictor.schema`][hsml.deployment.predictor.Predictor.schema]."""
         return self._predictor.schema
 
     @schema.setter
@@ -1141,6 +1164,19 @@ class Deployment:
     @tracing.setter
     def tracing(self, tracing: DeploymentTracingConfig | dict | None):
         self._predictor.tracing = tracing
+
+    @public
+    @property
+    def feature_logging(self):
+        """Feature logging configuration attached to this deployment.
+
+        Edit its fields and call `save()`; a running deployment applies them after `restart()`.
+        """
+        return self._predictor.feature_logging
+
+    @feature_logging.setter
+    def feature_logging(self, feature_logging: DeploymentLoggingConfig | dict | None):
+        self._predictor.feature_logging = feature_logging
 
     @public
     @property

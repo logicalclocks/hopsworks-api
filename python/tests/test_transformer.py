@@ -18,8 +18,8 @@ import copy
 
 import pytest
 from hopsworks_common.constants import SCALING_CONFIG
-from hsml import resources, transformer
 from hsml.constants import RESOURCES
+from hsml.deployment import resources, transformer
 
 
 SERVING_NUM_INSTANCES_NO_LIMIT = [-1]

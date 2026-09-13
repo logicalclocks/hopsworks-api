@@ -17,7 +17,7 @@
 import datetime
 
 import humps
-from hsml import deployable_component_logs
+from hsml.deployment import deployable_component_logs
 
 
 class TestDeployableComponentLogs:
@@ -30,7 +30,7 @@ class TestDeployableComponentLogs:
         ]
         json_camelized = humps.camelize(json)
         mocker_from_json = mocker.patch(
-            "hsml.deployable_component_logs.DeployableComponentLogs.from_json",
+            "hsml.deployment.deployable_component_logs.DeployableComponentLogs.from_json",
             return_value=None,
         )
 
@@ -51,7 +51,7 @@ class TestDeployableComponentLogs:
         ]
         json_camelized = humps.camelize(json)
         mocker_from_json = mocker.patch(
-            "hsml.deployable_component_logs.DeployableComponentLogs.from_json",
+            "hsml.deployment.deployable_component_logs.DeployableComponentLogs.from_json",
             return_value=None,
         )
 
@@ -72,7 +72,7 @@ class TestDeployableComponentLogs:
         ]
         json_camelized = humps.camelize(json)
         mocker_from_json = mocker.patch(
-            "hsml.deployable_component_logs.DeployableComponentLogs.from_json",
+            "hsml.deployment.deployable_component_logs.DeployableComponentLogs.from_json",
             return_value=None,
         )
 

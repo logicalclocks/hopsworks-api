@@ -2822,8 +2822,8 @@ class Engine:
         )
 
     @staticmethod
-    def _read_feature_log(query, time_col):
-        df = query.read()
+    def _read_feature_log(query, time_col, online: bool = False):
+        df = query.read(online=online)
         return df.drop("log_id", time_col)
 
     def _get_spark_version(self):

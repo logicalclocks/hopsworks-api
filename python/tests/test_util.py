@@ -29,10 +29,10 @@ from hopsworks_common.constants import MODEL
 from hopsworks_common.core.constants import HAS_AIOMYSQL, HAS_SQLALCHEMY
 from hsfs.embedding import EmbeddingFeature, EmbeddingIndex
 from hsfs.feature import Feature
+from hsml.deployment.predictor import Predictor as BasePredictor
 from hsml.llm.model import Model as LLMModel
 from hsml.llm.predictor import Predictor as LLMPredictor
 from hsml.model import Model as BaseModel
-from hsml.predictor import Predictor as BasePredictor
 from hsml.python.model import Model as PythonModel
 from hsml.python.predictor import Predictor as PyPredictor
 from hsml.sklearn.model import Model as SklearnModel
@@ -392,7 +392,9 @@ class TestUtil:
             pass
 
         pred_base = mocker.patch(
-            "hsml.predictor.Predictor.__init__", return_value=None, spec=pred_base_spec
+            "hsml.deployment.predictor.Predictor.__init__",
+            return_value=None,
+            spec=pred_base_spec,
         )
         pred_python = mocker.patch("hsml.python.predictor.Predictor.__init__")
         pred_sklearn = mocker.patch("hsml.sklearn.predictor.Predictor.__init__")
@@ -416,7 +418,7 @@ class TestUtil:
 
     def test_get_predictor_for_model_python(self, mocker, model_python):
         # Arrange
-        pred_base = mocker.patch("hsml.predictor.Predictor.__init__")
+        pred_base = mocker.patch("hsml.deployment.predictor.Predictor.__init__")
         pred_python = mocker.patch(
             "hsml.python.predictor.Predictor.__init__", return_value=None
         )
@@ -439,7 +441,7 @@ class TestUtil:
 
     def test_get_predictor_for_model_sklearn(self, mocker, model_sklearn):
         # Arrange
-        pred_base = mocker.patch("hsml.predictor.Predictor.__init__")
+        pred_base = mocker.patch("hsml.deployment.predictor.Predictor.__init__")
         pred_python = mocker.patch("hsml.python.predictor.Predictor.__init__")
         pred_sklearn = mocker.patch(
             "hsml.sklearn.predictor.Predictor.__init__", return_value=None
@@ -462,7 +464,7 @@ class TestUtil:
 
     def test_get_predictor_for_model_tensorflow(self, mocker, model_tensorflow):
         # Arrange
-        pred_base = mocker.patch("hsml.predictor.Predictor.__init__")
+        pred_base = mocker.patch("hsml.deployment.predictor.Predictor.__init__")
         pred_python = mocker.patch("hsml.python.predictor.Predictor.__init__")
         pred_sklearn = mocker.patch("hsml.sklearn.predictor.Predictor.__init__")
         pred_tensorflow = mocker.patch(
@@ -485,7 +487,7 @@ class TestUtil:
 
     def test_get_predictor_for_model_torch(self, mocker, model_torch):
         # Arrange
-        pred_base = mocker.patch("hsml.predictor.Predictor.__init__")
+        pred_base = mocker.patch("hsml.deployment.predictor.Predictor.__init__")
         pred_python = mocker.patch("hsml.python.predictor.Predictor.__init__")
         pred_sklearn = mocker.patch("hsml.sklearn.predictor.Predictor.__init__")
         pred_tensorflow = mocker.patch("hsml.tensorflow.predictor.Predictor.__init__")
@@ -508,7 +510,7 @@ class TestUtil:
 
     def test_get_predictor_for_model_llm(self, mocker, model_llm):
         # Arrange
-        pred_base = mocker.patch("hsml.predictor.Predictor.__init__")
+        pred_base = mocker.patch("hsml.deployment.predictor.Predictor.__init__")
         pred_python = mocker.patch("hsml.python.predictor.Predictor.__init__")
         pred_sklearn = mocker.patch("hsml.sklearn.predictor.Predictor.__init__")
         pred_tensorflow = mocker.patch("hsml.tensorflow.predictor.Predictor.__init__")
@@ -531,7 +533,7 @@ class TestUtil:
 
     def test_get_predictor_for_model_non_base(self, mocker):
         # Arrange
-        pred_base = mocker.patch("hsml.predictor.Predictor.__init__")
+        pred_base = mocker.patch("hsml.deployment.predictor.Predictor.__init__")
         pred_python = mocker.patch("hsml.python.predictor.Predictor.__init__")
         pred_sklearn = mocker.patch("hsml.sklearn.predictor.Predictor.__init__")
         pred_tensorflow = mocker.patch("hsml.tensorflow.predictor.Predictor.__init__")

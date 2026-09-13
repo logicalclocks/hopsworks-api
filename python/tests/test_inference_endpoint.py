@@ -17,7 +17,7 @@
 import copy
 
 import humps
-from hsml import inference_endpoint
+from hsml.deployment import inference_endpoint
 
 
 class TestInferenceEndpoint:
@@ -30,7 +30,7 @@ class TestInferenceEndpoint:
         json = backend_fixtures["inference_endpoint"]["get_port"]["response"]
         json_camelized = humps.camelize(json)  # as returned by the backend
         mock_ie_from_json = mocker.patch(
-            "hsml.inference_endpoint.InferenceEndpointPort.from_json"
+            "hsml.deployment.inference_endpoint.InferenceEndpointPort.from_json"
         )
 
         # Act
@@ -45,11 +45,12 @@ class TestInferenceEndpoint:
         # Arrange
         json = backend_fixtures["inference_endpoint"]["get_port"]["response"]
         mock_ie_extract_fields = mocker.patch(
-            "hsml.inference_endpoint.InferenceEndpointPort.extract_fields_from_json",
+            "hsml.deployment.inference_endpoint.InferenceEndpointPort.extract_fields_from_json",
             return_value=json,
         )
         mock_ie_init = mocker.patch(
-            "hsml.inference_endpoint.InferenceEndpointPort.__init__", return_value=None
+            "hsml.deployment.inference_endpoint.InferenceEndpointPort.__init__",
+            return_value=None,
         )
 
         # Act
@@ -99,7 +100,7 @@ class TestInferenceEndpoint:
         json = backend_fixtures["inference_endpoint"]["get_empty"]["response"]
         json_camelized = humps.camelize(json)  # as returned by the backend
         mock_ie_from_json = mocker.patch(
-            "hsml.inference_endpoint.InferenceEndpoint.from_json"
+            "hsml.deployment.inference_endpoint.InferenceEndpoint.from_json"
         )
 
         # Act
@@ -115,7 +116,7 @@ class TestInferenceEndpoint:
         json = backend_fixtures["inference_endpoint"]["get_singleton"]["response"]
         json_camelized = humps.camelize(json)  # as returned by the backend
         mock_ie_from_json = mocker.patch(
-            "hsml.inference_endpoint.InferenceEndpoint.from_json"
+            "hsml.deployment.inference_endpoint.InferenceEndpoint.from_json"
         )
 
         # Act
@@ -131,7 +132,7 @@ class TestInferenceEndpoint:
         json = backend_fixtures["inference_endpoint"]["get_list"]["response"]
         json_camelized = humps.camelize(json)  # as returned by the backend
         mock_ie_from_json = mocker.patch(
-            "hsml.inference_endpoint.InferenceEndpoint.from_json"
+            "hsml.deployment.inference_endpoint.InferenceEndpoint.from_json"
         )
 
         # Act
@@ -149,7 +150,7 @@ class TestInferenceEndpoint:
         ][0]
         json_camelized = humps.camelize(json)  # as returned by the backend
         mock_ie_from_json = mocker.patch(
-            "hsml.inference_endpoint.InferenceEndpoint.from_json"
+            "hsml.deployment.inference_endpoint.InferenceEndpoint.from_json"
         )
 
         # Act
@@ -166,11 +167,12 @@ class TestInferenceEndpoint:
             "items"
         ][0]
         mock_ie_extract_fields = mocker.patch(
-            "hsml.inference_endpoint.InferenceEndpoint.extract_fields_from_json",
+            "hsml.deployment.inference_endpoint.InferenceEndpoint.extract_fields_from_json",
             return_value=json,
         )
         mock_ie_init = mocker.patch(
-            "hsml.inference_endpoint.InferenceEndpoint.__init__", return_value=None
+            "hsml.deployment.inference_endpoint.InferenceEndpoint.__init__",
+            return_value=None,
         )
 
         # Act
@@ -208,7 +210,8 @@ class TestInferenceEndpoint:
         ][0]
         json_copy = copy.deepcopy(json)
         mock_ie_port_from_json = mocker.patch(
-            "hsml.inference_endpoint.InferenceEndpointPort.from_json", return_value=None
+            "hsml.deployment.inference_endpoint.InferenceEndpointPort.from_json",
+            return_value=None,
         )
 
         # Act

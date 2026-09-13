@@ -34,8 +34,9 @@ from hopsworks_common.constants import (
 )
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
 from hopsworks_common.core import dataset_api, inode
-from hsml import default_predictor, deployment_schema
 from hsml.core import serving_api
+from hsml.deployment import default_predictor
+from hsml.deployment import schema as deployment_schema
 from hsml.engine import local_engine
 from hsml.utils.local_paths import _ensure_dataset_dir, _resolve_serving_file
 from tqdm.auto import tqdm
@@ -650,6 +651,18 @@ class ServingEngine:
         for component in [predictor] + ([transformer] if transformer else []):
             env_vars = dict(component.env_vars or {})
             env_vars[MODEL_SERVING.DEPLOYMENT_SCHEMA_ID_ENV_VAR] = schema_id
+            if schema is not None:
+                view = schema.feature_view or {}
+                identity = {
+                    MODEL_SERVING.FEATURE_VIEW_NAME_ENV_VAR: view.get("name"),
+                    MODEL_SERVING.FEATURE_VIEW_VERSION_ENV_VAR: view.get("version"),
+                    MODEL_SERVING.TRAINING_DATASET_VERSION_ENV_VAR: schema.training_dataset_version,
+                }
+                for name, value in identity.items():
+                    if value is None:
+                        env_vars.pop(name, None)
+                    else:
+                        env_vars[name] = str(value)
             # each pod validates, or defers, according to its own revision
             env_vars[MODEL_SERVING.SCHEMA_ENFORCER_ENV_VAR] = enforcer
             component.env_vars = env_vars

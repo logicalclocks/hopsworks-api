@@ -18,10 +18,11 @@ import copy
 
 import humps
 import pytest
-from hsml import deployment, deployment_tracing_config, predictor, resources
 from hsml.client.exceptions import ModelServingException
 from hsml.constants import MODEL, PREDICTOR, PREDICTOR_STATE
 from hsml.core import serving_api
+from hsml.deployment import deployment, predictor, resources
+from hsml.deployment import tracing_config as deployment_tracing_config
 from hsml.engine import serving_engine
 
 
@@ -32,7 +33,7 @@ class TestDeployment:
         # Arrange
         preds = [{"name": "pred_name"}]
         mock_pred_from_response_json = mocker.patch(
-            "hsml.predictor.Predictor.from_response_json",
+            "hsml.deployment.predictor.Predictor.from_response_json",
             return_value=preds,
         )
         mock_from_predictor = mocker.patch(
@@ -52,7 +53,7 @@ class TestDeployment:
         # Arrange
         pred = {"name": "pred_name"}
         mock_pred_from_response_json = mocker.patch(
-            "hsml.predictor.Predictor.from_response_json",
+            "hsml.deployment.predictor.Predictor.from_response_json",
             return_value=pred,
         )
         mock_from_predictor = mocker.patch(
@@ -326,11 +327,11 @@ class TestDeployment:
     def test_tracing_property_delegates_to_predictor(self, mocker):
         # Arrange
         mocker.patch(
-            "hsml.predictor.Predictor._validate_serving_tool",
+            "hsml.deployment.predictor.Predictor._validate_serving_tool",
             return_value=PREDICTOR.SERVING_TOOL_KSERVE,
         )
         mocker.patch(
-            "hsml.predictor.Predictor._validate_resources",
+            "hsml.deployment.predictor.Predictor._validate_resources",
             return_value=resources.PredictorResources(0),
         )
 
@@ -1482,9 +1483,9 @@ class TestDeployment:
         p_json = backend_fixtures["predictor"]["get_deployments_singleton"]["response"][
             "items"
         ][0]
-        mocker.patch("hsml.predictor.Predictor._validate_serving_tool")
-        mocker.patch("hsml.predictor.Predictor._validate_resources")
-        mocker.patch("hsml.predictor.Predictor._validate_script_file")
+        mocker.patch("hsml.deployment.predictor.Predictor._validate_serving_tool")
+        mocker.patch("hsml.deployment.predictor.Predictor._validate_resources")
+        mocker.patch("hsml.deployment.predictor.Predictor._validate_script_file")
         mocker.patch("hopsworks_common.util._get_obj_from_json")
         return predictor.Predictor(
             id=p_json["id"],
@@ -1565,7 +1566,7 @@ class TestDeploymentSchemaAndFeatureView:
         assert d.get_model() is None
 
     def test_schema_read_lazily_by_id_and_cached(self, mocker):
-        from hsml.deployment_schema import DeploymentSchema
+        from hsml.deployment.schema import DeploymentSchema
 
         d = self._deployment(mocker, env_vars={"SERVING_SCHEMA_ID": "abc"})
         schema = DeploymentSchema(serving_keys=["k"])
@@ -1634,7 +1635,7 @@ class TestDeploymentSchemaAndFeatureView:
             d.create_feature_monitoring("psi")
 
     def test_reinfer_schema(self, mocker):
-        from hsml.deployment_schema import DeploymentSchema
+        from hsml.deployment.schema import DeploymentSchema
 
         from tests.test_deployment_schema import _fv
 

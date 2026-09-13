@@ -853,6 +853,25 @@ class DeltaEngine:
             _logger.debug(f"Partition overlap check failed, falling back to merge: {e}")
             return False
 
+    @staticmethod
+    def _commit_properties(write_options):
+        """The Delta application transaction a writer records with its commit.
+
+        `write_options["commit_properties"]` names an `app_id` and a `version`; a reader checks `DeltaTable.transaction_version(app_id)` to see whether a retried write already landed.
+        """
+        properties = (write_options or {}).get("commit_properties")
+        if not properties:
+            return None
+        from deltalake import CommitProperties, Transaction
+
+        return CommitProperties(
+            app_transactions=[
+                Transaction(
+                    app_id=str(properties["app_id"]), version=int(properties["version"])
+                )
+            ]
+        )
+
     def _write_delta_rs_dataset(
         self,
         dataset: pa.Table | pl.DataFrame | pd.DataFrame,
@@ -892,6 +911,7 @@ class DeltaEngine:
             isinstance(write_options, dict)
             and str(write_options.get("mode", "")).lower() == self.APPEND
         )
+        commit_properties = self._commit_properties(write_options)
 
         try:
             fg_source_table = DeltaRsTable(location, storage_options=storage_options)
@@ -917,6 +937,7 @@ class DeltaEngine:
                 partition_by=self._feature_group.partition_key,
                 configuration=configuration,
                 storage_options=storage_options or None,
+                commit_properties=commit_properties,
             )
         else:
             if (
@@ -936,6 +957,7 @@ class DeltaEngine:
                     dataset,
                     mode=self.APPEND,
                     storage_options=storage_options or None,
+                    commit_properties=commit_properties,
                 )
                 _logger.debug(
                     f"Explicit append mode requested for {location}. Skipping merge operation."

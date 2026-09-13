@@ -746,7 +746,13 @@ class VectorServer:
                 else request_parameters_copy
             )
             logging_meta_data.serving_keys.extend(entries)
-            logging_meta_data.request_parameters.extend(request_parameters_copy)
+            # These two lists are parallel and accumulate across calls, so a view
+            # with no request parameters still contributes one empty entry per row.
+            logging_meta_data.request_parameters.extend(
+                request_parameters_copy
+                if request_parameters_copy is not None
+                else [{} for _ in entries]
+            )
         for (
             idx,
             passed_values,

@@ -100,8 +100,8 @@ then `model.save(dir)`).
 
 ```python
 import hopsworks
-from hsml.resources import PredictorResources, Resources
-from hsml.scaling_config import PredictorScalingConfig, ScaleMetric
+from hsml.deployment.resources import PredictorResources, Resources
+from hsml.deployment.scaling_config import PredictorScalingConfig, ScaleMetric
 
 project = hopsworks.login()
 mr = project.get_model_registry()
@@ -215,7 +215,7 @@ vector = fv.get_feature_vector(
 ### Resources
 
 ```python
-from hsml.resources import PredictorResources, TransformerResources, Resources
+from hsml.deployment.resources import PredictorResources, TransformerResources, Resources
 
 predictor_resources = PredictorResources(
     requests=Resources(cores=1, memory=1024, gpus=0),  # minimum
@@ -226,7 +226,7 @@ predictor_resources = PredictorResources(
 ### Scaling
 
 ```python
-from hsml.scaling_config import PredictorScalingConfig, ScaleMetric
+from hsml.deployment.scaling_config import PredictorScalingConfig, ScaleMetric
 
 scaling = PredictorScalingConfig(
     min_instances=1,              # minimum pods (0 for scale-to-zero)
@@ -243,7 +243,7 @@ scaling = PredictorScalingConfig(
 An online inference pipeline should log its inputs and outputs so the deployment can be monitored and debugged. Logging the model inputs and predictions also gives you the feature/prediction data needed for monitoring drift and model performance over time. Hopsworks logs are written asynchronously so they do not add latency to the prediction response.
 
 ```python
-from hsml.inference_logger import InferenceLogger
+from hsml.deployment.inference_logger import InferenceLogger
 
 logger = InferenceLogger(
     mode="ALL",  # "ALL", "PREDICTIONS", "MODEL_INPUTS", "NONE"
@@ -259,7 +259,7 @@ deployment = model.deploy(
 ### Inference Batcher
 
 ```python
-from hsml.inference_batcher import InferenceBatcher
+from hsml.deployment.inference_batcher import InferenceBatcher
 
 batcher = InferenceBatcher(
     enabled=True,
@@ -274,8 +274,8 @@ batcher = InferenceBatcher(
 A transformer runs in a separate container and processes requests before the predictor:
 
 ```python
-from hsml.transformer import Transformer
-from hsml.resources import TransformerResources, Resources
+from hsml.deployment.transformer import Transformer
+from hsml.deployment.resources import TransformerResources, Resources
 
 transformer = Transformer(
     script_file="transformer.py",
@@ -318,7 +318,7 @@ From the CLI: `hops fv deploy <name> --passed-feature amount`.
 Deploy a custom server without a model from the registry:
 
 ```python
-from hsml.predictor import Predictor
+from hsml.deployment.predictor import Predictor
 
 predictor = Predictor.for_server(
     name="custom_server",

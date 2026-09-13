@@ -1496,7 +1496,11 @@ class TestDeltaEngine:
         # Assert
         assert result == "commit"
         fake_deltalake.write_deltalake.assert_called_once_with(
-            "hdfs://nn:8020/p", dataset, mode="append", storage_options=None
+            "hdfs://nn:8020/p",
+            dataset,
+            mode="append",
+            storage_options=None,
+            commit_properties=None,
         )
         delta_table.merge.assert_not_called()
         mock_commit.assert_called_once_with(
@@ -2618,3 +2622,19 @@ class TestDeltaEngineGlueSync:
 
         # Assert
         spark_session.sql.assert_not_called()
+
+
+def test_commit_properties_become_a_delta_application_transaction(monkeypatch):
+    import sys
+
+    from hsfs.core.delta_engine import DeltaEngine
+
+    # Other tests leave a fake deltalake module behind; this one needs the real classes.
+    monkeypatch.delitem(sys.modules, "deltalake", raising=False)
+    assert DeltaEngine._commit_properties(None) is None
+    assert DeltaEngine._commit_properties({"mode": "append"}) is None
+    properties = DeltaEngine._commit_properties(
+        {"commit_properties": {"app_id": "hopsworks_feature_log_7", "version": "3"}}
+    )
+    (transaction,) = properties.app_transactions
+    assert (transaction.app_id, transaction.version) == ("hopsworks_feature_log_7", 3)

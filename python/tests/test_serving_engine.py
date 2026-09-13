@@ -299,7 +299,7 @@ class TestSchemaPublishing:
         assert predictor.script_file == "/Projects/p/mine.py"
 
     def test_schema_written_once_and_env_var_set_before_put(self, mocker):
-        from hsml.deployment_schema import DeploymentSchema
+        from hsml.deployment.schema import DeploymentSchema
 
         eng = self._engine(mocker)
         mocker.patch.object(eng, "_upload_local_serving_files")
@@ -338,7 +338,7 @@ class TestSchemaPublishing:
     def test_renderings_use_the_configured_batch_limit(self, mocker):
         import json
 
-        from hsml.deployment_schema import DeploymentSchema
+        from hsml.deployment.schema import DeploymentSchema
 
         eng = self._engine(mocker)
         mocker.patch.object(eng, "_upload_local_serving_files")
@@ -369,6 +369,35 @@ class TestSchemaPublishing:
         assert {b["maxItems"] for b in batches} == {16}
         assert json.loads(uploaded[f"{published.schema_id}.json"])["maxBatchRows"] == 16
 
+    def test_published_schema_pins_logging_identity_and_clears_previous_view(
+        self, mocker
+    ):
+        from hsml.deployment.schema import DeploymentSchema
+
+        eng = self._engine(mocker)
+        mocker.patch.object(eng, "_write_schema_documents")
+        schema = DeploymentSchema(
+            serving_keys=["k"],
+            feature_view={"name": "features", "version": 2},
+            training_dataset_version=3,
+        )
+        predictor = _FakePredictor(
+            schema=schema,
+            env_vars={"SERVING_FEATURE_VIEW_NAME": "old_view", "OTHER": "kept"},
+        )
+        deployment = _FakeDeployment(predictor, name="dep")
+        eng._publish_schema(deployment)
+        assert predictor.env_vars["SERVING_SCHEMA_ID"] == schema.schema_id
+        assert predictor.env_vars["SERVING_FEATURE_VIEW_NAME"] == "features"
+        assert predictor.env_vars["SERVING_FEATURE_VIEW_VERSION"] == "2"
+        assert predictor.env_vars["SERVING_TRAINING_DATASET_VERSION"] == "3"
+        predictor._schema = DeploymentSchema(passed_features=["k"])
+        eng._publish_schema(deployment)
+        assert "SERVING_FEATURE_VIEW_NAME" not in predictor.env_vars
+        assert "SERVING_FEATURE_VIEW_VERSION" not in predictor.env_vars
+        assert "SERVING_TRAINING_DATASET_VERSION" not in predictor.env_vars
+        assert predictor.env_vars["OTHER"] == "kept"
+
     def test_publish_propagates_an_unloaded_schema_to_a_new_transformer(self, mocker):
         """A fetched deployment carries only the id; attaching a transformer must hand it over."""
         eng = self._engine(mocker)
@@ -390,7 +419,7 @@ class TestSchemaPublishing:
         eng._engine._upload.assert_not_called()
 
     def test_publish_pins_the_enforcer_role_in_the_revision(self, mocker):
-        from hsml.deployment_schema import DeploymentSchema
+        from hsml.deployment.schema import DeploymentSchema
 
         eng = self._engine(mocker)
         mocker.patch.object(eng, "_upload_local_serving_files")
@@ -404,7 +433,7 @@ class TestSchemaPublishing:
         assert alone.env_vars["SERVING_SCHEMA_ENFORCER"] == "predictor"
 
     def test_transformer_gets_schema_id_too(self, mocker):
-        from hsml.deployment_schema import DeploymentSchema
+        from hsml.deployment.schema import DeploymentSchema
 
         eng = self._engine(mocker)
         mocker.patch.object(eng, "_upload_local_serving_files")
@@ -446,7 +475,7 @@ class TestSchemaPublishing:
         )
 
     def test_read_schema_from_backend(self, mocker):
-        from hsml.deployment_schema import DeploymentSchema
+        from hsml.deployment.schema import DeploymentSchema
 
         eng = self._engine(mocker)
         schema = DeploymentSchema(serving_keys=["k"])
@@ -486,7 +515,7 @@ class TestSchemaPublishing:
     @pytest.mark.parametrize("predictor_id", [None, 7])
     def test_read_schema_falls_back_to_dataset(self, mocker, predictor_id):
         from hopsworks_common.client.exceptions import RestAPIError
-        from hsml.deployment_schema import DeploymentSchema
+        from hsml.deployment.schema import DeploymentSchema
 
         eng = self._engine(mocker)
         mocker.patch(
@@ -543,7 +572,7 @@ class TestPredictValidation:
         return d
 
     def test_rows_encoded_and_validated(self, mocker):
-        from hsml.deployment_schema import DeploymentSchema, DeploymentSchemaError
+        from hsml.deployment.schema import DeploymentSchema, DeploymentSchemaError
 
         eng = self._engine(mocker)
         schema = DeploymentSchema(
@@ -562,7 +591,7 @@ class TestPredictValidation:
         eng._predict(d, {"instances": [[None, 1]]}, None, validate=False)
 
     def test_configured_batch_limit_applies_client_side(self, mocker):
-        from hsml.deployment_schema import DeploymentSchema, DeploymentSchemaError
+        from hsml.deployment.schema import DeploymentSchema, DeploymentSchemaError
 
         eng = self._engine(mocker)
         schema = DeploymentSchema(

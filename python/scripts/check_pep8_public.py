@@ -97,6 +97,10 @@ SERIALIZATION_NAMES = {
 # importlib loader protocol hooks.
 IMPORTLIB_HOOK_NAMES = {"create_module", "exec_module", "find_spec"}
 
+# prometheus_client custom collector protocol: the registry calls these by name on
+# any class whose name marks it as a collector.
+PROMETHEUS_COLLECTOR_HOOK_NAMES = {"collect", "describe"}
+
 # Fallback allowlist of fully-qualified ``Class.method`` overrides that are part
 # of a public interface but whose base method cannot be resolved structurally
 # (e.g. the base lives behind an alias griffe could not follow). Structural
@@ -305,6 +309,14 @@ def _compliance(
 
     # Rule 8: importlib protocol hooks.
     if name in IMPORTLIB_HOOK_NAMES:
+        return None
+
+    # Rule 8b: prometheus_client collector protocol hooks.
+    if (
+        cls is not None
+        and cls.name.endswith("Collector")
+        and name in PROMETHEUS_COLLECTOR_HOOK_NAMES
+    ):
         return None
 
     # Rule 9: warnings formatwarning hook (module-level function).

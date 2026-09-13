@@ -1,6 +1,6 @@
 # predictor.py variants
 
-Before writing any of these, check whether the default predictor already covers the case: a `mr.python` model registered with `feature_view=` and deployed without a script gets feature lookup, passed features, request parameters, transformations, schema validation, and feature logging from `hsml.default_predictor.DefaultPredict` (parent skill, "Default predictor (no script)").
+Before writing any of these, check whether the default predictor already covers the case: a `mr.python` model registered with `feature_view=` and deployed without a script gets feature lookup, passed features, request parameters, transformations, schema validation, and feature logging from `hsml.deployment.default_predictor.DefaultPredict` (parent skill, "Default predictor (no script)").
 Write a script only to load a model the default loader cannot (anything but a single pickle or joblib file), to post-process predictions, or for a feature view the model is not linked to.
 Prefer subclassing:
 
@@ -8,7 +8,7 @@ Prefer subclassing:
 
 ```python
 # predictor.py — deploy with model.deploy(script_file="predictor.py", default_predictor=True, passed_features=[...])
-from hsml.default_predictor import DefaultPredict
+from hsml.deployment.default_predictor import DefaultPredict
 
 
 class Predict(DefaultPredict):
@@ -28,7 +28,7 @@ class Predict(DefaultPredict):
 For a feature view deployment (`fv.deploy(script_file="predictor.py")`) add the hand-over footer, because the backend starts model-less deployments as `python predictor.py`:
 
 ```python
-from hsml.default_predictor import run_kserve_wrapper
+from hsml.deployment.default_predictor import run_kserve_wrapper
 
 if __name__ == "__main__":
     run_kserve_wrapper()

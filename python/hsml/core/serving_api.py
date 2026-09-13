@@ -19,20 +19,19 @@ import json
 from typing import Any
 
 from hopsworks_common import tag
-from hsml import (
-    client,
-    decorators,
-    deployable_component_logs,
-    deployment,
-    inference_endpoint,
-    predictor_state,
-)
+from hsml import client, decorators
 from hsml.client.istio.utils.infer_type import (
     InferInput,
     InferOutput,
     InferRequest,
 )
 from hsml.constants import INFERENCE_ENDPOINTS as IE
+from hsml.deployment import (
+    deployable_component_logs,
+    deployment,
+    inference_endpoint,
+    predictor_state,
+)
 
 
 class ServingApi:

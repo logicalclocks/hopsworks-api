@@ -15,7 +15,7 @@
 #
 
 import pytest
-from hsml.deployment_tracing_config import DeploymentTracingConfig
+from hsml.deployment.tracing_config import DeploymentTracingConfig
 
 
 class TestDeploymentTracingConfig:

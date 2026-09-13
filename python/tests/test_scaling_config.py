@@ -16,7 +16,7 @@
 
 import pytest
 from hopsworks_common.constants import PREDICTOR, SCALING_CONFIG
-from hsml.scaling_config import (
+from hsml.deployment.scaling_config import (
     PredictorScalingConfig,
     ScaleMetric,
     TransformerScalingConfig,

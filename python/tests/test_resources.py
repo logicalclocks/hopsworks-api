@@ -18,8 +18,8 @@ import copy
 from unittest.mock import call
 
 import pytest
-from hsml import resources
 from hsml.constants import RESOURCES
+from hsml.deployment import resources
 
 
 SERVING_RESOURCE_LIMITS = {"cores": 2, "memory": 1024, "gpus": 0}
@@ -124,7 +124,7 @@ class TestResources:
             "humps.decamelize", return_value=json_decamelized
         )
         mock_from_json = mocker.patch(
-            "hsml.resources.ComponentResources.from_json",
+            "hsml.deployment.resources.ComponentResources.from_json",
             return_value="from_json_result",
         )
 
@@ -144,7 +144,7 @@ class TestResources:
             "get_component_resources_num_instances_requests_and_limits"
         ]["response"]
         mock_fill_missing_resources = mocker.patch(
-            "hsml.resources.ComponentResources._fill_missing_resources"
+            "hsml.deployment.resources.ComponentResources._fill_missing_resources"
         )
         mock_resources_init = mocker.spy(resources.Resources, "__init__")
 
@@ -189,7 +189,7 @@ class TestResources:
             side_effect=[requests_object, limits_object],
         )
         mock_fill_missing_resources = mocker.patch(
-            "hsml.resources.ComponentResources._fill_missing_resources"
+            "hsml.deployment.resources.ComponentResources._fill_missing_resources"
         )
 
         # Act

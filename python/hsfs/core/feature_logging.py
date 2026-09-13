@@ -14,6 +14,53 @@ if TYPE_CHECKING:
     import datetime
 
 
+# Quartz expressions behind the two supported cadences of the offline
+# materialization job. Values are the names users pass, not the cron strings.
+LOG_MATERIALIZATION_INTERVALS: dict[str, str] = {
+    "hour": "0 0 * * * ? *",
+    "day": "0 0 0 * * ? *",
+}
+
+
+# The two ways logged rows reach the logging feature group. A feature view
+# logs through exactly one of them: the layout of its logging group differs.
+LOG_TRANSPORTS = ("realtime", "job")
+
+
+def _transport(name: str) -> str:
+    key = str(name).strip().lower()
+    if key not in LOG_TRANSPORTS:
+        raise ValueError(
+            f"Unsupported feature logging transport {name!r}; "
+            f"expected one of {', '.join(LOG_TRANSPORTS)}."
+        )
+    return key
+
+
+def _materialization_cron(interval: str) -> str:
+    key = str(interval).strip().lower()
+    if key not in LOG_MATERIALIZATION_INTERVALS:
+        raise ValueError(
+            f"Unsupported log materialization interval {interval!r}; "
+            f"expected one of {', '.join(LOG_MATERIALIZATION_INTERVALS)}."
+        )
+    return LOG_MATERIALIZATION_INTERVALS[key]
+
+
+def _transport_of_feature_group(fg) -> str:
+    """The transport a logging feature group was created for, read off its layout."""
+    return "realtime" if getattr(fg, "stream", True) else "job"
+
+
+def _interval_of_schedule(schedule) -> str | None:
+    """The interval name whose cron a job schedule carries, `None` for any other cadence."""
+    cron = schedule.cron_expression if schedule is not None else None
+    return next(
+        (name for name, expr in LOG_MATERIALIZATION_INTERVALS.items() if expr == cron),
+        None,
+    )
+
+
 class LoggingMetaData:
     """Class that holds the data for feature logging."""
 
@@ -46,6 +93,8 @@ class FeatureLogging:
         transformed_features: feature_group.FeatureGroup | None = None,
         untransformed_features: feature_group.FeatureGroup | None = None,
         extra_logging_columns: list[Feature] | None = None,
+        materialization_interval: str | None = None,
+        transport: str | None = None,
     ):
         """DTO class for feature logging.
 
@@ -54,11 +103,21 @@ class FeatureLogging:
             transformed_features: The feature group containing the transformed features. As of Hopsworks 4.6, transformed and untransformed features are logged in the same feature group. This feature group is maintained for backward compatibility.
             untransformed_features: The feature group containing the untransformed features.
             extra_logging_columns: List of extra logging columns.
+            materialization_interval: How often the logs are written to the offline store, `"hour"` or `"day"`; `None` keeps the platform default.
+            transport: How logged rows reach the logging feature group, `"realtime"` or `"job"`; `None` keeps the platform default.
         """
         self._id = id
         self._transformed_features = transformed_features
         self._untransformed_features = untransformed_features
         self._extra_logging_columns = extra_logging_columns
+        self._materialization_interval = (
+            None
+            if materialization_interval is None
+            else str(materialization_interval).strip().lower()
+        )
+        if self._materialization_interval is not None:
+            _materialization_cron(self._materialization_interval)
+        self._transport = None if transport is None else _transport(transport)
 
     @classmethod
     def from_response_json(cls, json_dict: dict[str, Any]) -> FeatureLogging:
@@ -83,11 +142,16 @@ class FeatureLogging:
             transformed_features,
             untransformed_features,
             extra_logging_columns,
+            json_decamelized.get("materialization_interval"),
+            json_decamelized.get("transport"),
         )
 
     def _update(self, others):
         self._transformed_features = others.transformed_features
         self._untransformed_features = others.untransformed_features
+        # Both derive from the new group and its schedule.
+        self._transport = None
+        self._materialization_interval = None
         return self
 
     @public
@@ -104,6 +168,44 @@ class FeatureLogging:
     @property
     def extra_logging_columns(self) -> list[Feature] | None:
         return self._extra_logging_columns
+
+    @public
+    @property
+    def materialization_interval(self) -> str | None:
+        """How often the logs are written to the offline store, `"hour"` or `"day"`, or `None` for the platform default.
+
+        The backend keeps the cadence only as the materialization job's schedule, so a value that was not set in this session is read back from that schedule.
+        """
+        if (
+            self._materialization_interval is None
+            and self._untransformed_features is not None
+        ):
+            self._materialization_interval = _interval_of_schedule(self._schedule())
+        return self._materialization_interval
+
+    def _schedule(self):
+        # The job transport has no materialization job: its cadence is the commit
+        # job's schedule, named after the logging group.
+        if self.transport == "job":
+            from hopsworks_common.core.job_api import JobApi
+
+            job = JobApi().get_job(
+                f"{self._untransformed_features.name}_feature_log_commit"
+            )
+            return job.job_schedule if job is not None else None
+        return self._untransformed_features.materialization_job.job_schedule
+
+    @public
+    @property
+    def transport(self) -> str | None:
+        """How logged rows reach the logging feature group, `"realtime"` or `"job"`.
+
+        A feature view logs through one transport, and the layout of its logging feature group tells which: the `realtime` group is a stream group with an online copy, the `job` group is an offline-only Delta group filled by the commit job.
+        `None` when logging has no feature group yet.
+        """
+        if self._transport is None and self._untransformed_features is not None:
+            self._transport = _transport_of_feature_group(self._untransformed_features)
+        return self._transport
 
     @public
     def get_feature_group(
@@ -144,6 +246,8 @@ class FeatureLogging:
             "transformedLogFg": self._transformed_features,
             "untransformedLogFg": self._untransformed_features,
             "extraLoggingColumns": self._extra_logging_columns,
+            "materializationInterval": self._materialization_interval,
+            "transport": self._transport,
         }
 
     def json(self) -> dict[str, Any]:

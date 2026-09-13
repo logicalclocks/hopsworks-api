@@ -94,7 +94,7 @@ class FeatureLoggingClientSingleton:
         }
 
     async def _post(
-        self, json_data: str, endpoint: str = "", headers=None
+        self, json_data: str | bytes, endpoint: str = "", headers=None
     ) -> httpx.Response:
         url = f"{self._client.base_url}/{endpoint.lstrip('/')}"
         _logger.debug(f"Performing POST request to {url}")

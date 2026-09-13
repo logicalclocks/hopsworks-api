@@ -43,8 +43,8 @@ from typing_extensions import Self
 if TYPE_CHECKING:
     from hopsworks_common.project import Project
     from hsfs import feature_store
+    from hsml.deployment.model_serving import ModelServing
     from hsml.model_registry import ModelRegistry
-    from hsml.model_serving import ModelServing
 
 
 HOPSWORKS_PORT_DEFAULT = 443

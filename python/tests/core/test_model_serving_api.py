@@ -17,7 +17,7 @@
 import pytest
 from hsml.constants import INFERENCE_ENDPOINTS
 from hsml.core.model_serving_api import ModelServingApi
-from hsml.inference_endpoint import InferenceEndpoint, InferenceEndpointPort
+from hsml.deployment.inference_endpoint import InferenceEndpoint, InferenceEndpointPort
 
 
 def _endpoint(endpoint_type, ports):

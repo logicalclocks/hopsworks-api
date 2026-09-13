@@ -78,3 +78,8 @@ dep.predict({"instances": [[1, 2, 3]]})
 
 Framework subclasses (`TorchModel`, `SkLearnModel`, `TensorFlowModel`, `PythonModel`, `LlmModel`) add framework-specific `save()` and `load()` logic.
 Accessed via `mr.<framework>.create_model(...)`.
+
+Everything a deployment is made of lives in the `deployment/` subpackage: the `Deployment` handle, its `Predictor` and `Transformer`, their resources, scaling, logging, tracing, batching and schema value objects, the predictor state, the KServe default predictor and `ModelServing` itself.
+The names are re-exported from `hsml.deployment`, so `from hsml.deployment import Deployment, Predictor` works, while each module keeps its own documentation page.
+The pre-5.2 flat paths (`hsml.predictor`, `hsml.resources`, `hsml.model_serving` and the rest) still import, from shim modules that warn and forward.
+Model registry entities stay at the root, as the equivalents do in `hsfs`.
