@@ -19,7 +19,7 @@ import warnings
 import pytest
 from hsfs import feature, feature_group
 from hsfs.client.exceptions import FeatureStoreException
-from hsfs.constructor import filter, join, query
+from hsfs.constructor import filter, join, lookback, query
 from hsfs.constructor.fs_query import FsQuery
 from hsfs.engine import spark
 
@@ -1071,3 +1071,271 @@ class TestQueryRead:
         feat, prefix, fg = q._get_feature_by_name("tf3_name")
         assert feat.name == "tf3_name"
         assert fg == TestQuery.fg3
+
+
+class TestOnlinePreparedRead:
+    """A repeated online read of an unchanged query must not ask the backend again.
+
+    Constructing the query and fetching the online connector are both HTTP
+    calls, made before any SQL runs, and neither answer changes while the query
+    does not.
+    """
+
+    def _query(self, mocker, calls):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        q = TestQuery.fg1.select_all()
+        mocker.patch.object(q, "_check_read_supported")
+        mocker.patch.object(q, "_to_string", return_value="SELECT 1")
+        mocker.patch.object(
+            q._query_constructor_api,
+            "_construct_query",
+            side_effect=lambda *a, **k: calls.append("construct"),
+        )
+        mocker.patch.object(
+            q._storage_connector_api,
+            "_get_online_connector",
+            side_effect=lambda *a, **k: calls.append("connector") or "connector",
+        )
+        return q
+
+    def test_repeated_reads_prepare_once(self, mocker):
+        mocker.patch("hopsworks_common.client._get_instance", return_value=object())
+        calls = []
+        q = self._query(mocker, calls)
+
+        first = q._prep_read(True, {})
+        for _ in range(4):
+            assert q._prep_read(True, {}) == first
+
+        assert calls == ["construct", "connector"]
+
+    @pytest.mark.parametrize(
+        "mutate",
+        [
+            lambda q: q.filter(feature.Feature("id") > 1),
+            lambda q: q.limit(10),
+            lambda q: q.append_feature(feature.Feature("extra", feature_group_id=11)),
+            lambda q: setattr(q, "left_feature_group_start_time", 1),
+            lambda q: setattr(q, "left_feature_group_end_time", 2),
+            lambda q: setattr(
+                q,
+                "lookback",
+                lookback.Lookback(
+                    default=lookback.FeatureGroupLookback(key="EVENT_TIME", start=1)
+                ),
+            ),
+        ],
+    )
+    def test_a_changed_query_prepares_again(self, mocker, mutate):
+        mocker.patch("hopsworks_common.client._get_instance", return_value=object())
+        calls = []
+        q = self._query(mocker, calls)
+
+        q._prep_read(True, {})
+        mutate(q)
+        q._prep_read(True, {})
+
+        assert calls == ["construct", "connector", "construct", "connector"]
+
+    def test_show_does_not_leave_its_row_count_behind(self, mocker):
+        """`show(n)` sets the limit for its own read only.
+
+        It prepared under the temporary limit and left that preparation in
+        place, so the next ordinary read of the same query ran the preview's
+        LIMIT even though the query carries none.
+        """
+        mocker.patch("hopsworks_common.client._get_instance", return_value=object())
+        calls = []
+        q = self._query(mocker, calls)
+        rendered = []
+        q._to_string.side_effect = lambda fs_query, online: (
+            rendered.append(q._limit) or f"SELECT 1 LIMIT {q._limit}"
+        )
+        mocker.patch("hsfs.engine._get_instance")
+
+        q.show(2, online=True)
+        q._prep_read(True, {})
+
+        assert q._limit is None
+        assert rendered == [2, None], "the ordinary read reused the preview's limit"
+
+    def test_show_does_not_read_a_prepared_query(self, mocker):
+        """A prepared query must not make `show(n)` render someone else's limit."""
+        mocker.patch("hopsworks_common.client._get_instance", return_value=object())
+        calls = []
+        q = self._query(mocker, calls)
+        q.limit(50)
+        rendered = []
+        q._to_string.side_effect = lambda fs_query, online: (
+            rendered.append(q._limit) or "SELECT 1"
+        )
+        mocker.patch("hsfs.engine._get_instance")
+
+        q._prep_read(True, {})
+        q.show(2, online=True)
+
+        assert rendered == [50, 2], "show reused the query's own limit"
+        assert q._limit == 50
+
+    def test_show_does_not_evict_what_the_query_prepared(self, mocker):
+        """The preview is not this query's read, so it must not take its place.
+
+        Keying on the request already stops the preview's LIMIT from being
+        reused, because it is a different request. What it does not stop on its
+        own is the preview replacing the entry the query's own reads use, which
+        would send the next one back to the backend.
+        """
+        mocker.patch("hopsworks_common.client._get_instance", return_value=object())
+        calls = []
+        q = self._query(mocker, calls)
+        mocker.patch("hsfs.engine._get_instance")
+
+        q._prep_read(True, {})
+        q.show(2, online=True)
+        q._prep_read(True, {})
+
+        assert calls == ["construct", "connector", "construct", "connector"], (
+            "the preview replaced the prepared read, so the next one prepared again"
+        )
+
+    def test_a_change_inside_a_joined_query_prepares_again(self, mocker):
+        """A join's sub-query is changed through its own object, not through this one."""
+        mocker.patch("hopsworks_common.client._get_instance", return_value=object())
+        calls = []
+        q = self._query(mocker, calls)
+        sub = TestQuery.fg2.select_all()
+        q.join(sub)
+
+        q._prep_read(True, {})
+        sub.filter(feature.Feature("id") > 1)
+        q._prep_read(True, {})
+
+        assert calls == ["construct", "connector", "construct", "connector"]
+
+    def test_a_joined_query_prepares_again(self, mocker):
+        mocker.patch("hopsworks_common.client._get_instance", return_value=object())
+        calls = []
+        q = self._query(mocker, calls)
+
+        q._prep_read(True, {})
+        q.join(TestQuery.fg2.select_all())
+        q._prep_read(True, {})
+
+        assert calls == ["construct", "connector", "construct", "connector"]
+
+    def test_a_new_connection_prepares_again(self, mocker):
+        """Credentials belong to a session; a re-login must not read through the old ones."""
+        calls = []
+        connection = mocker.patch(
+            "hopsworks_common.client._get_instance", return_value=object()
+        )
+        q = self._query(mocker, calls)
+
+        q._prep_read(True, {})
+        connection.return_value = object()
+        q._prep_read(True, {})
+
+        assert calls == ["construct", "connector", "construct", "connector"]
+
+
+class TestReadBatches:
+    """Batches arrive as they are produced, and the reader is released either way."""
+
+    def _query(self, mocker, engine_instance):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mocker.patch("hsfs.engine._get_instance", return_value=engine_instance)
+        mocker.patch("hopsworks_common.client._get_instance", return_value=object())
+        q = TestQuery.fg1.select_all()
+        mocker.patch.object(q, "_check_read_supported")
+        mocker.patch.object(q, "_to_string", return_value="SELECT 1")
+        mocker.patch.object(q._query_constructor_api, "_construct_query")
+        mocker.patch.object(
+            q._storage_connector_api, "_get_online_connector", return_value="connector"
+        )
+        return q
+
+    def test_batches_are_yielded_and_the_reader_is_closed(self, mocker):
+        closed = []
+
+        def stream(*_args, **_kwargs):
+            try:
+                yield "batch-1"
+                yield "batch-2"
+            finally:
+                closed.append(True)
+
+        engine_instance = mocker.Mock()
+        engine_instance._stream_batches.side_effect = stream
+        q = self._query(mocker, engine_instance)
+
+        with q.read_batches(online=True) as batches:
+            assert list(batches) == ["batch-1", "batch-2"]
+
+        assert closed == [True]
+
+    def test_leaving_early_still_closes_the_reader(self, mocker):
+        """A caller that takes one batch must not leave the server producing the rest."""
+        closed = []
+
+        def stream(*_args, **_kwargs):
+            try:
+                yield "batch-1"
+                yield "batch-2"
+            finally:
+                closed.append(True)
+
+        engine_instance = mocker.Mock()
+        engine_instance._stream_batches.side_effect = stream
+        q = self._query(mocker, engine_instance)
+
+        with q.read_batches(online=True) as batches:
+            assert next(iter(batches)) == "batch-1"
+
+        assert closed == [True]
+
+    def test_an_exception_while_reading_still_closes_the_reader(self, mocker):
+        closed = []
+
+        def stream(*_args, **_kwargs):
+            try:
+                yield "batch-1"
+                yield "batch-2"
+            finally:
+                closed.append(True)
+
+        engine_instance = mocker.Mock()
+        engine_instance._stream_batches.side_effect = stream
+        q = self._query(mocker, engine_instance)
+
+        with pytest.raises(ValueError, match="caller"):  # noqa: SIM117
+            with q.read_batches(online=True) as batches:
+                next(iter(batches))
+                raise ValueError("caller blew up")
+
+        assert closed == [True]
+
+    def test_the_batch_size_reaches_the_engine(self, mocker):
+        engine_instance = mocker.Mock()
+        engine_instance._stream_batches.side_effect = lambda *a, **k: iter(())
+        q = self._query(mocker, engine_instance)
+
+        with q.read_batches(online=True, batch_size=7):
+            pass
+
+        assert engine_instance._stream_batches.call_args.args[4] == 7
+
+    @pytest.mark.parametrize("batch_size", [0, -1])
+    def test_a_batch_size_below_one_is_refused(self, mocker, batch_size):
+        q = self._query(mocker, mocker.Mock())
+
+        with pytest.raises(ValueError, match="at least 1"):  # noqa: SIM117
+            with q.read_batches(batch_size=batch_size):
+                pass
+
+    def test_an_engine_that_cannot_stream_says_so(self, mocker):
+        engine_instance = mocker.Mock(spec=[])
+        q = self._query(mocker, engine_instance)
+
+        with pytest.raises(FeatureStoreException, match="Python engine"):  # noqa: SIM117
+            with q.read_batches():
+                pass

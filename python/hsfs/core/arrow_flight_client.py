@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import base64
+import contextlib
 import json
 import logging
 import warnings
@@ -42,6 +43,8 @@ from pyarrow.flight import FlightServerError
 
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from hsfs.constructor import query
     from hsfs.constructor.fs_query import FsQuery
 
@@ -498,6 +501,45 @@ class ArrowFlightClient:
             return pl.from_arrow(reader.read_all())
         return reader.read_pandas()
 
+    @_handle_afs_exception(user_message=READ_ERROR)
+    def _stream_dataset(
+        self, descriptor, timeout=None, headers=None
+    ) -> Iterator[pyarrow.RecordBatch]:
+        """Yield the record batches of a dataset as the server sends them.
+
+        `_get_dataset` materialises the whole result before the caller sees any
+        of it, so a read costs the memory of its result and its first row waits
+        for its last. This reads the stream a batch at a time instead. Every
+        endpoint the flight info names is consumed, since a partitioned result
+        is not all on the first one.
+
+        The reader is closed when the caller stops, whether it ran out of
+        batches, left early or raised, so a cancelled read does not leave the
+        connection consuming a result nobody will take.
+        """
+        if timeout is None:
+            timeout = self.timeout
+        info = self._get_flight_info(descriptor)
+        if headers is None:
+            headers = self._certificates_headers()
+        options = pyarrow.flight.FlightCallOptions(timeout=timeout, headers=headers)
+
+        for endpoint in info.endpoints:
+            reader = self._connection.do_get(endpoint.ticket, options)
+            try:
+                while True:
+                    try:
+                        chunk = reader.read_chunk()
+                    except StopIteration:
+                        break
+                    if chunk.data is not None and chunk.data.num_rows:
+                        yield chunk.data
+            finally:
+                # cancel() is what tells the server to stop producing; close()
+                # alone waits for the rest of a result the caller walked away from.
+                with contextlib.suppress(Exception):
+                    reader.cancel()
+
     # retry is handled in get_dataset
     @_handle_afs_exception(user_message=READ_ERROR)
     def _read_query(self, query_object: FsQuery, arrow_flight_config, dataframe_type):
@@ -521,6 +563,31 @@ class ArrowFlightClient:
                 else None
             ),
             dataframe_type=dataframe_type,
+        )
+
+    def _stream_query(
+        self, query_object: FsQuery, arrow_flight_config
+    ) -> Iterator[pyarrow.RecordBatch]:
+        """The record batches of a query, as the server produces them."""
+        query_encoded = query_object.hqs_payload.encode("ascii")
+        descriptor = pyarrow.flight.FlightDescriptor.for_command(query_encoded)
+        return self._stream_dataset(
+            descriptor,
+            (
+                arrow_flight_config.get("timeout", self.timeout)
+                if arrow_flight_config
+                else self.timeout
+            ),
+            headers=(
+                [
+                    (
+                        b"hopsworks-signature",
+                        query_object.hqs_payload_signature.encode("ascii"),
+                    )
+                ]
+                if query_object.hqs_payload_signature
+                else None
+            ),
         )
 
     # retry is handled in get_dataset

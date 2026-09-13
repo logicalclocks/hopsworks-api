@@ -14,6 +14,7 @@
 #   limitations under the License.
 from __future__ import annotations
 
+import threading
 import warnings
 from typing import TYPE_CHECKING, Any
 
@@ -94,6 +95,9 @@ class Deployment:
         self._model_api = model_api.ModelApi()
         self._grpc_channel = None
         self._model_registry_id = None
+        # Concurrent first callers prepare once and share the outcome, rather
+        # than each downloading the schema and opening a transport.
+        self._predict_init_lock = threading.Lock()
 
     @public
     @usage._method_logger
@@ -367,6 +371,39 @@ class Deployment:
             ```
         """
         return self._serving_engine._predict(self, data, inputs, validate=validate)
+
+    @public
+    @usage._method_logger
+    def init_predict(self) -> None:
+        """Prepare this deployment for inference, so the first `predict()` does not.
+
+        Downloads the schema the deployment's revision names and connects the
+        transport its API protocol selects. Calling it is optional: `predict()`
+        prepares the same way on its first call, through the same code. Call it
+        when the first request should not pay for discovery, for instance when
+        a serving process starts before it takes traffic.
+
+        No prediction is sent. A prediction can log rows and have application
+        side effects, so it is not used as a warm-up.
+
+        Concurrent callers prepare once and share the result. A failure leaves
+        the deployment unprepared and is raised to the caller, so it can be
+        tried again.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
+
+        Examples:
+            ```python
+            # login into Hopsworks using hopsworks.login()
+            ms = project.get_model_serving()
+            my_deployment = ms.get_deployment("my_deployment")
+
+            my_deployment.init_predict()
+            predictions = my_deployment.predict(inputs=[[1, 2, 3, 4]])
+            ```
+        """
+        self._serving_engine._init_predict(self)
 
     @public
     def get_model(self):

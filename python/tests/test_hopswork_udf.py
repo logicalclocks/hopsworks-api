@@ -14,10 +14,13 @@
 #   limitations under the License.
 #
 
+import multiprocessing
+import threading
 from datetime import date, datetime, time
 
 import pandas as pd
 import pytest
+from hsfs import hopsworks_udf
 from hsfs.client.exceptions import FeatureStoreException
 from hsfs.hopsworks_udf import (
     HopsworksUdf,
@@ -1744,3 +1747,132 @@ class TestUdfSourceExtraction:
         )
         # The real symptom: the imports block on its own must compile.
         compile(module_imports + "\nimport pandas as pd\n", "<test>", "exec")
+
+
+class TestTransformationContextIsRequestLocal:
+    """A feature view holds one set of UDF objects and every caller shares them.
+
+    The context of a request therefore belongs to the request, not to the
+    object: writing it onto the UDF let one caller's transformations run under
+    another's context as soon as two of them overlapped.
+    """
+
+    def _udf(self):
+        @udf(int)
+        def add_context(feature):
+            return feature
+
+        return add_context
+
+    def test_the_request_context_wins_over_the_objects(self):
+        function = self._udf()
+        function.transformation_context = {"scope": "object"}
+
+        with hopsworks_udf._serving_transformation_context({"scope": "request"}):
+            assert function.transformation_context == {"scope": "request"}
+
+        assert function.transformation_context == {"scope": "object"}
+
+    def test_two_threads_do_not_see_each_other(self):
+        function = self._udf()
+        seen = {}
+        both_inside = threading.Barrier(2)
+
+        def serve(name):
+            with hopsworks_udf._serving_transformation_context({"caller": name}):
+                both_inside.wait(timeout=5)
+                seen[name] = function.transformation_context
+
+        threads = [threading.Thread(target=serve, args=(n,)) for n in ("a", "b")]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=5)
+
+        assert seen == {"a": {"caller": "a"}, "b": {"caller": "b"}}
+
+    def test_the_object_is_not_written_to(self):
+        function = self._udf()
+
+        with hopsworks_udf._serving_transformation_context({"scope": "request"}):
+            pass
+
+        assert function._transformation_context == {}
+
+    def test_an_empty_request_context_falls_back_to_the_object(self):
+        function = self._udf()
+        function.transformation_context = {"scope": "object"}
+
+        with hopsworks_udf._serving_transformation_context(None):
+            assert function.transformation_context == {"scope": "object"}
+        with hopsworks_udf._serving_transformation_context({}):
+            assert function.transformation_context == {"scope": "object"}
+
+
+def _read_context_in_worker(transformation_context):
+    """Runs in the worker: what the UDF reports as its context for one job."""
+    from hsfs.core.transformation_function_engine import TransformationFunctionEngine
+
+    @udf(int)
+    def read_context(feature):
+        return feature
+
+    read_context.transformation_context = {"scope": "object"}
+    seen = {}
+    TransformationFunctionEngine._execute_udf_in_context = staticmethod(
+        lambda **kwargs: seen.update(kwargs["udf"].transformation_context or {})
+    )
+    TransformationFunctionEngine._execute_udf(
+        udf=read_context, data={}, transformation_context=transformation_context
+    )
+    return seen
+
+
+class TestForkedWorkersDoNotInheritAContext:
+    """A pool built during one request must not transform later requests under it.
+
+    A forked worker is a memory copy of the process that forked it, context
+    variables included, and the request context wins over the UDF's own. A pool
+    built while one request held the context therefore answered every later
+    request with that request's context, which is a different tenant's.
+    """
+
+    def _udf(self):
+        @udf(int)
+        def read_context(feature):
+            return feature
+
+        return read_context
+
+    @pytest.mark.skipif(
+        "fork" not in multiprocessing.get_all_start_methods(),
+        reason="the inheritance this covers only exists when a worker is forked",
+    )
+    def test_a_pool_forked_under_one_request_serves_the_next_ones_own_context(self):
+        from hsfs.core.transformation_function_engine import (
+            TransformationFunctionEngine,
+        )
+
+        context_seen = multiprocessing.get_context("fork")
+        with hopsworks_udf._serving_transformation_context({"tenant": "request-A"}):
+            # Forked while request A holds the context, which is what a lazily
+            # built or resized pool does on a serving path.
+            pool = context_seen.Pool(
+                processes=1,
+                initializer=TransformationFunctionEngine._init_worker,
+                initargs=("python",),
+            )
+        try:
+            for tenant in ("request-B", "request-C"):
+                seen = pool.apply(_read_context_in_worker, ({"tenant": tenant},), {})
+                assert seen == {"tenant": tenant}, (
+                    f"{tenant} was transformed under {seen}"
+                )
+            # No context supplied returns the worker to the UDF's own, rather
+            # than to whatever the previous job left behind.
+            assert pool.apply(_read_context_in_worker, (None,), {}) == {
+                "scope": "object"
+            }
+        finally:
+            pool.terminate()
+            pool.join()

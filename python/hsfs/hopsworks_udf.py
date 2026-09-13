@@ -16,6 +16,8 @@
 from __future__ import annotations
 
 import ast
+import contextlib
+import contextvars
 import copy
 import inspect
 import json
@@ -47,6 +49,31 @@ if TYPE_CHECKING:
     from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
 
 _logger = logging.getLogger(__name__)
+
+# The transformation context of the request being served, when one is being
+# served. A feature view holds one set of UDF objects and every caller shares
+# them, so the context of a request belongs to the request and not to the
+# object: two threads serving different callers would otherwise read each
+# other's. A context variable is per thread and per task.
+#
+# A forked worker is a memory copy of the process that made it, so it does
+# inherit whatever was set at the moment of the fork. The pool is therefore
+# given each job's context explicitly, and a worker clears what it inherited
+# before it runs anything: a pool built while one request held the context
+# would otherwise answer every later request with that request's context.
+_REQUEST_TRANSFORMATION_CONTEXT: contextvars.ContextVar[dict[str, Any] | None] = (
+    contextvars.ContextVar("hopsworks_transformation_context", default=None)
+)
+
+
+@contextlib.contextmanager
+def _serving_transformation_context(context: dict[str, Any] | None):
+    """Make `context` the transformation context for this thread, for the duration."""
+    token = _REQUEST_TRANSFORMATION_CONTEXT.set(context or None)
+    try:
+        yield
+    finally:
+        _REQUEST_TRANSFORMATION_CONTEXT.reset(token)
 
 
 class UDFExecutionMode(Enum):
@@ -1561,6 +1588,9 @@ def renaming_wrapper(*args):
 
         These context variables passed to the UDF during execution.
         """
+        request = _REQUEST_TRANSFORMATION_CONTEXT.get()
+        if request is not None:
+            return request
         return self._transformation_context if self._transformation_context else {}
 
     @transformation_context.setter

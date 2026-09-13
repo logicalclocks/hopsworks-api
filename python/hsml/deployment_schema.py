@@ -19,11 +19,12 @@ import ast
 import base64
 import datetime
 import decimal
+import functools
 import hashlib
 import json
 import math
 import re
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 import humps
 from hopsworks_apigen import public
@@ -33,6 +34,8 @@ from hopsworks_common.constants import MODEL_SERVING
 
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from hsml.schema import Schema
 
 
@@ -355,53 +358,23 @@ class DeploymentSchema:
         Returns:
             The errors found, each `{"row", "field", "reason"}`; empty when the row is valid.
         """
-        errors: list[dict[str, Any]] = []
-        columns = self.columns
-        if isinstance(instance, dict):
-            known = {f.name for f in columns}
-            for name in self.required_names:
-                if name not in instance:
-                    errors.append({"row": row, "field": name, "reason": "missing"})
-            for key in instance:
-                if key not in known:
-                    errors.append({"row": row, "field": key, "reason": "unknown field"})
-            values = {
-                f.name: instance.get(f.name) for f in columns if f.name in instance
-            }
-        elif isinstance(instance, (list, tuple)):
-            if len(instance) != len(columns):
-                errors.append(
-                    {
-                        "row": row,
-                        "field": None,
-                        "reason": f"expected {len(columns)} values, got {len(instance)}",
-                    }
-                )
-                return errors
-            values = {f.name: v for f, v in zip(columns, instance, strict=True)}
-        else:
-            return [
-                {
-                    "row": row,
-                    "field": None,
-                    "reason": f"a row must be an object or an array, got {type(instance).__name__}",
-                }
-            ]
+        return _validate_row(self._prepared(), instance, row)
 
-        for field in columns:
-            if field.name not in values:
-                continue
-            value = values[field.name]
-            if value is None:
-                if not field.nullable:
-                    errors.append(
-                        {"row": row, "field": field.name, "reason": "must not be null"}
-                    )
-                continue
-            reason = _check_value(field.type, value)
-            if reason is not None:
-                errors.append({"row": row, "field": field.name, "reason": reason})
-        return errors
+    def _prepared(self) -> _PreparedColumns:
+        """The column order, name sets and compiled checks one batch is validated with.
+
+        Built per call rather than cached on the schema: the fields are mutable,
+        and building this is cheap next to doing it once per row, which is what
+        it replaces.
+        """
+        columns = self.columns
+        return _PreparedColumns(
+            columns=tuple(
+                (f.name, f.nullable, _compile_check(f.type)) for f in columns
+            ),
+            known=frozenset(f.name for f in columns),
+            required=frozenset(self.required_names),
+        )
 
     @public
     def validate_instances(
@@ -445,9 +418,10 @@ class DeploymentSchema:
                     "reason": "rows must all be objects or all be arrays",
                 }
             ]
+        prepared = self._prepared()
         errors: list[dict[str, Any]] = []
         for row, instance in enumerate(instances):
-            errors.extend(self.validate_instance(instance, row))
+            errors.extend(_validate_row(prepared, instance, row))
         return errors
 
     def _raise_if_invalid(
@@ -988,105 +962,274 @@ def _family(type_: str | None) -> str | None:
     return complex_[0] if complex_ else None
 
 
+_MISSING = object()
+
+
+class _PreparedColumns(NamedTuple):
+    """What every row of one batch is validated against, worked out once."""
+
+    columns: tuple[tuple[str, bool, Callable[[Any], str | None]], ...]
+    known: frozenset[str]
+    required: frozenset[str]
+
+
+def _validate_row(
+    prepared: _PreparedColumns, instance: Any, row: int
+) -> list[dict[str, Any]]:
+    """Validate one request row against prepared columns.
+
+    An array row is checked positionally, without first being turned into a
+    dictionary that is then read back field by field. A well-formed object row
+    settles both key questions with two set comparisons and only walks the names
+    when one of them says there is something to report.
+    """
+    errors: list[dict[str, Any]] = []
+    if isinstance(instance, dict):
+        keys = instance.keys()
+        if not prepared.required <= keys:
+            errors.extend(
+                {"row": row, "field": name, "reason": "missing"}
+                for name in sorted(prepared.required - keys)
+            )
+        if not keys <= prepared.known:
+            errors.extend(
+                {"row": row, "field": key, "reason": "unknown field"}
+                for key in instance
+                if key not in prepared.known
+            )
+        for name, nullable, check in prepared.columns:
+            value = instance.get(name, _MISSING)
+            if value is _MISSING:
+                continue
+            if value is None:
+                if not nullable:
+                    errors.append(
+                        {"row": row, "field": name, "reason": "must not be null"}
+                    )
+                continue
+            reason = check(value)
+            if reason is not None:
+                errors.append({"row": row, "field": name, "reason": reason})
+        return errors
+
+    if isinstance(instance, (list, tuple)):
+        if len(instance) != len(prepared.columns):
+            return [
+                {
+                    "row": row,
+                    "field": None,
+                    "reason": f"expected {len(prepared.columns)} values, got {len(instance)}",
+                }
+            ]
+        for value, (name, nullable, check) in zip(
+            instance, prepared.columns, strict=True
+        ):
+            if value is None:
+                if not nullable:
+                    errors.append(
+                        {"row": row, "field": name, "reason": "must not be null"}
+                    )
+                continue
+            reason = check(value)
+            if reason is not None:
+                errors.append({"row": row, "field": name, "reason": reason})
+        return errors
+
+    return [
+        {
+            "row": row,
+            "field": None,
+            "reason": f"a row must be an object or an array, got {type(instance).__name__}",
+        }
+    ]
+
+
 def _check_value(type_: str | None, value: Any) -> str | None:
     """Return why `value` is not an acceptable JSON value for `type_`, or `None` when it is."""
+    return _compile_check(type_)(value)
+
+
+def _accept(_value: Any) -> str | None:
+    """The check for a type with nothing to check: an unknown or unresolved one."""
+    return None
+
+
+@functools.lru_cache(maxsize=1024)
+def _compile_check(type_: str | None) -> Callable[[Any], str | None]:
+    """Build the value check for one declared type, once.
+
+    What a value has to satisfy depends only on its declared type, so the chain
+    of type comparisons is walked once per distinct type rather than once per
+    value, and a nested type string is parsed once rather than once per element.
+    Cached on the type string itself, so a field whose type changes gets the
+    check for its new type with nothing to invalidate.
+    """
     if type_ is None:
-        return None
+        return _accept
     if type_ in _INTEGER_TYPES:
-        if isinstance(value, bool) or not isinstance(value, int):
-            return f"must be an integer ({type_})"
-        return None
+        message = f"must be an integer ({type_})"
+
+        def check_integer(value: Any) -> str | None:
+            # The exact type covers almost every value and settles it in one
+            # check; anything else, a bool or an int subclass, takes the careful
+            # path below.
+            if type(value) is int:
+                return None
+            if isinstance(value, bool) or not isinstance(value, int):
+                return message
+            return None
+
+        return check_integer
     if type_ == "bigint":
-        if isinstance(value, bool):
-            return "must be an integer (bigint)"
-        if isinstance(value, int):
-            return None
-        if isinstance(value, str) and _INTEGER_STRING.match(value):
-            return None
-        return "must be an integer or a decimal string (bigint)"
+
+        def check_bigint(value: Any) -> str | None:
+            if isinstance(value, bool):
+                return "must be an integer (bigint)"
+            if isinstance(value, int):
+                return None
+            if isinstance(value, str) and _INTEGER_STRING.match(value):
+                return None
+            return "must be an integer or a decimal string (bigint)"
+
+        return check_bigint
     if type_ in _FLOAT_TYPES:
-        if isinstance(value, bool) or not isinstance(value, (int, float)):
-            return f"must be a number ({type_})"
-        if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
-            return "must be a finite number"
-        return None
+        message = f"must be a number ({type_})"
+
+        def check_float(value: Any) -> str | None:
+            if type(value) is float:
+                # One subtraction rules out NaN and both infinities: the
+                # difference is NaN for all three and zero for every finite
+                # value, which two math calls per value were doing before.
+                return "must be a finite number" if value - value != 0.0 else None
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                return message
+            if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
+                return "must be a finite number"
+            return None
+
+        return check_float
     if type_.startswith("decimal"):
-        if isinstance(value, bool):
-            return "must be a number (decimal)"
-        if isinstance(value, (int, float)):
-            return None
-        if isinstance(value, str) and _DECIMAL_STRING.match(value):
-            return None
-        return "must be a number or a decimal string (decimal)"
+
+        def check_decimal(value: Any) -> str | None:
+            if isinstance(value, bool):
+                return "must be a number (decimal)"
+            if isinstance(value, (int, float)):
+                return None
+            if isinstance(value, str) and _DECIMAL_STRING.match(value):
+                return None
+            return "must be a number or a decimal string (decimal)"
+
+        return check_decimal
     if type_ in _STRING_TYPES or type_.startswith(("varchar", "char")):
-        return None if isinstance(value, str) else "must be a string"
+
+        def check_string(value: Any) -> str | None:
+            if type(value) is str:
+                return None
+            return None if isinstance(value, str) else "must be a string"
+
+        return check_string
     if type_ == "boolean":
-        return None if isinstance(value, bool) else "must be a boolean"
+
+        def check_boolean(value: Any) -> str | None:
+            return None if isinstance(value, bool) else "must be a boolean"
+
+        return check_boolean
     if type_ in _TIMESTAMP_TYPES:
-        if isinstance(value, bool):
+
+        def check_timestamp(value: Any) -> str | None:
+            if isinstance(value, bool):
+                return "must be an RFC 3339 string or epoch milliseconds (timestamp)"
+            if isinstance(value, int):
+                return None
+            if (
+                isinstance(value, str)
+                and _RFC3339.match(value)
+                and _parses_as_timestamp(value)
+            ):
+                return None
             return "must be an RFC 3339 string or epoch milliseconds (timestamp)"
-        if isinstance(value, int):
-            return None
-        if (
-            isinstance(value, str)
-            and _RFC3339.match(value)
-            and _parses_as_timestamp(value)
-        ):
-            return None
-        return "must be an RFC 3339 string or epoch milliseconds (timestamp)"
+
+        return check_timestamp
     if type_ in _DATE_TYPES:
-        if isinstance(value, bool):
+
+        def check_date(value: Any) -> str | None:
+            if isinstance(value, bool):
+                return "must be a YYYY-MM-DD string or days since epoch (date)"
+            if isinstance(value, int):
+                return None
+            if isinstance(value, str) and _DATE.match(value) and _parses_as_date(value):
+                return None
             return "must be a YYYY-MM-DD string or days since epoch (date)"
-        if isinstance(value, int):
-            return None
-        if isinstance(value, str) and _DATE.match(value) and _parses_as_date(value):
-            return None
-        return "must be a YYYY-MM-DD string or days since epoch (date)"
+
+        return check_date
     if type_ == "binary":
-        if isinstance(value, str) and _BASE64.match(value) and len(value) % 4 == 0:
-            return None
-        return "must be a base64 string (binary)"
+
+        def check_binary(value: Any) -> str | None:
+            if isinstance(value, str) and _BASE64.match(value) and len(value) % 4 == 0:
+                return None
+            return "must be a base64 string (binary)"
+
+        return check_binary
     complex_ = _parse_complex(type_)
     if complex_ is None:
-        return None
+        return _accept
     kind, spec = complex_
     if kind == "array":
-        if not isinstance(value, list):
-            return f"must be an array ({type_})"
-        for i, element in enumerate(value):
-            if element is None:
-                continue
-            reason = _check_value(spec, element)
-            if reason:
-                return f"element {i} {reason}"
-        return None
+        check_element = _compile_check(spec)
+        message = f"must be an array ({type_})"
+
+        def check_array(value: Any) -> str | None:
+            if not isinstance(value, list):
+                return message
+            for i, element in enumerate(value):
+                if element is None:
+                    continue
+                reason = check_element(element)
+                if reason:
+                    return f"element {i} {reason}"
+            return None
+
+        return check_array
     if kind == "map":
-        if not isinstance(value, dict):
-            return f"must be an object ({type_})"
-        for key, element in value.items():
-            if element is None:
-                continue
-            reason = _check_value(spec[1], element)
-            if reason:
-                return f"value of '{key}' {reason}"
-        return None
+        check_element = _compile_check(spec[1])
+        message = f"must be an object ({type_})"
+
+        def check_map(value: Any) -> str | None:
+            if not isinstance(value, dict):
+                return message
+            for key, element in value.items():
+                if element is None:
+                    continue
+                reason = check_element(element)
+                if reason:
+                    return f"value of '{key}' {reason}"
+            return None
+
+        return check_map
     if kind == "struct":
-        if not isinstance(value, dict):
-            return f"must be an object ({type_})"
-        expected = {name for name, _ in spec}
-        unknown = set(value) - expected
-        if unknown:
-            return f"has unknown fields {sorted(unknown)}"
-        for name, ftype in spec:
-            if name not in value:
-                return f"is missing field '{name}'"
-            if value[name] is None:
-                continue
-            reason = _check_value(ftype, value[name])
-            if reason:
-                return f"field '{name}' {reason}"
-        return None
-    return None
+        message = f"must be an object ({type_})"
+        expected = frozenset(name for name, _ in spec)
+        members = tuple((name, _compile_check(ftype)) for name, ftype in spec)
+
+        def check_struct(value: Any) -> str | None:
+            if not isinstance(value, dict):
+                return message
+            unknown = set(value) - expected
+            if unknown:
+                return f"has unknown fields {sorted(unknown)}"
+            for name, check_member in members:
+                if name not in value:
+                    return f"is missing field '{name}'"
+                member = value[name]
+                if member is None:
+                    continue
+                reason = check_member(member)
+                if reason:
+                    return f"field '{name}' {reason}"
+            return None
+
+        return check_struct
+    return _accept
 
 
 def _json_schema_for(field: SchemaField) -> dict[str, Any]:
@@ -1174,6 +1317,11 @@ def _json_schema_for_known_type(type_: str | None) -> dict[str, Any]:
 # region Encoding
 
 
+# The types `_encode_value` returns unchanged, so a container holding only
+# these needs no copy.
+_JSON_NATIVE = (bool, int, float, str)
+
+
 def _encode_value(value: Any) -> Any:
     """Encode a Python value into the JSON form the wire contract accepts.
 
@@ -1197,8 +1345,20 @@ def _encode_value(value: Any) -> Any:
     if isinstance(value, decimal.Decimal):
         return str(value)
     if isinstance(value, dict):
+        # A container whose contents already are what the wire accepts is
+        # returned as it is. Rebuilding every nested container of a JSON-native
+        # payload is what made encoding grow with the batch for nothing.
+        if all(
+            type(key) is str and (item is None or isinstance(item, _JSON_NATIVE))
+            for key, item in value.items()
+        ):
+            return value
         return {str(k): _encode_value(v) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
+        if type(value) is list and all(
+            item is None or isinstance(item, _JSON_NATIVE) for item in value
+        ):
+            return value
         return [_encode_value(v) for v in value]
     if hasattr(value, "isoformat") and hasattr(value, "tz_localize"):
         # pandas.Timestamp

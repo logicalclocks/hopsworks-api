@@ -54,6 +54,21 @@ if HAS_AIOMYSQL and HAS_SQLALCHEMY:
 _logger = logging.getLogger(__name__)
 
 
+def _is_connection_error(error: BaseException) -> bool:
+    """Whether a failed read means its pooled connection is gone.
+
+    aiomysql raises the pymysql errors, and `InterfaceError` and
+    `OperationalError` are the two that cover a connection closed by the server,
+    a dropped socket and a failed reconnect. Named by string so this stays
+    usable when the driver is absent, and so a driver that wraps them in its own
+    class is still recognised.
+    """
+    for klass in type(error).__mro__:
+        if klass.__name__ in ("InterfaceError", "OperationalError"):
+            return True
+    return False
+
+
 class OnlineStoreSqlClient:
     BATCH_HELPER_KEY = "batch_helper_column"
     SINGLE_HELPER_KEY = "single_helper_column"
@@ -335,20 +350,34 @@ class OnlineStoreSqlClient:
 
         if not self._async_task_thread:
             # Create the async event thread if it is not already running and start it.
+            statements = len(self._prepared_statements[self.SINGLE_VECTOR_KEY])
             self._async_task_thread = AsyncTaskThread(
                 connection_pool_initializer=self._get_connection_pool,
                 connection_test=self._test_connection,
-                connection_pool_params=(
-                    len(self._prepared_statements[self.SINGLE_VECTOR_KEY]),
-                ),
+                connection_pool_params=(statements,),
+                # One in-flight read per pooled connection: queueing more only
+                # moves the wait from the loop to the pool. It is the pool's own
+                # size, not the number of prepared statements, because a caller
+                # that asked for a larger pool asked to read more at once. Those
+                # coincide only when the pool is left at its default, and a view
+                # over one feature group would otherwise read one at a time no
+                # matter what the connection options said.
+                max_concurrent_tasks=self._connection_pool_size(statements),
+                is_connection_error=_is_connection_error,
             )
             self._async_task_thread.start()
+
+    def _connection_pool_size(self, default_size: int) -> int:
+        """How many connections the pool will hold, which is how many reads can run."""
+        options = self._connection_options or {}
+        return max(int(options.get("maxsize", default_size) or default_size), 1)
 
     def _get_single_feature_vector(
         self,
         entry: dict[str, Any],
         logging_data: bool = False,
         feature_vector_with_inference_helpers: bool = False,
+        timeout: float | None = None,
     ) -> dict[str, Any]:
         """Retrieve single vector with parallel queries using aiomysql engine.
 
@@ -361,6 +390,7 @@ class OnlineStoreSqlClient:
             entry: Primary key values used to look up the feature vector.
             logging_data: Whether to include inference helper columns for logging.
             feature_vector_with_inference_helpers: Whether to include inference helper columns with regular features.
+            timeout: Seconds to wait for the read, covering the wait for a free connection as well as the query.
 
         Returns:
             A dictionary mapping feature names to their values.
@@ -374,6 +404,7 @@ class OnlineStoreSqlClient:
         return self._single_vector_result(
             entry,
             self.parametrised_prepared_statements[key],
+            timeout=timeout,
         )
 
     def _get_batch_feature_vectors(
@@ -381,6 +412,7 @@ class OnlineStoreSqlClient:
         entries: list[dict[str, Any]],
         logging_data: bool = False,
         feature_vector_with_inference_helpers: bool = False,
+        timeout: float | None = None,
     ) -> list[dict[str, Any]]:
         """Retrieve batch vector with parallel queries using aiomysql engine.
 
@@ -393,6 +425,7 @@ class OnlineStoreSqlClient:
             entries: List of primary key value dicts used to look up each feature vector.
             logging_data: Whether to include inference helper columns for logging.
             feature_vector_with_inference_helpers: Whether to include inference helper columns with regular features.
+            timeout: Seconds to wait for the read, covering the wait for a free connection as well as the queries.
 
         Returns:
             A list of dictionaries, each mapping feature names to their values.
@@ -406,6 +439,7 @@ class OnlineStoreSqlClient:
         return self._batch_vector_results(
             entries,
             self.parametrised_prepared_statements[key],
+            timeout=timeout,
         )
 
     def _get_inference_helper_vector(self, entry: dict[str, Any]) -> dict[str, Any]:
@@ -437,7 +471,10 @@ class OnlineStoreSqlClient:
         )
 
     def _single_vector_result(
-        self, entry: dict[str, Any], prepared_statement_objects: dict[int, sql.text]
+        self,
+        entry: dict[str, Any],
+        prepared_statement_objects: dict[int, sql.text],
+        timeout: float | None = None,
     ) -> dict[str, Any]:
         """Retrieve single vector with parallel queries using aiomysql engine."""
         if all(isinstance(val, list) for val in entry.values()):
@@ -488,7 +525,11 @@ class OnlineStoreSqlClient:
                     bind_entries,
                 ),
                 requires_connection_pool=True,
-            )
+                # A feature read is a SELECT, so repeating it after a dead
+                # pooled connection returns the same rows.
+                retry_on_connection_error=True,
+            ),
+            timeout=timeout,
         )
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(f"Retrieved feature vectors: {results_dict}")
@@ -506,6 +547,7 @@ class OnlineStoreSqlClient:
         self,
         entries: list[dict[str, Any]],
         prepared_statement_objects: dict[int, sql.text],
+        timeout: float | None = None,
     ):
         """Execute prepared statements in parallel using aiomysql engine."""
         if _logger.isEnabledFor(logging.DEBUG):
@@ -566,7 +608,9 @@ class OnlineStoreSqlClient:
                 task_function=self._execute_prep_statements,
                 task_args=(prepared_stmts_to_execute, entry_values),
                 requires_connection_pool=True,
-            )
+                retry_on_connection_error=True,
+            ),
+            timeout=timeout,
         )
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(

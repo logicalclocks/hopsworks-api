@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import atexit
+import contextlib
 import errno
 import logging
 import multiprocessing
@@ -44,7 +45,12 @@ from hsfs import (
 )
 from hsfs.core import transformation_function_api
 from hsfs.core.transformation_execution_dag import TransformationExecutionDAG
-from hsfs.hopsworks_udf import HopsworksUdf, UDFExecutionMode
+from hsfs.hopsworks_udf import (
+    _REQUEST_TRANSFORMATION_CONTEXT,
+    HopsworksUdf,
+    UDFExecutionMode,
+    _serving_transformation_context,
+)
 
 
 _logger = logging.getLogger(__name__)
@@ -222,6 +228,12 @@ class TransformationFunctionEngine:
         """Initialize the engine singleton in a worker process (needed for spawn)."""
         global _IS_TF_WORKER
         _IS_TF_WORKER = True
+        # A forked worker is a copy of the process that made it, context
+        # variables included. A pool built while a request held the serving
+        # context would start every worker holding it, and that context wins
+        # over the one each job supplies, so every later request would be
+        # transformed under the context of whichever request built the pool.
+        _REQUEST_TRANSFORMATION_CONTEXT.set(None)
         import hopsworks_common.connection
 
         hopsworks_common.connection._hsfs_engine_type = engine_type
@@ -539,22 +551,34 @@ class TransformationFunctionEngine:
             execution_graph, n_processes
         )
 
-        # Python path. Set the transformation context on every UDF, inject any
-        # request parameters, then delegate to the handler for the input shape.
-        for tf in execution_graph.nodes:
-            tf.hopsworks_udf.transformation_context = transformation_context
+        # Python path. Make the context the one this request runs under, inject
+        # any request parameters, then delegate to the handler for the input
+        # shape. The context is not written onto the UDF objects: a feature view
+        # holds one set of them and every caller shares it, so one request would
+        # otherwise be transformed under another's context.
         if request_parameters:
             data = TransformationFunctionEngine._update_request_parameter_data(
                 data, request_parameters
             )
 
-        if is_dataframe:
-            return TransformationFunctionEngine._apply_to_dataframe(
-                execution_graph, data, online, n_processes, expected_features
+        with _serving_transformation_context(transformation_context):
+            if is_dataframe:
+                return TransformationFunctionEngine._apply_to_dataframe(
+                    execution_graph,
+                    data,
+                    online,
+                    n_processes,
+                    expected_features,
+                    transformation_context,
+                )
+            return TransformationFunctionEngine._apply_to_dict_list(
+                execution_graph,
+                data,
+                online,
+                n_processes,
+                expected_features,
+                transformation_context,
             )
-        return TransformationFunctionEngine._apply_to_dict_list(
-            execution_graph, data, online, n_processes, expected_features
-        )
 
     @staticmethod
     def _transformed_column_layout(
@@ -603,6 +627,7 @@ class TransformationFunctionEngine:
         online: bool,
         n_processes: int | None,
         expected_features: set[str] | None,
+        transformation_context: dict[str, Any] | None = None,
     ) -> dict[str, Any] | list[dict[str, Any]]:
         """Apply the transformations to a single dict or a list of dicts.
 
@@ -655,6 +680,9 @@ class TransformationFunctionEngine:
                     data=task_inputs(tf),
                     online=online,
                     engine_type=engine_type,
+                    # A worker process does not inherit the caller's context
+                    # variable, so the request's context travels with the task.
+                    transformation_context=transformation_context,
                 ),
                 collect=merge,
             )
@@ -682,6 +710,7 @@ class TransformationFunctionEngine:
         online: bool,
         n_processes: int | None,
         expected_features: set[str] | None,
+        transformation_context: dict[str, Any] | None = None,
     ) -> pd.DataFrame | pl.DataFrame:
         """Apply the transformations to a pandas or polars DataFrame.
 
@@ -730,6 +759,7 @@ class TransformationFunctionEngine:
                 engine_type,
                 column_store,
                 merge,
+                transformation_context,
             )
 
         # Merge the accumulated outputs back into the frame, then project to the
@@ -762,6 +792,7 @@ class TransformationFunctionEngine:
         engine_type: str,
         column_store: dict[str, Any],
         merge: Callable[[transformation_function.TransformationFunction, Any], None],
+        transformation_context: dict[str, Any] | None = None,
     ) -> None:
         """Run the DataFrame DAG in parallel, staging the frame in shared memory.
 
@@ -801,6 +832,9 @@ class TransformationFunctionEngine:
                 "udf": tf.hopsworks_udf,
                 "online": online,
                 "engine_type": engine_type,
+                # A worker process does not inherit the caller's context
+                # variable, so the request's context travels with the task.
+                "transformation_context": transformation_context,
             }
             if use_shm:
                 predecessor_cols = {
@@ -1010,6 +1044,7 @@ class TransformationFunctionEngine:
         | None = None,
         engine_type: str | None = None,
         online: bool = False,
+        transformation_context: dict[str, Any] | None = None,
         shm_name: str | None = None,
         shm_size: int | None = None,
         is_polars: bool = False,
@@ -1039,6 +1074,42 @@ class TransformationFunctionEngine:
             The transformed data in the same container type as the input
             (dict, list of dicts, or DataFrame).
         """
+        # The context is bound for the length of this job rather than written
+        # onto the UDF, so it is gone when the job is: a worker outlives the
+        # request that gave it work, and the copy of the UDF it holds outlives
+        # it too. A job that names no context does not bind one, which leaves
+        # the caller's own binding in place for an in-process call and, in a
+        # worker, the cleared one its initializer set.
+        with (
+            _serving_transformation_context(transformation_context)
+            if transformation_context is not None
+            else contextlib.nullcontext()
+        ):
+            return TransformationFunctionEngine._execute_udf_in_context(
+                udf=udf,
+                data=data,
+                online=online,
+                engine_type=engine_type,
+                shm_name=shm_name,
+                shm_size=shm_size,
+                is_polars=is_polars,
+                columns=columns,
+                predecessor_columns=predecessor_columns,
+            )
+
+    @staticmethod
+    def _execute_udf_in_context(
+        udf: HopsworksUdf,
+        data: Any,
+        online: bool | None,
+        engine_type: str | None,
+        shm_name: str | None,
+        shm_size: int | None,
+        is_polars: bool,
+        columns: list[str] | None,
+        predecessor_columns: dict[str, Any] | None,
+    ) -> Any:
+        """Run one prepared UDF job, with this job's serving context already bound."""
         if shm_name is not None:
             data = TransformationFunctionEngine._read_from_shared_memory(
                 shm_name, shm_size, is_polars

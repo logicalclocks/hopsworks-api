@@ -902,13 +902,18 @@ class Predictor(DeployableComponent):
         """
         if self._schema is not None or self._schema_loaded:
             return self._schema
-        self._schema_loaded = True
         schema_id = self.schema_id
         if schema_id is None:
+            self._schema_loaded = True
             return None
         from hsml.engine import serving_engine
 
-        self._schema = serving_engine.ServingEngine()._read_schema(self, schema_id)
+        schema = serving_engine.ServingEngine()._read_schema(self, schema_id)
+        # Marked loaded only once the read has answered. A download that failed
+        # used to leave the object permanently schema-less, because the flag was
+        # set before the call it guards.
+        self._schema = schema
+        self._schema_loaded = True
         return self._schema
 
     @schema.setter
