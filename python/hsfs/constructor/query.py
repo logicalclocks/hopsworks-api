@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     import numpy as np
     import pandas as pd
     from hsfs.constructor.fs_query import FsQuery
+    from hsfs.constructor.inference_spine import InferenceSpine
     from hsfs.feature import Feature
 
 
@@ -95,6 +96,8 @@ class Query:
         # Lookback configuration for the feature view's joins; set only on the
         # root Query and emitted as the top-level `lookback` field on the wire.
         self._lookback: Lookback | None = None
+        # Inference spine anchoring a batch-inference read, emitted as the top-level `spine` field.
+        self._inference_spine: InferenceSpine | None = None
         self._python_engine: bool = engine._get_type() == "python"
         self._query_constructor_api: query_constructor_api.QueryConstructorApi = (
             query_constructor_api.QueryConstructorApi()
@@ -122,8 +125,18 @@ class Query:
             ):
                 # The FlyingDuck (Hopsworks Query Service) payload is build in the backend
                 sql_query = self._query_constructor_api._construct_query(self, hqs=True)
+                self._check_spine_applied(sql_query)
             else:
                 fs_query = self._query_constructor_api._construct_query(self)
+                self._check_spine_applied(fs_query)
+
+                if self._inference_spine is not None:
+                    # Spark reads the spine from a session temporary view, not from the file the
+                    # Hopsworks Query Service reads, so nothing is uploaded on this path.
+                    engine._get_instance()._register_spine_temporary_view(
+                        self._inference_spine.dataframe,
+                        self._inference_spine.table_name,
+                    )
 
                 if fs_query.pushdown_query is not None:
                     engine_instance = engine._get_instance()
@@ -762,6 +775,8 @@ class Query:
         }
         if self._lookback is not None:
             payload["lookback"] = self._lookback.to_dict()
+        if self._inference_spine is not None:
+            payload["spine"] = self._inference_spine.to_dict()
         return payload
 
     @classmethod
@@ -807,6 +822,20 @@ class Query:
         # callers attach `_lookback` themselves after this method returns.
         q._lookback = Lookback.from_response_json(json_decamelized.get("lookback"))
         return q
+
+    def _check_spine_applied(self, fs_query: FsQuery) -> None:
+        """Refuse to run a spine query the backend did not resolve.
+
+        An older backend ignores the spine and answers the ordinary batch query, which reads the
+        root feature group with no time bounds and can return any number of historical rows. The
+        row count is therefore no evidence either way; the acknowledgement is.
+        """
+        if self._inference_spine is not None and not fs_query.spine_applied:
+            raise FeatureStoreException(
+                "This Hopsworks cluster does not support ASOF batch inference: the backend did not"
+                " apply the inference spine. Upgrade the cluster, or call get_batch_data() with"
+                " start_time/end_time instead of entries/prediction_times."
+            )
 
     def _check_read_supported(self, online: bool) -> None:
         if not online:
@@ -941,6 +970,15 @@ class Query:
     @lookback.setter
     def lookback(self, lookback: Lookback | None) -> None:
         self._lookback = lookback
+
+    @property
+    def inference_spine(self) -> InferenceSpine | None:
+        """Inference spine this query is anchored on, when it is a batch-inference read."""
+        return self._inference_spine
+
+    @inference_spine.setter
+    def inference_spine(self, spine: InferenceSpine | None) -> None:
+        self._inference_spine = spine
 
     @public
     def append_feature(self, feature: str | Feature) -> Query:

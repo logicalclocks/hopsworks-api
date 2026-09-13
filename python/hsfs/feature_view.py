@@ -71,12 +71,13 @@ from hsfs.transformation_function import TransformationFunction, TransformationT
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from datetime import date, datetime
+    from datetime import date, datetime, timedelta
 
     from hopsworks_common.alert import Alert, FeatureViewAlert
     from hopsworks_common.core.type_systems import HopsworksLoggingMetadataType
     from hopsworks_common.job import Job
     from hsfs.constructor.filter import Filter, Logic
+    from hsfs.constructor.prediction_times import PredictionTimes
     from hsfs.core.feature_logging import FeatureLogging
     from hsfs.feature_logger import FeatureLogger
     from hsfs.hopsworks_udf import HopsworksUdf
@@ -1333,8 +1334,8 @@ class FeatureView:
         end_time: str | int | datetime | date | None = None,
         read_options: dict[str, Any] | None = None,
         spine: SplineDataFrameTypes | None = None,
-        primary_key: bool = False,
-        event_time: bool = False,
+        primary_key: bool | None = None,
+        event_time: bool | None = None,
         inference_helper_columns: bool = False,
         dataframe_type: Literal[
             "default", "spark", "pandas", "polars", "numpy", "python"
@@ -1345,6 +1346,9 @@ class FeatureView:
         extra_filter: filter.Filter | filter.Logic | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
         n_processes: int | None = None,
+        entries: pd.DataFrame | pl.DataFrame | list[dict[str, Any]] | None = None,
+        prediction_times: PredictionTimes | list[Any] | None = None,
+        max_feature_age: timedelta | dict[str, timedelta] | None = None,
         **kwargs,
     ) -> TrainingDatasetDataFrameTypes | HopsworksLoggingMetadataType:
         """Get a batch of data from an event time interval from the offline feature store.
@@ -1394,6 +1398,21 @@ class FeatureView:
 
             # log the batch data
             feature_view.log(df, predictions=predictions)
+            ```
+
+        Example: Batch data for future prediction times
+            ```python
+            # get feature view instance
+            feature_view = fs.get_feature_view(...)
+
+            # score three streets every day at 08:00 for the next 7 days
+            df = feature_view.get_batch_data(
+                entries=pd.DataFrame([
+                    {"country": "SE", "city": "Stockholm", "street": "Sveavagen"},
+                    {"country": "SE", "city": "Stockholm", "street": "Odengatan"},
+                ]),
+                prediction_times=PredictionTimes.every("daily", offset="08:00", count=7),
+            )
             ```
 
         Warning: Spine Groups/Dataframes
@@ -1456,6 +1475,21 @@ class FeatureView:
                 Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
                 When not set, the value passed to `init_batch_scoring` is used.
                 Ignored by the Spark engine, which pushes transformations down to Spark.
+            entries:
+                The entities to score, one row each, carrying the feature view's required serving keys and any features of the root feature group you want to supply yourself rather than look up.
+                Every feature group whose keys are absent is skipped and its features come back as NULL, with a warning.
+                Supplying no recognized column at all is an error.
+                Passing this switches the read to ASOF batch inference: the query is anchored on these rows instead of on the root feature group, so prediction times in the future work.
+            prediction_times:
+                The timestamps to score each entity at, crossed with `entries`.
+                Accepts a [`PredictionTimes`][hsfs.constructor.prediction_times.PredictionTimes] or a bare list of timestamps.
+                Omit it only when `entries` already carries the root feature group's event time column.
+                Rows come back in `entries` order then ascending prediction time, so predictions zip back positionally.
+            max_feature_age:
+                How stale a looked-up row may be, measured back from each prediction time.
+                A feature group whose newest row at or before the prediction time is older than this returns NULL for that row instead of a stale value.
+                Pass one `timedelta` for every feature group, or a dict keyed by feature group name.
+                Unbounded by default, which carries the last known value forward indefinitely.
 
         Returns:
             DataFrame: The spark dataframe containing the feature data.
@@ -1479,7 +1513,7 @@ class FeatureView:
             self._batch_scoring_server._model_dependent_transformation_functions_execution_graph,
             read_options,
             spine,
-            kwargs.get("primary_keys") or primary_key,
+            kwargs.get("primary_keys", primary_key),
             event_time,
             inference_helper_columns,
             dataframe_type,
@@ -1489,6 +1523,9 @@ class FeatureView:
             extra_filter=extra_filter,
             lookback=Lookback.from_user_input(lookback),
             n_processes=n_processes,
+            entries=entries,
+            prediction_times=prediction_times,
+            max_feature_age=max_feature_age,
         )
 
     @public

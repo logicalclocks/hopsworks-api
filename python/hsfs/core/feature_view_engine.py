@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import tempfile
 import warnings
 from typing import TYPE_CHECKING, Any, TypeVar
 
@@ -33,6 +34,7 @@ from hsfs import (
     util,
 )
 from hsfs.constructor.filter import Filter, Logic
+from hsfs.constructor.inference_spine import SPINE_DIR, InferenceSpine
 from hsfs.constructor.query import Query
 from hsfs.core import (
     feature_view_api,
@@ -381,6 +383,7 @@ class FeatureViewEngine:
         spine=None,
         extra_filter=None,
         lookback=None,
+        inference_spine=None,
     ):
         extra_filter = self._normalize_extra_filter(extra_filter)
 
@@ -404,6 +407,8 @@ class FeatureViewEngine:
             # query tree in `QueryController.resolveLookbacks`.
             if lookback is not None:
                 query.lookback = lookback
+            if inference_spine is not None:
+                query.inference_spine = inference_spine
             # verify whatever is passed 1. spine group with dataframe contained, or 2. dataframe
             # the schema has to be consistent
 
@@ -1077,8 +1082,35 @@ class FeatureViewEngine:
         extra_filter=None,
         lookback=None,
         n_processes: int | None = None,
+        entries=None,
+        prediction_times=None,
+        max_feature_age=None,
     ):
         self._check_feature_group_accessibility(feature_view_obj)
+
+        inference_spine = None
+        if entries is not None or prediction_times is not None:
+            if start_time is not None or end_time is not None:
+                raise FeatureStoreException(
+                    "`start_time`/`end_time` cannot be combined with `entries`/`prediction_times`:"
+                    " the inference spine defines the time axis."
+                )
+            if spine is not None:
+                raise FeatureStoreException(
+                    "`spine` replaces a SpineGroup the feature view was created with, while"
+                    " `entries` re-anchors the query. Pass one or the other."
+                )
+            inference_spine = InferenceSpine(
+                feature_view_obj, entries, prediction_times, max_feature_age
+            )
+            # Without the keys and the prediction time the frame says nothing about which row is
+            # which entity or day, so they default on. An explicit False still wins.
+            if primary_keys is None:
+                primary_keys = True
+            if event_time is None:
+                event_time = True
+        primary_keys = bool(primary_keys)
+        event_time = bool(event_time)
 
         # check if primary_keys/event_time are ambiguous
         if primary_keys:
@@ -1088,7 +1120,7 @@ class FeatureViewEngine:
 
         # Fetch batch data with primary key, event time and inference helper columns if logging metadata is required.
         # Columns fetched to create logging metadata is implicitly removed in the client before returning to the user.
-        feature_dataframe = self._get_batch_query(
+        batch_query = self._get_batch_query(
             feature_view_obj,
             start_time,
             end_time,
@@ -1103,7 +1135,16 @@ class FeatureViewEngine:
             spine=spine,
             extra_filter=extra_filter,
             lookback=lookback,
-        ).read(read_options=read_options, dataframe_type=dataframe_type)
+            inference_spine=inference_spine,
+        )
+        if inference_spine is None:
+            feature_dataframe = batch_query.read(
+                read_options=read_options, dataframe_type=dataframe_type
+            )
+        else:
+            feature_dataframe = self._read_with_spine(
+                batch_query, inference_spine, read_options, dataframe_type
+            )
         has_graph = execution_graph is not None and execution_graph.nodes
         if (has_graph and transformed) or logging_data:
             try:
@@ -1138,6 +1179,48 @@ class FeatureViewEngine:
             )
 
         return batch_dataframe
+
+    def _read_with_spine(
+        self, batch_query, inference_spine, read_options, dataframe_type
+    ):
+        """Read a spine-anchored query, staging the spine where the executor can reach it.
+
+        The Hopsworks Query Service reads the spine from a Parquet file under the caller's own
+        `Resources/.hopsworks_spine/`, so the backend can check the caller may read it before it
+        renders a path into SQL that runs as the superuser. The file is consumed when the query
+        service materialises its temp table, before the first batch streams, so deleting it once
+        `read` returns cannot race the scan. Spark takes a session temporary view instead and
+        needs no file.
+        """
+        if engine._get_type() != "python":
+            return batch_query.read(
+                read_options=read_options, dataframe_type=dataframe_type
+            )
+
+        from hopsworks_common.core.dataset_api import DatasetApi
+
+        dataset_api = DatasetApi()
+        with tempfile.TemporaryDirectory() as tmp:
+            local_path = inference_spine.write_parquet(tmp)
+            if not dataset_api.exists(SPINE_DIR):
+                dataset_api.mkdir(SPINE_DIR)
+            dataset_api.upload(local_path, SPINE_DIR, overwrite=True)
+        inference_spine.parquet_staged = True
+        try:
+            return batch_query.read(
+                read_options=read_options, dataframe_type=dataframe_type
+            )
+        finally:
+            try:
+                dataset_api.remove(f"{SPINE_DIR}/{inference_spine.basename}")
+            except Exception as e:
+                _logger.warning(
+                    "Could not remove the inference spine file %s/%s: %s. The sweeper removes it"
+                    " within 24 hours.",
+                    SPINE_DIR,
+                    inference_spine.basename,
+                    e,
+                )
 
     def _transform_batch_data(self, features, transformation_functions):
         try:

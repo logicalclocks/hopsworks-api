@@ -311,6 +311,12 @@ class Engine:
         dataframe.createOrReplaceTempView(view)
         return f"SELECT * FROM {view}"
 
+    def _register_spine_temporary_view(self, dataframe, alias):
+        # A per-request alias, not a fixed name: two reads in one SparkSession would otherwise
+        # overwrite each other's view between registration and analysis, the same race
+        # _register_pushdown_query avoids.
+        self._spark_session.createDataFrame(dataframe).createOrReplaceTempView(alias)
+
     def _register_external_temporary_table(self, external_fg, alias):
         if not isinstance(external_fg, fg_mod.SpineGroup):
             external_dataset = external_fg.data_source.storage_connector.read(
