@@ -40,8 +40,8 @@ from hopsworks_common.core import (
 
 if TYPE_CHECKING:
     from hsfs.feature_store import FeatureStore
+    from hsml.deployment.model_serving import ModelServing
     from hsml.model_registry import ModelRegistry
-    from hsml.model_serving import ModelServing
 
 
 @public("hopsworks.project.Project")

@@ -1,5 +1,5 @@
 #
-#   Copyright 2022 Logical Clocks AB
+#   Copyright 2026 Hopsworks AB
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -12,135 +12,23 @@
 #   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
-from __future__ import annotations
+#
+"""Deprecated import path kept for one release.
 
-import humps
-from hopsworks_apigen import public
-from hopsworks_common import client, util
-from hopsworks_common.constants import PREDICTOR, SCALING_CONFIG, Default
-from hsml.deployable_component import DeployableComponent
-from hsml.resources import TransformerResources
-from hsml.scaling_config import TransformerScalingConfig
+The module moved to `hsml.deployment.transformer`; import from there.
+"""
+
+import warnings as _warnings
+
+from hsml.deployment import transformer as _target
+from hsml.deployment.transformer import *  # noqa: F401, F403
 
 
-@public
-class Transformer(DeployableComponent):
-    """Metadata object representing a transformer to be used in a predictor."""
-
-    @staticmethod
-    def _get_raw_num_instances(resources):
-        if resources is None:
-            return None
-        return (
-            resources._num_instances
-            if hasattr(resources, "_num_instances")
-            else resources.num_instances
-        )
-
-    def __init__(
-        self,
-        script_file: str,
-        resources: TransformerResources | dict | Default | None = None,  # base
-        scaling_configuration: TransformerScalingConfig | dict | Default | None = None,
-        env_vars: dict[str, str] | None = None,
-        **kwargs,
-    ):
-        resources = (
-            self._validate_resources(
-                util._get_obj_from_json(resources, TransformerResources)
-            )
-            or self._get_default_resources()
-        )
-        if self._get_raw_num_instances(resources) is None:
-            resources._num_instances = self._get_default_num_instances()
-
-        self._scaling_configuration: TransformerScalingConfig = util._get_obj_from_json(
-            scaling_configuration, TransformerScalingConfig
-        ) or TransformerScalingConfig.get_default_scaling_configuration(
-            serving_tool=PREDICTOR.SERVING_TOOL_KSERVE,
-            min_instances=self._get_raw_num_instances(resources),
-            component_type="transformer",
-        )
-
-        super().__init__(
-            script_file, resources, scaling_configuration=self._scaling_configuration
-        )
-
-        self._env_vars = env_vars
-
-    @public
-    def describe(self):
-        """Print a JSON description of the transformer."""
-        util._pretty_print(self)
-
-    @classmethod
-    def _validate_resources(cls, resources):
-        if (
-            resources is not None
-            and cls._get_raw_num_instances(resources) != 0
-            and client._is_scale_to_zero_required()
-        ):
-            # ensure scale-to-zero for kserve deployments when required
-            raise ValueError(
-                "Scale-to-zero is required for KServe deployments in this cluster. Please, set the number of transformer instances to 0."
-            )
-        return resources
-
-    @classmethod
-    def _get_default_num_instances(cls):
-        return (
-            0  # enable scale-to-zero by default if required
-            if client._is_scale_to_zero_required()
-            else SCALING_CONFIG.MIN_NUM_INSTANCES
-        )
-
-    @classmethod
-    def _get_default_resources(cls):
-        return TransformerResources(cls._get_default_num_instances())
-
-    @classmethod
-    def from_json(cls, json_decamelized):
-        sf, rc, sc, ev = cls.extract_fields_from_json(json_decamelized)
-        return (
-            Transformer(sf, rc, scaling_configuration=sc, env_vars=ev)
-            if sf is not None
-            else None
-        )
-
-    @classmethod
-    def extract_fields_from_json(cls, json_decamelized):
-        sf = util._extract_field_from_json(
-            json_decamelized, ["transformer", "script_file"]
-        )
-        if sf is None:
-            return None, None, None, None
-        sc = TransformerScalingConfig.from_json(json_decamelized)
-        rc = TransformerResources.from_json(json_decamelized)
-        env_vars = json_decamelized.pop("transformer_env_vars", None)
-        ev = dict(e.split("=", 1) for e in env_vars) if env_vars else None
-        return sf, rc, sc, ev
-
-    def update_from_response_json(self, json_dict):
-        json_decamelized = humps.decamelize(json_dict)
-        sf, rc, sc, ev = self.extract_fields_from_json(json_decamelized)
-        self.__init__(sf, rc, scaling_configuration=sc, env_vars=ev)
-        return self
-
-    def to_dict(self):
-        d = {"transformer": self._script_file, **self._resources.to_dict()}
-        if self._env_vars:
-            d["transformerEnvVars"] = [f"{k}={v}" for k, v in self._env_vars.items()]
-        return d
-
-    @public
-    @property
-    def env_vars(self):
-        """Environment variables of the transformer."""
-        return self._env_vars
-
-    @env_vars.setter
-    def env_vars(self, env_vars: dict[str, str] | None):
-        self._env_vars = env_vars
-
-    def __repr__(self):
-        return f"Transformer({self._script_file!r})"
+__all__ = getattr(
+    _target, "__all__", [_n for _n in dir(_target) if not _n.startswith("_")]
+)
+_warnings.warn(
+    "hsml.transformer has moved to hsml.deployment.transformer; the old import path will be removed in a future release.",
+    DeprecationWarning,
+    stacklevel=2,
+)

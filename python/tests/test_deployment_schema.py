@@ -21,8 +21,8 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
-from hsml import deployment_schema as ds
-from hsml.deployment_schema import DeploymentSchema, SchemaField
+from hsml.deployment import schema as ds
+from hsml.deployment.schema import DeploymentSchema, SchemaField
 from hsml.schema import Schema
 
 
@@ -535,7 +535,7 @@ class TestJsonSchema:
         )
 
     def test_max_batch_rows_from_env_vars(self):
-        from hsml.deployment_schema import _max_batch_rows
+        from hsml.deployment.schema import _max_batch_rows
 
         assert _max_batch_rows(None) == 512
         assert _max_batch_rows({"SERVING_MAX_BATCH_ROWS": "64"}) == 64
@@ -629,6 +629,20 @@ class TestInference:
         assert schema.training_dataset_version == 3
         assert schema.inferred is True
         assert schema.output == {"kind": "predictions", "columns": None}
+
+    def test_shared_join_key_is_one_serving_key(self):
+        # Two feature groups joined on the same key: the view reports the key
+        # once per group, a request carries one value for it.
+        key = SimpleNamespace(
+            required_serving_key="cc_num",
+            feature_name="cc_num",
+            feature_group=SimpleNamespace(features=[]),
+        )
+        schema = ds._infer_deployment_schema(
+            _fv(serving_keys=[key, key]), training_dataset_version=3
+        )
+
+        assert [(f.name, f.type) for f in schema.serving_keys] == [("cc_num", "bigint")]
 
     def test_rejects_unknown_and_label_passed_features(self):
         with pytest.raises(ValueError, match="not a feature of feature view 'fv' v2"):
@@ -774,7 +788,7 @@ class TestRefinement:
 
 class TestNoLookupSchemas:
     def test_all_stored_features_passed_needs_no_serving_keys(self):
-        from hsml.deployment_schema import _infer_deployment_schema
+        from hsml.deployment.schema import _infer_deployment_schema
 
         fv = _fv()
         looked_up = _infer_deployment_schema(fv, passed_features=["amount"])
@@ -793,7 +807,7 @@ class TestNoLookupSchemas:
         assert passed_all.schema_id != looked_up.schema_id
 
     def test_on_demand_features_are_never_looked_up(self):
-        from hsml.deployment_schema import _infer_deployment_schema
+        from hsml.deployment.schema import _infer_deployment_schema
 
         fv = _fv()
         fv.features.append(
@@ -812,7 +826,7 @@ class TestNoLookupSchemas:
         assert schema.serving_keys == []
 
     def test_model_without_feature_view_serves_its_passed_features(self):
-        from hsml.deployment_schema import (
+        from hsml.deployment.schema import (
             _infer_model_deployment_schema,
             _offline_type_for_model_type,
         )

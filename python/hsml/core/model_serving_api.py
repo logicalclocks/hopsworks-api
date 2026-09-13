@@ -20,8 +20,8 @@ from hopsworks_common.client.exceptions import ModelRegistryException
 from hsml import client
 from hsml.constants import INFERENCE_ENDPOINTS
 from hsml.core import dataset_api, serving_api
-from hsml.inference_endpoint import _get_endpoint_by_type
-from hsml.model_serving import ModelServing
+from hsml.deployment.inference_endpoint import _get_endpoint_by_type
+from hsml.deployment.model_serving import ModelServing
 
 
 class ModelServingApi:

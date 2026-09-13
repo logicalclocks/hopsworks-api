@@ -15,7 +15,7 @@
 #
 
 from hsml.constants import MODEL, PREDICTOR
-from hsml.predictor import Predictor
+from hsml.deployment.predictor import Predictor
 
 
 class Predictor(Predictor):

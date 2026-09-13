@@ -36,6 +36,19 @@ if HAS_POLARS:
 
 
 class TestTypeSystems:
+    @pytest.mark.parametrize("base", [list, dict])
+    def test_reused_logging_type_keeps_metadata_per_instance(self, base):
+        from hopsworks_common.core.type_systems import _create_extended_type
+
+        first_type = _create_extended_type(base)
+        first = first_type()
+        first.hopsworks_logging_metadata = {"request_id": "first"}
+        second = _create_extended_type(base)()
+        assert type(second) is first_type
+        assert second.hopsworks_logging_metadata is None
+        second.hopsworks_logging_metadata = {"request_id": "second"}
+        assert first.hopsworks_logging_metadata == {"request_id": "first"}
+
     @pytest.mark.skipif(
         not HAS_PYARROW or not HAS_PANDAS, reason="Arrow or Pandas are not installed"
     )

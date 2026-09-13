@@ -16,23 +16,28 @@
 from __future__ import annotations
 
 import json
+import logging
+import threading
 from typing import Any
 
 from hopsworks_common import tag
-from hsml import (
-    client,
-    decorators,
-    deployable_component_logs,
-    deployment,
-    inference_endpoint,
-    predictor_state,
-)
+from hsml import client, decorators
 from hsml.client.istio.utils.infer_type import (
     InferInput,
     InferOutput,
     InferRequest,
 )
 from hsml.constants import INFERENCE_ENDPOINTS as IE
+from hsml.deployment import (
+    deployable_component_logs,
+    deployment,
+    inference_endpoint,
+    predictor_state,
+)
+
+
+_logger = logging.getLogger(__name__)
+_GRPC_CHANNEL_LOCK = threading.Lock()
 
 
 class ServingApi:
@@ -429,10 +434,14 @@ class ServingApi:
             # The gRPC channel is lazily initialized. The first call to deployment.predict() will initialize
             # the channel, which will be reused in all following calls on the same deployment object.
             # The gRPC channel is freed when calling deployment.stop()
-            print("Initializing gRPC channel...")
-            deployment_instance._grpc_channel = self._create_grpc_channel(
-                deployment_instance
-            )
+            with _GRPC_CHANNEL_LOCK:
+                # concurrent first calls would otherwise open a channel each and
+                # keep only the last, leaking the rest for the object's lifetime
+                if deployment_instance._grpc_channel is None:
+                    _logger.debug("Initializing gRPC channel")
+                    deployment_instance._grpc_channel = self._create_grpc_channel(
+                        deployment_instance
+                    )
         # build an infer request
         request = InferRequest(
             infer_inputs=data,

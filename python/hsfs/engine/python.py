@@ -3023,8 +3023,8 @@ class Engine:
         return log_vectors, None, None
 
     @staticmethod
-    def _read_feature_log(query, time_col):
-        df = query.read()
+    def _read_feature_log(query, time_col, online: bool = False):
+        df = query.read(online=online)
         return df.drop(["log_id", time_col], axis=1)
 
     def _check_supported_dataframe(self, dataframe: Any) -> bool:

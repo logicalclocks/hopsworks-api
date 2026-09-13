@@ -1,5 +1,5 @@
 #
-#   Copyright 2022 Logical Clocks AB
+#   Copyright 2026 Hopsworks AB
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -12,149 +12,23 @@
 #   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
-from __future__ import annotations
+#
+"""Deprecated import path kept for one release.
 
-import humps
-from hopsworks_apigen import public
-from hopsworks_common import util
-from hsml.predictor_state_condition import PredictorStateCondition
+The module moved to `hsml.deployment.predictor_state`; import from there.
+"""
+
+import warnings as _warnings
+
+from hsml.deployment import predictor_state as _target
+from hsml.deployment.predictor_state import *  # noqa: F401, F403
 
 
-@public
-class PredictorState:
-    """State of a predictor."""
-
-    def __init__(
-        self,
-        available_predictor_instances: int,
-        available_transformer_instances: int | None,
-        hopsworks_inference_path: str,
-        model_server_inference_path: str,
-        internal_port: int | None,
-        revision: int | None,
-        deployed: bool | None,
-        condition: PredictorStateCondition | None,
-        status: str,
-        **kwargs,
-    ):
-        self._available_predictor_instances = available_predictor_instances
-        self._available_transformer_instances = available_transformer_instances
-        self._hopsworks_inference_path = hopsworks_inference_path
-        self._model_server_inference_path = model_server_inference_path
-        self._internal_port = internal_port
-        self._revision = revision
-        self._deployed = deployed if deployed is not None else False
-        self._condition = condition
-        self._status = status
-
-    @public
-    def describe(self):
-        """Print a JSON description of the deployment state."""
-        util._pretty_print(self)
-
-    @classmethod
-    def from_response_json(cls, json_dict):
-        json_decamelized = humps.decamelize(json_dict)
-        return PredictorState(*cls.extract_fields_from_json(json_decamelized))
-
-    @classmethod
-    def extract_fields_from_json(cls, json_decamelized):
-        ai = util._extract_field_from_json(json_decamelized, "available_instances")
-        ati = util._extract_field_from_json(
-            json_decamelized, "available_transformer_instances"
-        )
-        hip = util._extract_field_from_json(
-            json_decamelized, "hopsworks_inference_path"
-        )
-        msip = util._extract_field_from_json(
-            json_decamelized, "model_server_inference_path"
-        )
-        ipt = util._extract_field_from_json(json_decamelized, "internal_port")
-        r = util._extract_field_from_json(json_decamelized, "revision")
-        d = util._extract_field_from_json(json_decamelized, "deployed")
-        c = util._extract_field_from_json(
-            json_decamelized, "condition", as_instance_of=PredictorStateCondition
-        )
-        s = util._extract_field_from_json(json_decamelized, "status")
-
-        return ai, ati, hip, msip, ipt, r, d, c, s
-
-    def to_dict(self):
-        json = {
-            "availableInstances": self._available_predictor_instances,
-            "hopsworksInferencePath": self._hopsworks_inference_path,
-            "modelServerInferencePath": self._model_server_inference_path,
-            "status": self._status,
-        }
-
-        if self._available_transformer_instances is not None:
-            json["availableTransformerInstances"] = (
-                self._available_transformer_instances
-            )
-        if self._internal_port is not None:
-            json["internalPort"] = self._internal_port
-        if self._revision is not None:
-            json["revision"] = self._revision
-        if self._deployed is not None:
-            json["deployed"] = self._deployed
-        if self._condition is not None:
-            json = {**json, **self._condition.to_dict()}
-
-        return json
-
-    @public
-    @property
-    def available_predictor_instances(self):
-        """Available predictor instances."""
-        return self._available_predictor_instances
-
-    @public
-    @property
-    def available_transformer_instances(self):
-        """Available transformer instances."""
-        return self._available_transformer_instances
-
-    @public
-    @property
-    def hopsworks_inference_path(self):
-        """Inference path in the Hopsworks REST API."""
-        return self._hopsworks_inference_path
-
-    @public
-    @property
-    def model_server_inference_path(self):
-        """Inference path in the model server."""
-        return self._model_server_inference_path
-
-    @public
-    @property
-    def internal_port(self):
-        """Internal port for the predictor."""
-        return self._internal_port
-
-    @public
-    @property
-    def revision(self):
-        """Last revision of the predictor."""
-        return self._revision
-
-    @public
-    @property
-    def deployed(self):
-        """Whether the predictor is deployed or not."""
-        return self._deployed
-
-    @public
-    @property
-    def condition(self):
-        """Condition of the current state of predictor."""
-        return self._condition
-
-    @public
-    @property
-    def status(self):
-        """Status of the predictor."""
-        return self._status
-
-    def __repr__(self):
-        return f"PredictorState(status: {self.status.capitalize()!r})"
+__all__ = getattr(
+    _target, "__all__", [_n for _n in dir(_target) if not _n.startswith("_")]
+)
+_warnings.warn(
+    "hsml.predictor_state has moved to hsml.deployment.predictor_state; the old import path will be removed in a future release.",
+    DeprecationWarning,
+    stacklevel=2,
+)

@@ -17,8 +17,8 @@
 import copy
 
 import humps
-from hsml import inference_batcher
 from hsml.constants import INFERENCE_BATCHER
+from hsml.deployment import inference_batcher
 
 
 class TestInferenceBatcher:
@@ -29,7 +29,7 @@ class TestInferenceBatcher:
         json = backend_fixtures["inference_batcher"]["get_enabled"]["response"]
         json_camelized = humps.camelize(json)  # as returned by the backend
         mock_ib_from_json = mocker.patch(
-            "hsml.inference_batcher.InferenceBatcher.from_json"
+            "hsml.deployment.inference_batcher.InferenceBatcher.from_json"
         )
 
         # Act
@@ -45,7 +45,7 @@ class TestInferenceBatcher:
         ]
         json_camelized = humps.camelize(json)  # as returned by the backend
         mock_ib_from_json = mocker.patch(
-            "hsml.inference_batcher.InferenceBatcher.from_json"
+            "hsml.deployment.inference_batcher.InferenceBatcher.from_json"
         )
 
         # Act
@@ -60,11 +60,12 @@ class TestInferenceBatcher:
         # Arrange
         json = backend_fixtures["inference_batcher"]["get_enabled"]["response"]
         mock_ib_extract_fields = mocker.patch(
-            "hsml.inference_batcher.InferenceBatcher.extract_fields_from_json",
+            "hsml.deployment.inference_batcher.InferenceBatcher.extract_fields_from_json",
             return_value=json,
         )
         mock_ib_init = mocker.patch(
-            "hsml.inference_batcher.InferenceBatcher.__init__", return_value=None
+            "hsml.deployment.inference_batcher.InferenceBatcher.__init__",
+            return_value=None,
         )
 
         # Act
@@ -80,11 +81,12 @@ class TestInferenceBatcher:
             "response"
         ]
         mock_ib_extract_fields = mocker.patch(
-            "hsml.inference_batcher.InferenceBatcher.extract_fields_from_json",
+            "hsml.deployment.inference_batcher.InferenceBatcher.extract_fields_from_json",
             return_value=json,
         )
         mock_ib_init = mocker.patch(
-            "hsml.inference_batcher.InferenceBatcher.__init__", return_value=None
+            "hsml.deployment.inference_batcher.InferenceBatcher.__init__",
+            return_value=None,
         )
 
         # Act

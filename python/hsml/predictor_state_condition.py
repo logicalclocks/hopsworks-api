@@ -1,5 +1,5 @@
 #
-#   Copyright 2022 Hopsworks AB
+#   Copyright 2026 Hopsworks AB
 #
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -12,86 +12,23 @@
 #   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
-from __future__ import annotations
+#
+"""Deprecated import path kept for one release.
 
-import json
+The module moved to `hsml.deployment.predictor_state_condition`; import from there.
+"""
 
-import humps
-from hopsworks_apigen import public
-from hopsworks_common import util
+import warnings as _warnings
+
+from hsml.deployment import predictor_state_condition as _target
+from hsml.deployment.predictor_state_condition import *  # noqa: F401, F403
 
 
-@public
-class PredictorStateCondition:
-    """Condition of a predictor state."""
-
-    def __init__(
-        self,
-        type: str,
-        status: bool | None = None,
-        reason: str | None = None,
-        **kwargs,
-    ):
-        self._type = type
-        self._status = status
-        self._reason = reason
-
-    @public
-    def describe(self):
-        """Print a JSON description of the predictor state condition."""
-        util._pretty_print(self)
-
-    @classmethod
-    def from_response_json(cls, json_dict):
-        json_decamelized = humps.decamelize(json_dict)
-        return cls.from_json(json_decamelized)
-
-    @classmethod
-    def from_json(cls, json_decamelized):
-        return PredictorStateCondition(**cls.extract_fields_from_json(json_decamelized))
-
-    @classmethod
-    def extract_fields_from_json(cls, json_decamelized):
-        kwargs = {}
-        kwargs["type"] = json_decamelized.pop("type")  # required
-        kwargs["status"] = util._extract_field_from_json(json_decamelized, "status")
-        kwargs["reason"] = util._extract_field_from_json(json_decamelized, "reason")
-        return kwargs
-
-    def update_from_response_json(self, json_dict):
-        json_decamelized = humps.decamelize(json_dict)
-        self.__init__(**self.extract_fields_from_json(json_decamelized))
-        return self
-
-    def json(self):
-        return json.dumps(self, cls=util.Encoder)
-
-    def to_dict(self):
-        return {
-            "condition": {
-                "type": self._type,
-                "status": self._status,
-                "reason": self._reason,
-            }
-        }
-
-    @public
-    @property
-    def type(self):
-        """Condition type of the predictor state."""
-        return self._type
-
-    @public
-    @property
-    def status(self):
-        """Condition status of the predictor state."""
-        return self._status
-
-    @public
-    @property
-    def reason(self):
-        """Condition reason of the predictor state."""
-        return self._reason
-
-    def __repr__(self):
-        return f"PredictorStateCondition(type: {self.type.capitalize()!r}, status: {self.status!r})"
+__all__ = getattr(
+    _target, "__all__", [_n for _n in dir(_target) if not _n.startswith("_")]
+)
+_warnings.warn(
+    "hsml.predictor_state_condition has moved to hsml.deployment.predictor_state_condition; the old import path will be removed in a future release.",
+    DeprecationWarning,
+    stacklevel=2,
+)

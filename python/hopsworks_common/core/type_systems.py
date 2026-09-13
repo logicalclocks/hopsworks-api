@@ -19,16 +19,17 @@ from __future__ import annotations
 import ast
 import datetime
 import decimal
+from functools import lru_cache
 from typing import TYPE_CHECKING, Literal, NewType
 
 import pytz
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core.constants import (
     HAS_PANDAS,
     HAS_POLARS,
     HAS_PYARROW,
 )
 from hopsworks_common.decorators import _uses_polars
-from hsfs.client.exceptions import FeatureStoreException
 
 
 if TYPE_CHECKING:
@@ -248,19 +249,11 @@ if HAS_PANDAS:
     }
 
 
+@lru_cache(maxsize=32)
 def _create_extended_type(base_type: type) -> HopsworksLoggingMetadataType:
-    """This is wrapper function to create a new class that extends the base_type class with a new attribute that can be used to store metadata.
-
-    Parameters:
-        base_type: The base class to extend.
-
-    Returns:
-        A new class that extends the base_type class with a new attribute `hopsworks_logging_metadata`.
-    """
+    """Reuse a bounded set of subclasses carrying per-instance logging metadata."""
 
     class HopsworksLoggingMetadataType(base_type):
-        """This is a class that extends the base_type class with a new attribute `hopsworks_logging_metadata` that can be used to store metadata."""
-
         _is_extended_type = True
 
         @property

@@ -769,10 +769,10 @@ def _validate_model_name(name: str):
 
 @also_available_as("hsml.util._get_predictor_for_model")
 def _get_predictor_for_model(model, **kwargs):
+    from hsml.deployment.predictor import Predictor as BasePredictor
     from hsml.llm.model import Model as LLMModel
     from hsml.llm.predictor import Predictor as vLLMPredictor
     from hsml.model import Model as BaseModel
-    from hsml.predictor import Predictor as BasePredictor
     from hsml.python.model import Model as PyModel
     from hsml.python.predictor import Predictor as PyPredictor
     from hsml.sklearn.model import Model as SkLearnModel

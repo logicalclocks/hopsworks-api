@@ -1,0 +1,125 @@
+#
+#   Copyright 2022 Logical Clocks AB
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+from __future__ import annotations
+
+import json
+from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
+
+import humps
+from hopsworks_apigen import public
+from hopsworks_common import util
+from hsml.deployment.inference_batcher import InferenceBatcher
+
+
+if TYPE_CHECKING:
+    from hopsworks_common.constants import Default
+    from hsml.deployment.resources import Resources
+    from hsml.deployment.scaling_config import ComponentScalingConfig
+
+
+@public
+class DeployableComponent(ABC):
+    """Configuration of a deployable component (predictor or transformer)."""
+
+    def __init__(
+        self,
+        script_file: str | None = None,
+        resources: Resources | None = None,
+        inference_batcher: InferenceBatcher | dict | Default | None = None,
+        scaling_configuration: ComponentScalingConfig | dict | Default | None = None,
+        **kwargs,
+    ):
+        self._script_file = script_file
+        self._resources = resources
+        self._inference_batcher = (
+            util._get_obj_from_json(inference_batcher, InferenceBatcher)
+            or InferenceBatcher()
+        )
+        self._scaling_configuration = scaling_configuration
+
+    @classmethod
+    @abstractmethod
+    def from_json(cls, json_decamelized):
+        """To be implemented by the component type.
+
+        Parameters:
+            json_decamelized: the decamelized JSON dict to parse
+        """
+
+    @classmethod
+    def from_response_json(cls, json_dict):
+        """Parse a JSON response into a component instance.
+
+        Parameters:
+            json_dict: the JSON response to parse
+        """
+        json_decamelized = humps.decamelize(json_dict)
+        return cls.from_json(json_decamelized)
+
+    def json(self):
+        return json.dumps(self, cls=util.Encoder)
+
+    @abstractmethod
+    def update_from_response_json(self, json_dict):
+        """Update the component instance from a JSON response.
+
+        Parameters:
+            json_dict: the JSON response to update from
+        """
+
+    @abstractmethod
+    def to_dict(self):
+        """To be implemented by the component type."""
+
+    @public
+    @property
+    def script_file(self):
+        """Script file ran by the deployment component (i.e., predictor or transformer)."""
+        return self._script_file
+
+    @script_file.setter
+    def script_file(self, script_file: str):
+        self._script_file = script_file
+
+    @public
+    @property
+    def resources(self):
+        """Resource configuration for the deployment component (i.e., predictor or transformer)."""
+        return self._resources
+
+    @resources.setter
+    def resources(self, resources: Resources):
+        self._resources = resources
+
+    @public
+    @property
+    def inference_batcher(self):
+        """Configuration of the inference batcher attached to the deployment component (i.e., predictor or transformer)."""
+        return self._inference_batcher
+
+    @inference_batcher.setter
+    def inference_batcher(self, inference_batcher: InferenceBatcher):
+        self._inference_batcher = inference_batcher
+
+    @public
+    @property
+    def scaling_configuration(self):
+        """Scaling configuration for the deployment component (i.e., predictor or transformer)."""
+        return self._scaling_configuration
+
+    @scaling_configuration.setter
+    def scaling_configuration(self, scaling_configuration: ComponentScalingConfig):
+        self._scaling_configuration = scaling_configuration

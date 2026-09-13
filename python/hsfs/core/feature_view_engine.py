@@ -44,7 +44,12 @@ from hsfs.core import (
     transformation_execution_dag,
     transformation_function_engine,
 )
-from hsfs.core.feature_logging import FeatureLogging
+from hsfs.core.feature_logging import (
+    LOG_MATERIALIZATION_INTERVALS,
+    FeatureLogging,
+    _materialization_cron,
+    _transport,
+)
 from hsfs.training_dataset_split import TrainingDatasetSplit
 
 
@@ -1517,17 +1522,37 @@ class FeatureViewEngine:
         return logging_features
 
     def _enable_feature_logging(
-        self, fv, extra_log_columns: feature.Feature | dict[str, Any] | None = None
+        self,
+        fv,
+        extra_log_columns: feature.Feature | dict[str, Any] | None = None,
+        materialization_interval: str | None = None,
+        transport: str | None = None,
     ) -> feature_view.FeatureView:
         """Function to enable feature logging for a feature view. This function creates logging feature groups for the feature view.
 
         Parameters:
             fv: Feature view object to enable feature logging for.
             extra_log_columns: List of features to be logged.
+            materialization_interval: `"hour"` or `"day"`; `None` keeps the platform default schedule.
+            transport: `"realtime"` or `"job"`; `None` keeps the platform default.
 
         Returns:
             Feature view object with feature logging enabled.
+
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException: If the view already logs through the other transport.
         """
+        transport = None if transport is None else _transport(transport)
+        if fv.logging_enabled and transport is not None:
+            current = self._get_feature_logging(fv)
+            active = current.transport if current is not None else None
+            if active is not None and active != transport:
+                raise FeatureStoreException(
+                    f"Feature view {fv.name} v{fv.version} already logs through the "
+                    f"{active!r} transport, and a feature view logs through one "
+                    f"transport at a time. Call delete_log(transport={transport!r}) "
+                    "to drop the logged rows and switch."
+                )
         logging_features = (
             [
                 feature.Feature.from_response_json(feat)
@@ -1539,12 +1564,83 @@ class FeatureViewEngine:
             else []
         )
 
-        feature_logging = FeatureLogging(extra_logging_columns=logging_features)
+        feature_logging = FeatureLogging(
+            extra_logging_columns=logging_features,
+            materialization_interval=materialization_interval,
+            transport=transport,
+        )
         self._feature_view_api._enable_feature_logging(
             fv.name, fv.version, feature_logging
         )
         fv.logging_enabled = True
+        fv._feature_logging = None
+        created = self._get_feature_logging(fv)
+        if created is not None and created.transport == "job":
+            self._commit_job(fv, created, materialization_interval)
+        elif materialization_interval is not None:
+            self._schedule_log_materialization(fv, materialization_interval)
         return fv
+
+    def _schedule_log_materialization(self, fv, interval: str) -> None:
+        """Put the logging group's materialization job on the hourly or daily schedule.
+
+        The schedule lives on the job, so this also works for a group whose
+        backend predates the `materializationInterval` field.
+        """
+        cron = _materialization_cron(interval)
+        feature_logging = self._get_feature_logging(fv)
+        logging_fg = (
+            feature_logging.get_feature_group(None) if feature_logging else None
+        )
+        if logging_fg is None:
+            raise FeatureStoreException(
+                f"Feature view {fv.name} v{fv.version} has no logging feature group; "
+                "enable logging before choosing a materialization interval."
+            )
+        if feature_logging.transport == "job":
+            self._commit_job(fv, feature_logging, interval)
+            return
+        logging_fg.materialization_job.schedule(cron)
+
+    def _commit_job(self, fv, feature_logging, interval: str | None = None):
+        """The `job` transport's commit job for the view, created and scheduled on first use.
+
+        The job runs the packaged `feature_log_commit_job.py`, uploaded next to
+        the view's staging directory, with the view's name and version as
+        arguments. Hourly unless the view chose a materialization interval.
+        """
+        from hopsworks_common.core.dataset_api import DatasetApi
+        from hopsworks_common.core.feature_logging_file import (
+            _commit_job_name,
+            _mkdirs,
+            _staging_dir,
+        )
+        from hopsworks_common.core.job_api import JobApi
+        from hsfs.core import feature_log_commit_job
+
+        job_api = JobApi()
+        name = _commit_job_name(fv.name, fv.version)
+        job = job_api.get_job(name) if job_api.exists(name) else None
+        # The script is the client's own copy, so every call refreshes it and
+        # the job keeps pace with the installed client.
+        staging_dir = _staging_dir(fv.name, fv.version)
+        dataset_api = DatasetApi()
+        _mkdirs(dataset_api, staging_dir)
+        script = dataset_api.upload(
+            feature_log_commit_job.__file__, staging_dir, overwrite=True
+        )
+        if job is None:
+            config = job_api.get_configuration("PYTHON")
+            config["appPath"] = script
+            config["defaultArgs"] = f"--feature-view {fv.name} --version {fv.version}"
+            job = job_api.create_job(name, config)
+        if interval is not None or job.job_schedule is None:
+            job.schedule(
+                _materialization_cron(interval)
+                if interval is not None
+                else LOG_MATERIALIZATION_INTERVALS["hour"]
+            )
+        return job
 
     def _get_feature_logging(self, fv):
         return self._feature_view_api._get_feature_logging(fv.name, fv.version)
@@ -2020,8 +2116,20 @@ class FeatureViewEngine:
         hsml_model=None,
         model_name: str | None = None,
         model_version: int | None = None,
+        online: bool = False,
     ):
-        fg = self._get_logging_fg(fv, transformed)
+        feature_logging = self._get_feature_logging(fv)
+        fg = feature_logging.get_feature_group(transformed) if feature_logging else None
+        if (
+            online
+            and feature_logging is not None
+            and feature_logging.transport == "job"
+        ):
+            raise FeatureStoreException(
+                f"Feature view {fv.name} v{fv.version} logs through the 'job' "
+                "transport, which keeps no online copy of the log; read it with "
+                "online=False after materialize_log()."
+            )
         fv_feat_name_map = self._get_fv_feature_name_map(fv)
         query = fg.select_all()
         if start_time:
@@ -2067,7 +2175,7 @@ class FeatureViewEngine:
                 self._convert_to_log_fg_filter(fg, fv, filter, fv_feat_name_map)
             )
         return engine._get_instance()._read_feature_log(
-            query, constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME
+            query, constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME, online=online
         )
 
     @staticmethod
@@ -2128,15 +2236,31 @@ class FeatureViewEngine:
 
     def _pause_logging(self, fv):
         self._feature_view_api._pause_feature_logging(fv.name, fv.version)
+        feature_logging = self._get_feature_logging(fv)
+        if feature_logging is not None and feature_logging.transport == "job":
+            # The job transport's schedule lives on the commit job, not on a
+            # materialization job the backend knows about.
+            self._commit_job(fv, feature_logging).pause_schedule()
 
     def _resume_logging(self, fv):
         self._feature_view_api._resume_feature_logging(fv.name, fv.version)
+        feature_logging = self._get_feature_logging(fv)
+        if feature_logging is not None and feature_logging.transport == "job":
+            self._commit_job(fv, feature_logging).resume_schedule()
 
     def _materialize_feature_logs(self, fv, wait, transform):
+        feature_logging = self._get_feature_logging(fv)
+        if feature_logging is not None and feature_logging.transport == "job":
+            # The job transport has no materialization job: the commit job is
+            # what moves staged chunks into the offline table.
+            job = self._commit_job(fv, feature_logging)
+            job.run(await_termination=False)
+            if wait:
+                job._wait_for_job(wait)
+            return [job]
         # FSTORE-1871 combines the untransformed and transformed logging feature groups.
         # Here we are checking are fetching both transformed and untransformed logging feature groups to maintain backwards compatibility.
         if transform is None:
-            feature_logging = self._get_feature_logging(fv)
             logging_feature_groups = [
                 feature_logging.untransformed_features,
                 feature_logging.transformed_features,
@@ -2151,6 +2275,12 @@ class FeatureViewEngine:
                 job._wait_for_job(wait)
         return jobs
 
-    def _delete_feature_logs(self, fv, feature_logging, transformed):
-        self._feature_view_api._delete_feature_logs(fv.name, fv.version, transformed)
-        feature_logging._update(self._get_feature_logging(fv))
+    def _delete_feature_logs(self, fv, feature_logging, transformed, transport=None):
+        transport = None if transport is None else _transport(transport)
+        self._feature_view_api._delete_feature_logs(
+            fv.name, fv.version, transformed, transport
+        )
+        recreated = self._get_feature_logging(fv)
+        feature_logging._update(recreated)
+        if recreated is not None and recreated.transport == "job":
+            self._commit_job(fv, recreated)

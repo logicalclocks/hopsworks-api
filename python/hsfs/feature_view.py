@@ -4474,6 +4474,7 @@ class FeatureView:
         environment: str | None = None,
         env_vars: dict[str, str] | None = None,
         tags: Any = None,
+        feature_logging: Any = None,
     ) -> Any:
         """Deploy this feature view as an online endpoint that returns transformed feature vectors.
 
@@ -4502,12 +4503,13 @@ class FeatureView:
                 Defaults to the last training dataset accessed from this view in this session.
             passed_features: Features of this view whose values clients send with each request.
             schema: A refinement of the inferred deployment schema, keeping its fields but changing types or descriptions.
-            script_file: A script subclassing `hsml.default_predictor.DefaultPredict`; it must end with the `run_kserve_wrapper()` hand-over.
+            script_file: A script subclassing `hsml.deployment.default_predictor.DefaultPredict`; it must end with the `run_kserve_wrapper()` hand-over.
             resources: Resources to be allocated for the predictor.
             scaling_configuration: Scaling configuration for the predictor.
             environment: The inference environment to use.
             env_vars: Environment variables to set on the predictor.
             tags: Tags to attach to the deployment when it is created.
+            feature_logging: Feature logging configuration for the predictor and its feature-log sidecar, a [`DeploymentLoggingConfig`][hsml.deployment.logging_config.DeploymentLoggingConfig] or an equivalent dict.
 
         Returns:
             The deployment metadata object, created but not started.
@@ -4518,7 +4520,7 @@ class FeatureView:
         """
         # Lazy import: hsml is a sibling SDK package and the rest of hsfs imports it
         # the same way (see explicit_provenance.py).
-        from hsml.predictor import Predictor
+        from hsml.deployment.predictor import Predictor
 
         predictor = Predictor.for_feature_view(
             self,
@@ -4533,6 +4535,7 @@ class FeatureView:
             environment=environment,
             env_vars=env_vars,
             tags=tags,
+            feature_logging=feature_logging,
         )
         return predictor.deploy()
 
@@ -4988,14 +4991,23 @@ class FeatureView:
 
     @public
     def enable_logging(
-        self, extra_log_columns: Feature | dict[str, str] = None
+        self,
+        extra_log_columns: Feature | dict[str, str] = None,
+        materialization_interval: str | None = None,
+        transport: str | None = None,
     ) -> None:
         """Enable feature logging for the current feature view.
 
         This method activates logging of features.
+        A feature view logs through one transport: `"realtime"` sends every prediction through the deployment's inference logger to an online-enabled logging feature group, readable within seconds, and `"job"` buffers predictions on the deployment's pod and commits them to an offline-only logging feature group with a scheduled job.
+        Enabling the other transport on a view that already logs is refused; call [`FeatureView.delete_log`][hsfs.feature_view.FeatureView.delete_log] with the new transport to switch.
 
         Parameters:
             extra_log_columns: Additional columns to be logged. Any duplicate columns will be ignored.
+            materialization_interval: How often the logs are written to the offline store, `"hour"` or `"day"`.
+                `None` keeps the platform default.
+                Change it later with [`FeatureView.set_log_materialization_interval`][hsfs.feature_view.FeatureView.set_log_materialization_interval].
+            transport: `"realtime"` or `"job"`; `None` keeps the platform default.
 
         Example: Enable feature logging
             ```python
@@ -5024,10 +5036,33 @@ class FeatureView:
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue
+            hopsworks.client.exceptions.FeatureStoreException: If the view already logs through the other transport.
         """
-        fv = self._feature_view_engine._enable_feature_logging(self, extra_log_columns)
+        fv = self._feature_view_engine._enable_feature_logging(
+            self, extra_log_columns, materialization_interval, transport
+        )
         self._feature_logging = self._feature_view_engine._get_feature_logging(fv)
         return fv
+
+    @public
+    def set_log_materialization_interval(self, interval: str) -> None:
+        """Choose how often the logs are written to the offline store.
+
+        The online log window is unaffected; this reschedules the materialization job of the logging feature group.
+
+        Parameters:
+            interval: `"hour"` or `"day"`.
+
+        Example:
+            ```python
+            feature_view.set_log_materialization_interval("hour")
+            ```
+
+        Raises:
+            ValueError: If `interval` is not one of the supported values.
+            hopsworks.client.exceptions.FeatureStoreException: If logging is not enabled on the feature view.
+        """
+        self._feature_view_engine._schedule_log_materialization(self, interval)
 
     @public
     def init_feature_logger(self, feature_logger: FeatureLogger) -> None:
@@ -5287,6 +5322,7 @@ class FeatureView:
         model: Model | None = None,
         model_name: str | None = None,
         model_version: int | None = None,
+        online: bool = False,
     ) -> TypeVar("pyspark.sql.DataFrame") | pd.DataFrame | pl.DataFrame:
         """Read the log entries for the current feature view.
 
@@ -5301,6 +5337,9 @@ class FeatureView:
             model: HSML model associated with the log.
             model_name: Name of the model to filter the log entries. If `model` is provided, this parameter will be ignored.
             model_version: Version of the model to filter the log entries. If `model` is provided, this parameter will be ignored.
+
+            online: Read from the online store instead of the offline store.
+                Only rows still inside the logging feature group's time to live are there, so pair it with `start_time` and `end_time` for an incremental read.
 
         Example:
             ```python
@@ -5332,6 +5371,7 @@ class FeatureView:
             model,
             model_name,
             model_version,
+            online=online,
         )
 
     @public
@@ -5391,16 +5431,25 @@ class FeatureView:
         )
 
     @public
-    def delete_log(self, transformed: bool | None = None) -> None:
+    def delete_log(
+        self, transformed: bool | None = None, transport: str | None = None
+    ) -> None:
         """Delete the logged feature data for the current feature view.
+
+        Logging stays enabled on an empty logging feature group.
+        Name a `transport` to recreate that group for the other transport, which is how a view moves between `"realtime"` and `"job"` logging.
 
         Parameters:
             transformed: Whether to delete transformed logs. Defaults to None. Delete both transformed and untransformed logs.
+            transport: `"realtime"` or `"job"` for the recreated logging feature group; `None` keeps the current one.
 
         Example:
             ```python
             # delete log
             feature_view.delete_log()
+
+            # drop the log and switch to the job transport
+            feature_view.delete_log(transport="job")
             ```
 
         Raises:
@@ -5408,7 +5457,7 @@ class FeatureView:
         """
         if self.feature_logging is not None:
             self._feature_view_engine._delete_feature_logs(
-                self, self.feature_logging, transformed
+                self, self.feature_logging, transformed, transport
             )
 
     @public
@@ -5437,9 +5486,11 @@ class FeatureView:
             raise FeatureStoreException(
                 "Feature logging only supported in Hopsworks serving deployments"
             )
+        from hopsworks_common.core.feature_logging_buffer import _positive_env
         from hsfs.feature_logger_async import AsyncFeatureLogger
 
         return AsyncFeatureLogger(
+            max_queue_size=_positive_env("FEATURE_LOGGER_QUEUE_SIZE", 1000),
             project_id=int(client._get_instance()._project_id),
             source="localhost",
             namespace=os.environ["HOPSWORKS_PROJECT_NAME"].replace("_", "-"),
