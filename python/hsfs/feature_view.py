@@ -881,10 +881,10 @@ class FeatureView:
                 The logging metadata contains the untransformed features, transformed features, inference helpers, serving keys, request parameters and event time.
                 The feature vector object returned can be passed to `feature_view.log()` to log the feature vector along with all the logging metadata.
             n_processes: Number of worker processes used to apply transformation functions in parallel.
-            timeout: Seconds to wait for the online read, for a read served by the SQL client.
-                It covers the wait for a free connection as well as the query, and raises `TimeoutError` when it runs out.
-                Unset waits indefinitely, which is what a caller that names no timeout got before.
-                A read served by the REST client does not take it yet and uses that client's configured timeout instead.
+            timeout: Seconds to wait for the online read, as a deadline for the whole of it.
+                It covers waiting for a free connection, sending the request and receiving the answer, and raises `TimeoutError` when it runs out.
+                Must be a finite number of seconds greater than zero.
+                Unset means the configured default: the REST client's `timeout` setting, and no deadline for a SQL read, which is what a caller that names no timeout got before.
                 Independent transformations run concurrently; a chained sequence runs in order.
                 Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
                 When not set, the value passed to `init_serving` is used.
@@ -899,7 +899,10 @@ class FeatureView:
         self._assert_no_offline_only_partition_features()
 
         if not self._vector_server._serving_initialized:
-            self.init_serving(external=external)
+            # force_rest_client is forwarded here as the batch method already
+            # does it: without it, a first single call asking for REST used to
+            # initialise SQL and then pick REST anyway.
+            self.init_serving(external=external, init_rest_client=force_rest_client)
 
         if n_processes is None:
             n_processes = self._transformation_n_processes
@@ -1059,10 +1062,10 @@ class FeatureView:
                 The logging metadata contains the untransformed features, transformed features, inference helpers, serving keys, request parameters and event time.
                 The feature vector object returned can be passed to `feature_view.log()` to log the feature vectors along with all the logging metadata.
             n_processes: Number of worker processes used to apply transformation functions in parallel.
-            timeout: Seconds to wait for the online read, for a read served by the SQL client.
-                It covers the wait for a free connection as well as the query, and raises `TimeoutError` when it runs out.
-                Unset waits indefinitely, which is what a caller that names no timeout got before.
-                A read served by the REST client does not take it yet and uses that client's configured timeout instead.
+            timeout: Seconds to wait for the online read, as a deadline for the whole of it.
+                It covers waiting for a free connection, sending the request and receiving the answer, and raises `TimeoutError` when it runs out.
+                Must be a finite number of seconds greater than zero.
+                Unset means the configured default: the REST client's `timeout` setting, and no deadline for a SQL read, which is what a caller that names no timeout got before.
                 Independent transformations run concurrently; a chained sequence runs in order.
                 Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
                 When not set, the value passed to `init_serving` is used.

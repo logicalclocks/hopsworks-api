@@ -58,7 +58,9 @@ class OnlineStoreRestClientApi:
     BATCH_VECTOR_ENDPOINT = "batch_feature_store"
     PING_ENDPOINT = "ping"
 
-    def _get_single_raw_feature_vector(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def _get_single_raw_feature_vector(
+        self, payload: dict[str, Any], timeout: float | None = None
+    ) -> dict[str, Any]:
         """Get a single feature vector from the feature store.
 
         Check the RonDB Rest Server documentation for more details:
@@ -79,6 +81,8 @@ class OnlineStoreRestClientApi:
                     - "metadataOptions": Whether to include feature metadata in the response.
                         Keys are "featureName" and "featureType" and values are boolean.
                     - "passedFeatures": A dictionary with the feature names as keys and the values to substitute for this specific vector.
+
+            timeout: Seconds to wait for the response. The configured REST default applies when unset.
 
         Returns:
             The response json containing the feature vector as well as status information
@@ -104,10 +108,13 @@ class OnlineStoreRestClientApi:
                 path_params=[self.SINGLE_VECTOR_ENDPOINT],
                 headers={"Content-Type": "application/json"},
                 data=json.dumps(payload, cls=NpDatetimeEncoder),
+                timeout=timeout,
             ),
         )
 
-    def _get_batch_raw_feature_vectors(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def _get_batch_raw_feature_vectors(
+        self, payload: dict[str, Any], timeout: float | None = None
+    ) -> dict[str, Any]:
         """Get a list of feature vectors from the feature store.
 
         Check the RonDB Rest Server documentation for more details:
@@ -124,6 +131,8 @@ class OnlineStoreRestClientApi:
                     Note that the list should be ordered in the same way as the entries list.
                 - "metadataOptions": Whether to include feature metadata in the response.
                     Keys are "featureName" and "featureType" and values are boolean.
+
+            timeout: Seconds to wait for the response. The configured REST default applies when unset.
 
         Returns:
             The response json containing the feature vector as well as status information
@@ -149,6 +158,7 @@ class OnlineStoreRestClientApi:
                 path_params=[self.BATCH_VECTOR_ENDPOINT],
                 headers={"Content-Type": "application/json"},
                 data=json.dumps(payload, cls=NpDatetimeEncoder),
+                timeout=timeout,
             ),
         )
 
@@ -184,12 +194,18 @@ class OnlineStoreRestClientApi:
                 - 500: Internal server error.
         """
         if response.status_code == 200:
+            # Decoded once at every log level. DEBUG used to decode the body a
+            # second time and pretty-print every feature value, which made
+            # tracing cost more than the call it was tracing and put feature
+            # values in the log.
+            decoded = response.json()
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug(
-                    "Received response from RonDB Rest Server with status code 200"
+                    "Received response from RonDB Rest Server with status code 200, "
+                    "%d bytes",
+                    len(response.content),
                 )
-                _logger.debug(f"Response: {json.dumps(response.json(), indent=2)}")
-            return response.json()
+            return decoded
         if _logger.isEnabledFor(logging.ERROR):
             _logger.error(
                 f"Received response from RonDB Rest Server with status code {response.status_code}"

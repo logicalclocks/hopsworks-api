@@ -14,6 +14,7 @@
 #   limitations under the License.
 #
 
+from copy import deepcopy
 from datetime import datetime
 from unittest.mock import PropertyMock
 
@@ -244,3 +245,307 @@ class TestReadDeadline:
         client._get_single_feature_vector({"id": 1})
 
         assert client._single_vector_result.call_args.kwargs["timeout"] is None
+
+
+class TestRestProjectionEquivalence:
+    """Reading the response by position must return what reading it by name does.
+
+    The projection is a second way through the serving path, so what pins it is
+    not a hand-written expectation but the general path's own answer for the
+    same response.
+    """
+
+    def _features(self):
+        from hsfs import feature_group as fg_mod
+        from hsfs import training_dataset_feature as tdf_mod
+
+        def feature(name, type_="bigint", **flags):
+            feat = tdf_mod.TrainingDatasetFeature(
+                name=name, type=type_, label=flags.get("label", False)
+            )
+            feat.inference_helper_column = flags.get("inference_helper", False)
+            feat.training_helper_column = flags.get("training_helper", False)
+            feat._feature_group = fg_mod.FeatureGroup(
+                name="fg", version=1, featurestore_id=99, primary_key=[], id=11
+            )
+            return feat
+
+        return [
+            feature("id"),
+            feature("when", "date"),
+            feature("trainer", training_helper=True),
+            feature("amount", "double"),
+            feature("helper", inference_helper=True),
+            feature("target", label=True),
+        ]
+
+    def _server(self, mocker, response_rows, detailed_status=None):
+        from hsfs import feature_group as fg_mod
+        from hsfs import serving_key as sk_mod
+        from hsfs.core import online_store_rest_client_engine, vector_server
+
+        features = self._features()
+        server = vector_server.VectorServer(
+            feature_store_id=1,
+            features=features,
+            serving_keys=[
+                sk_mod.ServingKey(
+                    feature_name="id",
+                    join_index=0,
+                    feature_group=fg_mod.FeatureGroup(
+                        name="fg",
+                        version=1,
+                        featurestore_id=99,
+                        primary_key=["id"],
+                        id=11,
+                    ),
+                )
+            ],
+            feature_store_name="fs",
+            feature_view_name="fv",
+            feature_view_version=1,
+        )
+        server._rest_client_engine = (
+            online_store_rest_client_engine.OnlineStoreRestClientEngine(
+                feature_store_name="fs",
+                feature_view_name="fv",
+                feature_view_version=1,
+                features=features,
+            )
+        )
+        server._on_demand_feature_names = []
+        mocker.patch.object(
+            server, "_which_client_and_ensure_initialised", return_value="rest"
+        )
+
+        # Decoding rewrites the row in place, which a real response, freshly
+        # parsed per call, can afford. These fixtures are read twice.
+        def batch_body(*_args, **_kwargs):
+            body = {"features": deepcopy(response_rows)}
+            if detailed_status is not None:
+                body["detailedStatus"] = deepcopy(detailed_status)
+            return body
+
+        def single_body(*_args, **_kwargs):
+            body = {"features": deepcopy(response_rows[0])}
+            if detailed_status is not None:
+                body["detailedStatus"] = deepcopy(detailed_status[0])
+            return body
+
+        mocker.patch(
+            "hsfs.core.online_store_rest_client_api.OnlineStoreRestClientApi"
+            "._get_batch_raw_feature_vectors",
+            side_effect=batch_body,
+        )
+        mocker.patch(
+            "hsfs.core.online_store_rest_client_api.OnlineStoreRestClientApi"
+            "._get_single_raw_feature_vector",
+            side_effect=single_body,
+        )
+        return server
+
+    def _both_ways(self, mocker, call, **kwargs):
+        """The same call with the projection prepared, and with it refused."""
+        projected = call(self._server(mocker, **kwargs))
+        control_server = self._server(mocker, **kwargs)
+        mocker.patch.object(control_server, "_rest_row_projection", return_value=None)
+        return projected, call(control_server)
+
+    ROWS = [[1, "2026-03-04", 7, 2.5, 9], [2, "2026-03-05", 8, 3.5, 10]]
+    OK = [
+        [{"httpStatus": 200, "featureGroupId": 11}],
+        [{"httpStatus": 200, "featureGroupId": 11}],
+    ]
+
+    @pytest.mark.parametrize("allow_missing", [True, False])
+    def test_a_batch_reads_the_same_either_way(self, mocker, allow_missing):
+        def call(server):
+            return server._get_feature_vectors(
+                entries=[{"id": 1}, {"id": 2}],
+                vector_db_features=[],
+                return_type="list",
+                allow_missing=allow_missing,
+                transform=False,
+                on_demand_features=False,
+                force_rest_client=True,
+            )
+
+        projected, control = self._both_ways(
+            mocker, call, response_rows=self.ROWS, detailed_status=self.OK
+        )
+
+        assert projected == control
+        assert projected == [
+            [1, datetime(2026, 3, 4).date(), 2.5],
+            [2, datetime(2026, 3, 5).date(), 3.5],
+        ]
+
+    def test_a_single_vector_reads_the_same_either_way(self, mocker):
+        def call(server):
+            return server._get_feature_vector(
+                entry={"id": 1},
+                return_type="list",
+                allow_missing=False,
+                transform=False,
+                on_demand_features=False,
+                force_rest_client=True,
+            )
+
+        projected, control = self._both_ways(
+            mocker, call, response_rows=self.ROWS, detailed_status=self.OK
+        )
+
+        assert projected == control
+        assert projected == [1, datetime(2026, 3, 4).date(), 2.5]
+
+    def test_passed_features_send_the_batch_the_general_way(self, mocker):
+        """A supplied value has to be merged in, which needs the mapping."""
+
+        def call(server):
+            return server._get_feature_vectors(
+                entries=[{"id": 1}, {"id": 2}],
+                passed_features=[{"amount": 99.0}, {}],
+                vector_db_features=[],
+                return_type="list",
+                allow_missing=True,
+                transform=False,
+                on_demand_features=False,
+                force_rest_client=True,
+            )
+
+        projected, control = self._both_ways(
+            mocker, call, response_rows=self.ROWS, detailed_status=self.OK
+        )
+
+        assert projected == control
+        assert projected[0][2] == 99.0
+
+    def test_an_empty_passed_feature_per_entry_still_projects(self, mocker):
+        """A batch commonly carries one empty mapping per entry, supplying nothing."""
+
+        def call(server):
+            return server._get_feature_vectors(
+                entries=[{"id": 1}, {"id": 2}],
+                passed_features=[{}, {}],
+                vector_db_features=[],
+                return_type="list",
+                allow_missing=True,
+                transform=False,
+                on_demand_features=False,
+                force_rest_client=True,
+            )
+
+        server = self._server(mocker, response_rows=self.ROWS, detailed_status=self.OK)
+        spy = mocker.spy(server, "_assemble_feature_vector")
+
+        assert call(server) == [
+            [1, datetime(2026, 3, 4).date(), 2.5],
+            [2, datetime(2026, 3, 5).date(), 3.5],
+        ]
+        assert spy.call_count == 0
+
+    def test_a_failed_read_sends_the_whole_batch_the_general_way(self, mocker):
+        status = [
+            [{"httpStatus": 200, "featureGroupId": 11}],
+            [{"httpStatus": 500, "featureGroupId": 11}],
+        ]
+
+        def call(server):
+            return server._get_feature_vectors(
+                entries=[{"id": 1}, {"id": 2}],
+                vector_db_features=[],
+                return_type="list",
+                allow_missing=True,
+                transform=False,
+                on_demand_features=False,
+                force_rest_client=True,
+            )
+
+        projected, control = self._both_ways(
+            mocker, call, response_rows=self.ROWS, detailed_status=status
+        )
+
+        assert projected == control
+
+    def test_a_null_row_reads_the_same_either_way(self, mocker):
+        def call(server):
+            return server._get_feature_vectors(
+                entries=[{"id": 1}, {"id": 2}],
+                vector_db_features=[],
+                return_type="list",
+                allow_missing=False,
+                transform=False,
+                on_demand_features=False,
+                force_rest_client=True,
+            )
+
+        projected, control = self._both_ways(
+            mocker, call, response_rows=[None, self.ROWS[1]], detailed_status=self.OK
+        )
+
+        assert projected == control
+        assert projected == [[2, datetime(2026, 3, 5).date(), 3.5]]
+
+
+class TestDefaultCallsUseTheProjection:
+    """An ordinary call on a plain view reads by position.
+
+    `transform` and `on_demand_features` both default to true, and refusing the
+    projection whenever they were true excluded every call that did not opt out.
+    A view with no transformation functions has nothing to apply whichever way
+    the flags are set, and that is the common case.
+    """
+
+    def _server(self, mocker, *, handlers=None, mdts=(), odts=()):
+        from hsfs.core import vector_server
+
+        server = vector_server.VectorServer.__new__(vector_server.VectorServer)
+        server._rest_client_engine = mocker.Mock()
+        server._return_feature_value_handlers = handlers or {}
+        server._model_dependent_transformation_functions = list(mdts)
+        server._on_demand_transformation_functions = list(odts)
+        server._untransformed_feature_vector_col_name = ["a", "b"]
+        server._on_demand_feature_vector_col_name = ["a", "b"]
+        server._transformed_feature_vector_col_name = ["a", "b"]
+        server._VectorServer__rest_projections = {}
+        mocker.patch.object(
+            vector_server.VectorServer,
+            "_rest_row_projection",
+            return_value=(0, 1),
+        )
+        return server
+
+    def _ask(self, server, **overrides):
+        kwargs = {
+            "transform": True,
+            "on_demand_features": True,
+            "passed_features": None,
+            "vector_db_features": None,
+            "logging_meta_data": None,
+        }
+        kwargs.update(overrides)
+        return server._prepared_rest_projection(**kwargs)
+
+    def test_a_plain_view_projects_with_the_public_defaults(self, mocker):
+        assert self._ask(self._server(mocker)) == (0, 1)
+
+    def test_a_view_with_transformations_does_not(self, mocker):
+        server = self._server(mocker, mdts=[object()])
+
+        assert self._ask(server) is None
+
+    def test_transformations_that_are_not_asked_for_do_not_block_it(self, mocker):
+        """`transform=False` means they do not run, so they change nothing here."""
+        server = self._server(mocker, mdts=[object()])
+
+        assert self._ask(server, transform=False) == (0, 1)
+
+    def test_a_handler_for_a_returned_feature_blocks_it(self, mocker):
+        server = self._server(mocker, handlers={"a": lambda v: v})
+
+        assert self._ask(server) is None
+
+    def test_a_handler_for_a_feature_that_is_not_returned_does_not(self, mocker):
+        server = self._server(mocker, handlers={"elsewhere": lambda v: v})
+
+        assert self._ask(server) == (0, 1)

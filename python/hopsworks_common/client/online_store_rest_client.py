@@ -17,6 +17,9 @@
 from __future__ import annotations
 
 import logging
+import math
+import threading
+import time
 from typing import Any
 from warnings import warn
 
@@ -89,7 +92,11 @@ class OnlineStoreRestClientSingleton:
     TIMEOUT = "timeout"
     SERVER_API_VERSION = "server_api_version"
     API_KEY = "api_key"
+    MAX_CONNECTIONS = "max_connections"
     _DEFAULT_ONLINE_STORE_REST_CLIENT_PORT = 4406
+    _DEFAULT_ONLINE_STORE_REST_CLIENT_MAX_CONNECTIONS = 16
+    # Read size for pulling a response body under the call's deadline.
+    _READ_CHUNK_BYTES = 65536
     _DEFAULT_ONLINE_STORE_REST_CLIENT_TIMEOUT_SECOND = 2
     _DEFAULT_ONLINE_STORE_REST_CLIENT_VERIFY_CERTS = True
     _DEFAULT_ONLINE_STORE_REST_CLIENT_USE_SSL = True
@@ -115,6 +122,10 @@ class OnlineStoreRestClientSingleton:
         self._session: requests.Session
         self._current_config: dict[str, Any]
         self._base_url: furl
+        self._endpoint_urls: dict[tuple[str, ...], str] = {}
+        self._timeout_seconds: float = (
+            self._DEFAULT_ONLINE_STORE_REST_CLIENT_TIMEOUT_SECOND
+        )
         self._setup_rest_client(
             transport=transport,
             optional_config=optional_config,
@@ -186,11 +197,25 @@ class OnlineStoreRestClientSingleton:
                 "Use the init_or_reset_online_store_connection method with reset_connection flag set "
                 "to True to reset the online_store_client_connection"
             )
-        if transport is not None:
-            if _logger.isEnabledFor(logging.DEBUG):
-                _logger.debug("Setting custom transport adapter.")
-            self._session.mount("https://", transport)
-            self._session.mount("http://", transport)
+        max_connections = int(self._current_config[self.MAX_CONNECTIONS])
+        if max_connections < 1:
+            raise FeatureStoreException(
+                f"{self.MAX_CONNECTIONS} must be at least 1, got {max_connections}."
+            )
+        # Requests pools ten connections and, past that, opens one per request
+        # and throws it away. A serving process reading concurrently paid a TLS
+        # handshake on most of its reads. The pool is sized to the number of
+        # reads allowed in flight below, so it is never the thing that overflows.
+        self._max_connections = max_connections
+        self._connection_slots = threading.BoundedSemaphore(max_connections)
+        if transport is None:
+            transport = requests.adapters.HTTPAdapter(
+                pool_connections=max_connections, pool_maxsize=max_connections
+            )
+        elif _logger.isEnabledFor(logging.DEBUG):
+            _logger.debug("Setting custom transport adapter.")
+        self._session.mount("https://", transport)
+        self._session.mount("http://", transport)
 
         if not self._current_config[self.VERIFY_CERTS]:
             if _logger.isEnabledFor(logging.WARNING):
@@ -210,6 +235,14 @@ class OnlineStoreRestClientSingleton:
         self._base_url = furl(
             f"{scheme}://{self._current_config[self.HOST]}:{self._current_config[self.PORT]}/{self._current_config[self.SERVER_API_VERSION]}"
         )
+        # Every request used to copy the furl, extend its path and render it
+        # again. The endpoints are fixed once host, port, scheme and API version
+        # are, so they are rendered here and rebuilt whenever this runs again.
+        self._endpoint_urls = {}
+        # Seconds, resolved once. The wire value has historically been read as
+        # milliseconds when it is 500 or more, and that reading is kept for
+        # configurations that rely on it rather than changed under them.
+        self._timeout_seconds = self._as_seconds(self._current_config[self.TIMEOUT])
 
         assert self._session is not None, (
             "Online Store REST Client failed to initialise."
@@ -240,6 +273,7 @@ class OnlineStoreRestClientSingleton:
             )
         return {
             self.TIMEOUT: self._DEFAULT_ONLINE_STORE_REST_CLIENT_TIMEOUT_SECOND,
+            self.MAX_CONNECTIONS: self._DEFAULT_ONLINE_STORE_REST_CLIENT_MAX_CONNECTIONS,
             self.VERIFY_CERTS: self._DEFAULT_ONLINE_STORE_REST_CLIENT_VERIFY_CERTS,
             self.USE_SSL: self._DEFAULT_ONLINE_STORE_REST_CLIENT_USE_SSL,
             self.SERVER_API_VERSION: self._DEFAULT_ONLINE_STORE_REST_CLIENT_SERVER_API_VERSION,
@@ -309,30 +343,148 @@ class OnlineStoreRestClientSingleton:
             )
         return default_url
 
+    @staticmethod
+    def _as_seconds(timeout: float) -> float:
+        """Read a configured timeout as seconds, keeping its historical interpretation.
+
+        A configured value of 500 or more has always been taken as
+        milliseconds. Resolved once at configuration time rather than on every
+        request, and not applied to a timeout a caller passes per call, which is
+        seconds.
+        """
+        return timeout if timeout < 500 else timeout / 1000
+
+    def _endpoint_url(self, path_params: list[str]) -> str:
+        """The URL for one endpoint, rendered once per client configuration."""
+        key = tuple(path_params)
+        url = self._endpoint_urls.get(key)
+        if url is None:
+            built = self._base_url.copy()
+            built.path.segments.extend(path_params)
+            url = built.url
+            self._endpoint_urls[key] = url
+        return url
+
     def _send_request(
         self,
         method: str,
         path_params: list[str],
         headers: dict[str, Any] | None = None,
         data: str | None = None,
+        timeout: float | None = None,
     ) -> requests.Response:
-        url = self._base_url.copy()
-        url.path.segments.extend(path_params)
-        if _logger.isEnabledFor(logging.DEBUG):
-            _logger.debug(f"Sending {method} request to {url.url}.")
-            _logger.debug(f"Provided Data: {data}")
-            _logger.debug(f"Provided Headers: {headers}")
-        prepped_request = self._session.prepare_request(
-            requests.Request(
-                method, url=url.url, headers=headers, data=data, auth=self.auth
+        # The clock starts before anything this call does, because all of it is
+        # time the caller is waiting: admission, preparing the request, the
+        # round trip, and reading the body off the socket.
+        started = time.monotonic()
+        deadline = self._resolve_timeout(timeout)
+
+        def remaining() -> float:
+            return deadline - (time.monotonic() - started)
+
+        # Read once and released by name. A reset replaces the whole set of
+        # slots, and a call that acquired from the old one must give it back to
+        # the old one: releasing whatever the attribute names by then hands a
+        # slot to a pool this call never took one from, which raises on a
+        # bounded semaphore and leaves the waiters on the old one short.
+        slots = self._connection_slots
+        if not slots.acquire(timeout=max(remaining(), 0.0)):
+            raise TimeoutError(
+                f"Timed out after {deadline} seconds waiting for one of "
+                f"{self._max_connections} online store connections. Raise "
+                "`max_connections` in the online store REST client "
+                "configuration, or lower the number of concurrent reads."
             )
-        )
-        timeout = self._current_config[self.TIMEOUT]
-        return self._session.send(
-            prepped_request,
-            # compatibility with 3.7
-            timeout=timeout if timeout < 500 else timeout / 1000,
-        )
+        try:
+            url = self._endpoint_url(path_params)
+            if _logger.isEnabledFor(logging.DEBUG):
+                _logger.debug(f"Sending {method} request to {url}.")
+                _logger.debug(f"Provided Data: {data}")
+                _logger.debug(f"Provided Headers: {headers}")
+            prepped_request = self._session.prepare_request(
+                requests.Request(
+                    method, url=url, headers=headers, data=data, auth=self.auth
+                )
+            )
+            self._raise_if_spent(remaining(), deadline)
+            try:
+                response = self._session.send(
+                    prepped_request,
+                    timeout=max(remaining(), 0.001),
+                    stream=True,
+                )
+            except requests.exceptions.Timeout as error:
+                # One contract for running out of time, whichever part of the
+                # call ran out of it.
+                raise TimeoutError(
+                    f"The online store did not answer within {deadline} seconds."
+                ) from error
+            return self._read_within(response, remaining, deadline)
+        finally:
+            slots.release()
+
+    def _resolve_timeout(self, timeout: float | None) -> float:
+        """The deadline for one call, in seconds.
+
+        A caller's timeout is seconds and is taken as given; only the configured
+        default carries the historical millisecond reading. Unset means that
+        configured default, so every call has a deadline. It has to be a real
+        length of time: zero, negative and NaN each describe a call that cannot
+        succeed, and passing them through would have produced a timeout whose
+        behaviour depends on which layer looked at it first.
+        """
+        if timeout is None:
+            return self._timeout_seconds
+        try:
+            seconds = float(timeout)
+        except (TypeError, ValueError) as error:
+            raise ValueError(f"`timeout` must be a number, got {timeout!r}.") from error
+        if not math.isfinite(seconds) or seconds <= 0:
+            raise ValueError(
+                f"`timeout` must be a finite number of seconds greater than zero, "
+                f"got {timeout!r}."
+            )
+        return seconds
+
+    @staticmethod
+    def _raise_if_spent(remaining: float, deadline: float) -> None:
+        if remaining <= 0:
+            raise TimeoutError(
+                f"The online store call ran out of its {deadline} seconds before "
+                "the request was sent."
+            )
+
+    def _read_within(self, response, remaining, deadline):
+        """Read the whole body, or give up when the deadline does.
+
+        The timeout Requests takes bounds each socket operation, not the call: a
+        server that keeps sending a byte at a time holds the caller, and the
+        connection, for as long as it likes. Reading the body here means the
+        deadline is the deadline, which is what a prediction waiting on a
+        feature vector needs it to be.
+        """
+        chunks = []
+        try:
+            for chunk in response.iter_content(chunk_size=self._READ_CHUNK_BYTES):
+                chunks.append(chunk)
+                if remaining() <= 0:
+                    raise TimeoutError(
+                        f"The online store was still answering after {deadline} "
+                        "seconds."
+                    )
+        except requests.exceptions.Timeout as error:
+            response.close()
+            raise TimeoutError(
+                f"The online store did not answer within {deadline} seconds."
+            ) from error
+        except BaseException:
+            response.close()
+            raise
+        # The body is in hand, so the response answers .content, .text and
+        # .json() as an unstreamed one does.
+        response._content = b"".join(chunks)
+        response._content_consumed = True
+        return response
 
     def _check_hopsworks_connection(self) -> None:
         if _logger.isEnabledFor(logging.DEBUG):
