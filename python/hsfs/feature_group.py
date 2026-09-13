@@ -3754,6 +3754,7 @@ class FeatureGroup(FeatureGroupBase):
                 sc.SqlConnector.MYSQL,
                 sc.SqlConnector.POSTGRESQL,
                 sc.SqlConnector.ORACLE,
+                sc.SqlConnector.CLICKHOUSE,
             ]
         )
         supported_sink_connector = (

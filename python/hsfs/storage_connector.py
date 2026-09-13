@@ -79,6 +79,7 @@ class StorageConnector(ABC):
     GOOGLE_SHEETS = "GOOGLE_SHEETS"
     REST = "REST"
     ORACLE = "ORACLE"
+    CLICKHOUSE = "CLICKHOUSE"
     UNITY_CATALOG = "UNITY_CATALOG"
     SAP_HANA = "SAP_HANA"
     MONGODB = "MONGODB"
@@ -3391,16 +3392,20 @@ class SqlConnector(StorageConnector):
     MYSQL = "MYSQL"
     POSTGRESQL = "POSTGRESQL"
     ORACLE = "ORACLE"
+    CLICKHOUSE = "CLICKHOUSE"
 
     _DRIVERS = {
         MYSQL: "com.mysql.cj.jdbc.Driver",
         POSTGRESQL: "org.postgresql.Driver",
         ORACLE: "oracle.jdbc.driver.OracleDriver",
+        CLICKHOUSE: "com.clickhouse.jdbc.ClickHouseDriver",
     }
     _JDBC_SCHEMES = {
         MYSQL: "mysql",
         POSTGRESQL: "postgresql",
         ORACLE: "oracle:thin",
+        # No protocol in the scheme: the 0.9.x driver defaults to HTTP (port 8123).
+        CLICKHOUSE: "clickhouse",
     }
 
     def __init__(
@@ -3612,6 +3617,9 @@ class SqlConnector(StorageConnector):
                 props["wallet_path"] = self._wallet_path
             if self._wallet_password:
                 props["wallet_password"] = self._wallet_password
+        if self._database_type == self.CLICKHOUSE:
+            # clickhouse-connect's name for the JDBC ``ssl=true`` argument.
+            props["secure"] = str(self._arguments.get("ssl", "false")).lower() == "true"
         return props
 
     @public
