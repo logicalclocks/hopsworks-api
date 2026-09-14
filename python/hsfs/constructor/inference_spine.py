@@ -86,6 +86,7 @@ class InferenceSpine:
         self._table_name = _TABLE_PREFIX + uuid.uuid4().hex[:8]
         self._basename = f"{uuid.uuid4().hex}.parquet"
         self._max_feature_age = _normalize_age(max_feature_age)
+        _check_age_names(self._max_feature_age, feature_view)
         # Only the Hopsworks Query Service reads the spine from a file. Spark takes a session
         # temporary view, so nothing is staged and the backend must not be told to look for one.
         self._parquet_staged = False
@@ -274,6 +275,29 @@ class InferenceSpine:
         if self._max_feature_age:
             payload["maxFeatureAgeMs"] = self._max_feature_age
         return payload
+
+
+def _check_age_names(
+    normalized: dict[str, int] | None, feature_view: FeatureView
+) -> None:
+    """Refuse a `max_feature_age` key that names no feature group in the view.
+
+    The bound is a correctness guard: without it an as-of lookup carries the last value forward
+    for ever. A key that matches nothing would apply no bound at all and return stale rows with
+    no error, so a name that is not a feature group of this view is a mistake worth raising.
+    """
+    if not normalized:
+        return
+    known = {"*"} | {
+        fg.name for fg in feature_view.query.featuregroups if getattr(fg, "name", None)
+    }
+    unknown = sorted(set(normalized) - known)
+    if unknown:
+        raise FeatureStoreException(
+            f"max_feature_age names {unknown}, which is not a feature group of feature view"
+            f" `{feature_view.name}`. Known feature groups: {sorted(known - {'*'})}."
+            " Use `'*'` to bound every feature group."
+        )
 
 
 def _normalize_age(

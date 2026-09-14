@@ -52,6 +52,10 @@ class _Query:
         self._left_feature_group = root
         self.joins = [_Join(fg) for fg in joined]
 
+    @property
+    def featuregroups(self):
+        return [self._left_feature_group] + [j.query._left_feature_group for j in self.joins]
+
 
 class _FeatureView:
     def __init__(self, root, joined, serving_keys):
@@ -221,6 +225,23 @@ class TestWireForm:
             InferenceSpine(
                 feature_view, ENTRIES, _times(1), max_feature_age={"weather": 3600}
             )
+
+    def test_rejects_an_age_naming_no_feature_group(self, feature_view):
+        # The bound is what makes a stale lookup visible. A key that matches nothing would apply
+        # no bound and return rows carried forward for ever, with no error to notice.
+        with pytest.raises(FeatureStoreException, match="not a feature group"):
+            InferenceSpine(
+                feature_view,
+                ENTRIES,
+                _times(1),
+                max_feature_age={"wether": timedelta(days=1)},
+            )
+
+    def test_the_wildcard_key_is_always_accepted(self, feature_view):
+        spine = InferenceSpine(
+            feature_view, ENTRIES, _times(1), max_feature_age={"*": timedelta(hours=2)}
+        )
+        assert spine.to_dict()["maxFeatureAgeMs"] == {"*": 7200000}
 
 
 class TestArrowTable:
