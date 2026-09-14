@@ -32,10 +32,16 @@ if TYPE_CHECKING:
 
 @public
 class ScaleMetric(Enum):
-    """Scaling metric for a predictor or transformer. Can be either 'CONCURRENCY' or 'RPS'."""
+    """Scaling metric for a predictor or transformer.
+
+    `CONCURRENCY` and `RPS` are the Knative autoscaler's, and are what a deployment in Knative mode scales on.
+    `CPU` and `MEMORY` are the Kubernetes horizontal pod autoscaler's, and are what a deployment in KServe standard mode scales on; a standard-mode deployment that names no metric gets `CPU`.
+    """
 
     CONCURRENCY = "CONCURRENCY"
     RPS = "RPS"
+    CPU = "CPU"
+    MEMORY = "MEMORY"
 
     @classmethod
     def _has_value(cls, value):
@@ -246,7 +252,7 @@ class ComponentScalingConfig(ABC):
     @public
     @property
     def scale_metric(self):
-        """The metric to use for scaling. Can be either 'CONCURRENCY' or 'RPS'."""
+        """The metric to use for scaling: `CONCURRENCY` or `RPS` in Knative mode, `CPU` or `MEMORY` in KServe standard mode."""
         return self._scale_metric
 
     @scale_metric.setter
@@ -267,7 +273,7 @@ class ComponentScalingConfig(ABC):
     @public
     @property
     def target(self):
-        """Target value for the selected scaling metric that the autoscaler should try to maintain during the stable window. For RPS, this is requests per second. For CONCURRENCY, this is concurrent number of requests."""
+        """Target value for the selected scaling metric that the autoscaler should try to maintain during the stable window. For RPS, this is requests per second. For CONCURRENCY, this is concurrent number of requests. For CPU and MEMORY, this is the percentage of the request the pods are held at."""
         return self._target
 
     @target.setter

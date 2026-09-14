@@ -193,6 +193,55 @@ class TestEngine:
         commit_job.assert_called_once_with(fv, created, "hour")
         schedule.assert_not_called()
 
+    def test_deleting_a_job_transport_log_takes_its_staged_chunks(self, mocker):
+        """The backend drops the group; the chunks in HopsFS are the client's to clear."""
+        engine = self._engine(mocker)
+        recreated = mocker.Mock(transport="job")
+        mocker.patch.object(engine, "_get_feature_logging", return_value=recreated)
+        discard = mocker.patch.object(engine, "_discard_staged_chunks")
+        unschedule = mocker.patch.object(engine, "_unschedule_commit_job")
+        commit_job = mocker.patch.object(engine, "_commit_job")
+        fv = mocker.Mock(name="fv", version=1)
+
+        engine._delete_feature_logs(fv, mocker.Mock(transport="job"), None)
+
+        discard.assert_called_once_with(fv)
+        commit_job.assert_called_once_with(fv, recreated)
+        unschedule.assert_not_called()
+
+    def test_switching_off_the_job_transport_stops_its_commit_job(self, mocker):
+        engine = self._engine(mocker)
+        mocker.patch.object(
+            engine,
+            "_get_feature_logging",
+            return_value=mocker.Mock(transport="realtime"),
+        )
+        discard = mocker.patch.object(engine, "_discard_staged_chunks")
+        unschedule = mocker.patch.object(engine, "_unschedule_commit_job")
+        fv = mocker.Mock(name="fv", version=1)
+
+        engine._delete_feature_logs(fv, mocker.Mock(transport="job"), None, "realtime")
+
+        discard.assert_called_once_with(fv)
+        unschedule.assert_called_once_with(fv)
+
+    def test_deleting_a_realtime_log_leaves_the_job_transport_alone(self, mocker):
+        engine = self._engine(mocker)
+        mocker.patch.object(
+            engine,
+            "_get_feature_logging",
+            return_value=mocker.Mock(transport="realtime"),
+        )
+        discard = mocker.patch.object(engine, "_discard_staged_chunks")
+        unschedule = mocker.patch.object(engine, "_unschedule_commit_job")
+
+        engine._delete_feature_logs(
+            mocker.Mock(name="fv", version=1), mocker.Mock(transport="realtime"), None
+        )
+
+        discard.assert_not_called()
+        unschedule.assert_not_called()
+
     def test_materialize_on_the_job_transport_runs_the_commit_job(self, mocker):
         engine = self._engine(mocker)
         feature_logging = mocker.Mock(transport="job")

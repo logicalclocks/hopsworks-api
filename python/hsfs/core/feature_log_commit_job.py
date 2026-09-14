@@ -51,7 +51,7 @@ def _read_chunk(path):
     """Read one chunk batch by batch; a truncated tail loses only its last batch.
 
     Returns:
-        The table of complete batches, or `None` for an empty chunk, and whether the tail was truncated.
+        The table of complete batches, or `None` when not one batch was readable, and whether the tail was truncated.
     """
     import pyarrow as pa
 
@@ -402,6 +402,10 @@ def _process_claim(
             table, truncated = _read_chunk(local)
             summary["chunks_truncated"] += int(truncated)
             if table is None:
+                # Not one complete batch: keep the chunk under `failed/` rather
+                # than letting the claim's release take the only copy of it.
+                summary["chunks_rejected"] += 1
+                staging._fail(remote, claim_id)
                 continue
             if set(table.column_names) != expected:
                 summary["chunks_rejected"] += 1

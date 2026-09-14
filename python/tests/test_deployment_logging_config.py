@@ -151,6 +151,18 @@ class TestFeatureLoggingMarker:
                 {"feature_logging": {"transport": "realtime"}}, self._view("job")
             )
 
+    def test_a_dictionary_transport_is_read_the_way_the_config_reads_it(self):
+        """`DeploymentLoggingConfig` lowercases its transport, so the check has to."""
+        from hsml.deployment.predictor import _mark_feature_logging
+
+        kwargs = {"feature_logging": {"transport": " JOB "}}
+        _mark_feature_logging(kwargs, self._view("job"))
+        assert kwargs["env_vars"] == {"SERVING_FEATURE_LOGGING": "job"}
+        with pytest.raises(ValueError, match="one transport"):
+            _mark_feature_logging(
+                {"feature_logging": {"transport": "JOB"}}, self._view("realtime")
+            )
+
     def test_a_view_without_logging_gets_no_marker(self):
         from types import SimpleNamespace
 

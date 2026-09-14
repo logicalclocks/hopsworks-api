@@ -366,6 +366,25 @@ class TestClaims:
         assert summary["rows_committed"] == 4
         assert (tmp_path / staging.root / "failed/exec-1/z.arrow").exists()
 
+    def test_a_chunk_without_one_whole_batch_is_parked_not_dropped(
+        self, tmp_path, mocker
+    ):
+        api, staging = _staging(tmp_path, [("a.arrow", 2, "dep-1")])
+        whole = (tmp_path / staging.root / "pending/a.arrow").read_bytes()
+        # Short of the first batch's end: nothing at all can be read back.
+        (tmp_path / staging.root / "pending/z.arrow").write_bytes(whole[:60])
+        fg = _FeatureGroup()
+        mocker.patch.object(job, "_DeltaTransactions", _Transactions())
+        summary = _summary()
+        claim = staging._claim("exec-short", staging._pending())
+
+        job._process_claim(fg, staging, claim, summary)
+
+        assert summary["chunks_rejected"] == 1
+        assert summary["rows_committed"] == 4
+        # The claim's release takes its directory, so the chunk has to be out of it.
+        assert (tmp_path / staging.root / "failed/exec-short/z.arrow").exists()
+
     def test_a_claim_is_committed_in_bounded_parts(self, tmp_path, mocker):
         api, staging = _staging(
             tmp_path,

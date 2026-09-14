@@ -302,11 +302,15 @@ def offline_fg_materialization(
     # transaction version matches the earlier attempt's and an append that did commit is skipped
     # instead of being widened by rows that arrived since.
     pending_offset_location = offset_location + "_pending"
-    pending_offsets = None
-    try:
-        pending_offsets = spark.read.json(pending_offset_location).toJSON().first()
-    except Exception:
-        pending_offsets = None
+    # Absence is the only reading of a missing file. A storage, permission or
+    # corruption error has to stop the run: treating it as "no pending range"
+    # would widen the range to the offsets that arrived since and append rows
+    # the earlier attempt's transaction version no longer covers.
+    pending_offsets = (
+        spark.read.json(pending_offset_location).toJSON().first()
+        if _path_exists(spark, pending_offset_location)
+        else None
+    )
     try:
         if initial_check_point_string:
             starting_offset_string = json.dumps(
@@ -493,6 +497,12 @@ def update_table_schema_fg(spark: SparkSession, job_conf: dict[Any, Any]) -> Non
 
 def write_options_of(job_conf) -> dict:
     return job_conf.get("write_options", {}) or {}
+
+
+def _path_exists(spark, location: str) -> bool:
+    jvm = spark._jvm
+    path = jvm.org.apache.hadoop.fs.Path(location)
+    return path.getFileSystem(spark._jsc.hadoopConfiguration()).exists(path)
 
 
 def _remove_path(spark, location: str) -> None:

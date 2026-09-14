@@ -624,6 +624,31 @@ class TestPredictValidation:
         tensors = eng._serving_api._send_inference_request.call_args.args[1]
         assert [t.name for t in tensors] == ["k", "ts"]
 
+    def test_grpc_takes_the_rest_data_form_and_refuses_both_at_once(self, mocker):
+        """`data={"instances": rows}` describes rows, so a schema-backed gRPC
+        deployment encodes it rather than refusing the dictionary."""
+        from hopsworks_common.client.exceptions import ModelServingException
+        from hsml.deployment.schema import DeploymentSchema
+
+        eng = self._engine(mocker)
+        eng._serving_api._send_inference_request.return_value = [
+            {"name": "predictions", "shape": [1], "datatype": "FP64", "data": [0.25]}
+        ]
+        schema = DeploymentSchema(serving_keys=[{"name": "k", "type": "bigint"}])
+        d = self._deployment(mocker, schema)
+        d.api_protocol = "GRPC"
+
+        assert eng._predict(d, {"instances": [{"k": 1}]}, None) == {
+            "predictions": [0.25]
+        }
+        tensors = eng._serving_api._send_inference_request.call_args.args[1]
+        assert [(t.name, t.datatype, t.data) for t in tensors] == [("k", "INT64", [1])]
+
+        with pytest.raises(ModelServingException, match="cannot be provided together"):
+            eng._predict(d, {"instances": [{"k": 1}]}, [{"k": 1}])
+        with pytest.raises(ModelServingException, match="missing 'instances' key"):
+            eng._predict(d, {"rows": [{"k": 1}]}, None)
+
     def test_configured_batch_limit_applies_client_side(self, mocker):
         from hsml.deployment.schema import DeploymentSchema, DeploymentSchemaError
 

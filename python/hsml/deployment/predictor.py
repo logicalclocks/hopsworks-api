@@ -1187,7 +1187,10 @@ def _mark_feature_logging(kwargs, feature_view) -> None:
     config = kwargs.get("feature_logging")
     transport = None
     if isinstance(config, dict):
-        transport = config.get("transport")
+        # A dictionary has not been through DeploymentLoggingConfig yet, so it
+        # still carries whatever spelling the caller wrote.
+        raw = config.get("transport")
+        transport = None if raw is None else str(raw).strip().lower()
     elif config is not None:
         transport = getattr(config, "transport", None)
     # The view owns the transport: its logging group has one layout, so a

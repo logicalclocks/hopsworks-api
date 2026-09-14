@@ -2277,10 +2277,49 @@ class FeatureViewEngine:
 
     def _delete_feature_logs(self, fv, feature_logging, transformed, transport=None):
         transport = None if transport is None else _transport(transport)
+        was_job = feature_logging is not None and feature_logging.transport == "job"
         self._feature_view_api._delete_feature_logs(
             fv.name, fv.version, transformed, transport
         )
         recreated = self._get_feature_logging(fv)
         feature_logging._update(recreated)
+        if was_job:
+            # The backend drops the logging feature group, not the chunks
+            # deployments staged in HopsFS. Left there, the next commit job run
+            # appends pre-delete rows to the group that replaced it.
+            self._discard_staged_chunks(fv)
         if recreated is not None and recreated.transport == "job":
             self._commit_job(fv, recreated)
+        elif was_job:
+            self._unschedule_commit_job(fv)
+
+    def _discard_staged_chunks(self, fv) -> None:
+        """Drop the job transport's staged chunks for the view, claimed or not.
+
+        `failed/` is left alone: nothing there is ever committed, and it is where a chunk goes to be looked at.
+        """
+        from hopsworks_common.core.dataset_api import DatasetApi
+        from hopsworks_common.core.feature_logging_file import _staging_dir
+
+        dataset_api = DatasetApi()
+        staging_dir = _staging_dir(fv.name, fv.version)
+        for name in ("uploading", "pending", "claimed"):
+            path = f"{staging_dir}/{name}"
+            if dataset_api.exists(path):
+                dataset_api.remove(path)
+
+    def _unschedule_commit_job(self, fv) -> None:
+        """Stop the commit job of a view that no longer logs through the job transport.
+
+        The job and its execution history stay; `_commit_job` schedules it again if the view moves back.
+        """
+        from hopsworks_common.core.feature_logging_file import _commit_job_name
+        from hopsworks_common.core.job_api import JobApi
+
+        job_api = JobApi()
+        name = _commit_job_name(fv.name, fv.version)
+        if not job_api.exists(name):
+            return
+        job = job_api.get_job(name)
+        if job is not None and job.job_schedule is not None:
+            job.unschedule()

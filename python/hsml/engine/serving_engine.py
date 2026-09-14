@@ -1023,16 +1023,31 @@ class ServingEngine:
                 "Inference requests to LLM deployments are not supported by the `predict` method. Please, use any OpenAI API-compatible client instead."
             )
 
+        if data is not None and inputs is not None:
+            raise ModelServingException(
+                "Inference data and inputs parameters cannot be provided together."
+            )
         # a schema describes rows, so rows sent to a gRPC deployment that has one
-        # are validated as they are over REST and then encoded as v2 tensors
+        # are validated as they are over REST and then encoded as v2 tensors.
+        # `data` reaches here in its REST dictionary form; a list of `InferInput`
+        # is already tensors and takes the path below.
         as_tensors = (
             deployment_instance.api_protocol == IE.API_PROTOCOL_GRPC
             and deployment_instance.schema is not None
-            and inputs is not None
-            and not deployment_schema._is_tensor_payload(inputs)
+            and (
+                isinstance(data, dict)
+                or (
+                    inputs is not None
+                    and not deployment_schema._is_tensor_payload(inputs)
+                )
+            )
         )
         if as_tensors:
-            payload = self._parse_inference_inputs(IE.API_PROTOCOL_REST, inputs)
+            if inputs is not None:
+                payload = self._parse_inference_inputs(IE.API_PROTOCOL_REST, inputs)
+            else:
+                self._validate_inference_data(IE.API_PROTOCOL_REST, data)
+                payload = data
             if validate:
                 payload = self._validate_against_schema(deployment_instance, payload)
             payload = self._encode_tensors(deployment_instance, payload)
