@@ -25,6 +25,7 @@ from warnings import warn
 
 import requests
 import requests.adapters
+import urllib3
 from furl import furl
 from hopsworks_apigen import also_available_as
 from hopsworks_common import client
@@ -93,8 +94,18 @@ class OnlineStoreRestClientSingleton:
     SERVER_API_VERSION = "server_api_version"
     API_KEY = "api_key"
     MAX_CONNECTIONS = "max_connections"
+    TRANSPORT = "transport"
+    TRANSPORT_URLLIB3 = "urllib3"
+    TRANSPORT_REQUESTS = "requests"
+    _TRANSPORTS = (TRANSPORT_URLLIB3, TRANSPORT_REQUESTS)
     _DEFAULT_ONLINE_STORE_REST_CLIENT_PORT = 4406
     _DEFAULT_ONLINE_STORE_REST_CLIENT_MAX_CONNECTIONS = 16
+    # urllib3 is the pool Requests is a layer over, and going to it directly
+    # costs the calling thread roughly half the CPU per request for the small
+    # responses a feature vector read returns. Requests remains selectable for
+    # a deployment that needs its behaviour, such as a custom transport adapter
+    # or an environment-configured proxy.
+    _DEFAULT_ONLINE_STORE_REST_CLIENT_TRANSPORT = "urllib3"
     # Read size for pulling a response body under the call's deadline.
     _READ_CHUNK_BYTES = 65536
     _DEFAULT_ONLINE_STORE_REST_CLIENT_TIMEOUT_SECOND = 2
@@ -208,6 +219,7 @@ class OnlineStoreRestClientSingleton:
         # reads allowed in flight below, so it is never the thing that overflows.
         self._max_connections = max_connections
         self._connection_slots = threading.BoundedSemaphore(max_connections)
+        self._custom_transport_adapter = transport
         if transport is None:
             transport = requests.adapters.HTTPAdapter(
                 pool_connections=max_connections, pool_maxsize=max_connections
@@ -243,6 +255,10 @@ class OnlineStoreRestClientSingleton:
         # milliseconds when it is 500 or more, and that reading is kept for
         # configurations that rely on it rather than changed under them.
         self._timeout_seconds = self._as_seconds(self._current_config[self.TIMEOUT])
+        self._setup_transport(transport_choice=self._current_config[self.TRANSPORT])
+        # The auth object rewrites a request's headers; urllib3 is handed the
+        # result instead, worked out once rather than per call.
+        self._auth_header_cache = self._auth_headers()
 
         assert self._session is not None, (
             "Online Store REST Client failed to initialise."
@@ -274,6 +290,7 @@ class OnlineStoreRestClientSingleton:
         return {
             self.TIMEOUT: self._DEFAULT_ONLINE_STORE_REST_CLIENT_TIMEOUT_SECOND,
             self.MAX_CONNECTIONS: self._DEFAULT_ONLINE_STORE_REST_CLIENT_MAX_CONNECTIONS,
+            self.TRANSPORT: self._DEFAULT_ONLINE_STORE_REST_CLIENT_TRANSPORT,
             self.VERIFY_CERTS: self._DEFAULT_ONLINE_STORE_REST_CLIENT_VERIFY_CERTS,
             self.USE_SSL: self._DEFAULT_ONLINE_STORE_REST_CLIENT_USE_SSL,
             self.SERVER_API_VERSION: self._DEFAULT_ONLINE_STORE_REST_CLIENT_SERVER_API_VERSION,
@@ -343,6 +360,61 @@ class OnlineStoreRestClientSingleton:
             )
         return default_url
 
+    def _setup_transport(self, transport_choice: str) -> None:
+        """Choose how a request reaches the online store, and build what it needs.
+
+        urllib3 is the connection pool Requests is a layer over. Going to it
+        directly costs the calling thread roughly half the CPU per request for
+        the small responses a feature vector read returns, which is why it is
+        the default. Requests stays available for a deployment that needs what
+        it adds, such as a mounted transport adapter or proxy configuration
+        taken from the environment.
+        """
+        if transport_choice not in self._TRANSPORTS:
+            raise FeatureStoreException(
+                f"{self.TRANSPORT} must be one of {list(self._TRANSPORTS)}, "
+                f"got {transport_choice!r}."
+            )
+        self._transport = transport_choice
+        self._pool = None
+        if transport_choice != self.TRANSPORT_URLLIB3:
+            return
+        if self._custom_transport_adapter is not None:
+            # A caller that mounted its own adapter asked for Requests to use
+            # it, and urllib3 has nowhere to put it.
+            _logger.debug("Custom transport adapter given; sending through Requests")
+            self._transport = self.TRANSPORT_REQUESTS
+            return
+        verify = self._current_config[self.VERIFY_CERTS]
+        ca_certs = self._current_config[self.CA_CERTS] if verify else None
+        self._pool = urllib3.PoolManager(
+            maxsize=self._max_connections,
+            num_pools=2,
+            cert_reqs="CERT_REQUIRED" if verify else "CERT_NONE",
+            ca_certs=ca_certs,
+            # The pool is sized to the reads allowed in flight, so it never has
+            # to make a connection it will throw away.
+            block=False,
+        )
+
+    def _auth_headers(self) -> dict[str, str]:
+        """The headers the auth object would have added, resolved once.
+
+        The auth object is a Requests callable, and all it does is write
+        headers, so it is given something with headers to write rather than a
+        prepared request it would otherwise need a URL to build.
+        """
+        if self._auth is None:
+            return {}
+
+        class _HeadersOnly:
+            headers: dict[str, str] = {}
+
+        carrier = _HeadersOnly()
+        carrier.headers = {}
+        self._auth(carrier)
+        return dict(carrier.headers)
+
     @staticmethod
     def _as_seconds(timeout: float) -> float:
         """Read a configured timeout as seconds, keeping its historical interpretation.
@@ -401,6 +473,10 @@ class OnlineStoreRestClientSingleton:
                 _logger.debug(f"Sending {method} request to {url}.")
                 _logger.debug(f"Provided Data: {data}")
                 _logger.debug(f"Provided Headers: {headers}")
+            if self._transport == self.TRANSPORT_URLLIB3:
+                return self._send_via_urllib3(
+                    method, url, headers, data, remaining, deadline
+                )
             prepped_request = self._session.prepare_request(
                 requests.Request(
                     method, url=url, headers=headers, data=data, auth=self.auth
@@ -422,6 +498,50 @@ class OnlineStoreRestClientSingleton:
             return self._read_within(response, remaining, deadline)
         finally:
             slots.release()
+
+    def _send_via_urllib3(self, method, url, headers, data, remaining, deadline):
+        """Send through the pool directly, and answer as Requests would.
+
+        Callers read `.status_code`, `.json()`, `.content`, `.text` and `.url`,
+        so the result is a `requests.Response` either way and nothing above this
+        method can tell which transport ran. Building one costs a few
+        microseconds against the hundreds this saves.
+        """
+        self._raise_if_spent(remaining(), deadline)
+        sent = dict(self._auth_header_cache)
+        if headers:
+            sent.update(headers)
+        body = data.encode() if isinstance(data, str) else data
+        try:
+            raw = self._pool.request(
+                method,
+                url,
+                body=body,
+                headers=sent,
+                timeout=urllib3.Timeout(total=max(remaining(), 0.001)),
+                retries=False,
+                preload_content=True,
+            )
+        except urllib3.exceptions.TimeoutError as error:
+            raise TimeoutError(
+                f"The online store did not answer within {deadline} seconds."
+            ) from error
+        except urllib3.exceptions.HTTPError as error:
+            # Requests wraps urllib3 the same way, so a caller that handles a
+            # connection failure keeps handling it.
+            raise requests.exceptions.ConnectionError(error) from error
+        if remaining() <= 0:
+            raise TimeoutError(
+                f"The online store was still answering after {deadline} seconds."
+            )
+        response = requests.Response()
+        response.status_code = raw.status
+        response.headers.update(raw.headers)
+        response.url = url
+        response.encoding = "utf-8"
+        response._content = raw.data
+        response._content_consumed = True
+        return response
 
     def _resolve_timeout(self, timeout: float | None) -> float:
         """The deadline for one call, in seconds.

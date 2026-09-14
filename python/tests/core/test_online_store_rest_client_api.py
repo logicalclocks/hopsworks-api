@@ -20,7 +20,12 @@ import time
 
 import pytest
 import requests
+import urllib3
 from furl import furl
+from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.client.online_store_rest_client import (
+    OnlineStoreRestClientSingleton,
+)
 from hsfs.core import online_store_rest_client_api
 
 
@@ -113,6 +118,8 @@ class TestRestTimeoutAndUrlCaching:
         client._timeout_seconds = 2
         client._session = mocker.Mock()
         client._session.send.return_value = _streamed()
+        # These exercise the Requests path; the urllib3 one has its own class.
+        client._transport = OnlineStoreRestClientSingleton.TRANSPORT_REQUESTS
         client._auth = None
         client._connection_slots = threading.BoundedSemaphore(2)
         client._max_connections = 2
@@ -198,6 +205,8 @@ class TestBoundedConnectionWait:
         client._timeout_seconds = timeout_seconds
         client._session = mocker.Mock()
         client._session.send.return_value = _streamed()
+        # These exercise the Requests path; the urllib3 one has its own class.
+        client._transport = OnlineStoreRestClientSingleton.TRANSPORT_REQUESTS
         client._auth = None
         client._connection_slots = threading.BoundedSemaphore(slots)
         client._max_connections = slots
@@ -271,6 +280,8 @@ class TestResetDuringAReadReleasesTheRightSlots:
         client._timeout_seconds = 5
         client._session = mocker.Mock()
         client._session.send.return_value = _streamed()
+        # These exercise the Requests path; the urllib3 one has its own class.
+        client._transport = OnlineStoreRestClientSingleton.TRANSPORT_REQUESTS
         client._auth = None
         client._connection_slots = threading.BoundedSemaphore(2)
         client._max_connections = 2
@@ -330,6 +341,8 @@ class TestTheDeadlineIsTheDeadline:
         client._auth = None
         client._connection_slots = threading.BoundedSemaphore(2)
         client._max_connections = 2
+        # These exercise the Requests path; the urllib3 one has its own class.
+        client._transport = OnlineStoreRestClientSingleton.TRANSPORT_REQUESTS
         return client
 
     def test_a_trickling_answer_still_ends(self, mocker):
@@ -382,6 +395,8 @@ class TestTheDeadlineIsTheDeadline:
     def test_a_timeout_that_is_not_a_length_of_time_is_refused(self, mocker, bad):
         client = self._client(mocker)
         client._session.send.return_value = _streamed()
+        # These exercise the Requests path; the urllib3 one has its own class.
+        client._transport = OnlineStoreRestClientSingleton.TRANSPORT_REQUESTS
 
         with pytest.raises(ValueError):
             client._send_request("POST", ["feature_store"], data="{}", timeout=bad)
@@ -401,3 +416,93 @@ class TestTheDeadlineIsTheDeadline:
 
         with pytest.raises(TimeoutError):
             client._send_request("POST", ["feature_store"], data="{}", timeout=0.2)
+
+
+class TestTheTransportIsSelectable:
+    """urllib3 by default, Requests on request, and the caller cannot tell.
+
+    urllib3 is the pool Requests is a layer over, and going to it directly costs
+    the calling thread roughly half the CPU per request for the small responses
+    a feature vector read returns. Everything above `_send_request` reads
+    `.status_code`, `.json()`, `.content` and `.url`, so both answer with a
+    `requests.Response` and nothing downstream changes.
+    """
+
+    def _client(self, mocker, transport="urllib3", timeout_seconds=5):
+        client = OnlineStoreRestClientSingleton.__new__(OnlineStoreRestClientSingleton)
+        client._base_url = furl("https://rdrs.example.invalid:4406/0.1.0")
+        client._endpoint_urls = {}
+        client._timeout_seconds = timeout_seconds
+        client._session = mocker.Mock()
+        client._session.send.return_value = _streamed(b'{"features": [1]}')
+        client._auth = None
+        client._auth_header_cache = {"X-API-KEY": "secret"}
+        client._connection_slots = threading.BoundedSemaphore(2)
+        client._max_connections = 2
+        client._transport = transport
+        client._pool = mocker.Mock()
+        client._pool.request.return_value = mocker.Mock(
+            status=200,
+            headers={"Content-Type": "application/json"},
+            data=b'{"features": [1]}',
+        )
+        return client
+
+    def test_urllib3_is_the_default(self):
+        config = OnlineStoreRestClientSingleton._get_default_static_parameters_config(
+            OnlineStoreRestClientSingleton
+        )
+
+        assert config[OnlineStoreRestClientSingleton.TRANSPORT] == "urllib3"
+
+    def test_both_transports_answer_the_same_way(self, mocker):
+        through_urllib3 = self._client(mocker, transport="urllib3")._send_request(
+            "POST", ["feature_store"], data="{}"
+        )
+        through_requests = self._client(mocker, transport="requests")._send_request(
+            "POST", ["feature_store"], data="{}"
+        )
+
+        for response in (through_urllib3, through_requests):
+            assert response.status_code == 200
+            assert response.json() == {"features": [1]}
+            assert response.content == b'{"features": [1]}'
+
+    def test_the_api_key_reaches_the_pool(self, mocker):
+        client = self._client(mocker)
+
+        client._send_request("POST", ["feature_store"], data="{}")
+
+        assert client._pool.request.call_args.kwargs["headers"]["X-API-KEY"] == "secret"
+
+    def test_a_call_timeout_bounds_the_pool_request(self, mocker):
+        client = self._client(mocker)
+
+        client._send_request("POST", ["feature_store"], data="{}", timeout=0.5)
+
+        assert client._pool.request.call_args.kwargs["timeout"].total == pytest.approx(
+            0.5, abs=0.05
+        )
+
+    def test_a_pool_timeout_is_reported_as_one(self, mocker):
+        client = self._client(mocker)
+        client._pool.request.side_effect = urllib3.exceptions.ReadTimeoutError(
+            None, "url", "too slow"
+        )
+
+        with pytest.raises(TimeoutError):
+            client._send_request("POST", ["feature_store"], data="{}", timeout=0.2)
+
+    def test_a_connection_failure_keeps_its_requests_type(self, mocker):
+        """Callers already handle the Requests exception, so it stays that."""
+        client = self._client(mocker)
+        client._pool.request.side_effect = urllib3.exceptions.ProtocolError("gone")
+
+        with pytest.raises(requests.exceptions.ConnectionError):
+            client._send_request("POST", ["feature_store"], data="{}")
+
+    def test_an_unknown_transport_is_refused(self):
+        client = OnlineStoreRestClientSingleton.__new__(OnlineStoreRestClientSingleton)
+
+        with pytest.raises(FeatureStoreException, match="transport"):
+            client._setup_transport("curl")
