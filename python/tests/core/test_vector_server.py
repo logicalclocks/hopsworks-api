@@ -19,7 +19,7 @@ from unittest.mock import PropertyMock
 
 import pytest
 from hopsworks_common.core.constants import HAS_POLARS
-from hsfs.core.vector_server import VectorServer
+from hsfs.core.vector_server import VectorServer, _with_entry_values
 
 
 class TestVectorServer:
@@ -141,3 +141,106 @@ class TestVectorServer:
         server = VectorServer.__new__(VectorServer)
 
         assert server._handle_timestamp_based_on_dtype(timestamp_value) == expected
+
+
+class TestRequestParametersAreRequestLocal:
+    """A caller's dictionaries are read, never written.
+
+    The entry's values back the on-demand features a retrieved vector does not
+    carry, but merging them used to write into the caller's own dictionary, so
+    one request left its parameters changed for the next and two concurrent
+    requests through one feature view could see each other's.
+    """
+
+    def test_a_single_entry_is_merged_into_a_new_dictionary(self):
+        parameters = {"factor": 2.0}
+        entry = {"id": 1, "amount": 5}
+
+        merged = _with_entry_values(parameters, entry)
+
+        assert merged == {"id": 1, "amount": 5, "factor": 2.0}
+        assert parameters == {"factor": 2.0}, "the caller's parameters were written to"
+        assert merged is not parameters
+
+    def test_a_batch_is_merged_into_new_dictionaries(self):
+        parameters = [{"factor": 2.0}, {"factor": 3.0}]
+        entries = [{"id": 1}, {"id": 2}]
+
+        merged = _with_entry_values(parameters, entries)
+
+        assert merged == [{"id": 1, "factor": 2.0}, {"id": 2, "factor": 3.0}]
+        assert parameters == [{"factor": 2.0}, {"factor": 3.0}]
+
+    def test_one_shared_parameter_dictionary_serves_a_single_entry_batch(self):
+        parameters = {"factor": 2.0}
+        entries = [{"id": 1}]
+
+        assert _with_entry_values(parameters, entries) == {"id": 1, "factor": 2.0}
+        assert parameters == {"factor": 2.0}
+
+    def test_an_explicit_parameter_wins_over_the_entry(self):
+        assert _with_entry_values({"amount": 9}, {"amount": 5}) == {"amount": 9}
+
+    @pytest.mark.parametrize(
+        "parameters, entries",
+        [
+            (None, {"id": 1}),
+            ({}, {"id": 1}),
+            ({"factor": 2.0}, None),
+            ({"factor": 2.0}, []),
+            # lengths that do not line up are left alone, as before
+            ([{"factor": 2.0}], [{"id": 1}, {"id": 2}]),
+        ],
+    )
+    def test_nothing_to_merge_returns_the_parameters_unchanged(
+        self, parameters, entries
+    ):
+        assert _with_entry_values(parameters, entries) is parameters
+
+    def test_a_falsy_serving_key_value_is_still_merged(self):
+        """0, False and the empty string are values, not absences."""
+        merged = _with_entry_values({"factor": 1}, {"a": 0, "b": False, "c": ""})
+
+        assert merged == {"a": 0, "b": False, "c": "", "factor": 1}
+
+
+class TestReadDeadline:
+    """A caller's deadline reaches the dispatcher, which is where the wait was."""
+
+    def _client(self, mocker):
+        from hsfs.core.online_store_sql_engine import OnlineStoreSqlClient
+
+        client = OnlineStoreSqlClient.__new__(OnlineStoreSqlClient)
+        client._async_task_thread = mocker.Mock()
+        client._async_task_thread._submit.return_value = {}
+        client._prepared_statements = {}
+        client._parametrised_prepared_statements = {
+            OnlineStoreSqlClient.SINGLE_VECTOR_KEY: {},
+            OnlineStoreSqlClient.BATCH_VECTOR_KEY: {},
+        }
+        return client
+
+    def test_a_single_read_passes_its_timeout(self, mocker):
+        client = self._client(mocker)
+        mocker.patch.object(client, "_single_vector_result", return_value={})
+
+        client._get_single_feature_vector({"id": 1}, timeout=2.5)
+
+        assert client._single_vector_result.call_args.kwargs["timeout"] == 2.5
+
+    def test_a_batch_read_passes_its_timeout(self, mocker):
+        client = self._client(mocker)
+        mocker.patch.object(client, "_batch_vector_results", return_value=([], None))
+
+        client._get_batch_feature_vectors([{"id": 1}], timeout=2.5)
+
+        assert client._batch_vector_results.call_args.kwargs["timeout"] == 2.5
+
+    def test_no_timeout_still_means_wait(self, mocker):
+        """Unset keeps what a caller that names no timeout got before."""
+        client = self._client(mocker)
+        mocker.patch.object(client, "_single_vector_result", return_value={})
+
+        client._get_single_feature_vector({"id": 1})
+
+        assert client._single_vector_result.call_args.kwargs["timeout"] is None

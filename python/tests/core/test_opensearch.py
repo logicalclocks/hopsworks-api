@@ -326,3 +326,60 @@ class TestOpensearchRequestOption:
         OpensearchRequestOption.get_version = lambda: (2, 3)
         options = OpensearchRequestOption.get_options({"timeout": 50})
         assert options == {"timeout": 50}
+
+
+class TestMultiSearchReportsFailedEntries:
+    """A search that fails inside a batch fails the way it does on its own.
+
+    OpenSearch answers a multi-search with HTTP 200 and puts each failure in its
+    own entry, so nothing raises. Reading hits out of such an entry yields no
+    results, which is indistinguishable from a key that genuinely matched
+    nothing: a permission error, a shard failure or an overloaded node then
+    reads as missing feature data.
+    """
+
+    def _client(self, mocker, responses):
+        client = ProjectOpenSearchClient.__new__(ProjectOpenSearchClient)
+        inner = mocker.Mock()
+        inner.msearch.return_value = {"responses": responses}
+        mocker.patch.object(client, "_get_opensearch_client", return_value=inner)
+        return client
+
+    FORBIDDEN = {
+        "error": {
+            "type": "security_exception",
+            "reason": "no permissions for [indices:data/read/search]",
+        },
+        "status": 403,
+    }
+
+    def test_a_failed_entry_raises(self, mocker):
+        client = self._client(mocker, [self.FORBIDDEN])
+
+        with pytest.raises(VectorDatabaseException) as raised:
+            client._multi_search(body=[])
+
+        assert "no permissions" in str(raised.value)
+
+    def test_a_failure_beside_a_success_still_raises(self, mocker):
+        """One bad entry must not be hidden by the entries that worked."""
+        client = self._client(
+            mocker, [{"hits": {"hits": [{"_source": {"a": 1}}]}}, self.FORBIDDEN]
+        )
+
+        with pytest.raises(VectorDatabaseException):
+            client._multi_search(body=[])
+
+    def test_matching_nothing_is_not_a_failure(self, mocker):
+        client = self._client(mocker, [{"hits": {"hits": []}}, {"hits": {"hits": []}}])
+
+        assert client._multi_search(body=[])["responses"] == [
+            {"hits": {"hits": []}},
+            {"hits": {"hits": []}},
+        ]
+
+    def test_an_unreadable_entry_raises(self, mocker):
+        client = self._client(mocker, ["not a response"])
+
+        with pytest.raises(VectorDatabaseException):
+            client._multi_search(body=[])

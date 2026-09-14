@@ -14,7 +14,10 @@
 #   limitations under the License.
 #
 
+import concurrent.futures
 import os
+import threading
+import time
 
 import pytest
 from hsml.engine import serving_engine
@@ -663,3 +666,108 @@ class TestStartWithoutWaiting:
         eng._start(deployment, await_status=0)
 
         eng._serving_api._post.assert_called_once()
+
+
+class TestInitPredict:
+    """Preparation happens once, off the request path, and never by predicting."""
+
+    def _engine(self, mocker):
+        eng = serving_engine.ServingEngine.__new__(serving_engine.ServingEngine)
+        eng._serving_api = mocker.Mock()
+        return eng
+
+    def _deployment(self, mocker, protocol="REST"):
+        deployment = mocker.Mock()
+        deployment.api_protocol = protocol
+        deployment._predict_init_lock = threading.Lock()
+        return deployment
+
+    def test_rest_prepares_the_schema_and_the_istio_client(self, mocker):
+        istio = mocker.patch("hopsworks_common.client.istio._get_instance")
+        eng = self._engine(mocker)
+        deployment = self._deployment(mocker)
+
+        eng._init_predict(deployment)
+
+        istio.assert_called_once_with()
+        eng._serving_api._grpc_channel.assert_not_called()
+        eng._serving_api._send_inference_request.assert_not_called()
+
+    def test_grpc_prepares_the_channel(self, mocker):
+        mocker.patch("hopsworks_common.client.istio._get_instance")
+        eng = self._engine(mocker)
+        deployment = self._deployment(mocker, protocol="GRPC")
+
+        eng._init_predict(deployment)
+
+        eng._serving_api._grpc_channel.assert_called_once_with(deployment)
+        eng._serving_api._send_inference_request.assert_not_called()
+
+    def test_preparation_never_sends_a_prediction(self, mocker):
+        """A prediction can log rows and have side effects, so it is not a warm-up."""
+        mocker.patch("hopsworks_common.client.istio._get_instance")
+        eng = self._engine(mocker)
+        deployment = self._deployment(mocker)
+
+        eng._init_predict(deployment)
+
+        assert eng._serving_api._send_inference_request.call_count == 0
+
+    def test_concurrent_callers_prepare_once(self, mocker):
+        """Four first callers must not each download the schema and open a transport."""
+        mocker.patch("hopsworks_common.client.istio._get_instance")
+        eng = self._engine(mocker)
+        deployment = self._deployment(mocker, protocol="GRPC")
+        entered = []
+
+        def channel(_deployment):
+            entered.append(len(entered))
+            time.sleep(0.02)
+            return "channel"
+
+        eng._serving_api._grpc_channel.side_effect = channel
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as callers:
+            list(callers.map(lambda _: eng._init_predict(deployment), range(4)))
+
+        assert eng._serving_api._grpc_channel.call_count == 4, (
+            "each caller still asks, but never while another is preparing"
+        )
+        assert entered == [0, 1, 2, 3]
+
+
+class TestSchemaIsRetryable:
+    """A failed schema download must not leave the deployment permanently schema-less."""
+
+    def _predictor(self, mocker):
+        from hsml import predictor as predictor_mod
+
+        p = predictor_mod.Predictor.__new__(predictor_mod.Predictor)
+        p._schema = None
+        p._schema_loaded = False
+        p._env_vars = {"SERVING_SCHEMA_ID": "abc123"}
+        return p
+
+    def test_a_failed_read_is_tried_again(self, mocker):
+        p = self._predictor(mocker)
+        read = mocker.patch.object(
+            serving_engine.ServingEngine,
+            "_read_schema",
+            side_effect=[ConnectionError("boom"), "schema"],
+        )
+
+        with pytest.raises(ConnectionError):
+            _ = p.schema
+        assert p.schema == "schema"
+        assert read.call_count == 2
+
+    def test_a_missing_schema_is_read_once(self, mocker):
+        """A 404 is an answer, so it is cached; only a failure is retried."""
+        p = self._predictor(mocker)
+        read = mocker.patch.object(
+            serving_engine.ServingEngine, "_read_schema", return_value=None
+        )
+
+        assert p.schema is None
+        assert p.schema is None
+        assert read.call_count == 1

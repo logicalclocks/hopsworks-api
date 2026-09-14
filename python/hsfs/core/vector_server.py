@@ -85,6 +85,36 @@ if TYPE_CHECKING:
 _logger = logging.getLogger(__name__)
 
 
+def _with_entry_values(
+    request_parameters: dict[str, Any] | list[dict[str, Any]] | None,
+    entries: dict[str, Any] | list[dict[str, Any]] | None,
+) -> dict[str, Any] | list[dict[str, Any]] | None:
+    """Request parameters backed by the entry's own values, in new dictionaries.
+
+    The entry's values stand in for the on-demand features a retrieved vector
+    does not carry, which happens when the serving key is not in the online
+    store yet. An explicitly passed parameter always wins.
+
+    The result is request-local. The caller's dictionaries are read and never
+    written, so one request cannot leave its parameters behind in the next, and
+    two concurrent requests through one feature view cannot see each other's.
+    """
+    if not request_parameters or not entries:
+        return request_parameters
+    if isinstance(request_parameters, dict):
+        if isinstance(entries, dict):
+            return {**entries, **request_parameters}
+        if len(entries) == 1:
+            return {**entries[0], **request_parameters}
+        return request_parameters
+    if isinstance(entries, list) and len(entries) == len(request_parameters):
+        return [
+            {**entry, **parameters}
+            for entry, parameters in zip(entries, request_parameters, strict=True)
+        ]
+    return request_parameters
+
+
 class VectorServer:
     DEFAULT_REST_CLIENT = "rest"
     DEFAULT_SQL_CLIENT = "sql"
@@ -472,6 +502,7 @@ class VectorServer:
         transformation_context: dict[str, Any] = None,
         logging_data: bool = False,
         n_processes: int | None = None,
+        timeout: float | None = None,
     ) -> pd.DataFrame | pl.DataFrame | np.ndarray | list[Any] | dict[str, Any]:
         """Assemble a single serving vector from the online feature store.
 
@@ -489,6 +520,7 @@ class VectorServer:
             transformation_context: Contextual objects passed to transformation functions.
             logging_data: Whether to include inference helper columns for logging.
             n_processes: Number of processes for parallel transformation execution.
+            timeout: Seconds to wait for the online read, covering the wait for a free connection as well as the query.
 
         Returns:
             The assembled feature vector in the requested format.
@@ -504,15 +536,15 @@ class VectorServer:
             else None
         )
 
-        # Make a copy of request parameters to be stored in logging meta data since it might be updated below.
+        # What the caller sent, for the log. Only the log reads it, and only a
+        # copy is safe to keep: the log is written after this call returns.
         request_parameters_copy = (
-            request_parameters.copy() if request_parameters else {}
+            request_parameters.copy()
+            if logging_meta_data is not None and request_parameters
+            else {}
         )
 
-        # Adding values in entry to request_parameters if it is not explicitly mentioned so that on-demand feature can be computed using the values in entry if they are not present in retrieved feature vector. This happens when no features can be retrieved from the feature view since the serving key is not yet there.
-        if request_parameters and entry:
-            for key, value in entry.items():
-                request_parameters.setdefault(key, value)
+        request_parameters = _with_entry_values(request_parameters, entry)
 
         rondb_entry = self._validate_entry(
             entry=entry,
@@ -539,6 +571,7 @@ class VectorServer:
                 rondb_entry,
                 logging_data=logging_data,
                 feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
+                timeout=timeout,
             )
 
         self._raise_transformation_warnings(
@@ -600,6 +633,7 @@ class VectorServer:
         transformation_context: dict[str, Any] = None,
         logging_data: bool = False,
         n_processes: int | None = None,
+        timeout: float | None = None,
     ) -> pd.DataFrame | pl.DataFrame | np.ndarray | list[Any] | list[dict[str, Any]]:
         """Assemble a batch of serving vectors from the online feature store.
 
@@ -617,6 +651,7 @@ class VectorServer:
             transformation_context: Contextual objects passed to transformation functions.
             logging_data: Whether to include inference helper columns for logging.
             n_processes: Number of processes for parallel transformation execution.
+            timeout: Seconds to wait for the online read, covering the wait for a free connection as well as the query.
 
         Returns:
             The assembled feature vectors in the requested format.
@@ -655,20 +690,14 @@ class VectorServer:
             else None
         )
 
+        # Deep-copied only for the log, which is its only reader and is written
+        # after this call returns. A batch that logs nothing pays nothing.
         request_parameters_copy = (
-            deepcopy(request_parameters) if request_parameters else None
+            deepcopy(request_parameters)
+            if logging_meta_data is not None and request_parameters
+            else None
         )
-        # Adding values in entry to request_parameters if it is not explicitly mentioned so that on-demand feature can be computed using the values in entry if they are not present in retrieved feature vector.
-        if request_parameters and entries:
-            if isinstance(request_parameters, list) and len(entries) == len(
-                request_parameters
-            ):
-                for idx, entry in enumerate(entries):
-                    for key, value in entry.items():
-                        request_parameters[idx].setdefault(key, value)
-            elif isinstance(request_parameters, dict) and len(entries) == 1:
-                for key, value in entries[0].items():
-                    request_parameters.setdefault(key, value)
+        request_parameters = _with_entry_values(request_parameters, entries)
 
         online_client_choice = self._which_client_and_ensure_initialised(
             force_rest_client=force_rest_client, force_sql_client=force_sql_client
@@ -719,6 +748,7 @@ class VectorServer:
                 rondb_entries,
                 logging_data=logging_data,
                 feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
+                timeout=timeout,
             )
         else:
             if _logger.isEnabledFor(logging.DEBUG):
@@ -727,9 +757,11 @@ class VectorServer:
 
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug("Assembling feature vectors from batch results")
-        next_skipped = (
-            skipped_empty_entries.pop(0) if len(skipped_empty_entries) > 0 else None
-        )
+        # Consumed with iterators: `pop(0)` shifts the whole list on every row,
+        # which makes assembling a batch cost the square of its size.
+        skipped = iter(skipped_empty_entries)
+        results = iter(batch_results)
+        next_skipped = next(skipped, None)
         vectors = []
 
         # If request parameter is a dictionary then copy it to list with the same length as that of entires
@@ -762,14 +794,10 @@ class VectorServer:
             if next_skipped == idx:
                 if _logger.isEnabledFor(logging.DEBUG):
                     _logger.debug("Entry %d was skipped, setting to empty dict.", idx)
-                next_skipped = (
-                    skipped_empty_entries.pop(0)
-                    if len(skipped_empty_entries) > 0
-                    else None
-                )
+                next_skipped = next(skipped, None)
                 result_dict = {}
             else:
-                result_dict = batch_results.pop(0)
+                result_dict = next(results)
 
             vector = self._assemble_feature_vector(
                 result_dict=result_dict,
