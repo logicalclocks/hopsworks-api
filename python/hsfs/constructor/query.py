@@ -489,7 +489,7 @@ class Query:
         Raises:
             hopsworks.client.exceptions.FeatureStoreException: If the engine cannot stream a read.
 
-        Examples:
+        Example:
             ```python
             with query.read_batches(online=True, batch_size=5000) as batches:
                 for batch in batches:

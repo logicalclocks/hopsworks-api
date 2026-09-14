@@ -222,6 +222,11 @@ class OnlineStoreRestClientEngine:
             return False
         if not drop_missing:
             return True
+        if len(detailed_statuses) != len(rows):
+            # One entry's statuses per row, or there is a row whose reads are
+            # not described. Reading such a batch by position would answer for
+            # a row without having checked whether anything behind it failed.
+            return False
         for statuses in detailed_statuses:
             # One entry's statuses, which a caller has to be told about if any
             # read behind them failed. A shape this cannot read is itself a

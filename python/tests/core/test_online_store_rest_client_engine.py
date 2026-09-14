@@ -1035,3 +1035,67 @@ class TestProjectionRejectsRowsItCannotRead:
         assert all(isinstance(row, dict) for row in rows), (
             "the batch came back as a mix of shapes"
         )
+
+
+class TestProjectionNeedsAStatusForEveryRow:
+    """Reading by position must not answer for a row nothing described.
+
+    The per-entry statuses say whether any read behind a row failed. A batch
+    that carries fewer of them than it carries rows leaves at least one row
+    unchecked, and the positional path would return it anyway.
+    """
+
+    def _engine(self):
+        from hsfs import feature_group as fg_mod
+
+        features = []
+        for name in ("a", "b"):
+            feature = training_dataset_feature.TrainingDatasetFeature(
+                name=name, type="bigint", label=False
+            )
+            feature.inference_helper_column = False
+            feature.training_helper_column = False
+            feature._feature_group = fg_mod.FeatureGroup(
+                name="fg", version=1, featurestore_id=99, primary_key=[], id=11
+            )
+            features.append(feature)
+        return online_store_rest_client_engine.OnlineStoreRestClientEngine(
+            feature_store_name="fs",
+            feature_view_name="fv",
+            feature_view_version=1,
+            features=features,
+        )
+
+    def test_fewer_statuses_than_rows_sends_the_batch_the_general_way(self, mocker):
+        engine = self._engine()
+        from hsfs.core import vector_server
+
+        server = vector_server.VectorServer(feature_store_id=1)
+        server._rest_client_engine = engine
+        projection = server._rest_row_projection(["a", "b"])
+        mocker.patch(
+            ONLINE_STORE_REST_CLIENT_API_GET_BATCH_RAW_FEATURE_VECTORS,
+            return_value={
+                "features": [[1, 2], [3, 4]],
+                "detailedStatus": [[{"httpStatus": 200, "featureGroupId": 11}]],
+            },
+        )
+
+        # Decided before any row is read, rather than left to the converter to
+        # discover one row in: a batch that does not describe every row's reads
+        # is not one this can answer by position.
+        assert not engine._is_projectable_batch(
+            [[1, 2], [3, 4]],
+            [[{"httpStatus": 200, "featureGroupId": 11}]],
+            drop_missing=True,
+        )
+
+        # What the caller sees either way: the missing status is reported rather
+        # than a row being answered for without it.
+        with pytest.raises(ValueError, match="Detailed status is required"):
+            engine._get_batch_feature_vectors(
+                entries=[{"a": 1}, {"a": 3}],
+                drop_missing=True,
+                return_type=engine.RETURN_TYPE_FEATURE_VALUE_DICT,
+                projection=projection,
+            )

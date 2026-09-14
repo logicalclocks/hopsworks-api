@@ -467,10 +467,11 @@ class FeatureView:
                   The API key must be provided if initialising the rest client in an internal environment.
                 - `timeout`: int, optional.
                   The timeout for the rest client in seconds.
+                  Defaults to 2.
                 - `max_connections`: int, optional.
                   Reads allowed in flight, and the size of the connection pool they share.
                   A read that cannot get a turn within its timeout raises rather than waiting.
-                  Defaults to 2.
+                  Defaults to 16.
                 - `use_ssl`: boolean, optional.
                   Use SSL to connect to the online store.
                   Defaults to True.

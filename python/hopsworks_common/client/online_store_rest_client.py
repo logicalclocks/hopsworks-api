@@ -365,7 +365,10 @@ class OnlineStoreRestClientSingleton:
         }
         proxy = self._environment_proxy()
         if proxy:
-            _logger.debug("Sending online store requests through proxy %s", proxy)
+            # The URL itself is not logged: a proxy URL commonly carries
+            # user:password@host, and this would be the one place that puts it
+            # in a log file.
+            _logger.debug("Sending online store requests through a proxy")
             self._pool = urllib3.ProxyManager(proxy, **options)
         else:
             self._pool = urllib3.PoolManager(num_pools=2, **options)
@@ -498,6 +501,9 @@ class OnlineStoreRestClientSingleton:
             )
         response = requests.Response()
         response.status_code = raw.status
+        # RestAPIError formats the reason phrase, and callers read it, so an
+        # error would otherwise report no reason where the server gave one.
+        response.reason = getattr(raw, "reason", None)
         response.headers.update(raw.headers)
         response.url = url
         response.encoding = "utf-8"
