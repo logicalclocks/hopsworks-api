@@ -389,6 +389,7 @@ class Model:
         passed_features: list[str] | None = None,
         default_predictor: bool | None = None,
         feature_logging: DeploymentLoggingConfig | dict | None = None,
+        knative_mode: bool | None = None,
     ) -> deployment.Deployment:
         """Deploy the model.
 
@@ -461,6 +462,9 @@ class Model:
                 `True` requires it (also for sklearn models, and together with a `script_file` that subclasses it), `False` never uses it.
             feature_logging: Feature logging configuration for the predictor and its feature-log sidecar; see [`DeploymentLoggingConfig`][hsml.deployment.logging_config.DeploymentLoggingConfig].
                 Fields left unset keep the platform defaults.
+            knative_mode: Whether to deploy in KServe Knative mode.
+                `None` (default) lets the backend decide: LLM (vLLM) deployments default to Standard, every other deployment defaults to Knative mode; on an update, `None` keeps the deployment's current mode.
+                Standard mode does not scale to zero (minimum one instance). It autoscales on a CPU or memory metric between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum), and runs a fixed replica count without autoscaler when `min_instances == max_instances` (the default for LLM deployments).
 
         Returns:
             The deployment metadata object of a new or existing deployment.
@@ -493,6 +497,7 @@ class Model:
             passed_features=passed_features,
             default_predictor=default_predictor,
             feature_logging=feature_logging,
+            knative_mode=knative_mode,
         )
 
         return predictor.deploy()

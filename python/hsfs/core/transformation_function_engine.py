@@ -1248,6 +1248,7 @@ class TransformationFunctionEngine:
         transformation_context: dict[str, Any] | None = None,
         n_processes: int | None = None,
         training_dataset_version: int | None = None,
+        pre_transform: Callable[[Any], Any] | None = None,
     ) -> (
         dict[str, pd.DataFrame | pl.DataFrame | TypeVar("pyspark.sql.DataFrame")]
         | pd.DataFrame
@@ -1268,10 +1269,19 @@ class TransformationFunctionEngine:
             transformation_context: Context variables passed to the transformation functions.
             n_processes: Number of worker processes for applying the transformations.
             training_dataset_version: When given, statistics are retrieved from the backend for this version instead of being fit.
+            pre_transform: Applied to a single frame after the statistics are fit and before the transformations run, so a `coalesce(1)` neither changes the profiled statistics nor evaluates the transformations once per parent partition (FSTORE-2109). Not supported for split dictionaries.
 
         Returns:
             The transformed dataset, in the same shape as `dataset`.
         """
+        # no caller passes the hook for splits; without this it would be
+        # silently dropped
+        if pre_transform is not None and isinstance(dataset, dict):
+            raise ValueError(
+                "pre_transform is only supported when `dataset` is a single "
+                "dataframe, not a dictionary of splits."
+            )
+
         if training_dataset_version is not None:
             # The statistics of an existing training dataset version already
             # exist in the backend: bind them, then every frame (train
@@ -1280,6 +1290,8 @@ class TransformationFunctionEngine:
                 training_dataset, feature_view_obj, training_dataset_version
             )
             if not isinstance(dataset, dict):
+                if pre_transform is not None:
+                    dataset = pre_transform(dataset)
                 return TransformationFunctionEngine._transform(
                     feature_view_obj, dataset, transformation_context, n_processes
                 )
@@ -1297,6 +1309,7 @@ class TransformationFunctionEngine:
                 dataset,
                 transformation_context=transformation_context,
                 n_processes=n_processes,
+                pre_transform=pre_transform,
             )
 
         # The train split is fit on and transformed first: fitting binds the
@@ -1361,6 +1374,7 @@ class TransformationFunctionEngine:
         | TypeVar("pyspark.sql.DataFrame"),
         transformation_context: dict[str, Any] | None = None,
         n_processes: int | None = None,
+        pre_transform: Callable[[Any], Any] | None = None,
     ) -> pd.DataFrame | pl.DataFrame | TypeVar("pyspark.sql.DataFrame"):
         """Fit the required statistics on the train data and return it transformed.
 
@@ -1385,6 +1399,7 @@ class TransformationFunctionEngine:
             feature_dataframe: The train data.
             transformation_context: Context variables passed to the transformation functions.
             n_processes: Number of worker processes for applying the transformations.
+            pre_transform: Applied to the train data once the statistics are fit and before the transformations run.
 
         Returns:
             The transformed train data.
@@ -1424,6 +1439,7 @@ class TransformationFunctionEngine:
                 label_encoder_features,
                 transformation_context,
                 n_processes,
+                pre_transform=pre_transform,
             )
 
         if statistics_features:
@@ -1439,6 +1455,10 @@ class TransformationFunctionEngine:
             for tf in feature_view_obj.transformation_functions:
                 tf.transformation_statistics = stats.feature_descriptive_statistics
 
+        # statistics are fit on the frame as read; reshape only now
+        if pre_transform is not None:
+            feature_dataframe = pre_transform(feature_dataframe)
+
         return TransformationFunctionEngine._transform(
             feature_view_obj, feature_dataframe, transformation_context, n_processes
         )
@@ -1453,6 +1473,7 @@ class TransformationFunctionEngine:
         label_encoder_features: set[str],
         transformation_context: dict[str, Any] | None,
         n_processes: int | None,
+        pre_transform: Callable[[Any], Any] | None = None,
     ) -> pd.DataFrame | pl.DataFrame | TypeVar("pyspark.sql.DataFrame"):
         """Fit statistics over a chained DAG and return the transformed data.
 
@@ -1471,6 +1492,7 @@ class TransformationFunctionEngine:
             label_encoder_features: The statistics features consumed by encoders.
             transformation_context: Context variables passed to the transformation functions.
             n_processes: Number of worker processes for applying each stage.
+            pre_transform: Applied once the last stage that fits statistics has been profiled and before its transformations run.
 
         Returns:
             The fully transformed train data.
@@ -1485,20 +1507,20 @@ class TransformationFunctionEngine:
         )
 
         provisional_statistics: list = []
-        provisioned_features: set[str] = set()
         working_dataframe = feature_dataframe
         original_columns = list(feature_dataframe.columns)
         statistics_engine = training_dataset._statistics_engine
         previous_barrier = None
 
-        remaining = list(graph.nodes)  # topological order
-        while remaining:
-            stage, remaining = TransformationFunctionEngine._next_statistics_stage(
-                remaining, provisioned_features
-            )
-            features_to_fit = {
-                f for tf in stage for f in tf.hopsworks_udf.statistics_features
-            } - provisioned_features
+        stages = TransformationFunctionEngine._plan_statistics_stages(
+            list(graph.nodes)  # topological order
+        )
+        # pre_transform goes after the last stage that fits anything
+        pre_transform_stage = max(
+            (i for i, (_, features_to_fit) in enumerate(stages) if features_to_fit),
+            default=0,
+        )
+        for stage_index, (stage, features_to_fit) in enumerate(stages):
             if features_to_fit:
                 # Present in working_dataframe: raw features from the start,
                 # intermediate features materialized by earlier stages. Profiled
@@ -1522,9 +1544,10 @@ class TransformationFunctionEngine:
                 provisional_statistics.extend(
                     provisional.feature_descriptive_statistics
                 )
-                provisioned_features |= features_to_fit
             for tf in stage:
                 tf.transformation_statistics = provisional_statistics
+            if pre_transform is not None and stage_index == pre_transform_stage:
+                working_dataframe = pre_transform(working_dataframe)
             # expected_features keeps the already-present columns so a dropping
             # transformation does not remove inputs later stages still need;
             # drops are applied once in the final projection below.
@@ -1564,6 +1587,34 @@ class TransformationFunctionEngine:
         if is_spark_dataframe:
             return working_dataframe.select(*final_columns)
         return working_dataframe[final_columns]
+
+    @staticmethod
+    def _plan_statistics_stages(
+        transformation_functions: list[transformation_function.TransformationFunction],
+    ) -> list[tuple[list[transformation_function.TransformationFunction], set[str]]]:
+        """Split a topologically ordered list into its statistics stages.
+
+        Parameters:
+            transformation_functions: All transformation functions, in topological order.
+
+        Returns:
+            One `(stage, features_to_fit)` pair per stage, in execution order,
+            where `features_to_fit` are the features whose statistics must be
+            profiled before that stage runs.
+        """
+        stages = []
+        remaining = list(transformation_functions)
+        provisioned_features: set[str] = set()
+        while remaining:
+            stage, remaining = TransformationFunctionEngine._next_statistics_stage(
+                remaining, provisioned_features
+            )
+            features_to_fit = {
+                f for tf in stage for f in tf.hopsworks_udf.statistics_features
+            } - provisioned_features
+            provisioned_features |= features_to_fit
+            stages.append((stage, features_to_fit))
+        return stages
 
     @staticmethod
     def _next_statistics_stage(

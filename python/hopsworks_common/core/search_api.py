@@ -33,7 +33,16 @@ from hopsworks_common.util import Encoder
 
 
 DOC_TYPE_ARG = Literal[
-    "FEATUREGROUP", "FEATUREVIEW", "TRAININGDATASET", "FEATURE", "ALL"
+    "FEATUREGROUP",
+    "FEATUREVIEW",
+    "TRAININGDATASET",
+    "FEATURE",
+    "JOB",
+    "APP",
+    "MODEL",
+    "DEPLOYMENT",
+    "AGENT",
+    "ALL",
 ]
 
 
@@ -155,7 +164,7 @@ class SearchApi:
         limit: int = 100,
         global_search: bool = False,
     ) -> FeaturestoreSearchResult:
-        """Search for feature groups, feature views, training datasets and features.
+        """Search for feature groups, feature views, training datasets, features, jobs, apps, models, deployments and agents.
 
         Parameters:
             search_term: The term to search for.
@@ -173,7 +182,7 @@ class SearchApi:
                 If `True`, search over all projects.
 
         Returns:
-            The search results containing lists of metadata objects for feature groups, feature views, training datasets, and features.
+            The search results with one list per entity type: feature groups, feature views, training datasets, features, jobs, apps, models, deployments and agents.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request

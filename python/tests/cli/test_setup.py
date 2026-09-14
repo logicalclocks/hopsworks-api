@@ -185,6 +185,25 @@ def _run_token_flow(argv, wait=None):
     return post
 
 
+def test_setup_honors_explicit_global_no_verify(tmp_home):
+    # The global --no-verify is accepted on every command; when the user passes
+    # it explicitly, the token flow must not fail on a self-signed certificate
+    # while claiming verification the user just turned off.
+    post = _run_token_flow(
+        [
+            "setup",
+            "--host",
+            "https://10.0.0.1",
+            "--key-name",
+            "k",
+            "--force",
+            "--no-verify",
+        ],
+    )
+    for call in post.call_args_list:
+        assert call.kwargs["verify"] is False
+
+
 def test_setup_new_host_drops_cached_project(tmp_home):
     """--host for another cluster must not verify the cached project there."""
     config.save(

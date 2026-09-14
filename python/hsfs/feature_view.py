@@ -4668,6 +4668,16 @@ class FeatureView:
         config._model_name = model_name
         config._model_version = model_version
         config._associated_model_td_version = training_dataset_version
+        # The logging feature group also carries the serving keys, the helper columns,
+        # the predicted_* columns and the logging metadata columns.
+        # None of those exist in the training dataset the reference window reads, so a
+        # fan-out over them leaves the FM job without reference statistics and it fails.
+        # Fan out over the training features of the model's training dataset only, the
+        # same set feature logging resolves; a feature_name given explicitly is not
+        # restricted.
+        config._fanout_feature_names = set(
+            self._get_untransformed_feature_names(training_dataset_version)
+        )
         return config
 
     @public
@@ -6090,6 +6100,22 @@ class FeatureView:
     def _get_skip_fg_ids(self) -> set[int]:
         embedding_fg_ids = [fg.id for fg in self._get_embedding_fgs()]
         return set(embedding_fg_ids + self._get_spine_fg_ids())
+
+    def _close(self) -> None:
+        """Release the online store connection pools this feature view holds.
+
+        Idempotent, and safe on a feature view that never initialised serving.
+        `init_serving` can be called again afterwards.
+
+        Needed because the pools cannot be reclaimed by garbage collection: each
+        one is owned by a client that its own running task thread keeps
+        reachable. A pool holds one connection per feature group in the view, so
+        a long-lived process that initialises serving for many feature views can
+        exhaust the online store's `max_connections`.
+        """
+        for server in (self.__vector_server, self.__batch_scoring_server):
+            if server is not None:
+                server._close()
 
     @property
     def _vector_server(self) -> vector_server.VectorServer:
