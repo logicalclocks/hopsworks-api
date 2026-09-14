@@ -506,3 +506,60 @@ class TestTheTransportIsSelectable:
 
         with pytest.raises(FeatureStoreException, match="transport"):
             client._setup_transport("curl")
+
+
+class TestTransportFallsBackWhenRequestsIsNeeded:
+    """urllib3 is the default only where it behaves the same.
+
+    Requests reads proxy settings from the environment and can carry a mounted
+    transport adapter; a bare urllib3 pool does neither, and would go straight
+    to the host. Taking the CPU saving at the cost of quietly ignoring an
+    operator's proxy is not a trade worth making.
+    """
+
+    def _client(self, mocker, *, adapter=None):
+        client = OnlineStoreRestClientSingleton.__new__(OnlineStoreRestClientSingleton)
+        client._base_url = furl("https://rdrs.example.invalid:4406/0.1.0")
+        client._max_connections = 4
+        client._custom_transport_adapter = adapter
+        client._current_config = {
+            OnlineStoreRestClientSingleton.VERIFY_CERTS: False,
+            OnlineStoreRestClientSingleton.CA_CERTS: None,
+        }
+        return client
+
+    def test_urllib3_by_default(self, mocker):
+        client = self._client(mocker)
+        mocker.patch("requests.utils.get_environ_proxies", return_value={})
+
+        client._setup_transport("urllib3")
+
+        assert client._transport == "urllib3"
+        assert client._pool is not None
+
+    def test_a_configured_proxy_keeps_requests(self, mocker):
+        client = self._client(mocker)
+        mocker.patch(
+            "requests.utils.get_environ_proxies",
+            return_value={"https": "http://proxy.example:3128"},
+        )
+
+        client._setup_transport("urllib3")
+
+        assert client._transport == "requests"
+
+    def test_a_mounted_adapter_keeps_requests(self, mocker):
+        client = self._client(mocker, adapter=mocker.Mock())
+        mocker.patch("requests.utils.get_environ_proxies", return_value={})
+
+        client._setup_transport("urllib3")
+
+        assert client._transport == "requests"
+
+    def test_asking_for_requests_is_honoured(self, mocker):
+        client = self._client(mocker)
+
+        client._setup_transport("requests")
+
+        assert client._transport == "requests"
+        assert client._pool is None

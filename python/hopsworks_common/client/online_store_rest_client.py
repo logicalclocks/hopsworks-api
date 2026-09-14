@@ -385,6 +385,17 @@ class OnlineStoreRestClientSingleton:
             _logger.debug("Custom transport adapter given; sending through Requests")
             self._transport = self.TRANSPORT_REQUESTS
             return
+        if requests.utils.get_environ_proxies(self._base_url.url):
+            # Requests reads HTTP_PROXY, HTTPS_PROXY and NO_PROXY from the
+            # environment; a bare urllib3 pool does not, and would go straight
+            # to the host instead. Quietly bypassing a proxy an operator
+            # configured is not a trade worth making for the CPU.
+            _logger.info(
+                "A proxy is configured for the online store host; sending through "
+                "Requests so that it is used."
+            )
+            self._transport = self.TRANSPORT_REQUESTS
+            return
         verify = self._current_config[self.VERIFY_CERTS]
         ca_certs = self._current_config[self.CA_CERTS] if verify else None
         self._pool = urllib3.PoolManager(
