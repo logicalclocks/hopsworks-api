@@ -94,18 +94,8 @@ class OnlineStoreRestClientSingleton:
     SERVER_API_VERSION = "server_api_version"
     API_KEY = "api_key"
     MAX_CONNECTIONS = "max_connections"
-    TRANSPORT = "transport"
-    TRANSPORT_URLLIB3 = "urllib3"
-    TRANSPORT_REQUESTS = "requests"
-    _TRANSPORTS = (TRANSPORT_URLLIB3, TRANSPORT_REQUESTS)
     _DEFAULT_ONLINE_STORE_REST_CLIENT_PORT = 4406
     _DEFAULT_ONLINE_STORE_REST_CLIENT_MAX_CONNECTIONS = 16
-    # urllib3 is the pool Requests is a layer over, and going to it directly
-    # costs the calling thread roughly half the CPU per request for the small
-    # responses a feature vector read returns. Requests remains selectable for
-    # a deployment that needs its behaviour, such as a custom transport adapter
-    # or an environment-configured proxy.
-    _DEFAULT_ONLINE_STORE_REST_CLIENT_TRANSPORT = "urllib3"
     # Read size for pulling a response body under the call's deadline.
     _READ_CHUNK_BYTES = 65536
     _DEFAULT_ONLINE_STORE_REST_CLIENT_TIMEOUT_SECOND = 2
@@ -213,34 +203,27 @@ class OnlineStoreRestClientSingleton:
             raise FeatureStoreException(
                 f"{self.MAX_CONNECTIONS} must be at least 1, got {max_connections}."
             )
-        # Requests pools ten connections and, past that, opens one per request
-        # and throws it away. A serving process reading concurrently paid a TLS
-        # handshake on most of its reads. The pool is sized to the number of
-        # reads allowed in flight below, so it is never the thing that overflows.
+        # The pool is sized to the number of reads allowed in flight below, so
+        # it is never the thing that overflows.
         self._max_connections = max_connections
         self._connection_slots = threading.BoundedSemaphore(max_connections)
-        self._custom_transport_adapter = transport
-        if transport is None:
-            transport = requests.adapters.HTTPAdapter(
-                pool_connections=max_connections, pool_maxsize=max_connections
+        if transport is not None:
+            # Requests mounts a transport adapter on a session; requests are
+            # sent through a urllib3 pool, which has nowhere to put one.
+            # Refusing is better than accepting it and sending elsewhere.
+            raise FeatureStoreException(
+                "A Requests transport adapter cannot be applied: online store "
+                "requests are sent through urllib3. Configure the pool with the "
+                f"`{self.MAX_CONNECTIONS}`, `{self.VERIFY_CERTS}` and "
+                f"`{self.CA_CERTS}` options instead."
             )
-        elif _logger.isEnabledFor(logging.DEBUG):
-            _logger.debug("Setting custom transport adapter.")
-        self._session.mount("https://", transport)
-        self._session.mount("http://", transport)
 
-        if not self._current_config[self.VERIFY_CERTS]:
-            if _logger.isEnabledFor(logging.WARNING):
-                _logger.warning(
-                    "Disabling SSL certificate verification. This is not recommended for production environments."
-                )
-            self._session.verify = False
-        else:
-            if _logger.isEnabledFor(logging.DEBUG):
-                _logger.debug(
-                    f"Setting SSL certificate verification using CA Certs path: {self._current_config[self.CA_CERTS]}"
-                )
-            self._session.verify = self._current_config[self.CA_CERTS]
+        if not self._current_config[self.VERIFY_CERTS] and _logger.isEnabledFor(
+            logging.WARNING
+        ):
+            _logger.warning(
+                "Disabling SSL certificate verification. This is not recommended for production environments."
+            )
 
         # Set base_url
         scheme = "https" if self._current_config[self.USE_SSL] else "http"
@@ -255,7 +238,7 @@ class OnlineStoreRestClientSingleton:
         # milliseconds when it is 500 or more, and that reading is kept for
         # configurations that rely on it rather than changed under them.
         self._timeout_seconds = self._as_seconds(self._current_config[self.TIMEOUT])
-        self._setup_transport(transport_choice=self._current_config[self.TRANSPORT])
+        self._setup_pool()
         # The auth object rewrites a request's headers; urllib3 is handed the
         # result instead, worked out once rather than per call.
         self._auth_header_cache = self._auth_headers()
@@ -290,7 +273,6 @@ class OnlineStoreRestClientSingleton:
         return {
             self.TIMEOUT: self._DEFAULT_ONLINE_STORE_REST_CLIENT_TIMEOUT_SECOND,
             self.MAX_CONNECTIONS: self._DEFAULT_ONLINE_STORE_REST_CLIENT_MAX_CONNECTIONS,
-            self.TRANSPORT: self._DEFAULT_ONLINE_STORE_REST_CLIENT_TRANSPORT,
             self.VERIFY_CERTS: self._DEFAULT_ONLINE_STORE_REST_CLIENT_VERIFY_CERTS,
             self.USE_SSL: self._DEFAULT_ONLINE_STORE_REST_CLIENT_USE_SSL,
             self.SERVER_API_VERSION: self._DEFAULT_ONLINE_STORE_REST_CLIENT_SERVER_API_VERSION,
@@ -360,53 +342,43 @@ class OnlineStoreRestClientSingleton:
             )
         return default_url
 
-    def _setup_transport(self, transport_choice: str) -> None:
-        """Choose how a request reaches the online store, and build what it needs.
+    def _setup_pool(self) -> None:
+        """Build the connection pool every request goes through.
 
-        urllib3 is the connection pool Requests is a layer over. Going to it
-        directly costs the calling thread roughly half the CPU per request for
-        the small responses a feature vector read returns, which is why it is
-        the default. Requests stays available for a deployment that needs what
-        it adds, such as a mounted transport adapter or proxy configuration
-        taken from the environment.
+        urllib3 is the pool Requests is a layer over, and going to it directly
+        costs the calling thread roughly half the CPU per request for the small
+        responses a feature vector read returns.
+
+        Proxies are honoured. Requests reads `HTTP_PROXY`, `HTTPS_PROXY` and
+        `NO_PROXY` from the environment, so the same rules are applied here
+        rather than dropped: going straight to the host on a deployment whose
+        operator configured a proxy would be a silent change of behaviour.
         """
-        if transport_choice not in self._TRANSPORTS:
-            raise FeatureStoreException(
-                f"{self.TRANSPORT} must be one of {list(self._TRANSPORTS)}, "
-                f"got {transport_choice!r}."
-            )
-        self._transport = transport_choice
-        self._pool = None
-        if transport_choice != self.TRANSPORT_URLLIB3:
-            return
-        if self._custom_transport_adapter is not None:
-            # A caller that mounted its own adapter asked for Requests to use
-            # it, and urllib3 has nowhere to put it.
-            _logger.debug("Custom transport adapter given; sending through Requests")
-            self._transport = self.TRANSPORT_REQUESTS
-            return
-        if requests.utils.get_environ_proxies(self._base_url.url):
-            # Requests reads HTTP_PROXY, HTTPS_PROXY and NO_PROXY from the
-            # environment; a bare urllib3 pool does not, and would go straight
-            # to the host instead. Quietly bypassing a proxy an operator
-            # configured is not a trade worth making for the CPU.
-            _logger.info(
-                "A proxy is configured for the online store host; sending through "
-                "Requests so that it is used."
-            )
-            self._transport = self.TRANSPORT_REQUESTS
-            return
         verify = self._current_config[self.VERIFY_CERTS]
-        ca_certs = self._current_config[self.CA_CERTS] if verify else None
-        self._pool = urllib3.PoolManager(
-            maxsize=self._max_connections,
-            num_pools=2,
-            cert_reqs="CERT_REQUIRED" if verify else "CERT_NONE",
-            ca_certs=ca_certs,
+        options = {
+            "maxsize": self._max_connections,
+            "cert_reqs": "CERT_REQUIRED" if verify else "CERT_NONE",
+            "ca_certs": self._current_config[self.CA_CERTS] if verify else None,
             # The pool is sized to the reads allowed in flight, so it never has
             # to make a connection it will throw away.
-            block=False,
-        )
+            "block": False,
+        }
+        proxy = self._environment_proxy()
+        if proxy:
+            _logger.debug("Sending online store requests through proxy %s", proxy)
+            self._pool = urllib3.ProxyManager(proxy, **options)
+        else:
+            self._pool = urllib3.PoolManager(num_pools=2, **options)
+
+    def _environment_proxy(self) -> str | None:
+        """The proxy the environment names for the online store host, if any.
+
+        Delegated to Requests because `NO_PROXY` has more rules than reading one
+        variable, and this client already depends on it.
+        """
+        url = self._base_url.url
+        proxies = requests.utils.get_environ_proxies(url)
+        return proxies.get(self._base_url.scheme) or proxies.get("all")
 
     def _auth_headers(self) -> dict[str, str]:
         """The headers the auth object would have added, resolved once.
@@ -484,39 +456,18 @@ class OnlineStoreRestClientSingleton:
                 _logger.debug(f"Sending {method} request to {url}.")
                 _logger.debug(f"Provided Data: {data}")
                 _logger.debug(f"Provided Headers: {headers}")
-            if self._transport == self.TRANSPORT_URLLIB3:
-                return self._send_via_urllib3(
-                    method, url, headers, data, remaining, deadline
-                )
-            prepped_request = self._session.prepare_request(
-                requests.Request(
-                    method, url=url, headers=headers, data=data, auth=self.auth
-                )
+            return self._send_through_pool(
+                method, url, headers, data, remaining, deadline
             )
-            self._raise_if_spent(remaining(), deadline)
-            try:
-                response = self._session.send(
-                    prepped_request,
-                    timeout=max(remaining(), 0.001),
-                    stream=True,
-                )
-            except requests.exceptions.Timeout as error:
-                # One contract for running out of time, whichever part of the
-                # call ran out of it.
-                raise TimeoutError(
-                    f"The online store did not answer within {deadline} seconds."
-                ) from error
-            return self._read_within(response, remaining, deadline)
         finally:
             slots.release()
 
-    def _send_via_urllib3(self, method, url, headers, data, remaining, deadline):
-        """Send through the pool directly, and answer as Requests would.
+    def _send_through_pool(self, method, url, headers, data, remaining, deadline):
+        """Send through the pool, and answer with what callers already read.
 
         Callers read `.status_code`, `.json()`, `.content`, `.text` and `.url`,
-        so the result is a `requests.Response` either way and nothing above this
-        method can tell which transport ran. Building one costs a few
-        microseconds against the hundreds this saves.
+        so the result is a `requests.Response`; building one costs a few
+        microseconds and keeps every caller unchanged.
         """
         self._raise_if_spent(remaining(), deadline)
         sent = dict(self._auth_header_cache)
@@ -584,38 +535,6 @@ class OnlineStoreRestClientSingleton:
                 f"The online store call ran out of its {deadline} seconds before "
                 "the request was sent."
             )
-
-    def _read_within(self, response, remaining, deadline):
-        """Read the whole body, or give up when the deadline does.
-
-        The timeout Requests takes bounds each socket operation, not the call: a
-        server that keeps sending a byte at a time holds the caller, and the
-        connection, for as long as it likes. Reading the body here means the
-        deadline is the deadline, which is what a prediction waiting on a
-        feature vector needs it to be.
-        """
-        chunks = []
-        try:
-            for chunk in response.iter_content(chunk_size=self._READ_CHUNK_BYTES):
-                chunks.append(chunk)
-                if remaining() <= 0:
-                    raise TimeoutError(
-                        f"The online store was still answering after {deadline} "
-                        "seconds."
-                    )
-        except requests.exceptions.Timeout as error:
-            response.close()
-            raise TimeoutError(
-                f"The online store did not answer within {deadline} seconds."
-            ) from error
-        except BaseException:
-            response.close()
-            raise
-        # The body is in hand, so the response answers .content, .text and
-        # .json() as an unstreamed one does.
-        response._content = b"".join(chunks)
-        response._content_consumed = True
-        return response
 
     def _check_hopsworks_connection(self) -> None:
         if _logger.isEnabledFor(logging.DEBUG):

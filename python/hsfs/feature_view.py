@@ -470,10 +470,6 @@ class FeatureView:
                 - `max_connections`: int, optional.
                   Reads allowed in flight, and the size of the connection pool they share.
                   A read that cannot get a turn within its timeout raises rather than waiting.
-                - `transport`: str, optional.
-                  `"urllib3"`, the default, or `"requests"`.
-                  urllib3 is the pool Requests is a layer over and costs the calling thread about half the CPU per request.
-                  Choose `"requests"` for a deployment that needs what Requests adds, such as a mounted transport adapter or proxy settings taken from the environment.
                   Defaults to 2.
                 - `use_ssl`: boolean, optional.
                   Use SSL to connect to the online store.
