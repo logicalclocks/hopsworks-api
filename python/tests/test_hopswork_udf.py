@@ -1876,3 +1876,56 @@ class TestForkedWorkersDoNotInheritAContext:
         finally:
             pool.terminate()
             pool.join()
+
+
+class TestACachedWrapperDoesNotShareOneRequestsContext:
+    """The wrapper's scope is shared; the context in it must not be.
+
+    `_get_udf()` returns a cached wrapper and its scope, and the caller runs the
+    wrapper afterwards. Writing the request's context into that scope on the way
+    out is a race: another request can overwrite the entry in between, and the
+    first is then transformed under the second's context.
+    """
+
+    def _udf(self):
+        @udf(int)
+        def uses_context(feature, context):
+            return feature + context["offset"]
+
+        return uses_context
+
+    def test_the_scope_resolves_the_reading_requests_context(self):
+        function = self._udf()
+        function._get_udf(online=True, engine_type="python")
+        scope = next(iter(function._udf_cache.values()))[1]
+        in_scope = scope[hopsworks_udf.UDFKeyWords.CONTEXT.value]
+
+        with hopsworks_udf._serving_transformation_context({"offset": 1}):
+            assert in_scope["offset"] == 1
+        with hopsworks_udf._serving_transformation_context({"offset": 2}):
+            assert in_scope["offset"] == 2
+
+    def test_two_threads_running_the_cached_wrapper_keep_their_own(self):
+        function = self._udf()
+        seen = {}
+        both_ready = threading.Barrier(2)
+
+        def serve(name, offset):
+            with hopsworks_udf._serving_transformation_context({"offset": offset}):
+                wrapper = function._get_udf(online=True, engine_type="python")
+                # Both callers have now taken the wrapper and written whatever
+                # they were going to write; running it afterwards is the window.
+                both_ready.wait(timeout=5)
+                seen[name] = wrapper(1)
+
+        threads = [
+            threading.Thread(target=serve, args=args) for args in (("a", 10), ("b", 20))
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=5)
+
+        assert seen == {"a": 11, "b": 21}, (
+            f"one request was transformed under the other's context: {seen}"
+        )

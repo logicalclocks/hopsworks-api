@@ -22,6 +22,7 @@ import contextlib
 import inspect
 import itertools
 import json
+import logging
 import os
 import re
 import shutil
@@ -994,6 +995,8 @@ SHUTDOWN_TIMEOUT_S = 15
 # How many pool-backed tasks may be in flight at once. Requests beyond it wait
 # in the loop rather than opening more connections than the pool holds, so the
 # bound belongs with the pool size the client configures.
+_logger = logging.getLogger(__name__)
+
 DEFAULT_MAX_CONCURRENT_TASKS = 16
 # Tells "no timeout given" from an explicit `timeout=None`, which means wait
 # indefinitely.
@@ -1192,6 +1195,17 @@ class AsyncTaskThread(threading.Thread):
             # handle on a timeout would leave its connections open on the server
             # with nothing left to retry the close.
             pool_closed = closing.event.wait(timeout=timeout)
+            if pool_closed and isinstance(closing.result, BaseException):
+                # The event says the task finished, not that it succeeded: a
+                # task that raises publishes the exception as its result and
+                # sets the event in a finally. Treating that as a clean close
+                # would drop the only handle left to retry it while its
+                # connections are still open on the server.
+                _logger.warning(
+                    "Closing the online store connection pool failed: %s",
+                    closing.result,
+                )
+                pool_closed = False
             if pool_closed:
                 self._connection_pool = None
 

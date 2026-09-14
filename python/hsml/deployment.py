@@ -393,7 +393,7 @@ class Deployment:
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
 
-        Examples:
+        Example:
             ```python
             # login into Hopsworks using hopsworks.login()
             ms = project.get_model_serving()

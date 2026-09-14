@@ -401,10 +401,34 @@ class Engine:
                     )
                 else:
                     arrays = [
-                        array if array.type == field.type else array.cast(field.type)
+                        Engine._as_batch_field(array, field)
                         for array, field in zip(arrays, batch_schema, strict=True)
                     ]
                 yield pa.RecordBatch.from_arrays(arrays, schema=batch_schema)
+
+    @staticmethod
+    def _as_batch_field(array: pa.Array, field: pa.Field) -> pa.Array:
+        """One column of a later batch, as the schema of the read describes it.
+
+        A column the query does not describe is settled by the first batch, and
+        a first batch that was entirely null settles it as null, because nothing
+        else can be read from it. A later batch with real values cannot be cast
+        to that, so the caller is told which column it was and what to do about
+        it rather than being handed an Arrow cast error it never asked for.
+        Passing the query's features, as `read_batches` does, describes the
+        column before any row is read and this cannot arise.
+        """
+        if array.type == field.type:
+            return array
+        try:
+            return array.cast(field.type)
+        except pa.ArrowInvalid as error:
+            raise FeatureStoreException(
+                f"Column {field.name!r} arrived as {array.type} after the read "
+                f"settled on {field.type}, so the batches of this read cannot "
+                "share one schema. That column has no declared type: pass the "
+                "query's features so that it is known before the first row."
+            ) from error
 
     @staticmethod
     def _declared_arrow_types(

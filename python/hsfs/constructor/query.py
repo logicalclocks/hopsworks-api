@@ -465,9 +465,13 @@ class Query:
 
         The batches are Arrow, so a caller that wants Arrow is not made to go
         through pandas first. Rows arrive in whatever order the engine produces
-        them, exactly as `read()` receives them. Column types are Arrow's, which
-        for an online read means what Arrow infers from the rows rather than
-        what pandas would have inferred for the same result.
+        them, exactly as `read()` receives them.
+
+        Every batch of one read shares one schema. For an online read the column
+        types are this query's own feature types, so a batch that happens to be
+        entirely null describes its columns the same way a full one does and a
+        decimal keeps its declared precision and scale. A column whose declared
+        type has no Arrow equivalent is settled by the first batch instead.
 
         Filters and projections are pushed down as they are for `read()`.
 

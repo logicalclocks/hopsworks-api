@@ -525,3 +525,39 @@ async def _noop(*_args, **_kwargs):
 
 async def _sleep_forever(*_args, **_kwargs):
     await asyncio.sleep(30)
+
+
+class TestAFailedCloseKeepsThePool:
+    """The event says the task finished, not that it worked.
+
+    A task that raises publishes the exception as its result and sets its event
+    in a finally, so waiting on the event alone reported a clean shutdown and
+    dropped the pool handle while its connections were still open on the server,
+    leaving nothing to retry the close with.
+    """
+
+    def test_a_pool_that_would_not_close_is_kept(self):
+        pool = _FakePool()
+
+        async def make_pool(*_args):
+            return pool
+
+        thread = AsyncTaskThread(connection_pool_initializer=make_pool)
+
+        async def refuse(_pool):
+            raise OSError("the server hung up")
+
+        thread._close_connection_pool = refuse
+        thread.start()
+        try:
+            assert thread._submit(AsyncTask(task_function=_noop)) == 1
+
+            assert thread._shutdown() is False, "a failed close reported success"
+            assert thread._connection_pool is pool, (
+                "the handle needed to retry the close was dropped"
+            )
+        finally:
+            thread._close_connection_pool = (
+                AsyncTaskThread._close_connection_pool.__get__(thread)
+            )
+            thread._shutdown()
