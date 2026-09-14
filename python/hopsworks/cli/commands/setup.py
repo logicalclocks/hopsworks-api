@@ -299,6 +299,22 @@ def setup_cmd(
     if host_flag and not cfg.internal:
         _forget_other_cluster(cfg, host_flag)
 
+    # The global --verify/--no-verify flag is accepted on every command and
+    # lands on the shared config via the root's eager callback. An explicit
+    # --no-verify must reach the token flow too — silently ignoring it strands
+    # the user on a self-signed cluster with an SSL error that contradicts the
+    # flag they passed. --insecure and --ca-bundle stay the primary controls,
+    # and the strict default is unchanged when no flag was given.
+    shared = ctx.ensure_object(dict).get("config")
+    if (
+        not insecure
+        and not ca_bundle
+        and shared is not None
+        and shared.hostname_verification_explicit
+        and not shared.hostname_verification
+    ):
+        insecure = True
+
     if cfg.internal:
         _handle_internal(cfg)
         return None

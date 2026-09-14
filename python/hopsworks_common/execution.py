@@ -46,9 +46,11 @@ class Execution:
         type=None,
         href=None,
         job=None,
+        rerun_count=None,
         **kwargs,
     ):
         self._id = id
+        self._rerun_count = rerun_count
         self._final_status = final_status
         self._state = state
         self._submission_time = submission_time
@@ -77,7 +79,9 @@ class Execution:
 
     def update_from_response_json(self, json_dict):
         json_decamelized = humps.decamelize(json_dict)
-        self.__init__(**json_decamelized)
+        # The response carries no job; re-initialising without it would detach the
+        # execution from the job it belongs to.
+        self.__init__(**{**json_decamelized, "job": self._job})
         return self
 
     @public
@@ -172,6 +176,12 @@ class Execution:
 
     @public
     @property
+    def rerun_count(self) -> int:
+        """How many times this execution was re-run in place after failing."""
+        return self._rerun_count or 0
+
+    @public
+    @property
     def success(self) -> bool | None:
         """Boolean to indicate if execution ran successfully or failed."""
         is_yarn_job = (
@@ -250,6 +260,33 @@ class Execution:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         self._execution_api._delete(self._job.name, self.id)
+
+    @public
+    @usage._method_logger
+    def rerun(self):
+        """Re-run this failed execution in place.
+
+        The execution keeps its id, submission time, arguments and the time window it was
+        fired for (`HOPS_START_TIME` / `HOPS_END_TIME`), so it stays where it was in the
+        executions timeline; `rerun_count` goes up by one and the previous attempt's log
+        files are kept under an `attempt-N` directory next to the new ones. Only failed or
+        killed executions can be re-run.
+
+        ```python
+
+        execution = job.get_executions()[0]
+        if execution.success is False:
+            execution.rerun()
+            execution.await_termination()
+        ```
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the execution is not in a failure
+                state or the backend encounters an error when handling the request.
+        """
+        self.update_from_response_json(
+            self._execution_api._rerun(self.job_name, self.id)
+        )
 
     @public
     @usage._method_logger

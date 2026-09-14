@@ -84,6 +84,8 @@ class TestConstants:
             "DEPLOYMENTS_DATASET": "Deployments",
             "ARTIFACTS_DIR_NAME": "Artifacts",
             "DEPLOYMENT_RESOURCES_DIR": "resources",
+            "LOGS_DATASET": "Logs",
+            "ARCHIVED_LOGS_DIR": "Serving",
             "DEPLOYMENT_SCHEMA_DIR": "schema",
             "DEPLOYMENT_SCHEMA_JSON_SCHEMA_SUFFIX": ".jsonschema.json",
             "DEPLOYMENT_SCHEMA_OPENAPI_SUFFIX": ".openapi.json",
