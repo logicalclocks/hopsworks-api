@@ -453,6 +453,21 @@ def _run(feature_view_name: str, feature_view_version: int) -> dict:
     feature_group = feature_store.get_feature_group(
         f"{feature_view_name}_{feature_view_version}_log", 1
     )
+    # The group is resolved by name and version, so a view switched to the
+    # realtime transport since this job was scheduled resolves to the stream
+    # group that replaced the job one. Appending there would put rows in the
+    # offline table behind Kafka's back, with no online copy, and break the
+    # one-transport-per-view invariant. A chunk left over from before the
+    # switch belongs to the group that is gone, so this refuses rather than
+    # commits, and the run leaves the chunks where they are.
+    if getattr(feature_group, "stream", False):
+        raise RuntimeError(
+            f"Feature view {feature_view_name} v{feature_view_version} now logs "
+            "through the 'realtime' transport, so its logging feature group is a "
+            "stream group that Kafka writes. This job only commits chunks staged "
+            "by the 'job' transport; unschedule it, or switch the view back with "
+            "delete_log(transport='job')."
+        )
     # A statistics Spark job per commit would queue this job's own runs behind
     # Spark on a busy deployment; the group is created with statistics off, and
     # this covers a group created before that was so.

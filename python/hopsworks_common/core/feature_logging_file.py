@@ -54,6 +54,22 @@ _KIND_BATCH, _KIND_ROTATE, _KIND_STOP = 1, 2, 3
 # segment takes about a second on a quiet cluster.
 UPLOAD_SECONDS_BOUNDS = (0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0)
 
+# Constants rather than environment lookups: the backend emits no variable for
+# any of them and the HOPSWORKS_ prefix is reserved, so a deployment could not
+# set them even if it wanted to. `_FileLogOptions(**overrides)` is how a test
+# or a caller changes one. The flush, buffer and shutdown options above stay
+# environment-driven because the backend does emit those, from the platform
+# settings and the deployment's own DeploymentLoggingConfig.
+BUFFER_DIR = "/tmp/feature-log-buffer"
+# Longest a logging worker waits to hand a frame to the writer.
+HANDOFF_SECONDS = 5
+# Uploaded bytes that ask the commit job to run before its schedule.
+COMMIT_BYTES = 32 * 1024 * 1024
+COMMIT_TRIGGER_INTERVAL_SECONDS = 300
+# The writer process uploads rotated segments; the predictor process does it
+# instead when this is off, for a pod whose environment cannot log in twice.
+UPLOAD_IN_WRITER = True
+
 
 def _staging_dir(feature_view_name: str, feature_view_version: int) -> str:
     return f"{STAGING_ROOT}/{feature_view_name}_{feature_view_version}"
@@ -72,9 +88,9 @@ def _mkdirs(dataset_api, path: str) -> None:
             dataset_api.mkdir(current)
 
 
-def _trigger_commit_job(project, name: str) -> bool:
+def _trigger_commit_job(job_api, name: str) -> bool:
     """Start the commit job unless an execution is already running; `True` when started."""
-    job = project.get_job_api().get_job(name)
+    job = job_api.get_job(name) if job_api.exists(name) else None
     if job is None:
         return False
     if any(e.success is None for e in job.get_executions() or []):
@@ -97,9 +113,7 @@ class _FileLogOptions:
         self.feature_view_name = feature_view_name
         self.feature_view_version = int(feature_view_version)
         self.schema_id = schema_id
-        self.buffer_dir = env.get(
-            "HOPSWORKS_FEATURE_LOG_BUFFER_DIR", "/tmp/feature-log-buffer"
-        )
+        self.buffer_dir = BUFFER_DIR
         self.flush_bytes = _positive_env(
             "HOPSWORKS_FEATURE_LOGGER_FLUSH_BYTES", 1024 * 1024
         )
@@ -114,22 +128,10 @@ class _FileLogOptions:
         self.shutdown_seconds = _positive_env(
             "HOPSWORKS_FEATURE_LOGGER_SHUTDOWN_SECONDS", 20
         )
-        # Longest a logging worker waits to hand a frame to the writer.
-        self.handoff_seconds = _positive_env(
-            "HOPSWORKS_FEATURE_LOGGER_HANDOFF_SECONDS", 5
-        )
-        # Uploaded bytes that ask the commit job to run before its schedule.
-        self.commit_bytes = _positive_env(
-            "HOPSWORKS_FEATURE_LOGGER_COMMIT_BYTES", 32 * 1024 * 1024
-        )
-        self.commit_trigger_interval_seconds = _positive_env(
-            "HOPSWORKS_FEATURE_LOGGER_COMMIT_TRIGGER_INTERVAL_SECONDS", 300
-        )
-        # The writer process uploads by default; a pod whose environment cannot
-        # log in twice lets the predictor process upload rotated segments.
-        self.upload_in_writer = env.get(
-            "HOPSWORKS_FEATURE_LOGGER_UPLOAD_IN_WRITER", "true"
-        ).strip().lower() not in ("false", "0", "no")
+        self.handoff_seconds = HANDOFF_SECONDS
+        self.commit_bytes = COMMIT_BYTES
+        self.commit_trigger_interval_seconds = COMMIT_TRIGGER_INTERVAL_SECONDS
+        self.upload_in_writer = UPLOAD_IN_WRITER
         self.deployment = env.get("DEPLOYMENT_NAME", "deployment")
         self.revision = env.get("K_REVISION") or env.get("DEPLOYMENT_VERSION") or "0"
         self.pod = env.get("HOSTNAME", "pod")
@@ -166,30 +168,32 @@ class _DatasetUploader:
     The file lands in `uploading/` first and is renamed into `pending/`, so the commit job never lists a partial chunk.
     """
 
-    def __init__(self, options: _FileLogOptions, project=None):
+    def __init__(self, options: _FileLogOptions, dataset_api=None):
         self._options = options
         self._staging_dir = options.staging_dir
-        self._project = project
-        self._api = None
+        self._api = dataset_api
+        self._prepared = False
         self._bytes_since_trigger = 0
         self._last_trigger = 0.0
 
-    def _connect(self):
-        if self._project is None:
-            import hopsworks
-
-            self._project = hopsworks._connected_project or hopsworks.login(
-                engine="python"
-            )
-        return self._project
-
     def _dataset_api(self):
+        # hopsworks_common must not import the umbrella `hopsworks` package at
+        # runtime, and it does not need to: the Dataset and Job apis resolve the
+        # client singleton the serving pod has already logged in.
         if self._api is None:
-            api = self._connect().get_dataset_api()
+            from hopsworks_common.core.dataset_api import DatasetApi
+
+            self._api = DatasetApi()
+        if not self._prepared:
             for name in ("uploading", "pending"):
-                _mkdirs(api, f"{self._staging_dir}/{name}")
-            self._api = api
+                _mkdirs(self._api, f"{self._staging_dir}/{name}")
+            self._prepared = True
         return self._api
+
+    def _job_api(self):
+        from hopsworks_common.core.job_api import JobApi
+
+        return JobApi()
 
     def _upload(self, local_path: Path) -> None:
         api = self._dataset_api()
@@ -213,7 +217,7 @@ class _DatasetUploader:
             return False
         try:
             started = _trigger_commit_job(
-                self._connect(), self._options.commit_job_name
+                self._job_api(), self._options.commit_job_name
             )
         except Exception as error:  # noqa: BLE001 - the schedule covers it
             _logger.warning(
@@ -582,9 +586,9 @@ def _writer_main(options: _FileLogOptions, stdin=None, stdout=None) -> None:
 class _FileLogTransport:
     """The predictor's end: a writer process fed one frame per Arrow post."""
 
-    def __init__(self, options: _FileLogOptions, project=None):
+    def __init__(self, options: _FileLogOptions, dataset_api=None):
         self._options = options
-        self._project = project
+        self._dataset_api = dataset_api
         self._status: dict = {}
         self._status_lock = threading.Lock()
         self._write_lock = threading.Lock()
@@ -741,7 +745,7 @@ class _FileLogTransport:
     def _upload_ready(self, deadline: float | None) -> bool:
         """Upload every complete segment from this process; `False` after a failure or at the deadline."""
         with self._upload_lock:
-            uploader = _DatasetUploader(self._options, self._project)
+            uploader = _DatasetUploader(self._options, self._dataset_api)
             for path in self._ready_files():
                 if deadline is not None and time.monotonic() >= deadline:
                     return False

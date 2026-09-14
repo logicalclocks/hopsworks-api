@@ -366,6 +366,25 @@ class TestClaims:
         assert summary["rows_committed"] == 4
         assert (tmp_path / staging.root / "failed/exec-1/z.arrow").exists()
 
+    def test_a_run_refuses_a_stream_group(self, mocker):
+        """A stream group is not this job's to append to.
+
+        A view switched back to realtime resolves the same name to the group
+        Kafka writes, and appending there bypasses Kafka and the online copy.
+        """
+        import pytest
+
+        fg = _FeatureGroup()
+        fg.stream = True
+        project = mocker.Mock()
+        project.get_feature_store.return_value.get_feature_group.return_value = fg
+        mocker.patch.dict(
+            "sys.modules", {"hopsworks": mocker.Mock(login=lambda: project)}
+        )
+
+        with pytest.raises(RuntimeError, match="stream group that Kafka writes"):
+            job._run("view", 1)
+
     def test_a_chunk_without_one_whole_batch_is_parked_not_dropped(
         self, tmp_path, mocker
     ):

@@ -24,7 +24,9 @@ from hsml import deployment as deployment_pkg
 # Released module paths that moved into hsml.deployment and keep a deprecated shim.
 MOVED_MODULES = {
     "hsml.deployable_component": "hsml.deployment.deployable_component",
+    "hsml.default_predictor": "hsml.deployment.default_predictor",
     "hsml.deployable_component_logs": "hsml.deployment.deployable_component_logs",
+    "hsml.deployment_schema": "hsml.deployment.schema",
     "hsml.deployment_tracing_config": "hsml.deployment.tracing_config",
     "hsml.inference_batcher": "hsml.deployment.inference_batcher",
     "hsml.inference_endpoint": "hsml.deployment.inference_endpoint",

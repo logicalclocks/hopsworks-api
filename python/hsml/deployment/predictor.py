@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import ast
 import json
+import logging
 import os
 import re
 from typing import Any
@@ -51,6 +52,9 @@ from hsml.deployment.schema import (
 )
 from hsml.deployment.tracing_config import DeploymentTracingConfig
 from hsml.deployment.transformer import Transformer
+
+
+_logger = logging.getLogger(__name__)
 
 
 @public
@@ -1221,7 +1225,16 @@ def _current_feature_logging(feature_view):
         try:
             return engine._get_feature_logging(feature_view)
         except Exception:  # noqa: BLE001 - the cached copy is the fallback
-            pass
+            # Worth saying out loud: the cached copy is what produced the wrong
+            # transport decision this fetch exists to prevent.
+            _logger.warning(
+                "Could not read the current feature logging of feature view %s v%s; "
+                "falling back to the copy cached on the model, which may name the "
+                "transport it had before a delete_log(transport=...).",
+                getattr(feature_view, "name", "?"),
+                getattr(feature_view, "version", "?"),
+                exc_info=True,
+            )
     return getattr(feature_view, "feature_logging", None)
 
 
@@ -1254,6 +1267,25 @@ def _mark_feature_logging(kwargs, feature_view) -> None:
             f"feature view '{feature_view.name}' v{feature_view.version}, which logs "
             f"through {view_transport!r}; a feature view logs through one transport."
         )
+    # The job-only fields are silently inert on a realtime view. The constructor
+    # can only refuse them when the caller spelled transport="realtime" itself;
+    # here the view's transport is known, so this is where the rest are caught.
+    if view_transport == "realtime":
+        job_only = DeploymentLoggingConfig._JOB_ONLY_FIELDS
+        if isinstance(config, dict):
+            set_job_fields = [n for n in job_only if config.get(n) is not None]
+        elif config is not None:
+            set_job_fields = [
+                n for n in job_only if getattr(config, n, None) is not None
+            ]
+        else:
+            set_job_fields = []
+        if set_job_fields:
+            raise ValueError(
+                f"Feature view '{feature_view.name}' v{feature_view.version} logs "
+                "through the 'realtime' transport, which has no file buffer, so "
+                f"these fields would do nothing: {', '.join(set_job_fields)}."
+            )
     if isinstance(config, dict):
         config.setdefault("transport", view_transport)
     elif config is not None and transport is None:

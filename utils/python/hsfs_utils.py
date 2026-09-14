@@ -347,10 +347,21 @@ def offline_fg_materialization(
         high=True,
     )
     ending_offset_string = json.dumps(_build_offsets(ending_offset_string))
-    if pending_offsets and write_options_of(job_conf).get("operation") == "insert":
+    appends = write_options_of(job_conf).get("operation") == "insert"
+    if pending_offsets and appends:
         ending_offset_string = pending_offsets
-        print(f"repeating the range of an unfinished run, endingOffsets: {ending_offset_string}")
+        print(
+            f"repeating the range of an unfinished run, endingOffsets: {ending_offset_string}"
+        )
     print(f"endingOffsets: {ending_offset_string}")
+    if appends:
+        # Claim the range before reading it, not after the append. Written after,
+        # it fences nothing: a second execution starting in between (a manual
+        # materialize_log(), or the self re-trigger) reads a wider range, derives
+        # a different txnVersion and appends the overlap a second time.
+        spark.createDataFrame([json.loads(ending_offset_string)]).coalesce(
+            1
+        ).write.mode("overwrite").json(pending_offset_location)
 
     # read kafka topic
     df = (
@@ -462,9 +473,6 @@ def offline_fg_materialization(
         write_options["txnAppId"] = f"hopsworks_feature_log_materialization_{entity.id}"
         write_options["txnVersion"] = str(
             sum(int(v) for v in offset_dict[f"{entity._online_topic_name}"].values())
-        )
-        spark.createDataFrame([offset_dict]).coalesce(1).write.mode("overwrite").json(
-            pending_offset_location
         )
     entity.insert(
         deduped_df,

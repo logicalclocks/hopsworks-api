@@ -311,7 +311,9 @@ class TestFileLogTransport:
         options = _options(
             tmp_path / "buffer", shutdown_seconds=5, upload_in_writer=False
         )
-        transport = flf._FileLogTransport(options, project=_LocalProject(tmp_path))
+        transport = flf._FileLogTransport(
+            options, dataset_api=_LocalDatasetApi(tmp_path)
+        )
         try:
             transport._submit(_stream(2), 2)
             transport._submit(_stream(2, 2), 2)
@@ -355,7 +357,9 @@ class TestBlockedWriter:
 
         monkeypatch.setattr(flf.subprocess, "Popen", stuck)
         options = _options(tmp_path / "buffer", handoff_seconds=1, shutdown_seconds=1)
-        transport = flf._FileLogTransport(options, project=_LocalProject(tmp_path))
+        transport = flf._FileLogTransport(
+            options, dataset_api=_LocalDatasetApi(tmp_path)
+        )
         payload = b"x" * (8 << 20)
         started = time.monotonic()
         with pytest.raises(TimeoutError):
@@ -390,14 +394,6 @@ class _LocalDatasetApi:
         (self.root / source).rename(
             self.root / "uploaded" / os.path.basename(destination)
         )
-
-
-class _LocalProject:
-    def __init__(self, root):
-        self._api = _LocalDatasetApi(root)
-
-    def get_dataset_api(self):
-        return self._api
 
 
 @pytest.mark.parametrize(

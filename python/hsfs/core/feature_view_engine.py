@@ -2130,6 +2130,15 @@ class FeatureViewEngine:
                 "transport, which keeps no online copy of the log; read it with "
                 "online=False after materialize_log()."
             )
+        if online and fg is not None and not getattr(fg, "online_enabled", False):
+            # A group created before the online copy existed is a stream group, so the
+            # transport check above passes it through; reading it online reaches MySQL
+            # for a table that was never created.
+            raise FeatureStoreException(
+                f"The logging feature group of feature view {fv.name} v{fv.version} "
+                "has no online copy, so it predates online feature logging; recreate "
+                "it with delete_log() or read it with online=False."
+            )
         fv_feat_name_map = self._get_fv_feature_name_map(fv)
         query = fg.select_all()
         if start_time:

@@ -27,10 +27,10 @@ from hopsworks_common import util
 class DeploymentLoggingConfig:
     """Feature logging configuration of a serving deployment.
 
-    The default predictor logs every request to the feature view's logging feature group through the deployment's feature-log sidecar.
-    This object sets, per deployment, how the predictor batches rows, how the sidecar buffers and writes them, and the sidecar's resources.
+    The default predictor logs every request to the feature view's logging feature group.
+    This object sets, per deployment, how the predictor batches rows before it hands them over, and, on the `realtime` transport, the resources of the inference logger sidecar that produces them to Kafka.
     Every field is optional.
-    A field left as `None` takes the platform default that an administrator sets through the `serving_feature_log_*` and `serving_feature_logger_*` variables.
+    A field left as `None` takes the platform default an administrator sets through the `serving_feature_logger_*` variables; the values themselves are the platform's, so they are not repeated here.
     Values are read when the deployment's pods start, so set them before `deployment.start()` or follow a change with `deployment.save()` and `deployment.restart()`.
 
     Example:
@@ -52,30 +52,18 @@ class DeploymentLoggingConfig:
         ```
 
     Parameters:
-        flush_interval_seconds: Longest time the sidecar keeps rows in memory before it writes them to the logging feature group.
-            The platform default is 3600 seconds.
-        flush_bytes: Buffered batch bytes that trigger a write before the interval elapses.
-            The platform default is 2 MiB.
-        max_buffer_bytes: Upper bound on the bytes the sidecar buffers; batches beyond it are rejected and counted as dropped.
-            The platform default is 64 MiB.
-        max_event_bytes: Largest single batch the predictor posts and the sidecar accepts; a larger batch is split into several posts.
-            The platform default is 8 MiB.
-        shutdown_seconds: Time the sidecar has to write everything it holds when the deployment stops or its revision rolls.
-            The platform default is 60 seconds.
-        batch_rows: Rows the predictor collects before it posts one batch to the sidecar.
-            The platform default is 256.
+        flush_interval_seconds: Age at which the job transport's file buffer rotates the open segment and uploads it, whether or not it reached `flush_bytes`.
+        flush_bytes: Size at which the job transport's file buffer rotates the open segment, before the interval elapses.
+        max_buffer_bytes: Upper bound on the bytes the job transport's buffer holds on the pod; rows beyond it are dropped and counted.
+        max_event_bytes: Largest single batch the predictor posts; a larger batch is split into several posts. It must stay within the inference logger's own limit, which the chart sets.
+        shutdown_seconds: Budget the predictor has to drain and upload what it holds when the deployment stops or its revision rolls.
+        batch_rows: Rows the predictor collects before it posts one batch. It must stay within the inference logger's per-post row cap, which the chart sets, or every post over the cap is refused.
         batch_bytes: Coalesced batch bytes that force a post while the predictor has a logging backlog; an idle predictor posts at once.
-            The platform default is 1 MiB.
-        batch_seconds: Longest time the predictor holds a partial batch before it posts it.
-            The platform default is 5 seconds.
+        batch_seconds: Upper bound on the time the predictor spends coalescing one post; it drains what is already queued rather than waiting for more rows to arrive.
         queue_size: Rows the predictor keeps queued for logging, including rows in flight; beyond it rows are dropped and counted.
-            The platform default is 1000.
         sidecar_cpu: CPU request of the feature-log sidecar container, in cores.
-            The platform default is 0.25.
         sidecar_memory_mb: Memory request of the feature-log sidecar container, in MiB.
-            The platform default is 512.
         transport: How logged rows reach the logging feature group, `"realtime"` through the inference logger and Kafka with an online copy, or `"job"` through a file buffer, HopsFS and a Python job.
-            The platform default is `"realtime"`.
             The flush and buffer fields apply to `"job"` only and are rejected on a `"realtime"` deployment.
     """
 

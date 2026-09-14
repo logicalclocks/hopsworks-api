@@ -163,6 +163,25 @@ class TestFeatureLoggingMarker:
                 {"feature_logging": {"transport": "JOB"}}, self._view("realtime")
             )
 
+    def test_job_only_fields_are_refused_on_a_realtime_view(self):
+        """The constructor only sees them when the caller spelled the transport;
+        on a realtime view they would otherwise be accepted and do nothing."""
+        from hsml.deployment.predictor import _mark_feature_logging
+
+        with pytest.raises(ValueError, match="would do nothing"):
+            _mark_feature_logging(
+                {"feature_logging": DeploymentLoggingConfig(flush_bytes=1024)},
+                self._view("realtime"),
+            )
+        with pytest.raises(ValueError, match="would do nothing"):
+            _mark_feature_logging(
+                {"feature_logging": {"flush_bytes": 1024}}, self._view("realtime")
+            )
+        # the same fields are what the job transport is configured with
+        kwargs = {"feature_logging": DeploymentLoggingConfig(flush_bytes=1024)}
+        _mark_feature_logging(kwargs, self._view("job"))
+        assert kwargs["feature_logging"].transport == "job"
+
     def test_a_view_without_logging_gets_no_marker(self):
         from types import SimpleNamespace
 

@@ -30,36 +30,55 @@ from hsml.deployment.predictor import Predictor
 from hsml.deployment.predictor_state import PredictorState
 from hsml.deployment.predictor_state_condition import PredictorStateCondition
 from hsml.deployment.resources import (
+    ComponentResources,
     PredictorResources,
     Resources,
     TransformerResources,
 )
 from hsml.deployment.scaling_config import (
+    ComponentScalingConfig,
+    LogPersistence,
     PredictorScalingConfig,
+    ScaleMetric,
     TransformerScalingConfig,
 )
-from hsml.deployment.schema import DeploymentSchema
+from hsml.deployment.schema import (
+    DeploymentSchema,
+    DeploymentSchemaError,
+    SchemaField,
+)
 from hsml.deployment.tracing_config import DeploymentTracingConfig
 from hsml.deployment.transformer import Transformer
 
+# Last: model_serving imports Deployment from this package, so the name it needs
+# has to be bound before this line runs.
+from hsml.deployment.model_serving import ModelServing  # noqa: E402
+
 
 __all__ = [
+    "ComponentResources",
+    "ComponentScalingConfig",
     "DeployableComponent",
     "DeployableComponentLogs",
     "Deployment",
     "DeploymentLoggingConfig",
     "DeploymentSchema",
+    "DeploymentSchemaError",
     "DeploymentTracingConfig",
     "InferenceBatcher",
     "InferenceEndpoint",
     "InferenceEndpointPort",
     "InferenceLogger",
+    "LogPersistence",
+    "ModelServing",
     "Predictor",
     "PredictorResources",
     "PredictorScalingConfig",
     "PredictorState",
     "PredictorStateCondition",
     "Resources",
+    "ScaleMetric",
+    "SchemaField",
     "Transformer",
     "TransformerResources",
     "TransformerScalingConfig",
