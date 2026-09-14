@@ -34,7 +34,7 @@ class JobConfiguration:
     Memory sizes are in MB.
     The two memory overhead factors are the fractions of the driver and executor memory that Spark adds to each pod as non-heap headroom.
     Leave them unset to keep Spark's defaults of 0.10 for Spark jobs and 0.40 for PySpark jobs.
-    Raise the executor factor when executors are killed with "Memory Overhead Exceeded".
+    Raise the executor factor when executors are OOMKilled.
     """
 
     DTO_TYPE = "sparkJobConfiguration"
