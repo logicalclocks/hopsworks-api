@@ -15,6 +15,7 @@
 #
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import warnings
@@ -22,6 +23,7 @@ from typing import TYPE_CHECKING, Any, TypeVar
 
 import humps
 from hopsworks_apigen import public
+from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core.constants import HAS_NUMPY
 from hsfs import engine, storage_connector, util
@@ -34,10 +36,12 @@ from hsfs.decorators import typechecked
 
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from datetime import date, datetime
 
     import numpy as np
     import pandas as pd
+    import pyarrow as pa
     from hsfs.constructor.fs_query import FsQuery
     from hsfs.feature import Feature
 
@@ -102,18 +106,65 @@ class Query:
         self._storage_connector_api: storage_connector_api.StorageConnectorApi = (
             storage_connector_api.StorageConnectorApi()
         )
+        # What an online read of this query prepared: the connection and the
+        # request that produced it, with its answer. The request is the key
+        # because it is what the backend is asked, so anything that would change
+        # the answer has already changed the key. A list of mutating methods
+        # could only see mutations made through this object, and a join's
+        # sub-query or a feature held by one is changed through its own.
+        self._prepared_online_read: tuple[Any, str, str, Any] | None = None
+
+    def _online_read_key(self) -> str | None:
+        """The request an online read of this query would send, as a cache key.
+
+        `None` when the query cannot be rendered, which only means this read
+        prepares from scratch rather than that it cannot run.
+        """
+        try:
+            return self.json()
+        except Exception:  # noqa: BLE001 - a key is an optimisation, never a failure
+            _logger.debug("Query could not be rendered for reuse", exc_info=True)
+            return None
 
     def _prep_read(
-        self, online: bool, read_options: dict[str, Any]
+        self, online: bool, read_options: dict[str, Any], reuse_prepared: bool = True
     ) -> tuple[str | dict[str, Any], storage_connector.StorageConnector | None]:
+        """Prepare this query for reading.
+
+        Parameters:
+            online: Read from the online store.
+            read_options: Engine-specific read options.
+            reuse_prepared: Whether an online read may come from, and go into,
+                what this query last prepared. A caller that changes the query
+                for the length of one read, as `show` does with its row count,
+                passes `False`: what it prepares describes its own arguments
+                rather than the query, and must not become what the next
+                ordinary read of this query runs.
+        """
         self._check_read_supported(online)
 
         if online:
+            # Building the query and fetching the connector are both backend
+            # calls, and neither answer changes while the query does not. They
+            # are kept per connection, so a re-login prepares again rather than
+            # reading through credentials that are no longer the session's.
+            connection = client._get_instance()
+            key = self._online_read_key() if reuse_prepared else None
+            prepared = self._prepared_online_read
+            if (
+                key is not None
+                and prepared is not None
+                and prepared[0] is connection
+                and prepared[1] == key
+            ):
+                return prepared[2], prepared[3]
             fs_query = self._query_constructor_api._construct_query(self)
             sql_query = self._to_string(fs_query, online)
             online_conn = self._storage_connector_api._get_online_connector(
                 self._feature_store_id
             )
+            if key is not None:
+                self._prepared_online_read = (connection, key, sql_query, online_conn)
         else:
             online_conn = None
 
@@ -398,6 +449,99 @@ class Query:
             schema,
         )
 
+    @public
+    @contextlib.contextmanager
+    def read_batches(
+        self,
+        online: bool = False,
+        batch_size: int = 10_000,
+        read_options: dict[str, Any] | None = None,
+    ) -> Iterator[Iterator[pa.RecordBatch]]:
+        """Read the query as Arrow record batches, without materialising the result.
+
+        `read()` builds the whole result before it returns, so a caller waits for
+        the last row to see the first and holds the result in memory. This hands
+        back batches as they arrive: what is held is a batch, not a result.
+
+        The batches are Arrow, so a caller that wants Arrow is not made to go
+        through pandas first. Rows arrive in whatever order the engine produces
+        them, exactly as `read()` receives them.
+
+        Every batch of one read shares one schema. For an online read the column
+        types are this query's own feature types, so a batch that happens to be
+        entirely null describes its columns the same way a full one does and a
+        decimal keeps its declared precision and scale. A column whose declared
+        type has no Arrow equivalent is settled by the first batch instead.
+
+        Filters and projections are pushed down as they are for `read()`.
+
+        Info: Requires the Python engine, ~=5.1.0
+            Offline reads stream through the Hopsworks Query Service.
+
+        Parameters:
+            online: Whether to read from the online feature store.
+            batch_size: Rows an online read fetches at a time.
+            read_options: Additional read options, as for `read()`.
+
+        Yields:
+            An iterator of `pyarrow.RecordBatch`.
+
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException: If the engine cannot stream a read.
+
+        Example:
+            ```python
+            with query.read_batches(online=True, batch_size=5000) as batches:
+                for batch in batches:
+                    process(batch)
+            ```
+
+            Leaving the `with` block closes the cursor or the stream, whether the
+            caller read every batch or stopped early.
+        """
+        if batch_size < 1:
+            raise ValueError("batch_size must be at least 1.")
+        read_options = read_options or {}
+        engine_instance = engine._get_instance()
+        if not hasattr(engine_instance, "_stream_batches"):
+            raise FeatureStoreException(
+                "Reading in batches requires the Python engine; "
+                "this connection uses a different one."
+            )
+
+        # Same augmented filter as read(), applied only while the SQL is built.
+        original_filter = self._filter
+        if not online:
+            from hsfs.constructor.partitioned_by_translator import _augment_filter
+
+            self._filter = _augment_filter(self._filter, self._left_feature_group)
+        try:
+            sql_query, online_conn = self._prep_read(online, read_options)
+        finally:
+            self._filter = original_filter
+
+        batches = engine_instance._stream_batches(
+            sql_query,
+            online_conn,
+            read_options,
+            online,
+            batch_size,
+            read_options.get("arrow_flight_config"),
+            # The query's own types, so every batch of this read describes its
+            # columns the same way rather than following the values it holds.
+            schema=self.features,
+        )
+        try:
+            yield batches
+        finally:
+            # Runs the generator's own cleanup, which releases the cursor or
+            # cancels the stream, so an early exit does not leave the server
+            # producing a result nobody will take. An engine that hands back a
+            # plain iterator has nothing to release.
+            close = getattr(batches, "close", None)
+            if close is not None:
+                close()
+
     def _read_with_time_filter(
         self,
         online: bool,
@@ -454,7 +598,11 @@ class Query:
         previous_limit = self._limit
         try:
             self._limit = n
-            sql_query, online_conn = self._prep_read(online, read_options)
+            # This preparation describes `n`, not the query, so it neither comes
+            # from nor becomes what an ordinary read of this query runs.
+            sql_query, online_conn = self._prep_read(
+                online, read_options, reuse_prepared=False
+            )
         finally:
             self._limit = previous_limit
         return engine._get_instance()._show(

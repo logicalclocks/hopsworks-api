@@ -16,6 +16,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import threading
 from typing import Any
 
 from hopsworks_common import tag
@@ -33,6 +35,13 @@ from hsml.client.istio.utils.infer_type import (
     InferRequest,
 )
 from hsml.constants import INFERENCE_ENDPOINTS as IE
+
+
+_logger = logging.getLogger(__name__)
+# Guards the lazy creation of a deployment's gRPC channel. Concurrent first
+# callers would otherwise each build one and keep only the last, leaking the
+# rest for the lifetime of the object.
+_GRPC_CHANNEL_LOCK = threading.Lock()
 
 
 class ServingApi:
@@ -424,15 +433,7 @@ class ServingApi:
     def _send_inference_request_via_grpc_protocol(
         self, deployment_instance, data: list[InferInput]
     ) -> list[InferOutput]:
-        # get grpc channel
-        if deployment_instance._grpc_channel is None:
-            # The gRPC channel is lazily initialized. The first call to deployment.predict() will initialize
-            # the channel, which will be reused in all following calls on the same deployment object.
-            # The gRPC channel is freed when calling deployment.stop()
-            print("Initializing gRPC channel...")
-            deployment_instance._grpc_channel = self._create_grpc_channel(
-                deployment_instance
-            )
+        channel = self._grpc_channel(deployment_instance)
         # build an infer request
         request = InferRequest(
             infer_inputs=data,
@@ -440,12 +441,24 @@ class ServingApi:
         )
 
         # send infer request
-        infer_response = deployment_instance._grpc_channel.infer(
-            infer_request=request, headers=None
-        )
+        infer_response = channel.infer(infer_request=request, headers=None)
 
         # extract infer outputs
         return infer_response.outputs
+
+    def _grpc_channel(self, deployment_instance):
+        """The deployment's gRPC channel, created once and reused by every later call.
+
+        The channel is freed when calling `deployment.stop()`.
+        """
+        if deployment_instance._grpc_channel is None:
+            with _GRPC_CHANNEL_LOCK:
+                if deployment_instance._grpc_channel is None:
+                    _logger.debug("Initializing gRPC channel")
+                    deployment_instance._grpc_channel = self._create_grpc_channel(
+                        deployment_instance
+                    )
+        return deployment_instance._grpc_channel
 
     def _create_grpc_channel(self, deployment_instance):
         _client = client.istio._get_instance()

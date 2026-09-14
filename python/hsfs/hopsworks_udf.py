@@ -16,6 +16,8 @@
 from __future__ import annotations
 
 import ast
+import contextlib
+import contextvars
 import copy
 import inspect
 import json
@@ -24,7 +26,7 @@ import logging
 import re
 import textwrap
 import warnings
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, time
 from enum import Enum
@@ -47,6 +49,68 @@ if TYPE_CHECKING:
     from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
 
 _logger = logging.getLogger(__name__)
+
+# The transformation context of the request being served, when one is being
+# served. A feature view holds one set of UDF objects and every caller shares
+# them, so the context of a request belongs to the request and not to the
+# object: two threads serving different callers would otherwise read each
+# other's. A context variable is per thread and per task.
+#
+# A forked worker is a memory copy of the process that made it, so it does
+# inherit whatever was set at the moment of the fork. The pool is therefore
+# given each job's context explicitly, and a worker clears what it inherited
+# before it runs anything: a pool built while one request held the context
+# would otherwise answer every later request with that request's context.
+_REQUEST_TRANSFORMATION_CONTEXT: contextvars.ContextVar[dict[str, Any] | None] = (
+    contextvars.ContextVar("hopsworks_transformation_context", default=None)
+)
+
+
+@contextlib.contextmanager
+def _serving_transformation_context(context: dict[str, Any] | None):
+    """Make `context` the transformation context for this thread, for the duration."""
+    token = _REQUEST_TRANSFORMATION_CONTEXT.set(context or None)
+    try:
+        yield
+    finally:
+        _REQUEST_TRANSFORMATION_CONTEXT.reset(token)
+
+
+class _RequestTransformationContext(Mapping):
+    """The transformation context of whichever request is reading it.
+
+    A cached wrapper's scope is shared by every caller of the UDF, so writing a
+    request's context into it and then running the wrapper is a race: another
+    request can overwrite the entry in between, and the first is transformed
+    under the second's context. The scope holds this instead, and it resolves
+    the context when the UDF reads it, on the thread that is reading.
+    """
+
+    __slots__ = ("_udf",)
+
+    def __init__(self, udf: HopsworksUdf):
+        self._udf = udf
+
+    def _current(self) -> dict[str, Any]:
+        return self._udf.transformation_context
+
+    def __getitem__(self, key):
+        return self._current()[key]
+
+    def __iter__(self):
+        return iter(self._current())
+
+    def __len__(self) -> int:
+        return len(self._current())
+
+    def __eq__(self, other) -> bool:
+        return self._current() == other
+
+    def __hash__(self):
+        raise TypeError("The transformation context is not hashable.")
+
+    def __repr__(self) -> str:
+        return repr(self._current())
 
 
 class UDFExecutionMode(Enum):
@@ -689,7 +753,9 @@ class HopsworksUdf:
         # Adding variables required to be injected into the scope.
         variables_to_inject = {
             UDFKeyWords.STATISTICS.value: self.transformation_statistics,
-            UDFKeyWords.CONTEXT.value: self.transformation_context,
+            # Resolved when the UDF reads it rather than written in now: the
+            # scope belongs to the cached wrapper, which every caller shares.
+            UDFKeyWords.CONTEXT.value: _RequestTransformationContext(self),
             "_output_col_names": self.output_column_names,
         }
         variables_to_inject.update(**kwargs)
@@ -1050,7 +1116,10 @@ def renaming_wrapper(*args):
             # current values are None / empty prevents the cached scope from
             # carrying state from a previous call.
             scope[UDFKeyWords.STATISTICS.value] = self.transformation_statistics
-            scope[UDFKeyWords.CONTEXT.value] = self.transformation_context
+            # The context is not refreshed here. The scope holds a resolver that
+            # reads it when the UDF does, so assigning the caller's context now
+            # would be the race this exists to avoid: another request can
+            # overwrite the entry between this return and the wrapper running.
             return wrapper_fn
 
         # Cache miss: generate a new wrapper.
@@ -1561,6 +1630,9 @@ def renaming_wrapper(*args):
 
         These context variables passed to the UDF during execution.
         """
+        request = _REQUEST_TRANSFORMATION_CONTEXT.get()
+        if request is not None:
+            return request
         return self._transformation_context if self._transformation_context else {}
 
     @transformation_context.setter

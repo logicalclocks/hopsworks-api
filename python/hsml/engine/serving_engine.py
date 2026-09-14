@@ -1331,6 +1331,23 @@ class ServingEngine:
 
     # Model inference
 
+    def _init_predict(self, deployment_instance) -> None:
+        """Do everything the first `predict()` would otherwise do on the request path.
+
+        The schema document is downloaded, and the transport the deployment's
+        protocol selects is connected. No prediction is sent: a prediction can
+        log rows and have application side effects, so it is not a warm-up.
+        """
+        with deployment_instance._predict_init_lock:
+            # Reading the property is what downloads and caches the document.
+            _ = deployment_instance.schema
+            if deployment_instance.api_protocol == IE.API_PROTOCOL_GRPC:
+                self._serving_api._grpc_channel(deployment_instance)
+            else:
+                # Creates the session, resolves the ingress and loads the
+                # certificates, which the first request would otherwise pay for.
+                client.istio._get_instance()
+
     def _predict(
         self,
         deployment_instance,
