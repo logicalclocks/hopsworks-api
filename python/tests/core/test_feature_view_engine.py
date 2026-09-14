@@ -4871,3 +4871,50 @@ class TestFeatureLoggingWithoutEventTime:
         assert event_time[0] == expected_data
         assert event_time[1] == expected_names
         assert event_time[2] == constants.FEATURE_LOGGING.EVENT_TIME
+
+
+class TestReadWithSpine:
+    """The Spark branch of `_read_with_spine` owns the lifetime of the session temporary view."""
+
+    def _engine(self, mocker, read_result=None, read_raises=None):
+        spark_engine = MagicMock()
+        mocker.patch(
+            "hsfs.core.feature_view_engine.engine._get_type", return_value="spark"
+        )
+        mocker.patch(
+            "hsfs.core.feature_view_engine.engine._get_instance",
+            return_value=spark_engine,
+        )
+        batch_query = MagicMock()
+        if read_raises is not None:
+            batch_query.read.side_effect = read_raises
+        else:
+            batch_query.read.return_value = read_result
+        spine = MagicMock()
+        spine.table_name = "__hopsworks_spine_3f9a"
+        fv_engine = feature_view_engine.FeatureViewEngine(feature_store_id=99)
+        return fv_engine, batch_query, spine, spark_engine
+
+    def test_spark_read_drops_the_temporary_view(self, mocker):
+        fv_engine, batch_query, spine, spark_engine = self._engine(
+            mocker, read_result="df"
+        )
+
+        result = fv_engine._read_with_spine(batch_query, spine, {}, "default")
+
+        assert result == "df"
+        spark_engine._drop_spine_temporary_view.assert_called_once_with(
+            "__hopsworks_spine_3f9a"
+        )
+
+    def test_the_temporary_view_is_dropped_when_the_read_fails(self, mocker):
+        fv_engine, batch_query, spine, spark_engine = self._engine(
+            mocker, read_raises=RuntimeError("boom")
+        )
+
+        with pytest.raises(RuntimeError):
+            fv_engine._read_with_spine(batch_query, spine, {}, "default")
+
+        spark_engine._drop_spine_temporary_view.assert_called_once_with(
+            "__hopsworks_spine_3f9a"
+        )

@@ -1193,9 +1193,18 @@ class FeatureViewEngine:
         needs no file.
         """
         if engine._get_type() != "python":
-            return batch_query.read(
-                read_options=read_options, dataframe_type=dataframe_type
-            )
+            try:
+                return batch_query.read(
+                    read_options=read_options, dataframe_type=dataframe_type
+                )
+            finally:
+                # The view's name is unique per read, so leaving it registered would add one view
+                # and one cached plan to the session on every batch read. Dropping it after `read`
+                # is safe: Spark resolves the view when it analyses the statement, and the returned
+                # dataframe carries that plan rather than the catalog name.
+                engine._get_instance()._drop_spine_temporary_view(
+                    inference_spine.table_name
+                )
 
         from hopsworks_common.core.dataset_api import DatasetApi
 

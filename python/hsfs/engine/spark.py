@@ -317,6 +317,14 @@ class Engine:
         # _register_pushdown_query avoids.
         self._spark_session.createDataFrame(dataframe).createOrReplaceTempView(alias)
 
+    def _drop_spine_temporary_view(self, alias):
+        # Called from a finally block: a read that already failed must not be masked by a cleanup
+        # error, and an unregistered view is the state we wanted anyway.
+        try:
+            self._spark_session.catalog.dropTempView(alias)
+        except Exception as e:
+            _logger.warning("Could not drop the inference spine view %s: %s", alias, e)
+
     def _register_external_temporary_table(self, external_fg, alias):
         if not isinstance(external_fg, fg_mod.SpineGroup):
             external_dataset = external_fg.data_source.storage_connector.read(
