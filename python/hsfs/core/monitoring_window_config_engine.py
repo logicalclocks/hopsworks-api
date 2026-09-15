@@ -37,6 +37,31 @@ logger = logging.getLogger(__name__)
 # Maximum number of commits to enumerate when building a rolling reference via merge.
 _MAX_COMMITS_FOR_MERGE = 100
 
+# Time-travel formats whose feature groups keep a commit history.
+_COMMIT_TIME_FORMATS = ("HUDI", "DELTA", "ICEBERG")
+
+
+def _reads_by_commit_time(
+    entity: feature_group.FeatureGroupBase | feature_view.FeatureView,
+) -> bool:
+    """Whether commit-time windows on `entity` can be read and registered as such.
+
+    A feature view is read through its query, so its left feature group decides and the answer stays `True` here.
+    A feature group qualifies only with a time-travel format that keeps commits.
+    External feature groups and feature groups without a time-travel format have no commit history: their windows read the latest snapshot and their statistics carry a computation time only.
+
+    Parameters:
+        entity: The feature group or feature view a monitoring window reads from.
+
+    Returns:
+        `True` when the window engine may use commit-time bounds for `entity`.
+    """
+    if isinstance(entity, feature_view.FeatureView):
+        return True
+    if isinstance(entity, feature_group.FeatureGroup):
+        return entity.time_travel_format in _COMMIT_TIME_FORMATS
+    return False
+
 
 class MonitoringWindowConfigEngine:
     _MAX_TIME_RANGE_LENGTH = 12
@@ -289,7 +314,7 @@ class MonitoringWindowConfigEngine:
 
     def _run_single_window_monitoring(
         self,
-        entity: feature_group.FeatureGroup | feature_view.FeatureView,
+        entity: feature_group.FeatureGroupBase | feature_view.FeatureView,
         monitoring_window_config: mwc.MonitoringWindowConfig,
         feature_names: list[str],
         profile_flags: dict | None = None,
@@ -387,10 +412,15 @@ class MonitoringWindowConfigEngine:
                     registered_stats.feature_descriptive_statistics.extend(
                         before_transf_stats.feature_descriptive_statistics
                     )
-        elif model_filter is None:
+        elif model_filter is None and (
+            event_time_feature is not None or _reads_by_commit_time(entity)
+        ):
             # Check if statistics already exists. Skip when a model_filter is in play —
             # registered stats are aggregated over the whole logging FG, not per-model,
-            # and would conflate inference logs across deployments.
+            # and would conflate inference logs across deployments. Skip as well for a
+            # commit-time window on an entity without a commit history: the backend
+            # rejects commit bounds for it and there is no commit to key a reuse on, so
+            # the window is always profiled anew.
             if event_time_feature is not None:
                 registered_stats = self._statistics_engine._get_by_time_window(
                     metadata_instance=entity,
@@ -461,16 +491,20 @@ class MonitoringWindowConfigEngine:
                 for k, v in (profile_flags or {}).items()
                 if k != "for_distribution_comparison"
             }
+            # Commit bounds are registered only where the backend keeps commits; an
+            # entity without a commit history gets a row stamped with the computation
+            # time alone.
+            register_commit_bounds = (
+                event_time_feature is None and _reads_by_commit_time(entity)
+            )
             registered_stats = (
                 self._statistics_engine._compute_and_save_monitoring_statistics(
                     entity,
                     feature_dataframe=entity_feature_df,
                     window_start_commit_time=start_time
-                    if event_time_feature is None
+                    if register_commit_bounds
                     else None,
-                    window_end_commit_time=end_time
-                    if event_time_feature is None
-                    else None,
+                    window_end_commit_time=end_time if register_commit_bounds else None,
                     window_start_event_time=start_time
                     if event_time_feature is not None
                     else None,
@@ -521,7 +555,7 @@ class MonitoringWindowConfigEngine:
 
     def _fetch_entity_data_in_monitoring_window(
         self,
-        entity: feature_group.FeatureGroup | feature_view.FeatureView,
+        entity: feature_group.FeatureGroupBase | feature_view.FeatureView,
         feature_names: list[str],
         start_time: int | None,
         end_time: int | None,
@@ -547,8 +581,8 @@ class MonitoringWindowConfigEngine:
             A Spark DataFrame with the entity data
         """
         try:
-            if isinstance(entity, feature_group.FeatureGroup):
-                entity_df = self._fetch_feature_group_data(
+            if isinstance(entity, feature_view.FeatureView):
+                entity_df = self._fetch_feature_view_data(
                     entity=entity,
                     feature_names=feature_names,
                     start_time=start_time,
@@ -557,7 +591,9 @@ class MonitoringWindowConfigEngine:
                     event_time_feature=event_time_feature,
                 )
             else:
-                entity_df = self._fetch_feature_view_data(
+                # Every feature group flavour, external ones included: they all build
+                # their read through `select`, which a feature view does not expose.
+                entity_df = self._fetch_feature_group_data(
                     entity=entity,
                     feature_names=feature_names,
                     start_time=start_time,
@@ -643,7 +679,7 @@ class MonitoringWindowConfigEngine:
 
     def _fetch_feature_group_data(
         self,
-        entity: feature_group.FeatureGroup,
+        entity: feature_group.FeatureGroupBase,
         feature_names: list[str] | None = None,
         start_time: int | None = None,
         end_time: int | None = None,
@@ -679,11 +715,18 @@ class MonitoringWindowConfigEngine:
             if time_filter is not None:
                 pre_df = pre_df.filter(time_filter)
 
-        if model_filter is not None or event_time_feature is not None:
+        if (
+            model_filter is not None
+            or event_time_feature is not None
+            or not _reads_by_commit_time(entity)
+        ):
             # Logging FGs are not created with delta.enableChangeDataFeed=true, so
             # as_of(exclude_until=...) — which compiles to a Delta CDF read — would fail
             # with DELTA_MISSING_CHANGE_DATA. An event-time filter reads the plain
             # (latest snapshot) query instead, which works for any feature group.
+            # A feature group without a commit history (external, or no time-travel
+            # format) has no other snapshot to read, and the backend drops as_of
+            # bounds for it anyway.
             return pre_df.read()
 
         return pre_df.as_of(exclude_until=start_time, wallclock_time=end_time).read()
@@ -701,7 +744,7 @@ class MonitoringWindowConfigEngine:
 
     def _should_use_merge_path(
         self,
-        entity: feature_group.FeatureGroup | feature_view.FeatureView,
+        entity: feature_group.FeatureGroupBase | feature_view.FeatureView,
         monitoring_window_config: mwc.MonitoringWindowConfig,
         profile_flags: dict | None,
     ) -> bool:
@@ -718,13 +761,12 @@ class MonitoringWindowConfigEngine:
             != mwc.WindowConfigType.ROLLING_TIME
         ):
             return False
-        if not isinstance(entity, feature_group.FeatureGroup):
+        if isinstance(entity, feature_view.FeatureView):
             return False
         # The merge path enumerates per-commit statistics via commit-time windows,
-        # so it needs a commit/time-travel format (HUDI, DELTA or ICEBERG). A
-        # non-time-travel FG (time_travel_format=None) has no commit history to
-        # merge over and must fall back to a full-window re-profile.
-        if entity.time_travel_format not in ("HUDI", "DELTA", "ICEBERG"):
+        # so it needs a commit history. A feature group without one (external, or
+        # no time-travel format) must fall back to a full-window re-profile.
+        if not _reads_by_commit_time(entity):
             return False
         if profile_flags is None:
             return False
