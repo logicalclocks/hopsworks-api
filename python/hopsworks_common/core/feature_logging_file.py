@@ -179,7 +179,8 @@ class _DatasetUploader:
     def _dataset_api(self):
         # hopsworks_common must not import the umbrella `hopsworks` package at
         # runtime, and it does not need to: the Dataset and Job apis resolve the
-        # client singleton the serving pod has already logged in.
+        # client singleton. The predictor process has one from its own login; the
+        # writer process builds one in `_connect` before it starts uploading.
         if self._api is None:
             from hopsworks_common.core.dataset_api import DatasetApi
 
@@ -938,8 +939,33 @@ def _expose_metrics(transport: _FileLogTransport, worker=None):
     return collector
 
 
+def _connect() -> None:
+    """Give the writer process its own Hopsworks client.
+
+    The uploader reaches HopsFS through the Dataset API, which resolves the client
+    singleton.
+    This process is a child of the predictor: it inherits the pod environment that
+    client reads, but not the predictor's own singleton, so it has to build one.
+    Without it every segment upload fails on "Couldn't find client" and the rows wait
+    in the buffer for the predictor's shutdown drain.
+    """
+    from hopsworks_common import client
+
+    try:
+        client._init("hopsworks")
+    except Exception as error:  # noqa: BLE001 - the predictor still drains on stop
+        _logger.warning(
+            "Feature log writer could not connect to Hopsworks (%s); segments upload "
+            "when the deployment stops instead",
+            type(error).__name__,
+            exc_info=error,
+        )
+
+
 def _main() -> None:
     options = _FileLogOptions.from_dict(json.loads(os.environ[OPTIONS_ENV_VAR]))
+    if options.upload_in_writer:
+        _connect()
     _writer_main(options)
 
 

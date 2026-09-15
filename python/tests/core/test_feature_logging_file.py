@@ -432,3 +432,39 @@ def test_options_come_from_the_environment_and_round_trip(name, mocker):
     assert restored.to_dict() == options.to_dict()
     assert restored.staging_dir == "Resources/feature_logging/view_1"
     assert flf._commit_job_name("view", 1) == "view_1_log_feature_log_commit"
+
+
+class TestTheWriterProcessConnects:
+    """The writer is a child process, so it has no client until it builds one."""
+
+    def _run_main(self, mocker, upload_in_writer):
+        options = flf._FileLogOptions("view", 1, buffer_dir="/tmp/x")
+        options.upload_in_writer = upload_in_writer
+        mocker.patch.dict(
+            os.environ, {flf.OPTIONS_ENV_VAR: json.dumps(options.to_dict())}
+        )
+        mocker.patch.object(flf, "_writer_main")
+        init = mocker.patch("hopsworks_common.client._init")
+        flf._main()
+        return init
+
+    def test_it_logs_in_before_the_writer_loop(self, mocker):
+        init = self._run_main(mocker, upload_in_writer=True)
+        init.assert_called_once_with("hopsworks")
+
+    def test_it_does_not_when_the_predictor_uploads_instead(self, mocker):
+        init = self._run_main(mocker, upload_in_writer=False)
+        init.assert_not_called()
+
+    def test_a_failed_login_still_starts_the_writer(self, mocker):
+        options = flf._FileLogOptions("view", 1, buffer_dir="/tmp/x")
+        options.upload_in_writer = True
+        mocker.patch.dict(
+            os.environ, {flf.OPTIONS_ENV_VAR: json.dumps(options.to_dict())}
+        )
+        writer = mocker.patch.object(flf, "_writer_main")
+        mocker.patch(
+            "hopsworks_common.client._init", side_effect=RuntimeError("no endpoint")
+        )
+        flf._main()
+        writer.assert_called_once()
