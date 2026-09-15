@@ -1,6 +1,6 @@
 ---
 name: hops-data-sources
-description: Mount or ingest a table from a supported datasource. Mount tables from a datasource as an external feature group or ingest data into a new feature group using DLTHub. Auto-invoke when user works with external data (Snowflake, BigQuery, Redshift, S3, ADLS, GCS, JDBC, SQL, Databricks Unity Catalog, Postgres, MySQL, Oracle, SAP, MongoDB, CRM, REST APIs).
+description: Mount or ingest a table from a supported datasource. Mount tables from a datasource as an external feature group or ingest data into a new feature group using DLTHub. Auto-invoke when user works with external data (Snowflake, BigQuery, Redshift, S3, ADLS, GCS, JDBC, SQL, Databricks Unity Catalog, Postgres, MySQL, Oracle, ClickHouse, SAP, MongoDB, CRM, REST APIs).
 ---
 
 Prefer the `hops` CLI for mounting or ingesting external tables from a datasource. Use the `hopsworks` Python SDK if the CLI is unsuccessful.
@@ -95,6 +95,7 @@ A required secret that is neither given nor exported is asked for without echo w
 hops datasource create jdbc <name> --url "jdbc:postgresql://host:5432/db" --user U --password - < pw.txt
 hops datasource create sql <name> --database-type POSTGRESQL --host H --port 5432 --database D --user U --password - < pw.txt
 hops datasource create sql <name> --database-type ORACLE --wallet-path /Projects/<project>/Resources/wallet --port 1522 --database TNS_ALIAS --user U --password - < pw.txt   # HOPSWORKS_DS_SQL_WALLET_PASSWORD for the wallet
+hops datasource create sql <name> --database-type CLICKHOUSE --host H --port 8123 --database D --user U --password - < pw.txt   # --argument ssl=true for HTTPS (8443)
 hops datasource create s3 <name> --bucket my-bucket --access-key AK --secret-key - --region eu-north-1 < secret_key.txt
 hops datasource create gcs <name> --bucket my-bucket --key-path /Projects/<project>/Resources/key.json
 hops datasource create adls <name> --account-name A --generation 2 --container-name C --directory-id T --application-id APP --service-credential - < credential.txt

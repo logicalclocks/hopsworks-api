@@ -592,6 +592,7 @@ public abstract class StorageConnector {
 
     public static final String MYSQL = "MYSQL";
     public static final String POSTGRESQL = "POSTGRESQL";
+    public static final String CLICKHOUSE = "CLICKHOUSE";
 
     private static final Map<String, String> DRIVERS;
     private static final Map<String, String> JDBC_SCHEMES;
@@ -600,11 +601,13 @@ public abstract class StorageConnector {
       Map<String, String> drivers = new HashMap<>();
       drivers.put(MYSQL, "com.mysql.cj.jdbc.Driver");
       drivers.put(POSTGRESQL, "org.postgresql.Driver");
+      drivers.put(CLICKHOUSE, "com.clickhouse.jdbc.ClickHouseDriver");
       DRIVERS = Collections.unmodifiableMap(drivers);
 
       Map<String, String> schemes = new HashMap<>();
       schemes.put(MYSQL, "mysql");
       schemes.put(POSTGRESQL, "postgresql");
+      schemes.put(CLICKHOUSE, "clickhouse");
       JDBC_SCHEMES = Collections.unmodifiableMap(schemes);
     }
 
