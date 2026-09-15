@@ -21,7 +21,7 @@ import build  # noqa: F401  # eagerly load so test patches resolve build.Project
 import build.env  # noqa: F401  # eagerly load so test patches resolve build.env.DefaultIsolatedEnv
 import pytest
 from hopsworks_common.client.exceptions import RestAPIError
-from hsml.deployment import tracing_config as deployment_tracing_config, model_serving
+from hsml import deployment_tracing_config as deployment_tracing_config, model_serving
 
 
 @pytest.fixture
@@ -46,11 +46,9 @@ def stub_apis(mocker):
     env_api = mocker.MagicMock(name="env_api")
     env_api.get_environment.return_value = env
 
+    mocker.patch("hsml.model_serving._dataset_api.DatasetApi", return_value=ds_api)
     mocker.patch(
-        "hsml.deployment.model_serving._dataset_api.DatasetApi", return_value=ds_api
-    )
-    mocker.patch(
-        "hsml.deployment.model_serving._environment_api.EnvironmentApi",
+        "hsml.model_serving._environment_api.EnvironmentApi",
         return_value=env_api,
     )
     return ds_api, env_api, env
@@ -81,9 +79,7 @@ class TestTracingForwarding:
         )
         model = mocker.Mock()
         model._get_default_serving_name.return_value = "my_model"
-        mock_for_model = mocker.patch(
-            "hsml.deployment.model_serving.Predictor.for_model"
-        )
+        mock_for_model = mocker.patch("hsml.model_serving.Predictor.for_model")
 
         # Act
         ms.create_predictor(model, tracing=tracing)
@@ -95,9 +91,7 @@ class TestTracingForwarding:
         # Arrange
         model = mocker.Mock()
         model._get_default_serving_name.return_value = "my_model"
-        mock_for_model = mocker.patch(
-            "hsml.deployment.model_serving.Predictor.for_model"
-        )
+        mock_for_model = mocker.patch("hsml.model_serving.Predictor.for_model")
         tags = {"owner": "team-a"}
 
         # Act
@@ -153,7 +147,7 @@ class TestTracingForwarding:
         from hopsworks_common.tag import Tag
 
         predictor = mocker.Mock()
-        mock_deployment = mocker.patch("hsml.deployment.model_serving.Deployment")
+        mock_deployment = mocker.patch("hsml.model_serving.Deployment")
         tags = {"name": "owner", "value": "team-a"}
 
         # Act
@@ -198,9 +192,7 @@ class TestTracingForwarding:
             enabled=True,
             otel_tracing_storage=deployment_tracing_config.DeploymentTracingConfig.STORAGE_BOTH,
         )
-        mock_for_server = mocker.patch(
-            "hsml.deployment.model_serving.Predictor.for_server"
-        )
+        mock_for_server = mocker.patch("hsml.model_serving.Predictor.for_server")
 
         # Act
         ms.create_endpoint(
@@ -214,9 +206,7 @@ class TestTracingForwarding:
 
     def test_create_endpoint_forwards_git_source(self, ms, mocker):
         # Arrange
-        mock_for_server = mocker.patch(
-            "hsml.deployment.model_serving.Predictor.for_server"
-        )
+        mock_for_server = mocker.patch("hsml.model_serving.Predictor.for_server")
 
         # Act
         ms.create_endpoint(
@@ -236,9 +226,7 @@ class TestTracingForwarding:
 
     def test_create_endpoint_forwards_git_auto_redeploy(self, ms, mocker):
         # Arrange
-        mock_for_server = mocker.patch(
-            "hsml.deployment.model_serving.Predictor.for_server"
-        )
+        mock_for_server = mocker.patch("hsml.model_serving.Predictor.for_server")
 
         # Act
         ms.create_endpoint(
@@ -257,7 +245,7 @@ class TestTracingForwarding:
     ):
         # Mirrors ServingUtil: the backend rejects the flag without a git source, so fail
         # locally rather than after a round trip.
-        mocker.patch("hsml.deployment.model_serving.Predictor.for_server")
+        mocker.patch("hsml.model_serving.Predictor.for_server")
 
         with pytest.raises(ValueError, match="git_auto_redeploy requires git_url"):
             ms.create_endpoint(
@@ -298,7 +286,7 @@ class TestDeployAgentIdentifierValidation:
         # and the result reused as the upload base.
         ds_api, _, _ = stub_apis
         mocker.patch.object(ms, "get_deployment", return_value=None)
-        mocker.patch("hsml.deployment.model_serving.Predictor.for_server")
+        mocker.patch("hsml.model_serving.Predictor.for_server")
 
         ms.deploy_agent(
             entry=str(script), name="ok", upload_dir="Resources/foo/../agents/"
@@ -318,9 +306,7 @@ class TestDeployAgentScript:
         script = tmp_path / "my_agent.py"
         script.write_text("print('hi')")
         mocker.patch.object(ms, "get_deployment", return_value=None)
-        mock_for_server = mocker.patch(
-            "hsml.deployment.model_serving.Predictor.for_server"
-        )
+        mock_for_server = mocker.patch("hsml.model_serving.Predictor.for_server")
         deployed = mocker.MagicMock(name="deployment")
         mock_for_server.return_value.deploy.return_value = deployed
 
@@ -350,9 +336,7 @@ class TestDeployAgentScript:
         script = tmp_path / "my_agent.py"
         script.write_text("")
         mocker.patch.object(ms, "get_deployment", return_value=None)
-        mock_for_server = mocker.patch(
-            "hsml.deployment.model_serving.Predictor.for_server"
-        )
+        mock_for_server = mocker.patch("hsml.model_serving.Predictor.for_server")
 
         # Act
         ms.deploy_agent(entry=str(script))
@@ -370,9 +354,7 @@ class TestDeployAgentScript:
         script = tmp_path / "agent.py"
         script.write_text("")
         mocker.patch.object(ms, "get_deployment", return_value=None)
-        mock_for_server = mocker.patch(
-            "hsml.deployment.model_serving.Predictor.for_server"
-        )
+        mock_for_server = mocker.patch("hsml.model_serving.Predictor.for_server")
 
         # Act
         ms.deploy_agent(entry=str(script), name="agent", upload_dir="Jupyter/agents")
@@ -394,7 +376,7 @@ class TestDeployAgentScript:
         script = tmp_path / "my_agent.py"
         script.write_text("")
         mocker.patch.object(ms, "get_deployment", return_value=None)
-        mocker.patch("hsml.deployment.model_serving.Predictor.for_server")
+        mocker.patch("hsml.model_serving.Predictor.for_server")
 
         # Act
         ms.deploy_agent(entry=str(script), name="my_agent")
@@ -412,9 +394,7 @@ class TestDeployAgentScript:
         script = tmp_path / "agent.py"
         script.write_text("")
         mocker.patch.object(ms, "get_deployment", return_value=None)
-        mock_for_server = mocker.patch(
-            "hsml.deployment.model_serving.Predictor.for_server"
-        )
+        mock_for_server = mocker.patch("hsml.model_serving.Predictor.for_server")
 
         # Act
         ms.deploy_agent(entry=str(script), name="my_agent", environment="shared_env")
@@ -435,7 +415,7 @@ class TestDeployAgentScript:
         mocker.patch.object(ms, "get_deployment", return_value=existing)
         new_predictor = mocker.MagicMock(name="new_predictor")
         mock_for_server = mocker.patch(
-            "hsml.deployment.model_serving.Predictor.for_server",
+            "hsml.model_serving.Predictor.for_server",
             return_value=new_predictor,
         )
 
@@ -467,7 +447,7 @@ class TestDeployAgentScript:
         reqs = tmp_path / "requirements.txt"
         reqs.write_text("requests\n")
         mocker.patch.object(ms, "get_deployment", return_value=None)
-        mocker.patch("hsml.deployment.model_serving.Predictor.for_server")
+        mocker.patch("hsml.model_serving.Predictor.for_server")
 
         # Act
         ms.deploy_agent(entry=str(script), name="my_agent", requirements=str(reqs))
@@ -485,9 +465,7 @@ class TestDeployAgentScript:
         script = tmp_path / "agent.py"
         script.write_text("")
         mocker.patch.object(ms, "get_deployment", return_value=None)
-        mock_for_server = mocker.patch(
-            "hsml.deployment.model_serving.Predictor.for_server"
-        )
+        mock_for_server = mocker.patch("hsml.model_serving.Predictor.for_server")
         tracing = deployment_tracing_config.DeploymentTracingConfig(
             enabled=True,
             otel_tracing_storage=deployment_tracing_config.DeploymentTracingConfig.STORAGE_OFFLINE,
@@ -504,9 +482,7 @@ class TestDeployAgentScript:
         # Arrange
         ds_api, env_api, _ = stub_apis
         mocker.patch.object(ms, "get_deployment", return_value=None)
-        mock_for_server = mocker.patch(
-            "hsml.deployment.model_serving.Predictor.for_server"
-        )
+        mock_for_server = mocker.patch("hsml.model_serving.Predictor.for_server")
         deployed = mocker.MagicMock(name="deployment")
         mock_for_server.return_value.deploy.return_value = deployed
 
@@ -533,9 +509,7 @@ class TestDeployAgentScript:
     def test_git_source_forwards_git_auto_redeploy(self, ms, mocker, stub_apis):
         # Arrange
         mocker.patch.object(ms, "get_deployment", return_value=None)
-        mock_for_server = mocker.patch(
-            "hsml.deployment.model_serving.Predictor.for_server"
-        )
+        mock_for_server = mocker.patch("hsml.model_serving.Predictor.for_server")
 
         # Act
         ms.deploy_agent(
@@ -605,9 +579,7 @@ class TestDeployAgentPackage:
         mock_builder = self._patch_builder(mocker, wheel_local)
         captured = self._capture_runner(ds_api)
         mocker.patch.object(ms, "get_deployment", return_value=None)
-        mock_for_server = mocker.patch(
-            "hsml.deployment.model_serving.Predictor.for_server"
-        )
+        mock_for_server = mocker.patch("hsml.model_serving.Predictor.for_server")
 
         # Act
         ms.deploy_agent(entry=str(pkg), name="my_agent")
@@ -655,7 +627,7 @@ class TestDeployAgentPackage:
         )
 
         mocker.patch.object(ms, "get_deployment", return_value=None)
-        mocker.patch("hsml.deployment.model_serving.Predictor.for_server")
+        mocker.patch("hsml.model_serving.Predictor.for_server")
 
         ms.deploy_agent(entry=str(pkg), name="my_agent")
 
@@ -676,9 +648,7 @@ class TestDeployAgentPackage:
         wheel_local = tmp_path / "my_pkg-0.1.0-py3-none-any.whl"
         self._patch_builder(mocker, wheel_local, top_level="my_pkg")
         mocker.patch.object(ms, "get_deployment", return_value=None)
-        mock_for_server = mocker.patch(
-            "hsml.deployment.model_serving.Predictor.for_server"
-        )
+        mock_for_server = mocker.patch("hsml.model_serving.Predictor.for_server")
 
         # Act
         ms.deploy_agent(entry=str(pkg))
@@ -703,7 +673,7 @@ class TestDeployAgentPackage:
         env.uninstall.side_effect = RestAPIError("", not_found)
 
         mocker.patch.object(ms, "get_deployment", return_value=None)
-        mocker.patch("hsml.deployment.model_serving.Predictor.for_server")
+        mocker.patch("hsml.model_serving.Predictor.for_server")
 
         # Act: must not raise on the 404 from the first-time uninstall.
         ms.deploy_agent(entry=str(pkg), name="my_agent")
@@ -724,7 +694,7 @@ class TestDeployAgentPackage:
         env.uninstall.side_effect = RestAPIError("", server_error)
 
         mocker.patch.object(ms, "get_deployment", return_value=None)
-        mocker.patch("hsml.deployment.model_serving.Predictor.for_server")
+        mocker.patch("hsml.model_serving.Predictor.for_server")
 
         # Act & Assert
         with pytest.raises(RestAPIError):
@@ -742,7 +712,7 @@ class TestDeployAgentPackage:
         self._patch_builder(mocker, wheel_local, top_level="my_agent")
         captured = self._capture_runner(ds_api)
         mocker.patch.object(ms, "get_deployment", return_value=None)
-        mocker.patch("hsml.deployment.model_serving.Predictor.for_server")
+        mocker.patch("hsml.model_serving.Predictor.for_server")
 
         # Act
         ms.deploy_agent(entry=str(pkg), name="myagent")

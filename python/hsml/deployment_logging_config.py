@@ -35,7 +35,7 @@ class DeploymentLoggingConfig:
 
     Example:
         ```python
-        from hsml.deployment.logging_config import DeploymentLoggingConfig
+        from hsml.deployment_logging_config import DeploymentLoggingConfig
 
         deployment = model.deploy(
             feature_logging=DeploymentLoggingConfig(

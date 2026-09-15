@@ -35,9 +35,9 @@ from hopsworks_common.constants import (
 )
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
 from hopsworks_common.core import dataset_api, inode
+from hsml import default_predictor, deployable_component_logs
+from hsml import deployment_schema as deployment_schema
 from hsml.core import serving_api
-from hsml.deployment import default_predictor, deployable_component_logs
-from hsml.deployment import schema as deployment_schema
 from hsml.engine import local_engine
 from hsml.utils.local_paths import _ensure_dataset_dir, _resolve_serving_file
 from tqdm.auto import tqdm

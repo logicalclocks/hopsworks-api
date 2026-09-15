@@ -17,13 +17,13 @@
 import copy
 
 import pytest
+from hsml import resources
 from hsml.constants import PREDICTOR
-from hsml.deployment import resources
-from hsml.deployment.scaling_config import (
+from hsml.python.endpoint import Endpoint
+from hsml.scaling_config import (
     PredictorScalingConfig,
     TransformerScalingConfig,
 )
-from hsml.python.endpoint import Endpoint
 
 
 SERVING_NUM_INSTANCES_NO_LIMIT = [-1]
@@ -39,16 +39,16 @@ class TestEndpoint:
             "items"
         ][0]
         mock_validate_serving_tool = mocker.patch(
-            "hsml.deployment.predictor.Predictor._validate_serving_tool",
+            "hsml.predictor.Predictor._validate_serving_tool",
             return_value=p_json["serving_tool"],
         )
         mock_resources = mocker.MagicMock(spec=resources.PredictorResources)
         mock_validate_resources = mocker.patch(
-            "hsml.deployment.predictor.Predictor._validate_resources",
+            "hsml.predictor.Predictor._validate_resources",
             return_value=mock_resources,
         )
         mock_validate_script_file = mocker.patch(
-            "hsml.deployment.predictor.Predictor._validate_script_file",
+            "hsml.predictor.Predictor._validate_script_file",
             return_value=p_json["predictor"],
         )
 
@@ -83,16 +83,16 @@ class TestEndpoint:
             "items"
         ][0]
         mock_validate_serving_tool = mocker.patch(
-            "hsml.deployment.predictor.Predictor._validate_serving_tool",
+            "hsml.predictor.Predictor._validate_serving_tool",
             return_value=p_json["serving_tool"],
         )
         mock_resources = mocker.MagicMock(spec=resources.PredictorResources)
         mock_validate_resources = mocker.patch(
-            "hsml.deployment.predictor.Predictor._validate_resources",
+            "hsml.predictor.Predictor._validate_resources",
             return_value=mock_resources,
         )
         mock_validate_script_file = mocker.patch(
-            "hsml.deployment.predictor.Predictor._validate_script_file",
+            "hsml.predictor.Predictor._validate_script_file",
             return_value=p_json["predictor"],
         )
 
@@ -188,15 +188,15 @@ class TestEndpoint:
         # Arrange
         self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
         mock_validate_serving_tool = mocker.patch(
-            "hsml.deployment.predictor.Predictor._validate_serving_tool",
+            "hsml.predictor.Predictor._validate_serving_tool",
             return_value=None,
         )
         mock_validate_resources = mocker.patch(
-            "hsml.deployment.predictor.Predictor._validate_resources",
+            "hsml.predictor.Predictor._validate_resources",
             return_value=None,
         )
         mock_validate_script_file = mocker.patch(
-            "hsml.deployment.predictor.Predictor._validate_script_file",
+            "hsml.predictor.Predictor._validate_script_file",
             return_value="script.py",
         )
 
@@ -218,15 +218,15 @@ class TestEndpoint:
             "items"
         ][0]
         mock_validate_serving_tool = mocker.patch(
-            "hsml.deployment.predictor.Predictor._validate_serving_tool",
+            "hsml.predictor.Predictor._validate_serving_tool",
             return_value=p_json["serving_tool"],
         )
         mock_validate_resources = mocker.patch(
-            "hsml.deployment.predictor.Predictor._validate_resources",
+            "hsml.predictor.Predictor._validate_resources",
             return_value=None,
         )
         mock_validate_script_file = mocker.patch(
-            "hsml.deployment.predictor.Predictor._validate_script_file",
+            "hsml.predictor.Predictor._validate_script_file",
             return_value=p_json["predictor"],
         )
 

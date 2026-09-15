@@ -299,7 +299,7 @@ class TestSchemaPublishing:
         assert predictor.script_file == "/Projects/p/mine.py"
 
     def test_schema_written_once_and_env_var_set_before_put(self, mocker):
-        from hsml.deployment.schema import DeploymentSchema
+        from hsml.deployment_schema import DeploymentSchema
 
         eng = self._engine(mocker)
         mocker.patch.object(eng, "_upload_local_serving_files")
@@ -338,7 +338,7 @@ class TestSchemaPublishing:
     def test_renderings_use_the_configured_batch_limit(self, mocker):
         import json
 
-        from hsml.deployment.schema import DeploymentSchema
+        from hsml.deployment_schema import DeploymentSchema
 
         eng = self._engine(mocker)
         mocker.patch.object(eng, "_upload_local_serving_files")
@@ -372,7 +372,7 @@ class TestSchemaPublishing:
     def test_published_schema_pins_logging_identity_and_clears_previous_view(
         self, mocker
     ):
-        from hsml.deployment.schema import DeploymentSchema
+        from hsml.deployment_schema import DeploymentSchema
 
         eng = self._engine(mocker)
         mocker.patch.object(eng, "_write_schema_documents")
@@ -419,7 +419,7 @@ class TestSchemaPublishing:
         eng._engine._upload.assert_not_called()
 
     def test_publish_pins_the_enforcer_role_in_the_revision(self, mocker):
-        from hsml.deployment.schema import DeploymentSchema
+        from hsml.deployment_schema import DeploymentSchema
 
         eng = self._engine(mocker)
         mocker.patch.object(eng, "_upload_local_serving_files")
@@ -433,7 +433,7 @@ class TestSchemaPublishing:
         assert alone.env_vars["SERVING_SCHEMA_ENFORCER"] == "predictor"
 
     def test_transformer_gets_schema_id_too(self, mocker):
-        from hsml.deployment.schema import DeploymentSchema
+        from hsml.deployment_schema import DeploymentSchema
 
         eng = self._engine(mocker)
         mocker.patch.object(eng, "_upload_local_serving_files")
@@ -475,7 +475,7 @@ class TestSchemaPublishing:
         )
 
     def test_read_schema_from_backend(self, mocker):
-        from hsml.deployment.schema import DeploymentSchema
+        from hsml.deployment_schema import DeploymentSchema
 
         eng = self._engine(mocker)
         schema = DeploymentSchema(serving_keys=["k"])
@@ -515,7 +515,7 @@ class TestSchemaPublishing:
     @pytest.mark.parametrize("predictor_id", [None, 7])
     def test_read_schema_falls_back_to_dataset(self, mocker, predictor_id):
         from hopsworks_common.client.exceptions import RestAPIError
-        from hsml.deployment.schema import DeploymentSchema
+        from hsml.deployment_schema import DeploymentSchema
 
         eng = self._engine(mocker)
         mocker.patch(
@@ -572,7 +572,7 @@ class TestPredictValidation:
         return d
 
     def test_rows_encoded_and_validated(self, mocker):
-        from hsml.deployment.schema import DeploymentSchema, DeploymentSchemaError
+        from hsml.deployment_schema import DeploymentSchema, DeploymentSchemaError
 
         eng = self._engine(mocker)
         schema = DeploymentSchema(
@@ -591,8 +591,8 @@ class TestPredictValidation:
         eng._predict(d, {"instances": [[None, 1]]}, None, validate=False)
 
     def test_grpc_rows_are_validated_and_sent_as_tensors(self, mocker):
-        from hsml.deployment import schema as deployment_schema
-        from hsml.deployment.schema import DeploymentSchema, DeploymentSchemaError
+        from hsml import deployment_schema as deployment_schema
+        from hsml.deployment_schema import DeploymentSchema, DeploymentSchemaError
 
         eng = self._engine(mocker)
         eng._serving_api._send_inference_request.return_value = [
@@ -625,10 +625,13 @@ class TestPredictValidation:
         assert [t.name for t in tensors] == ["k", "ts"]
 
     def test_grpc_takes_the_rest_data_form_and_refuses_both_at_once(self, mocker):
-        """`data={"instances": rows}` describes rows, so a schema-backed gRPC
-        deployment encodes it rather than refusing the dictionary."""
+        """The REST data form describes rows on gRPC too.
+
+        A schema-backed gRPC deployment encodes it rather than refusing the
+        dictionary and naming a parameter that is already in use.
+        """
         from hopsworks_common.client.exceptions import ModelServingException
-        from hsml.deployment.schema import DeploymentSchema
+        from hsml.deployment_schema import DeploymentSchema
 
         eng = self._engine(mocker)
         eng._serving_api._send_inference_request.return_value = [
@@ -650,7 +653,7 @@ class TestPredictValidation:
             eng._predict(d, {"rows": [{"k": 1}]}, None)
 
     def test_configured_batch_limit_applies_client_side(self, mocker):
-        from hsml.deployment.schema import DeploymentSchema, DeploymentSchemaError
+        from hsml.deployment_schema import DeploymentSchema, DeploymentSchemaError
 
         eng = self._engine(mocker)
         schema = DeploymentSchema(

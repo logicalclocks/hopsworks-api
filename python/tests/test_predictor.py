@@ -18,18 +18,18 @@ import copy
 
 import pytest
 from hopsworks_common.constants import SCALING_CONFIG
-from hsml import util
-from hsml.constants import INFERENCE_ENDPOINTS as IE
-from hsml.constants import MODEL, PREDICTOR
-from hsml.deployment import (
+from hsml import deployment_logging_config as deployment_logging_config
+from hsml import deployment_tracing_config as deployment_tracing_config
+from hsml import (
     inference_batcher,
     inference_logger,
     predictor,
     resources,
     transformer,
+    util,
 )
-from hsml.deployment import logging_config as deployment_logging_config
-from hsml.deployment import tracing_config as deployment_tracing_config
+from hsml.constants import INFERENCE_ENDPOINTS as IE
+from hsml.constants import MODEL, PREDICTOR
 
 
 SERVING_NUM_INSTANCES_NO_LIMIT = [-1]
@@ -218,18 +218,18 @@ class TestPredictor:
             "items"
         ][0]
         mock_validate_serving_tool = mocker.patch(
-            "hsml.deployment.predictor.Predictor._validate_serving_tool",
+            "hsml.predictor.Predictor._validate_serving_tool",
             return_value=p_json["serving_tool"],
         )
         mock_resources = util._get_obj_from_json(
             copy.deepcopy(p_json["predictor_resources"]), resources.PredictorResources
         )
         mock_validate_resources = mocker.patch(
-            "hsml.deployment.predictor.Predictor._validate_resources",
+            "hsml.predictor.Predictor._validate_resources",
             return_value=mock_resources,
         )
         mock_validate_script_file = mocker.patch(
-            "hsml.deployment.predictor.Predictor._validate_script_file",
+            "hsml.predictor.Predictor._validate_script_file",
             return_value=p_json["predictor"],
         )
 
@@ -1216,11 +1216,11 @@ class TestPredictor:
         # come back from the wire as a strongly typed config object.
         self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
         mocker.patch(
-            "hsml.deployment.predictor.Predictor._validate_serving_tool",
+            "hsml.predictor.Predictor._validate_serving_tool",
             return_value=PREDICTOR.SERVING_TOOL_KSERVE,
         )
         mocker.patch(
-            "hsml.deployment.predictor.Predictor._validate_resources",
+            "hsml.predictor.Predictor._validate_resources",
             return_value=resources.PredictorResources(0),
         )
 
@@ -1252,11 +1252,11 @@ class TestPredictor:
         # back typed; an unset config puts nothing on the wire.
         self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
         mocker.patch(
-            "hsml.deployment.predictor.Predictor._validate_serving_tool",
+            "hsml.predictor.Predictor._validate_serving_tool",
             return_value=PREDICTOR.SERVING_TOOL_KSERVE,
         )
         mocker.patch(
-            "hsml.deployment.predictor.Predictor._validate_resources",
+            "hsml.predictor.Predictor._validate_resources",
             return_value=resources.PredictorResources(0),
         )
 
@@ -1300,11 +1300,11 @@ class TestPredictor:
         # Git metadata should survive serialisation for git-backed agent deployments.
         self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
         mocker.patch(
-            "hsml.deployment.predictor.Predictor._validate_serving_tool",
+            "hsml.predictor.Predictor._validate_serving_tool",
             return_value=PREDICTOR.SERVING_TOOL_KSERVE,
         )
         mocker.patch(
-            "hsml.deployment.predictor.Predictor._validate_resources",
+            "hsml.predictor.Predictor._validate_resources",
             return_value=resources.PredictorResources(0),
         )
 
@@ -1334,11 +1334,11 @@ class TestPredictor:
     def test_git_auto_redeploy_round_trip(self, mocker):
         self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
         mocker.patch(
-            "hsml.deployment.predictor.Predictor._validate_serving_tool",
+            "hsml.predictor.Predictor._validate_serving_tool",
             return_value=PREDICTOR.SERVING_TOOL_KSERVE,
         )
         mocker.patch(
-            "hsml.deployment.predictor.Predictor._validate_resources",
+            "hsml.predictor.Predictor._validate_resources",
             return_value=resources.PredictorResources(0),
         )
 
@@ -1362,11 +1362,11 @@ class TestPredictor:
     def test_git_state_is_read_back_but_never_sent(self, mocker):
         self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
         mocker.patch(
-            "hsml.deployment.predictor.Predictor._validate_serving_tool",
+            "hsml.predictor.Predictor._validate_serving_tool",
             return_value=PREDICTOR.SERVING_TOOL_KSERVE,
         )
         mocker.patch(
-            "hsml.deployment.predictor.Predictor._validate_resources",
+            "hsml.predictor.Predictor._validate_resources",
             return_value=resources.PredictorResources(0),
         )
 
@@ -1394,11 +1394,11 @@ class TestPredictor:
     def test_git_auto_redeploy_omitted_without_git_source(self, mocker):
         self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
         mocker.patch(
-            "hsml.deployment.predictor.Predictor._validate_serving_tool",
+            "hsml.predictor.Predictor._validate_serving_tool",
             return_value=PREDICTOR.SERVING_TOOL_KSERVE,
         )
         mocker.patch(
-            "hsml.deployment.predictor.Predictor._validate_resources",
+            "hsml.predictor.Predictor._validate_resources",
             return_value=resources.PredictorResources(0),
         )
 
@@ -2031,7 +2031,7 @@ class TestPredictorDefaultPredictor:
             predictor.Predictor.for_model(model, name="d")
 
     def test_manual_schema_must_refine_inferred(self, mocker):
-        from hsml.deployment.schema import DeploymentSchema
+        from hsml.deployment_schema import DeploymentSchema
 
         self._mock(mocker)
         captured = {}
@@ -2058,7 +2058,7 @@ class TestPredictorDefaultPredictor:
             )
 
     def test_manual_schema_carries_its_passed_features(self, mocker):
-        from hsml.deployment.schema import DeploymentSchema
+        from hsml.deployment_schema import DeploymentSchema
 
         self._mock(mocker)
         captured = {}
@@ -2149,7 +2149,7 @@ class TestPredictorDefaultPredictor:
         assert p.model_name is None and "modelName" not in p.to_dict()
 
     def test_for_feature_view_manual_schema_with_passed_features(self, mocker):
-        from hsml.deployment.schema import DeploymentSchema
+        from hsml.deployment_schema import DeploymentSchema
 
         from tests.test_deployment_schema import _fv
 
@@ -2194,7 +2194,7 @@ class TestPredictorDefaultPredictor:
 
         # mentioning the hand-over is not calling it
         script.write_text(
-            "from hsml.deployment.default_predictor import run_kserve_wrapper\n"
+            "from hsml.default_predictor import run_kserve_wrapper\n"
             "# call run_kserve_wrapper() at the end\n"
         )
         with pytest.raises(ValueError, match="run_kserve_wrapper"):
@@ -2204,7 +2204,7 @@ class TestPredictorDefaultPredictor:
 
         # a call that never runs at import time does not hand over either
         script.write_text(
-            "from hsml.deployment.default_predictor import run_kserve_wrapper\n"
+            "from hsml.default_predictor import run_kserve_wrapper\n"
             "def main():\n"
             "    run_kserve_wrapper()\n"
         )

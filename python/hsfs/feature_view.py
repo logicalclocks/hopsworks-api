@@ -4503,13 +4503,13 @@ class FeatureView:
                 Defaults to the last training dataset accessed from this view in this session.
             passed_features: Features of this view whose values clients send with each request.
             schema: A refinement of the inferred deployment schema, keeping its fields but changing types or descriptions.
-            script_file: A script subclassing `hsml.deployment.default_predictor.DefaultPredict`; it must end with the `run_kserve_wrapper()` hand-over.
+            script_file: A script subclassing `hsml.default_predictor.DefaultPredict`; it must end with the `run_kserve_wrapper()` hand-over.
             resources: Resources to be allocated for the predictor.
             scaling_configuration: Scaling configuration for the predictor.
             environment: The inference environment to use.
             env_vars: Environment variables to set on the predictor.
             tags: Tags to attach to the deployment when it is created.
-            feature_logging: Feature logging configuration for the predictor and its feature-log sidecar, a [`DeploymentLoggingConfig`][hsml.deployment.logging_config.DeploymentLoggingConfig] or an equivalent dict.
+            feature_logging: Feature logging configuration for the predictor and its feature-log sidecar, a [`DeploymentLoggingConfig`][hsml.deployment_logging_config.DeploymentLoggingConfig] or an equivalent dict.
 
         Returns:
             The deployment metadata object, created but not started.
@@ -4520,7 +4520,7 @@ class FeatureView:
         """
         # Lazy import: hsml is a sibling SDK package and the rest of hsfs imports it
         # the same way (see explicit_provenance.py).
-        from hsml.deployment.predictor import Predictor
+        from hsml.predictor import Predictor
 
         predictor = Predictor.for_feature_view(
             self,

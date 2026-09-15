@@ -221,7 +221,7 @@ class TestModel:
         ][0]
         mock_predictor = mocker.Mock()
         mock_predictor_for_model = mocker.patch(
-            "hsml.deployment.predictor.Predictor.for_model", return_value=mock_predictor
+            "hsml.predictor.Predictor.for_model", return_value=mock_predictor
         )
         # params
         resources = copy.deepcopy(p_json["predictor_resources"])
@@ -285,7 +285,7 @@ class TestModel:
         m_json = backend_fixtures["model"]["get_python"]["response"]["items"][0]
         mock_predictor = mocker.Mock()
         mock_predictor_for_model = mocker.patch(
-            "hsml.deployment.predictor.Predictor.for_model", return_value=mock_predictor
+            "hsml.predictor.Predictor.for_model", return_value=mock_predictor
         )
         env_vars = {"FOO": "bar", "BAZ": "qux"}
 
@@ -302,7 +302,7 @@ class TestModel:
         m_json = backend_fixtures["model"]["get_python"]["response"]["items"][0]
         mock_predictor = mocker.Mock()
         mock_predictor_for_model = mocker.patch(
-            "hsml.deployment.predictor.Predictor.for_model", return_value=mock_predictor
+            "hsml.predictor.Predictor.for_model", return_value=mock_predictor
         )
         tags = {"owner": "team-a"}
 

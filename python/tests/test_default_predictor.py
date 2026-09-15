@@ -26,8 +26,8 @@ from hopsworks_common.client.exceptions import (
     FeatureStoreException,
     ModelServingException,
 )
-from hsml.deployment import default_predictor as dp
-from hsml.deployment.schema import DeploymentSchema
+from hsml import default_predictor as dp
+from hsml.deployment_schema import DeploymentSchema
 
 
 def _status(err):
@@ -550,7 +550,7 @@ class TestPredict:
 
     def test_grpc_feature_view_deployment_returns_vector_tensors(self, pod_env):
         from hopsworks_common.client.istio.utils.infer_type import InferInput
-        from hsml.deployment.schema import _decode_outputs
+        from hsml.deployment_schema import _decode_outputs
 
         predictor = dp.DefaultPredict(FakeDeployment(_schema(), FakeFeatureView()))
 
@@ -862,7 +862,7 @@ class TestWrapperHandover:
         import importlib.util
         import sys
 
-        monkeypatch.setitem(sys.modules, "hsml.deployment.default_predictor", None)
+        monkeypatch.setitem(sys.modules, "hsml.default_predictor", None)
         monkeypatch.setitem(sys.modules, "hsml.default_predictor", dp)
         stub = tmp_path / "default_predictor.py"
         stub.write_text(dp.STUB_SCRIPT)
@@ -1340,7 +1340,7 @@ def test_a_backlog_never_exceeds_the_receivers_row_limit(pod_env, monkeypatch):
 
 def test_a_request_larger_than_the_row_limit_is_logged_in_slices():
     import pandas as pd
-    from hsml.deployment.default_predictor import _int_or_none, _row_slices
+    from hsml.default_predictor import _int_or_none, _row_slices
 
     rows = [{"id": i} for i in range(5)]
     vectors = pd.DataFrame({"f": range(5)})
@@ -1359,7 +1359,7 @@ def test_coalesced_requests_share_one_reservation(monkeypatch):
         _active_reservation,
         _BufferBudget,
     )
-    from hsml.deployment.default_predictor import _LogWorker
+    from hsml.default_predictor import _LogWorker
 
     seen = []
 

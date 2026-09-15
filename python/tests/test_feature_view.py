@@ -2130,9 +2130,7 @@ class TestFeatureViewDeploy:
         fv = feature_view.FeatureView(
             name="fv", featurestore_id=99, query=fg.select_all(), version=2, labels=[]
         )
-        for_feature_view = mocker.patch(
-            "hsml.deployment.predictor.Predictor.for_feature_view"
-        )
+        for_feature_view = mocker.patch("hsml.predictor.Predictor.for_feature_view")
 
         result = fv.deploy(
             name="d",

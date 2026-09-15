@@ -20,9 +20,9 @@ from typing import TYPE_CHECKING, Any
 from hopsworks_apigen import public
 from hopsworks_common import client, usage, util
 from hopsworks_common.client.exceptions import ModelServingException
+from hsml import predictor as predictor_mod
 from hsml.constants import DEPLOYABLE_COMPONENT, MODEL_SERVING, PREDICTOR_STATE
 from hsml.core import model_api, serving_api
-from hsml.deployment import predictor as predictor_mod
 from hsml.engine import serving_engine
 
 
@@ -31,15 +31,15 @@ if TYPE_CHECKING:
 
     from hsfs.core.feature_monitoring_config import FeatureMonitoringConfig
     from hsml.client.istio.utils.infer_type import InferInput
-    from hsml.deployment.inference_batcher import InferenceBatcher
-    from hsml.deployment.inference_logger import InferenceLogger
-    from hsml.deployment.logging_config import DeploymentLoggingConfig
-    from hsml.deployment.predictor_state import PredictorState
-    from hsml.deployment.resources import Resources
-    from hsml.deployment.scaling_config import PredictorScalingConfig
-    from hsml.deployment.schema import DeploymentSchema
-    from hsml.deployment.tracing_config import DeploymentTracingConfig
-    from hsml.deployment.transformer import Transformer
+    from hsml.deployment_logging_config import DeploymentLoggingConfig
+    from hsml.deployment_schema import DeploymentSchema
+    from hsml.deployment_tracing_config import DeploymentTracingConfig
+    from hsml.inference_batcher import InferenceBatcher
+    from hsml.inference_logger import InferenceLogger
+    from hsml.predictor_state import PredictorState
+    from hsml.resources import Resources
+    from hsml.scaling_config import PredictorScalingConfig
+    from hsml.transformer import Transformer
 
 
 def _warn_opensearch_source_deprecated() -> None:
@@ -464,7 +464,7 @@ class Deployment:
         Raises:
             hopsworks.client.exceptions.ModelServingException: If the deployment is not served by the default predictor and has no schema to refine.
         """
-        from hsml.deployment.schema import (
+        from hsml.deployment_schema import (
             OUTPUT_FEATURE_VECTORS,
             OUTPUT_PREDICTIONS,
             _infer_deployment_schema,
@@ -1048,7 +1048,7 @@ class Deployment:
     @public
     @property
     def schema(self):
-        """Deployment schema, or `None`; see [`Predictor.schema`][hsml.deployment.predictor.Predictor.schema]."""
+        """Deployment schema, or `None`; see [`Predictor.schema`][hsml.predictor.Predictor.schema]."""
         return self._predictor.schema
 
     @schema.setter

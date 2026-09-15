@@ -18,9 +18,8 @@ import copy
 
 import humps
 import pytest
-from hsml import kafka_topic
+from hsml import inference_logger, kafka_topic
 from hsml.constants import DEFAULT, INFERENCE_LOGGER
-from hsml.deployment import inference_logger
 
 
 class TestInferenceLogger:
@@ -31,7 +30,7 @@ class TestInferenceLogger:
         json = backend_fixtures["inference_logger"]["get_mode_all"]["response"]
         json_camelized = humps.camelize(json)  # as returned by the backend
         mock_il_from_json = mocker.patch(
-            "hsml.deployment.inference_logger.InferenceLogger.from_json"
+            "hsml.inference_logger.InferenceLogger.from_json"
         )
 
         # Act
@@ -49,7 +48,7 @@ class TestInferenceLogger:
         ]
         json_camelized = humps.camelize(json)  # as returned by the backend
         mock_il_from_json = mocker.patch(
-            "hsml.deployment.inference_logger.InferenceLogger.from_json"
+            "hsml.inference_logger.InferenceLogger.from_json"
         )
 
         # Act
@@ -64,11 +63,11 @@ class TestInferenceLogger:
         # Arrange
         json = backend_fixtures["inference_logger"]["get_mode_all"]["response"]
         mock_il_extract_fields = mocker.patch(
-            "hsml.deployment.inference_logger.InferenceLogger.extract_fields_from_json",
+            "hsml.inference_logger.InferenceLogger.extract_fields_from_json",
             return_value=json,
         )
         mock_il_init = mocker.patch(
-            "hsml.deployment.inference_logger.InferenceLogger.__init__",
+            "hsml.inference_logger.InferenceLogger.__init__",
             return_value=None,
         )
 
@@ -85,11 +84,11 @@ class TestInferenceLogger:
             "response"
         ]
         mock_il_extract_fields = mocker.patch(
-            "hsml.deployment.inference_logger.InferenceLogger.extract_fields_from_json",
+            "hsml.inference_logger.InferenceLogger.extract_fields_from_json",
             return_value=json,
         )
         mock_il_init = mocker.patch(
-            "hsml.deployment.inference_logger.InferenceLogger.__init__",
+            "hsml.inference_logger.InferenceLogger.__init__",
             return_value=None,
         )
 
@@ -105,7 +104,7 @@ class TestInferenceLogger:
     def test_constructor_default(self, mocker):
         # Arrange
         mock_il_validate_mode = mocker.patch(
-            "hsml.deployment.inference_logger.InferenceLogger._validate_mode",
+            "hsml.inference_logger.InferenceLogger._validate_mode",
             return_value=INFERENCE_LOGGER.MODE_ALL,
         )
         default_kt = kafka_topic.KafkaTopic()
@@ -134,7 +133,7 @@ class TestInferenceLogger:
         # Arrange
         json = backend_fixtures["inference_logger"]["get_mode_all"]["init_args"]
         mock_il_validate_mode = mocker.patch(
-            "hsml.deployment.inference_logger.InferenceLogger._validate_mode",
+            "hsml.inference_logger.InferenceLogger._validate_mode",
             return_value=json["mode"],
         )
         default_kt = kafka_topic.KafkaTopic()
@@ -161,7 +160,7 @@ class TestInferenceLogger:
         # Arrange
         json = backend_fixtures["inference_logger"]["get_mode_inputs"]["init_args"]
         mock_il_validate_mode = mocker.patch(
-            "hsml.deployment.inference_logger.InferenceLogger._validate_mode",
+            "hsml.inference_logger.InferenceLogger._validate_mode",
             return_value=json["mode"],
         )
         default_kt = kafka_topic.KafkaTopic()
@@ -188,7 +187,7 @@ class TestInferenceLogger:
         # Arrange
         json = backend_fixtures["inference_logger"]["get_mode_outputs"]["init_args"]
         mock_il_validate_mode = mocker.patch(
-            "hsml.deployment.inference_logger.InferenceLogger._validate_mode",
+            "hsml.inference_logger.InferenceLogger._validate_mode",
             return_value=json["mode"],
         )
         default_kt = kafka_topic.KafkaTopic()
@@ -218,7 +217,7 @@ class TestInferenceLogger:
         ]
         json_copy = copy.deepcopy(json)
         mock_il_validate_mode = mocker.patch(
-            "hsml.deployment.inference_logger.InferenceLogger._validate_mode",
+            "hsml.inference_logger.InferenceLogger._validate_mode",
             return_value=json["mode"],
         )
         kt = kafka_topic.KafkaTopic(json["kafka_topic"]["name"])
@@ -248,7 +247,7 @@ class TestInferenceLogger:
         ]
         json_copy = copy.deepcopy(json)
         mock_il_validate_mode = mocker.patch(
-            "hsml.deployment.inference_logger.InferenceLogger._validate_mode",
+            "hsml.inference_logger.InferenceLogger._validate_mode",
             return_value=json["mode"],
         )
         kt = kafka_topic.KafkaTopic(json["kafka_topic"]["name"])
@@ -278,7 +277,7 @@ class TestInferenceLogger:
         ]
         json_copy = copy.deepcopy(json)
         mock_il_validate_mode = mocker.patch(
-            "hsml.deployment.inference_logger.InferenceLogger._validate_mode",
+            "hsml.inference_logger.InferenceLogger._validate_mode",
             return_value=json["mode"],
         )
         kt = kafka_topic.KafkaTopic(json["kafka_topic"]["name"])
@@ -308,7 +307,7 @@ class TestInferenceLogger:
         ]
         json_copy = copy.deepcopy(json)
         mock_il_validate_mode = mocker.patch(
-            "hsml.deployment.inference_logger.InferenceLogger._validate_mode",
+            "hsml.inference_logger.InferenceLogger._validate_mode",
             return_value=json["mode"],
         )
         kt = kafka_topic.KafkaTopic(json["kafka_topic"]["name"])

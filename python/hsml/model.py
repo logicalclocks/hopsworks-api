@@ -29,23 +29,23 @@ from hopsworks_common import client, tag, usage, util
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
 from hopsworks_common.constants import MODEL_REGISTRY
 from hsml.core import explicit_provenance
-from hsml.deployment.predictor import Predictor
 from hsml.engine import model_engine
 from hsml.model_schema import ModelSchema
+from hsml.predictor import Predictor
 from hsml.schema import Schema
 
 
 if TYPE_CHECKING:
     from hsfs import feature_view
     from hsfs.core.feature_monitoring_config import FeatureMonitoringConfig
-    from hsml.deployment import deployment
-    from hsml.deployment.inference_batcher import InferenceBatcher
-    from hsml.deployment.inference_logger import InferenceLogger
-    from hsml.deployment.logging_config import DeploymentLoggingConfig
-    from hsml.deployment.resources import PredictorResources
-    from hsml.deployment.scaling_config import PredictorScalingConfig
-    from hsml.deployment.schema import DeploymentSchema
-    from hsml.deployment.transformer import Transformer
+    from hsml import deployment
+    from hsml.deployment_logging_config import DeploymentLoggingConfig
+    from hsml.deployment_schema import DeploymentSchema
+    from hsml.inference_batcher import InferenceBatcher
+    from hsml.inference_logger import InferenceLogger
+    from hsml.resources import PredictorResources
+    from hsml.scaling_config import PredictorScalingConfig
+    from hsml.transformer import Transformer
 
 
 _logger = logging.getLogger(__name__)
@@ -460,7 +460,7 @@ class Model:
                 Only with the default predictor.
             default_predictor: `None` selects the default predictor automatically for Python models with a feature view and no script,
                 `True` requires it (also for sklearn models, and together with a `script_file` that subclasses it), `False` never uses it.
-            feature_logging: Feature logging configuration for the predictor and its feature-log sidecar; see [`DeploymentLoggingConfig`][hsml.deployment.logging_config.DeploymentLoggingConfig].
+            feature_logging: Feature logging configuration for the predictor and its feature-log sidecar; see [`DeploymentLoggingConfig`][hsml.deployment_logging_config.DeploymentLoggingConfig].
                 Fields left unset keep the platform defaults.
             knative_mode: Whether to deploy in KServe Knative mode.
                 `None` (default) lets the backend decide: LLM (vLLM) deployments default to Standard, every other deployment defaults to Knative mode; on an update, `None` keeps the deployment's current mode.

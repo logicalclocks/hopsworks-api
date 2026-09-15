@@ -15,7 +15,7 @@
 #
 
 import pytest
-from hsml.deployment.logging_config import DeploymentLoggingConfig
+from hsml.deployment_logging_config import DeploymentLoggingConfig
 
 
 class TestDeploymentLoggingConfig:
@@ -128,7 +128,7 @@ class TestFeatureLoggingMarker:
         )
 
     def test_the_marker_takes_the_views_transport(self):
-        from hsml.deployment.predictor import _mark_feature_logging
+        from hsml.predictor import _mark_feature_logging
 
         kwargs = {"feature_logging": DeploymentLoggingConfig(batch_seconds=2)}
         _mark_feature_logging(kwargs, self._view("job"))
@@ -141,7 +141,7 @@ class TestFeatureLoggingMarker:
         assert as_dict["feature_logging"]["transport"] == "realtime"
 
     def test_a_conflicting_deployment_transport_is_refused(self):
-        from hsml.deployment.predictor import _mark_feature_logging
+        from hsml.predictor import _mark_feature_logging
 
         kwargs = {"feature_logging": DeploymentLoggingConfig(transport="job")}
         with pytest.raises(ValueError, match="one transport"):
@@ -153,7 +153,7 @@ class TestFeatureLoggingMarker:
 
     def test_a_dictionary_transport_is_read_the_way_the_config_reads_it(self):
         """`DeploymentLoggingConfig` lowercases its transport, so the check has to."""
-        from hsml.deployment.predictor import _mark_feature_logging
+        from hsml.predictor import _mark_feature_logging
 
         kwargs = {"feature_logging": {"transport": " JOB "}}
         _mark_feature_logging(kwargs, self._view("job"))
@@ -164,9 +164,12 @@ class TestFeatureLoggingMarker:
             )
 
     def test_job_only_fields_are_refused_on_a_realtime_view(self):
-        """The constructor only sees them when the caller spelled the transport;
-        on a realtime view they would otherwise be accepted and do nothing."""
-        from hsml.deployment.predictor import _mark_feature_logging
+        """Job-only fields are inert on a realtime view.
+
+        The constructor only sees them when the caller spelled the transport, so
+        without this they would be accepted and quietly do nothing.
+        """
+        from hsml.predictor import _mark_feature_logging
 
         with pytest.raises(ValueError, match="would do nothing"):
             _mark_feature_logging(
@@ -185,7 +188,7 @@ class TestFeatureLoggingMarker:
     def test_a_view_without_logging_gets_no_marker(self):
         from types import SimpleNamespace
 
-        from hsml.deployment.predictor import _mark_feature_logging
+        from hsml.predictor import _mark_feature_logging
 
         kwargs = {}
         _mark_feature_logging(kwargs, SimpleNamespace(logging_enabled=False))
