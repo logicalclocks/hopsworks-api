@@ -878,7 +878,7 @@ class FeatureMonitoringConfigEngine:
 
         from hsfs import feature_group as _fg_mod
 
-        if isinstance(entity, _fg_mod.FeatureGroup):
+        if isinstance(entity, _fg_mod.FeatureGroupBase):
             feature = entity.get_feature(event_time_name)
             if feature is None:
                 raise FeatureStoreException(

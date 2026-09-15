@@ -2845,7 +2845,7 @@ class FeatureGroupBase:
     def compute_statistics(self) -> None:
         """Recompute the statistics for the feature group and save them to the feature store.
 
-        Statistics are only computed for data in the offline storage of the feature group.
+        Statistics are computed on the offline storage of the feature group, or on the external source for external feature groups.
 
         Example:
             ```python

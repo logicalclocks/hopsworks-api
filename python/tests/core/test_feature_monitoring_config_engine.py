@@ -618,6 +618,24 @@ class TestFeatureMonitoringConfigEngine:
         assert resolved is not None
         assert resolved.name == "intt"
 
+    def test_resolve_event_time_feature_on_external_feature_group(
+        self, backend_fixtures
+    ):
+        from hsfs import feature_group as feature_group_mod
+
+        config_engine = feature_monitoring_config_engine.FeatureMonitoringConfigEngine(
+            feature_store_id=DEFAULT_FEATURE_STORE_ID,
+            feature_group_id=DEFAULT_FEATURE_GROUP_ID,
+        )
+        fg = feature_group_mod.ExternalFeatureGroup.from_response_json(
+            backend_fixtures["external_feature_group"]["get"]["response"]
+        )
+
+        resolved = config_engine._resolve_event_time_feature(fg, fg.event_time)
+
+        assert resolved is not None
+        assert resolved.name == "datet"
+
     def test_resolve_event_time_feature_on_feature_group_missing_raises(
         self, backend_fixtures
     ):

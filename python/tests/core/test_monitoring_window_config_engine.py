@@ -1273,3 +1273,137 @@ class TestMergeDispatch:
         assert not resolve_mock.called, (
             "cap reached — must fall back before even invoking the merger"
         )
+
+
+# ---------------------------------------------------------------------------
+# Entities without a commit history (external feature groups, no time travel)
+# ---------------------------------------------------------------------------
+
+
+def _make_external_fg(backend_fixtures):
+    fg = feature_group.ExternalFeatureGroup.from_response_json(
+        backend_fixtures["external_feature_group"]["get"]["response"]
+    )
+    fg._feature_store_id = 1
+    return fg
+
+
+class TestEntitiesWithoutCommitHistory:
+    """Windows on entities without a commit history read the latest snapshot.
+
+    The built-in ingestion_stats config runs on external feature groups from a
+    manual trigger only, so the window engine must read their latest snapshot and
+    register statistics without commit bounds.
+    """
+
+    def test_reads_by_commit_time(self, backend_fixtures):
+        assert mwce._reads_by_commit_time(_make_fv_entity())
+        assert mwce._reads_by_commit_time(_make_hudi_fg("HUDI"))
+        assert mwce._reads_by_commit_time(_make_hudi_fg("DELTA"))
+        assert mwce._reads_by_commit_time(_make_hudi_fg("ICEBERG"))
+        assert not mwce._reads_by_commit_time(_make_hudi_fg(None))
+        assert not mwce._reads_by_commit_time(_make_external_fg(backend_fixtures))
+
+    def test_external_fg_dispatches_to_feature_group_fetch(
+        self, backend_fixtures, mocker
+    ):
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        mocker.patch("hopsworks_common.client._get_instance")
+        fetch_fg = mocker.patch(
+            "hsfs.core.monitoring_window_config_engine.MonitoringWindowConfigEngine._fetch_feature_group_data",
+        )
+        fetch_fv = mocker.patch(
+            "hsfs.core.monitoring_window_config_engine.MonitoringWindowConfigEngine._fetch_feature_view_data",
+        )
+        external_fg = _make_external_fg(backend_fixtures)
+
+        mwce.MonitoringWindowConfigEngine()._fetch_entity_data_in_monitoring_window(
+            entity=external_fg,
+            feature_names=["intt"],
+            start_time=None,
+            end_time=123,
+            row_percentage=1.0,
+        )
+
+        fetch_fg.assert_called_once_with(
+            entity=external_fg,
+            feature_names=["intt"],
+            start_time=None,
+            end_time=123,
+            model_filter=None,
+            event_time_feature=None,
+        )
+        fetch_fv.assert_not_called()
+
+    @pytest.mark.parametrize("entity_kind", ["external", "no_time_travel"])
+    def test_fetch_feature_group_data_reads_snapshot_without_as_of(
+        self, backend_fixtures, mocker, entity_kind
+    ):
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        if entity_kind == "external":
+            entity = _make_external_fg(backend_fixtures)
+        else:
+            entity = _make_hudi_fg(None)
+        selected = MagicMock()
+        entity.select = MagicMock(return_value=selected)
+        end_time = int(datetime.now().timestamp() * 1000)
+
+        mwce.MonitoringWindowConfigEngine()._fetch_feature_group_data(
+            entity=entity,
+            feature_names=["intt"],
+            start_time=None,
+            end_time=end_time,
+        )
+
+        entity.select.assert_called_once_with(features=["intt"])
+        selected.read.assert_called_once_with()
+        selected.as_of.assert_not_called()
+
+    def test_run_single_window_monitoring_skips_lookup_and_commit_bounds(
+        self, backend_fixtures, mocker
+    ):
+        external_fg = _make_external_fg(backend_fixtures)
+        window_config = mwc.MonitoringWindowConfig(
+            window_config_type=mwc.WindowConfigType.ALL_TIME,
+            row_percentage=1.0,
+        )
+        engine = mwce.MonitoringWindowConfigEngine()
+        mocker.patch.object(engine, "_init_statistics_engine")
+        stats_engine_mock = MagicMock()
+        registered = MagicMock()
+        registered.feature_descriptive_statistics = [
+            FeatureDescriptiveStatistics(feature_name="intt", count=4)
+        ]
+        stats_engine_mock._compute_and_save_monitoring_statistics.return_value = (
+            registered
+        )
+        engine._statistics_engine = stats_engine_mock
+        fetch_mock = mocker.patch.object(
+            engine, "_fetch_entity_data_in_monitoring_window"
+        )
+
+        result = engine._run_single_window_monitoring(
+            entity=external_fg,
+            monitoring_window_config=window_config,
+            feature_names=["intt"],
+        )
+
+        assert result == registered.feature_descriptive_statistics
+        stats_engine_mock._get_by_time_window.assert_not_called()
+        fetch_mock.assert_called_once()
+        assert fetch_mock.call_args.kwargs["end_time"] is not None
+        save_kwargs = (
+            stats_engine_mock._compute_and_save_monitoring_statistics.call_args.kwargs
+        )
+        assert save_kwargs["window_start_commit_time"] is None
+        assert save_kwargs["window_end_commit_time"] is None
+        assert save_kwargs["window_end_event_time"] is None
+        assert save_kwargs["event_time"] is None
+
+    def test_should_use_merge_path_false_for_external_fg(self, backend_fixtures):
+        engine = mwce.MonitoringWindowConfigEngine()
+        flags = {"kll": True, "for_distribution_comparison": True}
+
+        assert not engine._should_use_merge_path(
+            _make_external_fg(backend_fixtures), _make_rolling_window_config(), flags
+        )
