@@ -13,7 +13,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import pandas as pd
 import pytest
@@ -284,3 +284,52 @@ class TestArrowTable:
         import pyarrow.parquet as pq
 
         assert pq.read_table(path).num_rows == 2
+
+
+class TestPassthroughColumns:
+    """Training data is built from a labels frame, so the spine has to carry the labels."""
+
+    def _frame(self):
+        return pd.DataFrame(
+            [
+                {
+                    "country": "SE",
+                    "city": "Stockholm",
+                    "street": "Sveavagen",
+                    "date": datetime(2026, 3, 1),
+                    "label": 1.0,
+                }
+            ]
+        )
+
+    def test_a_column_the_view_does_not_define_is_refused_by_default(
+        self, feature_view
+    ):
+        # Inference has no labels, so an unrecognised column is still a mistake worth catching.
+        with pytest.raises(FeatureStoreException, match="match nothing"):
+            InferenceSpine(feature_view, self._frame(), None)
+
+    def test_passthrough_carries_it_and_marks_it_on_the_wire(self, feature_view):
+        spine = InferenceSpine(
+            feature_view, self._frame(), None, allow_passthrough=True
+        )
+        columns = {c["name"]: c for c in spine.to_dict()["columns"]}
+        assert columns["label"]["passthrough"] is True
+        assert columns["label"]["type"] == "double"
+        # Columns the view does define are untouched by the flag.
+        assert "passthrough" not in columns["city"]
+
+    def test_passthrough_types_come_from_the_frame(self, feature_view):
+        frame = self._frame()
+        frame["fold"] = pd.Series([3], dtype="int64")
+        frame["note"] = "a"
+        spine = InferenceSpine(feature_view, frame, None, allow_passthrough=True)
+        columns = {c["name"]: c for c in spine.to_dict()["columns"]}
+        assert columns["fold"]["type"] == "bigint"
+        assert columns["note"]["type"] == "string"
+
+    def test_the_row_id_is_still_refused_even_with_passthrough(self, feature_view):
+        frame = self._frame()
+        frame[ROW_ID_COLUMN] = 0
+        with pytest.raises(FeatureStoreException, match="match nothing"):
+            InferenceSpine(feature_view, frame, None, allow_passthrough=True)

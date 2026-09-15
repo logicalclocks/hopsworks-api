@@ -4918,3 +4918,56 @@ class TestReadWithSpine:
         spark_engine._drop_spine_temporary_view.assert_called_once_with(
             "__hopsworks_spine_3f9a"
         )
+
+
+class TestTrainingSpine:
+    """`serving_keys` re-anchors a training-data call the same way it does a batch read."""
+
+    def _engine(self):
+        return feature_view_engine.FeatureViewEngine(feature_store_id=99)
+
+    def test_no_serving_keys_means_no_spine(self):
+        assert self._engine()._training_spine(MagicMock(), None, None) is None
+
+    def test_spine_and_serving_keys_together_are_refused(self):
+        # They both replace the left side of the query, so one call cannot mean both.
+        with pytest.raises(FeatureStoreException, match="one or the other"):
+            self._engine()._training_spine(
+                MagicMock(), pd.DataFrame([{"a": 1}]), MagicMock()
+            )
+
+    def test_passthrough_is_on_for_training(self, mocker):
+        # A labels frame carries columns the view does not define; refusing them would defeat
+        # the purpose, which is why training differs from get_batch_data here.
+        built = mocker.patch("hsfs.core.feature_view_engine.InferenceSpine")
+        fv = MagicMock()
+        frame = pd.DataFrame([{"a": 1}])
+        self._engine()._training_spine(fv, frame, None)
+        built.assert_called_once_with(fv, frame, None, allow_passthrough=True)
+
+    def test_materialisation_keeps_the_staged_file(self, mocker):
+        # The Spark job reads the spine after the call returns, so deleting it here would race.
+        mocker.patch(
+            "hsfs.core.feature_view_engine.engine._get_type", return_value="python"
+        )
+        dataset_api = mocker.patch(
+            "hopsworks_common.core.dataset_api.DatasetApi"
+        ).return_value
+        spine = MagicMock()
+        spine.basename = "abc.parquet"
+        with self._engine()._staged_spine(spine, keep_file=True):
+            pass
+        dataset_api.remove.assert_not_called()
+
+    def test_a_read_removes_the_staged_file(self, mocker):
+        mocker.patch(
+            "hsfs.core.feature_view_engine.engine._get_type", return_value="python"
+        )
+        dataset_api = mocker.patch(
+            "hopsworks_common.core.dataset_api.DatasetApi"
+        ).return_value
+        spine = MagicMock()
+        spine.basename = "abc.parquet"
+        with self._engine()._staged_spine(spine):
+            pass
+        dataset_api.remove.assert_called_once()

@@ -68,6 +68,22 @@ def _pyarrow_type(hive_type: str) -> Any:
     return pa.string()
 
 
+_PASSTHROUGH_TYPE = {
+    "int64": "bigint",
+    "int32": "int",
+    "int16": "smallint",
+    "int8": "tinyint",
+    "float64": "double",
+    "float32": "float",
+    "bool": "boolean",
+    "object": "string",
+    "string": "string",
+    "datetime64[ns]": "timestamp",
+    "datetime64[us]": "timestamp",
+    "datetime64[ns, UTC]": "timestamp",
+}
+
+
 class InferenceSpine:
     """The rows a batch-inference read is anchored on, in place of the root feature group.
 
@@ -81,6 +97,7 @@ class InferenceSpine:
         serving_keys: Any,
         prediction_times: PredictionTimes | list[Any] | None,
         max_feature_age: timedelta | dict[str, timedelta] | None = None,
+        allow_passthrough: bool = False,
     ) -> None:
         self._feature_view = feature_view
         self._table_name = _TABLE_PREFIX + uuid.uuid4().hex[:8]
@@ -112,9 +129,17 @@ class InferenceSpine:
         root_features = {f.name for f in root_fg.features}
         recognized = required_keys | root_features | {self._event_time}
 
+        # Training data is built from a labels frame, so columns the view does not define are
+        # carried to the output rather than refused. Inference has no labels, so it stays strict
+        # and a mistyped column is still caught before anything runs.
         unknown = [
             c for c in frame.columns if c not in recognized or c == ROW_ID_COLUMN
         ]
+        if allow_passthrough:
+            self._passthrough = [c for c in unknown if c != ROW_ID_COLUMN]
+            unknown = [c for c in unknown if c == ROW_ID_COLUMN]
+        else:
+            self._passthrough = []
         if unknown:
             raise FeatureStoreException(
                 f"`serving_keys` column(s) {sorted(unknown)} match nothing in feature view"
@@ -251,18 +276,27 @@ class InferenceSpine:
         pq.write_table(self.arrow_table(), path)
         return path
 
+    def _frame_dtype(self, column: str) -> Any:
+        return self._dataframe[column].dtype
+
     def to_dict(self) -> dict[str, Any]:
         """The wire form: the schema and where the rows are, never the rows."""
         columns = [{"name": ROW_ID_COLUMN, "type": "bigint"}]
         for column in self.supplied_columns:
-            columns.append(
-                {
-                    "name": column,
-                    "type": "timestamp"
-                    if column == self._event_time
-                    else self._types.get(column, "string"),
-                }
-            )
+            entry = {
+                "name": column,
+                "type": "timestamp"
+                if column == self._event_time
+                else self._types.get(column, "string"),
+            }
+            if column in self._passthrough:
+                # The backend has no feature to take a type from for these, so the declared one
+                # is used. It is matched against a fixed allowlist there, never rendered as given.
+                entry["type"] = _PASSTHROUGH_TYPE.get(
+                    str(self._frame_dtype(column)), "string"
+                )
+                entry["passthrough"] = True
+            columns.append(entry)
         payload: dict[str, Any] = {
             "tableName": self._table_name,
             "eventTimeColumn": self._event_time,

@@ -15,6 +15,7 @@
 #
 from __future__ import annotations
 
+import contextlib
 import datetime
 import logging
 import tempfile
@@ -489,6 +490,7 @@ class FeatureViewEngine:
         training_helper_columns=True,
         transformation_context: dict[str, Any] = None,
         lookback: Lookback | None = None,
+        serving_keys=None,
     ):
         # Build the lookback list (one entry per FG in the Query tree) from
         # the feature view's query. The backend's POST /trainingdatasets
@@ -516,6 +518,28 @@ class FeatureViewEngine:
         )
         return updated_instance, td_job
 
+    def _training_spine(self, feature_view_obj, serving_keys, spine):
+        """Build the spine a training-data call is anchored on, or None when it is not one.
+
+        Training data is built from a labels frame, so columns the view does not define are
+        carried through to the output rather than refused; `get_batch_data` stays strict because
+        inference has no labels and an unrecognised column there is a mistake.
+
+        The frame supplies the times itself, one per row under the event time column. There is no
+        cross product with a set of prediction times: a training row is one entity at one moment,
+        not an entity scored repeatedly.
+        """
+        if serving_keys is None:
+            return None
+        if spine is not None:
+            raise FeatureStoreException(
+                "`spine` replaces a SpineGroup the feature view was created with, while"
+                " `serving_keys` re-anchors the query on rows you supply. Pass one or the other."
+            )
+        return InferenceSpine(
+            feature_view_obj, serving_keys, None, allow_passthrough=True
+        )
+
     def _get_training_data(
         self,
         feature_view_obj: feature_view.FeatureView,
@@ -530,6 +554,7 @@ class FeatureViewEngine:
         dataframe_type="default",
         transformation_context: dict[str, Any] = None,
         n_processes: int | None = None,
+        serving_keys=None,
     ):
         # check if provided td version has already existed.
         if training_dataset_version:
@@ -593,6 +618,7 @@ class FeatureViewEngine:
             # picks it up. The lookback rides on the persisted training dataset
             # and comes back with `td_updated` regardless of whether we just
             # created it or fetched an existing version.
+            query_spine = self._training_spine(feature_view_obj, serving_keys, spine)
             query = self._get_batch_query(
                 feature_view_obj,
                 training_dataset_version=td_updated.version,
@@ -605,17 +631,21 @@ class FeatureViewEngine:
                 training_helper_columns=training_helper_columns,
                 spine=spine,
                 lookback=td_updated._lookback,
+                inference_spine=query_spine,
             )
-            split_df = engine._get_instance()._get_training_data(
-                td_updated,
-                feature_view_obj,
-                query,
-                read_options,
-                dataframe_type,
-                training_dataset_version,
-                transformation_context=transformation_context,
-                n_processes=n_processes,
-            )
+            with contextlib.ExitStack() as stack:
+                if query_spine is not None:
+                    stack.enter_context(self._staged_spine(query_spine))
+                split_df = engine._get_instance()._get_training_data(
+                    td_updated,
+                    feature_view_obj,
+                    query,
+                    read_options,
+                    dataframe_type,
+                    training_dataset_version,
+                    transformation_context=transformation_context,
+                    n_processes=n_processes,
+                )
             self._compute_training_dataset_statistics(
                 feature_view_obj, td_updated, split_df
             )
@@ -873,6 +903,7 @@ class FeatureViewEngine:
         event_time=False,
         training_helper_columns=False,
         transformation_context: dict[str, Any] = None,
+        serving_keys=None,
     ):
         if training_dataset_obj:
             pass
@@ -887,6 +918,9 @@ class FeatureViewEngine:
         # this method builds, so any lookback set on the TD must ride along.
         # `_create_training_dataset` puts the user-supplied Lookback on
         # `training_dataset_obj._lookback` before calling this helper.
+        materialisation_spine = self._training_spine(
+            feature_view_obj, serving_keys, spine
+        )
         batch_query = self._get_batch_query(
             feature_view_obj,
             training_dataset_obj.event_start_time,
@@ -899,6 +933,7 @@ class FeatureViewEngine:
             training_dataset_version=training_dataset_obj.version,
             spine=spine,
             lookback=getattr(training_dataset_obj, "_lookback", None),
+            inference_spine=materialisation_spine,
         )
 
         # for spark job
@@ -906,14 +941,21 @@ class FeatureViewEngine:
         user_write_options["primary_keys"] = primary_keys
         user_write_options["event_time"] = event_time
 
-        td_job = engine._get_instance()._write_training_dataset(
-            training_dataset_obj,
-            batch_query,
-            user_write_options,
-            self._OVERWRITE,
-            feature_view_obj=feature_view_obj,
-            transformation_context=transformation_context,
-        )
+        with contextlib.ExitStack() as stack:
+            if materialisation_spine is not None:
+                # The job reads the spine after this call returns, so the file outlives the
+                # request and the backend sweeper reclaims it rather than this finally block.
+                stack.enter_context(
+                    self._staged_spine(materialisation_spine, keep_file=True)
+                )
+            td_job = engine._get_instance()._write_training_dataset(
+                training_dataset_obj,
+                batch_query,
+                user_write_options,
+                self._OVERWRITE,
+                feature_view_obj=feature_view_obj,
+                transformation_context=transformation_context,
+            )
 
         # Set training dataset schema after training dataset has been generated
         training_dataset_obj.schema = self._get_training_dataset_schema(
@@ -1180,31 +1222,31 @@ class FeatureViewEngine:
 
         return batch_dataframe
 
-    def _read_with_spine(
-        self, batch_query, inference_spine, read_options, dataframe_type
-    ):
-        """Read a spine-anchored query, staging the spine where the executor can reach it.
+    @contextlib.contextmanager
+    def _staged_spine(self, inference_spine, keep_file=False):
+        """Put the spine where the executor that runs the query can reach it.
 
-        The Hopsworks Query Service reads the spine from a Parquet file under the caller's own
-        `Resources/.hopsworks_spine/`, so the backend can check the caller may read it before it
-        renders a path into SQL that runs as the superuser. The file is consumed when the query
-        service materialises its temp table, before the first batch streams, so deleting it once
-        `read` returns cannot race the scan. Spark takes a session temporary view instead and
-        needs no file.
+        The Hopsworks Query Service reads it from a Parquet file under the caller's own
+        `Resources/.hopsworks_spine/`, so the backend can check the caller may read that file
+        before it renders the path into SQL that runs as the superuser. Spark instead registers
+        the rows as a session temporary view and needs no file.
+
+        `keep_file` is for the materialisation methods, whose Spark job reads the spine long
+        after this call has returned. Those files are left for the backend's sweeper rather than
+        deleted here, because deleting them on the way out would race the job that needs them.
         """
         if engine._get_type() != "python":
             try:
-                return batch_query.read(
-                    read_options=read_options, dataframe_type=dataframe_type
-                )
+                yield
             finally:
                 # The view's name is unique per read, so leaving it registered would add one view
-                # and one cached plan to the session on every batch read. Dropping it after `read`
-                # is safe: Spark resolves the view when it analyses the statement, and the returned
-                # dataframe carries that plan rather than the catalog name.
+                # and one cached plan to the session every time. Dropping it afterwards is safe:
+                # Spark resolves the view when it analyses the statement, so the dataframe it
+                # returned carries that plan rather than the catalog name.
                 engine._get_instance()._drop_spine_temporary_view(
                     inference_spine.table_name
                 )
+            return
 
         from hopsworks_common.core.dataset_api import DatasetApi
 
@@ -1216,20 +1258,30 @@ class FeatureViewEngine:
             dataset_api.upload(local_path, SPINE_DIR, overwrite=True)
         inference_spine.parquet_staged = True
         try:
+            yield
+        finally:
+            # A return here would swallow whatever the body raised, so the cleanup is guarded
+            # by a condition rather than an early exit.
+            if not keep_file:
+                try:
+                    dataset_api.remove(f"{SPINE_DIR}/{inference_spine.basename}")
+                except Exception as e:
+                    _logger.warning(
+                        "Could not remove the inference spine file %s/%s: %s. The backend"
+                        " sweeper removes spine files left behind.",
+                        SPINE_DIR,
+                        inference_spine.basename,
+                        e,
+                    )
+
+    def _read_with_spine(
+        self, batch_query, inference_spine, read_options, dataframe_type
+    ):
+        """Read a spine-anchored query with the spine staged for the engine that runs it."""
+        with self._staged_spine(inference_spine):
             return batch_query.read(
                 read_options=read_options, dataframe_type=dataframe_type
             )
-        finally:
-            try:
-                dataset_api.remove(f"{SPINE_DIR}/{inference_spine.basename}")
-            except Exception as e:
-                _logger.warning(
-                    "Could not remove the inference spine file %s/%s: %s. The sweeper removes it"
-                    " within 24 hours.",
-                    SPINE_DIR,
-                    inference_spine.basename,
-                    e,
-                )
 
     def _transform_batch_data(self, features, transformation_functions):
         try:

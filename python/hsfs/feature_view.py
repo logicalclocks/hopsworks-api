@@ -1925,6 +1925,7 @@ class FeatureView:
         data_source: ds.DataSource | dict[str, Any] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
+        serving_keys: pd.DataFrame | None = None,
         **kwargs,
     ) -> tuple[int, job.Job]:
         """Create the metadata for a training dataset and save the corresponding training data into `location`.
@@ -2093,6 +2094,14 @@ class FeatureView:
                 Spine dataframe with primary key, event time and label column to use for point in time join when fetching features.
                 Defaults to `None` and is only required when feature view was created with spine group in the feature query.
                 It is possible to directly pass a spine group instead of a dataframe to overwrite the left side of the feature join, however, the same features as in the original feature group that is being replaced need to be available in the spine group.
+            serving_keys:
+                A dataframe of rows to build the training data from, one row per example,
+                carrying the serving keys, the event time of that example, and any label or
+                other column you want carried through to the output untouched.
+                Passing it re-anchors the query on these rows instead of on the root feature
+                group, the same way `get_batch_data` does, so the view does not have to have
+                been created with a spine group.
+                Cannot be combined with `spine`.
             transformation_context:
                 A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution.
@@ -2139,6 +2148,7 @@ class FeatureView:
             td,
             write_options or {},
             spine=spine,
+            serving_keys=serving_keys,
             transformation_context=transformation_context,
             lookback=Lookback.from_user_input(lookback),
         )
@@ -2174,6 +2184,7 @@ class FeatureView:
         data_source: ds.DataSource | dict[str, Any] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
+        serving_keys: pd.DataFrame | None = None,
         **kwargs,
     ) -> tuple[int, job.Job]:
         # TODO: Convert the docstrings from this point on:
@@ -2445,6 +2456,7 @@ class FeatureView:
             td,
             write_options or {},
             spine=spine,
+            serving_keys=serving_keys,
             transformation_context=transformation_context,
             lookback=Lookback.from_user_input(lookback),
         )
@@ -2482,6 +2494,7 @@ class FeatureView:
         data_source: ds.DataSource | dict[str, Any] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
+        serving_keys: pd.DataFrame | None = None,
         **kwargs,
     ) -> tuple[int, job.Job]:
         """Create the metadata for a training dataset and save the corresponding training data into `location`.
@@ -2746,6 +2759,7 @@ class FeatureView:
             td,
             write_options or {},
             spine=spine,
+            serving_keys=serving_keys,
             transformation_context=transformation_context,
             lookback=Lookback.from_user_input(lookback),
         )
@@ -2859,6 +2873,7 @@ class FeatureView:
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
         n_processes: int | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
+        serving_keys: pd.DataFrame | None = None,
         **kwargs,
     ) -> tuple[
         TrainingDatasetDataFrameTypes,
@@ -2997,6 +3012,7 @@ class FeatureView:
             read_options,
             training_dataset_obj=td,
             spine=spine,
+            serving_keys=serving_keys,
             primary_keys=kwargs.get("primary_keys") or primary_key,
             event_time=event_time,
             training_helper_columns=training_helper_columns,
@@ -3034,6 +3050,7 @@ class FeatureView:
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
         n_processes: int | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
+        serving_keys: pd.DataFrame | None = None,
         **kwargs,
     ) -> tuple[
         TrainingDatasetDataFrameTypes,
@@ -3193,6 +3210,7 @@ class FeatureView:
             training_dataset_obj=td,
             splits=[TrainingDatasetSplit.TRAIN, TrainingDatasetSplit.TEST],
             spine=spine,
+            serving_keys=serving_keys,
             primary_keys=kwargs.get("primary_keys") or primary_key,
             event_time=event_time,
             training_helper_columns=training_helper_columns,
@@ -3246,6 +3264,7 @@ class FeatureView:
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
         n_processes: int | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
+        serving_keys: pd.DataFrame | None = None,
         **kwargs,
     ) -> tuple[
         TrainingDatasetDataFrameTypes,
@@ -3432,6 +3451,7 @@ class FeatureView:
                 TrainingDatasetSplit.TEST,
             ],
             spine=spine,
+            serving_keys=serving_keys,
             primary_keys=kwargs.get("primary_keys") or primary_key,
             event_time=event_time,
             training_helper_columns=training_helper_columns,
