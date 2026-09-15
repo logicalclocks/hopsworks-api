@@ -2808,7 +2808,7 @@ class Engine:
             constants.FEATURE_LOGGING.MODEL_VERSION_COLUMN_NAME,
             lit(model_version).cast(StringType()),
         )
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         logging_df = logging_df.withColumn(
             time_col_name, lit(now).cast(TimestampType())
         )

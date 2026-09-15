@@ -2337,7 +2337,7 @@ class Engine:
             size = 1
             batch = False
 
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         metadata = {
             td_col_name: [
                 training_dataset_version if training_dataset_version else pd.NA

@@ -591,6 +591,55 @@ class TestGetWindowStartEndTimesAnchor:
             anchor_end_ms=anchor_ms,
         )
 
+    def test_run_single_window_monitoring_returns_only_requested_features(self, mocker):
+        """Only the requested features come back from a merged statistics row.
+
+        Statistics registered on a window that already has a row come back merged
+        with the features other configs registered there.
+        """
+        engine = mwce.MonitoringWindowConfigEngine()
+        config = mwc.MonitoringWindowConfig(
+            window_config_type=mwc.WindowConfigType.ROLLING_TIME,
+            time_offset="1d",
+            row_percentage=1.0,
+        )
+        fg = MagicMock(spec=feature_group.FeatureGroup)
+        fg._feature_store_id = 1
+        fg.ENTITY_TYPE = "featuregroups"
+        fg.time_travel_format = "DELTA"
+
+        mocker.patch.object(engine, "_init_statistics_engine")
+        stats_engine_mock = MagicMock()
+        engine._statistics_engine = stats_engine_mock
+        merged_stats = MagicMock()
+        merged_stats.feature_descriptive_statistics = [
+            FeatureDescriptiveStatistics(
+                feature_name="sepal_length", feature_type="Fractional", count=4
+            ),
+            FeatureDescriptiveStatistics(
+                feature_name="sepal_width", feature_type="Fractional", count=4
+            ),
+        ]
+        stats_engine_mock._compute_and_save_monitoring_statistics.return_value = (
+            merged_stats
+        )
+        mocker.patch.object(
+            engine,
+            "_fetch_entity_data_in_monitoring_window",
+            return_value=MagicMock(),
+        )
+
+        result = engine._run_single_window_monitoring(
+            entity=fg,
+            monitoring_window_config=config,
+            feature_names=["sepal_width"],
+            end_commit_time_override=1788969469391,
+            model_filter=("xgboost_mm", 1),
+        )
+
+        assert [fds.feature_name for fds in result] == ["sepal_width"]
+        stats_engine_mock._get_by_time_window.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # KLL-merge dispatch tests

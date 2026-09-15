@@ -7468,6 +7468,39 @@ class TestSpark:
             .collect()
         )
 
+    def test_get_feature_logging_df_log_time_is_utc(
+        self, mocker, logging_features, logging_test_dataframe, spark_engine
+    ):
+        # Prepare
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+
+        logging_features, meta_data_logging_columns, column_names = logging_features
+        args = TestSpark.get_logging_arguments(
+            logging_data=logging_test_dataframe,
+            logging_feature_group_features=meta_data_logging_columns + logging_features,
+            column_names=column_names,
+        )
+        before = datetime.datetime.now(datetime.timezone.utc).timestamp()
+
+        # Act
+        logging_dataframe, _, _ = spark_engine._get_feature_logging_df(**args)
+        # Compare the stored instant rather than a collected datetime: the epoch
+        # of a TimestampType column is independent of the session and driver
+        # timezones, so the assertion holds wherever the suite runs.
+        log_epochs = [
+            row[0]
+            for row in logging_dataframe.selectExpr(
+                f"unix_timestamp({constants.FEATURE_LOGGING.LOG_TIME_COLUMN_NAME})"
+            ).collect()
+        ]
+
+        # Assert
+        after = datetime.datetime.now(datetime.timezone.utc).timestamp()
+        assert len(log_epochs) == 3
+        for log_epoch in log_epochs:
+            assert before - 5 <= log_epoch <= after + 5
+
     def test_get_feature_logging_df_logging_data_no_missing_no_additional_list(
         self, mocker, logging_features, logging_test_dataframe, spark_engine
     ):
