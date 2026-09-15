@@ -499,7 +499,7 @@ class FeatureViewEngine:
         training_helper_columns=True,
         transformation_context: dict[str, Any] = None,
         lookback: Lookback | None = None,
-        serving_keys=None,
+        spine_df=None,
     ):
         # Build the lookback list (one entry per FG in the Query tree) from
         # the feature view's query. The backend's POST /trainingdatasets
@@ -527,7 +527,7 @@ class FeatureViewEngine:
         )
         return updated_instance, td_job
 
-    def _training_spine(self, feature_view_obj, serving_keys, spine):
+    def _training_spine(self, feature_view_obj, spine_df, spine):
         """Build the spine a training-data call is anchored on, or None when it is not one.
 
         Training data is built from a labels frame, so columns the view does not define are
@@ -538,15 +538,15 @@ class FeatureViewEngine:
         cross product with a set of prediction times: a training row is one entity at one moment,
         not an entity scored repeatedly.
         """
-        if serving_keys is None:
+        if spine_df is None:
             return None
         if spine is not None:
             raise FeatureStoreException(
                 "`spine` replaces a SpineGroup the feature view was created with, while"
-                " `serving_keys` re-anchors the query on rows you supply. Pass one or the other."
+                " `spine_df` re-anchors the query on rows you supply. Pass one or the other."
             )
         return InferenceSpine(
-            feature_view_obj, serving_keys, None, allow_passthrough=True
+            feature_view_obj, spine_df, None, allow_passthrough=True
         )
 
     def _get_training_data(
@@ -563,7 +563,7 @@ class FeatureViewEngine:
         dataframe_type="default",
         transformation_context: dict[str, Any] = None,
         n_processes: int | None = None,
-        serving_keys=None,
+        spine_df=None,
     ):
         # check if provided td version has already existed.
         if training_dataset_version:
@@ -627,7 +627,7 @@ class FeatureViewEngine:
             # picks it up. The lookback rides on the persisted training dataset
             # and comes back with `td_updated` regardless of whether we just
             # created it or fetched an existing version.
-            query_spine = self._training_spine(feature_view_obj, serving_keys, spine)
+            query_spine = self._training_spine(feature_view_obj, spine_df, spine)
             query = self._get_batch_query(
                 feature_view_obj,
                 training_dataset_version=td_updated.version,
@@ -912,7 +912,7 @@ class FeatureViewEngine:
         event_time=False,
         training_helper_columns=False,
         transformation_context: dict[str, Any] = None,
-        serving_keys=None,
+        spine_df=None,
     ):
         if training_dataset_obj:
             pass
@@ -928,7 +928,7 @@ class FeatureViewEngine:
         # `_create_training_dataset` puts the user-supplied Lookback on
         # `training_dataset_obj._lookback` before calling this helper.
         materialisation_spine = self._training_spine(
-            feature_view_obj, serving_keys, spine
+            feature_view_obj, spine_df, spine
         )
         batch_query = self._get_batch_query(
             feature_view_obj,
@@ -1133,26 +1133,26 @@ class FeatureViewEngine:
         extra_filter=None,
         lookback=None,
         n_processes: int | None = None,
-        serving_keys=None,
+        spine_df=None,
         prediction_times=None,
         max_feature_age=None,
     ):
         self._check_feature_group_accessibility(feature_view_obj)
 
         inference_spine = None
-        if serving_keys is not None or prediction_times is not None:
+        if spine_df is not None or prediction_times is not None:
             if start_time is not None or end_time is not None:
                 raise FeatureStoreException(
-                    "`start_time`/`end_time` cannot be combined with `serving_keys`/`prediction_times`:"
+                    "`start_time`/`end_time` cannot be combined with `spine_df`/`prediction_times`:"
                     " the inference spine defines the time axis."
                 )
             if spine is not None:
                 raise FeatureStoreException(
                     "`spine` replaces a SpineGroup the feature view was created with, while"
-                    " `serving_keys` re-anchors the query. Pass one or the other."
+                    " `spine_df` re-anchors the query. Pass one or the other."
                 )
             inference_spine = InferenceSpine(
-                feature_view_obj, serving_keys, prediction_times, max_feature_age
+                feature_view_obj, spine_df, prediction_times, max_feature_age
             )
             # Without the keys and the prediction time the frame says nothing about which row is
             # which entity or day, so they default on. An explicit False still wins.

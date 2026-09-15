@@ -1403,7 +1403,7 @@ class FeatureView:
         extra_filter: filter.Filter | filter.Logic | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
         n_processes: int | None = None,
-        serving_keys: pd.DataFrame | pl.DataFrame | list[dict[str, Any]] | None = None,
+        spine_df: pd.DataFrame | pl.DataFrame | list[dict[str, Any]] | None = None,
         prediction_times: PredictionTimes | list[Any] | None = None,
         max_feature_age: timedelta | dict[str, timedelta] | None = None,
         **kwargs,
@@ -1464,7 +1464,7 @@ class FeatureView:
 
             # score three streets every day at 08:00 for the next 7 days
             df = feature_view.get_batch_data(
-                serving_keys=pd.DataFrame([
+                spine_df=pd.DataFrame([
                     {"country": "SE", "city": "Stockholm", "street": "Sveavagen"},
                     {"country": "SE", "city": "Stockholm", "street": "Odengatan"},
                 ]),
@@ -1532,16 +1532,16 @@ class FeatureView:
                 Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
                 When not set, the value passed to `init_batch_scoring` is used.
                 Ignored by the Spark engine, which pushes transformations down to Spark.
-            serving_keys:
+            spine_df:
                 The entities to score, one row each, carrying the feature view's required serving keys and any features of the root feature group you want to supply yourself rather than look up.
                 Every feature group whose keys are absent is skipped and its features come back as NULL, with a warning.
                 Supplying no recognized column at all is an error.
                 Passing this switches the read to ASOF batch inference: the query is anchored on these rows instead of on the root feature group, so prediction times in the future work.
             prediction_times:
-                The timestamps to score each entity at, crossed with `serving_keys`.
+                The timestamps to score each entity at, crossed with `spine_df`.
                 Accepts a [`PredictionTimes`][hsfs.constructor.prediction_times.PredictionTimes] or a bare list of timestamps.
-                Omit it only when `serving_keys` already carries the root feature group's event time column.
-                Rows come back in `serving_keys` order then ascending prediction time, so predictions zip back positionally.
+                Omit it only when `spine_df` already carries the root feature group's event time column.
+                Rows come back in `spine_df` order then ascending prediction time, so predictions zip back positionally.
             max_feature_age:
                 How stale a looked-up row may be, measured back from each prediction time.
                 A feature group whose newest row at or before the prediction time is older than this returns NULL for that row instead of a stale value.
@@ -1580,7 +1580,7 @@ class FeatureView:
             extra_filter=extra_filter,
             lookback=Lookback.from_user_input(lookback),
             n_processes=n_processes,
-            serving_keys=serving_keys,
+            spine_df=spine_df,
             prediction_times=prediction_times,
             max_feature_age=max_feature_age,
         )
@@ -1925,7 +1925,7 @@ class FeatureView:
         data_source: ds.DataSource | dict[str, Any] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
-        serving_keys: pd.DataFrame | None = None,
+        spine_df: pd.DataFrame | None = None,
         **kwargs,
     ) -> tuple[int, job.Job]:
         """Create the metadata for a training dataset and save the corresponding training data into `location`.
@@ -2094,7 +2094,7 @@ class FeatureView:
                 Spine dataframe with primary key, event time and label column to use for point in time join when fetching features.
                 Defaults to `None` and is only required when feature view was created with spine group in the feature query.
                 It is possible to directly pass a spine group instead of a dataframe to overwrite the left side of the feature join, however, the same features as in the original feature group that is being replaced need to be available in the spine group.
-            serving_keys:
+            spine_df:
                 A dataframe of rows to build the training data from, one row per example,
                 carrying the serving keys, the event time of that example, and any label or
                 other column you want carried through to the output untouched.
@@ -2148,7 +2148,7 @@ class FeatureView:
             td,
             write_options or {},
             spine=spine,
-            serving_keys=serving_keys,
+            spine_df=spine_df,
             transformation_context=transformation_context,
             lookback=Lookback.from_user_input(lookback),
         )
@@ -2184,7 +2184,7 @@ class FeatureView:
         data_source: ds.DataSource | dict[str, Any] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
-        serving_keys: pd.DataFrame | None = None,
+        spine_df: pd.DataFrame | None = None,
         **kwargs,
     ) -> tuple[int, job.Job]:
         # TODO: Convert the docstrings from this point on:
@@ -2456,7 +2456,7 @@ class FeatureView:
             td,
             write_options or {},
             spine=spine,
-            serving_keys=serving_keys,
+            spine_df=spine_df,
             transformation_context=transformation_context,
             lookback=Lookback.from_user_input(lookback),
         )
@@ -2494,7 +2494,7 @@ class FeatureView:
         data_source: ds.DataSource | dict[str, Any] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
-        serving_keys: pd.DataFrame | None = None,
+        spine_df: pd.DataFrame | None = None,
         **kwargs,
     ) -> tuple[int, job.Job]:
         """Create the metadata for a training dataset and save the corresponding training data into `location`.
@@ -2759,7 +2759,7 @@ class FeatureView:
             td,
             write_options or {},
             spine=spine,
-            serving_keys=serving_keys,
+            spine_df=spine_df,
             transformation_context=transformation_context,
             lookback=Lookback.from_user_input(lookback),
         )
@@ -2873,7 +2873,7 @@ class FeatureView:
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
         n_processes: int | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
-        serving_keys: pd.DataFrame | None = None,
+        spine_df: pd.DataFrame | None = None,
         **kwargs,
     ) -> tuple[
         TrainingDatasetDataFrameTypes,
@@ -3012,7 +3012,7 @@ class FeatureView:
             read_options,
             training_dataset_obj=td,
             spine=spine,
-            serving_keys=serving_keys,
+            spine_df=spine_df,
             primary_keys=kwargs.get("primary_keys") or primary_key,
             event_time=event_time,
             training_helper_columns=training_helper_columns,
@@ -3050,7 +3050,7 @@ class FeatureView:
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
         n_processes: int | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
-        serving_keys: pd.DataFrame | None = None,
+        spine_df: pd.DataFrame | None = None,
         **kwargs,
     ) -> tuple[
         TrainingDatasetDataFrameTypes,
@@ -3210,7 +3210,7 @@ class FeatureView:
             training_dataset_obj=td,
             splits=[TrainingDatasetSplit.TRAIN, TrainingDatasetSplit.TEST],
             spine=spine,
-            serving_keys=serving_keys,
+            spine_df=spine_df,
             primary_keys=kwargs.get("primary_keys") or primary_key,
             event_time=event_time,
             training_helper_columns=training_helper_columns,
@@ -3264,7 +3264,7 @@ class FeatureView:
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
         n_processes: int | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
-        serving_keys: pd.DataFrame | None = None,
+        spine_df: pd.DataFrame | None = None,
         **kwargs,
     ) -> tuple[
         TrainingDatasetDataFrameTypes,
@@ -3451,7 +3451,7 @@ class FeatureView:
                 TrainingDatasetSplit.TEST,
             ],
             spine=spine,
-            serving_keys=serving_keys,
+            spine_df=spine_df,
             primary_keys=kwargs.get("primary_keys") or primary_key,
             event_time=event_time,
             training_helper_columns=training_helper_columns,

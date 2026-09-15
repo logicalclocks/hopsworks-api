@@ -4921,7 +4921,7 @@ class TestReadWithSpine:
 
 
 class TestTrainingSpine:
-    """`serving_keys` re-anchors a training-data call the same way it does a batch read."""
+    """`spine_df` re-anchors a training-data call the same way it does a batch read."""
 
     def _engine(self):
         return feature_view_engine.FeatureViewEngine(feature_store_id=99)

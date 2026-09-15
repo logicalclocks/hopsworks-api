@@ -87,14 +87,14 @@ _PASSTHROUGH_TYPE = {
 class InferenceSpine:
     """The rows a batch-inference read is anchored on, in place of the root feature group.
 
-    Built from an `serving_keys` frame of serving keys and passed features crossed with a set of
+    Built from an `spine_df` frame of serving keys and passed features crossed with a set of
     prediction times. Validates both against the feature view before anything is sent.
     """
 
     def __init__(
         self,
         feature_view: FeatureView,
-        serving_keys: Any,
+        spine_df: Any,
         prediction_times: PredictionTimes | list[Any] | None,
         max_feature_age: timedelta | dict[str, timedelta] | None = None,
         allow_passthrough: bool = False,
@@ -116,10 +116,10 @@ class InferenceSpine:
                 " so there is no column to bind the prediction time to."
             )
 
-        frame = _to_pandas(serving_keys)
+        frame = _to_pandas(spine_df)
         if frame is None or len(frame) == 0:
             raise FeatureStoreException(
-                "`serving_keys` must carry at least one row: batch data was requested for no entities."
+                "`spine_df` must carry at least one row: batch data was requested for no entities."
             )
 
         self._types = _column_types(feature_view)
@@ -142,12 +142,12 @@ class InferenceSpine:
             self._passthrough = []
         if unknown:
             raise FeatureStoreException(
-                f"`serving_keys` column(s) {sorted(unknown)} match nothing in feature view"
+                f"`spine_df` column(s) {sorted(unknown)} match nothing in feature view"
                 f" `{feature_view.name}`. Accepted columns: {sorted(recognized)}."
             )
         if not [c for c in frame.columns if c != self._event_time]:
             raise FeatureStoreException(
-                "`serving_keys` carries no serving key and no feature of the root feature group,"
+                "`spine_df` carries no serving key and no feature of the root feature group,"
                 " so nothing in the feature view can be looked up."
                 f" Accepted columns: {sorted(recognized)}."
             )
@@ -155,19 +155,19 @@ class InferenceSpine:
         has_time_column = self._event_time in frame.columns
         if has_time_column and prediction_times is not None:
             raise FeatureStoreException(
-                f"`serving_keys` already carries the prediction time in `{self._event_time}`;"
+                f"`spine_df` already carries the prediction time in `{self._event_time}`;"
                 " pass either that column or `prediction_times`, not both."
             )
         if not has_time_column and prediction_times is None:
             raise FeatureStoreException(
                 "No prediction times: pass `prediction_times`, or carry the prediction time in"
-                f" an `{self._event_time}` column of `serving_keys`."
+                f" an `{self._event_time}` column of `spine_df`."
             )
 
         missing_keys = sorted(required_keys - set(frame.columns))
         if missing_keys:
             warnings.warn(
-                f"Serving key(s) {missing_keys} are absent from `serving_keys`. Every feature group"
+                f"Serving key(s) {missing_keys} are absent from `spine_df`. Every feature group"
                 " they identify is skipped and its features come back as NULL.",
                 stacklevel=3,
             )
@@ -184,7 +184,7 @@ class InferenceSpine:
             times = pd.to_datetime(spine[self._event_time], utc=True, errors="coerce")
             if times.isna().any():
                 raise FeatureStoreException(
-                    f"`serving_keys[{self._event_time!r}]` contains a value that is not a timestamp."
+                    f"`spine_df[{self._event_time!r}]` contains a value that is not a timestamp."
                 )
             spine[self._event_time] = times
         else:
@@ -193,7 +193,7 @@ class InferenceSpine:
                 raise FeatureStoreException(
                     "`prediction_times` resolved to no timestamps."
                 )
-            # Cross product in serving_keys order, then ascending prediction time, so row i of the
+            # Cross product in spine_df order, then ascending prediction time, so row i of the
             # result corresponds to row i here and predictions zip back positionally.
             spine = (
                 frame.reset_index(drop=True)
@@ -273,7 +273,7 @@ class InferenceSpine:
             )
         except (pa.ArrowInvalid, pa.ArrowTypeError, pa.ArrowNotImplementedError) as e:
             raise FeatureStoreException(
-                f"An `serving_keys` value does not convert to the type the feature view declares: {e}"
+                f"An `spine_df` value does not convert to the type the feature view declares: {e}"
             ) from e
 
     def write_parquet(self, directory: str) -> str:
@@ -355,22 +355,22 @@ def _normalize_age(
     )
 
 
-def _to_pandas(serving_keys: Any) -> pd.DataFrame | None:
+def _to_pandas(spine_df: Any) -> pd.DataFrame | None:
     import pandas as pd
 
-    if serving_keys is None:
+    if spine_df is None:
         return None
-    if isinstance(serving_keys, pd.DataFrame):
-        return serving_keys
-    if isinstance(serving_keys, list):
-        return pd.DataFrame(serving_keys)
+    if isinstance(spine_df, pd.DataFrame):
+        return spine_df
+    if isinstance(spine_df, list):
+        return pd.DataFrame(spine_df)
     if HAS_POLARS:
         import polars as pl
 
-        if isinstance(serving_keys, pl.DataFrame):
-            return serving_keys.to_pandas()
+        if isinstance(spine_df, pl.DataFrame):
+            return spine_df.to_pandas()
     raise TypeError(
-        f"`serving_keys` must be a pandas or polars DataFrame or a list of dicts; got {type(serving_keys)!r}."
+        f"`spine_df` must be a pandas or polars DataFrame or a list of dicts; got {type(spine_df)!r}."
     )
 
 
