@@ -25,7 +25,6 @@ from typing import TYPE_CHECKING, Any
 
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core.constants import HAS_POLARS
-from hsfs.constructor.prediction_times import PredictionTimes
 
 
 if TYPE_CHECKING:
@@ -95,7 +94,6 @@ class InferenceSpine:
         self,
         feature_view: FeatureView,
         spine_df: Any,
-        prediction_times: PredictionTimes | list[Any] | None,
         max_feature_age: timedelta | dict[str, timedelta] | None = None,
         allow_passthrough: bool = False,
     ) -> None:
@@ -152,16 +150,11 @@ class InferenceSpine:
                 f" Accepted columns: {sorted(recognized)}."
             )
 
-        has_time_column = self._event_time in frame.columns
-        if has_time_column and prediction_times is not None:
+        if self._event_time not in frame.columns:
             raise FeatureStoreException(
-                f"`spine_df` already carries the prediction time in `{self._event_time}`;"
-                " pass either that column or `prediction_times`, not both."
-            )
-        if not has_time_column and prediction_times is None:
-            raise FeatureStoreException(
-                "No prediction times: pass `prediction_times`, or carry the prediction time in"
-                f" an `{self._event_time}` column of `spine_df`."
+                f"`spine_df` must carry the prediction time in an `{self._event_time}` column,"
+                " one per row. `PredictionTimes.cross()` builds that frame from a set of"
+                " entities and a schedule."
             )
 
         missing_keys = sorted(required_keys - set(frame.columns))
@@ -172,37 +165,20 @@ class InferenceSpine:
                 stacklevel=3,
             )
 
-        self._dataframe = self._build(frame, prediction_times, has_time_column)
+        self._dataframe = self._build(frame)
 
-    def _build(
-        self, frame: pd.DataFrame, prediction_times, has_time_column
-    ) -> pd.DataFrame:
+    def _build(self, frame: pd.DataFrame) -> pd.DataFrame:
         import pandas as pd
 
-        if has_time_column:
-            spine = frame.reset_index(drop=True).copy()
-            times = pd.to_datetime(spine[self._event_time], utc=True, errors="coerce")
-            if times.isna().any():
-                raise FeatureStoreException(
-                    f"`spine_df[{self._event_time!r}]` contains a value that is not a timestamp."
-                )
-            spine[self._event_time] = times
-        else:
-            resolved = PredictionTimes._from_user_input(prediction_times).timestamps
-            if not resolved:
-                raise FeatureStoreException(
-                    "`prediction_times` resolved to no timestamps."
-                )
-            # Cross product in spine_df order, then ascending prediction time, so row i of the
-            # result corresponds to row i here and predictions zip back positionally.
-            spine = (
-                frame.reset_index(drop=True)
-                .loc[frame.reset_index(drop=True).index.repeat(len(resolved))]
-                .reset_index(drop=True)
+        # The frame is the spine as given: one row per entity and moment, in the caller's order.
+        # The result comes back in that order, so predictions zip onto it positionally.
+        spine = frame.reset_index(drop=True).copy()
+        times = pd.to_datetime(spine[self._event_time], utc=True, errors="coerce")
+        if times.isna().any():
+            raise FeatureStoreException(
+                f"`spine_df[{self._event_time!r}]` contains a value that is not a timestamp."
             )
-            spine[self._event_time] = pd.to_datetime(
-                [t for _ in range(len(frame)) for t in resolved], utc=True
-            )
+        spine[self._event_time] = times
 
         spine.insert(0, ROW_ID_COLUMN, range(len(spine)))
         self._max_event_time = int(spine[self._event_time].max().timestamp() * 1000)

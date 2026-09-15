@@ -4943,7 +4943,9 @@ class TestTrainingSpine:
         fv = MagicMock()
         frame = pd.DataFrame([{"a": 1}])
         self._engine()._training_spine(fv, frame, None)
-        built.assert_called_once_with(fv, frame, None, allow_passthrough=True)
+        built.assert_called_once_with(
+            fv, frame, max_feature_age=fv.max_feature_age, allow_passthrough=True
+        )
 
     def test_materialisation_keeps_the_staged_file(self, mocker):
         # The Spark job reads the spine after the call returns, so deleting it here would race.

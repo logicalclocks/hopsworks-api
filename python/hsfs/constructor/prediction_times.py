@@ -21,6 +21,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from hopsworks_apigen import public
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs.decorators import typechecked
 
 
@@ -295,6 +296,43 @@ class PredictionTimes:
         return cls(sorted(set(resolved)))
 
     @public
+    def cross(self, spine_df: Any, event_time: str) -> Any:
+        """Cross a frame of entities with these times, one row per entity per time.
+
+        The ordering is the contract: entities in the order given, and within an entity ascending
+        in time. A batch read returns its rows in that same order, so predictions zip back onto
+        the frame positionally.
+
+        Args:
+            spine_df: The entities, one row each.
+            event_time: Name of the feature view's event time column, which the result carries
+                the times under.
+
+        Returns:
+            A pandas DataFrame ready to pass as `spine_df`.
+        """
+        import pandas as pd
+
+        times = self.timestamps
+        if not times:
+            raise FeatureStoreException(
+                "These prediction times resolve to no timestamps."
+            )
+        frame = (
+            spine_df if isinstance(spine_df, pd.DataFrame) else pd.DataFrame(spine_df)
+        )
+        if event_time in frame.columns:
+            raise FeatureStoreException(
+                f"`spine_df` already carries `{event_time}`; it would be overwritten by these"
+                " prediction times. Pass the frame without it, or do not cross at all."
+            )
+        frame = frame.reset_index(drop=True)
+        crossed = frame.loc[frame.index.repeat(len(times))].reset_index(drop=True)
+        crossed[event_time] = pd.to_datetime(
+            [t for _ in range(len(frame)) for t in times], utc=True
+        )
+        return crossed
+
     @property
     def timestamps(self) -> list[datetime]:
         """The resolved prediction times, timezone-aware in UTC, ascending and unique."""

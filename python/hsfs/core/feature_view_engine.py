@@ -546,7 +546,10 @@ class FeatureViewEngine:
                 " `spine_df` re-anchors the query on rows you supply. Pass one or the other."
             )
         return InferenceSpine(
-            feature_view_obj, spine_df, None, allow_passthrough=True
+            feature_view_obj,
+            spine_df,
+            max_feature_age=feature_view_obj.max_feature_age,
+            allow_passthrough=True,
         )
 
     def _get_training_data(
@@ -927,9 +930,7 @@ class FeatureViewEngine:
         # this method builds, so any lookback set on the TD must ride along.
         # `_create_training_dataset` puts the user-supplied Lookback on
         # `training_dataset_obj._lookback` before calling this helper.
-        materialisation_spine = self._training_spine(
-            feature_view_obj, spine_df, spine
-        )
+        materialisation_spine = self._training_spine(feature_view_obj, spine_df, spine)
         batch_query = self._get_batch_query(
             feature_view_obj,
             training_dataset_obj.event_start_time,
@@ -1134,17 +1135,15 @@ class FeatureViewEngine:
         lookback=None,
         n_processes: int | None = None,
         spine_df=None,
-        prediction_times=None,
-        max_feature_age=None,
     ):
         self._check_feature_group_accessibility(feature_view_obj)
 
         inference_spine = None
-        if spine_df is not None or prediction_times is not None:
+        if spine_df is not None:
             if start_time is not None or end_time is not None:
                 raise FeatureStoreException(
-                    "`start_time`/`end_time` cannot be combined with `spine_df`/`prediction_times`:"
-                    " the inference spine defines the time axis."
+                    "`start_time`/`end_time` cannot be combined with `spine_df`: the"
+                    " spine carries a prediction time per row and defines the time axis."
                 )
             if spine is not None:
                 raise FeatureStoreException(
@@ -1152,7 +1151,7 @@ class FeatureViewEngine:
                     " `spine_df` re-anchors the query. Pass one or the other."
                 )
             inference_spine = InferenceSpine(
-                feature_view_obj, spine_df, prediction_times, max_feature_age
+                feature_view_obj, spine_df, feature_view_obj.max_feature_age
             )
             # Without the keys and the prediction time the frame says nothing about which row is
             # which entity or day, so they default on. An explicit False still wins.

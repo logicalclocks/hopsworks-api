@@ -77,7 +77,6 @@ if TYPE_CHECKING:
     from hopsworks_common.core.type_systems import HopsworksLoggingMetadataType
     from hopsworks_common.job import Job
     from hsfs.constructor.filter import Filter, Logic
-    from hsfs.constructor.prediction_times import PredictionTimes
     from hsfs.core.feature_logging import FeatureLogging
     from hsfs.feature_logger import FeatureLogger
     from hsfs.hopsworks_udf import HopsworksUdf
@@ -165,6 +164,7 @@ class FeatureView:
         self._version = version
         self._description = description
         self._labels = labels if labels else []
+        self._max_feature_age: dict[str, int] | None = None
         self._inference_helper_columns = (
             inference_helper_columns if inference_helper_columns else []
         )
@@ -1404,8 +1404,6 @@ class FeatureView:
         lookback: FeatureGroupLookback | Lookback | dict[str, Any] | None = None,
         n_processes: int | None = None,
         spine_df: pd.DataFrame | pl.DataFrame | list[dict[str, Any]] | None = None,
-        prediction_times: PredictionTimes | list[Any] | None = None,
-        max_feature_age: timedelta | dict[str, timedelta] | None = None,
         **kwargs,
     ) -> TrainingDatasetDataFrameTypes | HopsworksLoggingMetadataType:
         """Get a batch of data from an event time interval from the offline feature store.
@@ -1463,12 +1461,13 @@ class FeatureView:
             feature_view = fs.get_feature_view(...)
 
             # score three streets every day at 08:00 for the next 7 days
+            entities = pd.DataFrame([
+                {"country": "SE", "city": "Stockholm", "street": "Sveavagen"},
+                {"country": "SE", "city": "Stockholm", "street": "Odengatan"},
+            ])
+            schedule = PredictionTimes.every("daily", offset="08:00", count=7)
             df = feature_view.get_batch_data(
-                spine_df=pd.DataFrame([
-                    {"country": "SE", "city": "Stockholm", "street": "Sveavagen"},
-                    {"country": "SE", "city": "Stockholm", "street": "Odengatan"},
-                ]),
-                prediction_times=PredictionTimes.every("daily", offset="08:00", count=7),
+                spine_df=schedule.cross(entities, event_time="date"),
             )
             ```
 
@@ -1536,17 +1535,9 @@ class FeatureView:
                 The entities to score, one row each, carrying the feature view's required serving keys and any features of the root feature group you want to supply yourself rather than look up.
                 Every feature group whose keys are absent is skipped and its features come back as NULL, with a warning.
                 Supplying no recognized column at all is an error.
+                Must carry the prediction time for each row under the root feature group's event time column; [`PredictionTimes.cross`][hsfs.constructor.prediction_times.PredictionTimes.cross] builds that frame from a set of entities and a schedule.
                 Passing this switches the read to ASOF batch inference: the query is anchored on these rows instead of on the root feature group, so prediction times in the future work.
-            prediction_times:
-                The timestamps to score each entity at, crossed with `spine_df`.
-                Accepts a [`PredictionTimes`][hsfs.constructor.prediction_times.PredictionTimes] or a bare list of timestamps.
-                Omit it only when `spine_df` already carries the root feature group's event time column.
-                Rows come back in `spine_df` order then ascending prediction time, so predictions zip back positionally.
-            max_feature_age:
-                How stale a looked-up row may be, measured back from each prediction time.
-                A feature group whose newest row at or before the prediction time is older than this returns NULL for that row instead of a stale value.
-                Pass one `timedelta` for every feature group, or a dict keyed by feature group name.
-                Unbounded by default, which carries the last known value forward indefinitely.
+                Rows come back in the order given, so predictions zip back positionally.
 
         Returns:
             DataFrame: The spark dataframe containing the feature data.
@@ -1581,8 +1572,6 @@ class FeatureView:
             lookback=Lookback.from_user_input(lookback),
             n_processes=n_processes,
             spine_df=spine_df,
-            prediction_times=prediction_times,
-            max_feature_age=max_feature_age,
         )
 
     @public
@@ -5890,6 +5879,36 @@ class FeatureView:
     def missing_mandatory_tags(self) -> list[dict[str, Any]]:
         """List of missing mandatory tags for the feature view."""
         return self._missing_mandatory_tags
+
+    @public
+    @property
+    def max_feature_age(self) -> timedelta | dict[str, timedelta] | None:
+        """How stale a looked-up row may be, relative to the time it is looked up as of.
+
+        An as-of lookup carries the last value forward for ever, so a feature group that stops
+        producing rows keeps answering with its final one and nothing in the result says so.
+        Setting this returns NULL instead once the newest row at or before that time is older
+        than the bound, which makes the gap visible to you and to the model.
+
+        Applies to every read anchored on a `spine_df`, batch inference and training data alike.
+        Set one `timedelta` to bound every feature group, or a dict keyed by feature group name;
+        `"*"` is the catch-all. A name that is not a feature group of this view is refused,
+        because it would otherwise bound nothing and return carried-forward rows silently.
+
+        Set on the view object rather than persisted with it, so set it again after
+        `get_feature_view`. Unbounded by default.
+
+        ```python
+        feature_view.max_feature_age = {"weather": datetime.timedelta(days=1)}
+        ```
+        """
+        return self._max_feature_age
+
+    @max_feature_age.setter
+    def max_feature_age(
+        self, max_feature_age: timedelta | dict[str, timedelta] | None
+    ) -> None:
+        self._max_feature_age = max_feature_age
 
     @public
     @property
