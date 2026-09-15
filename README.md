@@ -189,7 +189,7 @@
 | python/hopsworks\_common/core/ingestion\_job\_conf.py                            |       39 |       14 |     64% |33-36, 40, 44, 48, 52, 56, 60, 64, 68, 71, 74 |
 | python/hopsworks\_common/core/inode.py                                           |       41 |        6 |     85% |51, 55, 59, 67, 71, 75 |
 | python/hopsworks\_common/core/job\_api.py                                        |      136 |       69 |     49% |79-92, 109-117, 132-139, 157-158, 177-187, 195-202, 214-221, 229-234, 241-244, 260-264, 293-299, 330-333, 349-360, 371-380, 392-401, 419-434, 449-459 |
-| python/hopsworks\_common/core/job\_configuration.py                              |       21 |        1 |     95% |        75 |
+| python/hopsworks\_common/core/job\_configuration.py                              |       28 |        1 |     96% |        93 |
 | python/hopsworks\_common/core/kafka\_api.py                                      |       99 |       56 |     43% |70-82, 128-149, 165-170, 183-186, 196-204, 213-223, 236-243, 259-275, 292-296, 305-316, 321-330, 340, 369-389 |
 | python/hopsworks\_common/core/keywords\_api.py                                   |       48 |        0 |    100% |           |
 | python/hopsworks\_common/core/library\_api.py                                    |       15 |        4 |     73% |     41-54 |
@@ -487,7 +487,7 @@
 | python/hsml/utils/schema/tensor.py                                               |        8 |        0 |    100% |           |
 | python/hsml/utils/schema/tensor\_schema.py                                       |       34 |        0 |    100% |           |
 | python/hsml/version.py                                                           |        2 |        2 |      0% |     17-22 |
-| **TOTAL**                                                                        | **45726** | **12858** | **72%** |           |
+| **TOTAL**                                                                        | **45733** | **12858** | **72%** |           |
 
 
 ## Setup coverage badge
