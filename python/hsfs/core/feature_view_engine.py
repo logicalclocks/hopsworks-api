@@ -1082,26 +1082,26 @@ class FeatureViewEngine:
         extra_filter=None,
         lookback=None,
         n_processes: int | None = None,
-        entries=None,
+        serving_keys=None,
         prediction_times=None,
         max_feature_age=None,
     ):
         self._check_feature_group_accessibility(feature_view_obj)
 
         inference_spine = None
-        if entries is not None or prediction_times is not None:
+        if serving_keys is not None or prediction_times is not None:
             if start_time is not None or end_time is not None:
                 raise FeatureStoreException(
-                    "`start_time`/`end_time` cannot be combined with `entries`/`prediction_times`:"
+                    "`start_time`/`end_time` cannot be combined with `serving_keys`/`prediction_times`:"
                     " the inference spine defines the time axis."
                 )
             if spine is not None:
                 raise FeatureStoreException(
                     "`spine` replaces a SpineGroup the feature view was created with, while"
-                    " `entries` re-anchors the query. Pass one or the other."
+                    " `serving_keys` re-anchors the query. Pass one or the other."
                 )
             inference_spine = InferenceSpine(
-                feature_view_obj, entries, prediction_times, max_feature_age
+                feature_view_obj, serving_keys, prediction_times, max_feature_age
             )
             # Without the keys and the prediction time the frame says nothing about which row is
             # which entity or day, so they default on. An explicit False still wins.

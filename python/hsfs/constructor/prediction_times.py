@@ -143,7 +143,7 @@ class PredictionTimes:
     Example:
         ```python
         fv.get_batch_data(
-            entries=pd.DataFrame([{"country": "SE", "city": "Stockholm", "street": "Sveavagen"}]),
+            serving_keys=pd.DataFrame([{"country": "SE", "city": "Stockholm", "street": "Sveavagen"}]),
             prediction_times=PredictionTimes.every("daily", offset="08:00", count=7),
         )
         ```

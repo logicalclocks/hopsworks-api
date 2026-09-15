@@ -834,7 +834,7 @@ class Query:
             raise FeatureStoreException(
                 "This Hopsworks cluster does not support ASOF batch inference: the backend did not"
                 " apply the inference spine. Upgrade the cluster, or call get_batch_data() with"
-                " start_time/end_time instead of entries/prediction_times."
+                " start_time/end_time instead of serving_keys/prediction_times."
             )
 
     def _check_read_supported(self, online: bool) -> None:
