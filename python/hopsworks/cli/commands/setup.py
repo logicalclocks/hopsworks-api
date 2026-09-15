@@ -15,6 +15,7 @@ import re
 import secrets
 import socket
 import ssl
+import sys
 import time
 import urllib.parse
 import webbrowser
@@ -322,7 +323,7 @@ def setup_cmd(
     if not force and cfg.is_authenticated() and _cached_key_works(cfg):
         return None
 
-    host = cfg.host or click.prompt("Hopsworks host", default=config.DEFAULT_HOST)
+    host = _resolve_host(cfg, host_flag)
     host = auth.normalize_host(host)
     api_base = auth.api_base(host)
 
@@ -391,22 +392,50 @@ def setup_cmd(
     return None
 
 
-def _forget_other_cluster(cfg: config.HopsConfig, host_flag: str) -> None:
-    """Drop the cached key and project when ``--host`` names another cluster.
+def _interactive() -> bool:
+    """Whether we can prompt the user, false under scripts, CI, and piped input."""
+    return sys.stdin.isatty()
 
-    ``config.load`` layers the flag host over the cached profile, so the cached
-    key kept ``is_authenticated()`` true and the short-circuit verified the old
-    project against the new host ("project X not found") instead of setting the
-    new cluster up. The project is chosen again in the token flow.
+
+def _resolve_host(cfg: config.HopsConfig, host_flag: str | None) -> str:
+    """Choose the host to set up, letting an interactive user switch clusters.
+
+    An explicit ``--host`` always wins.
+    Otherwise, on a terminal, prompt with the cached host as the default so a
+    user whose cluster moved or died can type the new address instead of being
+    stuck re-authenticating against the dead one, the gap that made repeated
+    ``hops setup`` runs hammer the same unreachable host.
+    Without a terminal (scripts, CI) keep the cached host so a non-interactive
+    re-run does not block on a prompt.
+    """
+    if host_flag:
+        return host_flag
+    if cfg.host and not _interactive():
+        return cfg.host
+    host = click.prompt("Hopsworks host", default=cfg.host or config.DEFAULT_HOST)
+    _forget_other_cluster(cfg, host)
+    return host
+
+
+def _forget_other_cluster(cfg: config.HopsConfig, new_host: str) -> None:
+    """Drop the cached key and project when ``new_host`` names another cluster.
+
+    ``config.load`` layers the resolved host over the cached profile, so the
+    cached key kept ``is_authenticated()`` true and the short-circuit verified
+    the old project against the new host ("project X not found") instead of
+    setting the new cluster up.
+    It also leaves ``project_id`` / ``feature_store_id`` from the old cluster in
+    place, which ``_finalize_setup`` never overwrites.
+    The project is chosen again in the token flow.
     """
     cached_host = config.load().host
     if not cached_host:
         return
-    if auth.normalize_host(cached_host) == auth.normalize_host(host_flag):
+    if auth.normalize_host(cached_host) == auth.normalize_host(new_host):
         return
     output.info(
         "Host %s differs from the cached %s; setting up the new cluster from scratch.",
-        auth.normalize_host(host_flag),
+        auth.normalize_host(new_host),
         cached_host,
     )
     cfg.api_key = None
