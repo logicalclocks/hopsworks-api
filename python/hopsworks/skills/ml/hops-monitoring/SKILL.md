@@ -109,7 +109,7 @@ config.delete()
 Feature views use the **same API** (`fv.create_feature_monitoring(...)`), and commonly
 compare serving data to a training-dataset baseline with `.with_reference_training_dataset(...)`.
 
-**Time basis of the windows** — `create_feature_monitoring` / `create_scheduled_statistics`
+**Time basis of the windows**: `create_feature_monitoring` / `create_scheduled_statistics`
 take `event_time`.
 `None` (default) slices detection/reference windows by the entity's own event-time feature when one is defined, otherwise by commit time.
 A feature name slices by that feature instead (must be TIMESTAMP, DATE or BIGINT).
