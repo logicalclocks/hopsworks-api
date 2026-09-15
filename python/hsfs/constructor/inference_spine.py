@@ -243,6 +243,19 @@ class InferenceSpine:
         """The columns the caller supplied, without the internal row id."""
         return [c for c in self._dataframe.columns if c != ROW_ID_COLUMN]
 
+    def _hive_type(self, column: str) -> str:
+        """The type a spine column is written and declared as.
+
+        The feature view's schema for a column it defines. For a passthrough column it defines
+        none, so the frame's own dtype decides. Both the Parquet file and the wire form read
+        this, because a file typed differently from its declaration fails at the CAST.
+        """
+        if column == self._event_time:
+            return "timestamp"
+        if column in self._passthrough:
+            return _PASSTHROUGH_TYPE.get(str(self._frame_dtype(column)), "string")
+        return self._types.get(column, "string")
+
     def arrow_table(self) -> Any:
         """The spine as an Arrow table typed from the feature view's schema.
 
@@ -253,12 +266,7 @@ class InferenceSpine:
 
         fields = [pa.field(ROW_ID_COLUMN, pa.int64())]
         for column in self.supplied_columns:
-            hive_type = (
-                "timestamp"
-                if column == self._event_time
-                else self._types.get(column, "string")
-            )
-            fields.append(pa.field(column, _pyarrow_type(hive_type)))
+            fields.append(pa.field(column, _pyarrow_type(self._hive_type(column))))
         try:
             return pa.Table.from_pandas(
                 self._dataframe, schema=pa.schema(fields), preserve_index=False
@@ -283,18 +291,10 @@ class InferenceSpine:
         """The wire form: the schema and where the rows are, never the rows."""
         columns = [{"name": ROW_ID_COLUMN, "type": "bigint"}]
         for column in self.supplied_columns:
-            entry = {
-                "name": column,
-                "type": "timestamp"
-                if column == self._event_time
-                else self._types.get(column, "string"),
-            }
+            entry = {"name": column, "type": self._hive_type(column)}
             if column in self._passthrough:
-                # The backend has no feature to take a type from for these, so the declared one
-                # is used. It is matched against a fixed allowlist there, never rendered as given.
-                entry["type"] = _PASSTHROUGH_TYPE.get(
-                    str(self._frame_dtype(column)), "string"
-                )
+                # The backend has no feature to take a type from for these. The declared type is
+                # matched against a fixed allowlist there, never rendered as it arrives.
                 entry["passthrough"] = True
             columns.append(entry)
         payload: dict[str, Any] = {

@@ -388,6 +388,15 @@ class FeatureViewEngine:
     ):
         extra_filter = self._normalize_extra_filter(extra_filter)
 
+        if inference_spine is not None:
+            # The spine is the population: its rows are exactly the ones to return, and it
+            # carries its own upper bound. An event-time window or a lookback on top of that
+            # would filter the anchor itself and drop rows the caller asked for, which is why
+            # the backend refuses a filter on a column the spine supplies.
+            start_time = None
+            end_time = None
+            lookback = None
+
         try:
             query = self._feature_view_api._get_batch_query(
                 feature_view_obj.name,

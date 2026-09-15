@@ -333,3 +333,16 @@ class TestPassthroughColumns:
         frame[ROW_ID_COLUMN] = 0
         with pytest.raises(FeatureStoreException, match="match nothing"):
             InferenceSpine(feature_view, frame, None, allow_passthrough=True)
+
+    def test_the_parquet_file_and_the_wire_agree_on_passthrough_types(
+        self, feature_view
+    ):
+        # A file typed differently from its declaration fails at the CAST in the query service,
+        # which is how this was found: the schema defaulted passthrough columns to string.
+        frame = self._frame()
+        frame["fold"] = pd.Series([3], dtype="int64")
+        spine = InferenceSpine(feature_view, frame, None, allow_passthrough=True)
+        declared = {c["name"]: c["type"] for c in spine.to_dict()["columns"]}
+        written = {f.name: f.type for f in spine.arrow_table().schema}
+        assert declared["label"] == "double" and str(written["label"]) == "double"
+        assert declared["fold"] == "bigint" and str(written["fold"]) == "int64"
