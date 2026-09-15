@@ -254,8 +254,15 @@ def _row_slices(rows, feature_vectors, predictions, max_rows: int):
 
 
 def _logging_transport(feature_view) -> str:
-    """The transport this pod logs through: the deployment's marker, else the view's."""
-    for name in ("SERVING_FEATURE_LOGGING", "HOPSWORKS_FEATURE_LOGGING_TRANSPORT"):
+    """The transport this pod logs through.
+
+    The backend derives HOPSWORKS_FEATURE_LOGGING_TRANSPORT from the feature view's own
+    logging group and reserves it, so it is the one to trust: it is right even when the
+    view was switched after this deployment was created. The client marker comes next,
+    for a pod stamped by a backend that predates the backend-owned value, and the view
+    the predictor holds is the last resort.
+    """
+    for name in ("HOPSWORKS_FEATURE_LOGGING_TRANSPORT", "SERVING_FEATURE_LOGGING"):
         value = os.environ.get(name, "").strip().lower()
         if value in ("realtime", "job"):
             return value

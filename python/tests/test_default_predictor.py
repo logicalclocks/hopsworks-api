@@ -1262,16 +1262,26 @@ def test_job_transport_hands_posts_to_the_file_writer(pod_env, monkeypatch):
     assert len(closed) == 1 and 0.5 <= closed[0] <= 7.0 and triggered == [True]
 
 
-def test_logging_transport_prefers_the_deployment_marker(monkeypatch):
+def test_logging_transport_prefers_the_backend_variable(monkeypatch):
+    """The backend's variable outranks the client marker.
+
+    It is derived from the view's own logging group and reserved, where the marker
+    is user-editable and goes stale when the view is switched after the deployment
+    was created.
+    """
     monkeypatch.delenv("SERVING_FEATURE_LOGGING", raising=False)
     monkeypatch.delenv("HOPSWORKS_FEATURE_LOGGING_TRANSPORT", raising=False)
     view = SimpleNamespace(feature_logging=SimpleNamespace(transport="job"))
     assert dp._logging_transport(view) == "job"
     assert dp._logging_transport(SimpleNamespace(feature_logging=None)) == "realtime"
-    monkeypatch.setenv("HOPSWORKS_FEATURE_LOGGING_TRANSPORT", "realtime")
-    assert dp._logging_transport(view) == "realtime"
+
+    # the marker alone still decides, for a pod stamped by an older backend
     monkeypatch.setenv("SERVING_FEATURE_LOGGING", "JOB")
     assert dp._logging_transport(view) == "job"
+
+    # and the backend's value wins over a stale marker
+    monkeypatch.setenv("HOPSWORKS_FEATURE_LOGGING_TRANSPORT", "realtime")
+    assert dp._logging_transport(view) == "realtime"
 
 
 def test_a_backlog_never_exceeds_the_receivers_row_limit(pod_env, monkeypatch):
