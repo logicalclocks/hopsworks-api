@@ -280,6 +280,31 @@ class FeatureView:
             self.transformation_functions,
         )
 
+    @staticmethod
+    def _resolve_serving_keys(
+        serving_keys: Any, entry: Any, method: str, stacklevel: int = 3
+    ) -> Any:
+        """Accept either name for the serving keys, preferring the new one.
+
+        `entry` is the original name for this argument and is kept working so existing code does
+        not break. Passing both is refused rather than resolved silently: the two would disagree
+        for a reason the caller needs to fix, not a preference we should guess at.
+        """
+        if entry is None:
+            return serving_keys
+        if serving_keys is not None:
+            raise FeatureStoreException(
+                f"{method}() received both `serving_keys` and `entry`, which name the same"
+                " argument. Pass only `serving_keys`; `entry` is deprecated."
+            )
+        warnings.warn(
+            f"`entry` is deprecated in {method}() and will be removed in a future release."
+            " Use `serving_keys` instead; it takes the same value.",
+            DeprecationWarning,
+            stacklevel=stacklevel,
+        )
+        return entry
+
     @public
     def get_last_accessed_training_dataset(self):
         """Get the last accessed training dataset version used for this feature view.
@@ -747,7 +772,7 @@ class FeatureView:
     @public
     def get_feature_vector(
         self,
-        entry: dict[str, Any] | None = None,
+        serving_keys: dict[str, Any] | None = None,
         passed_features: dict[str, Any] | None = None,
         external: bool | None = None,
         return_type: Literal["list", "polars", "numpy", "pandas"] = "list",
@@ -760,6 +785,7 @@ class FeatureView:
         transformation_context: dict[str, Any] = None,
         logging_data: bool = False,
         n_processes: int | None = None,
+        entry: dict[str, Any] | None = None,
     ) -> (
         list[Any]
         | pd.DataFrame
@@ -775,7 +801,7 @@ class FeatureView:
         2. Additional configurations of online serving engine.
 
         Warning: Missing primary key entries
-            If the provided primary key `entry` can't be found in one or more of the feature groups used by this feature view the call to this method will raise an exception.
+            If the provided `serving_keys` can't be found in one or more of the feature groups used by this feature view the call to this method will raise an exception.
             Alternatively, setting `allow_missing` to `True` returns a feature vector with missing values.
 
         Example:
@@ -788,18 +814,18 @@ class FeatureView:
 
             # get assembled serving vector as a python list
             feature_view.get_feature_vector(
-                entry = {"pk1": 1, "pk2": 2}
+                serving_keys = {"pk1": 1, "pk2": 2}
             )
 
             # get assembled serving vector as a pandas dataframe
             feature_view.get_feature_vector(
-                entry = {"pk1": 1, "pk2": 2},
+                serving_keys = {"pk1": 1, "pk2": 2},
                 return_type = "pandas"
             )
 
             # get assembled serving vector as a numpy array
             feature_view.get_feature_vector(
-                entry = {"pk1": 1, "pk2": 2},
+                serving_keys = {"pk1": 1, "pk2": 2},
                 return_type = "numpy"
             )
             ```
@@ -816,7 +842,7 @@ class FeatureView:
 
             # get a feature vector
             feature_view.get_feature_vector(
-                entry = {"pk1": 1, "pk2": 2},
+                serving_keys = {"pk1": 1, "pk2": 2},
                 passed_features = { "app_feature" : app_attr }
             )
             ```
@@ -833,7 +859,7 @@ class FeatureView:
 
             # get a feature vector
             feature_vector = feature_view.get_feature_vector(
-                entry = {"pk1": 1, "pk2": 2},
+                serving_keys = {"pk1": 1, "pk2": 2},
                 passed_features = { "app_feature" : app_attr },
                 logging_data = True
             )
@@ -846,10 +872,13 @@ class FeatureView:
             ```
 
         Parameters:
-            entry:
+            serving_keys:
                 Dictionary of feature group primary key and values provided by serving application.
                 Set of required primary keys is [`FeatureView.primary_keys`][hsfs.feature_view.FeatureView.primary_keys].
-                If the required primary keys is not provided, it will look for name of the primary key in feature group in the entry.
+                If the required primary keys is not provided, it will look for name of the primary key in feature group in the serving keys.
+            entry:
+                Deprecated alias for `serving_keys`, kept so existing code keeps working.
+                Passing it emits a `DeprecationWarning`; passing both is an error.
             passed_features:
                 Dictionary of feature values provided by the application at runtime.
                 They can replace features values fetched from the feature store as well as providing feature values which are not available in the feature store.
@@ -890,8 +919,12 @@ class FeatureView:
             Returned `list`, `pd.DataFrame`, `polars.DataFrame` or `np.ndarray` (the exact type dependends on `return_type`) contains feature values related to provided primary keys, ordered according to positions of this features in the feature view query.
 
         Raises:
-            hopsworks.client.exceptions.FeatureStoreException: When primary key entry cannot be found in one or more of the feature groups used by this feature view.
+            hopsworks.client.exceptions.FeatureStoreException: When a serving key cannot be found in one or more of the feature groups used by this feature view.
         """
+        serving_keys = self._resolve_serving_keys(
+            serving_keys, entry, "get_feature_vector"
+        )
+
         self._assert_no_offline_only_partition_features()
 
         if not self._vector_server._serving_initialized:
@@ -902,9 +935,9 @@ class FeatureView:
 
         vector_db_features = None
         if self._vector_db_client:
-            vector_db_features = self._get_vector_db_result(entry)
+            vector_db_features = self._get_vector_db_result(serving_keys)
         return self._vector_server._get_feature_vector(
-            entry=entry,
+            entry=serving_keys,
             return_type=return_type,
             passed_features=passed_features,
             allow_missing=allow_missing,
@@ -922,7 +955,7 @@ class FeatureView:
     @public
     def get_feature_vectors(
         self,
-        entry: list[dict[str, Any]] | None = None,
+        serving_keys: list[dict[str, Any]] | None = None,
         passed_features: list[dict[str, Any]] | None = None,
         external: bool | None = None,
         return_type: Literal["list", "polars", "numpy", "pandas"] = "list",
@@ -935,6 +968,7 @@ class FeatureView:
         transformation_context: dict[str, Any] = None,
         logging_data: bool = False,
         n_processes: int | None = None,
+        entry: list[dict[str, Any]] | None = None,
     ) -> (
         list[list[Any]]
         | pd.DataFrame
@@ -950,7 +984,7 @@ class FeatureView:
         2. Additional configurations of online serving engine.
 
         Warning: Missing primary key entries
-            If any of the provided primary key elements in `entry` can't be found in any of the feature groups, no feature vector for that primary key value will be returned.
+            If any of the rows in `serving_keys` can't be found in any of the feature groups, no feature vector for that primary key value will be returned.
             If it can be found in at least one but not all feature groups used by this feature view the call to this method will raise an exception.
             Alternatively, setting `allow_missing` to `True` returns feature vectors with missing values.
 
@@ -964,7 +998,7 @@ class FeatureView:
 
             # get assembled serving vectors as a python list of lists
             feature_view.get_feature_vectors(
-                entry = [
+                serving_keys = [
                     {"pk1": 1, "pk2": 2},
                     {"pk1": 3, "pk2": 4},
                     {"pk1": 5, "pk2": 6}
@@ -973,7 +1007,7 @@ class FeatureView:
 
             # get assembled serving vectors as a pandas dataframe
             feature_view.get_feature_vectors(
-                entry = [
+                serving_keys = [
                     {"pk1": 1, "pk2": 2},
                     {"pk1": 3, "pk2": 4},
                     {"pk1": 5, "pk2": 6}
@@ -983,7 +1017,7 @@ class FeatureView:
 
             # get assembled serving vectors as a numpy array
             feature_view.get_feature_vectors(
-                entry = [
+                serving_keys = [
                     {"pk1": 1, "pk2": 2},
                     {"pk1": 3, "pk2": 4},
                     {"pk1": 5, "pk2": 6}
@@ -1004,7 +1038,7 @@ class FeatureView:
 
             # get a feature vectors
             feature_vectors = feature_view.get_feature_vectors(
-                entry = [
+                serving_keys = [
                     {"pk1": 1, "pk2": 2},
                     {"pk1": 3, "pk2": 4},
                     {"pk1": 5, "pk2": 6}
@@ -1020,10 +1054,13 @@ class FeatureView:
             ```
 
         Parameters:
-            entry:
+            serving_keys:
                 A list of dictionary of feature group primary key and values provided by serving application.
                 Set of required primary keys is [`FeatureView.primary_keys`][hsfs.feature_view.FeatureView.primary_keys].
-                If the required primary keys is not provided, it will look for name of the primary key in feature group in the entry.
+                If the required primary keys is not provided, it will look for name of the primary key in feature group in the serving keys.
+            entry:
+                Deprecated alias for `serving_keys`, kept so existing code keeps working.
+                Passing it emits a `DeprecationWarning`; passing both is an error.
             passed_features:
                 A list of dictionary of feature values provided by the application at runtime.
                 They can replace features values fetched from the feature store as well as providing feature values which are not available in the feature store.
@@ -1062,8 +1099,12 @@ class FeatureView:
             Returned `list[list]`, `pd.DataFrame`, `polars.DataFrame` or `np.ndarray` (depending on the `return_type`) contains feature values related to provided primary keys, ordered according to positions of this features in the feature view query.
 
         Raises:
-            hopsworks.client.exceptions.FeatureStoreException: When primary key entry cannot be found in one or more of the feature groups used by this feature view.
+            hopsworks.client.exceptions.FeatureStoreException: When a serving key cannot be found in one or more of the feature groups used by this feature view.
         """
+        serving_keys = self._resolve_serving_keys(
+            serving_keys, entry, "get_feature_vectors"
+        )
+
         self._assert_no_offline_only_partition_features()
 
         if not self._vector_server._serving_initialized:
@@ -1074,11 +1115,11 @@ class FeatureView:
 
         vector_db_features = []
         if self._vector_db_client:
-            for _entry in entry:
+            for _entry in serving_keys:
                 vector_db_features.append(self._get_vector_db_result(_entry))
 
         return self._vector_server._get_feature_vectors(
-            entries=entry,
+            entries=serving_keys,
             return_type=return_type,
             passed_features=passed_features,
             allow_missing=allow_missing,
@@ -1096,11 +1137,12 @@ class FeatureView:
     @public
     def get_inference_helper(
         self,
-        entry: dict[str, Any],
+        serving_keys: dict[str, Any] | None = None,
         external: bool | None = None,
         return_type: Literal["pandas", "dict", "polars"] = "pandas",
         force_rest_client: bool = False,
         force_sql_client: bool = False,
+        entry: dict[str, Any] | None = None,
     ) -> pd.DataFrame | pl.DataFrame | dict[str, Any]:
         """Returns assembled inference helper column vectors from online feature store.
 
@@ -1114,14 +1156,17 @@ class FeatureView:
 
             # get assembled inference helper column vector
             feature_view.get_inference_helper(
-                entry = {"pk1": 1, "pk2": 2}
+                serving_keys = {"pk1": 1, "pk2": 2}
             )
             ```
 
         Parameters:
-            entry:
+            serving_keys:
                 Dictionary of feature group primary key and values provided by serving application.
                 Set of required primary keys is [`FeatureView.primary_keys`][hsfs.feature_view.FeatureView.primary_keys].
+            entry:
+                Deprecated alias for `serving_keys`, kept so existing code keeps working.
+                Passing it emits a `DeprecationWarning`; passing both is an error.
             external:
                 If set to `True`, the connection to the online feature store is established using the same host as for the `host` parameter in the [`hopsworks.login`][hopsworks.login] method.
                 If set to `False`, the online feature store storage connector is used which relies on the private IP.
@@ -1134,27 +1179,32 @@ class FeatureView:
             The dataframe.
 
         Raises:
-            Exception: When primary key entry cannot be found in one or more of the feature groups used by this feature view.
+            Exception: When a serving key cannot be found in one or more of the feature groups used by this feature view.
         """
+        serving_keys = self._resolve_serving_keys(
+            serving_keys, entry, "get_inference_helper"
+        )
+
         if not self._vector_server._serving_initialized:
             self.init_serving(external=external, init_rest_client=force_rest_client)
         return self._vector_server._get_inference_helper(
-            entry, return_type, force_rest_client, force_sql_client
+            serving_keys, return_type, force_rest_client, force_sql_client
         )
 
     @public
     def get_inference_helpers(
         self,
-        entry: list[dict[str, Any]],
+        serving_keys: list[dict[str, Any]] | None = None,
         external: bool | None = None,
         return_type: Literal["pandas", "dict", "polars"] = "pandas",
         force_sql_client: bool = False,
         force_rest_client: bool = False,
+        entry: list[dict[str, Any]] | None = None,
     ) -> list[dict[str, Any]] | pd.DataFrame | pl.DataFrame:
         """Returns assembled inference helper column vectors in batches from online feature store.
 
         Warning: Missing primary key entries
-            If any of the provided primary key elements in `entry` can't be found in any of the feature groups, no inference helper column vectors for that primary key value will be returned.
+            If any of the rows in `serving_keys` can't be found in any of the feature groups, no inference helper column vectors for that primary key value will be returned.
             If it can be found in at least one but not all feature groups used by this feature view the call to this method will raise an exception.
 
         Example:
@@ -1167,7 +1217,7 @@ class FeatureView:
 
             # get assembled inference helper column vectors
             feature_view.get_inference_helpers(
-                entry = [
+                serving_keys = [
                     {"pk1": 1, "pk2": 2},
                     {"pk1": 3, "pk2": 4},
                     {"pk1": 5, "pk2": 6}
@@ -1176,9 +1226,12 @@ class FeatureView:
             ```
 
         Parameters:
-            entry:
+            serving_keys:
                 A list of dictionary of feature group primary key and values provided by serving application.
                 Set of required primary keys is [`FeatureView.primary_keys`][hsfs.feature_view.FeatureView.primary_keys].
+            entry:
+                Deprecated alias for `serving_keys`, kept so existing code keeps working.
+                Passing it emits a `DeprecationWarning`; passing both is an error.
             external:
                 If set to `True`, the connection to the online feature store is established using the same host as for the `host` parameter in the [`hopsworks.login`][hopsworks.login] method.
                 If set to `False`, the online feature store storage connector is used which relies on the private IP.
@@ -1191,12 +1244,16 @@ class FeatureView:
             Returned `pd.DataFrame`, `polars.DataFrame` or `list[dict]` (depending on `return_type`) contains feature values related to provided primary keys, ordered according to positions of this features in the feature view query.
 
         Raises:
-            Exception: When primary key entry cannot be found in one or more of the feature groups used by this feature view.
+            Exception: When a serving key cannot be found in one or more of the feature groups used by this feature view.
         """
+        serving_keys = self._resolve_serving_keys(
+            serving_keys, entry, "get_inference_helpers"
+        )
+
         if self._vector_server is None:
             self.init_serving(external=external, init_rest_client=force_rest_client)
         return self._vector_server._get_inference_helpers(
-            entry, return_type, force_rest_client, force_sql_client
+            serving_keys, return_type, force_rest_client, force_sql_client
         )
 
     def _get_vector_db_result(

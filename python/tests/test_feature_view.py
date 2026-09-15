@@ -13,6 +13,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+import inspect
 import json
 import warnings
 
@@ -2153,3 +2154,55 @@ class TestFeatureViewDeploy:
             tags=None,
         )
         assert result is for_feature_view.return_value.deploy.return_value
+
+
+class TestServingKeysAlias:
+    """`entry` is the original name for the serving keys and is kept working, with a warning."""
+
+    METHODS = [
+        "get_feature_vector",
+        "get_feature_vectors",
+        "get_inference_helper",
+        "get_inference_helpers",
+    ]
+
+    @pytest.mark.parametrize("method", METHODS)
+    def test_serving_keys_is_first_and_entry_is_last(self, method):
+        # Positional callers were passing the serving keys first and must keep working, so
+        # serving_keys takes that position and entry moves to the end as a keyword.
+        params = list(
+            inspect.signature(getattr(feature_view.FeatureView, method)).parameters
+        )
+        assert params[1] == "serving_keys"
+        assert params[-1] == "entry"
+
+    def test_entry_is_returned_with_a_deprecation_warning(self):
+        with pytest.warns(DeprecationWarning, match="Use `serving_keys` instead"):
+            resolved = feature_view.FeatureView._resolve_serving_keys(
+                None, {"id": 1}, "get_feature_vector"
+            )
+        assert resolved == {"id": 1}
+
+    def test_serving_keys_alone_does_not_warn(self):
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            assert feature_view.FeatureView._resolve_serving_keys(
+                {"id": 1}, None, "get_feature_vector"
+            ) == {"id": 1}
+
+    def test_both_names_together_are_refused(self):
+        # They name one argument, so disagreeing values are a caller bug, not a preference.
+        with pytest.raises(
+            FeatureStoreException, match="both `serving_keys` and `entry`"
+        ):
+            feature_view.FeatureView._resolve_serving_keys(
+                {"id": 1}, {"id": 2}, "get_feature_vector"
+            )
+
+    def test_neither_name_is_passed_through_untouched(self):
+        assert (
+            feature_view.FeatureView._resolve_serving_keys(
+                None, None, "get_feature_vector"
+            )
+            is None
+        )
