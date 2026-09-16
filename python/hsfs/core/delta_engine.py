@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import contextlib
+import datetime
 import logging
 import os
 import warnings
@@ -41,6 +42,29 @@ if TYPE_CHECKING:
 # They are imported on-demand inside methods to provide friendly errors only
 # when the functionality is used.
 _logger = logging.getLogger(__name__)
+
+
+def _as_ingest_date(value: str | datetime.date | None) -> str | None:
+    """`after_ingest_date` as a plain `YYYY-MM-DD` string, or None.
+
+    The Spark path puts this straight into an OPTIMIZE predicate, so a value that is not
+    a date is a value that rewrites the predicate: `2026-09-10' OR '1'='1` compacts the
+    whole table instead of one partition. Parsing it here is what makes the quoting below
+    safe, and it turns a malformed date into an error naming the argument rather than an
+    engine error naming a partition filter.
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime.datetime):
+        value = value.date()
+    if isinstance(value, datetime.date):
+        return value.isoformat()
+    try:
+        return datetime.date.fromisoformat(str(value).strip()).isoformat()
+    except ValueError as error:
+        raise FeatureStoreException(
+            f"after_ingest_date must be a date as YYYY-MM-DD, got {value!r}."
+        ) from error
 
 
 def _is_delta_table_at(spark_session, path: str) -> bool:
@@ -109,6 +133,8 @@ class DeltaEngine:
     DELTA_GLUE_CATALOG_IMPL = "org.apache.spark.sql.delta.catalog.DeltaCatalog"
     APPEND = "append"
     RETENTION_CHECK_CONF = "spark.databricks.delta.retentionDurationCheck.enabled"
+    OPTIMIZE_THREADS_CONF = "spark.databricks.delta.optimize.maxThreads"
+    OPTIMIZE_FILE_SIZE_CONF = "spark.databricks.delta.optimize.maxFileSize"
 
     def __init__(
         self,
@@ -1505,11 +1531,14 @@ class DeltaEngine:
 
         `max_concurrent_tasks` is 1 by default: this runs inside the commit job, beside
         the writes, so the rewrite is deliberately not allowed to take the pod's whole
-        CPU budget.
+        CPU budget. It and `target_size` reach delta-rs directly; on Spark they are set
+        as session configuration for the statement, since OPTIMIZE takes neither as
+        syntax, and are restored afterwards.
 
         Returns:
             The engine's optimize metrics.
         """
+        after_ingest_date = _as_ingest_date(after_ingest_date)
         partition_column = self._date_partition_column()
         if after_ingest_date and partition_column is None:
             raise FeatureStoreException(
@@ -1525,7 +1554,13 @@ class DeltaEngine:
             if after_ingest_date:
                 statement += f" WHERE {partition_column} >= '{after_ingest_date}'"
             _logger.debug(f"Running {statement}")
-            rows = self._spark_session.sql(statement).collect()
+            settings = {}
+            if max_concurrent_tasks:
+                settings[self.OPTIMIZE_THREADS_CONF] = str(int(max_concurrent_tasks))
+            if target_size:
+                settings[self.OPTIMIZE_FILE_SIZE_CONF] = str(int(target_size))
+            with self._spark_conf(settings):
+                rows = self._spark_session.sql(statement).collect()
             return rows[0].asDict(recursive=True) if rows else {}
 
         from deltalake import DeltaTable as DeltaRsTable
@@ -1550,30 +1585,46 @@ class DeltaEngine:
             return self._vacuum_spark(retention_hours)
         return self._vacuum_delta_rs(retention_hours)
 
+    @contextlib.contextmanager
+    def _spark_conf(self, settings: dict):
+        """Apply session settings for one statement, then put back what was there.
+
+        The session is shared, so anything set here has to be restored; a setting that
+        cannot be read or written is skipped rather than failing the operation it was
+        only meant to tune.
+        """
+        previous = {}
+        for key, value in settings.items():
+            with contextlib.suppress(Exception):
+                previous[key] = self._spark_session.conf.get(key, None)
+                self._spark_session.conf.set(key, value)
+        try:
+            yield
+        finally:
+            for key, value in previous.items():
+                with contextlib.suppress(Exception):
+                    if value is None:
+                        self._spark_session.conf.unset(key)
+                    else:
+                        self._spark_session.conf.set(key, value)
+
     def _vacuum_spark(self, retention_hours: int):
         location = self._feature_group.prepare_spark_location()
         _logger.debug(
             f"Vacuuming Delta table for feature group {self._feature_group.name} v{self._feature_group.version} at location {location} with retention {retention_hours} hours"
         )
+        # Coerced, not just formatted: this goes into a VACUUM statement, so anything
+        # that is not a number would be rewriting the statement rather than sizing it.
         retention = (
-            f"RETAIN {retention_hours} HOURS" if retention_hours is not None else ""
+            f"RETAIN {int(retention_hours)} HOURS"
+            if retention_hours is not None
+            else ""
         )
-        previous = None
-        if retention_hours is not None:
-            with contextlib.suppress(Exception):
-                previous = self._spark_session.conf.get(self.RETENTION_CHECK_CONF, None)
-            self._spark_session.conf.set(self.RETENTION_CHECK_CONF, "false")
-        try:
+        # Delta refuses a retention under its own seven days unless this is off, which is
+        # the same allowance _vacuum_delta_rs makes with enforce_retention_duration.
+        check = {} if retention_hours is None else {self.RETENTION_CHECK_CONF: "false"}
+        with self._spark_conf(check):
             self._spark_session.sql(f"VACUUM '{location}' {retention}")
-        finally:
-            if retention_hours is not None:
-                with contextlib.suppress(Exception):
-                    if previous is None:
-                        self._spark_session.conf.unset(self.RETENTION_CHECK_CONF)
-                    else:
-                        self._spark_session.conf.set(
-                            self.RETENTION_CHECK_CONF, previous
-                        )
         return
 
     def _vacuum_delta_rs(self, retention_hours: int) -> list[str]:

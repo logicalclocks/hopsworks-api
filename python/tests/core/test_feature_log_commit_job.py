@@ -625,12 +625,15 @@ class TestCheckpoint:
 class _MaintainedGroup(_FeatureGroup):
     """A feature group recording the maintenance calls the job makes on it."""
 
-    def __init__(self, active_files=1, last_optimize_at=None, fail=None):
+    def __init__(
+        self, active_files=1, last_optimize_at=None, fail=None, date_partition=None
+    ):
         super().__init__()
         self.calls = []
         self._state = {
             "active_files": active_files,
             "last_optimize_at": last_optimize_at,
+            "date_partition": date_partition,
         }
         self._fail = fail
         group = self
@@ -642,8 +645,9 @@ class _MaintainedGroup(_FeatureGroup):
 
         self._feature_group_engine = _Engine()
 
-    def delta_optimize(self, max_concurrent_tasks=1):
+    def delta_optimize(self, after_ingest_date=None, max_concurrent_tasks=1):
         self.calls.append(("optimize", max_concurrent_tasks))
+        self.compacted_after = after_ingest_date
         if self._fail == "optimize":
             raise RuntimeError("compaction failed")
         return {"numFilesAdded": 1, "numFilesRemoved": 120}
@@ -703,6 +707,38 @@ class TestCompactionPolicy:
         assert ("optimize", job.COMPACT_CONCURRENT_TASKS) in fg.calls
         assert summary["vacuum_deleted"] == 2
         assert summary["active_files"] == 200
+
+    def test_a_dated_group_compacts_only_what_changed(self):
+        # Without a scope every daily run rewrites the whole table, including everything
+        # earlier runs already compacted, and the cost grows with the log forever.
+        fg = _MaintainedGroup(
+            active_files=200, last_optimize_at=_at(16, 1), date_partition="log_date"
+        )
+        summary = _summary()
+        summary["commits"] = 2
+        job._maintain(fg, summary, now=_at(17, 0))
+        # A day of slack before the last compaction, for a row that arrived late.
+        assert fg.compacted_after == "2026-09-15"
+        assert summary["compact_after"] == "2026-09-15"
+
+    def test_a_group_with_no_date_partition_compacts_whole(self):
+        # Only a partition column can select files without reading them, so there is
+        # nothing narrower to ask for here.
+        fg = _MaintainedGroup(active_files=200, last_optimize_at=_at(16, 1))
+        summary = _summary()
+        summary["commits"] = 2
+        job._maintain(fg, summary, now=_at(17, 0))
+        assert fg.compacted_after is None
+        assert "compact_after" not in summary
+
+    def test_a_table_never_compacted_compacts_whole(self):
+        fg = _MaintainedGroup(
+            active_files=200, last_optimize_at=None, date_partition="log_date"
+        )
+        summary = _summary()
+        summary["commits"] = 2
+        job._maintain(fg, summary, now=_at(17, 0))
+        assert fg.compacted_after is None
 
     def test_no_commits_means_no_maintenance_at_all(self):
         fg = _MaintainedGroup(active_files=500)

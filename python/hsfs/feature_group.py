@@ -5108,6 +5108,25 @@ class FeatureGroup(FeatureGroupBase):
         )
 
     @public
+    def delta_compact(
+        self,
+        after_ingest_date: str | None = None,
+        max_concurrent_tasks: int = 1,
+        target_size: int | None = None,
+    ) -> dict | None:
+        """[`delta_optimize`][hsfs.feature_group.FeatureGroup.delta_optimize] under the other name the engines use.
+
+        Delta's SQL calls this OPTIMIZE and delta-rs calls it `optimize.compact`, so both
+        words are the right one to reach for depending on which you last read. Same
+        arguments, same result.
+        """
+        return self.delta_optimize(
+            after_ingest_date=after_ingest_date,
+            max_concurrent_tasks=max_concurrent_tasks,
+            target_size=target_size,
+        )
+
+    @public
     def delta_checkpoint(self) -> dict | None:
         """Write a Delta checkpoint for this feature group.
 

@@ -15,7 +15,6 @@
 #
 from __future__ import annotations
 
-import inspect
 import itertools
 import logging
 import warnings
@@ -84,18 +83,6 @@ if TYPE_CHECKING:
     from hsfs.feature_group import FeatureGroup
 
 _logger = logging.getLogger(__name__)
-
-
-def _lookup_options(owner, args, kwargs, body="_feature_vectors_steps"):
-    """The fetch-shaping arguments, resolved against the body's own signature.
-
-    Read from the call rather than guessed from kwargs: a caller passing `allow_missing`
-    positionally would otherwise silently get the default, and a lookup that drops
-    missing rows when it should keep them is not a failure anyone would see.
-    """
-    bound = inspect.signature(getattr(owner, body)).bind(*args, **kwargs)
-    bound.apply_defaults()
-    return bound.arguments["allow_missing"], bound.arguments["logging_data"]
 
 
 def _resume(steps, fetched):
@@ -494,10 +481,7 @@ class VectorServer:
     def _get_feature_vector(self, *args: Any, **kwargs: Any) -> Any:
         """Assemble a single serving vector, looking it up on this thread."""
         steps = self._feature_vector_steps(*args, **kwargs)
-        rondb_entry, choice = next(steps)
-        allow_missing, logging_data = _lookup_options(
-            self, args, kwargs, "_feature_vector_steps"
-        )
+        rondb_entry, choice, allow_missing, logging_data = next(steps)
         use_rest = self._single_lookup_arguments(rondb_entry, choice)
         if use_rest is None:
             serving_vector = {}
@@ -522,10 +506,7 @@ class VectorServer:
     async def _get_feature_vector_async(self, *args: Any, **kwargs: Any) -> Any:
         """The same vector, with the online lookup awaited on the caller's event loop."""
         steps = self._feature_vector_steps(*args, **kwargs)
-        rondb_entry, choice = next(steps)
-        allow_missing, logging_data = _lookup_options(
-            self, args, kwargs, "_feature_vector_steps"
-        )
+        rondb_entry, choice, allow_missing, logging_data = next(steps)
         use_rest = self._single_lookup_arguments(rondb_entry, choice)
         if use_rest is None:
             serving_vector = {}
@@ -607,8 +588,14 @@ class VectorServer:
             vector_db_features=vector_db_features,
         )
         # The one suspension point, as for the batch: the driver fetches and hands the
-        # rows back, and everything below assembles them.
-        serving_vector = yield rondb_entry, online_client_choice
+        # rows back, and everything below assembles them. What goes out is everything the
+        # fetch needs, which the driver would otherwise have to recover from the call.
+        serving_vector = yield (
+            rondb_entry,
+            online_client_choice,
+            allow_missing,
+            logging_data,
+        )
 
         self._raise_transformation_warnings(
             transform=transform, on_demand_features=on_demand_features
@@ -665,8 +652,7 @@ class VectorServer:
     def _get_feature_vectors(self, *args: Any, **kwargs: Any) -> Any:
         """Assemble a batch of serving vectors, looking them up on this thread."""
         steps = self._feature_vectors_steps(*args, **kwargs)
-        rondb_entries, choice = next(steps)
-        allow_missing, logging_data = _lookup_options(self, args, kwargs)
+        rondb_entries, choice, allow_missing, logging_data = next(steps)
         use_rest = self._batch_lookup_arguments(rondb_entries, choice)
         if use_rest is None:
             batch_results = []
@@ -697,8 +683,7 @@ class VectorServer:
         deployment has no such path, so it keeps the blocking call.
         """
         steps = self._feature_vectors_steps(*args, **kwargs)
-        rondb_entries, choice = next(steps)
-        allow_missing, logging_data = _lookup_options(self, args, kwargs)
+        rondb_entries, choice, allow_missing, logging_data = next(steps)
         use_rest = self._batch_lookup_arguments(rondb_entries, choice)
         if use_rest is None:
             batch_results = []
@@ -836,8 +821,15 @@ class VectorServer:
 
         # The one suspension point. Everything above prepares the lookup and everything
         # below assembles its rows; only the fetch itself differs between the blocking
-        # driver and the awaiting one, so it is the only thing handed out.
-        batch_results = yield rondb_entries, online_client_choice
+        # driver and the awaiting one. What goes out with it is everything the fetch
+        # needs, so a driver never has to work out from the call what the body already
+        # has in hand.
+        batch_results = yield (
+            rondb_entries,
+            online_client_choice,
+            allow_missing,
+            logging_data,
+        )
 
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug("Assembling feature vectors from batch results")

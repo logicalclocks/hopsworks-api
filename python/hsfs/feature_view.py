@@ -925,8 +925,9 @@ class FeatureView:
         The lookup is a round trip to the online store, and on a caller that runs an
         event loop, a serving deployment above all, the synchronous call blocks that loop
         for the whole trip and no other request is served meanwhile.
-        A cluster measurement put the wait at about 2.3 ms of a 2.5 ms lookup, the rest
-        being CPU, and removing it raised a deployment's throughput by 42 percent.
+        A cluster measurement put the lookup at 2.48 ms of wall time for 0.18 ms of CPU,
+        so about 93 percent of it is waiting, and awaiting it instead raised a
+        deployment's throughput by 23.6 percent and cut its p99 by 72 percent.
 
         Takes the same arguments as the synchronous method and returns the same value.
 
@@ -965,9 +966,8 @@ class FeatureView:
         The online lookup is awaited on the caller's own event loop, against a connection
         pool belonging to that loop, so several lookups are in flight at once. The
         synchronous method hands the work to a task thread that serves one lookup at a
-        time however many callers there are, which is what made a serving deployment
-        saturate at 218 requests per second where the same deployment with nothing to look
-        up reached 310.
+        time however many callers there are, which is what held a measured serving
+        deployment to 218 requests per second where awaiting the lookup took it to 270.
 
         Falls back to the blocking path when the lookup is not the SQL client's to make: a
         REST client deployment, or a request with no serving keys.

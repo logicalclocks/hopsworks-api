@@ -730,13 +730,19 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
 
     @staticmethod
     def _delta_maintenance_state(feature_group):
-        """The file count and last compaction time a maintenance policy decides on."""
+        """What a maintenance policy decides on: file count, last compaction, layout.
+
+        The date partition column is in here because it is what says whether a
+        compaction can be bounded to the partitions that have changed, and reading it
+        alongside the rest keeps that a property of one look at the table.
+        """
         engine_instance = FeatureGroupEngine._delta_engine_for(feature_group)
         if engine_instance is None:
             return None
         return {
             "active_files": engine_instance._active_file_count(),
             "last_optimize_at": engine_instance._last_optimize_at(),
+            "date_partition": engine_instance._date_partition_column(),
         }
 
     @staticmethod

@@ -3319,3 +3319,21 @@ class TestFeatureGroupEngine:
         assert result[1].on_demand is False
         assert result[2].name == "multi_output_1"
         assert result[2].on_demand is True
+
+
+class TestDeltaCompactAlias:
+    def test_delta_compact_is_delta_optimize(self, mocker):
+        """Both words name the operation: Delta's SQL says OPTIMIZE, delta-rs says compact."""
+        from hsfs import feature_group as fg_mod
+
+        group = fg_mod.FeatureGroup.__new__(fg_mod.FeatureGroup)
+        optimize = mocker.patch.object(
+            fg_mod.FeatureGroup, "delta_optimize", return_value={"ok": 1}
+        )
+
+        assert group.delta_compact(after_ingest_date="2026-09-10", target_size=42) == {
+            "ok": 1
+        }
+        optimize.assert_called_once_with(
+            after_ingest_date="2026-09-10", max_concurrent_tasks=1, target_size=42
+        )

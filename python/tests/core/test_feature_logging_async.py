@@ -16,9 +16,11 @@
 from __future__ import annotations
 
 import asyncio
+import gc
 import json
 import threading
 import time
+import weakref
 from types import SimpleNamespace
 
 from hopsworks_common.core.feature_logging_async import _AsyncLogWorker
@@ -138,3 +140,76 @@ def test_sdk_emits_binary_legacy_event_and_counts_delivery(monkeypatch):
     ]
     assert logger._stats["sent"] == 1
     logger._async_worker_thread._event_loop.close()
+
+
+class TestLoopConnectionPools:
+    """The pools the awaited lookups build must not outlive their loops.
+
+    Each one opens a connection per feature group in the view. A serving deployment has
+    a single loop and never notices, but a script awaiting a lookup through
+    `asyncio.run` builds a loop per call, and a pool left behind by each is that many
+    sockets the online store holds until the process ends.
+    """
+
+    @staticmethod
+    def _client(terminated):
+        from hsfs.core import online_store_sql_engine
+
+        client = online_store_sql_engine.OnlineStoreSqlClient.__new__(
+            online_store_sql_engine.OnlineStoreSqlClient
+        )
+        client._loop_connection_pools = weakref.WeakKeyDictionary()
+        client._async_task_thread = None
+        client._prepared_statements = {
+            online_store_sql_engine.OnlineStoreSqlClient.SINGLE_VECTOR_KEY: [1, 2]
+        }
+
+        class Pool:
+            def __init__(self):
+                self.id = len(terminated) + id(self)
+
+            def terminate(self):
+                terminated.append(self)
+
+        async def make_pool(size):
+            assert size == 2
+            return Pool()
+
+        client._get_connection_pool = make_pool
+        return client
+
+    def test_a_pool_is_reused_within_one_loop(self):
+        terminated = []
+        client = self._client(terminated)
+
+        async def main():
+            first = await client._loop_connection_pool()
+            second = await client._loop_connection_pool()
+            assert first is second
+            return first
+
+        asyncio.run(main())
+
+    def test_each_discarded_loop_releases_its_pool(self):
+        terminated = []
+        client = self._client(terminated)
+
+        for _ in range(3):
+            asyncio.run(client._loop_connection_pool())
+            gc.collect()
+
+        assert len(terminated) == 3, "a loop was collected without closing its pool"
+        assert len(client._loop_connection_pools) == 0
+
+    def test_close_releases_a_live_loop_s_pool(self):
+        terminated = []
+        client = self._client(terminated)
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(client._loop_connection_pool())
+            assert len(client._loop_connection_pools) == 1
+            client._close()
+            assert len(terminated) == 1
+            assert len(client._loop_connection_pools) == 0
+        finally:
+            loop.close()

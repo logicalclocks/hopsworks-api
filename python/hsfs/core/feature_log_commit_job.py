@@ -31,8 +31,22 @@ import os
 import tempfile
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+
+def _positive_env(name: str, default: int) -> int:
+    """A positive integer setting, from the environment or the default.
+
+    The maintenance limits below are read this way rather than hardcoded so a
+    deployment whose logging table grows faster than the defaults assume can be tuned
+    without a client release. Defined here rather than imported: this file is uploaded
+    as the commit job's script and keeps to what it can carry on its own.
+    """
+    try:
+        return max(1, int(os.environ.get(name, default)))
+    except (TypeError, ValueError):
+        return default
 
 
 STAGING_ROOT = "Resources/feature_logging"
@@ -46,14 +60,23 @@ CLAIM_RECLAIM_SECONDS = 7200
 # One append commit writes one file, and the commits here carry roughly a megabyte to a
 # few, so a hundred files is the low hundreds of megabytes: around one compacted file at
 # the engine's own target, and small enough that the rewrite fits beside the writes.
-COMPACT_FILE_THRESHOLD = 100
+COMPACT_FILE_THRESHOLD = _positive_env(
+    "HOPSWORKS_FEATURE_LOG_COMPACT_FILE_THRESHOLD", 100
+)
 # The rewrite runs in this job's process, beside the commits, so it does not get the
 # pod's whole CPU budget.
-COMPACT_CONCURRENT_TASKS = 1
+COMPACT_CONCURRENT_TASKS = _positive_env(
+    "HOPSWORKS_FEATURE_LOG_COMPACT_CONCURRENT_TASKS", 1
+)
 # A vacuum deletes files an in-flight query may still be reading, so this has to stay
 # comfortably longer than the longest query that runs against a logging group. It is
 # also the time travel window: a version whose files have been vacuumed cannot be read.
-COMPACT_VACUUM_RETENTION_HOURS = 24
+COMPACT_VACUUM_RETENTION_HOURS = _positive_env(
+    "HOPSWORKS_FEATURE_LOG_VACUUM_RETENTION_HOURS", 24
+)
+# Days before the last compaction that an incremental one reopens, so a row that arrived
+# late still reaches a partition the rewrite covers.
+COMPACT_LOOKBACK_DAYS = _positive_env("HOPSWORKS_FEATURE_LOG_COMPACT_LOOKBACK_DAYS", 1)
 # Older than any upload still in progress: a chunk this old in `uploading/` is whole
 # and its pod is gone.
 UPLOAD_STALE_SECONDS = 3600
@@ -506,6 +529,32 @@ def _should_compact(state: dict, now: float) -> str | None:
     return None
 
 
+def _compaction_scope(state: dict) -> str | None:
+    """The earliest ingest date this compaction needs to rewrite, or None for all of it.
+
+    Only files written since the last compaction need rewriting, and on a group
+    partitioned by a date those files are in partitions at or after that date. Bounding
+    the rewrite that way is what keeps a daily compaction's cost flat: without it every
+    run rewrites the whole table, including everything earlier runs already compacted,
+    and the cost grows with the log forever.
+
+    `COMPACT_LOOKBACK_DAYS` of slack before that date covers a row that arrived late and
+    landed in a partition earlier than the one it was logged in.
+
+    None, meaning the whole table, in the two cases where nothing narrower is sound: a
+    group with no date partition column, where only a partition column can select files
+    without reading them, and a table that has never been compacted, which has no
+    earlier point to start from.
+    """
+    last = state.get("last_optimize_at")
+    if last is None or not state.get("date_partition"):
+        return None
+    start = datetime.fromtimestamp(last, tz=timezone.utc) - timedelta(
+        days=COMPACT_LOOKBACK_DAYS
+    )
+    return start.date().isoformat()
+
+
 def _maintain(feature_group, summary: dict, now: float | None = None) -> None:
     """Compact, checkpoint, then expire the log and the files it orphaned.
 
@@ -549,9 +598,13 @@ def _maintain(feature_group, summary: dict, now: float | None = None) -> None:
         _checkpoint(feature_group, summary)
         return
     summary["compact_reason"] = reason
+    after = _compaction_scope(state)
+    if after is not None:
+        summary["compact_after"] = after
     try:
         summary["compaction"] = feature_group.delta_optimize(
-            max_concurrent_tasks=COMPACT_CONCURRENT_TASKS
+            after_ingest_date=after,
+            max_concurrent_tasks=COMPACT_CONCURRENT_TASKS,
         )
     except Exception as error:  # noqa: BLE001 - maintenance never fails a commit
         summary["maintenance_error"] = type(error).__name__

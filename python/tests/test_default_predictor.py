@@ -1439,11 +1439,16 @@ class TestAsyncPredict:
         assert sync_err.value.detail["code"] == async_err.value.detail["code"]
 
     def test_the_lookup_is_awaited_unless_asked_otherwise(self, monkeypatch):
-        """The default awaits, now that concurrent lookups overlap instead of queueing."""
-        predictor = self._predictor()
-        assert predictor._fetch() == predictor.fetch_feature_vectors_async
+        """The default awaits, now that concurrent lookups overlap instead of queueing.
+
+        The setting is read when the predictor is built, which is how a pod gets it, and
+        not per request: this is on the path every prediction takes.
+        """
+        awaited = self._predictor()
+        assert awaited._fetch() == awaited.fetch_feature_vectors_async
         monkeypatch.setenv("HOPSWORKS_PREDICTOR_ASYNC_LOOKUP", "false")
-        assert predictor._fetch() == predictor.fetch_feature_vectors
+        blocking = self._predictor()
+        assert blocking._fetch() == blocking.fetch_feature_vectors
 
     def test_the_loop_is_free_while_the_lookup_runs(self):
         """The point of the coroutine: other tasks progress during the lookup.

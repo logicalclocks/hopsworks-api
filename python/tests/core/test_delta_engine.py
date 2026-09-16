@@ -1346,6 +1346,73 @@ class TestDeltaEngine:
             "OPTIMIZE delta.`hopsfs://nn:8020/p` WHERE log_date >= '2026-09-10'"
         )
 
+    def test_compact_on_spark_sets_and_restores_the_tuning_conf(self, mocker):
+        # OPTIMIZE takes neither as syntax, so on Spark they are session settings; the
+        # session is shared, so they have to go back afterwards.
+        _patch_client(mocker, is_external=False)
+        spark = mocker.MagicMock()
+        spark.sql.return_value.collect.return_value = []
+        spark.conf.get.return_value = None
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.prepare_spark_location.return_value = "hopsfs://nn:8020/p"
+        engine = DeltaEngine(1, "fs", fg, spark, None)
+
+        engine._optimize_compact(max_concurrent_tasks=4, target_size=134217728)
+
+        assert (
+            mocker.call(DeltaEngine.OPTIMIZE_THREADS_CONF, "4")
+            in spark.conf.set.call_args_list
+        )
+        assert (
+            mocker.call(DeltaEngine.OPTIMIZE_FILE_SIZE_CONF, "134217728")
+            in spark.conf.set.call_args_list
+        )
+        # Nothing was set before, so both are unset again rather than pinned.
+        unset = [c.args[0] for c in spark.conf.unset.call_args_list]
+        assert DeltaEngine.OPTIMIZE_THREADS_CONF in unset
+        assert DeltaEngine.OPTIMIZE_FILE_SIZE_CONF in unset
+
+    def test_compact_refuses_a_date_that_is_not_one(self, mocker):
+        # The value lands in an OPTIMIZE predicate, so anything that is not a date is a
+        # rewritten predicate: this one would compact the whole table.
+        _patch_client(mocker, is_external=False)
+        spark = mocker.MagicMock()
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.partition_key = ["log_date"]
+        fg.features = [SimpleNamespace(name="log_date", type="date")]
+        engine = DeltaEngine(1, "fs", fg, spark, None)
+
+        with pytest.raises(FeatureStoreException, match="YYYY-MM-DD"):
+            engine._optimize_compact(after_ingest_date="2026-09-10' OR '1'='1")
+        spark.sql.assert_not_called()
+
+    def test_compact_accepts_a_date_object(self, mocker):
+        _patch_client(mocker, is_external=False)
+        spark = mocker.MagicMock()
+        spark.sql.return_value.collect.return_value = []
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.prepare_spark_location.return_value = "hopsfs://nn:8020/p"
+        fg.partition_key = ["log_date"]
+        fg.features = [SimpleNamespace(name="log_date", type="date")]
+        engine = DeltaEngine(1, "fs", fg, spark, None)
+
+        engine._optimize_compact(after_ingest_date=date(2026, 9, 10))
+
+        spark.sql.assert_called_once_with(
+            "OPTIMIZE delta.`hopsfs://nn:8020/p` WHERE log_date >= '2026-09-10'"
+        )
+
+    def test_vacuum_coerces_the_retention(self, mocker):
+        # Same reason as the compaction predicate: this is formatted into a statement.
+        _patch_client(mocker, is_external=False)
+        spark = mocker.MagicMock()
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.prepare_spark_location.return_value = "hopsfs://nn:8020/p"
+        engine = DeltaEngine(1, "fs", fg, spark, None)
+
+        with pytest.raises(ValueError):
+            engine._vacuum("24 HOURS; DROP TABLE x")
+
     def test_active_file_count_on_python(self, mocker):
         # Arrange
         engine, _ = self._rs_engine(mocker)

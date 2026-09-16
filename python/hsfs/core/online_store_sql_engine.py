@@ -55,6 +55,17 @@ if HAS_AIOMYSQL and HAS_SQLALCHEMY:
 _logger = logging.getLogger(__name__)
 
 
+def _terminate_pool(pool) -> None:
+    """Close a connection pool's sockets, from anywhere, without awaiting.
+
+    `close` only marks a pool closing and needs `wait_closed` awaited on the pool's own
+    loop to finish; `terminate` shuts the connections down on the spot, which is the only
+    thing available once that loop is gone.
+    """
+    with contextlib.suppress(Exception):
+        pool.terminate()
+
+
 class OnlineStoreSqlClient:
     BATCH_HELPER_KEY = "batch_helper_column"
     SINGLE_HELPER_KEY = "single_helper_column"
@@ -115,7 +126,13 @@ class OnlineStoreSqlClient:
         reachable is never finalized. Each pool holds one connection per feature
         group in the view, so a process that initialises serving repeatedly can
         exhaust the online store's `max_connections`.
+
+        Both kinds of pool go: the task thread's, and the per-loop ones the awaited
+        lookups build. The latter are keyed weakly by loop, so this only reaches those
+        whose loop is still alive; a collected loop's pool is terminated by the finalizer
+        `_loop_connection_pool` registers.
         """
+        self._close_loop_connection_pools()
         thread = self._async_task_thread
         if thread is not None:
             if thread._shutdown():
@@ -742,6 +759,13 @@ class OnlineStoreSqlClient:
         aiomysql binds a pool to the loop that created it, so a pool made on the
         `AsyncTaskThread` cannot be awaited from anywhere else. Keying them by loop is
         what lets a caller await its own.
+
+        Each pool opens one connection per feature group in the view and holds them, so
+        a pool that outlives its loop is that many sockets the online store keeps until
+        the process ends. A serving deployment has one loop and never notices; a script
+        that calls `asyncio.run` per lookup builds a loop each time, and without the
+        finalizer below every one of them would leave its pool behind. A pool whose loop
+        is still alive stays in the map instead, where `_close` finds it.
         """
         loop = asyncio.get_running_loop()
         pool = self._loop_connection_pools.get(loop)
@@ -750,7 +774,16 @@ class OnlineStoreSqlClient:
                 len(self._prepared_statements[self.SINGLE_VECTOR_KEY])
             )
             self._loop_connection_pools[loop] = pool
+            # terminate rather than close: by the time a loop is collected it is closed
+            # too, and closing a pool properly needs its loop to run wait_closed.
+            weakref.finalize(loop, _terminate_pool, pool)
         return pool
+
+    def _close_loop_connection_pools(self) -> None:
+        """Release the pools of loops that are still alive."""
+        for pool in list(self._loop_connection_pools.values()):
+            _terminate_pool(pool)
+        self._loop_connection_pools.clear()
 
     def _refresh_mysql_connection(self):
         if _logger.isEnabledFor(logging.DEBUG):

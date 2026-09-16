@@ -574,6 +574,10 @@ class DefaultPredict:
             )
         self._log_worker = None
         self._arrow_builder = None
+        # Resolved here rather than per request: see _fetch.
+        self._blocking_lookup = os.environ.get(
+            "HOPSWORKS_PREDICTOR_ASYNC_LOOKUP", ""
+        ).strip().lower() in ("false", "0", "no")
         self._async_logger = async_logger
         self._file_transport = None
         if self.logging_enabled and self.logging_transport == "job":
@@ -1360,13 +1364,11 @@ class DefaultPredict:
 
         Set HOPSWORKS_PREDICTOR_ASYNC_LOOKUP=false to go back to the blocking lookup,
         which is what a deployment wants if its online reads go through the REST client,
-        where there is nothing to overlap.
+        where there is nothing to overlap. Read once when the predictor is built, not per
+        request: the pod's environment does not change under it, and this is on the path
+        every prediction takes.
         """
-        if os.environ.get("HOPSWORKS_PREDICTOR_ASYNC_LOOKUP", "").strip().lower() in (
-            "false",
-            "0",
-            "no",
-        ):
+        if self._blocking_lookup:
             return self.fetch_feature_vectors
         return self.fetch_feature_vectors_async
 

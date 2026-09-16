@@ -206,9 +206,6 @@ class TestNativeAsyncLookup:
             return_value=mocker.MagicMock(),
         )
         server._fetch_inference_helpers_for_transformations = False
-        mocker.patch(
-            "hsfs.core.vector_server._lookup_options", return_value=(False, False)
-        )
         return server, sql
 
     def test_the_batch_driver_awaits_the_sql_client(self, mocker):
@@ -223,7 +220,9 @@ class TestNativeAsyncLookup:
         mocker.patch.object(VectorServer, "_batch_lookup_arguments", return_value=False)
 
         def steps(*args, **kwargs):
-            return (yield ["entry"], "sql")
+            # The body hands out everything the fetch needs, including the two options
+            # that shape it.
+            return (yield ["entry"], "sql", False, False)
 
         mocker.patch.object(VectorServer, "_feature_vectors_steps", steps)
 
@@ -245,12 +244,36 @@ class TestNativeAsyncLookup:
         )
 
         def steps(*args, **kwargs):
-            return (yield {"pk": 1}, "sql")
+            return (yield {"pk": 1}, "sql", False, False)
 
         mocker.patch.object(VectorServer, "_feature_vector_steps", steps)
 
         assert asyncio.run(server._get_feature_vector_async()) == {"a": 1}
         sql._get_single_feature_vector.assert_not_called()
+
+    def test_the_options_come_from_the_body_not_the_call(self, mocker):
+        # The body already has allow_missing and logging_data bound, so the drivers take
+        # them from the yield. Recovering them from the call instead cost an
+        # inspect.signature bind on every request and could disagree with the body.
+        import asyncio
+
+        server, sql = self._server(mocker)
+        seen = {}
+
+        async def awaited(entries, **kwargs):
+            seen.update(kwargs)
+            return ([{"a": 1}], None)
+
+        sql._get_batch_feature_vectors_async = awaited
+        mocker.patch.object(VectorServer, "_batch_lookup_arguments", return_value=False)
+
+        def steps(*args, **kwargs):
+            return (yield ["entry"], "sql", True, True)
+
+        mocker.patch.object(VectorServer, "_feature_vectors_steps", steps)
+
+        asyncio.run(server._get_feature_vectors_async())
+        assert seen["logging_data"] is True
 
     def test_a_body_that_suspends_twice_is_refused(self):
         from hsfs.core import vector_server
