@@ -123,46 +123,6 @@ _logger = logging.getLogger(__name__)
 
 @public
 @typechecked
-def _normalize_feature_age(
-    max_feature_age: Any,
-) -> dict[str, int] | None:
-    """Milliseconds keyed by feature group name, from whatever shape the caller gave.
-
-    A bare `timedelta` bounds every feature group and is stored under `"*"`. A dict of
-    `timedelta` is converted per key. A dict of ints is already in milliseconds and is taken as
-    it is, which is the form that comes back from the backend.
-    """
-    if max_feature_age is None:
-        return None
-    if isinstance(max_feature_age, timedelta):
-        return {"*": int(max_feature_age.total_seconds() * 1000)}
-    if isinstance(max_feature_age, dict):
-        out: dict[str, int] = {}
-        for name, age in max_feature_age.items():
-            if isinstance(age, timedelta):
-                out[name] = int(age.total_seconds() * 1000)
-            elif isinstance(age, int) and not isinstance(age, bool):
-                out[name] = age
-            else:
-                raise TypeError(
-                    f"max_feature_age[{name!r}] must be a timedelta; got {type(age)!r}."
-                )
-        return out or None
-    raise TypeError(
-        "max_feature_age must be a timedelta or a dict of them;"
-        f" got {type(max_feature_age)!r}."
-    )
-
-
-def _decode_feature_age(value: Any) -> dict[str, int] | None:
-    """The backend stores the bound as the JSON string it was sent."""
-    if not value:
-        return None
-    if isinstance(value, str):
-        return json.loads(value)
-    return value
-
-
 class FeatureView:
     """Metadata class for Hopsworks feature views.
 
@@ -209,7 +169,7 @@ class FeatureView:
         self._version = version
         self._description = description
         self._labels = labels if labels else []
-        self._max_feature_age = _normalize_feature_age(max_feature_age)
+        self._max_feature_age = self._normalize_feature_age(max_feature_age)
         self._inference_helper_columns = (
             inference_helper_columns if inference_helper_columns else []
         )
@@ -324,6 +284,26 @@ class FeatureView:
         self._model_dependent_transformation_execution_graph: transformation_execution_dag.TransformationExecutionDAG = transformation_execution_dag.TransformationExecutionDAG(
             self.transformation_functions,
         )
+
+    @staticmethod
+    def _normalize_feature_age(max_feature_age: Any) -> int | None:
+        """Seconds, from a `timedelta` or an already-resolved integer of seconds."""
+        if max_feature_age is None:
+            return None
+        if isinstance(max_feature_age, timedelta):
+            seconds = int(max_feature_age.total_seconds())
+        elif isinstance(max_feature_age, int) and not isinstance(max_feature_age, bool):
+            seconds = max_feature_age
+        else:
+            raise TypeError(
+                f"max_feature_age must be a timedelta; got {type(max_feature_age)!r}."
+            )
+        if seconds <= 0:
+            raise FeatureStoreException(
+                "max_feature_age must be a positive duration;"
+                f" got {max_feature_age!r}, which would match no row at all."
+            )
+        return seconds
 
     @staticmethod
     def _resolve_serving_keys(
@@ -4951,9 +4931,7 @@ class FeatureView:
             featurestore_name=json_decamelized.get("featurestore_name", None),
             serving_keys=serving_keys,
             logging_enabled=json_decamelized.get("logging_enabled", False),
-            max_feature_age=_decode_feature_age(
-                json_decamelized.get("max_feature_age")
-            ),
+            max_feature_age=json_decamelized.get("max_feature_age_secs"),
             transformation_functions=(
                 [
                     TransformationFunction.from_response_json(
@@ -5060,9 +5038,10 @@ class FeatureView:
             "schema",
             "serving_keys",
             "logging_enabled",
-            "max_feature_age",
         ]:
             self._update_attribute_if_present(self, other, key)
+        # Read-only, so it cannot go through the setter loop above.
+        self._max_feature_age = other._max_feature_age
         self._init_feature_monitoring_engine()
         return self
 
@@ -5846,9 +5825,8 @@ class FeatureView:
             "type": "featureViewDTO",
             "extraLogColumns": self._extra_log_columns,
         }
-        if self._max_feature_age:
-            # The backend stores it as the JSON it was sent and hands it back unchanged.
-            fv_dict["maxFeatureAge"] = json.dumps(self._max_feature_age)
+        if self._max_feature_age is not None:
+            fv_dict["maxFeatureAgeSecs"] = self._max_feature_age
         tags_dict = tag.Tag._tags_to_dict(self._tags)
         if tags_dict:
             fv_dict["tags"] = tags_dict
@@ -5934,7 +5912,7 @@ class FeatureView:
 
     @public
     @property
-    def max_feature_age(self) -> dict[str, int] | None:
+    def max_feature_age(self) -> timedelta | None:
         """How stale a looked-up row may be, relative to the time it is looked up as of.
 
         An as-of lookup carries the last value forward for ever, so a feature group that stops
@@ -5947,17 +5925,23 @@ class FeatureView:
         training set and an inference read could be built with different bounds, which is the
         training/serving skew a feature view exists to prevent.
 
-        Milliseconds keyed by feature group name, with `"*"` as the catch-all. `None` is
-        unbounded.
+        One bound for the whole view. `None` is unbounded.
 
         ```python
         fv = fs.create_feature_view(
             name="air_quality_fv",
             query=query,
-            max_feature_age={"weather": datetime.timedelta(days=1)},
+            max_feature_age=datetime.timedelta(days=1),
         )
         ```
         """
+        if self._max_feature_age is None:
+            return None
+        return timedelta(seconds=self._max_feature_age)
+
+    @property
+    def _max_feature_age_secs(self) -> int | None:
+        """The stored form, which is what goes on the wire."""
         return self._max_feature_age
 
     @public

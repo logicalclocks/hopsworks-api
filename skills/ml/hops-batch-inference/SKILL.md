@@ -271,22 +271,20 @@ rows keeps answering with its final one and nothing in the result says so. Bound
 fv = fs.create_feature_view(
     name="air_quality_fv",
     query=query,
-    max_feature_age={"weather": datetime.timedelta(days=1)},
-    # or one bound for every feature group:
-    # max_feature_age=datetime.timedelta(hours=6),
+    max_feature_age=datetime.timedelta(days=1),
 )
 ```
 
-A matched row older than the bound comes back `NULL` instead of a stale value, so the gap is
+One bound covers the whole view: every feature group it reads is held to the same limit. A
+matched row older than the bound comes back `NULL` instead of a stale value, so the gap is
 visible to you and to the model. It is a property of the view, so it applies to training data
 built with `spine_df` as well; a training example built from a stale feature is worse than an
-inference row built from one, because the model learns from it. A name that is not a feature
-group of the view is refused rather than bounding nothing silently.
+inference row built from one, because the model learns from it.
 
 It is read-only afterwards, and stored with the view. That is deliberate: if it could be changed
 per call, a training set and an inference read could be built with different bounds, which is the
-training/serving skew a feature view exists to prevent. `fv.max_feature_age` reads it back as
-milliseconds keyed by feature group name.
+training/serving skew a feature view exists to prevent. `fv.max_feature_age` reads it back as a
+`timedelta`, or `None` when the view is unbounded.
 
 ### Training data from the same rows
 
@@ -307,7 +305,7 @@ train_x, test_x, train_y, test_y = fv.train_test_split(test_size=0.2, spine_df=l
 | A column matching nothing in the view (batch read) | Error listing the accepted columns |
 | `spine_df` with `start_time`/`end_time` | Error: the frame's timestamps define the time axis |
 | `spine_df` with `spine` | Error: both replace the left side of the query |
-| `max_feature_age` naming no feature group | Error rather than a bound that applies to nothing |
+| `max_feature_age` zero or negative | Error: a bound that matches no row is a caller mistake |
 | Over the row, byte or column limit | Refused before it runs, naming the limit |
 
 An entity that matches nothing is **not** an error: the row comes back with `NULL` features,

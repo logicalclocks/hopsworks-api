@@ -13,6 +13,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+import datetime
 import inspect
 import json
 import warnings
@@ -2206,3 +2207,63 @@ class TestServingKeysAlias:
             )
             is None
         )
+
+
+class TestMaxFeatureAge:
+    @pytest.fixture(autouse=True)
+    def _engine(self, mocker):
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type")
+
+    def _fv(self, max_feature_age):
+        return feature_view.FeatureView(
+            name="test_fv",
+            featurestore_id=99,
+            query=fg1.select_all(),
+            version=1,
+            max_feature_age=max_feature_age,
+        )
+
+    def test_a_timedelta_goes_on_the_wire_as_seconds(self):
+        fv = self._fv(datetime.timedelta(hours=12))
+        assert fv._max_feature_age_secs == 43200
+        assert json.loads(fv.json())["maxFeatureAgeSecs"] == 43200
+
+    def test_it_reads_back_as_a_timedelta(self):
+        assert self._fv(datetime.timedelta(days=1)).max_feature_age == (
+            datetime.timedelta(days=1)
+        )
+
+    def test_unbounded_by_default(self):
+        fv = self._fv(None)
+        assert fv.max_feature_age is None
+        assert "maxFeatureAgeSecs" not in json.loads(fv.json())
+
+    def test_the_bound_is_read_only(self):
+        # A bound changed after training would silently skew inference against the training set.
+        with pytest.raises(AttributeError):
+            self._fv(datetime.timedelta(days=1)).max_feature_age = datetime.timedelta(
+                days=2
+            )
+
+    @pytest.mark.parametrize(
+        "bound", [datetime.timedelta(0), datetime.timedelta(seconds=-1)]
+    )
+    def test_a_non_positive_bound_is_refused(self, bound):
+        with pytest.raises(FeatureStoreException, match="positive duration"):
+            self._fv(bound)
+
+    def test_a_number_is_refused(self):
+        with pytest.raises(TypeError, match="must be a timedelta"):
+            self._fv(3600.0)
+
+    def test_a_refresh_carries_the_bound_without_assigning_the_property(self, mocker):
+        # The property has no setter, so a refresh must not go through one.
+        fv = self._fv(datetime.timedelta(days=1))
+        refreshed = self._fv(datetime.timedelta(hours=1))
+        refreshed._serving_keys = [ServingKey(feature_name="primary_key", join_index=0)]
+        mocker.patch.object(
+            feature_view.FeatureView, "from_response_json", return_value=refreshed
+        )
+        fv.update_from_response_json({})
+        assert fv.max_feature_age == datetime.timedelta(hours=1)

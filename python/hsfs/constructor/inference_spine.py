@@ -20,7 +20,6 @@ import os
 import re
 import uuid
 import warnings
-from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
 from hopsworks_common.client.exceptions import FeatureStoreException
@@ -94,14 +93,13 @@ class InferenceSpine:
         self,
         feature_view: FeatureView,
         spine_df: Any,
-        max_feature_age: timedelta | dict[str, timedelta] | None = None,
+        max_feature_age_secs: int | None = None,
         allow_passthrough: bool = False,
     ) -> None:
         self._feature_view = feature_view
         self._table_name = _TABLE_PREFIX + uuid.uuid4().hex[:8]
         self._basename = f"{uuid.uuid4().hex}.parquet"
-        self._max_feature_age = _normalize_age(max_feature_age)
-        _check_age_names(self._max_feature_age, feature_view)
+        self._max_feature_age_secs = max_feature_age_secs
         # Only the Hopsworks Query Service reads the spine from a file. Spark takes a session
         # temporary view, so nothing is staged and the backend must not be told to look for one.
         self._parquet_staged = False
@@ -285,53 +283,9 @@ class InferenceSpine:
         }
         if self._parquet_staged:
             payload["parquetBasename"] = self._basename
-        if self._max_feature_age:
-            payload["maxFeatureAgeMs"] = self._max_feature_age
+        if self._max_feature_age_secs is not None:
+            payload["maxFeatureAgeSecs"] = self._max_feature_age_secs
         return payload
-
-
-def _check_age_names(
-    normalized: dict[str, int] | None, feature_view: FeatureView
-) -> None:
-    """Refuse a `max_feature_age` key that names no feature group in the view.
-
-    The bound is a correctness guard: without it an as-of lookup carries the last value forward
-    for ever. A key that matches nothing would apply no bound at all and return stale rows with
-    no error, so a name that is not a feature group of this view is a mistake worth raising.
-    """
-    if not normalized:
-        return
-    known = {"*"} | {
-        fg.name for fg in feature_view.query.featuregroups if getattr(fg, "name", None)
-    }
-    unknown = sorted(set(normalized) - known)
-    if unknown:
-        raise FeatureStoreException(
-            f"max_feature_age names {unknown}, which is not a feature group of feature view"
-            f" `{feature_view.name}`. Known feature groups: {sorted(known - {'*'})}."
-            " Use `'*'` to bound every feature group."
-        )
-
-
-def _normalize_age(
-    max_feature_age: timedelta | dict[str, timedelta] | None,
-) -> dict[str, int]:
-    if max_feature_age is None:
-        return {}
-    if isinstance(max_feature_age, timedelta):
-        return {"*": int(max_feature_age.total_seconds() * 1000)}
-    if isinstance(max_feature_age, dict):
-        out = {}
-        for name, age in max_feature_age.items():
-            if not isinstance(age, timedelta):
-                raise TypeError(
-                    f"max_feature_age[{name!r}] must be a timedelta; got {type(age)!r}."
-                )
-            out[name] = int(age.total_seconds() * 1000)
-        return out
-    raise TypeError(
-        f"max_feature_age must be a timedelta or a dict of them; got {type(max_feature_age)!r}."
-    )
 
 
 def _to_pandas(spine_df: Any) -> pd.DataFrame | None:

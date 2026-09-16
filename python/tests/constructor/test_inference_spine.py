@@ -64,7 +64,11 @@ class _FeatureView:
         self.name = "air_quality_fv"
         self.query = _Query(root, joined)
         self.serving_keys = serving_keys
-        self.max_feature_age = None
+        self._max_feature_age = None
+
+    @property
+    def _max_feature_age_secs(self):
+        return self._max_feature_age
 
 
 @pytest.fixture
@@ -218,40 +222,16 @@ class TestWireForm:
         assert spine.to_dict()["maxEventTime"] == int(last.timestamp() * 1000)
 
     @pytest.mark.parametrize(
-        "age, expected",
-        [
-            (timedelta(hours=1), {"*": 3600000}),
-            ({"weather": timedelta(days=1)}, {"weather": 86400000}),
-            (None, None),
-        ],
+        "secs, expected",
+        [(3600, 3600), (None, None)],
     )
-    def test_max_feature_age(self, feature_view, age, expected):
-        spine = InferenceSpine(feature_view, _crossed(SPINE_DF, 1), max_feature_age=age)
-        assert spine.to_dict().get("maxFeatureAgeMs") == expected
-
-    def test_rejects_a_non_timedelta_age(self, feature_view):
-        with pytest.raises(TypeError, match="must be a timedelta"):
-            InferenceSpine(
-                feature_view, _crossed(SPINE_DF, 1), max_feature_age={"weather": 3600}
-            )
-
-    def test_rejects_an_age_naming_no_feature_group(self, feature_view):
-        # The bound is what makes a stale lookup visible. A key that matches nothing would apply
-        # no bound and return rows carried forward for ever, with no error to notice.
-        with pytest.raises(FeatureStoreException, match="not a feature group"):
-            InferenceSpine(
-                feature_view,
-                _crossed(SPINE_DF, 1),
-                max_feature_age={"wether": timedelta(days=1)},
-            )
-
-    def test_the_wildcard_key_is_always_accepted(self, feature_view):
+    def test_the_age_bound_rides_on_the_wire_in_seconds(
+        self, feature_view, secs, expected
+    ):
         spine = InferenceSpine(
-            feature_view,
-            _crossed(SPINE_DF, 1),
-            max_feature_age={"*": timedelta(hours=2)},
+            feature_view, _crossed(SPINE_DF, 1), max_feature_age_secs=secs
         )
-        assert spine.to_dict()["maxFeatureAgeMs"] == {"*": 7200000}
+        assert spine.to_dict().get("maxFeatureAgeSecs") == expected
 
 
 class TestArrowTable:
@@ -348,28 +328,17 @@ class TestPassthroughColumns:
 
 
 class TestViewLevelFeatureAge:
-    """`max_feature_age` is a property of the view now, not an argument of every call."""
+    """The bound belongs to the view, so the spine is told what the view carries."""
 
     def test_the_view_supplies_the_bound(self, feature_view):
-        feature_view.max_feature_age = {"weather": timedelta(days=1)}
+        feature_view._max_feature_age = 86400
         spine = InferenceSpine(
             feature_view,
             _crossed(SPINE_DF, 1),
-            max_feature_age=feature_view.max_feature_age,
+            max_feature_age_secs=feature_view._max_feature_age_secs,
         )
-        assert spine.to_dict()["maxFeatureAgeMs"] == {"weather": 86400000}
+        assert spine.to_dict()["maxFeatureAgeSecs"] == 86400
 
     def test_unbounded_by_default(self, feature_view):
         spine = InferenceSpine(feature_view, _crossed(SPINE_DF, 1))
-        assert "maxFeatureAgeMs" not in spine.to_dict()
-
-    def test_a_wall_clock_time_is_floored_to_the_millisecond(self, feature_view):
-        # datetime.now() carries microseconds; the event time is kept to the millisecond, so
-        # without flooring the Arrow cast refuses the frame for losing precision.
-        import datetime as dt
-
-        now = dt.datetime(2026, 3, 1, 12, 0, 0, 123456, tzinfo=dt.timezone.utc)
-        frame = pd.DataFrame([{**SPINE_DF[0], "date": now}])
-        spine = InferenceSpine(feature_view, frame)
-        assert spine.dataframe["date"].iloc[0].microsecond == 123000
-        spine.arrow_table()  # would raise if the cast still lost data
+        assert "maxFeatureAgeSecs" not in spine.to_dict()

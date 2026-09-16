@@ -4944,7 +4944,10 @@ class TestTrainingSpine:
         frame = pd.DataFrame([{"a": 1}])
         self._engine()._training_spine(fv, frame, None)
         built.assert_called_once_with(
-            fv, frame, max_feature_age=fv.max_feature_age, allow_passthrough=True
+            fv,
+            frame,
+            max_feature_age_secs=fv._max_feature_age_secs,
+            allow_passthrough=True,
         )
 
     def test_materialisation_keeps_the_staged_file(self, mocker):

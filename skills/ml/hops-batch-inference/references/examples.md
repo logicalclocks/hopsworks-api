@@ -28,7 +28,7 @@ clf = joblib.load(f"{model.download()}/model.pkl")
 #    cannot drift from the model the way a hardcoded version can.
 fv = model.get_feature_view(init=True, online=False)
 
-# 3. The view was created with max_feature_age={"weather": timedelta(days=1)}, so a day with
+# 3. The view was created with max_feature_age=timedelta(days=1), so a day with
 #    no forecast comes back NULL rather than inheriting the previous day's weather silently.
 
 # 4. The rows to score: every location, every day of the horizon

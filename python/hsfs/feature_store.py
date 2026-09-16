@@ -2160,7 +2160,7 @@ class FeatureStore:
             list[TransformationFunction | HopsworksUdf] | None
         ) = None,
         logging_enabled: bool | None = False,
-        max_feature_age: timedelta | dict[str, timedelta] | None = None,
+        max_feature_age: timedelta | None = None,
         extra_log_columns: list[feature.Feature] | list[dict[str, str]] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
     ) -> feature_view.FeatureView:
@@ -2251,10 +2251,9 @@ class FeatureStore:
             max_feature_age: How stale a looked-up row may be, relative to the time it is
                 looked up as of, for reads anchored on a `spine_df`. A feature group whose
                 newest row at or before that time is older than this returns `NULL` instead of
-                a stale value. Pass one `timedelta` to bound every feature group, or a dict
-                keyed by feature group name with `"*"` as the catch-all. Set here rather than
-                per call, so a training set and an inference read cannot be built with
-                different bounds. Unbounded by default.
+                a stale value. One `timedelta` for the whole view. Set here rather than per
+                call, so a training set and an inference read cannot be built with different
+                bounds. Unbounded by default.
             extra_log_columns:
                 Extra columns to be logged in addition to the features used in the feature view.
                 It can be a list of Feature objects or list a dictionaries that contains the the name and type of the columns as keys.
@@ -2303,7 +2302,7 @@ class FeatureStore:
         training_helper_columns: list[str] | None = None,
         transformation_functions: dict[str, TransformationFunction] | None = None,
         logging_enabled: bool | None = False,
-        max_feature_age: timedelta | dict[str, timedelta] | None = None,
+        max_feature_age: timedelta | None = None,
         extra_log_columns: list[feature.Feature] | list[dict[str, str]] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
     ) -> feature_view.FeatureView:
@@ -2358,10 +2357,9 @@ class FeatureStore:
             max_feature_age: How stale a looked-up row may be, relative to the time it is
                 looked up as of, for reads anchored on a `spine_df`. A feature group whose
                 newest row at or before that time is older than this returns `NULL` instead of
-                a stale value. Pass one `timedelta` to bound every feature group, or a dict
-                keyed by feature group name with `"*"` as the catch-all. Set here rather than
-                per call, so a training set and an inference read cannot be built with
-                different bounds. Unbounded by default.
+                a stale value. One `timedelta` for the whole view. Set here rather than per
+                call, so a training set and an inference read cannot be built with different
+                bounds. Unbounded by default.
             extra_log_columns:
                 Extra columns to be logged in addition to the features used in the feature view.
                 It can be a list of Feature objects or list a dictionaries that contains the the name and type of the columns as keys.

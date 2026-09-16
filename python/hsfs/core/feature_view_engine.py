@@ -548,7 +548,7 @@ class FeatureViewEngine:
         return InferenceSpine(
             feature_view_obj,
             spine_df,
-            max_feature_age=feature_view_obj.max_feature_age,
+            max_feature_age_secs=feature_view_obj._max_feature_age_secs,
             allow_passthrough=True,
         )
 
@@ -1151,7 +1151,9 @@ class FeatureViewEngine:
                     " `spine_df` re-anchors the query. Pass one or the other."
                 )
             inference_spine = InferenceSpine(
-                feature_view_obj, spine_df, feature_view_obj.max_feature_age
+                feature_view_obj,
+                spine_df,
+                max_feature_age_secs=feature_view_obj._max_feature_age_secs,
             )
             # Without the keys and the prediction time the frame says nothing about which row is
             # which entity or day, so they default on. An explicit False still wins.
