@@ -34,9 +34,10 @@ Batch inference in Hopsworks follows this pattern:
 
 Two approaches for retrieving batch data:
 - **`get_batch_data()`** — filter by event time range from offline feature store
-- **Spine groups** — provide a specific set of entities (primary keys + event times) for point-in-time correct joins
+- **`spine_df`** — supply the rows yourself: serving keys plus the time to compute features as of. Works on any feature view, and the times may be in the future
+- **Spine groups** — the older form, only for a view created with one as its left side
 
-Both Pandas and PySpark are supported. Spine groups require PySpark.
+Both Pandas and PySpark are supported. Spine groups require PySpark; `spine_df` does not.
 
 ---
 
@@ -156,7 +157,8 @@ Time formats supported: `datetime`, `date`, strings (`"2025-01-01"`, `"2025-01-0
 | `primary_key` | `bool` | `False` | Include primary key columns in output |
 | `event_time` | `bool` | `False` | Include event time column in output |
 | `inference_helper_columns` | `bool` | `False` | Include inference helper columns |
-| `spine` | `DataFrame` or `SpineGroup` | `None` | Spine for point-in-time joins (Spark only) |
+| `spine` | `DataFrame` or `SpineGroup` | `None` | Fills the SpineGroup a view was **created** with (Spark only) |
+| `spine_df` | `DataFrame` | `None` | Rows to compute features for, on **any** view. Mutually exclusive with `spine` |
 | `read_options` | `dict` | `None` | Engine options (e.g., `{"arrow_flight_config": {"timeout": 900}}`) |
 | `transformation_context` | `dict` | `None` | Runtime context for transformation functions |
 
@@ -187,7 +189,137 @@ Primary keys and event time are useful for joining predictions back to the sourc
 
 ---
 
+## Supplying the Rows Yourself with `spine_df`
+
+`start_time`/`end_time` can only return rows the view's **root feature group** has already
+observed. Pass `spine_df` instead and the query is anchored on rows you supply: one row per
+entity and moment, carrying the serving keys and the time to compute features as of, under the
+root feature group's event time column.
+
+Each feature is taken from the most recent row at or before that time. The condition is never
+clamped to now, so a time in the future resolves against a forecast row exactly as a past time
+resolves against history. One row in, one row out, in the order you gave.
+
+Unlike a spine group, the feature view does not have to have been created for this. `spine_df`
+and `spine` both replace the left side of the query, so passing both is an error.
+
+### Future prediction times from a schedule
+
+`PredictionTimes` builds a schedule; `cross()` turns it plus a set of entities into the frame.
+Prefer it over building the cross product by hand: it fixes the row order, entities as given and
+ascending in time within each, which is the order the result comes back in, so predictions zip
+back onto the frame positionally.
+
+```python
+import datetime
+import pandas as pd
+from hsfs.constructor.prediction_times import PredictionTimes
+
+tomorrow = datetime.date.today() + datetime.timedelta(days=1)
+
+entities = pd.DataFrame(
+    [
+        {"country": "sweden", "city": "stockholm", "street": "sveavagen"},
+        {"country": "sweden", "city": "gothenburg", "street": "avenyn"},
+    ]
+)
+
+# Every day at 08:00 for the next week. Also accepts a cron expression or an explicit list:
+#   PredictionTimes.cron("0 8 * * 1-5", start=tomorrow, count=10)
+#   PredictionTimes.of([datetime.datetime(2026, 3, 1, 8, 0)])
+schedule = PredictionTimes.every("daily", offset="08:00", start=tomorrow, count=7)
+
+batch_df = fv.get_batch_data(
+    spine_df=schedule.cross(entities, event_time="date"),
+    dataframe_type="pandas",
+)
+# 2 entities x 7 days = 14 rows, grouped by entity, ascending in time
+```
+
+The returned event time is the time you asked for, not the event time of the row that matched
+it. A prediction time of 08:00 matching a forecast written at 00:00 comes back as 08:00.
+
+### Latest feature values for every entity
+
+The offline equivalent of `get_feature_vectors`: one row per entity, all as of the same instant.
+Capture the timestamp once so every entity is read at the same moment, rather than letting each
+row drift.
+
+```python
+import datetime
+import pandas as pd
+
+entity_ids = [1, 2, 3, 4, 5]
+now = datetime.datetime.now(datetime.timezone.utc)
+
+spine_df = pd.DataFrame({"entity_id": entity_ids})
+spine_df["event_time"] = now        # name it after the root feature group's event time column
+
+latest = fv.get_batch_data(spine_df=spine_df, dataframe_type="pandas")
+```
+
+There is no implicit "as of now": the time is always in the frame. That is deliberate, because a
+wall-clock default would make the same call return different rows on a re-run, and a materialized
+training dataset built that way could never be reproduced.
+
+### Bounding staleness
+
+An as-of lookup carries the last value forward for ever, so a feature group that stops producing
+rows keeps answering with its final one and nothing in the result says so. Bound it when you create the view:
+
+```python
+fv = fs.create_feature_view(
+    name="air_quality_fv",
+    query=query,
+    max_feature_age={"weather": datetime.timedelta(days=1)},
+    # or one bound for every feature group:
+    # max_feature_age=datetime.timedelta(hours=6),
+)
+```
+
+A matched row older than the bound comes back `NULL` instead of a stale value, so the gap is
+visible to you and to the model. It is a property of the view, so it applies to training data
+built with `spine_df` as well; a training example built from a stale feature is worse than an
+inference row built from one, because the model learns from it. A name that is not a feature
+group of the view is refused rather than bounding nothing silently.
+
+It is read-only afterwards, and stored with the view. That is deliberate: if it could be changed
+per call, a training set and an inference read could be built with different bounds, which is the
+training/serving skew a feature view exists to prevent. `fv.max_feature_age` reads it back as
+milliseconds keyed by feature group name.
+
+### Training data from the same rows
+
+`training_data`, `train_test_split`, `train_validation_test_split` and the three `create_*`
+methods all take `spine_df`. Columns the view does not define are carried through untouched,
+which is how the label rides along; a batch read stays strict about unknown columns, because
+inference has no labels and a mistyped column there is worth catching.
+
+```python
+train_x, test_x, train_y, test_y = fv.train_test_split(test_size=0.2, spine_df=labels)
+```
+
+### What is refused
+
+| Mistake | What happens |
+|---|---|
+| No time column in `spine_df` | Error naming the event time column and pointing at `PredictionTimes.cross` |
+| A column matching nothing in the view (batch read) | Error listing the accepted columns |
+| `spine_df` with `start_time`/`end_time` | Error: the frame's timestamps define the time axis |
+| `spine_df` with `spine` | Error: both replace the left side of the query |
+| `max_feature_age` naming no feature group | Error rather than a bound that applies to nothing |
+| Over the row, byte or column limit | Refused before it runs, naming the limit |
+
+An entity that matches nothing is **not** an error: the row comes back with `NULL` features,
+the same as any left join, which is what makes a brand-new entity work.
+
+---
+
 ## Spine Groups for Point-in-Time Joins
+
+Prefer `spine_df` above for new work: it does the same thing on any feature view, needs no Spark,
+and is decided at read time. Spine groups remain for views already created with one, and for the
+case where the left side is itself a registered feature group rather than an ad-hoc frame.
 
 A spine group defines a specific set of entities (primary keys + event times) for which to fetch features. The offline feature store performs point-in-time correct joins: for each entity, it retrieves the latest feature values available **before** that entity's event time.
 

@@ -362,3 +362,14 @@ class TestViewLevelFeatureAge:
     def test_unbounded_by_default(self, feature_view):
         spine = InferenceSpine(feature_view, _crossed(SPINE_DF, 1))
         assert "maxFeatureAgeMs" not in spine.to_dict()
+
+    def test_a_wall_clock_time_is_floored_to_the_millisecond(self, feature_view):
+        # datetime.now() carries microseconds; the event time is kept to the millisecond, so
+        # without flooring the Arrow cast refuses the frame for losing precision.
+        import datetime as dt
+
+        now = dt.datetime(2026, 3, 1, 12, 0, 0, 123456, tzinfo=dt.timezone.utc)
+        frame = pd.DataFrame([{**SPINE_DF[0], "date": now}])
+        spine = InferenceSpine(feature_view, frame)
+        assert spine.dataframe["date"].iloc[0].microsecond == 123000
+        spine.arrow_table()  # would raise if the cast still lost data

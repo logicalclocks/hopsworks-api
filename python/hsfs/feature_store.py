@@ -2160,6 +2160,7 @@ class FeatureStore:
             list[TransformationFunction | HopsworksUdf] | None
         ) = None,
         logging_enabled: bool | None = False,
+        max_feature_age: timedelta | dict[str, timedelta] | None = None,
         extra_log_columns: list[feature.Feature] | list[dict[str, str]] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
     ) -> feature_view.FeatureView:
@@ -2247,6 +2248,13 @@ class FeatureStore:
                 Chained transformations are automatically organized into a DAG where independent transformations run in parallel.
                 Use [`FeatureView.visualize_transformations`][hsfs.feature_view.FeatureView.visualize_transformations] to inspect the execution order.
             logging_enabled: If true, enable feature logging for the feature view.
+            max_feature_age: How stale a looked-up row may be, relative to the time it is
+                looked up as of, for reads anchored on a `spine_df`. A feature group whose
+                newest row at or before that time is older than this returns `NULL` instead of
+                a stale value. Pass one `timedelta` to bound every feature group, or a dict
+                keyed by feature group name with `"*"` as the catch-all. Set here rather than
+                per call, so a training set and an inference read cannot be built with
+                different bounds. Unbounded by default.
             extra_log_columns:
                 Extra columns to be logged in addition to the features used in the feature view.
                 It can be a list of Feature objects or list a dictionaries that contains the the name and type of the columns as keys.
@@ -2276,6 +2284,7 @@ class FeatureStore:
             transformation_functions=transformation_functions or {},
             featurestore_name=self._name,
             logging_enabled=logging_enabled,
+            max_feature_age=max_feature_age,
             extra_log_columns=extra_log_columns,
             tags=normalized_tags,
         )
@@ -2294,6 +2303,7 @@ class FeatureStore:
         training_helper_columns: list[str] | None = None,
         transformation_functions: dict[str, TransformationFunction] | None = None,
         logging_enabled: bool | None = False,
+        max_feature_age: timedelta | dict[str, timedelta] | None = None,
         extra_log_columns: list[feature.Feature] | list[dict[str, str]] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
     ) -> feature_view.FeatureView:
@@ -2345,6 +2355,13 @@ class FeatureStore:
                 Chained transformations are automatically organized into a DAG where independent transformations run in parallel.
                 Use [`FeatureView.visualize_transformations`][hsfs.feature_view.FeatureView.visualize_transformations] to inspect the execution order.
             logging_enabled: If true, enable feature logging for the feature view.
+            max_feature_age: How stale a looked-up row may be, relative to the time it is
+                looked up as of, for reads anchored on a `spine_df`. A feature group whose
+                newest row at or before that time is older than this returns `NULL` instead of
+                a stale value. Pass one `timedelta` to bound every feature group, or a dict
+                keyed by feature group name with `"*"` as the catch-all. Set here rather than
+                per call, so a training set and an inference read cannot be built with
+                different bounds. Unbounded by default.
             extra_log_columns:
                 Extra columns to be logged in addition to the features used in the feature view.
                 It can be a list of Feature objects or list a dictionaries that contains the the name and type of the columns as keys.
@@ -2373,6 +2390,7 @@ class FeatureStore:
                 training_helper_columns=training_helper_columns or [],
                 transformation_functions=transformation_functions or [],
                 logging_enabled=logging_enabled,
+                max_feature_age=max_feature_age,
                 extra_log_columns=extra_log_columns,
                 tags=tags,
             )

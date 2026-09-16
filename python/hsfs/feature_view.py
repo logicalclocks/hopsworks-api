@@ -19,6 +19,7 @@ import json
 import logging
 import os
 import warnings
+from datetime import timedelta
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -71,7 +72,7 @@ from hsfs.transformation_function import TransformationFunction, TransformationT
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from datetime import date, datetime, timedelta
+    from datetime import date, datetime
 
     from hopsworks_common.alert import Alert, FeatureViewAlert
     from hopsworks_common.core.type_systems import HopsworksLoggingMetadataType
@@ -122,6 +123,46 @@ _logger = logging.getLogger(__name__)
 
 @public
 @typechecked
+def _normalize_feature_age(
+    max_feature_age: Any,
+) -> dict[str, int] | None:
+    """Milliseconds keyed by feature group name, from whatever shape the caller gave.
+
+    A bare `timedelta` bounds every feature group and is stored under `"*"`. A dict of
+    `timedelta` is converted per key. A dict of ints is already in milliseconds and is taken as
+    it is, which is the form that comes back from the backend.
+    """
+    if max_feature_age is None:
+        return None
+    if isinstance(max_feature_age, timedelta):
+        return {"*": int(max_feature_age.total_seconds() * 1000)}
+    if isinstance(max_feature_age, dict):
+        out: dict[str, int] = {}
+        for name, age in max_feature_age.items():
+            if isinstance(age, timedelta):
+                out[name] = int(age.total_seconds() * 1000)
+            elif isinstance(age, int) and not isinstance(age, bool):
+                out[name] = age
+            else:
+                raise TypeError(
+                    f"max_feature_age[{name!r}] must be a timedelta; got {type(age)!r}."
+                )
+        return out or None
+    raise TypeError(
+        "max_feature_age must be a timedelta or a dict of them;"
+        f" got {type(max_feature_age)!r}."
+    )
+
+
+def _decode_feature_age(value: Any) -> dict[str, int] | None:
+    """The backend stores the bound as the JSON string it was sent."""
+    if not value:
+        return None
+    if isinstance(value, str):
+        return json.loads(value)
+    return value
+
+
 class FeatureView:
     """Metadata class for Hopsworks feature views.
 
@@ -147,6 +188,10 @@ class FeatureView:
         featurestore_name: str | None = None,
         serving_keys: list[skm.ServingKey] | None = None,
         logging_enabled: bool | None = False,
+        max_feature_age: timedelta
+        | dict[str, timedelta]
+        | dict[str, int]
+        | None = None,
         extra_log_columns: list[Feature] | dict[str, str] | None = None,
         missing_mandatory_tags: list[dict[str, Any]] | None = None,
         tags: list[tag.Tag] | None = None,
@@ -164,7 +209,7 @@ class FeatureView:
         self._version = version
         self._description = description
         self._labels = labels if labels else []
-        self._max_feature_age: dict[str, int] | None = None
+        self._max_feature_age = _normalize_feature_age(max_feature_age)
         self._inference_helper_columns = (
             inference_helper_columns if inference_helper_columns else []
         )
@@ -4906,6 +4951,9 @@ class FeatureView:
             featurestore_name=json_decamelized.get("featurestore_name", None),
             serving_keys=serving_keys,
             logging_enabled=json_decamelized.get("logging_enabled", False),
+            max_feature_age=_decode_feature_age(
+                json_decamelized.get("max_feature_age")
+            ),
             transformation_functions=(
                 [
                     TransformationFunction.from_response_json(
@@ -5012,6 +5060,7 @@ class FeatureView:
             "schema",
             "serving_keys",
             "logging_enabled",
+            "max_feature_age",
         ]:
             self._update_attribute_if_present(self, other, key)
         self._init_feature_monitoring_engine()
@@ -5797,6 +5846,9 @@ class FeatureView:
             "type": "featureViewDTO",
             "extraLogColumns": self._extra_log_columns,
         }
+        if self._max_feature_age:
+            # The backend stores it as the JSON it was sent and hands it back unchanged.
+            fv_dict["maxFeatureAge"] = json.dumps(self._max_feature_age)
         tags_dict = tag.Tag._tags_to_dict(self._tags)
         if tags_dict:
             fv_dict["tags"] = tags_dict
@@ -5882,33 +5934,31 @@ class FeatureView:
 
     @public
     @property
-    def max_feature_age(self) -> timedelta | dict[str, timedelta] | None:
+    def max_feature_age(self) -> dict[str, int] | None:
         """How stale a looked-up row may be, relative to the time it is looked up as of.
 
         An as-of lookup carries the last value forward for ever, so a feature group that stops
         producing rows keeps answering with its final one and nothing in the result says so.
-        Setting this returns NULL instead once the newest row at or before that time is older
-        than the bound, which makes the gap visible to you and to the model.
+        This returns NULL instead once the newest row at or before that time is older than the
+        bound, which makes the gap visible to you and to the model.
 
         Applies to every read anchored on a `spine_df`, batch inference and training data alike.
-        Set one `timedelta` to bound every feature group, or a dict keyed by feature group name;
-        `"*"` is the catch-all. A name that is not a feature group of this view is refused,
-        because it would otherwise bound nothing and return carried-forward rows silently.
+        Read-only, and set when the feature view is created: if it could be changed per call, a
+        training set and an inference read could be built with different bounds, which is the
+        training/serving skew a feature view exists to prevent.
 
-        Set on the view object rather than persisted with it, so set it again after
-        `get_feature_view`. Unbounded by default.
+        Milliseconds keyed by feature group name, with `"*"` as the catch-all. `None` is
+        unbounded.
 
         ```python
-        feature_view.max_feature_age = {"weather": datetime.timedelta(days=1)}
+        fv = fs.create_feature_view(
+            name="air_quality_fv",
+            query=query,
+            max_feature_age={"weather": datetime.timedelta(days=1)},
+        )
         ```
         """
         return self._max_feature_age
-
-    @max_feature_age.setter
-    def max_feature_age(
-        self, max_feature_age: timedelta | dict[str, timedelta] | None
-    ) -> None:
-        self._max_feature_age = max_feature_age
 
     @public
     @property

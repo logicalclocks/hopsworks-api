@@ -178,7 +178,10 @@ class InferenceSpine:
             raise FeatureStoreException(
                 f"`spine_df[{self._event_time!r}]` contains a value that is not a timestamp."
             )
-        spine[self._event_time] = times
+        # The feature store keeps event times to the millisecond, and the file is written to
+        # match. A wall-clock timestamp carries microseconds, so without this a spine built from
+        # `datetime.now()` is refused for losing precision nobody asked to keep.
+        spine[self._event_time] = times.dt.floor("ms")
 
         spine.insert(0, ROW_ID_COLUMN, range(len(spine)))
         self._max_event_time = int(spine[self._event_time].max().timestamp() * 1000)
