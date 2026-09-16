@@ -2303,3 +2303,44 @@ class TestGetRootFg:
             version=1,
         )
         assert fv.get_root_fg().event_time == fg1.event_time
+
+
+class TestSpineDeprecation:
+    @pytest.fixture(autouse=True)
+    def _engine(self, mocker):
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type")
+
+    def test_passing_spine_warns(self):
+        with pytest.warns(DeprecationWarning, match="`spine` is deprecated"):
+            feature_view.FeatureView._warn_spine_deprecated(
+                [{"a": 1}], "get_batch_data"
+            )
+
+    def test_not_passing_spine_does_not_warn(self):
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            feature_view.FeatureView._warn_spine_deprecated(None, "get_batch_data")
+
+    def test_the_warning_points_at_spine_df(self):
+        with pytest.warns(DeprecationWarning, match="Use `spine_df` instead"):
+            feature_view.FeatureView._warn_spine_deprecated([{"a": 1}], "training_data")
+
+    def test_every_method_taking_spine_warns(self):
+        # A method that accepts `spine` but never warns is a deprecation with a hole in it.
+        import inspect
+
+        missing = []
+        for name, member in inspect.getmembers(
+            feature_view.FeatureView, predicate=inspect.isfunction
+        ):
+            try:
+                takes_spine = "spine" in inspect.signature(member).parameters
+            except (ValueError, TypeError):
+                continue
+            if not takes_spine:
+                continue
+            source = inspect.getsource(member)
+            if "_warn_spine_deprecated" not in source:
+                missing.append(name)
+        assert missing == [], f"these accept `spine` but never warn: {missing}"

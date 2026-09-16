@@ -60,7 +60,7 @@ day forward, so a gap in the forecast is visible instead of silently becoming a 
 
 ---
 
-## Complete Example: PySpark Batch Inference with Spine Group
+## Complete Example: PySpark Batch Inference with `spine_df`
 
 ```python
 import hopsworks
@@ -92,27 +92,23 @@ import joblib
 model = joblib.load(f"{model_dir}/model.pkl")
 bc_model = spark.sparkContext.broadcast(model)
 
-# 4. Create spine with entities to score
+# 4. The entities to score, one row per entity with the time to score it as of.
+#    Name the time column after the feature view's root feature group event time.
 scoring_entities = spark.sql("""
-    SELECT user_id, current_timestamp() as prediction_time
+    SELECT user_id, current_timestamp() as event_time
     FROM active_users
     WHERE last_active > date_sub(current_date(), 1)
 """)
 
-spine_group = fs.get_or_create_spine_group(
-    name="daily_scoring_spine",
-    version=1,
-    primary_key=["user_id"],
-    event_time="prediction_time",
-    dataframe=scoring_entities,
-)
+# 5. Get the feature view from the model. init_batch_scoring() is called for you with the
+#    training dataset version the model was trained on.
+fv = model_meta.get_feature_view(init=True, online=False)
 
-# 5. Get feature view and retrieve batch data with spine
-fv = fs.get_feature_view("fraud_features_fv", version=1)
-fv.init_batch_scoring(training_dataset_version=1)
-
+# Under the Spark engine `spine_df` takes the Spark DataFrame directly. The rows are collected
+# to the driver to be registered as a session temporary view, which is what the Spark spine
+# path has always done, so keep the spine to the entities you are scoring.
 batch_df = fv.get_batch_data(
-    spine=spine_group,
+    spine_df=scoring_entities,
     dataframe_type="spark",
 )
 

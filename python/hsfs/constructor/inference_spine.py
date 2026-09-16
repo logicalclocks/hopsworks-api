@@ -288,6 +288,12 @@ class InferenceSpine:
         return payload
 
 
+def _is_spark_dataframe(obj: Any) -> bool:
+    """A Spark DataFrame, classic or Connect, without importing pyspark to find out."""
+    cls = type(obj)
+    return cls.__name__ == "DataFrame" and cls.__module__.startswith("pyspark.sql")
+
+
 def _to_pandas(spine_df: Any) -> pd.DataFrame | None:
     import pandas as pd
 
@@ -302,8 +308,28 @@ def _to_pandas(spine_df: Any) -> pd.DataFrame | None:
 
         if isinstance(spine_df, pl.DataFrame):
             return spine_df.to_pandas()
+    if _is_spark_dataframe(spine_df):
+        from hsfs import engine
+
+        if engine._get_type() != "spark":
+            raise FeatureStoreException(
+                "`spine_df` is a Spark DataFrame but the client is running the Python engine,"
+                " which has no Spark session to evaluate it. Pass a pandas or polars DataFrame,"
+                " or call `.toPandas()` yourself."
+            )
+        # Collected to the driver rather than kept distributed. The Spark path already went
+        # through the driver: the rows are handed back to `createDataFrame` to register the
+        # session temporary view, so a pandas spine took this same route. A spine is one row
+        # per entity per prediction time and is capped at a million rows, so it is bounded.
+        #
+        # toPandas returns timestamps tz-naive in the Spark session timezone, and _build then
+        # reads them as UTC. Those agree only because the Spark engine pins the session
+        # timezone to UTC when it starts (hsfs/engine/spark.py). Unpin that and every event
+        # time here shifts by the offset, silently.
+        return spine_df.toPandas()
     raise TypeError(
-        f"`spine_df` must be a pandas or polars DataFrame or a list of dicts; got {type(spine_df)!r}."
+        "`spine_df` must be a pandas, polars or Spark DataFrame, or a list of dicts;"
+        f" got {type(spine_df)!r}."
     )
 
 

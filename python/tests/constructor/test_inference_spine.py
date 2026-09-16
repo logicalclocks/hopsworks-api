@@ -13,7 +13,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timezone
 
 import pandas as pd
 import pytest
@@ -342,3 +342,86 @@ class TestViewLevelFeatureAge:
     def test_unbounded_by_default(self, feature_view):
         spine = InferenceSpine(feature_view, _crossed(SPINE_DF, 1))
         assert "maxFeatureAgeSecs" not in spine.to_dict()
+
+
+class TestSparkSpineDataFrame:
+    """A Spark DataFrame is accepted as `spine_df`, but only under the Spark engine."""
+
+    @pytest.fixture(scope="class")
+    def spark_session(self):
+        from hsfs.engine import spark as spark_engine_mod
+
+        engine = spark_engine_mod.Engine()
+        engine._spark_session.conf.set("spark.sql.shuffle.partitions", "1")
+        yield engine._spark_session
+
+    def test_a_spark_dataframe_is_collected_under_the_spark_engine(
+        self, mocker, feature_view, spark_session
+    ):
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        sdf = spark_session.createDataFrame(
+            [("stockholm", datetime(2026, 3, 1)), ("gothenburg", datetime(2026, 3, 2))],
+            ["city", "date"],
+        )
+
+        spine = InferenceSpine(feature_view, sdf)
+
+        assert spine.row_count == 2
+        assert list(spine.dataframe["city"]) == ["stockholm", "gothenburg"]
+        assert list(spine.dataframe[ROW_ID_COLUMN]) == [0, 1]
+
+    def test_a_spark_dataframe_is_refused_under_the_python_engine(
+        self, mocker, feature_view, spark_session
+    ):
+        # There is no Spark session to evaluate it, so accepting it would fail later and
+        # further away from the call that got it wrong.
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        sdf = spark_session.createDataFrame(
+            [("stockholm", datetime(2026, 3, 1))], ["city", "date"]
+        )
+
+        with pytest.raises(FeatureStoreException, match="Python engine"):
+            InferenceSpine(feature_view, sdf)
+
+    def test_the_event_time_survives_the_collect(
+        self, mocker, feature_view, spark_session
+    ):
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        moment = datetime(2026, 3, 1, 12, 30, tzinfo=timezone.utc)
+        sdf = spark_session.createDataFrame([("stockholm", moment)], ["city", "date"])
+
+        spine = InferenceSpine(feature_view, sdf)
+
+        assert spine.to_dict()["maxEventTime"] == int(moment.timestamp() * 1000)
+
+    def test_the_session_timezone_is_utc(self, spark_session):
+        # The collect returns tz-naive timestamps in the session timezone, and the spine reads
+        # them as UTC. If this stops being UTC, every Spark spine's event times shift silently.
+        assert spark_session.conf.get("spark.sql.session.timeZone") == "UTC"
+
+    def test_a_label_column_still_rides_along(
+        self, mocker, feature_view, spark_session
+    ):
+        # Training data from a Spark frame: the label is not a view column, so it is carried
+        # through rather than refused.
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        sdf = spark_session.createDataFrame(
+            [("stockholm", datetime(2026, 3, 1), 1.5)], ["city", "date", "label"]
+        )
+
+        spine = InferenceSpine(feature_view, sdf, allow_passthrough=True)
+
+        columns = {c["name"]: c for c in spine.to_dict()["columns"]}
+        assert columns["label"]["passthrough"] is True
+        assert columns["label"]["type"] == "double"
+
+    def test_an_unrecognised_column_is_still_refused(
+        self, mocker, feature_view, spark_session
+    ):
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        sdf = spark_session.createDataFrame(
+            [("stockholm", datetime(2026, 3, 1))], ["citty", "date"]
+        )
+
+        with pytest.raises(FeatureStoreException, match="match nothing"):
+            InferenceSpine(feature_view, sdf)

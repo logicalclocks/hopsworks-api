@@ -6842,7 +6842,19 @@ class ExternalFeatureGroup(FeatureGroupBase):
 @public
 @typechecked
 class SpineGroup(FeatureGroupBase):
-    # TODO: Add docstring
+    """A dataframe of labels or entities, joined point-in-time with a feature view's features.
+
+    Warning: Deprecated
+        Superseded by the `spine_df` argument on `FeatureView.get_batch_data` and on every
+        training-data method. `spine_df` anchors an existing feature view on rows you supply,
+        so nothing has to be decided when the view is created; a spine group has to be chosen
+        up front and cannot be added to a view afterwards. Create these with
+        `FeatureStore.get_or_create_spine_group`, which carries the same deprecation.
+
+    The metadata is stored in the feature store, the rows are not: the dataframe lives on the
+    object and is supplied again on every read through `spine=`.
+    """
+
     SPINE_GROUP = "ON_DEMAND_FEATURE_GROUP"
     ENTITY_TYPE = "featuregroups"
 
