@@ -310,7 +310,11 @@ class InferenceSpine:
         return self._dataframe[column].dtype
 
     def to_dict(self) -> dict[str, Any]:
-        """The wire form: the schema and where the rows are, never the rows."""
+        """The wire form of the spine.
+
+        Returns:
+            The schema, the feature view it anchors and where the rows are. Never the rows.
+        """
         columns = [{"name": ROW_ID_COLUMN, "type": "bigint"}]
         for column in self.supplied_columns:
             entry = {"name": column, "type": self._hive_type(column)}

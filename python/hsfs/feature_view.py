@@ -931,9 +931,6 @@ class FeatureView:
                 Dictionary of feature group primary key and values provided by serving application.
                 Set of required primary keys is [`FeatureView.primary_keys`][hsfs.feature_view.FeatureView.primary_keys].
                 If the required primary keys is not provided, it will look for name of the primary key in feature group in the serving keys.
-            entry:
-                Deprecated alias for `serving_keys`, kept so existing code keeps working.
-                Passing it emits a `DeprecationWarning`; passing both is an error.
             passed_features:
                 Dictionary of feature values provided by the application at runtime.
                 They can replace features values fetched from the feature store as well as providing feature values which are not available in the feature store.
@@ -969,6 +966,10 @@ class FeatureView:
                 Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
                 When not set, the value passed to `init_serving` is used.
                 Ignored by the Spark engine, which pushes transformations down to Spark.
+
+            entry:
+                Deprecated alias for `serving_keys`, kept so existing code keeps working.
+                Passing it emits a `DeprecationWarning`; passing both is an error.
 
         Returns:
             Returned `list`, `pd.DataFrame`, `polars.DataFrame` or `np.ndarray` (the exact type dependends on `return_type`) contains feature values related to provided primary keys, ordered according to positions of this features in the feature view query.
@@ -1113,9 +1114,6 @@ class FeatureView:
                 A list of dictionary of feature group primary key and values provided by serving application.
                 Set of required primary keys is [`FeatureView.primary_keys`][hsfs.feature_view.FeatureView.primary_keys].
                 If the required primary keys is not provided, it will look for name of the primary key in feature group in the serving keys.
-            entry:
-                Deprecated alias for `serving_keys`, kept so existing code keeps working.
-                Passing it emits a `DeprecationWarning`; passing both is an error.
             passed_features:
                 A list of dictionary of feature values provided by the application at runtime.
                 They can replace features values fetched from the feature store as well as providing feature values which are not available in the feature store.
@@ -1149,6 +1147,10 @@ class FeatureView:
                 Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
                 When not set, the value passed to `init_serving` is used.
                 Ignored by the Spark engine, which pushes transformations down to Spark.
+
+            entry:
+                Deprecated alias for `serving_keys`, kept so existing code keeps working.
+                Passing it emits a `DeprecationWarning`; passing both is an error.
 
         Returns:
             Returned `list[list]`, `pd.DataFrame`, `polars.DataFrame` or `np.ndarray` (depending on the `return_type`) contains feature values related to provided primary keys, ordered according to positions of this features in the feature view query.
@@ -1219,9 +1221,6 @@ class FeatureView:
             serving_keys:
                 Dictionary of feature group primary key and values provided by serving application.
                 Set of required primary keys is [`FeatureView.primary_keys`][hsfs.feature_view.FeatureView.primary_keys].
-            entry:
-                Deprecated alias for `serving_keys`, kept so existing code keeps working.
-                Passing it emits a `DeprecationWarning`; passing both is an error.
             external:
                 If set to `True`, the connection to the online feature store is established using the same host as for the `host` parameter in the [`hopsworks.login`][hopsworks.login] method.
                 If set to `False`, the online feature store storage connector is used which relies on the private IP.
@@ -1229,6 +1228,10 @@ class FeatureView:
             return_type: The format in which to return the dataframe.
             force_rest_client: If set to `True`, reads from online feature store using the REST client if initialised.
             force_sql_client: If set to `True`, reads from online feature store using the SQL client if initialised.
+
+            entry:
+                Deprecated alias for `serving_keys`, kept so existing code keeps working.
+                Passing it emits a `DeprecationWarning`; passing both is an error.
 
         Returns:
             The dataframe.
@@ -1284,9 +1287,6 @@ class FeatureView:
             serving_keys:
                 A list of dictionary of feature group primary key and values provided by serving application.
                 Set of required primary keys is [`FeatureView.primary_keys`][hsfs.feature_view.FeatureView.primary_keys].
-            entry:
-                Deprecated alias for `serving_keys`, kept so existing code keeps working.
-                Passing it emits a `DeprecationWarning`; passing both is an error.
             external:
                 If set to `True`, the connection to the online feature store is established using the same host as for the `host` parameter in the [`hopsworks.login`][hopsworks.login] method.
                 If set to `False`, the online feature store storage connector is used which relies on the private IP.
@@ -1294,6 +1294,10 @@ class FeatureView:
             return_type: The format in which to return the dataframes.
             force_sql_client: If set to `True`, reads from online feature store using the SQL client if initialised.
             force_rest_client: If set to `True`, reads from online feature store using the REST client if initialised.
+
+            entry:
+                Deprecated alias for `serving_keys`, kept so existing code keeps working.
+                Passing it emits a `DeprecationWarning`; passing both is an error.
 
         Returns:
             Returned `pd.DataFrame`, `polars.DataFrame` or `list[dict]` (depending on `return_type`) contains feature values related to provided primary keys, ordered according to positions of this features in the feature view query.
@@ -2144,15 +2148,6 @@ class FeatureView:
                 Defaults to `None` and is only required when feature view was created with spine group in the feature query.
                 It is possible to directly pass a spine group instead of a dataframe to overwrite the left side of the feature join, however, the same features as in the original feature group that is being replaced need to be available in the spine group.
                 `spine_df` supersedes this: it takes the same rows and works on any feature view, without the view having to be created with a spine group.
-            spine_df:
-                A dataframe of rows to build the training data from, one row per example,
-                carrying the serving keys, the event time of that example, and any label or
-                other column you want carried through to the output untouched.
-                Passing it re-anchors the query on these rows instead of on the root feature
-                group, the same way `get_batch_data` does, so the view does not have to have
-                been created with a spine group.
-                Cannot be combined with `spine`.
-                Accepts a pandas or polars DataFrame, a list of dicts, or, under the Spark engine, a Spark DataFrame.
             transformation_context:
                 A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution.
@@ -2163,6 +2158,16 @@ class FeatureView:
                 For one window across every feature group, pass a `FeatureGroupLookback` — e.g. `FeatureGroupLookback(key="PARTITION_KEY", start=date(2026, 5, 5), end=date(2026, 5, 17))` or its dict form `{"key": "PARTITION_KEY", "start": date(2026, 5, 5), "end": date(2026, 5, 17)}`.
                 For different windows per feature group, pass a `Lookback` — e.g. `Lookback(default=FeatureGroupLookback(...), feature_group_lookbacks={"dim_a": FeatureGroupLookback(...)})` or its dict form `{"default": {...}, "feature_group_lookbacks": {"dim_a": {...}}}`.
                 See [`FeatureGroupLookback`][hsfs.constructor.lookback.FeatureGroupLookback] and [`Lookback`][hsfs.constructor.lookback.Lookback] for accepted key values, validation rules, and per-FG key matching semantics.
+
+            spine_df:
+                A dataframe of rows to build the training data from, one row per example,
+                carrying the serving keys, the event time of that example, and any label or
+                other column you want carried through to the output untouched.
+                Passing it re-anchors the query on these rows instead of on the root feature
+                group, the same way `get_batch_data` does, so the view does not have to have
+                been created with a spine group.
+                Cannot be combined with `spine`.
+                Accepts a pandas or polars DataFrame, a list of dicts, or, under the Spark engine, a Spark DataFrame.
 
         Returns:
             td_version: training dataset version
@@ -2449,15 +2454,6 @@ class FeatureView:
                 * key `wait_for_job` and value `True` or `False` to configure
                   whether or not to the save call should return only
                   after the Hopsworks Job has finished. By default it waits.
-            spine_df:
-                A dataframe of rows to build the training data from, one row per example,
-                carrying the serving keys, the event time of that example, and any label or
-                other column you want carried through to the output untouched.
-                Passing it re-anchors the query on these rows instead of on the root feature
-                group, the same way `get_batch_data` does, so the view does not have to have
-                been created with a spine group.
-                Cannot be combined with `spine`.
-                Accepts a pandas or polars DataFrame, a list of dicts, or, under the Spark engine, a Spark DataFrame.
             spine: Deprecated, use `spine_df` instead. Spine dataframe with primary key, event time and
                 label column to use for point in time join when fetching features. Defaults to `None` and is only required
                 when feature view was created with spine group in the feature query.
@@ -2476,6 +2472,16 @@ class FeatureView:
                 For one window across every feature group, pass a `FeatureGroupLookback` — e.g. `FeatureGroupLookback(key="PARTITION_KEY", start=date(2026, 5, 5), end=date(2026, 5, 17))` or its dict form `{"key": "PARTITION_KEY", "start": date(2026, 5, 5), "end": date(2026, 5, 17)}`.
                 For different windows per feature group, pass a `Lookback` — e.g. `Lookback(default=FeatureGroupLookback(...), feature_group_lookbacks={"dim_a": FeatureGroupLookback(...)})` or its dict form `{"default": {...}, "feature_group_lookbacks": {"dim_a": {...}}}`.
                 See [`FeatureGroupLookback`][hsfs.constructor.lookback.FeatureGroupLookback] and [`Lookback`][hsfs.constructor.lookback.Lookback] for accepted key values, validation rules, and per-FG key matching semantics.
+
+            spine_df:
+                A dataframe of rows to build the training data from, one row per example,
+                carrying the serving keys, the event time of that example, and any label or
+                other column you want carried through to the output untouched.
+                Passing it re-anchors the query on these rows instead of on the root feature
+                group, the same way `get_batch_data` does, so the view does not have to have
+                been created with a spine group.
+                Cannot be combined with `spine`.
+                Accepts a pandas or polars DataFrame, a list of dicts, or, under the Spark engine, a Spark DataFrame.
 
         Returns:
             td_version: The version of the created training dataset.
@@ -2756,15 +2762,6 @@ class FeatureView:
                 * key `wait_for_job` and value `True` or `False` to configure
                   whether or not to the save call should return only
                   after the Hopsworks Job has finished. By default it waits.
-            spine_df:
-                A dataframe of rows to build the training data from, one row per example,
-                carrying the serving keys, the event time of that example, and any label or
-                other column you want carried through to the output untouched.
-                Passing it re-anchors the query on these rows instead of on the root feature
-                group, the same way `get_batch_data` does, so the view does not have to have
-                been created with a spine group.
-                Cannot be combined with `spine`.
-                Accepts a pandas or polars DataFrame, a list of dicts, or, under the Spark engine, a Spark DataFrame.
             spine: Deprecated, use `spine_df` instead. Spine dataframe with primary key, event time and
                 label column to use for point in time join when fetching features. Defaults to `None` and is only required
                 when feature view was created with spine group in the feature query.
@@ -2783,6 +2780,16 @@ class FeatureView:
                 For one window across every feature group, pass a `FeatureGroupLookback` — e.g. `FeatureGroupLookback(key="PARTITION_KEY", start=date(2026, 5, 5), end=date(2026, 5, 17))` or its dict form `{"key": "PARTITION_KEY", "start": date(2026, 5, 5), "end": date(2026, 5, 17)}`.
                 For different windows per feature group, pass a `Lookback` — e.g. `Lookback(default=FeatureGroupLookback(...), feature_group_lookbacks={"dim_a": FeatureGroupLookback(...)})` or its dict form `{"default": {...}, "feature_group_lookbacks": {"dim_a": {...}}}`.
                 See [`FeatureGroupLookback`][hsfs.constructor.lookback.FeatureGroupLookback] and [`Lookback`][hsfs.constructor.lookback.Lookback] for accepted key values, validation rules, and per-FG key matching semantics.
+
+            spine_df:
+                A dataframe of rows to build the training data from, one row per example,
+                carrying the serving keys, the event time of that example, and any label or
+                other column you want carried through to the output untouched.
+                Passing it re-anchors the query on these rows instead of on the root feature
+                group, the same way `get_batch_data` does, so the view does not have to have
+                been created with a spine group.
+                Cannot be combined with `spine`.
+                Accepts a pandas or polars DataFrame, a list of dicts, or, under the Spark engine, a Spark DataFrame.
 
         Returns:
             td_version: The training dataset version.
@@ -3046,15 +3053,6 @@ class FeatureView:
                 * key `spark` and value an object of type
                   [hsfs.core.job_configuration.JobConfiguration][hsfs.core.job_configuration.JobConfiguration]
                   to configure the Hopsworks Job used to compute the training dataset.
-            spine_df:
-                A dataframe of rows to build the training data from, one row per example,
-                carrying the serving keys, the event time of that example, and any label or
-                other column you want carried through to the output untouched.
-                Passing it re-anchors the query on these rows instead of on the root feature
-                group, the same way `get_batch_data` does, so the view does not have to have
-                been created with a spine group.
-                Cannot be combined with `spine`.
-                Accepts a pandas or polars DataFrame, a list of dicts, or, under the Spark engine, a Spark DataFrame.
             spine: Deprecated, use `spine_df` instead. Spine dataframe with primary key, event time and
                 label column to use for point in time join when fetching features. Defaults to `None` and is only required
                 when feature view was created with spine group in the feature query.
@@ -3088,6 +3086,16 @@ class FeatureView:
                 Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
                 Ignored by the Spark engine, which pushes transformations down to Spark.
             tags: Tags to attach to the training dataset for better discoverability.
+
+            spine_df:
+                A dataframe of rows to build the training data from, one row per example,
+                carrying the serving keys, the event time of that example, and any label or
+                other column you want carried through to the output untouched.
+                Passing it re-anchors the query on these rows instead of on the root feature
+                group, the same way `get_batch_data` does, so the view does not have to have
+                been created with a spine group.
+                Cannot be combined with `spine`.
+                Accepts a pandas or polars DataFrame, a list of dicts, or, under the Spark engine, a Spark DataFrame.
 
         Returns:
             (X, y): Tuple of dataframe of features and labels. If there are no labels, y returns `None`.
@@ -3247,15 +3255,6 @@ class FeatureView:
                 * key `spark` and value an object of type
                   [hsfs.core.job_configuration.JobConfiguration][hsfs.core.job_configuration.JobConfiguration]
                   to configure the Hopsworks Job used to compute the training dataset.
-            spine_df:
-                A dataframe of rows to build the training data from, one row per example,
-                carrying the serving keys, the event time of that example, and any label or
-                other column you want carried through to the output untouched.
-                Passing it re-anchors the query on these rows instead of on the root feature
-                group, the same way `get_batch_data` does, so the view does not have to have
-                been created with a spine group.
-                Cannot be combined with `spine`.
-                Accepts a pandas or polars DataFrame, a list of dicts, or, under the Spark engine, a Spark DataFrame.
             spine: Deprecated, use `spine_df` instead. Spine dataframe with primary key, event time and
                 label column to use for point in time join when fetching features. Defaults to `None` and is only required
                 when feature view was created with spine group in the feature query.
@@ -3289,6 +3288,16 @@ class FeatureView:
                 Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
                 Ignored by the Spark engine, which pushes transformations down to Spark.
             tags: Tags to attach to the training dataset for better discoverability.
+
+            spine_df:
+                A dataframe of rows to build the training data from, one row per example,
+                carrying the serving keys, the event time of that example, and any label or
+                other column you want carried through to the output untouched.
+                Passing it re-anchors the query on these rows instead of on the root feature
+                group, the same way `get_batch_data` does, so the view does not have to have
+                been created with a spine group.
+                Cannot be combined with `spine`.
+                Accepts a pandas or polars DataFrame, a list of dicts, or, under the Spark engine, a Spark DataFrame.
 
         Returns:
             (X_train, X_test, y_train, y_test):
@@ -3488,15 +3497,6 @@ class FeatureView:
                 * key `spark` and value an object of type
                   [hsfs.core.job_configuration.JobConfiguration][hsfs.core.job_configuration.JobConfiguration]
                   to configure the Hopsworks Job used to compute the training dataset.
-            spine_df:
-                A dataframe of rows to build the training data from, one row per example,
-                carrying the serving keys, the event time of that example, and any label or
-                other column you want carried through to the output untouched.
-                Passing it re-anchors the query on these rows instead of on the root feature
-                group, the same way `get_batch_data` does, so the view does not have to have
-                been created with a spine group.
-                Cannot be combined with `spine`.
-                Accepts a pandas or polars DataFrame, a list of dicts, or, under the Spark engine, a Spark DataFrame.
             spine: Deprecated, use `spine_df` instead. Spine dataframe with primary key, event time and
                 label column to use for point in time join when fetching features. Defaults to `None` and is only required
                 when feature view was created with spine group in the feature query.
@@ -3530,6 +3530,16 @@ class FeatureView:
                 Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
                 Ignored by the Spark engine, which pushes transformations down to Spark.
             tags: Tags to attach to the training dataset for better discoverability.
+
+            spine_df:
+                A dataframe of rows to build the training data from, one row per example,
+                carrying the serving keys, the event time of that example, and any label or
+                other column you want carried through to the output untouched.
+                Passing it re-anchors the query on these rows instead of on the root feature
+                group, the same way `get_batch_data` does, so the view does not have to have
+                been created with a spine group.
+                Cannot be combined with `spine`.
+                Accepts a pandas or polars DataFrame, a list of dicts, or, under the Spark engine, a Spark DataFrame.
 
         Returns:
             (X_train, X_val, X_test, y_train, y_val, y_test):
