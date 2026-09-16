@@ -2792,7 +2792,7 @@ class TestFeatureGroupReadPrimaryKeys:
             fg.read_primary_keys()
 
     def test_duplicate_rows_are_dropped_for_polars(self, mocker):
-        import polars as pl
+        pl = pytest.importorskip("polars")
 
         fg = get_test_feature_group()
         mocker.patch(

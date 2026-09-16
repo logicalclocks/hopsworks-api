@@ -361,6 +361,14 @@ class TestSparkSpineDataFrame:
 
     @pytest.fixture(scope="class")
     def spark_session(self):
+        # pyspark refuses to build a DataFrame from rows on pandas < 2.2, and the
+        # Pandas 1.x matrix job runs this file. Skipping is right rather than pinning: the
+        # behaviour under test is the collect, which needs a session that can be created.
+        pandas_version = tuple(int(p) for p in pd.__version__.split(".")[:2])
+        if pandas_version < (2, 2):
+            pytest.skip(
+                f"pyspark needs pandas >= 2.2 to create a DataFrame; have {pd.__version__}"
+            )
         from hsfs.engine import spark as spark_engine_mod
 
         engine = spark_engine_mod.Engine()
