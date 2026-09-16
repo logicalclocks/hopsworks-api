@@ -6008,6 +6008,35 @@ class FeatureView:
         self._query = query_obj
 
     @public
+    def get_root_fg(self) -> feature_group.FeatureGroup:
+        """Return the feature group this feature view's query is anchored on.
+
+        The root is the left side of the query: the feature group whose rows a normal
+        `get_batch_data(start_time, end_time)` reads, with every other feature group in the
+        view point-in-time joined onto them. It is also the feature group whose `event_time`
+        names the column a `spine_df` carries its prediction times under.
+
+        Example: the latest feature values for every entity
+            ```python
+            import datetime
+            from hsfs.constructor.prediction_times import PredictionTimes
+
+            fg = feature_view.get_root_fg()
+            now = datetime.datetime.now(datetime.timezone.utc)
+
+            spine_df = PredictionTimes.of([now]).cross(
+                fg.read_primary_keys(), event_time=fg.event_time
+            )
+            latest = feature_view.get_batch_data(spine_df=spine_df)
+            ```
+
+        Returns:
+            The feature group at the root of the query. An `ExternalFeatureGroup` or a
+            `SpineGroup` when the view was built on one.
+        """
+        return self._query._left_feature_group
+
+    @public
     def get_feature(self, name: str) -> Feature:
         """Return a Feature for `name` (bare or join-prefixed) from this FV's query.
 

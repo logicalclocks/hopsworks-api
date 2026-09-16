@@ -2267,3 +2267,39 @@ class TestMaxFeatureAge:
         )
         fv.update_from_response_json({})
         assert fv.max_feature_age == datetime.timedelta(hours=1)
+
+
+class TestGetRootFg:
+    @pytest.fixture(autouse=True)
+    def _engine(self, mocker):
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type")
+
+    def test_it_is_the_left_side_of_the_query(self):
+        fv = feature_view.FeatureView(
+            name="test_fv",
+            featurestore_id=99,
+            query=fg1.select_all(),
+            version=1,
+        )
+        assert fv.get_root_fg() is fg1
+
+    def test_a_join_does_not_change_the_root(self):
+        # The root is what the view is anchored on, not whichever feature group is joined in.
+        fv = feature_view.FeatureView(
+            name="test_fv",
+            featurestore_id=99,
+            query=fg1.select_all().join(fg2.select_all()),
+            version=1,
+        )
+        assert fv.get_root_fg() is fg1
+
+    def test_its_event_time_names_the_spine_column(self):
+        # This is what makes get_root_fg() useful for building a spine_df.
+        fv = feature_view.FeatureView(
+            name="test_fv",
+            featurestore_id=99,
+            query=fg1.select_all(),
+            version=1,
+        )
+        assert fv.get_root_fg().event_time == fg1.event_time

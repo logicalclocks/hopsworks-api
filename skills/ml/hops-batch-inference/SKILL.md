@@ -239,11 +239,37 @@ batch_df = fv.get_batch_data(
 The returned event time is the time you asked for, not the event time of the row that matched
 it. A prediction time of 08:00 matching a forecast written at 00:00 comes back as 08:00.
 
-### Latest feature values for every entity
+### Get latest feature data
 
 The offline equivalent of `get_feature_vectors`: one row per entity, all as of the same instant.
 Capture the timestamp once so every entity is read at the same moment, rather than letting each
 row drift.
+
+**For every entity the feature store knows about**, read the entities off the feature view's
+root feature group rather than listing them by hand. `get_root_fg()` returns the feature group
+the view is anchored on, and `read_primary_keys()` returns its distinct primary key values, one
+row per entity.
+
+```python
+import datetime
+from hsfs.constructor.prediction_times import PredictionTimes
+
+fg = fv.get_root_fg()
+now = datetime.datetime.now(datetime.timezone.utc)
+
+spine_df = PredictionTimes.of([now]).cross(
+    fg.read_primary_keys(), event_time=fg.event_time
+)
+latest = fv.get_batch_data(spine_df=spine_df, dataframe_type="pandas")
+```
+
+`read_primary_keys()` alone is **not** a `spine_df`: it carries entities and no time, and a
+batch read needs a prediction time per row, so passing it directly is refused with an error
+naming the missing column. Crossing it with one instant is what makes it a spine, and the
+result is each feature group's newest row at or before that instant, which is the latest
+feature data.
+
+**For a known list of entities**, build the frame directly.
 
 ```python
 import datetime
@@ -261,6 +287,13 @@ latest = fv.get_batch_data(spine_df=spine_df, dataframe_type="pandas")
 There is no implicit "as of now": the time is always in the frame. That is deliberate, because a
 wall-clock default would make the same call return different rows on a re-run, and a materialized
 training dataset built that way could never be reproduced.
+
+Two things to know before reaching for `read_primary_keys()` on a large feature group. It reads
+the key columns of the whole feature group and takes the distinct rows, so the cost scales with
+the feature group, not with the number of entities; under the Spark engine the distinct runs in
+Spark, under the Python engine the keys come back to the client first. And it returns the root's
+keys only, so a joined feature group keyed on something the root does not carry is not covered
+by it, and that lookup comes back NULL.
 
 ### Bounding staleness
 

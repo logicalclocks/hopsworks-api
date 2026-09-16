@@ -17,6 +17,7 @@ import warnings
 from unittest import mock
 
 import hsfs
+import pandas as pd
 import pytest
 from hsfs import (
     engine,
@@ -2730,3 +2731,109 @@ class TestFeatureGroupVisualize:
         # default must produce the clean error, not an AttributeError.
         with pytest.raises(FeatureStoreException, match="No transformation functions"):
             external_fg.visualize_transformations()
+
+
+class TestFeatureGroupReadPrimaryKeys:
+    def test_the_selection_is_the_primary_key(self, mocker):
+        fg = get_test_feature_group()
+        select = mocker.patch.object(fg, "select", wraps=fg.select)
+        mocker.patch(
+            "hsfs.constructor.query.Query.read",
+            return_value=pd.DataFrame({"pk": [1, 1, 2]}),
+        )
+
+        fg.read_primary_keys()
+
+        select.assert_called_once_with(["pk"])
+
+    def test_duplicate_rows_are_dropped_for_pandas(self, mocker):
+        fg = get_test_feature_group()
+        mocker.patch(
+            "hsfs.constructor.query.Query.read",
+            return_value=pd.DataFrame({"pk": [1, 1, 2, 2, 3]}),
+        )
+
+        keys = fg.read_primary_keys()
+
+        assert list(keys["pk"]) == [1, 2, 3]
+        assert list(keys.index) == [0, 1, 2], "the index is reset, not left with gaps"
+
+    def test_read_options_and_online_are_passed_through(self, mocker):
+        fg = get_test_feature_group()
+        read = mocker.patch(
+            "hsfs.constructor.query.Query.read",
+            return_value=pd.DataFrame({"pk": [1]}),
+        )
+
+        fg.read_primary_keys(
+            online=True, dataframe_type="pandas", read_options={"a": 1}
+        )
+
+        assert read.call_args.kwargs == {
+            "online": True,
+            "dataframe_type": "pandas",
+            "read_options": {"a": 1},
+        }
+
+    def test_a_feature_group_with_no_primary_key_is_refused(self):
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=1,
+            featurestore_name="fs",
+            features=[feature.Feature("f1")],
+            primary_key=[],
+            partition_key=[],
+            event_time=None,
+        )
+
+        with pytest.raises(FeatureStoreException, match="no primary key"):
+            fg.read_primary_keys()
+
+    def test_duplicate_rows_are_dropped_for_polars(self, mocker):
+        import polars as pl
+
+        fg = get_test_feature_group()
+        mocker.patch(
+            "hsfs.constructor.query.Query.read",
+            return_value=pl.DataFrame({"pk": [2, 2, 1, 3]}),
+        )
+
+        keys = fg.read_primary_keys(dataframe_type="polars")
+
+        # maintain_order, so the frame is not silently reshuffled under the caller.
+        assert keys["pk"].to_list() == [2, 1, 3]
+
+    def test_a_dataframe_type_with_no_distinct_is_refused(self, mocker):
+        # numpy and python come back as arrays and lists, which have no notion of a row.
+        fg = get_test_feature_group()
+        mocker.patch("hsfs.constructor.query.Query.read", return_value=[[1], [1]])
+
+        with pytest.raises(FeatureStoreException, match="Cannot take distinct rows"):
+            fg.read_primary_keys(dataframe_type="python")
+
+    def test_a_spark_dataframe_is_deduplicated_by_spark(self, mocker):
+        # Dispatch is on the frame the engine returned, so a Spark frame dedupes in Spark
+        # rather than being pulled to the driver.
+        fg = get_test_feature_group()
+        spark_df = mock.MagicMock(spec=["distinct"])
+        mocker.patch("hsfs.constructor.query.Query.read", return_value=spark_df)
+
+        result = fg.read_primary_keys(dataframe_type="spark")
+
+        spark_df.distinct.assert_called_once_with()
+        assert result is spark_df.distinct.return_value
+
+    def test_the_scheduler_window_does_not_narrow_the_entities(self, mocker):
+        # FeatureGroup.read() applies HOPS_START_TIME/HOPS_END_TIME. Going through it would
+        # silently return only the entities in whatever interval a job is processing.
+        fg = get_test_feature_group()
+        fg_read = mocker.patch.object(feature_group.FeatureGroup, "read")
+        mocker.patch(
+            "hsfs.constructor.query.Query.read",
+            return_value=pd.DataFrame({"pk": [1]}),
+        )
+
+        fg.read_primary_keys()
+
+        fg_read.assert_not_called()

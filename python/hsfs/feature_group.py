@@ -881,6 +881,88 @@ class FeatureGroupBase:
             )
         return self.select_all()
 
+    @staticmethod
+    def _distinct_rows(frame: Any) -> Any:
+        """Drop duplicate rows, in whichever dataframe the engine returned."""
+        if HAS_POLARS:
+            import polars as pl
+
+            if isinstance(frame, (pl.DataFrame, pl.dataframe.frame.DataFrame)):
+                return frame.unique(maintain_order=True)
+        if hasattr(frame, "drop_duplicates"):  # pandas
+            return frame.drop_duplicates(ignore_index=True)
+        if hasattr(frame, "distinct"):  # pyspark
+            return frame.distinct()
+        raise FeatureStoreException(
+            f"Cannot take distinct rows of a {type(frame).__name__}. Read the primary keys as"
+            " a dataframe: `dataframe_type` must be one of 'default', 'spark', 'pandas' or"
+            " 'polars'."
+        )
+
+    @public
+    def read_primary_keys(
+        self,
+        online: bool = False,
+        dataframe_type: Literal["default", "spark", "pandas", "polars"] = "default",
+        read_options: dict[str, Any] | None = None,
+    ) -> pd.DataFrame | pl.DataFrame | TypeVar("pyspark.sql.DataFrame"):
+        """Read the distinct primary key values of this feature group, one row per entity.
+
+        A feature group holds one row per entity per event time, so its key columns repeat.
+        This reads only those columns and returns each combination once, which is the set of
+        entities the feature group knows about.
+
+        The result is a frame of entities with no time in it, so it is not yet a `spine_df`:
+        `get_batch_data` needs a prediction time per row. Cross it with the time to compute
+        features as of.
+
+        Example: the latest feature values for every entity
+            ```python
+            import datetime
+            from hsfs.constructor.prediction_times import PredictionTimes
+
+            fg = feature_view.get_root_fg()
+            now = datetime.datetime.now(datetime.timezone.utc)
+
+            spine_df = PredictionTimes.of([now]).cross(
+                fg.read_primary_keys(), event_time=fg.event_time
+            )
+            latest = feature_view.get_batch_data(spine_df=spine_df)
+            ```
+
+        Parameters:
+            online:
+                Read from the online storage rather than the offline storage. Defaults to
+                `False`.
+            dataframe_type:
+                One of `"default"`, `"spark"`, `"pandas"` or `"polars"`. `"default"` maps to a
+                Spark dataframe under the Spark engine and a Pandas dataframe under the Python
+                engine. Types with no notion of a distinct row, such as `"numpy"`, are refused.
+            read_options:
+                Additional options as key/value pairs to pass to the execution engine.
+
+        Returns:
+            A dataframe of the primary key columns with duplicate rows removed.
+
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException: If the feature group has no
+                primary key, or `dataframe_type` is one that cannot carry distinct rows.
+        """
+        if not self.primary_key:
+            raise FeatureStoreException(
+                f"Feature group `{self.name}` has no primary key, so it has no entities to"
+                " return."
+            )
+        # Deliberately not self.read(): that path applies the scheduler's HOPS_START_TIME /
+        # HOPS_END_TIME window, which would silently narrow the entity population to whatever
+        # interval a job happens to be processing.
+        frame = self.select(self.primary_key).read(
+            online=online,
+            dataframe_type=dataframe_type,
+            read_options=read_options or {},
+        )
+        return self._distinct_rows(frame)
+
     @public
     def filter(self, f: filter_module.Filter | filter_module.Logic) -> query.Query:
         """Apply filter to the feature group.
