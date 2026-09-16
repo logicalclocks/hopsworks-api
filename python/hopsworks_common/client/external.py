@@ -144,17 +144,20 @@ class Client(base.Client):
             _logger.debug(
                 "Running in Spark environment with no metastore, initializing Spark session"
             )
-            # In Spark Connect mode, Delta extensions are static configs that
-            # must be set before the first getOrCreate() call.
+            # In Spark Connect mode, the session extensions are static configs
+            # that must be set before the first getOrCreate() call.
             # The session created here is reused by the engine, so this is
-            # the only place where these configs take effect.
+            # the only place where these configs take effect. Hudi's extension
+            # is required as well: without HoodieAnalysis an incremental read
+            # loses _hoodie_commit_time to column pruning and returns no rows.
             from hopsworks_common.spark_connect_utils import _is_spark_connect_env
 
             builder = SparkSession.builder
             if _is_spark_connect_env():
                 builder = builder.config(
                     "spark.sql.extensions",
-                    "io.delta.sql.DeltaSparkSessionExtension",
+                    "io.delta.sql.DeltaSparkSessionExtension,"
+                    "org.apache.spark.sql.hudi.HoodieSparkSessionExtension",
                 ).config(
                     "spark.sql.catalog.spark_catalog",
                     "org.apache.spark.sql.delta.catalog.DeltaCatalog",
@@ -192,7 +195,9 @@ class Client(base.Client):
             self._download_certs()
             _spark_session = (
                 SparkSession.builder.config(
-                    "spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension"
+                    "spark.sql.extensions",
+                    "io.delta.sql.DeltaSparkSessionExtension,"
+                    "org.apache.spark.sql.hudi.HoodieSparkSessionExtension",
                 )
                 .config(
                     "spark.sql.catalog.spark_catalog",
