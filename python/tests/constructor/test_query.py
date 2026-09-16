@@ -739,9 +739,46 @@ class TestQuery:
         )
 
         assert sql_query == "SELECT * FROM pushed_down"
-        mock_engine._register_pushdown_query.assert_called_once_with(mock_fs_query)
+        # The spine is passed alongside the query so the engine can fill in the placeholder the
+        # backend leaves for it; None here because this query has no spine.
+        mock_engine._register_pushdown_query.assert_called_once_with(mock_fs_query, None)
         mock_fs_query._register_external.assert_not_called()
         mock_fs_query._register_hudi_tables.assert_not_called()
+
+    def test_prep_read_source_pushdown_declined_falls_back(self, mocker):
+        # The engine returns None when it cannot inline the spine - too many rows, no dataframe,
+        # a value it will not render - and the read has to continue down the engine-side path
+        # rather than propagate None as the query.
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        mock_engine = mocker.MagicMock()
+        mock_engine._is_flyingduck_query_supported.return_value = False
+        mock_engine._is_source_pushdown_supported.return_value = True
+        mock_engine._register_pushdown_query.return_value = None
+        mocker.patch("hsfs.engine._get_instance", return_value=mock_engine)
+
+        mock_fs_query = mocker.MagicMock(spec=FsQuery)
+        mock_fs_query.pushdown_query = "SELECT * FROM __hopsworks_spine_fg0 AS fg0"
+        mock_fs_query.query = "SELECT * FROM test"
+        mock_fs_query.pit_query = None
+        mocker.patch(
+            "hsfs.core.query_constructor_api.QueryConstructorApi._construct_query",
+            return_value=mock_fs_query,
+        )
+
+        sql_query, _ = TestQuery.fg1.select_all()._prep_read(
+            online=False, read_options={}
+        )
+
+        assert sql_query == "SELECT * FROM test"
+        mock_engine._register_pushdown_query.assert_called_once()
+        mock_fs_query._register_external.assert_called()
+
+    def test_to_dict_advertises_spine_pushdown_support(self, mocker):
+        # The backend withholds spine pushdown from clients that do not advertise it, so that an
+        # older client never receives a placeholder it would send to the warehouse verbatim.
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+
+        assert TestQuery.fg1.select_all().to_dict()["spinePushdown"] is True
 
     def test_prep_read_source_pushdown_unsupported_engine(self, mocker):
         mocker.patch("hsfs.engine._get_type", return_value="python")

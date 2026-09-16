@@ -108,7 +108,10 @@ class TrainingDatasetEngine:
         if fs_query.pushdown_query is not None:
             engine_instance = engine._get_instance()
             if engine_instance._is_source_pushdown_supported():
-                return engine_instance._register_pushdown_query(fs_query)
+                # No spine is in scope here, so a spine-bearing query declines and falls through.
+                pushdown_read = engine_instance._register_pushdown_query(fs_query)
+                if pushdown_read is not None:
+                    return pushdown_read
 
         # The offline queries could be referencing temporary tables
         # like external feature groups/hudi feature groups
