@@ -327,8 +327,9 @@ inference row built from one, because the model learns from it.
 
 It is read-only afterwards, and stored with the view. That is deliberate: if it could be changed
 per call, a training set and an inference read could be built with different bounds, which is the
-training/serving skew a feature view exists to prevent. `fv.max_feature_age` reads it back as a
-`timedelta`, or `None` when the view is unbounded.
+training/serving skew a feature view exists to prevent. The backend reads the bound from the
+view's own row rather than from the read, so there is no way to opt a read out of it.
+`fv.max_feature_age` reads it back as a `timedelta`, or `None` when the view is unbounded.
 
 ### Training data from the same rows
 
@@ -351,7 +352,9 @@ train_x, test_x, train_y, test_y = fv.train_test_split(test_size=0.2, spine_df=l
 | `spine_df` with `spine` | Error: both replace the left side of the query |
 | A Spark `spine_df` under the Python engine | Error: no Spark session to evaluate it |
 | `max_feature_age` zero or negative | Error: a bound that matches no row is a caller mistake |
-| Over the row, byte or column limit | Refused before it runs, naming the limit |
+| `max_feature_age` as a per-feature-group dict | Error: one bound covers the whole view |
+| A passthrough column whose name is not an identifier | Error: names are rendered into SQL |
+| Over the row, byte or column limit | Refused before it runs, naming the limit. Rows and columns are checked client-side too, so an oversized frame is refused before it is uploaded |
 
 An entity that matches nothing is **not** an error: the row comes back with `NULL` features,
 the same as any left join, which is what makes a brand-new entity work.

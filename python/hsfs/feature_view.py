@@ -104,9 +104,7 @@ TrainingDatasetDataFrameTypes = (
 # The frame a caller anchors a read on. Accepts a Spark DataFrame only under the Spark engine,
 # which is the only engine with a session to evaluate one.
 SpineDataFrameTypes = (
-    pd.DataFrame
-    | list[dict[str, Any]]
-    | TypeVar("pyspark.sql.DataFrame")  # noqa: F821
+    pd.DataFrame | list[dict[str, Any]] | TypeVar("pyspark.sql.DataFrame")  # noqa: F821
 )
 
 if HAS_POLARS:
@@ -115,14 +113,16 @@ if HAS_POLARS:
     TrainingDatasetDataFrameTypes = TrainingDatasetDataFrameTypes | pl.DataFrame
     SpineDataFrameTypes = SpineDataFrameTypes | pl.DataFrame
 
-# TODO: Rework SplineDataFrameTypes
-SplineDataFrameTypes = (
+# The frames the deprecated `spine` argument accepts. Named for that argument rather than
+# for the concept, so it cannot be mistaken for `SpineDataFrameTypes` above, which is what
+# `spine_df` takes.
+DeprecatedSpineTypes = (
     pd.DataFrame
     | TypeVar("pyspark.sql.DataFrame")  # noqa: F821
     | TypeVar("pyspark.RDD")  # noqa: F821
     | np.ndarray
     | list[list[Any]]
-    | TypeVar("SplineGroup")  # noqa: F821
+    | TypeVar("SpineGroup")  # noqa: F821
 )
 
 
@@ -156,10 +156,9 @@ class FeatureView:
         featurestore_name: str | None = None,
         serving_keys: list[skm.ServingKey] | None = None,
         logging_enabled: bool | None = False,
-        max_feature_age: timedelta
-        | dict[str, timedelta]
-        | dict[str, int]
-        | None = None,
+        # int is the deserialised form: the backend stores seconds, so `from_response_json`
+        # hands one straight back. Callers pass a timedelta.
+        max_feature_age: timedelta | int | None = None,
         extra_log_columns: list[Feature] | dict[str, str] | None = None,
         missing_mandatory_tags: list[dict[str, Any]] | None = None,
         tags: list[tag.Tag] | None = None,
@@ -316,9 +315,18 @@ class FeatureView:
             seconds = int(max_feature_age.total_seconds())
         elif isinstance(max_feature_age, int) and not isinstance(max_feature_age, bool):
             seconds = max_feature_age
+        elif isinstance(max_feature_age, dict):
+            # The per-feature-group map this argument used to take. Named because a caller who
+            # wrote against that form gets told what replaced it rather than a bare type error.
+            raise TypeError(
+                "max_feature_age is one bound for the whole feature view, not a bound per"
+                " feature group. Pass a single timedelta, for example"
+                " `max_feature_age=datetime.timedelta(days=1)`."
+            )
         else:
             raise TypeError(
-                f"max_feature_age must be a timedelta; got {type(max_feature_age)!r}."
+                "max_feature_age must be a timedelta, or an integer number of seconds;"
+                f" got {type(max_feature_age)!r}."
             )
         if seconds <= 0:
             raise FeatureStoreException(
@@ -1437,7 +1445,7 @@ class FeatureView:
         start_time: str | int | datetime | date | None = None,
         end_time: str | int | datetime | date | None = None,
         read_options: dict[str, Any] | None = None,
-        spine: SplineDataFrameTypes | None = None,
+        spine: DeprecatedSpineTypes | None = None,
         primary_key: bool | None = None,
         event_time: bool | None = None,
         inference_helper_columns: bool = False,
@@ -1960,7 +1968,7 @@ class FeatureView:
         seed: int | None = None,
         statistics_config: StatisticsConfig | bool | dict | None = None,
         write_options: dict[Any, Any] | None = None,
-        spine: SplineDataFrameTypes | None = None,
+        spine: DeprecatedSpineTypes | None = None,
         transformation_context: dict[str, Any] = None,
         data_source: ds.DataSource | dict[str, Any] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
@@ -2223,7 +2231,7 @@ class FeatureView:
         seed: int | None = None,
         statistics_config: StatisticsConfig | bool | dict | None = None,
         write_options: dict[Any, Any] | None = None,
-        spine: SplineDataFrameTypes | None = None,
+        spine: DeprecatedSpineTypes | None = None,
         transformation_context: dict[str, Any] = None,
         data_source: ds.DataSource | dict[str, Any] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
@@ -2545,7 +2553,7 @@ class FeatureView:
         seed: int | None = None,
         statistics_config: StatisticsConfig | bool | dict | None = None,
         write_options: dict[Any, Any] | None = None,
-        spine: SplineDataFrameTypes | None = None,
+        spine: DeprecatedSpineTypes | None = None,
         transformation_context: dict[str, Any] = None,
         data_source: ds.DataSource | dict[str, Any] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
@@ -2847,7 +2855,8 @@ class FeatureView:
         training_dataset_version: int,
         statistics_config: StatisticsConfig | bool | dict | None = None,
         write_options: dict[Any, Any] | None = None,
-        spine: SplineDataFrameTypes | None = None,
+        spine: DeprecatedSpineTypes | None = None,
+        spine_df: SpineDataFrameTypes | None = None,
         transformation_context: dict[str, Any] = None,
     ) -> job.Job:
         """Recreate a training dataset.
@@ -2867,6 +2876,12 @@ class FeatureView:
         Info:
             If a materialised training data has deleted. Use `recreate_training_dataset()` to
             recreate the training data.
+
+        Warning: A training dataset built from `spine_df` is not reproducible from its metadata
+            The query is recorded with the training dataset; the dataframe is not.
+            Recreating one means passing the same `spine_df` again.
+            Called without it, the query is re-anchored on the root feature group and the
+            result is a different dataset under the same version.
 
         Warning: Spine Groups/Dataframes
             Spine groups and dataframes are currently only supported with the Spark engine and
@@ -2902,6 +2917,11 @@ class FeatureView:
                 be available in the spine group.
                 `spine_df` supersedes this: it takes the same rows and works on any feature view, without the view
                 having to be created with a spine group.
+            spine_df:
+                The rows to compute features for, in place of the root feature group: the feature view's required
+                serving keys, a prediction time per row under the root feature group's event time column, and any
+                label or other column the view does not define, which is carried through untouched.
+                Pass the same frame the training dataset was originally built from.
             transformation_context:
                 A dictionary mapping variable names to objects that will be provided as contextual information to the transformation function at runtime.
                 The `context` variable must be explicitly defined as parameters in the transformation function for these to be accessible during execution. If no context variables are provided, this parameter defaults to `None`.
@@ -2919,6 +2939,7 @@ class FeatureView:
             statistics_config=statistics_config,
             user_write_options=write_options or {},
             spine=spine,
+            spine_df=spine_df,
             transformation_context=transformation_context,
         )
         self.update_last_accessed_training_dataset(td.version)
@@ -2935,7 +2956,7 @@ class FeatureView:
         extra_filter: filter.Filter | filter.Logic | None = None,
         statistics_config: StatisticsConfig | bool | dict | None = None,
         read_options: dict[Any, Any] | None = None,
-        spine: SplineDataFrameTypes | None = None,
+        spine: DeprecatedSpineTypes | None = None,
         primary_key: bool = False,
         event_time: bool = False,
         training_helper_columns: bool = False,
@@ -3124,7 +3145,7 @@ class FeatureView:
         extra_filter: filter.Filter | filter.Logic | None = None,
         statistics_config: StatisticsConfig | bool | dict | None = None,
         read_options: dict[Any, Any] | None = None,
-        spine: SplineDataFrameTypes | None = None,
+        spine: DeprecatedSpineTypes | None = None,
         primary_key: bool = False,
         event_time: bool = False,
         training_helper_columns: bool = False,
@@ -3350,7 +3371,7 @@ class FeatureView:
         extra_filter: filter.Filter | filter.Logic | None = None,
         statistics_config: StatisticsConfig | bool | dict | None = None,
         read_options: dict[Any, Any] | None = None,
-        spine: SplineDataFrameTypes | None = None,
+        spine: DeprecatedSpineTypes | None = None,
         primary_key: bool = False,
         event_time: bool = False,
         training_helper_columns: bool = False,
@@ -6032,11 +6053,6 @@ class FeatureView:
             return None
         return timedelta(seconds=self._max_feature_age)
 
-    @property
-    def _max_feature_age_secs(self) -> int | None:
-        """The stored form, which is what goes on the wire."""
-        return self._max_feature_age
-
     @public
     @property
     def labels(self) -> list[str]:
@@ -6101,7 +6117,7 @@ class FeatureView:
         self._query = query_obj
 
     @public
-    def get_root_fg(self) -> feature_group.FeatureGroup:
+    def get_root_fg(self) -> feature_group.FeatureGroupBase:
         """Return the feature group this feature view's query is anchored on.
 
         The root is the left side of the query: the feature group whose rows a normal
@@ -6124,8 +6140,10 @@ class FeatureView:
             ```
 
         Returns:
-            The feature group at the root of the query. An `ExternalFeatureGroup` or a
-            `SpineGroup` when the view was built on one.
+            The feature group at the root of the query, as a `FeatureGroup`, an
+            `ExternalFeatureGroup` or a `SpineGroup` depending on what the view was built on.
+            Those three are siblings under `FeatureGroupBase`, which is why the return type is
+            the base and not `FeatureGroup`.
         """
         return self._query._left_feature_group
 

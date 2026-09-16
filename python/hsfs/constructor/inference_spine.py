@@ -38,6 +38,14 @@ ROW_ID_COLUMN = "__hopsworks_spine_row_id"
 SPINE_DIR = "Resources/.hopsworks_spine"
 _TABLE_PREFIX = "__hopsworks_spine_"
 
+# Mirrors the shipped defaults of `featurestore_asof_spine_max_rows` and
+# `featurestore_asof_spine_max_columns`. The backend is the authority and refuses an over-limit
+# spine whatever these say. They exist here so that a frame which cannot be read is refused
+# before it is typed into Arrow, written as Parquet and uploaded to HopsFS, rather than after.
+# An administrator who raises the backend limits has to raise these to match.
+MAX_SPINE_ROWS = 1_000_000
+MAX_SPINE_COLUMNS = 256
+
 _DECIMAL = re.compile(r"^decimal\((\d+),\s*(\d+)\)$", re.IGNORECASE)
 
 
@@ -67,19 +75,39 @@ def _pyarrow_type(hive_type: str) -> Any:
     return pa.string()
 
 
+# Keyed on `str(dtype)`, which is why each numpy dtype has a capitalised twin: those are the
+# pandas nullable extension dtypes, and a label column read from a frame with missing values is
+# one of them. Without the twin such a column fell through to "string" and then failed in
+# `_arrow_table` on the cast, which is a confusing way to be told a label is nullable.
 _PASSTHROUGH_TYPE = {
     "int64": "bigint",
+    "Int64": "bigint",
     "int32": "int",
+    "Int32": "int",
     "int16": "smallint",
+    "Int16": "smallint",
     "int8": "tinyint",
+    "Int8": "tinyint",
+    "uint8": "smallint",
+    "UInt8": "smallint",
+    "uint16": "int",
+    "UInt16": "int",
+    "uint32": "bigint",
+    "UInt32": "bigint",
     "float64": "double",
+    "Float64": "double",
     "float32": "float",
+    "Float32": "float",
     "bool": "boolean",
+    "boolean": "boolean",
     "object": "string",
     "string": "string",
+    "category": "string",
     "datetime64[ns]": "timestamp",
     "datetime64[us]": "timestamp",
+    "datetime64[ms]": "timestamp",
     "datetime64[ns, UTC]": "timestamp",
+    "datetime64[us, UTC]": "timestamp",
 }
 
 
@@ -88,19 +116,20 @@ class InferenceSpine:
 
     Built from an `spine_df` frame of serving keys and passed features crossed with a set of
     prediction times. Validates both against the feature view before anything is sent.
+
+    The wire form names the feature view rather than carrying its staleness bound, so the bound
+    is whatever that view's row says at read time and cannot be chosen per call.
     """
 
     def __init__(
         self,
         feature_view: FeatureView,
         spine_df: Any,
-        max_feature_age_secs: int | None = None,
         allow_passthrough: bool = False,
     ) -> None:
         self._feature_view = feature_view
         self._table_name = _TABLE_PREFIX + uuid.uuid4().hex[:8]
         self._basename = f"{uuid.uuid4().hex}.parquet"
-        self._max_feature_age_secs = max_feature_age_secs
         # Only the Hopsworks Query Service reads the spine from a file. Spark takes a session
         # temporary view, so nothing is staged and the backend must not be told to look for one.
         self._parquet_staged = False
@@ -117,6 +146,16 @@ class InferenceSpine:
         if frame is None or len(frame) == 0:
             raise FeatureStoreException(
                 "`spine_df` must carry at least one row: batch data was requested for no entities."
+            )
+        if len(frame) > MAX_SPINE_ROWS:
+            raise FeatureStoreException(
+                f"`spine_df` has {len(frame)} rows; the limit is {MAX_SPINE_ROWS}."
+                " Score the entities in batches, or narrow the prediction times."
+            )
+        if len(frame.columns) > MAX_SPINE_COLUMNS:
+            raise FeatureStoreException(
+                f"`spine_df` has {len(frame.columns)} columns; the limit is"
+                f" {MAX_SPINE_COLUMNS}."
             )
 
         self._types = _column_types(feature_view)
@@ -142,7 +181,12 @@ class InferenceSpine:
                 f"`spine_df` column(s) {sorted(unknown)} match nothing in feature view"
                 f" `{feature_view.name}`. Accepted columns: {sorted(recognized)}."
             )
-        if not [c for c in frame.columns if c != self._event_time]:
+        bindable = [
+            c
+            for c in frame.columns
+            if c != self._event_time and c not in self._passthrough
+        ]
+        if not bindable:
             raise FeatureStoreException(
                 "`spine_df` carries no serving key and no feature of the root feature group,"
                 " so nothing in the feature view can be looked up."
@@ -234,7 +278,7 @@ class InferenceSpine:
             return _PASSTHROUGH_TYPE.get(str(self._frame_dtype(column)), "string")
         return self._types.get(column, "string")
 
-    def arrow_table(self) -> Any:
+    def _arrow_table(self) -> Any:
         """The spine as an Arrow table typed from the feature view's schema.
 
         Raises:
@@ -254,12 +298,12 @@ class InferenceSpine:
                 f"An `spine_df` value does not convert to the type the feature view declares: {e}"
             ) from e
 
-    def write_parquet(self, directory: str) -> str:
+    def _write_parquet(self, directory: str) -> str:
         """Write the spine to a local Parquet file and return its path."""
         import pyarrow.parquet as pq
 
         path = os.path.join(directory, self._basename)
-        pq.write_table(self.arrow_table(), path)
+        pq.write_table(self._arrow_table(), path)
         return path
 
     def _frame_dtype(self, column: str) -> Any:
@@ -284,8 +328,13 @@ class InferenceSpine:
         }
         if self._parquet_staged:
             payload["parquetBasename"] = self._basename
-        if self._max_feature_age_secs is not None:
-            payload["maxFeatureAgeSecs"] = self._max_feature_age_secs
+        # Which view this anchors, not what bound to apply. The staleness bound is read from the
+        # view's own row by the backend: a value sent with the request is a value the caller
+        # chose, and a caller choosing it per call is the training/serving disagreement the
+        # bound exists to prevent.
+        payload["featureViewFeaturestoreId"] = self._feature_view.featurestore_id
+        payload["featureViewName"] = self._feature_view.name
+        payload["featureViewVersion"] = self._feature_view.version
         return payload
 
 

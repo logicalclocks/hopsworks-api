@@ -2823,7 +2823,8 @@ class TestFeatureGroupReadPrimaryKeys:
         spark_df.__class__.__name__ = "DataFrame"
         mocker.patch("hsfs.constructor.query.Query.read", return_value=spark_df)
         mocker.patch(
-            "hopsworks_common.spark_connect_utils._is_spark_dataframe", return_value=True
+            "hopsworks_common.spark_connect_utils._is_spark_dataframe",
+            return_value=True,
         )
 
         result = fg.read_primary_keys(dataframe_type="spark")
@@ -2849,7 +2850,9 @@ class TestFeatureGroupReadPrimaryKeys:
 
 class TestIsSparkDataFrame:
     def test_a_pandas_frame_is_not_a_spark_frame(self):
-        assert spark_connect_utils._is_spark_dataframe(pd.DataFrame({"a": [1]})) is False
+        assert (
+            spark_connect_utils._is_spark_dataframe(pd.DataFrame({"a": [1]})) is False
+        )
 
     def test_a_real_spark_frame_is_recognised(self):
         from hsfs.engine import spark as spark_engine_mod

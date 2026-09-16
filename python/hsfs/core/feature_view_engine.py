@@ -545,12 +545,7 @@ class FeatureViewEngine:
                 "`spine` replaces a SpineGroup the feature view was created with, while"
                 " `spine_df` re-anchors the query on rows you supply. Pass one or the other."
             )
-        return InferenceSpine(
-            feature_view_obj,
-            spine_df,
-            max_feature_age_secs=feature_view_obj._max_feature_age_secs,
-            allow_passthrough=True,
-        )
+        return InferenceSpine(feature_view_obj, spine_df, allow_passthrough=True)
 
     def _get_training_data(
         self,
@@ -740,6 +735,7 @@ class FeatureViewEngine:
         statistics_config,
         user_write_options,
         spine=None,
+        spine_df=None,
         transformation_context: dict[str, Any] = None,
     ):
         training_dataset_obj = self._get_training_dataset_metadata(
@@ -757,6 +753,7 @@ class FeatureViewEngine:
             user_write_options,
             training_dataset_obj=training_dataset_obj,
             spine=spine,
+            spine_df=spine_df,
             transformation_context=transformation_context,
         )
         # Set training dataset schema after training dataset has been generated
@@ -1150,11 +1147,7 @@ class FeatureViewEngine:
                     "`spine` replaces a SpineGroup the feature view was created with, while"
                     " `spine_df` re-anchors the query. Pass one or the other."
                 )
-            inference_spine = InferenceSpine(
-                feature_view_obj,
-                spine_df,
-                max_feature_age_secs=feature_view_obj._max_feature_age_secs,
-            )
+            inference_spine = InferenceSpine(feature_view_obj, spine_df)
             # Without the keys and the prediction time the frame says nothing about which row is
             # which entity or day, so they default on. An explicit False still wins.
             if primary_keys is None:
@@ -1262,7 +1255,7 @@ class FeatureViewEngine:
 
         dataset_api = DatasetApi()
         with tempfile.TemporaryDirectory() as tmp:
-            local_path = inference_spine.write_parquet(tmp)
+            local_path = inference_spine._write_parquet(tmp)
             if not dataset_api.exists(SPINE_DIR):
                 dataset_api.mkdir(SPINE_DIR)
             dataset_api.upload(local_path, SPINE_DIR, overwrite=True)

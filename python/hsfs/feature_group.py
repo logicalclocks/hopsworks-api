@@ -894,7 +894,7 @@ class FeatureGroupBase:
         if HAS_POLARS:
             import polars as pl
 
-            if isinstance(frame, (pl.DataFrame, pl.dataframe.frame.DataFrame)):
+            if isinstance(frame, pl.DataFrame):
                 return frame.unique(maintain_order=True)
         if hasattr(frame, "drop_duplicates"):  # pandas
             return frame.drop_duplicates(ignore_index=True)

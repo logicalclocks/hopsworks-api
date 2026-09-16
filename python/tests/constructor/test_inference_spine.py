@@ -18,6 +18,7 @@ from datetime import date, datetime, timezone
 import pandas as pd
 import pytest
 from hopsworks_common.client.exceptions import FeatureStoreException
+from hsfs.constructor import inference_spine
 from hsfs.constructor.inference_spine import ROW_ID_COLUMN, InferenceSpine
 from hsfs.constructor.prediction_times import PredictionTimes
 
@@ -62,13 +63,10 @@ class _Query:
 class _FeatureView:
     def __init__(self, root, joined, serving_keys):
         self.name = "air_quality_fv"
+        self.version = 1
+        self.featurestore_id = 67
         self.query = _Query(root, joined)
         self.serving_keys = serving_keys
-        self._max_feature_age = None
-
-    @property
-    def _max_feature_age_secs(self):
-        return self._max_feature_age
 
 
 @pytest.fixture
@@ -221,17 +219,12 @@ class TestWireForm:
         last = pd.Timestamp("2026-09-16 08:00", tz="UTC")
         assert spine.to_dict()["maxEventTime"] == int(last.timestamp() * 1000)
 
-    @pytest.mark.parametrize(
-        "secs, expected",
-        [(3600, 3600), (None, None)],
-    )
-    def test_the_age_bound_rides_on_the_wire_in_seconds(
-        self, feature_view, secs, expected
-    ):
-        spine = InferenceSpine(
-            feature_view, _crossed(SPINE_DF, 1), max_feature_age_secs=secs
-        )
-        assert spine.to_dict().get("maxFeatureAgeSecs") == expected
+    def test_the_feature_view_rides_on_the_wire_instead_of_a_bound(self, feature_view):
+        # The backend looks the staleness bound up from this identity rather than being told it.
+        payload = InferenceSpine(feature_view, _crossed(SPINE_DF, 1)).to_dict()
+        assert payload["featureViewName"] == feature_view.name
+        assert payload["featureViewVersion"] == feature_view.version
+        assert payload["featureViewFeaturestoreId"] == feature_view.featurestore_id
 
 
 class TestArrowTable:
@@ -241,7 +234,7 @@ class TestArrowTable:
         spine = InferenceSpine(
             feature_view, _crossed([{**SPINE_DF[0], "pm25": 9.5}], 2)
         )
-        table = spine.arrow_table()
+        table = spine._arrow_table()
         schema = {f.name: f.type for f in table.schema}
         assert schema[ROW_ID_COLUMN] == pa.int64()
         assert schema["country"] == pa.string()
@@ -256,11 +249,11 @@ class TestArrowTable:
             feature_view, _crossed([{**SPINE_DF[0], "pm25": "not-a-number"}], 1)
         )
         with pytest.raises(FeatureStoreException, match="does not convert"):
-            spine.arrow_table()
+            spine._arrow_table()
 
     def test_writes_a_parquet_file_named_by_the_basename(self, feature_view, tmp_path):
         spine = InferenceSpine(feature_view, _crossed(SPINE_DF, 2))
-        path = spine.write_parquet(str(tmp_path))
+        path = spine._write_parquet(str(tmp_path))
         assert path.endswith(spine.basename)
         import pyarrow.parquet as pq
 
@@ -322,26 +315,45 @@ class TestPassthroughColumns:
         frame["fold"] = pd.Series([3], dtype="int64")
         spine = InferenceSpine(feature_view, frame, allow_passthrough=True)
         declared = {c["name"]: c["type"] for c in spine.to_dict()["columns"]}
-        written = {f.name: f.type for f in spine.arrow_table().schema}
+        written = {f.name: f.type for f in spine._arrow_table().schema}
         assert declared["label"] == "double" and str(written["label"]) == "double"
         assert declared["fold"] == "bigint" and str(written["fold"]) == "int64"
 
 
 class TestViewLevelFeatureAge:
-    """The bound belongs to the view, so the spine is told what the view carries."""
+    """The bound is the view's, so the wire form names the view instead of carrying a bound."""
 
-    def test_the_view_supplies_the_bound(self, feature_view):
-        feature_view._max_feature_age = 86400
-        spine = InferenceSpine(
-            feature_view,
-            _crossed(SPINE_DF, 1),
-            max_feature_age_secs=feature_view._max_feature_age_secs,
-        )
-        assert spine.to_dict()["maxFeatureAgeSecs"] == 86400
+    def test_the_spine_names_its_feature_view(self, feature_view):
+        payload = InferenceSpine(feature_view, _crossed(SPINE_DF, 1)).to_dict()
+        assert payload["featureViewName"] == "air_quality_fv"
+        assert payload["featureViewVersion"] == 1
+        assert payload["featureViewFeaturestoreId"] == 67
 
-    def test_unbounded_by_default(self, feature_view):
-        spine = InferenceSpine(feature_view, _crossed(SPINE_DF, 1))
-        assert "maxFeatureAgeSecs" not in spine.to_dict()
+    def test_no_bound_is_ever_sent(self, feature_view):
+        """No bound is sent at all.
+
+        A bound on the request is a bound the caller picked, which is what the column exists to
+        stop. The backend reads it from the view's own row instead.
+        """
+        payload = InferenceSpine(feature_view, _crossed(SPINE_DF, 1)).to_dict()
+        assert not [k for k in payload if "FeatureAge" in k]
+
+
+class TestSpineCeilings:
+    """Refused before the frame is typed, written and uploaded, not after a round trip."""
+
+    def test_too_many_rows(self, feature_view, monkeypatch):
+        monkeypatch.setattr(inference_spine, "MAX_SPINE_ROWS", 3)
+        with pytest.raises(FeatureStoreException, match="4 rows; the limit is 3"):
+            InferenceSpine(feature_view, _crossed(SPINE_DF, 4))
+
+    def test_too_many_columns(self, feature_view, monkeypatch):
+        monkeypatch.setattr(inference_spine, "MAX_SPINE_COLUMNS", 2)
+        with pytest.raises(FeatureStoreException, match="columns; the limit is 2"):
+            InferenceSpine(feature_view, _crossed(SPINE_DF, 1))
+
+    def test_within_the_ceilings(self, feature_view):
+        assert InferenceSpine(feature_view, _crossed(SPINE_DF, 1)).row_count == 1
 
 
 class TestSparkSpineDataFrame:

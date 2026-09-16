@@ -22,6 +22,7 @@ from zoneinfo import ZoneInfo
 
 from hopsworks_apigen import public
 from hopsworks_common.client.exceptions import FeatureStoreException
+from hsfs.constructor.inference_spine import MAX_SPINE_ROWS
 from hsfs.decorators import typechecked
 
 
@@ -336,6 +337,17 @@ class PredictionTimes:
                 " prediction times. Pass the frame without it, or do not cross at all."
             )
         frame = frame.reset_index(drop=True)
+        # Checked on the factors rather than on the result: the product is what the cross would
+        # allocate, and reporting both sides says which one to reduce. Without this, a wide
+        # schedule over many entities builds the whole frame in memory and is refused by the
+        # backend afterwards.
+        rows = len(frame) * len(times)
+        if rows > MAX_SPINE_ROWS:
+            raise FeatureStoreException(
+                f"Crossing {len(frame)} entities with {len(times)} prediction times gives"
+                f" {rows} rows; the limit is {MAX_SPINE_ROWS}. Reduce either side, or read in"
+                " batches."
+            )
         crossed = frame.loc[frame.index.repeat(len(times))].reset_index(drop=True)
         crossed[event_time] = pd.to_datetime(
             [t for _ in range(len(frame)) for t in times], utc=True
