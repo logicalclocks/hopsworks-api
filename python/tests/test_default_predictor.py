@@ -1438,6 +1438,13 @@ class TestAsyncPredict:
         assert sync_err.value.status_code == async_err.value.status_code
         assert sync_err.value.detail["code"] == async_err.value.detail["code"]
 
+    def test_the_lookup_blocks_unless_asked_otherwise(self, monkeypatch):
+        """The default is the blocking lookup, because the client serves one at a time."""
+        predictor = self._predictor()
+        assert predictor._fetch() == predictor.fetch_feature_vectors
+        monkeypatch.setenv("HOPSWORKS_PREDICTOR_ASYNC_LOOKUP", "true")
+        assert predictor._fetch() == predictor.fetch_feature_vectors_async
+
     def test_the_loop_is_free_while_the_lookup_runs(self):
         """The point of the coroutine: other tasks progress during the lookup.
 
@@ -1448,6 +1455,7 @@ class TestAsyncPredict:
         predictor = self._predictor()
         predictor.feature_view.lookup_delay = 0.2
         ticks = []
+        os.environ["HOPSWORKS_PREDICTOR_ASYNC_LOOKUP"] = "true"
 
         async def drive():
             async def ticker():
@@ -1463,7 +1471,10 @@ class TestAsyncPredict:
             task.cancel()
             return during
 
-        during = asyncio.run(drive())
+        try:
+            during = asyncio.run(drive())
+        finally:
+            os.environ.pop("HOPSWORKS_PREDICTOR_ASYNC_LOOKUP", None)
         assert during > 10, (
             f"only {during} ticks ran during a 200 ms lookup: the event loop was held"
         )
