@@ -1483,3 +1483,23 @@ class TestAsyncPredict:
                 predictor.predict_blocking([{"cc_num": 1}])
 
         asyncio.run(drive())
+
+
+class TestFeatureViewDeploymentIsAsync:
+    """A feature view deployment serves through the same coroutine a model one does."""
+
+    def test_the_stub_binds_predict_to_the_default_predictor(self):
+        namespace = {}
+        exec(compile(dp.STUB_SCRIPT, "stub", "exec"), namespace)
+        assert namespace["Predict"] is dp.DefaultPredict
+
+    def test_the_class_the_stub_binds_serves_coroutines(self):
+        namespace = {}
+        exec(compile(dp.STUB_SCRIPT, "stub", "exec"), namespace)
+        # This is what the model server branches on to decide whether to await.
+        assert inspect.iscoroutinefunction(namespace["Predict"].predict)
+
+    def test_the_stub_imports_without_a_fallback(self):
+        """One import, not a try/except whose branches were identical."""
+        assert dp.STUB_SCRIPT.count("import DefaultPredict as Predict") == 1
+        assert "except ImportError" not in dp.STUB_SCRIPT
