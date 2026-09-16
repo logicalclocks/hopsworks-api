@@ -63,6 +63,10 @@ possible.
   on a table not partitioned by a date.
 - Compaction runs with `max_concurrent_tasks=1` by default so it can run beside
   a writer without taking the whole CPU budget. Raise it for a dedicated job.
+  On PySpark these become session settings for the statement, since OPTIMIZE
+  takes neither as syntax, and are restored afterwards.
+- `delta_compact()` is the same call under the other name: Delta's SQL says
+  OPTIMIZE and delta-rs says `optimize.compact`, so both words work.
 
 ## Commands / API
 
@@ -84,6 +88,13 @@ count crosses a threshold (~100 files is the low hundreds of megabytes at
 typical commit sizes, near the engine's own target file size), and otherwise once
 a day. Read the last compaction time from the table's own history rather than
 keeping state, so the schedule survives restarts and multiple writers.
+
+Bound the daily one with `after_ingest_date`. Only files written since the last
+compaction need rewriting, and on a date-partitioned table they are all at or
+after that date, so passing it keeps the cost flat. Without it every run rewrites
+the whole table, including everything earlier runs already compacted, and the
+cost grows with the table forever. Give it a day of slack for rows that arrived
+late.
 
 ## Layout: partitioning, clustering, and write mode
 

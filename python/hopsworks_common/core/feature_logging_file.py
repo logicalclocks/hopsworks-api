@@ -88,7 +88,14 @@ def _worker_buffer_dir(root: str = BUFFER_ROOT, pid: int | None = None) -> str:
 
 
 def _process_is_alive(pid: int) -> bool:
-    """Whether `pid` still exists; a pid we may not signal is alive."""
+    """Whether `pid` still exists; a pid we may not signal is alive.
+
+    Every uncertain answer is "alive", which is the safe direction here: the caller
+    adopts a dead process's open segments, so a wrong "dead" uploads a file another
+    worker is still appending to, while a wrong "alive" only leaves rows waiting for the
+    next process to start. Pid reuse can produce the second, and does not produce the
+    first.
+    """
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
