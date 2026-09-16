@@ -22,6 +22,7 @@ import uuid
 import warnings
 from typing import TYPE_CHECKING, Any
 
+from hopsworks_common import util
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core.constants import HAS_POLARS
 
@@ -288,12 +289,6 @@ class InferenceSpine:
         return payload
 
 
-def _is_spark_dataframe(obj: Any) -> bool:
-    """A Spark DataFrame, classic or Connect, without importing pyspark to find out."""
-    cls = type(obj)
-    return cls.__name__ == "DataFrame" and cls.__module__.startswith("pyspark.sql")
-
-
 def _to_pandas(spine_df: Any) -> pd.DataFrame | None:
     import pandas as pd
 
@@ -308,7 +303,7 @@ def _to_pandas(spine_df: Any) -> pd.DataFrame | None:
 
         if isinstance(spine_df, pl.DataFrame):
             return spine_df.to_pandas()
-    if _is_spark_dataframe(spine_df):
+    if util._is_spark_dataframe(spine_df):
         from hsfs import engine
 
         if engine._get_type() != "spark":

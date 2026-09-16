@@ -883,7 +883,14 @@ class FeatureGroupBase:
 
     @staticmethod
     def _distinct_rows(frame: Any) -> Any:
-        """Drop duplicate rows, in whichever dataframe the engine returned."""
+        """Drop duplicate rows, in whichever dataframe the engine returned.
+
+        Spark is checked before pandas, and by type: a Spark DataFrame carries
+        `drop_duplicates` too, so a capability check would take the pandas branch and fail on
+        its `ignore_index` keyword.
+        """
+        if util._is_spark_dataframe(frame):
+            return frame.distinct()
         if HAS_POLARS:
             import polars as pl
 
@@ -891,8 +898,6 @@ class FeatureGroupBase:
                 return frame.unique(maintain_order=True)
         if hasattr(frame, "drop_duplicates"):  # pandas
             return frame.drop_duplicates(ignore_index=True)
-        if hasattr(frame, "distinct"):  # pyspark
-            return frame.distinct()
         raise FeatureStoreException(
             f"Cannot take distinct rows of a {type(frame).__name__}. Read the primary keys as"
             " a dataframe: `dataframe_type` must be one of 'default', 'spark', 'pandas' or"

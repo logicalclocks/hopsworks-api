@@ -2814,14 +2814,19 @@ class TestFeatureGroupReadPrimaryKeys:
 
     def test_a_spark_dataframe_is_deduplicated_by_spark(self, mocker):
         # Dispatch is on the frame the engine returned, so a Spark frame dedupes in Spark
-        # rather than being pulled to the driver.
+        # rather than being pulled to the driver. A Spark DataFrame also answers to
+        # `drop_duplicates`, so this only holds if Spark is matched by type and matched first:
+        # the pandas branch passes `ignore_index`, which Spark rejects.
         fg = get_test_feature_group()
-        spark_df = mock.MagicMock(spec=["distinct"])
+        spark_df = mock.MagicMock(spec=["distinct", "drop_duplicates"])
+        spark_df.__class__.__name__ = "DataFrame"
         mocker.patch("hsfs.constructor.query.Query.read", return_value=spark_df)
+        mocker.patch("hsfs.util._is_spark_dataframe", return_value=True)
 
         result = fg.read_primary_keys(dataframe_type="spark")
 
         spark_df.distinct.assert_called_once_with()
+        spark_df.drop_duplicates.assert_not_called()
         assert result is spark_df.distinct.return_value
 
     def test_the_scheduler_window_does_not_narrow_the_entities(self, mocker):
@@ -2837,3 +2842,23 @@ class TestFeatureGroupReadPrimaryKeys:
         fg.read_primary_keys()
 
         fg_read.assert_not_called()
+
+
+class TestIsSparkDataFrame:
+    def test_a_pandas_frame_is_not_a_spark_frame(self):
+        assert util._is_spark_dataframe(pd.DataFrame({"a": [1]})) is False
+
+    def test_a_real_spark_frame_is_recognised(self):
+        from hsfs.engine import spark as spark_engine_mod
+
+        session = spark_engine_mod.Engine()._spark_session
+        sdf = session.createDataFrame([(1,)], ["a"])
+        assert util._is_spark_dataframe(sdf) is True
+
+    def test_a_spark_frame_carries_the_pandas_method_name(self):
+        # The reason dispatch is by type: capability checks cannot tell them apart.
+        from hsfs.engine import spark as spark_engine_mod
+
+        session = spark_engine_mod.Engine()._spark_session
+        sdf = session.createDataFrame([(1,)], ["a"])
+        assert hasattr(sdf, "drop_duplicates") and hasattr(sdf, "distinct")

@@ -312,6 +312,15 @@ class PredictionTimes:
             A pandas DataFrame ready to pass as `spine_df`.
         """
         import pandas as pd
+        from hopsworks_common import util
+
+        if util._is_spark_dataframe(spine_df):
+            raise FeatureStoreException(
+                "`cross` builds a pandas frame and cannot cross a Spark DataFrame; pandas would"
+                " reject it with a constructor error. Read the entities as pandas, for example"
+                ' `fg.read_primary_keys(dataframe_type="pandas")`. A spine is collected to the'
+                " driver to be registered anyway, so nothing is gained by keeping it in Spark."
+            )
 
         times = self.timestamps
         if not times:
