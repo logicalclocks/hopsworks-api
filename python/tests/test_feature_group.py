@@ -19,6 +19,7 @@ from unittest import mock
 import hsfs
 import pandas as pd
 import pytest
+from hopsworks_common import spark_connect_utils
 from hsfs import (
     engine,
     expectation_suite,
@@ -2821,7 +2822,9 @@ class TestFeatureGroupReadPrimaryKeys:
         spark_df = mock.MagicMock(spec=["distinct", "drop_duplicates"])
         spark_df.__class__.__name__ = "DataFrame"
         mocker.patch("hsfs.constructor.query.Query.read", return_value=spark_df)
-        mocker.patch("hsfs.util._is_spark_dataframe", return_value=True)
+        mocker.patch(
+            "hopsworks_common.spark_connect_utils._is_spark_dataframe", return_value=True
+        )
 
         result = fg.read_primary_keys(dataframe_type="spark")
 
@@ -2846,14 +2849,14 @@ class TestFeatureGroupReadPrimaryKeys:
 
 class TestIsSparkDataFrame:
     def test_a_pandas_frame_is_not_a_spark_frame(self):
-        assert util._is_spark_dataframe(pd.DataFrame({"a": [1]})) is False
+        assert spark_connect_utils._is_spark_dataframe(pd.DataFrame({"a": [1]})) is False
 
     def test_a_real_spark_frame_is_recognised(self):
         from hsfs.engine import spark as spark_engine_mod
 
         session = spark_engine_mod.Engine()._spark_session
         sdf = session.createDataFrame([(1,)], ["a"])
-        assert util._is_spark_dataframe(sdf) is True
+        assert spark_connect_utils._is_spark_dataframe(sdf) is True
 
     def test_a_spark_frame_carries_the_pandas_method_name(self):
         # The reason dispatch is by type: capability checks cannot tell them apart.

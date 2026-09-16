@@ -22,7 +22,7 @@ import uuid
 import warnings
 from typing import TYPE_CHECKING, Any
 
-from hopsworks_common import util
+from hopsworks_common import spark_connect_utils
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core.constants import HAS_POLARS
 
@@ -303,7 +303,7 @@ def _to_pandas(spine_df: Any) -> pd.DataFrame | None:
 
         if isinstance(spine_df, pl.DataFrame):
             return spine_df.to_pandas()
-    if util._is_spark_dataframe(spine_df):
+    if spark_connect_utils._is_spark_dataframe(spine_df):
         from hsfs import engine
 
         if engine._get_type() != "spark":

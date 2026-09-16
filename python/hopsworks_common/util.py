@@ -159,17 +159,6 @@ def _autofix_feature_name(name: str, warn: bool = False) -> str:
     return name.lower().replace(" ", "_")
 
 
-def _is_spark_dataframe(obj: Any) -> bool:
-    """A Spark DataFrame, classic or Connect, without importing pyspark to find out.
-
-    Checked by type rather than by capability because a Spark DataFrame answers to plenty of
-    pandas method names: it has `drop_duplicates` as well as `distinct`, so dispatching on
-    `hasattr` silently sends it down a pandas branch that then fails on a keyword argument.
-    """
-    cls = type(obj)
-    return cls.__name__ == "DataFrame" and cls.__module__.startswith("pyspark.sql")
-
-
 def _contains_uppercase(name: str) -> bool:
     return any(re.finditer("[A-Z]", name))
 

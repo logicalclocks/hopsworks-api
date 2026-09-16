@@ -312,9 +312,9 @@ class PredictionTimes:
             A pandas DataFrame ready to pass as `spine_df`.
         """
         import pandas as pd
-        from hopsworks_common import util
+        from hopsworks_common import spark_connect_utils
 
-        if util._is_spark_dataframe(spine_df):
+        if spark_connect_utils._is_spark_dataframe(spine_df):
             raise FeatureStoreException(
                 "`cross` builds a pandas frame and cannot cross a Spark DataFrame; pandas would"
                 " reject it with a constructor error. Read the entities as pandas, for example"

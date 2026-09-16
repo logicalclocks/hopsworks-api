@@ -33,7 +33,7 @@ import avro.schema
 import hsfs.expectation_suite
 import humps
 from hopsworks_apigen import deprecated, deprecation, public
-from hopsworks_common import client, job
+from hopsworks_common import client, job, spark_connect_utils
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
 from hopsworks_common.core import alerts_api
 from hopsworks_common.core.constants import (
@@ -889,7 +889,7 @@ class FeatureGroupBase:
         `drop_duplicates` too, so a capability check would take the pandas branch and fail on
         its `ignore_index` keyword.
         """
-        if util._is_spark_dataframe(frame):
+        if spark_connect_utils._is_spark_dataframe(frame):
             return frame.distinct()
         if HAS_POLARS:
             import polars as pl
@@ -940,9 +940,13 @@ class FeatureGroupBase:
                 Read from the online storage rather than the offline storage. Defaults to
                 `False`.
             dataframe_type:
-                One of `"default"`, `"spark"`, `"pandas"` or `"polars"`. `"default"` maps to a
-                Spark dataframe under the Spark engine and a Pandas dataframe under the Python
-                engine. Types with no notion of a distinct row, such as `"numpy"`, are refused.
+                One of `"default"`, `"spark"`, `"pandas"` or `"polars"`, as on
+                [`read`][hsfs.feature_group.FeatureGroup.read]. `"default"` maps to a Spark
+                dataframe under the Spark engine and a Pandas dataframe under the Python
+                engine. `"pandas"` works on both. `"polars"` is a Python-engine type; the Spark
+                engine's converter rejects it, as it does for `read`. Types with no notion of a
+                distinct row, such as `"numpy"` and `"python"`, are refused here even though
+                `read` returns them.
             read_options:
                 Additional options as key/value pairs to pass to the execution engine.
 
