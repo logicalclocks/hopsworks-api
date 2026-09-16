@@ -15,6 +15,8 @@
 #
 from __future__ import annotations
 
+import asyncio
+import inspect
 import os
 import threading
 import time
@@ -61,6 +63,7 @@ class FakeFeatureView:
         self.on_demand_calls = []
         self.missing_rows = set()
         self.lookup_error = None
+        self.lookup_delay = 0.0
         self.log_error = None
 
     def init_serving(self, **kwargs):
@@ -111,7 +114,19 @@ class FakeFeatureView:
         out["amount_scaled"] = 0.5
         return out
 
+    async def get_feature_vectors_async(self, **kwargs):
+        # The real one hands the blocking call to a worker thread; the fake keeps the
+        # same shape so the predictor's awaitable path is exercised end to end.
+        import asyncio
+        import functools
+
+        return await asyncio.get_running_loop().run_in_executor(
+            None, functools.partial(self.get_feature_vectors, **kwargs)
+        )
+
     def get_feature_vectors(self, entry, allow_missing=False, **kwargs):
+        if self.lookup_delay:
+            time.sleep(self.lookup_delay)
         self.lookup_calls.append(
             {"entry": entry, "allow_missing": allow_missing, **kwargs}
         )
@@ -413,7 +428,7 @@ class TestModelInputContract:
         fv.get_feature_vectors = lambda entry, **kw: original(entry[:1], **kw)
 
         with pytest.raises(Exception) as info:
-            predictor.predict([{"cc_num": 1}, {"cc_num": 2}])
+            predictor.predict_blocking([{"cc_num": 1}, {"cc_num": 2}])
 
         assert _status(info.value) == 500
         assert _detail(info.value)["code"] == "CONTRACT_VIOLATION"
@@ -422,7 +437,7 @@ class TestModelInputContract:
         fv.get_feature_vectors = original
         predictor.model.predict = lambda x: pd.Series([1]).to_numpy()
         with pytest.raises(Exception) as info:
-            predictor.predict([{"cc_num": 1}, {"cc_num": 2}])
+            predictor.predict_blocking([{"cc_num": 1}, {"cc_num": 2}])
         assert _detail(info.value)["code"] == "CONTRACT_VIOLATION"
         assert "1 predictions for 2 rows" in _detail(info.value)["message"]
         assert fv.log_calls == []
@@ -440,7 +455,7 @@ class TestModelInputContract:
         predictor = dp.DefaultPredict(FakeDeployment(schema, FakeFeatureView()))
 
         with pytest.raises(Exception) as info:
-            predictor.predict([{"cc_num": 1}])
+            predictor.predict_blocking([{"cc_num": 1}])
 
         assert _detail(info.value)["code"] == "CONTRACT_VIOLATION"
 
@@ -450,7 +465,7 @@ class TestModelInputContract:
         )
 
         with pytest.raises(Exception) as info:
-            predictor.predict([{"cc_num": 1, "extra": 2}], request_id="req-7")
+            predictor.predict_blocking([{"cc_num": 1, "extra": 2}], request_id="req-7")
 
         assert _detail(info.value)["request_id"] == "req-7"
 
@@ -516,7 +531,7 @@ class TestPredict:
     def test_predictions_and_column_selection(self, pod_env):
         predictor, fv = self._model_predictor(pod_env)
 
-        result = predictor.predict([{"cc_num": 1}, {"cc_num": 2}])
+        result = predictor.predict_blocking([{"cc_num": 1}, {"cc_num": 2}])
 
         assert result == [1, 1]
         assert list(predictor.model.seen.columns) == ["amount_scaled", "cc_num"]
@@ -527,7 +542,7 @@ class TestPredict:
     def test_feature_view_deployment_returns_vectors(self, pod_env):
         predictor = dp.DefaultPredict(FakeDeployment(_schema(), FakeFeatureView()))
 
-        result = predictor.predict([{"cc_num": 7}])
+        result = predictor.predict_blocking([{"cc_num": 7}])
 
         assert result == {
             "predictions": [[7, 1.0, 0.5]],
@@ -539,7 +554,7 @@ class TestPredict:
 
         predictor, fv = self._model_predictor(pod_env)
 
-        result = predictor.predict(
+        result = predictor.predict_blocking(
             [InferInput(name="cc_num", shape=[2], datatype="INT64", data=[1, 2])]
         )
 
@@ -554,7 +569,7 @@ class TestPredict:
 
         predictor = dp.DefaultPredict(FakeDeployment(_schema(), FakeFeatureView()))
 
-        result = predictor.predict(
+        result = predictor.predict_blocking(
             [InferInput(name="cc_num", shape=[1], datatype="INT64", data=[7])]
         )
 
@@ -567,7 +582,7 @@ class TestPredict:
         predictor, _ = self._model_predictor(pod_env)
 
         with pytest.raises(Exception) as info:
-            predictor.predict([{"cc_num": 1, "extra": 2}])
+            predictor.predict_blocking([{"cc_num": 1, "extra": 2}])
 
         assert _status(info.value) == 400
         assert _detail(info.value)["code"] == "SCHEMA_VALIDATION"
@@ -583,7 +598,7 @@ class TestPredict:
         assert predictor.max_batch_rows == 2  # the limit travels with the schema
 
         with pytest.raises(Exception) as info:
-            predictor.predict([[1], [2], [3]])
+            predictor.predict_blocking([[1], [2], [3]])
 
         assert _status(info.value) == 413
 
@@ -594,7 +609,7 @@ class TestPredict:
         predictor, _ = self._model_predictor(pod_env, fv)
 
         with pytest.raises(Exception) as info:
-            predictor.predict([[1], [2], [3]])
+            predictor.predict_blocking([[1], [2], [3]])
 
         assert _status(info.value) == 404
         assert _detail(info.value)["code"] == "ENTITY_NOT_FOUND"
@@ -606,7 +621,7 @@ class TestPredict:
         predictor, _ = self._model_predictor(pod_env, fv)
 
         with pytest.raises(Exception) as info:
-            predictor.predict([[1]])
+            predictor.predict_blocking([[1]])
 
         assert _status(info.value) == 400
         assert _detail(info.value)["code"] == "FEATURE_LOOKUP_FAILED"
@@ -616,7 +631,7 @@ class TestPredict:
         fv.lookup_error = ZeroDivisionError("udf")
         predictor, _ = self._model_predictor(pod_env, fv)
         with pytest.raises(Exception) as info:
-            predictor.predict([[1]])
+            predictor.predict_blocking([[1]])
         assert _status(info.value) == 422
         assert "ZeroDivisionError" in _detail(info.value)["message"]
         assert "udf" not in _detail(info.value)["message"]
@@ -625,7 +640,7 @@ class TestPredict:
 
         fv.lookup_error = ConnectionError("down")
         with pytest.raises(Exception) as info:
-            predictor.predict([[1]])
+            predictor.predict_blocking([[1]])
         assert _status(info.value) == 503
         assert _detail(info.value)["code"] == "FEATURE_STORE_UNAVAILABLE"
 
@@ -638,7 +653,7 @@ class TestPredict:
         predictor = dp.DefaultPredict(deployment, async_logger=object())
 
         with pytest.raises(Exception) as info:
-            predictor.predict([{"cc_num": 1, "budget": "value"}])
+            predictor.predict_blocking([{"cc_num": 1, "budget": "value"}])
 
         message = _detail(info.value)["message"]
         assert _status(info.value) == 422
@@ -655,7 +670,7 @@ class TestPredict:
         predictor, _ = self._model_predictor(pod_env)
 
         with pytest.raises(Exception) as info:
-            predictor.predict([[1]])
+            predictor.predict_blocking([[1]])
 
         assert _status(info.value) == 500
         assert _detail(info.value)["code"] == "MODEL_FAILED"
@@ -678,7 +693,7 @@ class TestPredict:
         deployment = FakeDeployment(schema, fv, FakeModel(COLUMNAR))
         predictor = dp.DefaultPredict(deployment, async_logger=object())
 
-        predictor.predict(
+        predictor.predict_blocking(
             [{"cc_num": 1, "channel": "web"}, {"cc_num": 2}], request_id="req-1"
         )
 
@@ -706,7 +721,7 @@ class TestPredict:
         ]
 
         fv.log_error = RuntimeError("kafka")
-        assert predictor.predict([[1, None]]) == [1]
+        assert predictor.predict_blocking([[1, None]]) == [1]
         assert predictor._log_worker._wait(5)
         assert predictor._log_worker.failed == 1
 
@@ -716,7 +731,7 @@ class TestPredict:
             FakeDeployment(_schema(), fv), async_logger=object()
         )
 
-        predictor.predict([[1]])
+        predictor.predict_blocking([[1]])
 
         assert predictor._log_worker._wait(5)
         _, kwargs = fv.log_calls[0]
@@ -731,7 +746,7 @@ class TestPredict:
             FakeDeployment(_schema(), fv, FakeModel(COLUMNAR)), async_logger=object()
         )
 
-        assert predictor.predict([[1]]) == [1]
+        assert predictor.predict_blocking([[1]]) == [1]
         assert fv.log_started.wait(5)
         # the worker is inside log() while the request has already returned
         assert fv.log_calls == []
@@ -748,10 +763,10 @@ class TestPredict:
             FakeDeployment(_schema(), fv, FakeModel(COLUMNAR)), async_logger=object()
         )
 
-        predictor.predict([[1]])
+        predictor.predict_blocking([[1]])
         assert fv.log_started.wait(5)  # the worker holds the first request
-        predictor.predict([[2]])
-        predictor.predict([[3]])
+        predictor.predict_blocking([[2]])
+        predictor.predict_blocking([[3]])
         assert predictor._log_worker.dropped == 2  # the active row retains its budget
 
         fv.log_gate.set()
@@ -768,11 +783,11 @@ class TestPredict:
             FakeDeployment(_schema(), fv, FakeModel(COLUMNAR)), async_logger=object()
         )
 
-        predictor.predict([[1], [2], [3]])  # three rows, held by the worker
+        predictor.predict_blocking([[1], [2], [3]])  # three rows, held by the worker
         assert fv.log_started.wait(5)
-        predictor.predict([[4], [5]])  # 3 + 2 rows exceed the budget: dropped
+        predictor.predict_blocking([[4], [5]])  # 3 + 2 rows exceed the budget: dropped
         assert predictor._log_worker.dropped == 2
-        predictor.predict([[6]])  # 3 + 1 rows fit
+        predictor.predict_blocking([[6]])  # 3 + 1 rows fit
 
         fv.log_gate.set()
         assert predictor.close() is True
@@ -787,10 +802,10 @@ class TestPredict:
             FakeDeployment(_schema(), fv, FakeModel(COLUMNAR)), async_logger=object()
         )
 
-        predictor.predict([[1], [2], [3]])
+        predictor.predict_blocking([[1], [2], [3]])
         assert predictor._log_worker.dropped == 3
         assert fv.log_calls == []
-        predictor.predict([[4]])
+        predictor.predict_blocking([[4]])
         assert predictor.close() is True
         assert [len(call[0][0]) for call in fv.log_calls] == [1]
 
@@ -800,7 +815,7 @@ class TestPredict:
             FakeDeployment(_schema(), fv, FakeModel(COLUMNAR)), async_logger=object()
         )
         for _ in range(5):
-            predictor.predict([[1]])
+            predictor.predict_blocking([[1]])
 
         assert predictor.close() is True
         assert len(fv.log_calls) == 5
@@ -906,7 +921,7 @@ class TestNoLookup:
             FakeDeployment(schema, fv, FakeModel(COLUMNAR)), async_logger=object()
         )
 
-        result = predictor.predict(
+        result = predictor.predict_blocking(
             [
                 {"cc_num": 1, "amount": 2.0, "rate": 0.1},
                 {"cc_num": 2, "amount": 3.0, "rate": 0.2},
@@ -937,7 +952,7 @@ class TestNoLookup:
         assert predictor.feature_view is None
         assert predictor.logging_enabled is False
         assert predictor.model_input_columns == ["amount_scaled", "cc_num"]
-        result = predictor.predict([{"amount_scaled": 0.5, "cc_num": 1}])
+        result = predictor.predict_blocking([{"amount_scaled": 0.5, "cc_num": 1}])
         assert result == [1]
         assert list(predictor.model.seen.columns) == ["amount_scaled", "cc_num"]
 
@@ -953,7 +968,7 @@ class TestNoLookup:
         )
 
         assert predictor.model_input_columns == ["cc_num", "amount_scaled"]
-        assert predictor.predict([{"cc_num": 1, "amount_scaled": 0.5}]) == [1]
+        assert predictor.predict_blocking([{"cc_num": 1, "amount_scaled": 0.5}]) == [1]
         assert list(predictor.model.seen.columns) == ["cc_num", "amount_scaled"]
 
     def test_model_without_feature_view_needs_every_input_passed(self, pod_env):
@@ -1017,7 +1032,7 @@ def test_arrow_worker_headers_and_future_legacy_fallback(
     logger = Logger()
     predictor = dp.DefaultPredict(deployment, async_logger=logger)
     try:
-        predictor.predict([[1], [2]], request_id="request-1")
+        predictor.predict_blocking([[1], [2]], request_id="request-1")
         assert predictor._log_worker._wait(2)
         assert len(calls) == 1
         thread, payload, headers, rows = calls[0]
@@ -1034,7 +1049,7 @@ def test_arrow_worker_headers_and_future_legacy_fallback(
         assert built[0][2] == "request-1"
         assert budget._snapshot() == {"rows": 0, "bytes": 0}
         logger._arrow_disabled = True
-        predictor.predict([[3]])
+        predictor.predict_blocking([[3]])
         assert predictor._log_worker._wait(2)
         assert len(calls) == 1 and len(fv.log_calls) == 1
     finally:
@@ -1090,10 +1105,10 @@ def test_backlogged_requests_share_one_post(pod_env, monkeypatch):
         FakeDeployment(_schema(), fv, FakeModel(COLUMNAR)), async_logger=Logger()
     )
     try:
-        predictor.predict([[1]], request_id="first")
+        predictor.predict_blocking([[1]], request_id="first")
         time.sleep(0.05)
-        predictor.predict([[2], [3]], request_id="second")
-        predictor.predict([[4]], request_id="third")
+        predictor.predict_blocking([[2], [3]], request_id="second")
+        predictor.predict_blocking([[4]], request_id="third")
         release.set()
         assert predictor._log_worker._wait(5)
         assert [(rid, rows) for _p, rid, rows in calls] == [("first", 1), ("second", 3)]
@@ -1152,10 +1167,10 @@ def test_a_group_over_the_event_limit_is_split(pod_env, monkeypatch):
         FakeDeployment(_schema(), fv, FakeModel(COLUMNAR)), async_logger=Logger()
     )
     try:
-        predictor.predict([[1]], request_id="a")
+        predictor.predict_blocking([[1]], request_id="a")
         time.sleep(0.05)
         for rid in ("b", "c", "d"):
-            predictor.predict([[1]], request_id=rid)
+            predictor.predict_blocking([[1]], request_id=rid)
         release.set()
         assert predictor._log_worker._wait(5)
         assert posts == [1, 2, 1]
@@ -1178,7 +1193,7 @@ def test_logging_admission_exception_cannot_fail_prediction(
 
     monkeypatch.setattr(predictor._log_worker, "_submit", reject)
     try:
-        assert predictor.predict([[1], [2]]) == [1, 1]
+        assert predictor.predict_blocking([[1], [2]]) == [1, 1]
         assert predictor._log_worker.failed == 2
         assert "RuntimeError" in caplog.text
         assert "private feature value" not in caplog.text
@@ -1248,7 +1263,7 @@ def test_job_transport_hands_posts_to_the_file_writer(pod_env, monkeypatch):
     )
     assert predictor.logging_enabled and predictor.logging_transport == "job"
     assert fv.feature_logger is None  # the sidecar logger was never initialised
-    predictor.predict([[1], [2]], request_id="r1")
+    predictor.predict_blocking([[1], [2]], request_id="r1")
     assert predictor._log_worker._wait(5)
     assert submitted == [(b"xx", 2)]
     # What the sidecar reads from the event headers rides the file as columns.
@@ -1332,11 +1347,11 @@ def test_a_backlog_never_exceeds_the_receivers_row_limit(pod_env, monkeypatch):
         FakeDeployment(_schema(), fv, FakeModel(COLUMNAR)), async_logger=Logger()
     )
     try:
-        predictor.predict([[1]], request_id="first")
+        predictor.predict_blocking([[1]], request_id="first")
         time.sleep(0.05)
         # 600 rows pile up behind the blocked first post.
         for i in range(300):
-            predictor.predict([[2], [3]], request_id=f"r{i}")
+            predictor.predict_blocking([[2], [3]], request_id=f"r{i}")
         release.set()
         assert predictor._log_worker._wait(10)
         assert sum(posts) == 601
@@ -1390,3 +1405,74 @@ def test_coalesced_requests_share_one_reservation(monkeypatch):
         assert rows == 2 * count
     assert budget._snapshot() == {"rows": 0, "bytes": 0}
     worker._close(1)
+
+
+class TestAsyncPredict:
+    """predict is a coroutine, and answers exactly as the blocking entry point does."""
+
+    def _predictor(self):
+        return dp.DefaultPredict(FakeDeployment(_schema(), FakeFeatureView()))
+
+    def test_predict_is_a_coroutine_function(self):
+        assert inspect.iscoroutinefunction(dp.DefaultPredict.predict)
+        assert not inspect.iscoroutinefunction(dp.DefaultPredict.predict_blocking)
+
+    def test_both_entry_points_answer_the_same(self):
+        rows = [{"cc_num": 1}, {"cc_num": 2}]
+        blocking = self._predictor().predict_blocking(rows)
+        awaited = asyncio.run(self._predictor().predict(rows))
+        assert awaited == blocking
+
+    def test_a_failed_lookup_maps_the_same_either_way(self):
+        def run(entry_error):
+            predictor = self._predictor()
+            predictor.feature_view.lookup_error = entry_error
+            return predictor
+
+        blocking = run(FeatureStoreException("no entity"))
+        with pytest.raises(Exception) as sync_err:
+            blocking.predict_blocking([{"cc_num": 1}])
+        awaited = run(FeatureStoreException("no entity"))
+        with pytest.raises(Exception) as async_err:
+            asyncio.run(awaited.predict([{"cc_num": 1}]))
+        assert sync_err.value.status_code == async_err.value.status_code
+        assert sync_err.value.detail["code"] == async_err.value.detail["code"]
+
+    def test_the_loop_is_free_while_the_lookup_runs(self):
+        """The point of the coroutine: other tasks progress during the lookup.
+
+        The fake lookup blocks for 200 ms. A ticker every millisecond alongside it
+        should therefore get many turns; on a blocking predict it gets the one it took
+        before the lookup started, which is what this number distinguishes.
+        """
+        predictor = self._predictor()
+        predictor.feature_view.lookup_delay = 0.2
+        ticks = []
+
+        async def drive():
+            async def ticker():
+                while True:
+                    ticks.append(1)
+                    await asyncio.sleep(0.001)
+
+            task = asyncio.ensure_future(ticker())
+            await asyncio.sleep(0)  # let the ticker take its first turn
+            before = len(ticks)
+            await predictor.predict([{"cc_num": 1}])
+            during = len(ticks) - before
+            task.cancel()
+            return during
+
+        during = asyncio.run(drive())
+        assert during > 10, (
+            f"only {during} ticks ran during a 200 ms lookup: the event loop was held"
+        )
+
+    def test_the_blocking_entry_point_refuses_a_running_loop(self):
+        predictor = self._predictor()
+
+        async def drive():
+            with pytest.raises(RuntimeError, match="running event loop"):
+                predictor.predict_blocking([{"cc_num": 1}])
+
+        asyncio.run(drive())
