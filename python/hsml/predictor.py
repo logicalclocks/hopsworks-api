@@ -13,6 +13,8 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 
+from __future__ import annotations
+
 import json
 from typing import Optional, Union
 
@@ -108,7 +110,10 @@ class Predictor(DeployableComponent):
     def deploy(self):
         """Create a deployment for this predictor and persists it in the Model Serving.
 
-        !!! example
+        Returns:
+            The deployment metadata object of a new or existing deployment.
+
+        Examples:
             ```python
 
             import hopsworks
@@ -129,9 +134,6 @@ class Predictor(DeployableComponent):
 
             print(my_deployment.get_state())
             ```
-
-        # Returns
-            `Deployment`. The deployment metadata object of a new or existing deployment.
         """
 
         _deployment = deployment.Deployment(
@@ -522,6 +524,103 @@ class Predictor(DeployableComponent):
     @project_namespace.setter
     def project_namespace(self, project_namespace):
         self._project_namespace = project_namespace
+
+
+    def get_endpoint_url(self) -> str | None:
+        """Get the base endpoint URL for this predictor.
+
+        Returns the base URL that can be used with external HTTP clients.
+        This is the path-based routing base endpoint without any protocol-specific
+        suffixes like `:predict` or `/v1`.
+
+        If Istio client is not available, returns `None` (Hopsworks REST API
+        doesn't support base-only endpoints).
+
+        Returns:
+            Base endpoint URL, or `None` if unavailable.
+
+        Examples:
+            ```python
+            url = predictor.get_endpoint_url()
+            # url = "https://host:port/v1/project/name"
+            ```
+        """
+        from hsml.core import serving_api
+
+        serving = serving_api.ServingApi()
+
+        istio_client = client.istio.get_instance()
+        if istio_client is not None:
+            path_parts = serving._get_istio_inference_path(self, base_only=True)
+            return f"{istio_client._base_url}/{'/'.join(str(p) for p in path_parts)}"
+
+        # Hopsworks REST API doesn't support base-only endpoints
+        return None
+
+    def get_openai_url(self) -> str | None:
+        """Get the OpenAI-compatible API URL for vLLM deployments.
+
+        Returns the URL for OpenAI-compatible API endpoints (e.g., /v1/chat/completions).
+        This method only returns a URL for LLM (vLLM) deployments.
+
+        Returns:
+            OpenAI-compatible URL (base URL + "/v1"), or `None` if not a LLM deployment.
+
+        Examples:
+            ```python
+            url = predictor.get_openai_compatible_url()
+            # url = "https://host:port/v1/project/name/v1"
+            # Then use: url + "/chat/completions"
+            ```
+        """
+        if self._model_server != PREDICTOR.MODEL_SERVER_VLLM:
+            return None
+
+        base_url = self.get_endpoint_url()
+        if base_url is None:
+            return None
+
+        return f"{base_url}/v1"
+
+    def get_inference_url(self) -> str | None:
+        """Get the KServe inference URL for standard model deployments.
+
+        Returns the full URL with `:predict` suffix for KServe inference protocol.
+        This method only returns a URL for standard model deployments (non-vLLM,
+        with a model attached).
+
+        If Istio client is not available, falls back to Hopsworks REST API path.
+
+        Returns:
+            Inference URL with `:predict` suffix, or `None` if not a standard model deployment.
+
+        Examples:
+            ```python
+            url = predictor.get_inference_url()
+            # url = "https://host:port/v1/project/name/v1/models/name:predict"
+            ```
+        """
+        from hsml.core import serving_api
+
+        # Only for standard model deployments (has model, not vLLM)
+        has_model = self._model_name is not None and self._model_version is not None
+        if not has_model or self._model_server == PREDICTOR.MODEL_SERVER_VLLM:
+            return None
+
+        serving = serving_api.ServingApi()
+
+        # Try Istio client first
+        istio_client = client.istio.get_instance()
+        if istio_client is not None:
+            path_parts = serving._get_istio_inference_path(self, base_only=False)
+            return f"{istio_client._base_url}/{'/'.join(str(p) for p in path_parts)}"
+
+        # Fallback to Hopsworks REST API path
+        hopsworks_client = client.get_instance()
+        path_parts = serving._get_hopsworks_inference_path(
+            hopsworks_client._project_id, self
+        )
+        return f"{hopsworks_client._base_url}/hopsworks-api/api/{'/'.join(str(p) for p in path_parts)}"
 
     def __repr__(self):
         desc = (
