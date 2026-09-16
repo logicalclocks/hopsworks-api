@@ -188,3 +188,78 @@ class TestVectorServer:
         server = VectorServer.__new__(VectorServer)
 
         assert server._handle_timestamp_based_on_dtype(timestamp_value) == expected
+
+
+class TestNativeAsyncLookup:
+    """The awaitable drivers reach the client's async methods, not a worker thread."""
+
+    def _server(self, mocker):
+        server = VectorServer.__new__(VectorServer)
+        sql = mocker.MagicMock()
+        mocker.patch.object(
+            VectorServer, "sql_client", new_callable=PropertyMock, return_value=sql
+        )
+        mocker.patch.object(
+            VectorServer,
+            "rest_client_engine",
+            new_callable=PropertyMock,
+            return_value=mocker.MagicMock(),
+        )
+        server._fetch_inference_helpers_for_transformations = False
+        mocker.patch(
+            "hsfs.core.vector_server._lookup_options", return_value=(False, False)
+        )
+        return server, sql
+
+    def test_the_batch_driver_awaits_the_sql_client(self, mocker):
+        import asyncio
+
+        server, sql = self._server(mocker)
+
+        async def awaited(entries, **kwargs):
+            return ([{"a": 1}], None)
+
+        sql._get_batch_feature_vectors_async = awaited
+        mocker.patch.object(VectorServer, "_batch_lookup_arguments", return_value=False)
+
+        def steps(*args, **kwargs):
+            return (yield ["entry"], "sql")
+
+        mocker.patch.object(VectorServer, "_feature_vectors_steps", steps)
+
+        assert asyncio.run(server._get_feature_vectors_async()) == [{"a": 1}]
+        # The blocking client must not be touched on the awaited path.
+        sql._get_batch_feature_vectors.assert_not_called()
+
+    def test_the_single_driver_awaits_the_sql_client(self, mocker):
+        import asyncio
+
+        server, sql = self._server(mocker)
+
+        async def awaited(entry, **kwargs):
+            return {"a": 1}
+
+        sql._get_single_feature_vector_async = awaited
+        mocker.patch.object(
+            VectorServer, "_single_lookup_arguments", return_value=False
+        )
+
+        def steps(*args, **kwargs):
+            return (yield {"pk": 1}, "sql")
+
+        mocker.patch.object(VectorServer, "_feature_vector_steps", steps)
+
+        assert asyncio.run(server._get_feature_vector_async()) == {"a": 1}
+        sql._get_single_feature_vector.assert_not_called()
+
+    def test_a_body_that_suspends_twice_is_refused(self):
+        from hsfs.core import vector_server
+
+        def steps():
+            yield "first"
+            yield "second"
+
+        gen = steps()
+        next(gen)
+        with pytest.raises(RuntimeError, match="more than once"):
+            vector_server._resume(gen, None)

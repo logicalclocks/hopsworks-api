@@ -380,6 +380,28 @@ class OnlineStoreSqlClient:
             self.parametrised_prepared_statements[key],
         )
 
+    async def _get_single_feature_vector_async(
+        self,
+        entry: dict[str, Any],
+        logging_data: bool = False,
+        feature_vector_with_inference_helpers: bool = False,
+    ) -> dict[str, Any]:
+        """[`_get_single_feature_vector`][] awaited on the caller's own event loop.
+
+        Same arguments, same result; the statements are awaited here rather than handed
+        to the task thread.
+        """
+        if logging_data:
+            key = self.SINGLE_LOGGING_VECTOR_KEY
+        elif feature_vector_with_inference_helpers:
+            key = self.SINGLE_VECTOR_WITH_INFERENCE_HELPERS_KEY
+        else:
+            key = self.SINGLE_VECTOR_KEY
+        return await self._single_vector_result_async(
+            entry,
+            self.parametrised_prepared_statements[key],
+        )
+
     def _get_batch_feature_vectors(
         self,
         entries: list[dict[str, Any]],
@@ -462,10 +484,10 @@ class OnlineStoreSqlClient:
             entries, self.parametrised_prepared_statements[self.BATCH_HELPER_KEY]
         )
 
-    def _single_vector_result(
+    def _single_statements(
         self, entry: dict[str, Any], prepared_statement_objects: dict[int, sql.text]
-    ) -> dict[str, Any]:
-        """Retrieve single vector with parallel queries using aiomysql engine."""
+    ):
+        """Bind the entry to the prepared statements this lookup needs."""
         if all(isinstance(val, list) for val in entry.values()):
             raise ValueError(
                 "Entry is expected to be single value per primary key. "
@@ -501,21 +523,15 @@ class OnlineStoreSqlClient:
                 prepared_statement_objects[prepared_statement_index]
             )
 
-        # run all the prepared statements in parallel using aiomysql engine
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
                 f"Executing prepared statements for serving vector with entries: {bind_entries}"
             )
-        results_dict = self._async_task_thread._submit(
-            AsyncTask(
-                task_function=self._execute_prep_statements,
-                task_args=(
-                    prepared_statement_execution,
-                    bind_entries,
-                ),
-                requires_connection_pool=True,
-            )
-        )
+        return serving_vector, bind_entries, prepared_statement_execution
+
+    @staticmethod
+    def _stitch_single_result(serving_vector, results_dict):
+        """Fold the rows the statements returned into one serving vector."""
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(f"Retrieved feature vectors: {results_dict}")
             _logger.debug("Constructing serving vector from results")
@@ -523,10 +539,42 @@ class OnlineStoreSqlClient:
             for row in results_dict[key]:
                 if _logger.isEnabledFor(logging.DEBUG):
                     _logger.debug(f"Processing row: {row} for prepared statement {key}")
-                result_dict = dict(row)
-                serving_vector.update(result_dict)
-
+                serving_vector.update(dict(row))
         return serving_vector
+
+    def _single_vector_result(
+        self, entry: dict[str, Any], prepared_statement_objects: dict[int, sql.text]
+    ) -> dict[str, Any]:
+        """Retrieve single vector with parallel queries using aiomysql engine."""
+        serving_vector, bind_entries, prepared = self._single_statements(
+            entry, prepared_statement_objects
+        )
+        results_dict = self._async_task_thread._submit(
+            AsyncTask(
+                task_function=self._execute_prep_statements,
+                task_args=(prepared, bind_entries),
+                requires_connection_pool=True,
+            )
+        )
+        return self._stitch_single_result(serving_vector, results_dict)
+
+    async def _single_vector_result_async(
+        self, entry: dict[str, Any], prepared_statement_objects: dict[int, sql.text]
+    ) -> dict[str, Any]:
+        """The same single vector, awaited on the caller's own event loop.
+
+        As for the batch: the statements are awaited here against a pool belonging to
+        this loop, rather than queued on the task thread that serves one lookup at a
+        time.
+        """
+        serving_vector, bind_entries, prepared = self._single_statements(
+            entry, prepared_statement_objects
+        )
+        pool = await self._loop_connection_pool()
+        results_dict = await self._execute_prep_statements(
+            prepared, bind_entries, connection_pool=pool
+        )
+        return self._stitch_single_result(serving_vector, results_dict)
 
     def _batch_statements(
         self,

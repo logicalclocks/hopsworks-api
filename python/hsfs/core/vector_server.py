@@ -15,6 +15,7 @@
 #
 from __future__ import annotations
 
+import inspect
 import itertools
 import logging
 import warnings
@@ -83,6 +84,31 @@ if TYPE_CHECKING:
     from hsfs.feature_group import FeatureGroup
 
 _logger = logging.getLogger(__name__)
+
+
+def _lookup_options(owner, args, kwargs, body="_feature_vectors_steps"):
+    """The fetch-shaping arguments, resolved against the body's own signature.
+
+    Read from the call rather than guessed from kwargs: a caller passing `allow_missing`
+    positionally would otherwise silently get the default, and a lookup that drops
+    missing rows when it should keep them is not a failure anyone would see.
+    """
+    bound = inspect.signature(getattr(owner, body)).bind(*args, **kwargs)
+    bound.apply_defaults()
+    return bound.arguments["allow_missing"], bound.arguments["logging_data"]
+
+
+def _resume(steps, fetched):
+    """Hand a fetch back to a suspended lookup and take its result.
+
+    The body returns through StopIteration, which is how a generator carries a value
+    out; anything else means it yielded twice and the driver is out of step with it.
+    """
+    try:
+        steps.send(fetched)
+    except StopIteration as finished:
+        return finished.value
+    raise RuntimeError("the feature vector body suspended more than once")
 
 
 class VectorServer:
@@ -457,7 +483,67 @@ class VectorServer:
             )
             raise exceptions.FeatureStoreException(error)
 
-    def _get_feature_vector(
+    def _single_lookup_arguments(self, rondb_entry, online_client_choice):
+        """Whether this lookup needs a fetch at all, and from which client."""
+        if len(rondb_entry) == 0:
+            if _logger.isEnabledFor(logging.DEBUG):
+                _logger.debug("Empty entry for rondb, skipping fetching.")
+            return None
+        return online_client_choice == self.DEFAULT_REST_CLIENT
+
+    def _get_feature_vector(self, *args: Any, **kwargs: Any) -> Any:
+        """Assemble a single serving vector, looking it up on this thread."""
+        steps = self._feature_vector_steps(*args, **kwargs)
+        rondb_entry, choice = next(steps)
+        allow_missing, logging_data = _lookup_options(
+            self, args, kwargs, "_feature_vector_steps"
+        )
+        use_rest = self._single_lookup_arguments(rondb_entry, choice)
+        if use_rest is None:
+            serving_vector = {}
+        elif use_rest:
+            if _logger.isEnabledFor(logging.DEBUG):
+                _logger.debug("_get_feature_vector Online REST client")
+            serving_vector = self.rest_client_engine._get_single_feature_vector(
+                rondb_entry,
+                drop_missing=not allow_missing,
+                return_type=self.rest_client_engine.RETURN_TYPE_FEATURE_VALUE_DICT,
+            )
+        else:
+            if _logger.isEnabledFor(logging.DEBUG):
+                _logger.debug("_get_feature_vector Online SQL client")
+            serving_vector = self.sql_client._get_single_feature_vector(
+                rondb_entry,
+                logging_data=logging_data,
+                feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
+            )
+        return _resume(steps, serving_vector)
+
+    async def _get_feature_vector_async(self, *args: Any, **kwargs: Any) -> Any:
+        """The same vector, with the online lookup awaited on the caller's event loop."""
+        steps = self._feature_vector_steps(*args, **kwargs)
+        rondb_entry, choice = next(steps)
+        allow_missing, logging_data = _lookup_options(
+            self, args, kwargs, "_feature_vector_steps"
+        )
+        use_rest = self._single_lookup_arguments(rondb_entry, choice)
+        if use_rest is None:
+            serving_vector = {}
+        elif use_rest:
+            serving_vector = self.rest_client_engine._get_single_feature_vector(
+                rondb_entry,
+                drop_missing=not allow_missing,
+                return_type=self.rest_client_engine.RETURN_TYPE_FEATURE_VALUE_DICT,
+            )
+        else:
+            serving_vector = await self.sql_client._get_single_feature_vector_async(
+                rondb_entry,
+                logging_data=logging_data,
+                feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
+            )
+        return _resume(steps, serving_vector)
+
+    def _feature_vector_steps(
         self,
         entry: dict[str, Any],
         return_type: Literal["list", "numpy", "pandas", "polars"],
@@ -520,26 +606,9 @@ class VectorServer:
             passed_features=passed_features,
             vector_db_features=vector_db_features,
         )
-        if len(rondb_entry) == 0:
-            if _logger.isEnabledFor(logging.DEBUG):
-                _logger.debug("Empty entry for rondb, skipping fetching.")
-            serving_vector = {}  # updated below with vector_db_features and passed_features
-        elif online_client_choice == self.DEFAULT_REST_CLIENT:
-            if _logger.isEnabledFor(logging.DEBUG):
-                _logger.debug("_get_feature_vector Online REST client")
-            serving_vector = self.rest_client_engine._get_single_feature_vector(
-                rondb_entry,
-                drop_missing=not allow_missing,
-                return_type=self.rest_client_engine.RETURN_TYPE_FEATURE_VALUE_DICT,
-            )
-        else:
-            if _logger.isEnabledFor(logging.DEBUG):
-                _logger.debug("_get_feature_vector Online SQL client")
-            serving_vector = self.sql_client._get_single_feature_vector(
-                rondb_entry,
-                logging_data=logging_data,
-                feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
-            )
+        # The one suspension point, as for the batch: the driver fetches and hands the
+        # rows back, and everything below assembles them.
+        serving_vector = yield rondb_entry, online_client_choice
 
         self._raise_transformation_warnings(
             transform=transform, on_demand_features=on_demand_features
@@ -585,40 +654,69 @@ class VectorServer:
             logging_meta_data=logging_meta_data,
         )
 
-    async def _get_feature_vectors_async(
-        self, entries: list[dict[str, Any]], logging_data: bool = False, **kwargs: Any
-    ) -> Any:
-        """[`_get_feature_vectors`][] with the online lookup awaited, not bridged.
+    def _batch_lookup_arguments(self, rondb_entries, online_client_choice):
+        """Whether this batch needs a fetch at all, and from which client."""
+        if not rondb_entries:
+            if _logger.isEnabledFor(logging.DEBUG):
+                _logger.debug("Empty entries for rondb, skipping fetching.")
+            return None
+        return online_client_choice == self.DEFAULT_REST_CLIENT
 
-        Only the lookup differs. It is awaited on the caller's loop and the rows are
-        then handed to the blocking method, so the assembly, the transformations and the
-        return type stay one implementation shared by both paths.
-
-        Falls back to the blocking path when the lookup is not the SQL client's to make:
-        a REST client deployment, or a request with no serving keys to look up.
-        """
-        client = self.which_client_and_ensure_initialised(
-            force_rest_client=kwargs.get("force_rest_client", False),
-            force_sql_client=kwargs.get("force_sql_client", False),
-        )
-        rondb_entries = [e for e in entries if e]
-        if client == self.DEFAULT_REST_CLIENT or not rondb_entries:
-            return self._get_feature_vectors(
-                entries, logging_data=logging_data, **kwargs
+    def _get_feature_vectors(self, *args: Any, **kwargs: Any) -> Any:
+        """Assemble a batch of serving vectors, looking them up on this thread."""
+        steps = self._feature_vectors_steps(*args, **kwargs)
+        rondb_entries, choice = next(steps)
+        allow_missing, logging_data = _lookup_options(self, args, kwargs)
+        use_rest = self._batch_lookup_arguments(rondb_entries, choice)
+        if use_rest is None:
+            batch_results = []
+        elif use_rest:
+            if _logger.isEnabledFor(logging.DEBUG):
+                _logger.debug("get_batch_feature_vector Online REST client")
+            batch_results = self.rest_client_engine._get_batch_feature_vectors(
+                entries=rondb_entries,
+                drop_missing=not allow_missing,
+                return_type=self.rest_client_engine.RETURN_TYPE_FEATURE_VALUE_DICT,
             )
-        batch_results, _ = await self.sql_client._get_batch_feature_vectors_async(
-            rondb_entries,
-            logging_data=logging_data,
-            feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
-        )
-        return self._get_feature_vectors(
-            entries,
-            logging_data=logging_data,
-            prefetched_batch_results=batch_results,
-            **kwargs,
-        )
+        else:
+            if _logger.isEnabledFor(logging.DEBUG):
+                _logger.debug("_get_batch_feature_vectors through SQL client")
+            batch_results, _ = self.sql_client._get_batch_feature_vectors(
+                rondb_entries,
+                logging_data=logging_data,
+                feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
+            )
+        return _resume(steps, batch_results)
 
-    def _get_feature_vectors(
+    async def _get_feature_vectors_async(self, *args: Any, **kwargs: Any) -> Any:
+        """The same batch, with the online lookup awaited on the caller's event loop.
+
+        One body prepares and assembles for both drivers; only the fetch differs. The
+        SQL lookup is awaited against a connection pool of this loop's own, so several
+        are in flight at once instead of queueing on the client's task thread. A REST
+        deployment has no such path, so it keeps the blocking call.
+        """
+        steps = self._feature_vectors_steps(*args, **kwargs)
+        rondb_entries, choice = next(steps)
+        allow_missing, logging_data = _lookup_options(self, args, kwargs)
+        use_rest = self._batch_lookup_arguments(rondb_entries, choice)
+        if use_rest is None:
+            batch_results = []
+        elif use_rest:
+            batch_results = self.rest_client_engine._get_batch_feature_vectors(
+                entries=rondb_entries,
+                drop_missing=not allow_missing,
+                return_type=self.rest_client_engine.RETURN_TYPE_FEATURE_VALUE_DICT,
+            )
+        else:
+            batch_results, _ = await self.sql_client._get_batch_feature_vectors_async(
+                rondb_entries,
+                logging_data=logging_data,
+                feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
+            )
+        return _resume(steps, batch_results)
+
+    def _feature_vectors_steps(
         self,
         entries: list[dict[str, Any]],
         return_type: Literal["list", "numpy", "pandas", "polars"] | None = None,
@@ -631,7 +729,6 @@ class VectorServer:
         transform: bool = True,
         on_demand_features: bool | None = True,
         transformation_context: dict[str, Any] = None,
-        prefetched_batch_results: list[dict[str, Any]] | None = None,
         logging_data: bool = False,
         n_processes: int | None = None,
     ) -> pd.DataFrame | pl.DataFrame | np.ndarray | list[Any] | list[dict[str, Any]]:
@@ -737,33 +834,10 @@ class VectorServer:
             else:
                 skipped_empty_entries.append(idx)
 
-        if prefetched_batch_results is not None:
-            # The caller already awaited the lookup on its own event loop; everything
-            # below assembles those rows and is the same work either way.
-            batch_results = prefetched_batch_results
-        elif (
-            online_client_choice == self.DEFAULT_REST_CLIENT and len(rondb_entries) > 0
-        ):
-            if _logger.isEnabledFor(logging.DEBUG):
-                _logger.debug("get_batch_feature_vector Online REST client")
-            batch_results = self.rest_client_engine._get_batch_feature_vectors(
-                entries=rondb_entries,
-                drop_missing=not allow_missing,
-                return_type=self.rest_client_engine.RETURN_TYPE_FEATURE_VALUE_DICT,
-            )
-        elif len(rondb_entries) > 0:
-            # get result row
-            if _logger.isEnabledFor(logging.DEBUG):
-                _logger.debug("_get_batch_feature_vectors through SQL client")
-            batch_results, _ = self.sql_client._get_batch_feature_vectors(
-                rondb_entries,
-                logging_data=logging_data,
-                feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
-            )
-        else:
-            if _logger.isEnabledFor(logging.DEBUG):
-                _logger.debug("Empty entries for rondb, skipping fetching.")
-            batch_results = []
+        # The one suspension point. Everything above prepares the lookup and everything
+        # below assembles its rows; only the fetch itself differs between the blocking
+        # driver and the awaiting one, so it is the only thing handed out.
+        batch_results = yield rondb_entries, online_client_choice
 
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug("Assembling feature vectors from batch results")

@@ -930,21 +930,31 @@ class FeatureView:
 
         Takes the same arguments as the synchronous method and returns the same value.
 
-        Note:
-            This one hands the work to a worker thread. The loop stays free for the wait,
-            but the lookup still goes through the client's task thread, which serves one at
-            a time, so concurrent single lookups queue behind each other.
-            [`get_feature_vectors_async`][hsfs.feature_view.FeatureView.get_feature_vectors_async]
-            awaits the statements on the caller's own loop against a pool of its own, and
-            several of those are genuinely in flight at once. Prefer it where throughput
-            matters.
+        The statements are awaited on the caller's own event loop, against a connection
+        pool belonging to that loop, so several lookups are in flight at once. Nothing is
+        handed to a worker thread and nothing queues on the client's task thread, which
+        serves one lookup at a time however many callers there are.
+
+        Falls back to the blocking path where there is nothing to overlap: a REST client
+        deployment, or a request with no serving keys.
 
         Example:
             ```python
             vector = await feature_view.get_feature_vector_async(entry={"id": 1})
             ```
         """
-        return await self._in_worker_thread(self.get_feature_vector, **kwargs)
+        entry = kwargs.pop("entry", None)
+        external = kwargs.pop("external", None)
+        if not self._vector_server._serving_initialized:
+            self.init_serving(external=external)
+        if kwargs.get("n_processes") is None:
+            kwargs["n_processes"] = self._transformation_n_processes
+        vector_db_features = None
+        if self._vector_db_client:
+            vector_db_features = self._get_vector_db_result(entry)
+        return await self._vector_server._get_feature_vector_async(
+            entry=entry, vector_db_features=vector_db_features, **kwargs
+        )
 
     @public
     async def get_feature_vectors_async(self, **kwargs: Any) -> Any:
@@ -980,16 +990,6 @@ class FeatureView:
                 vector_db_features.append(self._get_vector_db_result(_entry))
         return await self._vector_server._get_feature_vectors_async(
             entries=entry, vector_db_features=vector_db_features, **kwargs
-        )
-
-    @staticmethod
-    async def _in_worker_thread(call: Any, **kwargs: Any) -> Any:
-        """Await a blocking call on a worker thread, so the caller's loop stays free."""
-        import asyncio
-        import functools
-
-        return await asyncio.get_running_loop().run_in_executor(
-            None, functools.partial(call, **kwargs)
         )
 
     @public
