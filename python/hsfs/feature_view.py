@@ -6175,17 +6175,34 @@ class FeatureView:
         embedding_fg_ids = [fg.id for fg in self._get_embedding_fgs()]
         return set(embedding_fg_ids + self._get_spine_fg_ids())
 
-    def _close(self) -> None:
-        """Release the online store connection pools this feature view holds.
+    @public
+    def close(self) -> None:
+        """Release the online store connections this feature view holds.
+
+        Initialising serving opens a pool of MySQL connections to the online store, one
+        per feature group in the view, and they are opened when the pool is built rather
+        than on first use.
+        They are held until this is called.
 
         Idempotent, and safe on a feature view that never initialised serving.
-        `init_serving` can be called again afterwards.
+        [`init_serving`][hsfs.feature_view.FeatureView.init_serving] can be called again
+        afterwards and builds a fresh pool.
 
-        Needed because the pools cannot be reclaimed by garbage collection: each
-        one is owned by a client that its own running task thread keeps
-        reachable. A pool holds one connection per feature group in the view, so
-        a long-lived process that initialises serving for many feature views can
-        exhaust the online store's `max_connections`.
+        Garbage collection does not reclaim them: the pool belongs to a client that its
+        own running task thread keeps reachable, and an object that is reachable is never
+        finalized.
+        So a long-lived process that serves many feature views has to close the ones it
+        has finished with, or it will exhaust the online store's `max_connections`.
+
+        Example:
+            ```python
+            feature_view = fs.get_feature_view("transactions", version=1)
+            feature_view.init_serving()
+            try:
+                vector = feature_view.get_feature_vector(entry={"id": 1})
+            finally:
+                feature_view.close()
+            ```
         """
         for server in (self.__vector_server, self.__batch_scoring_server):
             if server is not None:
