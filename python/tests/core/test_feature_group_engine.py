@@ -414,6 +414,60 @@ class TestFeatureGroupEngine:
             full=False, strategy=None, columns=None, where=None
         )
 
+    def test_delta_checkpoint_dispatches_to_delta_engine(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine._get_type")
+        fg = feature_group.FeatureGroup(
+            name="fg",
+            version=1,
+            featurestore_id=1,
+            featurestore_name="fs",
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            time_travel_format="DELTA",
+        )
+        mocker.patch.object(
+            feature_group_engine.FeatureGroupEngine,
+            "_get_spark_session_and_context",
+            return_value=("spark", "context"),
+        )
+        delta_engine_mock = mocker.Mock()
+        mocker.patch(
+            "hsfs.core.feature_group_engine.delta_engine.DeltaEngine",
+            return_value=delta_engine_mock,
+        )
+
+        # Act
+        feature_group_engine.FeatureGroupEngine._delta_checkpoint(fg)
+
+        # Assert
+        delta_engine_mock._checkpoint.assert_called_once_with(True)
+
+    def test_delta_checkpoint_is_none_off_delta(self, mocker):
+        # Arrange
+        mocker.patch("hsfs.engine._get_type")
+        fg = feature_group.FeatureGroup(
+            name="fg",
+            version=1,
+            featurestore_id=1,
+            featurestore_name="fs",
+            primary_key=[],
+            foreign_key=[],
+            partition_key=[],
+            time_travel_format="HUDI",
+        )
+        delta_engine_cls = mocker.patch(
+            "hsfs.core.feature_group_engine.delta_engine.DeltaEngine"
+        )
+
+        # Act
+        result = feature_group_engine.FeatureGroupEngine._delta_checkpoint(fg)
+
+        # Assert
+        assert result is None
+        delta_engine_cls.assert_not_called()
+
     def test_optimize_full_passes_through_to_delta_engine(self, mocker):
         # Arrange
         mocker.patch("hsfs.engine._get_type")

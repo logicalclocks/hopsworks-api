@@ -1333,6 +1333,43 @@ class DeltaEngine:
                 return int(value)
         return None
 
+    def _checkpoint(self, cleanup_metadata: bool = True) -> dict:
+        """Write a Delta checkpoint, so readers stop replaying the log from commit zero.
+
+        A reader opening the table replays every commit since the last checkpoint.
+        Delta-rs writes none on its own, so on an append-only table the replay grows
+        with the number of commits forever, and a writer that opens the table on every
+        run pays that cost on every run.
+
+        `cleanup_metadata` then deletes the log entries the checkpoint covers, subject
+        to the table's own `delta.logRetentionDuration`, which is what stops the log
+        directory itself from growing without bound.
+
+        Returns:
+            The version checkpointed, and whether the log was cleaned up.
+        """
+        from deltalake import DeltaTable as DeltaRsTable
+
+        location = self._get_delta_rs_location()
+        storage_options = self._get_delta_rs_storage_options()
+        table = DeltaRsTable(location, storage_options=storage_options)
+        version = table.version()
+        _logger.debug(f"Checkpointing Delta table at {location} at version {version}")
+        table.create_checkpoint()
+        cleaned = False
+        if cleanup_metadata:
+            # Best effort: a failed cleanup leaves log entries a later run retries,
+            # while a failed checkpoint is the thing worth surfacing.
+            try:
+                table.cleanup_metadata()
+                cleaned = True
+            except Exception as error:  # noqa: BLE001 - the checkpoint already landed
+                _logger.warning(
+                    "Delta log cleanup after the checkpoint failed (%s)",
+                    type(error).__name__,
+                )
+        return {"version": version, "cleaned_up": cleaned}
+
     def _vacuum(self, retention_hours: int):
         location = self._feature_group.prepare_spark_location()
         _logger.debug(

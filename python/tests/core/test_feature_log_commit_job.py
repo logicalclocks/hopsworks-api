@@ -578,3 +578,45 @@ def test_timestamps_survive_the_round_trip(tmp_path):
     path.write_bytes(sink.getvalue().to_pybytes())
     table, truncated = job._read_chunk(path)
     assert not truncated and table.column("log_time").type == pa.timestamp("us")
+
+
+class _CheckpointingGroup(_FeatureGroup):
+    """A feature group whose delta_checkpoint records the calls, or fails."""
+
+    def __init__(self, error=None):
+        super().__init__()
+        self.checkpoints = 0
+        self._error = error
+
+    def delta_checkpoint(self):
+        self.checkpoints += 1
+        if self._error is not None:
+            raise self._error
+        return {"version": 7, "cleaned_up": True}
+
+
+class TestCheckpoint:
+    """The log is checkpointed once per execution that committed, never otherwise."""
+
+    def test_a_run_that_committed_checkpoints_once(self):
+        fg = _CheckpointingGroup()
+        summary = _summary()
+        summary["commits"] = 3
+        job._checkpoint(fg, summary)
+        assert fg.checkpoints == 1
+        assert summary["checkpoint"] == {"version": 7, "cleaned_up": True}
+
+    def test_a_run_that_committed_nothing_does_not(self):
+        fg = _CheckpointingGroup()
+        summary = _summary()
+        job._checkpoint(fg, summary)
+        assert fg.checkpoints == 0
+        assert "checkpoint" not in summary
+
+    def test_a_failed_checkpoint_does_not_fail_the_run(self):
+        fg = _CheckpointingGroup(error=RuntimeError("log unreadable"))
+        summary = _summary()
+        summary["commits"] = 1
+        job._checkpoint(fg, summary)
+        assert summary["checkpoint_error"] == "RuntimeError"
+        assert "checkpoint" not in summary

@@ -5052,6 +5052,44 @@ class FeatureGroup(FeatureGroupBase):
         return self.remove_rows(delete_df, write_options, "offline")
 
     @public
+    def delta_checkpoint(self, cleanup_metadata: bool = True) -> dict | None:
+        """Write a Delta checkpoint for this feature group, and drop the log it covers.
+
+        A reader opening a Delta table replays every commit since the last checkpoint, so
+        without one the cost of opening the table grows with the number of commits.
+        Nothing writes checkpoints on its own, which matters most for a table that is
+        appended to often and read by the writer on every append.
+
+        This method can only be used on feature groups stored as DELTA; it returns None
+        for any other format.
+
+        Example:
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            # get the Feature Group instance
+            fg = fs.get_or_create_feature_group(...)
+
+            fg.delta_checkpoint()
+            ```
+
+        Parameters:
+            cleanup_metadata:
+                Whether to delete the log entries the checkpoint covers, which the table's
+                `delta.logRetentionDuration` bounds.
+                Defaults to True.
+
+        Returns:
+            The version checkpointed and whether the log was cleaned up, or None when the
+            feature group is not stored as DELTA.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._feature_group_engine._delta_checkpoint(self, cleanup_metadata)
+
+    @public
     def delta_vacuum(
         self,
         retention_hours: int = None,

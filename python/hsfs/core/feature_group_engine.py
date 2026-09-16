@@ -699,6 +699,23 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group._clustered_by = clustered_by or None
 
     @staticmethod
+    def _delta_checkpoint(feature_group, cleanup_metadata=True):
+        if feature_group.time_travel_format == "DELTA":
+            spark_session, spark_context = (
+                FeatureGroupEngine._get_spark_session_and_context()
+            )
+
+            delta_engine_instance = delta_engine.DeltaEngine(
+                feature_group.feature_store_id,
+                feature_group.feature_store_name,
+                feature_group,
+                spark_session,
+                spark_context,
+            )
+            return delta_engine_instance._checkpoint(cleanup_metadata)
+        return None
+
+    @staticmethod
     def _delta_vacuum(feature_group, retention_hours):
         if feature_group.time_travel_format == "DELTA":
             spark_session, spark_context = (

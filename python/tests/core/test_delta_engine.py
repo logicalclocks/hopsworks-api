@@ -1233,6 +1233,68 @@ class TestDeltaEngine:
         writer = dataset.write.format.return_value.options.return_value
         writer.partitionBy.assert_called_once_with(["pk"])
 
+    def test_checkpoint_writes_a_checkpoint_and_cleans_the_log(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        engine = DeltaEngine(1, "fs", fg, None, None)
+        mocker.patch.object(
+            engine, "_get_delta_rs_location", return_value="hopsfs://nn:8020/p"
+        )
+        mocker.patch.object(engine, "_get_delta_rs_storage_options", return_value={})
+        table = mocker.MagicMock()
+        table.version.return_value = 11
+        mocker.patch("deltalake.DeltaTable", return_value=table)
+
+        # Act
+        result = engine._checkpoint()
+
+        # Assert
+        table.create_checkpoint.assert_called_once_with()
+        table.cleanup_metadata.assert_called_once_with()
+        assert result == {"version": 11, "cleaned_up": True}
+
+    def test_checkpoint_can_keep_the_log(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        engine = DeltaEngine(1, "fs", fg, None, None)
+        mocker.patch.object(
+            engine, "_get_delta_rs_location", return_value="hopsfs://nn:8020/p"
+        )
+        mocker.patch.object(engine, "_get_delta_rs_storage_options", return_value={})
+        table = mocker.MagicMock()
+        table.version.return_value = 4
+        mocker.patch("deltalake.DeltaTable", return_value=table)
+
+        # Act
+        result = engine._checkpoint(cleanup_metadata=False)
+
+        # Assert
+        table.create_checkpoint.assert_called_once_with()
+        table.cleanup_metadata.assert_not_called()
+        assert result == {"version": 4, "cleaned_up": False}
+
+    def test_a_failed_cleanup_keeps_the_checkpoint(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        engine = DeltaEngine(1, "fs", fg, None, None)
+        mocker.patch.object(
+            engine, "_get_delta_rs_location", return_value="hopsfs://nn:8020/p"
+        )
+        mocker.patch.object(engine, "_get_delta_rs_storage_options", return_value={})
+        table = mocker.MagicMock()
+        table.version.return_value = 9
+        table.cleanup_metadata.side_effect = OSError("log unreadable")
+        mocker.patch("deltalake.DeltaTable", return_value=table)
+
+        # Act
+        result = engine._checkpoint()
+
+        # Assert
+        assert result == {"version": 9, "cleaned_up": False}
+
     def test_optimize_spark_runs_optimize_sql(self, mocker):
         # Arrange
         _patch_client(mocker, is_external=False)

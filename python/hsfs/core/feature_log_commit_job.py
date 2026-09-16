@@ -445,6 +445,34 @@ def _trigger(project, name: str, running_execution: str | None = None) -> bool:
     return True
 
 
+def _checkpoint(feature_group, summary: dict) -> None:
+    """Checkpoint the logging table once per execution that committed something.
+
+    Every append adds a commit to the Delta log, and a reader replays the log from the
+    last checkpoint. Nothing writes one on its own, so on a table that is only ever
+    appended to the replay grows with the number of commits, and this job pays it twice
+    per part: once to read the application transaction that makes a retry idempotent,
+    and once to read back the commit it just made.
+
+    One checkpoint per execution rather than one per commit: the runs are scheduled, so
+    this leaves the log at most a single execution's commits ahead of the checkpoint,
+    and a checkpoint costs one write of the table's file list.
+
+    A failure here is logged and not raised: the rows are already committed, and the
+    next execution checkpoints again.
+    """
+    if not summary["commits"]:
+        return
+    try:
+        summary["checkpoint"] = feature_group.delta_checkpoint()
+    except Exception as error:  # noqa: BLE001 - the commit already landed
+        summary["checkpoint_error"] = type(error).__name__
+        print(
+            f"FEATURE_LOG_COMMIT checkpoint failed: {type(error).__name__}: {error}",
+            flush=True,
+        )
+
+
 def _run(feature_view_name: str, feature_view_version: int) -> dict:
     import hopsworks
 
@@ -501,6 +529,7 @@ def _run(feature_view_name: str, feature_view_version: int) -> dict:
         claim = staging._claim(f"{execution_id}-{iteration}", files)
         summary["claims"] += 1
         _process_claim(feature_group, staging, claim, summary)
+    _checkpoint(feature_group, summary)
     summary["pending_after"] = len(staging._pending())
     if summary["pending_after"]:
         # A backlog larger than one execution drains through another run now
