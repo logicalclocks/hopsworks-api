@@ -723,8 +723,10 @@ class TestPredictor:
             model_name="my_model",
             model_version=1,
             model_framework=MODEL.FRAMEWORK_SKLEARN,
+            model_path="/Projects/my_project/Models/m/1",
+            artifact_version=0,
         )
-        p._project_name = "my_project"
+        p._project_namespace = "my_project"
 
         # Act
         url = p.get_endpoint_url()
@@ -746,8 +748,10 @@ class TestPredictor:
             model_name="my_model",
             model_version=1,
             model_framework=MODEL.FRAMEWORK_SKLEARN,
+            model_path="/Projects/my_project/Models/m/1",
+            artifact_version=0,
         )
-        p._project_name = "my_project"
+        p._project_namespace = "my_project"
 
         # Act
         url = p.get_endpoint_url()
@@ -773,8 +777,10 @@ class TestPredictor:
             model_name="my_llm",
             model_version=1,
             model_framework=MODEL.FRAMEWORK_LLM,
+            model_path="/Projects/my_project/Models/m/1",
+            artifact_version=0,
         )
-        p._project_name = "my_project"
+        p._project_namespace = "my_project"
 
         # Act
         url = p.get_openai_url()
@@ -798,8 +804,10 @@ class TestPredictor:
             model_name="my_model",
             model_version=1,
             model_framework=MODEL.FRAMEWORK_SKLEARN,
+            model_path="/Projects/my_project/Models/m/1",
+            artifact_version=0,
         )
-        p._project_name = "my_project"
+        p._project_namespace = "my_project"
 
         # Act
         url = p.get_openai_url()
@@ -821,8 +829,13 @@ class TestPredictor:
             name="my_server",
             model_server=PREDICTOR.MODEL_SERVER_PYTHON,
             script_file="script.py",
+            model_name=None,
+            model_path=None,
+            model_version=None,
+            model_framework=None,
+            artifact_version=None,
         )
-        p._project_name = "my_project"
+        p._project_namespace = "my_project"
 
         # Act
         url = p.get_openai_url()
@@ -844,8 +857,10 @@ class TestPredictor:
             model_name="my_llm",
             model_version=1,
             model_framework=MODEL.FRAMEWORK_LLM,
+            model_path="/Projects/my_project/Models/m/1",
+            artifact_version=0,
         )
-        p._project_name = "my_project"
+        p._project_namespace = "my_project"
 
         # Act
         url = p.get_openai_url()
@@ -871,8 +886,10 @@ class TestPredictor:
             model_name="my_model",
             model_version=1,
             model_framework=MODEL.FRAMEWORK_SKLEARN,
+            model_path="/Projects/my_project/Models/m/1",
+            artifact_version=0,
         )
-        p._project_name = "my_project"
+        p._project_namespace = "my_project"
 
         # Act
         url = p.get_inference_url()
@@ -904,8 +921,10 @@ class TestPredictor:
             model_name="my_model",
             model_version=1,
             model_framework=MODEL.FRAMEWORK_SKLEARN,
+            model_path="/Projects/my_project/Models/m/1",
+            artifact_version=0,
         )
-        p._project_name = "my_project"
+        p._project_namespace = "my_project"
 
         # Act
         url = p.get_inference_url()
@@ -932,8 +951,10 @@ class TestPredictor:
             model_name="my_llm",
             model_version=1,
             model_framework=MODEL.FRAMEWORK_LLM,
+            model_path="/Projects/my_project/Models/m/1",
+            artifact_version=0,
         )
-        p._project_name = "my_project"
+        p._project_namespace = "my_project"
 
         # Act
         url = p.get_inference_url()
@@ -955,8 +976,13 @@ class TestPredictor:
             name="my_server",
             model_server=PREDICTOR.MODEL_SERVER_PYTHON,
             script_file="script.py",
+            model_name=None,
+            model_path=None,
+            model_version=None,
+            model_framework=None,
+            artifact_version=None,
         )
-        p._project_name = "my_project"
+        p._project_namespace = "my_project"
 
         # Act
         url = p.get_inference_url()
