@@ -740,21 +740,18 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         }
 
     @staticmethod
-    def _delta_checkpoint(feature_group, cleanup_metadata=True):
-        if feature_group.time_travel_format == "DELTA":
-            spark_session, spark_context = (
-                FeatureGroupEngine._get_spark_session_and_context()
-            )
+    def _delta_checkpoint(feature_group):
+        engine_instance = FeatureGroupEngine._delta_engine_for(feature_group)
+        if engine_instance is None:
+            return None
+        return engine_instance._checkpoint()
 
-            delta_engine_instance = delta_engine.DeltaEngine(
-                feature_group.feature_store_id,
-                feature_group.feature_store_name,
-                feature_group,
-                spark_session,
-                spark_context,
-            )
-            return delta_engine_instance._checkpoint(cleanup_metadata)
-        return None
+    @staticmethod
+    def _delta_cleanup_metadata(feature_group):
+        engine_instance = FeatureGroupEngine._delta_engine_for(feature_group)
+        if engine_instance is None:
+            return None
+        return engine_instance._cleanup_metadata()
 
     @staticmethod
     def _delta_vacuum(feature_group, retention_hours):

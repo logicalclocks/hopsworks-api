@@ -442,7 +442,7 @@ class TestFeatureGroupEngine:
         feature_group_engine.FeatureGroupEngine._delta_checkpoint(fg)
 
         # Assert
-        delta_engine_mock._checkpoint.assert_called_once_with(True)
+        delta_engine_mock._checkpoint.assert_called_once_with()
 
     def test_delta_optimize_dispatches_to_delta_engine(self, mocker):
         # Arrange

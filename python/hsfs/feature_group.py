@@ -5108,13 +5108,17 @@ class FeatureGroup(FeatureGroupBase):
         )
 
     @public
-    def delta_checkpoint(self, cleanup_metadata: bool = True) -> dict | None:
-        """Write a Delta checkpoint for this feature group, and drop the log it covers.
+    def delta_checkpoint(self) -> dict | None:
+        """Write a Delta checkpoint for this feature group.
 
         A reader opening a Delta table replays every commit since the last checkpoint, so
         without one the cost of opening the table grows with the number of commits.
-        Nothing writes checkpoints on its own, which matters most for a table that is
-        appended to often and read by the writer on every append.
+        Spark writes checkpoints on its own every `delta.checkpointInterval` commits;
+        delta-rs writes none, so on a table only ever written from Python this is the only
+        thing that bounds the replay.
+
+        Expiring the log entries a checkpoint covers is a separate call,
+        [`delta_cleanup_metadata`][hsfs.feature_group.FeatureGroup.delta_cleanup_metadata].
 
         This method can only be used on feature groups stored as DELTA; it returns None
         for any other format.
@@ -5130,20 +5134,52 @@ class FeatureGroup(FeatureGroupBase):
             fg.delta_checkpoint()
             ```
 
-        Parameters:
-            cleanup_metadata:
-                Whether to delete the log entries the checkpoint covers, which the table's
-                `delta.logRetentionDuration` bounds.
-                Defaults to True.
-
         Returns:
-            The version checkpointed and whether the log was cleaned up, or None when the
-            feature group is not stored as DELTA.
+            The version checkpointed, or None when the feature group is not stored as DELTA.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
-        return self._feature_group_engine._delta_checkpoint(self, cleanup_metadata)
+        return self._feature_group_engine._delta_checkpoint(self)
+
+    @public
+    def delta_cleanup_metadata(self) -> dict | None:
+        """Expire the Delta log entries an existing checkpoint already covers.
+
+        The Delta log grows by one entry per commit. A checkpoint stops readers replaying
+        those entries, and this deletes them, which is what stops the log directory itself
+        growing without bound.
+
+        Run it after
+        [`delta_checkpoint`][hsfs.feature_group.FeatureGroup.delta_checkpoint] and never
+        instead of it: the checkpoint is the state a reader falls back to once the
+        individual commits are gone. What may be deleted is bounded by the table's own
+        `delta.logRetentionDuration`, 30 days by default, so recent history and time travel
+        inside that window keep working.
+
+        This method can only be used on feature groups stored as DELTA; it returns None
+        for any other format.
+
+        Example:
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            # get the Feature Group instance
+            fg = fs.get_or_create_feature_group(...)
+
+            fg.delta_checkpoint()
+            fg.delta_cleanup_metadata()
+            ```
+
+        Returns:
+            The version the log was pruned against, or None when the feature group is not
+            stored as DELTA.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        return self._feature_group_engine._delta_cleanup_metadata(self)
 
     @public
     def delta_vacuum(

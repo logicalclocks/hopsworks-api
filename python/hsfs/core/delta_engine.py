@@ -1334,7 +1334,7 @@ class DeltaEngine:
                 return int(value)
         return None
 
-    def _checkpoint(self, cleanup_metadata: bool = True) -> dict:
+    def _checkpoint(self) -> dict:
         """Write a Delta checkpoint, so readers stop replaying the log from commit zero.
 
         A reader opening the table replays every commit since the last checkpoint.
@@ -1342,16 +1342,15 @@ class DeltaEngine:
         this forces one early; delta-rs writes none at all, so on that engine it is the
         only thing that bounds the replay.
 
-        `cleanup_metadata` then deletes the log entries the checkpoint covers, subject
-        to the table's own `delta.logRetentionDuration`. Spark cleans its own log up on
-        the same setting, so the flag applies to delta-rs only.
+        Expiring the log entries a checkpoint covers is a separate operation,
+        `_cleanup_metadata`, which needs a checkpoint to already exist.
 
         Returns:
-            The version checkpointed, and whether the log was cleaned up.
+            The version checkpointed.
         """
         if self._spark_session is not None:
             return self._checkpoint_spark()
-        return self._checkpoint_delta_rs(cleanup_metadata)
+        return self._checkpoint_delta_rs()
 
     def _checkpoint_spark(self) -> dict:
         """Force a checkpoint through the DeltaLog the Spark session already has.
@@ -1360,22 +1359,15 @@ class DeltaEngine:
         checkpoint argument arrived in Delta 2.0 and older builds take none, hence the
         two-call shape rather than a version test.
         """
-        location = self._feature_group.prepare_spark_location()
-        jvm = self._spark_session._jvm
-        delta_log = jvm.org.apache.spark.sql.delta.DeltaLog.forTable(
-            self._spark_session._jsparkSession, location
-        )
-        snapshot = delta_log.update()
-        _logger.debug(f"Checkpointing Delta table at {location} through DeltaLog")
+        delta_log, snapshot = self._spark_delta_log()
+        _logger.debug("Checkpointing Delta table through DeltaLog")
         try:
             delta_log.checkpoint(snapshot)
         except TypeError:
             delta_log.checkpoint()
-        # Spark expires its own log entries on delta.logRetentionDuration, so there is
-        # no cleanup call to make here.
-        return {"version": int(snapshot.version()), "cleaned_up": False}
+        return {"version": int(snapshot.version())}
 
-    def _checkpoint_delta_rs(self, cleanup_metadata: bool = True) -> dict:
+    def _checkpoint_delta_rs(self) -> dict:
         from deltalake import DeltaTable as DeltaRsTable
 
         location = self._get_delta_rs_location()
@@ -1384,19 +1376,43 @@ class DeltaEngine:
         version = table.version()
         _logger.debug(f"Checkpointing Delta table at {location} at version {version}")
         table.create_checkpoint()
-        cleaned = False
-        if cleanup_metadata:
-            # Best effort: a failed cleanup leaves log entries a later run retries,
-            # while a failed checkpoint is the thing worth surfacing.
-            try:
-                table.cleanup_metadata()
-                cleaned = True
-            except Exception as error:  # noqa: BLE001 - the checkpoint already landed
-                _logger.warning(
-                    "Delta log cleanup after the checkpoint failed (%s)",
-                    type(error).__name__,
-                )
-        return {"version": version, "cleaned_up": cleaned}
+        return {"version": version}
+
+    def _cleanup_metadata(self) -> dict:
+        """Expire the Delta log entries an existing checkpoint already covers.
+
+        The checkpoint is what makes this safe: it is the state a reader falls back to
+        once the individual commits are gone, so this must run after one and never
+        instead of one. What it may delete is bounded by the table's own
+        `delta.logRetentionDuration` (30 days by default), so recent history stays
+        readable and time travel inside that window keeps working.
+
+        Returns:
+            The version the log was pruned against.
+        """
+        if self._spark_session is not None:
+            delta_log, snapshot = self._spark_delta_log()
+            _logger.debug("Expiring Delta log entries through DeltaLog")
+            delta_log.cleanUpExpiredLogs(snapshot)
+            return {"version": int(snapshot.version())}
+        from deltalake import DeltaTable as DeltaRsTable
+
+        location = self._get_delta_rs_location()
+        table = DeltaRsTable(
+            location, storage_options=self._get_delta_rs_storage_options()
+        )
+        _logger.debug(f"Expiring Delta log entries at {location}")
+        table.cleanup_metadata()
+        return {"version": table.version()}
+
+    def _spark_delta_log(self):
+        """The JVM DeltaLog for this feature group, and its current snapshot."""
+        location = self._feature_group.prepare_spark_location()
+        jvm = self._spark_session._jvm
+        delta_log = jvm.org.apache.spark.sql.delta.DeltaLog.forTable(
+            self._spark_session._jsparkSession, location
+        )
+        return delta_log, delta_log.update()
 
     def _active_file_count(self) -> int:
         """Data files the table currently references.
@@ -1406,12 +1422,8 @@ class DeltaEngine:
         but it stops growing once files are compacted, where a commit count never would.
         """
         if self._spark_session is not None:
-            location = self._feature_group.prepare_spark_location()
-            jvm = self._spark_session._jvm
-            delta_log = jvm.org.apache.spark.sql.delta.DeltaLog.forTable(
-                self._spark_session._jsparkSession, location
-            )
-            return int(delta_log.update().allFiles().count())
+            _, snapshot = self._spark_delta_log()
+            return int(snapshot.allFiles().count())
         from deltalake import DeltaTable as DeltaRsTable
 
         table = DeltaRsTable(

@@ -12,19 +12,30 @@ JSON commits. Every write appends a commit; nothing rewrites anything unless
 asked. So a table that is written often accumulates two things: data files, which
 every reader opens, and log commits, which every reader replays.
 
-Three operations bound that growth, and they are only useful in this order:
+Four operations bound that growth, and the order they run in matters:
+
+**compact → checkpoint → cleanup metadata → vacuum**
 
 1. `delta_optimize()` rewrites many small files into fewer large ones. The old
    files stay on disk, still referenced by older table versions.
-2. `delta_vacuum(retention_hours=...)` deletes files no longer referenced by any
-   version inside the retention window. This is what actually reclaims space.
-3. `delta_checkpoint()` writes a checkpoint of the current file list, so readers
-   stop replaying the log from commit zero.
+2. `delta_checkpoint()` records the compacted file list, so readers stop
+   replaying the log from commit zero. It goes before the deletions, so what
+   comes next prunes towards a state that is already written down.
+3. `delta_cleanup_metadata()` expires the log entries that checkpoint now
+   covers. Never run it without a checkpoint: the checkpoint is what a reader
+   falls back to once the individual commits are gone.
+4. `delta_vacuum(retention_hours=...)` deletes the data files no version inside
+   the retention window references. This is the step that reclaims space.
 
-**Optimize without vacuum frees nothing** — it adds files. **Optimize costs you
-time travel**: once the small files are vacuumed you cannot read a version that
-referenced them, so pick `retention_hours` as the time-travel window you are
-willing to keep, not as small as possible.
+**Optimize without vacuum frees nothing** — it only adds files. **Optimize costs
+you time travel**: once the small files are vacuumed you cannot read a version
+that referenced them.
+
+**Set the vacuum retention comfortably longer than your longest-running reader.**
+A vacuum deletes files an in-flight query may still be reading. The retention
+window, not the ordering, is what protects that query, and it is also your time
+travel window. Pick it from how long your slowest job runs, not as small as
+possible.
 
 ## Key facts / rules
 
@@ -41,8 +52,8 @@ willing to keep, not as small as possible.
   because the caller naming the hours is the one choosing that trade.
 - **A vacuum straight after a compaction usually deletes nothing.** The files it
   just orphaned are seconds old and the retention window has not passed. On a
-  daily schedule, each run reclaims what the previous run orphaned. That is
-  expected, not a failure.
+  daily schedule, each run reclaims what earlier runs orphaned. That is expected,
+  not a failure, and it is the same property that keeps in-flight readers safe.
 - **Spark writes checkpoints on its own** every `delta.checkpointInterval`
   commits (10 by default). **delta-rs writes none at all**, so a table only ever
   written by a Python job will replay its whole log forever until something
@@ -58,10 +69,11 @@ willing to keep, not as small as possible.
 ```python
 fg = fs.get_feature_group("transactions", version=1)
 
-# Compact everything, then reclaim, then checkpoint. This order matters.
-fg.delta_optimize(max_concurrent_tasks=1)
-fg.delta_vacuum(retention_hours=24)      # deletes; dry_run=False is set for you
-fg.delta_checkpoint()                    # readers stop replaying the log
+# The maintenance sequence, in the order that makes each step safe.
+fg.delta_optimize(max_concurrent_tasks=1)   # fewer, larger files
+fg.delta_checkpoint()                       # record the compacted file list
+fg.delta_cleanup_metadata()                 # expire the log it now covers
+fg.delta_vacuum(retention_hours=24)         # delete; dry_run=False is set for you
 
 # Compact only what is new, on a table partitioned by a date column.
 fg.delta_optimize(after_ingest_date="2026-09-10")

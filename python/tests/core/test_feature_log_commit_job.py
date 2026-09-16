@@ -592,7 +592,7 @@ class _CheckpointingGroup(_FeatureGroup):
         self.checkpoints += 1
         if self._error is not None:
             raise self._error
-        return {"version": 7, "cleaned_up": True}
+        return {"version": 7}
 
 
 class TestCheckpoint:
@@ -604,7 +604,7 @@ class TestCheckpoint:
         summary["commits"] = 3
         job._checkpoint(fg, summary)
         assert fg.checkpoints == 1
-        assert summary["checkpoint"] == {"version": 7, "cleaned_up": True}
+        assert summary["checkpoint"] == {"version": 7}
 
     def test_a_run_that_committed_nothing_does_not(self):
         fg = _CheckpointingGroup()
@@ -654,7 +654,11 @@ class _MaintainedGroup(_FeatureGroup):
 
     def delta_checkpoint(self):
         self.calls.append(("checkpoint", None))
-        return {"version": 3, "cleaned_up": True}
+        return {"version": 3}
+
+    def delta_cleanup_metadata(self):
+        self.calls.append(("cleanup", None))
+        return {"version": 3}
 
 
 def _at(day, hour):
@@ -688,7 +692,13 @@ class TestCompactionPolicy:
         summary = _summary()
         summary["commits"] = 2
         job._maintain(fg, summary, now=_at(16, 12))
-        assert [c[0] for c in fg.calls] == ["optimize", "vacuum", "checkpoint"]
+        # Compact, record the compacted state, then the two deletions.
+        assert [c[0] for c in fg.calls] == [
+            "optimize",
+            "checkpoint",
+            "cleanup",
+            "vacuum",
+        ]
         assert ("vacuum", job.COMPACT_VACUUM_RETENTION_HOURS) in fg.calls
         assert ("optimize", job.COMPACT_CONCURRENT_TASKS) in fg.calls
         assert summary["vacuum_deleted"] == 2
@@ -712,4 +722,10 @@ class TestCompactionPolicy:
         summary["commits"] = 1
         job._maintain(fg, summary, now=_at(16, 12))
         assert summary["maintenance_error"] == "RuntimeError"
-        assert [c[0] for c in fg.calls] == ["optimize", "checkpoint"]
+        # A failed compaction still checkpoints and still reclaims.
+        assert [c[0] for c in fg.calls] == [
+            "optimize",
+            "checkpoint",
+            "cleanup",
+            "vacuum",
+        ]

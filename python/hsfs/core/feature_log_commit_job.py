@@ -50,7 +50,9 @@ COMPACT_FILE_THRESHOLD = 100
 # The rewrite runs in this job's process, beside the commits, so it does not get the
 # pod's whole CPU budget.
 COMPACT_CONCURRENT_TASKS = 1
-# Long enough that a reader which opened the table before the compaction can finish.
+# A vacuum deletes files an in-flight query may still be reading, so this has to stay
+# comfortably longer than the longest query that runs against a logging group. It is
+# also the time travel window: a version whose files have been vacuumed cannot be read.
 COMPACT_VACUUM_RETENTION_HOURS = 24
 # Older than any upload still in progress: a chunk this old in `uploading/` is whole
 # and its pod is gone.
@@ -505,11 +507,19 @@ def _should_compact(state: dict, now: float) -> str | None:
 
 
 def _maintain(feature_group, summary: dict, now: float | None = None) -> None:
-    """Compact, then reclaim, then checkpoint.
+    """Compact, checkpoint, then expire the log and the files it orphaned.
 
-    The order is what makes it worth doing: compaction replaces many small files with
-    few large ones and leaves the old ones unreferenced, the vacuum deletes those, and
-    the checkpoint records the smaller file list so readers stop replaying past it.
+    Compaction replaces many small files with few large ones and leaves the old ones
+    on disk, still referenced by older versions. The checkpoint goes next, so the
+    smaller file list is recorded before anything is deleted. Only then the two
+    deletions: the log entries the checkpoint now covers, and the data files the
+    compaction orphaned.
+
+    What protects a reader is the retention, not the position: a vacuum deletes files
+    an in-flight query may still be reading, so COMPACT_VACUUM_RETENTION_HOURS has to
+    stay comfortably longer than the longest query that runs against this group. The
+    effect is that a run reclaims what earlier runs orphaned rather than its own
+    rewrite, whose files are seconds old.
 
     Skipped entirely on an execution that committed nothing, so an idle view costs its
     schedule and nothing else. Every step is best effort: the rows are committed by the
@@ -543,17 +553,34 @@ def _maintain(feature_group, summary: dict, now: float | None = None) -> None:
         summary["compaction"] = feature_group.delta_optimize(
             max_concurrent_tasks=COMPACT_CONCURRENT_TASKS
         )
+    except Exception as error:  # noqa: BLE001 - maintenance never fails a commit
+        summary["maintenance_error"] = type(error).__name__
+        print(
+            f"FEATURE_LOG_COMMIT compaction failed: {type(error).__name__}: {error}",
+            flush=True,
+        )
+    _checkpoint(feature_group, summary)
+    # Both deletions go last, and only once the checkpoint above describes the compacted
+    # state: the log entries it covers, then the data files it orphaned.
+    try:
+        summary["log_pruned_to"] = feature_group.delta_cleanup_metadata()
+    except Exception as error:  # noqa: BLE001 - maintenance never fails a commit
+        summary["cleanup_error"] = type(error).__name__
+        print(
+            f"FEATURE_LOG_COMMIT log cleanup failed: {type(error).__name__}: {error}",
+            flush=True,
+        )
+    try:
         summary["vacuum_deleted"] = len(
             feature_group.delta_vacuum(retention_hours=COMPACT_VACUUM_RETENTION_HOURS)
             or []
         )
     except Exception as error:  # noqa: BLE001 - maintenance never fails a commit
-        summary["maintenance_error"] = type(error).__name__
+        summary["vacuum_error"] = type(error).__name__
         print(
-            f"FEATURE_LOG_COMMIT maintenance failed: {type(error).__name__}: {error}",
+            f"FEATURE_LOG_COMMIT vacuum failed: {type(error).__name__}: {error}",
             flush=True,
         )
-    _checkpoint(feature_group, summary)
 
 
 def _run(feature_view_name: str, feature_view_version: int) -> dict:
