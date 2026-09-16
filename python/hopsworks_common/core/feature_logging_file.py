@@ -23,11 +23,13 @@ Only the writer renames the open segment, so a segment is either being written o
 from __future__ import annotations
 
 import collections
+import contextlib
 import json
 import logging
 import os
 import queue
 import select
+import shutil
 import struct
 import subprocess
 import sys
@@ -60,7 +62,9 @@ UPLOAD_SECONDS_BOUNDS = (0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0)
 # or a caller changes one. The flush, buffer and shutdown options above stay
 # environment-driven because the backend does emit those, from the platform
 # settings and the deployment's own DeploymentLoggingConfig.
-BUFFER_DIR = "/tmp/feature-log-buffer"
+BUFFER_ROOT = "/tmp/feature-log-buffer"
+# Kept for callers that named the old single directory.
+BUFFER_DIR = BUFFER_ROOT
 # Longest a logging worker waits to hand a frame to the writer.
 HANDOFF_SECONDS = 5
 # Uploaded bytes that ask the commit job to run before its schedule.
@@ -69,6 +73,55 @@ COMMIT_TRIGGER_INTERVAL_SECONDS = 300
 # The writer process uploads rotated segments; the predictor process does it
 # instead when this is off, for a pod whose environment cannot log in twice.
 UPLOAD_IN_WRITER = True
+
+
+def _worker_buffer_dir(root: str = BUFFER_ROOT, pid: int | None = None) -> str:
+    """This serving process's own buffer directory.
+
+    The model server runs one process per worker, and each of them logs. They cannot
+    share a buffer: the writer adopts whatever it finds there on the stated assumption
+    that it is the only writer, so two of them would rename each other's open segments
+    into `ready/` and upload them half written. A directory per process restores that
+    assumption without giving up the workers.
+    """
+    return os.path.join(root, f"w{os.getpid() if pid is None else pid}")
+
+
+def _process_is_alive(pid: int) -> bool:
+    """Whether `pid` still exists; a pid we may not signal is alive."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return True
+    return True
+
+
+def _orphaned_buffer_dirs(own: str, root: str = BUFFER_ROOT) -> list[Path]:
+    """Buffer directories left by serving processes that are gone.
+
+    A worker that dies takes its buffer with it, and the rows in it are already written
+    and not yet uploaded. The next process to start picks them up rather than leaving
+    them for the pod's next restart, which may never come.
+    """
+    orphans = []
+    own_path = Path(own).resolve()
+    try:
+        entries = sorted(Path(root).iterdir())
+    except OSError:
+        return orphans
+    for entry in entries:
+        if not entry.is_dir() or entry.resolve() == own_path:
+            continue
+        name = entry.name
+        if not name.startswith("w") or not name[1:].isdigit():
+            continue
+        if not _process_is_alive(int(name[1:])):
+            orphans.append(entry)
+    return orphans
 
 
 def _staging_dir(feature_view_name: str, feature_view_version: int) -> str:
@@ -113,7 +166,7 @@ class _FileLogOptions:
         self.feature_view_name = feature_view_name
         self.feature_view_version = int(feature_view_version)
         self.schema_id = schema_id
-        self.buffer_dir = BUFFER_DIR
+        self.buffer_dir = _worker_buffer_dir()
         self.flush_bytes = _positive_env(
             "HOPSWORKS_FEATURE_LOGGER_FLUSH_BYTES", 1024 * 1024
         )
@@ -265,12 +318,36 @@ class _SegmentWriter:
         self._adopt_leftovers()
 
     def _adopt_leftovers(self) -> None:
-        # Exactly one writer exists at a time, so whatever the previous one
-        # left open is complete as far as it goes and can be uploaded as is.
+        # Exactly one writer exists at a time in this directory, which is this serving
+        # process's own, so whatever the previous one left open is complete as far as it
+        # goes and can be uploaded as is.
         for path in sorted(self.current_dir.glob("*" + CHUNK_SUFFIX)):
             os.rename(path, self.ready_dir / path.name)
+        self._adopt_orphans()
         for path in sorted(self.ready_dir.glob("*" + CHUNK_SUFFIX)):
             self._chunk_rows[path.name] = _rows_in(path)
+
+    def _adopt_orphans(self) -> None:
+        """Take the segments of serving processes that are gone.
+
+        Their rows are written and not yet uploaded, and nothing else will come back for
+        them. Only directories whose owning process is dead are touched: a live worker's
+        buffer is its own, and taking a segment it is still appending to is exactly the
+        bug the per-process directories exist to prevent.
+
+        The move is a rename, so two processes racing for the same orphan cannot both
+        win; the one that loses finds it gone and moves on.
+        """
+        root = os.path.dirname(self._options.buffer_dir)
+        for orphan in _orphaned_buffer_dirs(self._options.buffer_dir, root):
+            for sub in ("current", "ready"):
+                for path in sorted((orphan / sub).glob("*" + CHUNK_SUFFIX)):
+                    try:
+                        os.rename(path, self.ready_dir / path.name)
+                    except OSError:
+                        continue
+            with contextlib.suppress(OSError):
+                shutil.rmtree(orphan)
 
     def _chunk_id(self) -> str:
         # The pod name already carries the deployment and revision.

@@ -468,3 +468,83 @@ class TestTheWriterProcessConnects:
         )
         flf._main()
         writer.assert_called_once()
+
+
+class TestPerWorkerBuffers:
+    """Each serving process buffers on its own, and picks up what dead ones left."""
+
+    def test_two_processes_get_different_directories(self, mocker):
+        mocker.patch.object(os, "getpid", return_value=111)
+        first = flf._worker_buffer_dir(root="/tmp/b")
+        mocker.patch.object(os, "getpid", return_value=222)
+        second = flf._worker_buffer_dir(root="/tmp/b")
+        assert first != second
+        assert first.endswith("w111") and second.endswith("w222")
+
+    def test_options_take_this_process_s_directory(self, mocker):
+        mocker.patch.object(
+            flf, "_worker_buffer_dir", return_value="/tmp/feature-log-buffer/w9"
+        )
+        options = flf._FileLogOptions("view", 1)
+        assert options.buffer_dir == "/tmp/feature-log-buffer/w9"
+        # The writer subprocess is handed the same directory, not one of its own.
+        assert flf._FileLogOptions.from_dict(options.to_dict()).buffer_dir == (
+            "/tmp/feature-log-buffer/w9"
+        )
+
+    def test_a_live_worker_s_buffer_is_not_an_orphan(self, tmp_path, mocker):
+        own = tmp_path / "w1"
+        (tmp_path / f"w{os.getpid()}").mkdir(parents=True)
+        own.mkdir()
+        assert flf._orphaned_buffer_dirs(str(own), str(tmp_path)) == []
+
+    def test_a_dead_worker_s_buffer_is_an_orphan(self, tmp_path, mocker):
+        own = tmp_path / "w1"
+        own.mkdir()
+        dead = tmp_path / "w999999"
+        dead.mkdir()
+        mocker.patch.object(
+            flf, "_process_is_alive", side_effect=lambda pid: pid != 999999
+        )
+        assert flf._orphaned_buffer_dirs(str(own), str(tmp_path)) == [dead]
+
+    @posix_only
+    def test_a_dead_worker_s_segments_are_adopted(self, tmp_path, mocker):
+        """The rows a dead worker wrote are uploaded by whoever starts next."""
+        own = tmp_path / "w1"
+        dead = tmp_path / "w999999"
+        for base in (own, dead):
+            (base / "current").mkdir(parents=True)
+            (base / "ready").mkdir(parents=True)
+        (dead / "ready" / "left-behind.arrow").write_bytes(b"x")
+        (dead / "current" / "still-open.arrow").write_bytes(b"y")
+        mocker.patch.object(
+            flf, "_process_is_alive", side_effect=lambda pid: pid != 999999
+        )
+        mocker.patch.object(flf, "_rows_in", return_value=1)
+
+        options = flf._FileLogOptions("view", 1, buffer_dir=str(own))
+        writer = flf._SegmentWriter(options, uploader=object())
+        writer._adopt_leftovers()
+
+        adopted = sorted(p.name for p in (own / "ready").glob("*.arrow"))
+        assert adopted == ["left-behind.arrow", "still-open.arrow"]
+        assert not dead.exists(), "the dead worker's directory should be cleaned up"
+
+    @posix_only
+    def test_a_live_worker_s_open_segment_is_left_alone(self, tmp_path, mocker):
+        """The bug the per-process directories exist to prevent."""
+        own = tmp_path / "w1"
+        live = tmp_path / "w2"
+        for base in (own, live):
+            (base / "current").mkdir(parents=True)
+            (base / "ready").mkdir(parents=True)
+        (live / "current" / "being-written.arrow").write_bytes(b"y")
+        mocker.patch.object(flf, "_process_is_alive", return_value=True)
+        mocker.patch.object(flf, "_rows_in", return_value=1)
+
+        options = flf._FileLogOptions("view", 1, buffer_dir=str(own))
+        flf._SegmentWriter(options, uploader=object())._adopt_leftovers()
+
+        assert (live / "current" / "being-written.arrow").exists()
+        assert list((own / "ready").glob("*.arrow")) == []
