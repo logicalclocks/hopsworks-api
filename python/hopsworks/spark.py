@@ -27,7 +27,10 @@ if TYPE_CHECKING:
     from pyspark.sql import SparkSession
 
 
-_DELTA_EXTENSIONS = "io.delta.sql.DeltaSparkSessionExtension"
+# Hudi needs its extension registered too: without HoodieAnalysis an
+# incremental read loses _hoodie_commit_time to column pruning and returns
+# no rows, so as_of()/read_changes() on a HUDI feature group come back empty.
+_SQL_EXTENSIONS = "io.delta.sql.DeltaSparkSessionExtension,org.apache.spark.sql.hudi.HoodieSparkSessionExtension"
 _DELTA_CATALOG = "org.apache.spark.sql.delta.catalog.DeltaCatalog"
 
 
@@ -88,7 +91,7 @@ def build_spark(
 
     builder = SparkSession.builder.appName(app_name)
     if _is_spark_connect_env():
-        builder = builder.config("spark.sql.extensions", _DELTA_EXTENSIONS)
+        builder = builder.config("spark.sql.extensions", _SQL_EXTENSIONS)
         builder = builder.config("spark.sql.catalog.spark_catalog", _DELTA_CATALOG)
     for key, value in (extra_configs or {}).items():
         builder = builder.config(key, value)
