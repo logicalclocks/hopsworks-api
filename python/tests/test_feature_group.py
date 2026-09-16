@@ -2783,6 +2783,9 @@ class TestFeatureGroupReadPrimaryKeys:
             featurestore_id=1,
             featurestore_name="fs",
             features=[feature.Feature("f1")],
+            # Named, as every other feature group in this file does: the default is DELTA, and
+            # constructing one asks for the delta library, which the Windows job does not have.
+            time_travel_format="HUDI",
             primary_key=[],
             partition_key=[],
             event_time=None,
