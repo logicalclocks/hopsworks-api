@@ -620,3 +620,96 @@ class TestCheckpoint:
         job._checkpoint(fg, summary)
         assert summary["checkpoint_error"] == "RuntimeError"
         assert "checkpoint" not in summary
+
+
+class _MaintainedGroup(_FeatureGroup):
+    """A feature group recording the maintenance calls the job makes on it."""
+
+    def __init__(self, active_files=1, last_optimize_at=None, fail=None):
+        super().__init__()
+        self.calls = []
+        self._state = {
+            "active_files": active_files,
+            "last_optimize_at": last_optimize_at,
+        }
+        self._fail = fail
+        group = self
+
+        class _Engine:
+            @staticmethod
+            def _delta_maintenance_state(feature_group):
+                return group._state
+
+        self._feature_group_engine = _Engine()
+
+    def delta_optimize(self, max_concurrent_tasks=1):
+        self.calls.append(("optimize", max_concurrent_tasks))
+        if self._fail == "optimize":
+            raise RuntimeError("compaction failed")
+        return {"numFilesAdded": 1, "numFilesRemoved": 120}
+
+    def delta_vacuum(self, retention_hours=None):
+        self.calls.append(("vacuum", retention_hours))
+        return ["a.parquet", "b.parquet"]
+
+    def delta_checkpoint(self):
+        self.calls.append(("checkpoint", None))
+        return {"version": 3, "cleaned_up": True}
+
+
+def _at(day, hour):
+    return datetime(2026, 9, day, hour, 30, tzinfo=timezone.utc).timestamp()
+
+
+class TestCompactionPolicy:
+    """When an execution compacts, and in what order it maintains the table."""
+
+    def test_the_file_threshold_triggers_before_midnight(self):
+        state = {
+            "active_files": job.COMPACT_FILE_THRESHOLD,
+            "last_optimize_at": _at(16, 1),
+        }
+        assert job._should_compact(state, _at(16, 12)) is not None
+
+    def test_a_table_under_the_threshold_waits_for_the_next_day(self):
+        state = {"active_files": 3, "last_optimize_at": _at(16, 1)}
+        assert job._should_compact(state, _at(16, 12)) is None
+
+    def test_the_first_run_of_the_day_compacts_a_quiet_table(self):
+        state = {"active_files": 3, "last_optimize_at": _at(15, 23)}
+        assert job._should_compact(state, _at(16, 0)) == "first run of the day"
+
+    def test_a_table_never_compacted_compacts(self):
+        state = {"active_files": 1, "last_optimize_at": None}
+        assert job._should_compact(state, _at(16, 12)) == "first run of the day"
+
+    def test_maintenance_compacts_then_reclaims_then_checkpoints(self):
+        fg = _MaintainedGroup(active_files=200, last_optimize_at=_at(16, 1))
+        summary = _summary()
+        summary["commits"] = 2
+        job._maintain(fg, summary, now=_at(16, 12))
+        assert [c[0] for c in fg.calls] == ["optimize", "vacuum", "checkpoint"]
+        assert ("vacuum", job.COMPACT_VACUUM_RETENTION_HOURS) in fg.calls
+        assert ("optimize", job.COMPACT_CONCURRENT_TASKS) in fg.calls
+        assert summary["vacuum_deleted"] == 2
+        assert summary["active_files"] == 200
+
+    def test_no_commits_means_no_maintenance_at_all(self):
+        fg = _MaintainedGroup(active_files=500)
+        job._maintain(fg, _summary(), now=_at(16, 12))
+        assert fg.calls == []
+
+    def test_below_the_threshold_it_only_checkpoints(self):
+        fg = _MaintainedGroup(active_files=3, last_optimize_at=_at(16, 1))
+        summary = _summary()
+        summary["commits"] = 1
+        job._maintain(fg, summary, now=_at(16, 12))
+        assert [c[0] for c in fg.calls] == ["checkpoint"]
+
+    def test_a_failed_compaction_still_checkpoints(self):
+        fg = _MaintainedGroup(active_files=500, fail="optimize")
+        summary = _summary()
+        summary["commits"] = 1
+        job._maintain(fg, summary, now=_at(16, 12))
+        assert summary["maintenance_error"] == "RuntimeError"
+        assert [c[0] for c in fg.calls] == ["optimize", "checkpoint"]

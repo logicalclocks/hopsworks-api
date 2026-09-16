@@ -699,6 +699,47 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group._clustered_by = clustered_by or None
 
     @staticmethod
+    def _delta_engine_for(feature_group):
+        """The Delta engine for this group, or None when it is not stored as DELTA."""
+        if feature_group.time_travel_format != "DELTA":
+            return None
+        spark_session, spark_context = (
+            FeatureGroupEngine._get_spark_session_and_context()
+        )
+        return delta_engine.DeltaEngine(
+            feature_group.feature_store_id,
+            feature_group.feature_store_name,
+            feature_group,
+            spark_session,
+            spark_context,
+        )
+
+    @staticmethod
+    def _delta_optimize(
+        feature_group,
+        after_ingest_date=None,
+        max_concurrent_tasks=1,
+        target_size=None,
+    ):
+        engine_instance = FeatureGroupEngine._delta_engine_for(feature_group)
+        if engine_instance is None:
+            return None
+        return engine_instance._optimize_compact(
+            after_ingest_date, max_concurrent_tasks, target_size
+        )
+
+    @staticmethod
+    def _delta_maintenance_state(feature_group):
+        """The file count and last compaction time a maintenance policy decides on."""
+        engine_instance = FeatureGroupEngine._delta_engine_for(feature_group)
+        if engine_instance is None:
+            return None
+        return {
+            "active_files": engine_instance._active_file_count(),
+            "last_optimize_at": engine_instance._last_optimize_at(),
+        }
+
+    @staticmethod
     def _delta_checkpoint(feature_group, cleanup_metadata=True):
         if feature_group.time_travel_format == "DELTA":
             spark_session, spark_context = (

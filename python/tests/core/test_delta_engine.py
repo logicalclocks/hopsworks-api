@@ -17,6 +17,7 @@ import os
 import sys
 import types
 from datetime import date
+from types import SimpleNamespace
 from unittest import mock
 
 import pandas as pd
@@ -1232,6 +1233,151 @@ class TestDeltaEngine:
         create_mock.assert_not_called()
         writer = dataset.write.format.return_value.options.return_value
         writer.partitionBy.assert_called_once_with(["pk"])
+
+    def _rs_engine(self, mocker, partition_key=None, features=None):
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.partition_key = partition_key or []
+        fg.features = features or []
+        engine = DeltaEngine(1, "fs", fg, None, None)
+        mocker.patch.object(
+            engine, "_get_delta_rs_location", return_value="hopsfs://nn:8020/p"
+        )
+        mocker.patch.object(engine, "_get_delta_rs_storage_options", return_value={})
+        mocker.patch.object(engine, "_cluster_columns", return_value=[])
+        return engine, fg
+
+    def test_vacuum_on_python_actually_deletes(self, mocker):
+        # Arrange
+        engine, _ = self._rs_engine(mocker)
+        table = mocker.MagicMock()
+        table.vacuum.return_value = ["one.parquet"]
+        mocker.patch("deltalake.DeltaTable", return_value=table)
+
+        # Act
+        deleted = engine._vacuum(24)
+
+        # Assert: delta-rs defaults dry_run to True, which would delete nothing.
+        table.vacuum.assert_called_once_with(
+            retention_hours=24, dry_run=False, enforce_retention_duration=False
+        )
+        assert deleted == ["one.parquet"]
+
+    def test_vacuum_on_spark_lifts_the_retention_check(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        spark = mocker.MagicMock()
+        spark.conf.get.return_value = None
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.prepare_spark_location.return_value = "hopsfs://nn:8020/p"
+        engine = DeltaEngine(1, "fs", fg, spark, None)
+
+        # Act
+        engine._vacuum(24)
+
+        # Assert
+        spark.conf.set.assert_any_call(DeltaEngine.RETENTION_CHECK_CONF, "false")
+        spark.sql.assert_called_once_with("VACUUM 'hopsfs://nn:8020/p' RETAIN 24 HOURS")
+
+    def test_compact_on_python_bounds_its_own_concurrency(self, mocker):
+        # Arrange
+        engine, _ = self._rs_engine(mocker)
+        table = mocker.MagicMock()
+        table.optimize.compact.return_value = {"numFilesRemoved": 120}
+        mocker.patch("deltalake.DeltaTable", return_value=table)
+
+        # Act
+        result = engine._optimize_compact()
+
+        # Assert
+        table.optimize.compact.assert_called_once_with(
+            partition_filters=None, max_concurrent_tasks=1, target_size=None
+        )
+        assert result == {"numFilesRemoved": 120}
+
+    def test_compact_filters_on_a_date_partition(self, mocker):
+        # Arrange
+        engine, _ = self._rs_engine(
+            mocker,
+            partition_key=["log_date"],
+            features=[SimpleNamespace(name="log_date", type="date")],
+        )
+        table = mocker.MagicMock()
+        mocker.patch("deltalake.DeltaTable", return_value=table)
+
+        # Act
+        engine._optimize_compact(after_ingest_date="2026-09-10")
+
+        # Assert
+        table.optimize.compact.assert_called_once_with(
+            partition_filters=[("log_date", ">=", "2026-09-10")],
+            max_concurrent_tasks=1,
+            target_size=None,
+        )
+
+    def test_a_date_filter_without_a_date_partition_is_refused(self, mocker):
+        # Arrange: the logging group's own layout, partitioned by model not by date.
+        engine, _ = self._rs_engine(
+            mocker,
+            partition_key=["model_name", "model_version"],
+            features=[SimpleNamespace(name="model_name", type="string")],
+        )
+
+        # Act / Assert
+        with pytest.raises(FeatureStoreException, match="date column"):
+            engine._optimize_compact(after_ingest_date="2026-09-10")
+
+    def test_compact_on_spark_runs_optimize_with_the_predicate(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        spark = mocker.MagicMock()
+        spark.sql.return_value.collect.return_value = []
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.prepare_spark_location.return_value = "hopsfs://nn:8020/p"
+        fg.partition_key = ["log_date"]
+        fg.features = [SimpleNamespace(name="log_date", type="date")]
+        engine = DeltaEngine(1, "fs", fg, spark, None)
+
+        # Act
+        engine._optimize_compact(after_ingest_date="2026-09-10")
+
+        # Assert
+        spark.sql.assert_called_once_with(
+            "OPTIMIZE delta.`hopsfs://nn:8020/p` WHERE log_date >= '2026-09-10'"
+        )
+
+    def test_active_file_count_on_python(self, mocker):
+        # Arrange
+        engine, _ = self._rs_engine(mocker)
+        table = mocker.MagicMock()
+        table.file_uris.return_value = ["a", "b", "c"]
+        mocker.patch("deltalake.DeltaTable", return_value=table)
+
+        # Act / Assert
+        assert engine._active_file_count() == 3
+
+    def test_last_optimize_at_reads_the_history(self, mocker):
+        # Arrange
+        engine, _ = self._rs_engine(mocker)
+        table = mocker.MagicMock()
+        table.history.return_value = [
+            {"operation": "WRITE", "timestamp": 1_700_000_000_000},
+            {"operation": "OPTIMIZE", "timestamp": 1_700_000_500_000},
+        ]
+        mocker.patch("deltalake.DeltaTable", return_value=table)
+
+        # Act / Assert: delta-rs reports milliseconds.
+        assert engine._last_optimize_at() == 1_700_000_500.0
+
+    def test_last_optimize_at_is_none_when_never_compacted(self, mocker):
+        # Arrange
+        engine, _ = self._rs_engine(mocker)
+        table = mocker.MagicMock()
+        table.history.return_value = [{"operation": "WRITE", "timestamp": 1}]
+        mocker.patch("deltalake.DeltaTable", return_value=table)
+
+        # Act / Assert
+        assert engine._last_optimize_at() is None
 
     def test_checkpoint_writes_a_checkpoint_and_cleans_the_log(self, mocker):
         # Arrange

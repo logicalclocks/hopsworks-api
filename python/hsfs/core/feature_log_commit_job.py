@@ -31,7 +31,7 @@ import os
 import tempfile
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -42,6 +42,16 @@ MAX_CHUNKS_PER_CLAIM = 256
 MAX_PART_BYTES = 512 * 1024 * 1024
 MAX_CLAIMS_PER_EXECUTION = 10
 CLAIM_RECLAIM_SECONDS = 7200
+# Active data files at which an execution compacts instead of waiting for midnight.
+# One append commit writes one file, and the commits here carry roughly a megabyte to a
+# few, so a hundred files is the low hundreds of megabytes: around one compacted file at
+# the engine's own target, and small enough that the rewrite fits beside the writes.
+COMPACT_FILE_THRESHOLD = 100
+# The rewrite runs in this job's process, beside the commits, so it does not get the
+# pod's whole CPU budget.
+COMPACT_CONCURRENT_TASKS = 1
+# Long enough that a reader which opened the table before the compaction can finish.
+COMPACT_VACUUM_RETENTION_HOURS = 24
 # Older than any upload still in progress: a chunk this old in `uploading/` is whole
 # and its pod is gone.
 UPLOAD_STALE_SECONDS = 3600
@@ -449,10 +459,10 @@ def _checkpoint(feature_group, summary: dict) -> None:
     """Checkpoint the logging table once per execution that committed something.
 
     Every append adds a commit to the Delta log, and a reader replays the log from the
-    last checkpoint. Nothing writes one on its own, so on a table that is only ever
-    appended to the replay grows with the number of commits, and this job pays it twice
-    per part: once to read the application transaction that makes a retry idempotent,
-    and once to read back the commit it just made.
+    last checkpoint. Nothing writes one on its own under delta-rs, so on a table that is
+    only ever appended to the replay grows with the number of commits, and this job pays
+    it twice per part: once to read the application transaction that makes a retry
+    idempotent, and once to read back the commit it just made.
 
     One checkpoint per execution rather than one per commit: the runs are scheduled, so
     this leaves the log at most a single execution's commits ahead of the checkpoint,
@@ -471,6 +481,79 @@ def _checkpoint(feature_group, summary: dict) -> None:
             f"FEATURE_LOG_COMMIT checkpoint failed: {type(error).__name__}: {error}",
             flush=True,
         )
+
+
+def _should_compact(state: dict, now: float) -> str | None:
+    """Why this execution should compact, or None.
+
+    Two triggers, because they cover different traffic. A busy view reaches the file
+    threshold within a day and should not wait for midnight; a quiet one never reaches
+    it and would otherwise never compact at all.
+
+    The daily trigger reads the table's own history rather than any state this job
+    keeps, so it stays correct across executions and across writers.
+    """
+    if state["active_files"] >= COMPACT_FILE_THRESHOLD:
+        return f"{state['active_files']} files at or above the {COMPACT_FILE_THRESHOLD} threshold"
+    last = state["last_optimize_at"]
+    midnight = datetime.fromtimestamp(now, tz=timezone.utc).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    if last is None or last < midnight.timestamp():
+        return "first run of the day"
+    return None
+
+
+def _maintain(feature_group, summary: dict, now: float | None = None) -> None:
+    """Compact, then reclaim, then checkpoint.
+
+    The order is what makes it worth doing: compaction replaces many small files with
+    few large ones and leaves the old ones unreferenced, the vacuum deletes those, and
+    the checkpoint records the smaller file list so readers stop replaying past it.
+
+    Skipped entirely on an execution that committed nothing, so an idle view costs its
+    schedule and nothing else. Every step is best effort: the rows are committed by the
+    time this runs and the next execution tries again.
+    """
+    if not summary["commits"]:
+        return
+    now = time.time() if now is None else now
+    try:
+        state = feature_group._feature_group_engine._delta_maintenance_state(
+            feature_group
+        )
+    except Exception as error:  # noqa: BLE001 - maintenance never fails a commit
+        summary["maintenance_error"] = type(error).__name__
+        print(
+            f"FEATURE_LOG_COMMIT maintenance state failed: {type(error).__name__}: {error}",
+            flush=True,
+        )
+        _checkpoint(feature_group, summary)
+        return
+    if state is None:
+        _checkpoint(feature_group, summary)
+        return
+    summary["active_files"] = state["active_files"]
+    reason = _should_compact(state, now)
+    if reason is None:
+        _checkpoint(feature_group, summary)
+        return
+    summary["compact_reason"] = reason
+    try:
+        summary["compaction"] = feature_group.delta_optimize(
+            max_concurrent_tasks=COMPACT_CONCURRENT_TASKS
+        )
+        summary["vacuum_deleted"] = len(
+            feature_group.delta_vacuum(retention_hours=COMPACT_VACUUM_RETENTION_HOURS)
+            or []
+        )
+    except Exception as error:  # noqa: BLE001 - maintenance never fails a commit
+        summary["maintenance_error"] = type(error).__name__
+        print(
+            f"FEATURE_LOG_COMMIT maintenance failed: {type(error).__name__}: {error}",
+            flush=True,
+        )
+    _checkpoint(feature_group, summary)
 
 
 def _run(feature_view_name: str, feature_view_version: int) -> dict:
@@ -529,7 +612,7 @@ def _run(feature_view_name: str, feature_view_version: int) -> dict:
         claim = staging._claim(f"{execution_id}-{iteration}", files)
         summary["claims"] += 1
         _process_claim(feature_group, staging, claim, summary)
-    _checkpoint(feature_group, summary)
+    _maintain(feature_group, summary)
     summary["pending_after"] = len(staging._pending())
     if summary["pending_after"]:
         # A backlog larger than one execution drains through another run now

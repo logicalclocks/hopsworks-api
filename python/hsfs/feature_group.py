@@ -5052,6 +5052,62 @@ class FeatureGroup(FeatureGroupBase):
         return self.remove_rows(delete_df, write_options, "offline")
 
     @public
+    def delta_optimize(
+        self,
+        after_ingest_date: str | None = None,
+        max_concurrent_tasks: int = 1,
+        target_size: int | None = None,
+    ) -> dict | None:
+        """Rewrite this feature group's small Delta files into larger ones.
+
+        A table that is only appended to gains a file per commit, and every reader then
+        opens all of them, so compaction is what keeps the file count flat.
+
+        This method can only be used on feature groups stored as DELTA; it returns None
+        for any other format.
+
+        Example:
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            # get the Feature Group instance
+            fg = fs.get_or_create_feature_group(...)
+
+            # compact everything
+            fg.delta_optimize()
+
+            # compact only the partitions from a date onwards
+            fg.delta_optimize(after_ingest_date="2026-09-10")
+            ```
+
+        Parameters:
+            after_ingest_date:
+                Restrict the rewrite to partitions at or after this date, as `YYYY-MM-DD`.
+                Requires the feature group to be partitioned by a date column, because only
+                a partition column can select files without reading them.
+                Defaults to None, which compacts the whole table.
+            max_concurrent_tasks:
+                Rewrite tasks to run at once.
+                Defaults to 1, so a compaction running beside a writer does not take the
+                whole CPU budget.
+            target_size:
+                Size in bytes to compact towards.
+                Defaults to None, which takes the engine's own target.
+
+        Returns:
+            The engine's optimize metrics, or None when the feature group is not stored as
+            DELTA.
+
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException: If `after_ingest_date` is given
+                and the feature group has no date partition column.
+        """
+        return self._feature_group_engine._delta_optimize(
+            self, after_ingest_date, max_concurrent_tasks, target_size
+        )
+
+    @public
     def delta_checkpoint(self, cleanup_metadata: bool = True) -> dict | None:
         """Write a Delta checkpoint for this feature group, and drop the log it covers.
 
