@@ -585,6 +585,39 @@ class VectorServer:
             logging_meta_data=logging_meta_data,
         )
 
+    async def _get_feature_vectors_async(
+        self, entries: list[dict[str, Any]], logging_data: bool = False, **kwargs: Any
+    ) -> Any:
+        """[`_get_feature_vectors`][] with the online lookup awaited, not bridged.
+
+        Only the lookup differs. It is awaited on the caller's loop and the rows are
+        then handed to the blocking method, so the assembly, the transformations and the
+        return type stay one implementation shared by both paths.
+
+        Falls back to the blocking path when the lookup is not the SQL client's to make:
+        a REST client deployment, or a request with no serving keys to look up.
+        """
+        client = self.which_client_and_ensure_initialised(
+            force_rest_client=kwargs.get("force_rest_client", False),
+            force_sql_client=kwargs.get("force_sql_client", False),
+        )
+        rondb_entries = [e for e in entries if e]
+        if client == self.DEFAULT_REST_CLIENT or not rondb_entries:
+            return self._get_feature_vectors(
+                entries, logging_data=logging_data, **kwargs
+            )
+        batch_results, _ = await self.sql_client._get_batch_feature_vectors_async(
+            rondb_entries,
+            logging_data=logging_data,
+            feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
+        )
+        return self._get_feature_vectors(
+            entries,
+            logging_data=logging_data,
+            prefetched_batch_results=batch_results,
+            **kwargs,
+        )
+
     def _get_feature_vectors(
         self,
         entries: list[dict[str, Any]],
@@ -598,6 +631,7 @@ class VectorServer:
         transform: bool = True,
         on_demand_features: bool | None = True,
         transformation_context: dict[str, Any] = None,
+        prefetched_batch_results: list[dict[str, Any]] | None = None,
         logging_data: bool = False,
         n_processes: int | None = None,
     ) -> pd.DataFrame | pl.DataFrame | np.ndarray | list[Any] | list[dict[str, Any]]:
@@ -703,7 +737,13 @@ class VectorServer:
             else:
                 skipped_empty_entries.append(idx)
 
-        if online_client_choice == self.DEFAULT_REST_CLIENT and len(rondb_entries) > 0:
+        if prefetched_batch_results is not None:
+            # The caller already awaited the lookup on its own event loop; everything
+            # below assembles those rows and is the same work either way.
+            batch_results = prefetched_batch_results
+        elif (
+            online_client_choice == self.DEFAULT_REST_CLIENT and len(rondb_entries) > 0
+        ):
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug("get_batch_feature_vector Online REST client")
             batch_results = self.rest_client_engine._get_batch_feature_vectors(

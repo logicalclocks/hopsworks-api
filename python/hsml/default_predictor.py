@@ -1361,25 +1361,21 @@ class DefaultPredict:
     def _fetch(self):
         """Which lookup the awaited path uses.
 
-        The blocking one, unless asked otherwise. Awaiting the lookup frees the event
-        loop, but the online store client behind it serves one lookup at a time:
-        `AsyncTaskThread` takes a task off its queue, awaits it to completion, and only
-        then takes the next. Freeing the loop therefore admits many concurrent requests
-        that all queue behind that one worker, which is a latency collapse rather than a
-        gain. Measured on the cluster at 150 requests per second: awaiting took the mean
-        from 12.6 ms to 8,359 ms and p99 from 90 ms to 64,773 ms, for 2.8 percent more
-        throughput.
+        The awaitable one, now that it is awaited on this loop against a pool of its own
+        rather than handed to the client's task thread, which serves one lookup at a
+        time and turned concurrency into a queue.
 
-        Set HOPSWORKS_PREDICTOR_ASYNC_LOOKUP=true to await it anyway. It is worth having
-        once the client can serve lookups concurrently, and worth nothing before that.
+        Set HOPSWORKS_PREDICTOR_ASYNC_LOOKUP=false to go back to the blocking lookup,
+        which is what a deployment wants if its online reads go through the REST client,
+        where there is nothing to overlap.
         """
         if os.environ.get("HOPSWORKS_PREDICTOR_ASYNC_LOOKUP", "").strip().lower() in (
-            "true",
-            "1",
-            "yes",
+            "false",
+            "0",
+            "no",
         ):
-            return self.fetch_feature_vectors_async
-        return self.fetch_feature_vectors
+            return self.fetch_feature_vectors
+        return self.fetch_feature_vectors_async
 
     @public
     def predict_blocking(self, inputs: Any, request_id: str | None = None) -> Any:

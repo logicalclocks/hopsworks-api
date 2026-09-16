@@ -931,10 +931,13 @@ class FeatureView:
         Takes the same arguments as the synchronous method and returns the same value.
 
         Note:
-            The work is handed to a worker thread rather than awaited natively.
-            The connection pool underneath belongs to the thread that created it, so
-            awaiting it from another loop is not yet possible; what this gives is a caller's
-            loop that stays free during the wait, which is what the wait was costing.
+            This one hands the work to a worker thread. The loop stays free for the wait,
+            but the lookup still goes through the client's task thread, which serves one at
+            a time, so concurrent single lookups queue behind each other.
+            [`get_feature_vectors_async`][hsfs.feature_view.FeatureView.get_feature_vectors_async]
+            awaits the statements on the caller's own loop against a pool of its own, and
+            several of those are genuinely in flight at once. Prefer it where throughput
+            matters.
 
         Example:
             ```python
@@ -948,15 +951,36 @@ class FeatureView:
         """Awaitable [`get_feature_vectors`][hsfs.feature_view.FeatureView.get_feature_vectors].
 
         Takes the same arguments as the synchronous method and returns the same value.
-        See [`get_feature_vector_async`][hsfs.feature_view.FeatureView.get_feature_vector_async]
-        for why it exists and how it runs.
+
+        The online lookup is awaited on the caller's own event loop, against a connection
+        pool belonging to that loop, so several lookups are in flight at once. The
+        synchronous method hands the work to a task thread that serves one lookup at a
+        time however many callers there are, which is what made a serving deployment
+        saturate at 218 requests per second where the same deployment with nothing to look
+        up reached 310.
+
+        Falls back to the blocking path when the lookup is not the SQL client's to make: a
+        REST client deployment, or a request with no serving keys.
 
         Example:
             ```python
             vectors = await feature_view.get_feature_vectors_async(entry=[{"id": 1}, {"id": 2}])
             ```
         """
-        return await self._in_worker_thread(self.get_feature_vectors, **kwargs)
+        entry = kwargs.pop("entry", None)
+        external = kwargs.pop("external", None)
+        force_rest_client = kwargs.get("force_rest_client", False)
+        if not self._vector_server._serving_initialized:
+            self.init_serving(external=external, init_rest_client=force_rest_client)
+        if kwargs.get("n_processes") is None:
+            kwargs["n_processes"] = self._transformation_n_processes
+        vector_db_features = []
+        if self._vector_db_client:
+            for _entry in entry:
+                vector_db_features.append(self._get_vector_db_result(_entry))
+        return await self._vector_server._get_feature_vectors_async(
+            entries=entry, vector_db_features=vector_db_features, **kwargs
+        )
 
     @staticmethod
     async def _in_worker_thread(call: Any, **kwargs: Any) -> Any:
