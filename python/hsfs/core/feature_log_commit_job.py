@@ -20,7 +20,7 @@ It claims the chunks that deployments staged under the feature view's `pending/`
 The file is uploaded as the job's script when logging is enabled with the `job` transport, so it depends on nothing outside the released client surface.
 
 A claim is a manifest first and moved files second, so an execution that dies at any point leaves either files still in `pending/` or a manifest that names them; the next execution finishes the move and the commit.
-Every commit carries a Delta application transaction named after its claim and part, and a retry commits nothing for a part whose transaction the table already records.
+Every commit carries one Delta application transaction per chunk it holds, and a chunk whose transaction the table already records is committed by nobody again, whether it comes back under a retried claim or as a second copy under a later one.
 """
 
 from __future__ import annotations
@@ -122,68 +122,40 @@ def _with_log_ids(table, chunk_id: str):
     return table.append_column("log_id", pa.array(ids, pa.string()))
 
 
-def _frame(table, feature_group):
-    """The table as a frame that keeps its types; an all-null pandas column would reach Delta as `null`."""
-    try:
-        import polars as pl
+def _frame(table):
+    """The table as a pandas frame whose columns keep their Arrow types.
 
-        return pl.from_arrow(table)
-    except ImportError:
-        import pandas as pd
-        import pyarrow as pa
+    Arrow-backed columns hand the engine the chunk's own schema, nested types and all,
+    where a conversion to NumPy-backed columns would have the engine infer types from
+    the values again: an integer list with a null became doubles, a decimal took the
+    precision of the values it happened to hold, an all-null date became a timestamp.
+    """
+    import pandas as pd
 
-        # Nullable pandas dtypes keep integers with nulls integral; a plain
-        # to_pandas() would make them floats and hand Delta the wrong type.
-        nullable = {
-            pa.int8(): pd.Int8Dtype(),
-            pa.int16(): pd.Int16Dtype(),
-            pa.int32(): pd.Int32Dtype(),
-            pa.int64(): pd.Int64Dtype(),
-            pa.bool_(): pd.BooleanDtype(),
-            pa.string(): pd.StringDtype(),
-            pa.large_string(): pd.StringDtype(),
-        }
-        frame = table.to_pandas(types_mapper=nullable.get)
-        types = {feature.name: feature.type for feature in _columns(feature_group)}
-        for name in frame.columns:
-            dtype = _pandas_dtype(types.get(name))
-            if frame[name].isna().all() and dtype is not None:
-                frame[name] = frame[name].astype(dtype)
-        return frame
-
-
-_PANDAS_DTYPES = {
-    "string": "string",
-    "bigint": "Int64",
-    "int": "Int32",
-    "smallint": "Int16",
-    "tinyint": "Int8",
-    "boolean": "boolean",
-    "double": "float64",
-    "float": "float32",
-    "timestamp": "datetime64[ns]",
-    "date": "datetime64[ns]",
-}
-
-
-def _pandas_dtype(offline_type) -> str | None:
-    """The nullable pandas dtype for a logging group column type, `None` for types left as they are."""
-    return _PANDAS_DTYPES.get(str(offline_type).lower()) if offline_type else None
+    return table.to_pandas(types_mapper=pd.ArrowDtype)
 
 
 def _columns(feature_group):
     return getattr(feature_group, "columns", None) or feature_group.features
 
 
-def _part_app_id(feature_group, claim_id: str, part: int) -> str:
-    return f"hopsworks_feature_log_{feature_group.id}/{claim_id}/{part}"
+def _chunk_app_id(feature_group, chunk_id: str) -> str:
+    return f"hopsworks_feature_log_{feature_group.id}/chunk/{chunk_id}"
 
 
 class _DeltaTransactions:
-    """The Delta application transactions that make a retried part commit nothing."""
+    """The Delta application transactions that record which chunks the table holds.
+
+    One transaction per chunk, in the same commit as the chunk's rows, so the record and
+    the rows land or fail together. A chunk is recognised by its own identity rather
+    than by the claim that carried it: the same chunk reaches `pending/` twice when an
+    upload whose acknowledgement was lost is retried, or when a stale upload is adopted
+    while its writer is still retrying, and the second copy arrives under a later claim.
+    """
 
     def __init__(self, feature_group):
         self._feature_group = feature_group
+        self._table = None
         self.available = False
         try:
             from deltalake import DeltaTable
@@ -206,20 +178,23 @@ class _DeltaTransactions:
             # An older client: retries fall back on the derived log ids alone.
             self.available = False
 
-    def _committed(self, app_id: str) -> bool:
-        """Whether a commit for this part has landed; a missing table means it has not.
+    def _committed(self, chunk_id: str) -> bool:
+        """Whether this chunk's rows are in the table; a missing table means they are not.
 
+        The log is read once per claim, which is enough: a claim holds each chunk name once.
         Any other failure to read the log is raised: guessing here is what turns a retry into a duplicate or a loss.
         """
         if not self.available:
             return False
-        try:
-            table = self._DeltaTable(
-                self._location, storage_options=self._storage_options
-            )
-        except self._not_found:
-            return False
-        return table.transaction_version(app_id) is not None
+        if self._table is None:
+            try:
+                self._table = self._DeltaTable(
+                    self._location, storage_options=self._storage_options
+                )
+            except self._not_found:
+                return False
+        app_id = _chunk_app_id(self._feature_group, chunk_id)
+        return self._table.transaction_version(app_id) is not None
 
 
 def _absolute(path: str) -> str:
@@ -400,21 +375,37 @@ def _unify(tables):
     return pa.concat_tables(aligned)
 
 
-def _commit_part(feature_group, transactions, claim_id, part, tables, summary):
-    app_id = _part_app_id(feature_group, claim_id, part)
-    if transactions._committed(app_id):
-        summary["parts_already_applied"] += 1
-        return
+def _commit_part(feature_group, staging, claim_id, tables, chunks, summary):
+    """Append one part of a claim in one commit that also records each of its chunks.
+
+    A part the group's schema rejects is parked under `failed/` rather than raised: the
+    rejection would be the same on every retry, and raising it would hold every chunk
+    behind it in `pending/` for as long as the parked one stayed in the way.
+    """
+    from hsfs.client.exceptions import FeatureStoreException
+
     table = _unify(tables)
-    feature_group.insert(
-        _frame(table, feature_group),
-        storage="offline",
-        write_options={
-            "mode": "append",
-            "wait_for_job": True,
-            "commit_properties": {"app_id": app_id, "version": 1},
-        },
-    )
+    try:
+        feature_group.insert(
+            _frame(table),
+            storage="offline",
+            write_options={
+                "mode": "append",
+                "wait_for_job": True,
+                "commit_properties": {
+                    "transactions": [
+                        {"app_id": _chunk_app_id(feature_group, chunk_id), "version": 1}
+                        for chunk_id, _remote in chunks
+                    ]
+                },
+            },
+        )
+    except FeatureStoreException as error:
+        summary["chunks_rejected"] += len(chunks)
+        for _chunk_id, remote in chunks:
+            staging._fail(remote, claim_id)
+        print(f"FEATURE_LOG_COMMIT part rejected: {error}", flush=True)
+        return
     summary["rows_committed"] += table.num_rows
     summary["commits"] += 1
 
@@ -422,14 +413,14 @@ def _commit_part(feature_group, transactions, claim_id, part, tables, summary):
 def _process_claim(
     feature_group, staging: _Staging, claim: dict, summary: dict
 ) -> None:
-    """Commit a claim in parts of at most MAX_PART_BYTES of Arrow, each its own transaction.
+    """Commit a claim in parts of at most MAX_PART_BYTES of Arrow, each its own commit.
 
-    Parts are cut in chunk order by size, so a retry forms the same parts and skips the ones that landed.
+    A chunk the table already records is skipped, so a retry of the claim and a second copy of a chunk under a later claim both commit nothing for it.
     """
     expected = {f.name for f in _columns(feature_group) if f.name != "log_id"}
     transactions = _DeltaTransactions(feature_group)
     claim_id = claim["claim_id"]
-    part, tables, part_bytes = 0, [], 0
+    tables, part_chunks, part_bytes = [], [], 0
     chunks = staging._chunks(claim)
     with tempfile.TemporaryDirectory() as tmp:
         for remote in chunks:
@@ -446,8 +437,13 @@ def _process_claim(
                 summary["chunks_rejected"] += 1
                 staging._fail(remote, claim_id)
                 continue
+            chunk_id = _chunk_id_of(table, local)
+            if transactions._committed(chunk_id):
+                summary["chunks_already_applied"] += 1
+                os.remove(local)
+                continue
             try:
-                table = _with_log_ids(table, _chunk_id_of(table, local))
+                table = _with_log_ids(table, chunk_id)
                 if tables:
                     _unify([tables[0], table])
             except Exception:  # noqa: BLE001 - one bad chunk must not stop the claim
@@ -456,14 +452,15 @@ def _process_claim(
                 continue
             if tables and part_bytes + table.nbytes > MAX_PART_BYTES:
                 _commit_part(
-                    feature_group, transactions, claim_id, part, tables, summary
+                    feature_group, staging, claim_id, tables, part_chunks, summary
                 )
-                part, tables, part_bytes = part + 1, [], 0
+                tables, part_chunks, part_bytes = [], [], 0
             tables.append(table)
+            part_chunks.append((chunk_id, remote))
             part_bytes += table.nbytes
             os.remove(local)
     if tables:
-        _commit_part(feature_group, transactions, claim_id, part, tables, summary)
+        _commit_part(feature_group, staging, claim_id, tables, part_chunks, summary)
     summary["chunks_claimed"] += len(chunks)
     staging._release(claim_id)
 
@@ -670,7 +667,7 @@ def _run(feature_view_name: str, feature_view_version: int) -> dict:
         "feature_group": feature_group.name,
         "claims": 0,
         "claims_recovered": 0,
-        "parts_already_applied": 0,
+        "chunks_already_applied": 0,
         "chunks_claimed": 0,
         "chunks_truncated": 0,
         "chunks_rejected": 0,

@@ -111,7 +111,7 @@ class TestSegmentWriter:
         assert writer._snapshot()["bytes_current"] == 0
         assert writer.chunks_rotated == 1
 
-        big = _options(tmp_path, flush_interval_seconds=0)
+        big = _options(tmp_path / "aged", flush_interval_seconds=0)
         aged = flf._SegmentWriter(big, uploader=_Uploads())
         aged._append(_stream(1), 1)
         assert aged._due()
@@ -139,6 +139,7 @@ class TestSegmentWriter:
         first._append(_stream(2), 2)
         leftover = first._segment_path
         assert leftover.exists()  # never rotated: the process "died" here
+        first._close()  # what the kernel does to a dead writer's lock
 
         second = flf._SegmentWriter(_options(tmp_path), uploader=_Uploads())
         assert not leftover.exists()
@@ -178,6 +179,7 @@ class TestAccounting:
     def test_a_new_writer_counts_the_rows_it_adopts(self, tmp_path):
         first = flf._SegmentWriter(_options(tmp_path), uploader=_Uploads())
         first._append(_stream(4), 4)
+        first._close()
         second = flf._SegmentWriter(_options(tmp_path), uploader=_Uploads())
         assert second._snapshot()["rows_buffered"] == 4
         assert second._upload_ready()
@@ -532,6 +534,53 @@ class TestPerWorkerBuffers:
         assert not dead.exists(), "the dead worker's directory should be cleaned up"
 
     @posix_only
+    def test_a_writer_outliving_its_predictor_keeps_its_segments(
+        self, tmp_path, mocker
+    ):
+        """A killed predictor's writer is still draining; its directory is not an orphan yet.
+
+        Adopting on the predictor's liveness alone uploaded a segment the writer was
+        still appending to, and the rows it appended after the upload were lost.
+        """
+        dead_predictor = 999999
+        mocker.patch.object(
+            flf, "_process_is_alive", side_effect=lambda pid: pid != dead_predictor
+        )
+        uploads = _Uploads()
+        old = flf._SegmentWriter(
+            _options(tmp_path / f"w{dead_predictor}", handoff_seconds=0),
+            uploader=uploads,
+        )
+        old._append(_stream(1), 1)
+        own = _options(tmp_path / "w1", handoff_seconds=0)
+
+        new = flf._SegmentWriter(own, uploader=uploads)
+        assert list(new.ready_dir.glob("*.arrow")) == []
+        assert old._append(_stream(1), 1)
+        assert old._rotate()
+        assert old._upload_ready()
+        assert old.rows_written == 2 and old.rows_uploaded == 2
+
+        old._append(_stream(3), 3)  # left open by a writer that now dies
+        old._close()
+        later = flf._SegmentWriter(
+            _options(tmp_path / "w2", handoff_seconds=0), uploader=uploads
+        )
+        assert [flf._rows_in(p) for p in later.ready_dir.glob("*.arrow")] == [3]
+        assert not (tmp_path / f"w{dead_predictor}").exists()
+
+    def test_a_second_writer_on_one_directory_is_refused(self, tmp_path):
+        first = flf._SegmentWriter(
+            _options(tmp_path, handoff_seconds=0), uploader=_Uploads()
+        )
+        with pytest.raises(RuntimeError):
+            flf._SegmentWriter(
+                _options(tmp_path, handoff_seconds=0), uploader=_Uploads()
+            )
+        first._close()
+        flf._SegmentWriter(_options(tmp_path, handoff_seconds=0), uploader=_Uploads())
+
+    @posix_only
     def test_a_live_worker_s_open_segment_is_left_alone(self, tmp_path, mocker):
         """The bug the per-process directories exist to prevent."""
         own = tmp_path / "w1"
@@ -548,3 +597,45 @@ class TestPerWorkerBuffers:
 
         assert (live / "current" / "being-written.arrow").exists()
         assert list((own / "ready").glob("*.arrow")) == []
+
+
+class TestUploadReply:
+    """Only the writer stages a file of its chunk's name, so the file's absence from `uploading/` is the rename."""
+
+    @staticmethod
+    def _uploader(tmp_path, move):
+        api = _LocalDatasetApi(tmp_path)
+        api.move = move
+        (tmp_path / "uploaded").mkdir()
+        return api, flf._DatasetUploader(_options(tmp_path / "buffer"), dataset_api=api)
+
+    def test_a_rename_whose_reply_was_lost_is_finished(self, tmp_path):
+        moved = []
+
+        def move(source, destination, overwrite=False):
+            moved.append(source)
+            (tmp_path / source).rename(
+                tmp_path / "uploaded" / os.path.basename(destination)
+            )
+            raise TimeoutError("reply lost")
+
+        api, uploader = self._uploader(tmp_path, move)
+        chunk = tmp_path / "chunk.arrow"
+        chunk.write_bytes(_stream(1))
+
+        uploader._upload(chunk)  # does not raise, and a retry would stage a second copy
+
+        assert len(moved) == 1
+        assert (tmp_path / "uploaded" / "chunk.arrow").exists()
+
+    def test_a_rename_that_did_not_happen_is_raised(self, tmp_path):
+        def move(source, destination, overwrite=False):
+            raise TimeoutError("staging unreachable")
+
+        api, uploader = self._uploader(tmp_path, move)
+        chunk = tmp_path / "chunk.arrow"
+        chunk.write_bytes(_stream(1))
+
+        with pytest.raises(TimeoutError):
+            uploader._upload(chunk)
+        assert (tmp_path / uploader._staging_dir / "uploading" / "chunk.arrow").exists()

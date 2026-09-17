@@ -2893,3 +2893,17 @@ def test_commit_properties_become_a_delta_application_transaction(monkeypatch):
     )
     (transaction,) = properties.app_transactions
     assert (transaction.app_id, transaction.version) == ("hopsworks_feature_log_7", 3)
+    several = DeltaEngine._commit_properties(
+        {
+            "commit_properties": {
+                "transactions": [
+                    {"app_id": "fg/chunk/a", "version": 1},
+                    {"app_id": "fg/chunk/b", "version": 1},
+                ]
+            }
+        }
+    )
+    assert [(t.app_id, t.version) for t in several.app_transactions] == [
+        ("fg/chunk/a", 1),
+        ("fg/chunk/b", 1),
+    ]

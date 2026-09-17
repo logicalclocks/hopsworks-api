@@ -70,8 +70,6 @@ class _ArrowBatchBuilder:
         }
         self._types = {}
         for feature in self._features:
-            if "map<" in feature.type.lower():
-                raise ValueError("Map logging uses the legacy transport")
             dtype = _convert_offline_type_to_pyarrow_type(feature.type)
             if feature.name in extras and feature.name in reserved_types:
                 expected = reserved_types[feature.name]
@@ -356,9 +354,13 @@ def _select_arrow_builder(feature_view, training_dataset_version, logger):
     ):
         return None, "logger has no batch implementation"
     try:
-        return _ArrowBatchBuilder(
-            feature_view, training_dataset_version
-        ), "features-arrow-v1"
+        builder = _ArrowBatchBuilder(feature_view, training_dataset_version)
+        # The sidecar assembles Avro records, which have no map type; a chunk bound
+        # for the commit job has no such limit, so the check is here, not in the builder.
+        columns = feature_view.feature_logging.untransformed_features.columns
+        if any("map<" in feature.type.lower() for feature in columns):
+            raise ValueError("Map logging uses the legacy transport")
+        return builder, "features-arrow-v1"
     except (
         ImportError,
         ValueError,

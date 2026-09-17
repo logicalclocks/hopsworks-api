@@ -17,6 +17,7 @@
 import json
 import os
 import shutil
+import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -64,56 +65,29 @@ class TestChunks:
         assert first[0] == str(uuid.uuid5(job.LOG_ID_NAMESPACE, "chunk-7:0"))
         assert job._with_log_ids(table, "chunk-8")["log_id"].to_pylist() != first
 
-    def test_a_frame_keeps_arrow_types_for_all_null_columns(self):
+    def test_a_frame_keeps_the_chunk_s_arrow_types(self):
+        # What the engine infers from the frame has to be the chunk's own schema, or
+        # an integer list with a null becomes doubles, a decimal takes the precision
+        # of its values and an all-null date becomes a timestamp.
+        from decimal import Decimal
+
         table = pa.table(
             {
                 "request_parameters": pa.array([None, None], pa.string()),
                 "td_version": pa.array([None, None], pa.int64()),
-                "customer_id": pa.array([1, 2], pa.int64()),
+                "items": pa.array([[2**60 + 1, None], None], pa.list_(pa.int64())),
+                "price": pa.array([Decimal("123.45"), None], pa.decimal128(12, 2)),
+                "day": pa.array([None, None], pa.date32()),
+                "attributes": pa.array(
+                    [{"a": 1}, None], pa.map_(pa.string(), pa.int32())
+                ),
             }
         )
-        group = SimpleNamespace(
-            features=[
-                SimpleNamespace(name="request_parameters", type="string"),
-                SimpleNamespace(name="td_version", type="bigint"),
-                SimpleNamespace(name="customer_id", type="bigint"),
-            ]
+        frame = job._frame(table)
+        assert pa.Table.from_pandas(frame, preserve_index=False).schema.equals(
+            table.schema
         )
-        frame = job._frame(table, group)
-        kinds = {name: str(frame[name].dtype).lower() for name in table.column_names}
-        # Neither route may hand Delta a `null`-typed column.
-        assert "null" not in kinds.values()
-        assert "object" not in kinds.values()
-
-    def test_the_pandas_fallback_keeps_nullable_integers_integral(self, monkeypatch):
-        import builtins
-
-        real_import = builtins.__import__
-
-        def without_polars(name, *args, **kwargs):
-            if name == "polars":
-                raise ImportError(name)
-            return real_import(name, *args, **kwargs)
-
-        monkeypatch.setattr(builtins, "__import__", without_polars)
-        table = pa.table(
-            {
-                "td_version": pa.array([1, None], pa.int64()),
-                "score": pa.array([None, None], pa.null()),
-                "customer_id": pa.array([1, 2], pa.int64()),
-            }
-        )
-        group = SimpleNamespace(
-            features=[
-                SimpleNamespace(name="td_version", type="bigint"),
-                SimpleNamespace(name="score", type="double"),
-                SimpleNamespace(name="customer_id", type="bigint"),
-            ]
-        )
-        frame = job._frame(table, group)
-        assert str(frame["td_version"].dtype) == "Int64"  # not float64
-        assert str(frame["score"].dtype) == "float64"
-        assert str(frame["customer_id"].dtype) == "Int64"
+        assert frame["items"].iloc[0] == [2**60 + 1, None]
 
 
 class _LocalDatasetApi:
@@ -196,7 +170,7 @@ class _FeatureGroup:
 
 
 class _Transactions:
-    """Stands in for the Delta log: remembers which part transactions committed."""
+    """Stands in for the Delta log: remembers which chunks were committed."""
 
     def __init__(self, committed=()):
         self.committed = set(committed)
@@ -204,15 +178,26 @@ class _Transactions:
     def __call__(self, feature_group):
         return self
 
-    def _committed(self, app_id):
-        return app_id in self.committed
+    def _committed(self, chunk_id):
+        return chunk_id in self.committed
+
+
+def _committed_chunks(feature_group):
+    """The chunk ids each of the group's inserts recorded, in commit order."""
+    return [
+        [
+            t["app_id"].rsplit("/", 1)[-1]
+            for t in options["commit_properties"]["transactions"]
+        ]
+        for _frame, _storage, options in feature_group.inserts
+    ]
 
 
 def _summary():
     return dict.fromkeys(
         (
             "claims_recovered",
-            "parts_already_applied",
+            "chunks_already_applied",
             "chunks_claimed",
             "chunks_truncated",
             "chunks_rejected",
@@ -259,29 +244,30 @@ class TestClaims:
         assert storage == "offline"
         assert write_options["mode"] == "append"
         assert write_options["commit_properties"] == {
-            "app_id": "hopsworks_feature_log_42/exec-0/0",
-            "version": 1,
+            "transactions": [
+                {"app_id": "hopsworks_feature_log_42/chunk/dep-1", "version": 1},
+                {"app_id": "hopsworks_feature_log_42/chunk/dep-2", "version": 1},
+            ]
         }
         assert len(frame) == 6
         assert not (tmp_path / staging.root / "claimed/exec-0").exists()
 
-    def test_a_part_whose_transaction_landed_is_not_committed_again(
-        self, tmp_path, mocker
-    ):
-        api, staging = _staging(tmp_path, [("a.arrow", 2, "dep-1")])
-        fg = _FeatureGroup()
-        mocker.patch.object(
-            job,
-            "_DeltaTransactions",
-            _Transactions({"hopsworks_feature_log_42/exec-retry/0"}),
+    def test_a_chunk_the_table_records_is_not_committed_again(self, tmp_path, mocker):
+        # The same chunk under any claim: a retried claim whose commit landed, or a
+        # second copy staged by an upload retry after a lost acknowledgement.
+        api, staging = _staging(
+            tmp_path, [("a.arrow", 2, "dep-1"), ("b.arrow", 1, "dep-2")]
         )
+        fg = _FeatureGroup()
+        mocker.patch.object(job, "_DeltaTransactions", _Transactions({"dep-1"}))
         summary = _summary()
         claim = staging._claim("exec-retry", staging._pending())
 
         job._process_claim(fg, staging, claim, summary)
 
-        assert fg.inserts == []
-        assert summary["parts_already_applied"] == 1
+        assert _committed_chunks(fg) == [["dep-2"]]
+        assert summary["chunks_already_applied"] == 1
+        assert summary["rows_committed"] == 2
         assert not (tmp_path / staging.root / "claimed/exec-retry").exists()
 
     def test_an_older_uncommitted_claim_survives_a_newer_commit(self, tmp_path, mocker):
@@ -298,16 +284,13 @@ class TestClaims:
         claim_b = staging._claim("exec-b", staging._pending())
         summary = _summary()
         job._process_claim(fg, staging, claim_b, summary)
-        transactions.committed.add("hopsworks_feature_log_42/exec-b/0")
+        transactions.committed.add("dep-b")
         assert summary["rows_committed"] == 4
 
         job._process_claim(fg, staging, claim_a, summary)
         assert summary["rows_committed"] == 8
-        assert summary["parts_already_applied"] == 0
-        assert [w["commit_properties"]["app_id"] for _, _, w in fg.inserts] == [
-            "hopsworks_feature_log_42/exec-b/0",
-            "hopsworks_feature_log_42/exec-a/0",
-        ]
+        assert summary["chunks_already_applied"] == 0
+        assert _committed_chunks(fg) == [["dep-b"], ["dep-a"]]
 
     def test_a_crash_between_manifest_and_moves_is_finished_by_recovery(
         self, tmp_path, mocker
@@ -418,9 +401,7 @@ class TestClaims:
         job._process_claim(fg, staging, claim, summary)
 
         assert summary["commits"] == 3 and summary["rows_committed"] == 24
-        assert [w["commit_properties"]["app_id"] for _, _, w in fg.inserts] == [
-            f"hopsworks_feature_log_42/exec-parts/{i}" for i in range(3)
-        ]
+        assert _committed_chunks(fg) == [["dep-1"], ["dep-2"], ["dep-3"]]
 
 
 class TestRealBuilder:
@@ -765,3 +746,132 @@ class TestCompactionPolicy:
             "cleanup",
             "vacuum",
         ]
+
+
+class TestTypedCommit:
+    """What the predictor logged is what the table holds, type for type."""
+
+    def test_declared_types_survive_the_commit_and_read_back(
+        self, tmp_path, monkeypatch
+    ):
+        # Through the engine's own schema inference and compatibility check, then a
+        # local Delta append: an integer list with a null, a decimal whose values do
+        # not use its precision, an all-null date, a map, and a nested bigint.
+        from decimal import Decimal
+
+        # Other tests leave a fake deltalake module behind; this one writes a table.
+        monkeypatch.delitem(sys.modules, "deltalake", raising=False)
+        from deltalake import DeltaTable, write_deltalake
+        from hsfs.core.delta_engine import DeltaEngine
+        from hsfs.core.feature_group_base_engine import FeatureGroupBaseEngine
+        from hsfs.engine.python import Engine
+
+        declared = [
+            ("items", "array<bigint>", pa.list_(pa.int64()), [2**60 + 1, None]),
+            (
+                "details",
+                "struct<a:array<bigint>>",
+                pa.struct([("a", pa.list_(pa.int64()))]),
+                {"a": [2**60 + 1, None]},
+            ),
+            ("price", "decimal(12,2)", pa.decimal128(12, 2), Decimal("123.45")),
+            ("day", "date", pa.date32(), None),
+            (
+                "attributes",
+                "map<string,int>",
+                pa.map_(pa.string(), pa.int32()),
+                [("a", 1)],
+            ),
+            ("log_id", "string", pa.string(), "row"),
+        ]
+        table = pa.table(
+            {name: pa.array([value, None], arrow) for name, _, arrow, value in declared}
+        )
+        features = [_Feature(name, type_) for name, type_, _, _ in declared]
+
+        frame = job._frame(table)
+        inferred = Engine._parse_schema_feature_group(None, frame, features=features)
+        FeatureGroupBaseEngine._verify_schema_compatibility(None, features, inferred)
+        location = str(tmp_path / "delta")
+        write_deltalake(location, DeltaEngine._prepare_df_for_delta(frame))
+
+        stored = DeltaTable(location).to_pyarrow_table().select(table.column_names)
+        assert stored.to_pylist() == table.to_pylist()
+
+    def test_a_part_the_group_rejects_is_parked_and_the_claim_released(
+        self, tmp_path, mocker
+    ):
+        # The rejection is the same on every retry; raising it would hold every later
+        # chunk behind the parked one.
+        from hsfs.client.exceptions import FeatureStoreException
+
+        api, staging = _staging(
+            tmp_path, [("a.arrow", 2, "dep-1"), ("b.arrow", 1, "dep-2")]
+        )
+        fg = _FeatureGroup()
+
+        def reject(*args, **kwargs):
+            raise FeatureStoreException("Features are not compatible")
+
+        fg.insert = reject
+        mocker.patch.object(job, "_DeltaTransactions", _Transactions())
+        summary = _summary()
+        claim = staging._claim("exec-bad", staging._pending())
+
+        job._process_claim(fg, staging, claim, summary)
+
+        assert summary["chunks_rejected"] == 2 and summary["commits"] == 0
+        assert sorted(
+            p.name for p in (tmp_path / staging.root / "failed/exec-bad").iterdir()
+        ) == ["a.arrow", "b.arrow"]
+        assert not (tmp_path / staging.root / "claimed/exec-bad").exists()
+
+
+def test_a_chunk_staged_twice_is_committed_once(tmp_path, mocker, monkeypatch):
+    """The same chunk under a later claim commits nothing, through a real Delta log.
+
+    A second copy reaches `pending/` when a writer retries an upload the job had
+    already claimed, or when a stale upload is adopted while its writer still retries.
+    """
+    monkeypatch.delitem(sys.modules, "deltalake", raising=False)
+    from deltalake import DeltaTable, write_deltalake
+    from hsfs.core.delta_engine import DeltaEngine
+
+    api, staging = _staging(tmp_path, [("a.arrow", 1, "stable-chunk-id")])
+    fg = _FeatureGroup()
+    location = str(tmp_path / "delta")
+
+    def insert(frame, storage, write_options):
+        write_deltalake(
+            location,
+            DeltaEngine._prepare_df_for_delta(frame),
+            mode="append",
+            commit_properties=DeltaEngine._commit_properties(write_options),
+        )
+
+    fg.insert = insert
+
+    class Transactions:
+        def __init__(self, feature_group):
+            pass
+
+        def _committed(self, chunk_id):
+            if not os.path.exists(location):
+                return False
+            app_id = job._chunk_app_id(fg, chunk_id)
+            return DeltaTable(location).transaction_version(app_id) is not None
+
+    mocker.patch.object(job, "_DeltaTransactions", Transactions)
+    summary = _summary()
+    job._process_claim(
+        fg, staging, staging._claim("execution-1", staging._pending()), summary
+    )
+    _chunk(tmp_path / staging.root / "pending" / "a.arrow", 1, "stable-chunk-id")
+    job._process_claim(
+        fg, staging, staging._claim("execution-2", staging._pending()), summary
+    )
+
+    ids = DeltaTable(location).to_pyarrow_table()["log_id"].to_pylist()
+    assert len(ids) == 2 and len(set(ids)) == 2
+    assert summary["chunks_already_applied"] == 1
+    assert summary["commits"] == 1

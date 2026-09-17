@@ -96,7 +96,7 @@ if HAS_PYARROW:
         """Convert an offline type string to a PyArrow type.
 
         Supports simple types (int, bigint, string, etc.), array types (array<type>),
-        and struct types (struct<field1:type1,field2:type2>).
+        map types (map<key,value>) and struct types (struct<field1:type1,field2:type2>).
 
         Parameters:
             offline_type: The offline type string to convert.
@@ -113,6 +113,14 @@ if HAS_PYARROW:
             ]  # Extract content between array< and >
             element_type = _convert_offline_type_to_pyarrow_type(element_type_str)
             return pa.list_(element_type)
+
+        # Handle map types: map<key,value>, where the value may itself be nested
+        if offline_type.startswith("map<") and offline_type.endswith(">"):
+            key_type_str, value_type_str = _split_map_types(offline_type[4:-1])
+            return pa.map_(
+                _convert_offline_type_to_pyarrow_type(key_type_str),
+                _convert_offline_type_to_pyarrow_type(value_type_str),
+            )
 
         # Handle struct types: struct<field1:type1,field2:type2>
         if offline_type.startswith("struct<") and offline_type.endswith(">"):
@@ -204,6 +212,19 @@ else:
         )
 
 
+def _split_map_types(content: str) -> tuple[str, str]:
+    """The key and value type strings of a `map<key,value>` body; the value may carry its own commas."""
+    depth = 0
+    for index, char in enumerate(content):
+        if char in "<(":
+            depth += 1
+        elif char in ">)":
+            depth -= 1
+        elif char == "," and depth == 0:
+            return content[:index].strip(), content[index + 1 :].strip()
+    raise FeatureStoreException(f"Invalid map type format: map<{content}>.")
+
+
 # python cast column to offline type
 if HAS_POLARS:
     import polars as pl
@@ -285,6 +306,7 @@ def _convert_pandas_dtype_to_offline_type(arrow_type: str) -> str:
         pa.types.is_list(arrow_type)
         or pa.types.is_large_list(arrow_type)
         or pa.types.is_struct(arrow_type)
+        or pa.types.is_map(arrow_type)
     ):
         return _convert_pandas_object_type_to_offline_type(arrow_type)
 
@@ -297,6 +319,10 @@ def _convert_pandas_object_type_to_offline_type(arrow_type: str) -> str:
         sub_arrow_type = arrow_type.value_type
         subtype = _convert_pandas_dtype_to_offline_type(sub_arrow_type)
         return f"array<{subtype}>"
+    if pa.types.is_map(arrow_type):
+        key_type = _convert_pandas_dtype_to_offline_type(arrow_type.key_type)
+        value_type = _convert_pandas_dtype_to_offline_type(arrow_type.item_type)
+        return f"map<{key_type},{value_type}>"
     if pa.types.is_struct(arrow_type):
         struct_schema = {}
         for index in range(arrow_type.num_fields):

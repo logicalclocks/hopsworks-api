@@ -41,6 +41,12 @@ from pathlib import Path
 from hopsworks_common.core.feature_logging_buffer import _positive_env
 
 
+try:
+    import fcntl
+except ImportError:  # Windows: a writer there runs alone and adopts on liveness only
+    fcntl = None
+
+
 _logger = logging.getLogger(__name__)
 
 STAGING_ROOT = "Resources/feature_logging"
@@ -105,6 +111,50 @@ def _process_is_alive(pid: int) -> bool:
     except OSError:
         return True
     return True
+
+
+class _DirectoryLock:
+    """The writer's claim on a buffer directory, held for as long as it may touch the files.
+
+    The directory is named after the predictor, but the writer is a separate process that
+    outlives a killed predictor while it drains its queue and finishes its uploads. A
+    liveness check on the predictor therefore says nothing about the writer, and a
+    replacement that adopted on that check alone took `current/` from under a writer
+    still appending to it: the upload carried some of the rows, the writer counted all
+    of them. The lock is what the writer holds and what an adopter has to obtain first;
+    the kernel drops it when the writer dies, however it dies.
+    """
+
+    def __init__(self, directory: Path):
+        self.path = Path(directory) / "lock"
+        self._file = None
+
+    def _acquire(self, timeout: float = 0.0) -> bool:
+        """Take the lock, waiting up to `timeout` seconds; `False` when another process holds it."""
+        if fcntl is None:
+            return True
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        deadline = time.monotonic() + timeout
+        handle = open(self.path, "a")  # noqa: SIM115 - held until _release()
+        while True:
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                if time.monotonic() >= deadline:
+                    handle.close()
+                    return False
+                time.sleep(0.05)
+                continue
+            self._file = handle
+            return True
+
+    def _release(self) -> None:
+        if self._file is None:
+            return
+        with contextlib.suppress(OSError):
+            fcntl.flock(self._file.fileno(), fcntl.LOCK_UN)
+        self._file.close()
+        self._file = None
 
 
 def _orphaned_buffer_dirs(own: str, root: str = BUFFER_ROOT) -> list[Path]:
@@ -259,12 +309,21 @@ class _DatasetUploader:
     def _upload(self, local_path: Path) -> None:
         api = self._dataset_api()
         uploading = f"{self._staging_dir}/uploading"
+        uploaded = f"{uploading}/{local_path.name}"
         api.upload(str(local_path), uploading, overwrite=True)
-        api.move(
-            f"{uploading}/{local_path.name}",
-            f"{self._staging_dir}/pending/{local_path.name}",
-            overwrite=True,
-        )
+        try:
+            api.move(
+                uploaded,
+                f"{self._staging_dir}/pending/{local_path.name}",
+                overwrite=True,
+            )
+        except Exception:
+            # A rename whose reply was lost has still happened. Only this writer
+            # puts a file of this name under `uploading/`, so the file being gone
+            # from there means the rename landed and a retry would stage the
+            # chunk a second time.
+            if api.exists(uploaded):
+                raise
         self._bytes_since_trigger += local_path.stat().st_size
 
     def _maybe_trigger_commit(self) -> bool:
@@ -322,6 +381,9 @@ class _SegmentWriter:
         self.upload_buckets = [0] * len(UPLOAD_SECONDS_BOUNDS)
         self._segment_rows = 0
         self._chunk_rows: dict[str, int] = {}
+        self._lock = _DirectoryLock(root)
+        if not self._lock._acquire(timeout=options.handoff_seconds):
+            raise RuntimeError(f"another feature log writer holds {root}")
         self._adopt_leftovers()
 
     def _adopt_leftovers(self) -> None:
@@ -338,23 +400,35 @@ class _SegmentWriter:
         """Take the segments of serving processes that are gone.
 
         Their rows are written and not yet uploaded, and nothing else will come back for
-        them. Only directories whose owning process is dead are touched: a live worker's
-        buffer is its own, and taking a segment it is still appending to is exactly the
-        bug the per-process directories exist to prevent.
+        them. A directory is taken only when its predictor is dead and its writer's lock
+        can be obtained: a live worker's buffer is its own, and taking a segment its
+        writer is still appending to is exactly the bug the per-process directories and
+        the lock exist to prevent. A writer still draining after its predictor was
+        killed keeps its directory until it is done, and the next adopter finds it.
 
         The move is a rename, so two processes racing for the same orphan cannot both
         win; the one that loses finds it gone and moves on.
         """
         root = os.path.dirname(self._options.buffer_dir)
         for orphan in _orphaned_buffer_dirs(self._options.buffer_dir, root):
-            for sub in ("current", "ready"):
-                for path in sorted((orphan / sub).glob("*" + CHUNK_SUFFIX)):
-                    try:
-                        os.rename(path, self.ready_dir / path.name)
-                    except OSError:
-                        continue
-            with contextlib.suppress(OSError):
-                shutil.rmtree(orphan)
+            lock = _DirectoryLock(orphan)
+            if not lock._acquire():
+                continue
+            try:
+                for sub in ("current", "ready"):
+                    for path in sorted((orphan / sub).glob("*" + CHUNK_SUFFIX)):
+                        try:
+                            os.rename(path, self.ready_dir / path.name)
+                        except OSError:
+                            continue
+                with contextlib.suppress(OSError):
+                    shutil.rmtree(orphan)
+            finally:
+                lock._release()
+
+    def _close(self) -> None:
+        """Give the directory up; nothing here is appended to or uploaded after this."""
+        self._lock._release()
 
     def _chunk_id(self) -> str:
         # The pod name already carries the deployment and revision.
@@ -666,6 +740,7 @@ def _writer_main(options: _FileLogOptions, stdin=None, stdout=None) -> None:
         uploader.stopping.set()
         uploader._drain(time.monotonic() + options.shutdown_seconds)
     report()
+    writer._close()
 
 
 class _FileLogTransport:

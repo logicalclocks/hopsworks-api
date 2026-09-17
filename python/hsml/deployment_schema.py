@@ -1597,21 +1597,45 @@ _TENSOR_DATATYPES = {"integer": "INT64", "float": "FP64", "boolean": "BOOL"}
 JSON_DATATYPE = "BYTES"
 PREDICTIONS = "predictions"
 COLUMNS = "columns"
+# The one tensor of a request whose rows differ in which optional fields they carry.
+ROWS_TENSOR = "__rows__"
+_INT64_RANGE = range(-(2**63), 2**63)
+# The largest magnitude at which every integer is still a double exactly.
+_EXACT_IN_FP64 = 2**53
+
+
+def _is_integer(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
 
 
 def _fits_datatype(datatype: str, values: list[Any]) -> bool:
+    """Whether every value comes back from a tensor of `datatype` as the value it was.
+
+    An integer travels in an FP64 tensor only while a double holds it exactly; beyond that it is rounded on the wire, silently.
+    """
     if any(value is None for value in values):
         return False
     if datatype == "BOOL":
         return all(isinstance(value, bool) for value in values)
     if datatype == "INT64":
-        return all(
-            isinstance(value, int) and not isinstance(value, bool) for value in values
-        )
+        return all(_is_integer(value) and value in _INT64_RANGE for value in values)
     return all(
-        isinstance(value, (int, float)) and not isinstance(value, bool)
+        isinstance(value, float)
+        or (_is_integer(value) and abs(value) <= _EXACT_IN_FP64)
         for value in values
     )
+
+
+def _value_family(values: list[Any]) -> str:
+    """The family that carries `values` as they are, read off the values themselves.
+
+    A response has no schema to name its types, and integers sent as doubles come back as doubles: `1` as `1.0`, and anything past 2**53 rounded.
+    """
+    if values and all(isinstance(value, bool) for value in values):
+        return "boolean"
+    if values and all(_is_integer(value) for value in values):
+        return "integer"
+    return "float"
 
 
 def _tensor(name: str, values: list[Any], family: str | None = None) -> dict[str, Any]:
@@ -1654,8 +1678,9 @@ def _encode_rows(schema: DeploymentSchema, instances: list[Any]) -> list[dict]:
 
     A field no row of the batch carries is left out rather than sent as a
     column of nulls: an optional field is absent, not null, and a validator
-    reads the two differently. A field some rows carry and others omit does
-    reach the predictor as null in the rows that omit it.
+    reads the two differently. A column cannot say which of its rows omitted
+    the field, so a batch whose rows differ in the fields they carry travels
+    as one tensor of whole rows instead, and arrives exactly as it was sent.
     """
     columns = schema.columns
     rows = [
@@ -1664,10 +1689,12 @@ def _encode_rows(schema: DeploymentSchema, instances: list[Any]) -> list[dict]:
         else dict(zip((f.name for f in columns), instance, strict=True))
         for instance in instances
     ]
+    carried = [field for field in columns if any(field.name in row for row in rows)]
+    if any(field.name not in row for field in carried for row in rows):
+        return [_tensor(ROWS_TENSOR, rows)]
     return [
-        _tensor(field.name, [row.get(field.name) for row in rows], _family(field.type))
-        for field in columns
-        if any(field.name in row for row in rows)
+        _tensor(field.name, [row[field.name] for row in rows], _family(field.type))
+        for field in carried
     ]
 
 
@@ -1679,6 +1706,8 @@ def _decode_rows(tensors: list[Any]) -> list[dict[str, Any]]:
         )
         for tensor in tensors
     }
+    if list(columns) == [ROWS_TENSOR]:
+        return columns[ROWS_TENSOR]
     count = max((len(values) for values in columns.values()), default=0)
     return [{name: values[i] for name, values in columns.items()} for i in range(count)]
 
@@ -1689,7 +1718,8 @@ def _encode_outputs(payload: Any) -> list[dict[str, Any]]:
     One tensor per key of a dict response, a single `predictions` tensor
     otherwise, so nothing the predictor answered is dropped on the way out. A
     value that is not a sequence travels as a shapeless tensor and decodes back
-    to itself rather than to a batch of one.
+    to itself rather than to a batch of one. Each tensor's datatype comes from
+    its values, so an integer prediction stays an integer.
     """
     if not isinstance(payload, dict):
         payload = {PREDICTIONS: payload}
@@ -1698,9 +1728,12 @@ def _encode_outputs(payload: Any) -> list[dict[str, Any]]:
         if hasattr(values, "tolist"):
             values = values.tolist()
         if isinstance(values, (list, tuple)):
-            tensors.append(_tensor(name, list(values), "float"))
+            values = list(values)
+            tensors.append(_tensor(name, values, _value_family(values)))
         else:
-            tensors.append({**_tensor(name, [values], "float"), "shape": []})
+            tensors.append(
+                {**_tensor(name, [values], _value_family([values])), "shape": []}
+            )
     return tensors
 
 

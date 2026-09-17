@@ -333,9 +333,10 @@ class TestTypeSystems:
         import importlib
         import sys
 
-        # Ensure we re-import with HAS_PYARROW=False; drop cached modules first.
-        sys.modules.pop("hopsworks_common.core.type_systems", None)
-        sys.modules.pop("hsfs.core.type_systems", None)
+        # Re-import with HAS_PYARROW=False; the cached modules come back on teardown,
+        # or every later import of type_systems gets this pyarrow-less copy.
+        monkeypatch.delitem(sys.modules, "hopsworks_common.core.type_systems")
+        monkeypatch.delitem(sys.modules, "hsfs.core.type_systems", raising=False)
 
         monkeypatch.setattr(
             "hopsworks_common.core.constants.HAS_PYARROW", False, raising=False
@@ -1026,3 +1027,51 @@ class TestCastPolarsColumnToOfflineType:
 
         # Assert
         assert result is series
+
+
+class TestMapTypes:
+    """`map<key,value>` converts both ways, including a value type with commas of its own."""
+
+    def test_offline_map_types_become_arrow_maps(self):
+        import pyarrow as pa
+        from hopsworks_common.core.type_systems import (
+            _convert_offline_type_to_pyarrow_type,
+        )
+
+        assert _convert_offline_type_to_pyarrow_type("map<string,int>") == pa.map_(
+            pa.string(), pa.int32()
+        )
+        assert _convert_offline_type_to_pyarrow_type(
+            "map<string,struct<a:int,b:decimal(12,2)>>"
+        ) == pa.map_(
+            pa.string(), pa.struct([("a", pa.int32()), ("b", pa.decimal128(12, 2))])
+        )
+        assert _convert_offline_type_to_pyarrow_type(
+            "array<map<string,bigint>>"
+        ) == pa.list_(pa.map_(pa.string(), pa.int64()))
+
+    def test_arrow_maps_become_offline_map_types(self):
+        import pyarrow as pa
+        from hopsworks_common.core.type_systems import (
+            _convert_pandas_dtype_to_offline_type,
+        )
+
+        assert (
+            _convert_pandas_dtype_to_offline_type(pa.map_(pa.string(), pa.int32()))
+            == "map<string,int>"
+        )
+        assert (
+            _convert_pandas_dtype_to_offline_type(
+                pa.map_(pa.string(), pa.list_(pa.int64()))
+            )
+            == "map<string,array<bigint>>"
+        )
+
+    def test_a_map_without_a_value_type_is_rejected(self):
+        from hopsworks_common.client.exceptions import FeatureStoreException
+        from hopsworks_common.core.type_systems import (
+            _convert_offline_type_to_pyarrow_type,
+        )
+
+        with pytest.raises(FeatureStoreException):
+            _convert_offline_type_to_pyarrow_type("map<string>")

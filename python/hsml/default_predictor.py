@@ -1157,31 +1157,50 @@ class DefaultPredict:
         drained = self._log_worker._close(timeout) if self._log_worker else True
         if self._file_transport is not None:
             # The writer uploads what it holds within what is left of the same
-            # budget, then the commit job is asked to pick it up so a stopped
-            # deployment's rows reach the log.
+            # budget, then the commit job is asked to pick up what was uploaded
+            # so a stopped deployment's rows reach the log.
             drained = (
-                self._file_transport._close(max(0.5, deadline - time.monotonic()))
+                self._file_transport._close(max(0.0, deadline - time.monotonic()))
                 and drained
             )
-            self._trigger_commit_job()
+            self._trigger_commit_job(max(0.0, deadline - time.monotonic()))
         return drained
 
-    def _trigger_commit_job(self) -> None:
+    def _trigger_commit_job(self, timeout: float) -> None:
+        """Ask the commit job to run, within what is left of the shutdown budget.
+
+        The requests cannot be interrupted, so they run on a thread that is left behind
+        when the budget runs out: the job's schedule picks the uploaded chunks up anyway,
+        and a backend that does not answer must not hold the pod past its budget.
+        """
         from hopsworks_common.core.feature_logging_file import _commit_job_name
         from hopsworks_common.core.job_api import JobApi
 
         name = _commit_job_name(self.feature_view.name, self.feature_view.version)
-        try:
-            job = JobApi().get_job(name)
-            if job is not None and not any(
-                e.success is None for e in job.get_executions() or []
-            ):
-                job.run(await_termination=False)
-        except Exception as error:  # noqa: BLE001 - the pod is stopping
+
+        def run():
+            try:
+                job = JobApi().get_job(name)
+                if job is not None and not any(
+                    e.success is None for e in job.get_executions() or []
+                ):
+                    job.run(await_termination=False)
+            except Exception as error:  # noqa: BLE001 - the pod is stopping
+                _logger.warning(
+                    "Feature log commit job %s not triggered: %s",
+                    name,
+                    type(error).__name__,
+                )
+
+        worker = threading.Thread(
+            target=run, name="hsml-feature-log-trigger", daemon=True
+        )
+        worker.start()
+        worker.join(timeout)
+        if worker.is_alive():
             _logger.warning(
-                "Feature log commit job %s not triggered: %s",
+                "Feature log commit job %s not triggered within the shutdown budget",
                 name,
-                type(error).__name__,
             )
 
     def _log_now(self, requests) -> None:

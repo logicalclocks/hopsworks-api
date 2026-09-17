@@ -50,7 +50,9 @@ class FakeFeatureView:
         self.feature_logging = SimpleNamespace(
             extra_logging_columns=[
                 SimpleNamespace(name=n, type="string") for n in extra_columns
-            ]
+            ],
+            untransformed_features=SimpleNamespace(columns=[]),
+            transformed_features=None,
         )
         self.transformation_functions = list(transformation_functions)
         self.init_serving_calls = []
@@ -559,7 +561,7 @@ class TestPredict:
         )
 
         assert result == [
-            {"name": "predictions", "shape": [2], "datatype": "FP64", "data": [1, 1]}
+            {"name": "predictions", "shape": [2], "datatype": "INT64", "data": [1, 1]}
         ]
         assert fv.lookup_calls[0]["entry"] == [{"cc_num": 1}, {"cc_num": 2}]
 
@@ -1259,7 +1261,7 @@ def test_job_transport_hands_posts_to_the_file_writer(pod_env, monkeypatch):
     fv = FakeFeatureView(logging_enabled=True)
     predictor = dp.DefaultPredict(FakeDeployment(_schema(), fv, FakeModel(COLUMNAR)))
     monkeypatch.setattr(
-        predictor, "_trigger_commit_job", lambda: triggered.append(True)
+        predictor, "_trigger_commit_job", lambda timeout: triggered.append(timeout)
     )
     assert predictor.logging_enabled and predictor.logging_transport == "job"
     assert fv.feature_logger is None  # the sidecar logger was never initialised
@@ -1274,7 +1276,8 @@ def test_job_transport_hands_posts_to_the_file_writer(pod_env, monkeypatch):
     assert batch.column("td_version").to_pylist() == [3, 3]
     assert predictor.close(timeout=7.0)
     # The writer gets what is left of the one shutdown budget, never a second one.
-    assert len(closed) == 1 and 0.5 <= closed[0] <= 7.0 and triggered == [True]
+    assert len(closed) == 1 and 0.0 <= closed[0] <= 7.0
+    assert len(triggered) == 1 and 0.0 <= triggered[0] <= closed[0]
 
 
 def test_logging_transport_prefers_the_backend_variable(monkeypatch):
@@ -1508,3 +1511,25 @@ class TestFeatureViewDeploymentIsAsync:
         """One import, not a try/except whose branches were identical."""
         assert dp.STUB_SCRIPT.count("import DefaultPredict as Predict") == 1
         assert "except ImportError" not in dp.STUB_SCRIPT
+
+
+def test_close_leaves_the_commit_job_trigger_behind_at_the_budget(monkeypatch):
+    """A backend that does not answer must not hold the stopping pod past its budget."""
+    predictor = object.__new__(dp.DefaultPredict)
+    predictor._log_worker = None
+    predictor._file_transport = SimpleNamespace(_close=lambda timeout: True)
+    predictor.feature_view = SimpleNamespace(name="view", version=1)
+    asked = threading.Event()
+
+    def slow_get_job(name):
+        asked.set()
+        time.sleep(0.5)
+
+    monkeypatch.setattr(
+        "hopsworks_common.core.job_api.JobApi",
+        lambda: SimpleNamespace(get_job=slow_get_job),
+    )
+    started = time.monotonic()
+    assert predictor.close(timeout=0.05) is True
+    assert time.monotonic() - started < 0.3
+    assert asked.wait(1)

@@ -882,20 +882,23 @@ class DeltaEngine:
 
     @staticmethod
     def _commit_properties(write_options):
-        """The Delta application transaction a writer records with its commit.
+        """The Delta application transactions a writer records with its commit.
 
-        `write_options["commit_properties"]` names an `app_id` and a `version`; a reader checks `DeltaTable.transaction_version(app_id)` to see whether a retried write already landed.
+        `write_options["commit_properties"]` names either one `app_id` and `version` or a list of them under `transactions`; a reader checks `DeltaTable.transaction_version(app_id)` to see whether a retried write already landed.
         """
         properties = (write_options or {}).get("commit_properties")
         if not properties:
             return None
         from deltalake import CommitProperties, Transaction
 
+        transactions = properties.get("transactions", [properties])
         return CommitProperties(
             app_transactions=[
                 Transaction(
-                    app_id=str(properties["app_id"]), version=int(properties["version"])
+                    app_id=str(transaction["app_id"]),
+                    version=int(transaction["version"]),
                 )
+                for transaction in transactions
             ]
         )
 

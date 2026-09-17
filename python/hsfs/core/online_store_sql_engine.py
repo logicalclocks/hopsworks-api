@@ -55,15 +55,34 @@ if HAS_AIOMYSQL and HAS_SQLALCHEMY:
 _logger = logging.getLogger(__name__)
 
 
-def _terminate_pool(pool) -> None:
-    """Close a connection pool's sockets, from anywhere, without awaiting.
+# Longest an explicit close waits for a loop to release its pool's connections.
+_POOL_CLOSE_SECONDS = 10.0
 
-    `close` only marks a pool closing and needs `wait_closed` awaited on the pool's own
-    loop to finish; `terminate` shuts the connections down on the spot, which is the only
-    thing available once that loop is gone.
+
+def _terminate_pool(pool) -> None:
+    """Close what can still be closed of a pool whose loop is gone.
+
+    A pool is closed properly by `close()` and an awaited `wait_closed()` on its own
+    loop, which also releases the idle connections; once that loop is closed nothing
+    can be awaited on it, `terminate()` drops the connections that were in use, and the
+    idle ones go with the loop when it is collected.
     """
     with contextlib.suppress(Exception):
         pool.terminate()
+
+
+def _opened(opening):
+    """The `(pool, lifetime)` a pool-opening task produced, `None` while it has not."""
+    if not opening.done() or opening.cancelled() or opening.exception() is not None:
+        return None
+    return opening.result()
+
+
+def _running_loop():
+    try:
+        return asyncio.get_running_loop()
+    except RuntimeError:
+        return None
 
 
 class OnlineStoreSqlClient:
@@ -128,9 +147,7 @@ class OnlineStoreSqlClient:
         exhaust the online store's `max_connections`.
 
         Both kinds of pool go: the task thread's, and the per-loop ones the awaited
-        lookups build. The latter are keyed weakly by loop, so this only reaches those
-        whose loop is still alive; a collected loop's pool is terminated by the finalizer
-        `_loop_connection_pool` registers.
+        lookups build, each closed on its own loop where that loop can still run.
         """
         self._close_loop_connection_pools()
         thread = self._async_task_thread
@@ -754,36 +771,95 @@ class OnlineStoreSqlClient:
         )
 
     async def _loop_connection_pool(self):
-        """This event loop's own connection pool, created once and kept.
+        """This event loop's own connection pool, created once and kept while the loop lives.
 
         aiomysql binds a pool to the loop that created it, so a pool made on the
         `AsyncTaskThread` cannot be awaited from anywhere else. Keying them by loop is
         what lets a caller await its own.
 
-        Each pool opens one connection per feature group in the view and holds them, so
-        a pool that outlives its loop is that many sockets the online store keeps until
-        the process ends. A serving deployment has one loop and never notices; a script
-        that calls `asyncio.run` per lookup builds a loop each time, and without the
-        finalizer below every one of them would leave its pool behind. A pool whose loop
-        is still alive stays in the map instead, where `_close` finds it.
+        Callers that arrive before the pool is open share one opening task rather than
+        each opening a pool of their own. Each pool holds one connection per feature
+        group in the view, so a cold burst of requests would otherwise open that many
+        pools, keep one, and leave the others' connections to the online store's limit.
+        The await is shielded: a caller cancelled while the pool opens does not cancel
+        the opening for the callers behind it.
+
+        The pool closes when its loop shuts down. asyncio has no hook for that, but
+        `asyncio.run` and `asyncio.Runner` finalize the loop's async generators before
+        closing it, so the pool's lifetime is one such generator, suspended on the loop
+        and closing the pool from its `finally`, on the loop, while it still runs. A
+        script that calls `asyncio.run` per lookup builds a loop each time, and without
+        this every one of them would leave its connections open behind it.
         """
         loop = asyncio.get_running_loop()
-        pool = self._loop_connection_pools.get(loop)
-        if pool is None:
-            pool = await self._get_connection_pool(
-                len(self._prepared_statements[self.SINGLE_VECTOR_KEY])
-            )
-            self._loop_connection_pools[loop] = pool
-            # terminate rather than close: by the time a loop is collected it is closed
-            # too, and closing a pool properly needs its loop to run wait_closed.
-            weakref.finalize(loop, _terminate_pool, pool)
+        self._forget_closed_loops()
+        opening = self._loop_connection_pools.get(loop)
+        if opening is None:
+            opening = loop.create_task(self._open_loop_connection_pool(loop))
+            self._loop_connection_pools[loop] = opening
+        try:
+            pool, _lifetime = await asyncio.shield(opening)
+        except BaseException:
+            if opening.done() and self._loop_connection_pools.get(loop) is opening:
+                # Failed or cancelled while opening: the next caller tries again.
+                del self._loop_connection_pools[loop]
+            raise
         return pool
 
+    async def _open_loop_connection_pool(self, loop):
+        pool = await self._get_connection_pool(
+            len(self._prepared_statements[self.SINGLE_VECTOR_KEY])
+        )
+        lifetime = self._pool_lifetime(loop, pool, asyncio.current_task())
+        # Iterated once so that it is suspended, registered with the loop, and finalized
+        # by `loop.shutdown_asyncgens()`; kept in this task's result so that nothing
+        # collects it, and with it the pool, before then.
+        await lifetime.__anext__()
+        return pool, lifetime
+
+    async def _pool_lifetime(self, loop, pool, opening):
+        """Suspended for as long as the loop runs; closing it closes the pool, on the loop."""
+        try:
+            yield
+        finally:
+            if self._loop_connection_pools.get(loop) is opening:
+                del self._loop_connection_pools[loop]
+            pool.close()
+            await pool.wait_closed()
+
+    def _forget_closed_loops(self) -> None:
+        """Drop the pools of loops closed without finalizing their async generators.
+
+        Nothing can be awaited on such a loop any more, so the connections still in use
+        are dropped and the idle ones are collected with the loop.
+        """
+        for loop, opening in list(self._loop_connection_pools.items()):
+            if not loop.is_closed():
+                continue
+            del self._loop_connection_pools[loop]
+            opened = _opened(opening)
+            if opened is not None:
+                _terminate_pool(opened[0])
+
     def _close_loop_connection_pools(self) -> None:
-        """Release the pools of loops that are still alive."""
-        for pool in list(self._loop_connection_pools.values()):
-            _terminate_pool(pool)
-        self._loop_connection_pools.clear()
+        """Close every loop's pool now, each on its own loop where that loop can still run."""
+        for loop, opening in list(self._loop_connection_pools.items()):
+            del self._loop_connection_pools[loop]
+            opened = _opened(opening)
+            if opened is None:
+                opening.cancel()
+                continue
+            pool, lifetime = opened
+            if loop.is_closed():
+                _terminate_pool(pool)
+            elif not loop.is_running():
+                loop.run_until_complete(lifetime.aclose())
+            elif _running_loop() is loop:
+                loop.create_task(lifetime.aclose())
+            else:
+                future = asyncio.run_coroutine_threadsafe(lifetime.aclose(), loop)
+                with contextlib.suppress(Exception):
+                    future.result(timeout=_POOL_CLOSE_SECONDS)
 
     def _refresh_mysql_connection(self):
         if _logger.isEnabledFor(logging.DEBUG):
