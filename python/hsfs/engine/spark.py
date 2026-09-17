@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import copy
+import decimal
 import json
 import os
 import re
@@ -151,6 +152,16 @@ class Engine:
     # Prefix only; each registration appends a unique suffix so two pushdown reads in one
     # session cannot land on the same view.
     PUSHDOWN_RESULT_VIEW_PREFIX = "pushdown_result_hopsworks"
+
+    # Marks where a spine's rows belong in a pushed-down query. A contract with the backend's
+    # ConstructorController.SPINE_PLACEHOLDER_PREFIX; the two have to change together.
+    SPINE_PLACEHOLDER_PREFIX = "__hopsworks_spine_"
+
+    # Above this the spine is left to the engine-side path. The ceiling is not the warehouse's
+    # statement size limit, which is far away (50k rows measures ~1.3MiB against Snowflake's
+    # ~16MB), but the time spent parsing and materialising the literals: measured on TPC-H,
+    # 1k rows added 0.5s, 10k 2.1s and 50k 11.7s.
+    SPINE_PUSHDOWN_MAX_ROWS = 10000
 
     def _create_spark_session(self):
         """Create and return a SparkSession.
@@ -291,11 +302,16 @@ class Engine:
     def _is_source_pushdown_supported(self):
         return True
 
-    def _register_pushdown_query(self, fs_query):
-        external_fg = fs_query.on_demand_fg_aliases[0].on_demand_feature_group
-        dataframe = external_fg.data_source.storage_connector.read(
-            fs_query.pushdown_query
-        )
+    def _register_pushdown_query(self, fs_query, spine=None):
+        pushdown_query = fs_query.pushdown_query
+        if self.SPINE_PLACEHOLDER_PREFIX in pushdown_query:
+            pushdown_query = self._substitute_spine_rows(pushdown_query, spine)
+            if pushdown_query is None:
+                # Caller falls back to reading each feature group separately.
+                return None
+
+        external_fg = self._pushdown_connector_fg(fs_query)
+        dataframe = external_fg.data_source.storage_connector.read(pushdown_query)
 
         # Feature names in the feature store are always lower case, while a warehouse that folds
         # unquoted identifiers returns them upper case. Lower casing can only move a returned
@@ -310,6 +326,128 @@ class Engine:
         view = f"{self.PUSHDOWN_RESULT_VIEW_PREFIX}_{uuid.uuid4().hex}"
         dataframe.createOrReplaceTempView(view)
         return f"SELECT * FROM {view}"
+
+    @staticmethod
+    def _pushdown_connector_fg(fs_query):
+        """The feature group whose connector executes the pushed-down query.
+
+        A spine carries a data source but no connector, and it is always the query root, so the
+        first alias is not necessarily the one that can run the query.
+        """
+        for fg_alias in fs_query.on_demand_fg_aliases:
+            on_demand_fg = fg_alias.on_demand_feature_group
+            data_source = getattr(on_demand_fg, "data_source", None)
+            if data_source is not None and data_source.storage_connector is not None:
+                return on_demand_fg
+        raise FeatureStoreException(
+            "A query was pushed down to its source, but none of its feature groups carries a "
+            "storage connector to execute it with."
+        )
+
+    def _substitute_spine_rows(self, pushdown_query, spine):
+        """Replace the backend's spine placeholder with the spine's own rows.
+
+        The backend cannot render this itself: a spine's rows exist only here. Returns None when
+        the spine cannot be inlined, which tells the caller to fall back rather than send a query
+        the warehouse would reject.
+        """
+        placeholders = set(
+            re.findall(rf"{self.SPINE_PLACEHOLDER_PREFIX}\w+", pushdown_query)
+        )
+        if len(placeholders) != 1:
+            # One spine dataframe is passed in, so more than one placeholder cannot be resolved.
+            self._warn_spine_pushdown_skipped(
+                f"the query carries {len(placeholders)} spine placeholders and only one spine"
+            )
+            return None
+        if spine is None or spine.dataframe is None:
+            self._warn_spine_pushdown_skipped("the spine has no dataframe")
+            return None
+
+        dataframe = spine.dataframe
+        # The warehouse folds unquoted identifiers, and the query refers to features by their
+        # (lower case) feature names, so the emitted column aliases have to match those.
+        columns = [column.lower() for column in dataframe.columns]
+        rows = dataframe.limit(self.SPINE_PUSHDOWN_MAX_ROWS + 1).collect()
+        if not rows:
+            self._warn_spine_pushdown_skipped("the spine is empty")
+            return None
+        if len(rows) > self.SPINE_PUSHDOWN_MAX_ROWS:
+            self._warn_spine_pushdown_skipped(
+                f"the spine has more than {self.SPINE_PUSHDOWN_MAX_ROWS} rows, which would make "
+                "the generated statement large enough to slow the read down more than pushing it "
+                "down saves"
+            )
+            return None
+
+        try:
+            values = ", ".join(
+                "(" + ", ".join(self._sql_literal(value) for value in row) + ")"
+                for row in rows
+            )
+        except TypeError as error:
+            self._warn_spine_pushdown_skipped(str(error))
+            return None
+
+        # One cast per column rather than per cell: an event time arriving as an untyped string
+        # would otherwise compare as text and quietly change what the point-in-time join means.
+        casts = ", ".join(
+            f"${index + 1}::{self._warehouse_type(field.dataType)} AS {column}"
+            for index, (column, field) in enumerate(
+                zip(columns, dataframe.schema.fields, strict=True)
+            )
+        )
+        return pushdown_query.replace(
+            placeholders.pop(), f"(SELECT {casts} FROM VALUES {values})"
+        )
+
+    @staticmethod
+    def _warn_spine_pushdown_skipped(reason):
+        warnings.warn(
+            f"The query could not be pushed down to Snowflake with its spine because {reason}. "
+            "Reading each feature group separately instead.",
+            UserWarning,
+            stacklevel=3,
+        )
+
+    @staticmethod
+    def _sql_literal(value):
+        """Render one spine cell as a SQL literal.
+
+        Spine values are data, never SQL: strings are quoted and their quotes doubled, and a type
+        this does not recognise raises rather than being formatted into the statement on a guess.
+        """
+        if value is None:
+            return "NULL"
+        if isinstance(value, bool):
+            return "TRUE" if value else "FALSE"
+        if isinstance(value, (int, float, decimal.Decimal)):
+            return str(value)
+        if isinstance(value, (datetime, date)):
+            return "'" + value.isoformat() + "'"
+        if isinstance(value, str):
+            return "'" + value.replace("'", "''") + "'"
+        raise TypeError(
+            f"a spine column holds {type(value).__name__}, which cannot be inlined into SQL"
+        )
+
+    @staticmethod
+    def _warehouse_type(spark_type):
+        """The warehouse type to cast a spine column to, from its Spark type."""
+        type_name = spark_type.typeName()
+        if type_name in ("byte", "short", "integer", "long"):
+            return "NUMBER"
+        if type_name in ("float", "double"):
+            return "DOUBLE"
+        if type_name == "decimal":
+            return f"NUMBER({spark_type.precision},{spark_type.scale})"
+        if type_name == "boolean":
+            return "BOOLEAN"
+        if type_name == "date":
+            return "DATE"
+        if type_name == "timestamp":
+            return "TIMESTAMP_NTZ"
+        return "VARCHAR"
 
     def _register_external_temporary_table(self, external_fg, alias):
         if not isinstance(external_fg, fg_mod.SpineGroup):

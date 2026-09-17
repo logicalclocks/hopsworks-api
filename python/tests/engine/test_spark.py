@@ -19,6 +19,7 @@ import datetime
 import json
 import logging
 import sys
+from unittest import mock
 from unittest.mock import MagicMock, PropertyMock, call, mock_open
 
 import hopsworks_common
@@ -686,6 +687,118 @@ class TestSpark:
         assert first != second
         assert spark_engine._spark_session.sql(first).collect()[0][0] == "a"
         assert spark_engine._spark_session.sql(second).collect()[0][0] == "b"
+
+    def test_sql_literal_escapes_quotes(self):
+        # A spine value is data, never SQL: an unescaped quote would end the literal and let the
+        # rest of the value be parsed as statement text.
+        assert spark.Engine._sql_literal("O'Brien") == "'O''Brien'"
+        assert (
+            spark.Engine._sql_literal("'; DROP TABLE x; --") == "'''; DROP TABLE x; --'"
+        )
+
+    def test_sql_literal_renders_scalars(self):
+        assert spark.Engine._sql_literal(None) == "NULL"
+        assert spark.Engine._sql_literal(True) == "TRUE"
+        assert spark.Engine._sql_literal(False) == "FALSE"
+        assert spark.Engine._sql_literal(7) == "7"
+        assert spark.Engine._sql_literal(datetime.date(2026, 1, 20)) == "'2026-01-20'"
+
+    def test_sql_literal_rejects_an_unknown_type(self):
+        # Formatting an unrecognised type on a guess is how wrong or unsafe SQL gets emitted.
+        with pytest.raises(TypeError):
+            spark.Engine._sql_literal({"a": 1})
+
+    def _spine_with(self, spark_engine, rows, columns):
+        spine = mock.Mock()
+        spine.dataframe = spark_engine._spark_session.createDataFrame(rows, columns)
+        return spine
+
+    def test_substitute_spine_rows_inlines_values(self, mocker):
+        # Arrange
+        mocker.patch("hopsworks_common.client._get_instance")
+        spark_engine = spark.Engine()
+        spine = self._spine_with(
+            spark_engine, [(1, "abc"), (2, "d'ef")], ["pk1", "label"]
+        )
+        query = "SELECT * FROM __hopsworks_spine_fg0 AS fg0 JOIN DB.S.T AS fg1 ON fg0.pk1 = fg1.pk1"
+
+        # Act
+        result = spark_engine._substitute_spine_rows(query, spine)
+
+        # Assert
+        assert "__hopsworks_spine_" not in result
+        assert "$1::NUMBER AS pk1" in result
+        assert "$2::VARCHAR AS label" in result
+        assert "(1, 'abc')" in result
+        assert "(2, 'd''ef')" in result
+        # The rest of the query is untouched, so the spine joins like any other operand.
+        assert "JOIN DB.S.T AS fg1 ON fg0.pk1 = fg1.pk1" in result
+
+    def test_substitute_spine_rows_declines_when_spine_is_too_large(self, mocker):
+        mocker.patch("hopsworks_common.client._get_instance")
+        spark_engine = spark.Engine()
+        mocker.patch.object(spark.Engine, "SPINE_PUSHDOWN_MAX_ROWS", 2)
+        spine = self._spine_with(spark_engine, [(1,), (2,), (3,)], ["pk1"])
+
+        with pytest.warns(UserWarning, match="could not be pushed down"):
+            result = spark_engine._substitute_spine_rows(
+                "SELECT * FROM __hopsworks_spine_fg0 AS fg0", spine
+            )
+
+        # None tells the caller to read each feature group separately instead.
+        assert result is None
+
+    def test_substitute_spine_rows_declines_on_an_empty_spine(self, mocker):
+        # VALUES with no tuples is not valid SQL, and the engine-side path answers empty correctly.
+        mocker.patch("hopsworks_common.client._get_instance")
+        spark_engine = spark.Engine()
+        spine = self._spine_with(spark_engine, [(1,)], ["pk1"])
+        spine.dataframe = spine.dataframe.filter("pk1 < 0")
+
+        with pytest.warns(UserWarning, match="empty"):
+            result = spark_engine._substitute_spine_rows(
+                "SELECT * FROM __hopsworks_spine_fg0 AS fg0", spine
+            )
+
+        assert result is None
+
+    def test_substitute_spine_rows_declines_without_a_dataframe(self, mocker):
+        mocker.patch("hopsworks_common.client._get_instance")
+        spark_engine = spark.Engine()
+        spine = mock.Mock()
+        spine.dataframe = None
+
+        with pytest.warns(UserWarning, match="no dataframe"):
+            result = spark_engine._substitute_spine_rows(
+                "SELECT * FROM __hopsworks_spine_fg0 AS fg0", spine
+            )
+
+        assert result is None
+
+    def test_pushdown_connector_fg_skips_the_spine(self):
+        # A spine carries a data source but no connector, and is always the query root, so the
+        # first alias cannot be assumed to be the one that can run the query.
+        spine_alias = mock.Mock()
+        spine_alias.on_demand_feature_group.data_source.storage_connector = None
+        external_alias = mock.Mock()
+
+        fs_query = mock.Mock()
+        fs_query.on_demand_fg_aliases = [spine_alias, external_alias]
+
+        assert (
+            spark.Engine._pushdown_connector_fg(fs_query)
+            is external_alias.on_demand_feature_group
+        )
+
+    def test_pushdown_connector_fg_raises_when_nothing_can_run_the_query(self):
+        spine_alias = mock.Mock()
+        spine_alias.on_demand_feature_group.data_source.storage_connector = None
+
+        fs_query = mock.Mock()
+        fs_query.on_demand_fg_aliases = [spine_alias]
+
+        with pytest.raises(exceptions.FeatureStoreException):
+            spark.Engine._pushdown_connector_fg(fs_query)
 
     def test_register_hudi_temporary_table(self, mocker):
         # Arrange
