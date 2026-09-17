@@ -49,7 +49,7 @@ dependencies = [
     "tzlocal",
     "fsspec<2025.12.0",
     "retrying",
-    "hopsworks_aiomysql[sa]==0.2.2",
+    "hopsworks_aiomysql[sa]==0.2.3",
     "opensearch-py>=1.1.0,<=2.8.0",
     "tqdm",
     "grpcio>=1.49.1,<2.0.0",         # ^1.49.1

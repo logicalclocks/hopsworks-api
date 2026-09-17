@@ -443,7 +443,15 @@ class Model:
             environment: The inference environment to use.
             env_vars: Environment variables to set on the predictor.
             vllm_variant: vLLM image variant for vLLM deployments. One of `'VLLM'` or `'VLLM_OMNI'`. Ignored for non-vLLM model servers.
-            vllm_image_tag: vLLM image tag override. `None` uses the cluster default; if set, it should match one of the tags made available by a cluster administrator. Ignored for non-vLLM model servers.
+            vllm_image_tag: vLLM image tag override.
+                If set, it must be one of the tags `ModelServing.get_vllm_image_tags`
+                returns for the matching `vllm_variant`; the two variants advertise
+                different tags, and an unqualified call lists the standard vLLM ones.
+                On a new deployment, `None` selects the newest advertised tag of that
+                variant. On an update, `None` means "unchanged": the deployment keeps
+                its current tag, so moving it to the cluster default takes naming that
+                tag explicitly. A deployment also keeps its tag after an admin stops
+                advertising it. Ignored for non-vLLM model servers.
             tags: Optionally the tags to attach to the deployment when it is created, in the same shapes accepted by feature groups.
                 A single [`Tag`][hopsworks.tag.Tag], a `{"name": "owner", "value": "team-a"}` dict, or a list of either, for example `[{"name": "owner", "value": "team-a"}]`.
                 The tags ride the create request, so any mandatory deployment tags missing from them cause the backend to reject the creation.
