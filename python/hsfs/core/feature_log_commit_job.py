@@ -38,10 +38,15 @@ from pathlib import Path
 def _positive_env(name: str, default: int) -> int:
     """A positive integer setting, from the environment or the default.
 
-    The maintenance limits below are read this way rather than hardcoded so a
-    deployment whose logging table grows faster than the defaults assume can be tuned
-    without a client release. Defined here rather than imported: this file is uploaded
-    as the commit job's script and keeps to what it can carry on its own.
+    Defined here rather than imported: this file is uploaded as the commit job's script
+    and keeps to what it can carry on its own.
+
+    The name carries no `HOPSWORKS_` prefix on purpose. That prefix is reserved
+    (`ReservedEnvVars.RESERVED_PREFIXES`), so a job cannot be given a variable that
+    carries it, and the limits below would be settable by nobody. These names reach a
+    manual run through `job.run(env_vars=...)`; a scheduled run has no environment of its
+    own, so it takes the values from the job's arguments instead, which is what
+    `_maintenance_limits` reads.
     """
     try:
         return max(1, int(os.environ.get(name, default)))
@@ -60,23 +65,17 @@ CLAIM_RECLAIM_SECONDS = 7200
 # One append commit writes one file, and the commits here carry roughly a megabyte to a
 # few, so a hundred files is the low hundreds of megabytes: around one compacted file at
 # the engine's own target, and small enough that the rewrite fits beside the writes.
-COMPACT_FILE_THRESHOLD = _positive_env(
-    "HOPSWORKS_FEATURE_LOG_COMPACT_FILE_THRESHOLD", 100
-)
+COMPACT_FILE_THRESHOLD = _positive_env("FEATURE_LOG_COMPACT_FILE_THRESHOLD", 100)
 # The rewrite runs in this job's process, beside the commits, so it does not get the
 # pod's whole CPU budget.
-COMPACT_CONCURRENT_TASKS = _positive_env(
-    "HOPSWORKS_FEATURE_LOG_COMPACT_CONCURRENT_TASKS", 1
-)
+COMPACT_CONCURRENT_TASKS = _positive_env("FEATURE_LOG_COMPACT_CONCURRENT_TASKS", 1)
 # A vacuum deletes files an in-flight query may still be reading, so this has to stay
 # comfortably longer than the longest query that runs against a logging group. It is
 # also the time travel window: a version whose files have been vacuumed cannot be read.
-COMPACT_VACUUM_RETENTION_HOURS = _positive_env(
-    "HOPSWORKS_FEATURE_LOG_VACUUM_RETENTION_HOURS", 24
-)
+COMPACT_VACUUM_RETENTION_HOURS = _positive_env("FEATURE_LOG_VACUUM_RETENTION_HOURS", 24)
 # Days before the last compaction that an incremental one reopens, so a row that arrived
 # late still reaches a partition the rewrite covers.
-COMPACT_LOOKBACK_DAYS = _positive_env("HOPSWORKS_FEATURE_LOG_COMPACT_LOOKBACK_DAYS", 1)
+COMPACT_LOOKBACK_DAYS = _positive_env("FEATURE_LOG_COMPACT_LOOKBACK_DAYS", 1)
 # Older than any upload still in progress: a chunk this old in `uploading/` is whole
 # and its pod is gone.
 UPLOAD_STALE_SECONDS = 3600
@@ -542,6 +541,14 @@ def _compaction_scope(state: dict) -> str | None:
     group with no date partition column, where only a partition column can select files
     without reading them, and a table that has never been compacted, which has no
     earlier point to start from.
+
+    On the logging group this job creates, that first case is the one that applies: the
+    backend partitions it by `model_name` and `model_version`, both strings, so
+    `_date_partition_column` finds nothing and every run takes the whole-table branch.
+    The narrowing is reachable today only on a group the user partitioned by a date
+    themselves, through `delta_optimize(after_ingest_date=...)`. Making it bound this
+    job's own compaction needs a date partition on the logging group, a `log_date`
+    derived from `log_time`, which is a backend change and not made here.
     """
     last = state.get("last_optimize_at")
     if last is None or not state.get("date_partition"):
@@ -703,12 +710,42 @@ def _run(feature_view_name: str, feature_view_version: int) -> dict:
     return summary
 
 
+def _maintenance_limits(arguments) -> None:
+    """Take the maintenance limits from the job's arguments, where a scheduled run can carry them.
+
+    A PYTHON job holds no environment variables of its own: `JobController` refuses any
+    name under a reserved prefix, and nothing sets the rest, so a scheduled execution
+    runs with the platform's environment and not the operator's. Its arguments are the
+    one thing the operator does control, through `defaultArgs` on the job, and the
+    schedule passes them on every run. An argument left out keeps the environment value,
+    and then the default.
+    """
+    global \
+        COMPACT_FILE_THRESHOLD, \
+        COMPACT_CONCURRENT_TASKS, \
+        COMPACT_VACUUM_RETENTION_HOURS, \
+        COMPACT_LOOKBACK_DAYS
+    if arguments.compact_file_threshold is not None:
+        COMPACT_FILE_THRESHOLD = max(1, arguments.compact_file_threshold)
+    if arguments.compact_concurrent_tasks is not None:
+        COMPACT_CONCURRENT_TASKS = max(1, arguments.compact_concurrent_tasks)
+    if arguments.vacuum_retention_hours is not None:
+        COMPACT_VACUUM_RETENTION_HOURS = max(1, arguments.vacuum_retention_hours)
+    if arguments.compact_lookback_days is not None:
+        COMPACT_LOOKBACK_DAYS = max(1, arguments.compact_lookback_days)
+
+
 def _main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--feature-view", required=True)
     parser.add_argument("--version", required=True, type=int)
+    parser.add_argument("--compact-file-threshold", type=int)
+    parser.add_argument("--compact-concurrent-tasks", type=int)
+    parser.add_argument("--vacuum-retention-hours", type=int)
+    parser.add_argument("--compact-lookback-days", type=int)
     # A scheduled run also receives the scheduler's -start_time.
     arguments, _ = parser.parse_known_args()
+    _maintenance_limits(arguments)
     _run(arguments.feature_view, arguments.version)
 
 

@@ -574,9 +574,11 @@ class DefaultPredict:
             )
         self._log_worker = None
         self._arrow_builder = None
-        # Resolved here rather than per request: see _fetch.
+        # Resolved here rather than per request: see _fetch. The name carries no
+        # HOPSWORKS_ prefix because that prefix is reserved, and a deployment that set it
+        # would be refused, which would leave the opt-out reachable by nobody.
         self._blocking_lookup = os.environ.get(
-            "HOPSWORKS_PREDICTOR_ASYNC_LOOKUP", ""
+            "SERVING_PREDICTOR_ASYNC_LOOKUP", ""
         ).strip().lower() in ("false", "0", "no")
         self._async_logger = async_logger
         self._file_transport = None
@@ -1358,10 +1360,17 @@ class DefaultPredict:
         """Serve one request: validate, look up, predict or return the vectors, log.
 
         A coroutine, because the model server awaits it and the feature lookup inside is
-        a round trip to the online store.
-        A blocking `predict` runs on the server's event loop, so that round trip stops
-        every other request in the deployment: measured, it capped throughput at 218
-        requests per second where the same deployment without a lookup reached 310.
+        a round trip to the online store. A blocking `predict` runs on the server's event
+        loop, so that round trip stops every other request in the deployment.
+
+        Warning: A subclass that overrides `predict` must be `async def`
+            The wrapper awaits the component's own `predict` only when that method is a
+            coroutine function. A synchronous override calling `super().predict(...)`
+            therefore returns the coroutine rather than its result, and the deployment
+            answers with an unawaited object on the first request. Declare the override
+            `async def` and `await super().predict(...)`, or call
+            [`predict_blocking`][hsml.default_predictor.DefaultPredict.predict_blocking],
+            which runs the same body to completion.
 
         Parameters:
             inputs: The request rows, as objects keyed by field name, arrays in
@@ -1381,7 +1390,8 @@ class DefaultPredict:
         rather than handed to the client's task thread, which serves one lookup at a
         time and turned concurrency into a queue.
 
-        Set HOPSWORKS_PREDICTOR_ASYNC_LOOKUP=false to go back to the blocking lookup,
+        Set SERVING_PREDICTOR_ASYNC_LOOKUP=false on the deployment to go back to the
+        blocking lookup,
         which is what a deployment wants if its online reads go through the REST client,
         where there is nothing to overlap. Read once when the predictor is built, not per
         request: the pod's environment does not change under it, and this is on the path

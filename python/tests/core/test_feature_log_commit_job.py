@@ -16,6 +16,7 @@
 
 import json
 import os
+import pathlib
 import shutil
 import sys
 import uuid
@@ -878,3 +879,67 @@ def test_a_chunk_staged_twice_is_committed_once(tmp_path, mocker, monkeypatch):
     assert len(ids) == 2 and len(set(ids)) == 2
     assert summary["chunks_already_applied"] == 1
     assert summary["commits"] == 1
+
+
+class TestMaintenanceLimits:
+    """The limits must be settable on the job, which a scheduled run actually carries."""
+
+    @staticmethod
+    def _defaults():
+        return (
+            job.COMPACT_FILE_THRESHOLD,
+            job.COMPACT_CONCURRENT_TASKS,
+            job.COMPACT_VACUUM_RETENTION_HOURS,
+            job.COMPACT_LOOKBACK_DAYS,
+        )
+
+    def test_arguments_override_and_omissions_keep_the_defaults(self, monkeypatch):
+        before = self._defaults()
+        try:
+            job._maintenance_limits(
+                SimpleNamespace(
+                    compact_file_threshold=7,
+                    compact_concurrent_tasks=None,
+                    vacuum_retention_hours=96,
+                    compact_lookback_days=None,
+                )
+            )
+            assert job.COMPACT_FILE_THRESHOLD == 7
+            assert job.COMPACT_VACUUM_RETENTION_HOURS == 96
+            assert before[1] == job.COMPACT_CONCURRENT_TASKS
+            assert before[3] == job.COMPACT_LOOKBACK_DAYS
+        finally:
+            (
+                job.COMPACT_FILE_THRESHOLD,
+                job.COMPACT_CONCURRENT_TASKS,
+                job.COMPACT_VACUUM_RETENTION_HOURS,
+                job.COMPACT_LOOKBACK_DAYS,
+            ) = before
+
+    def test_a_non_positive_argument_is_floored(self):
+        before = self._defaults()
+        try:
+            job._maintenance_limits(
+                SimpleNamespace(
+                    compact_file_threshold=0,
+                    compact_concurrent_tasks=-3,
+                    vacuum_retention_hours=None,
+                    compact_lookback_days=None,
+                )
+            )
+            assert job.COMPACT_FILE_THRESHOLD == 1
+            assert job.COMPACT_CONCURRENT_TASKS == 1
+        finally:
+            (
+                job.COMPACT_FILE_THRESHOLD,
+                job.COMPACT_CONCURRENT_TASKS,
+                job.COMPACT_VACUUM_RETENTION_HOURS,
+                job.COMPACT_LOOKBACK_DAYS,
+            ) = before
+
+    def test_the_names_carry_no_reserved_prefix(self):
+        # HOPSWORKS_ is reserved, so a job given such a name is refused and the limit
+        # would be settable by nobody.
+        source = pathlib.Path(job.__file__).read_text()
+        assert "HOPSWORKS_FEATURE_LOG_" not in source
+        assert "FEATURE_LOG_COMPACT_FILE_THRESHOLD" in source

@@ -1449,7 +1449,7 @@ class TestAsyncPredict:
         """
         awaited = self._predictor()
         assert awaited._fetch() == awaited.fetch_feature_vectors_async
-        monkeypatch.setenv("HOPSWORKS_PREDICTOR_ASYNC_LOOKUP", "false")
+        monkeypatch.setenv("SERVING_PREDICTOR_ASYNC_LOOKUP", "false")
         blocking = self._predictor()
         assert blocking._fetch() == blocking.fetch_feature_vectors
 

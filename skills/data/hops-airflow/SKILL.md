@@ -1,6 +1,6 @@
 ---
 name: hops-airflow
-description: Orchestrate Hopsworks jobs with Airflow — where DAG files must live, and which operators exist. Auto-invoke when the user mentions Airflow, a DAG, scheduling a pipeline, HopsworksLaunchOperator, HopsworksJobSuccessSensor, or orchestrating feature pipelines and training jobs.
+description: Orchestrate Hopsworks jobs with Airflow: where DAG files must live, and which operators exist. Auto-invoke when the user mentions Airflow, a DAG, scheduling a pipeline, HopsworksLaunchOperator, HopsworksJobSuccessSensor, or orchestrating feature pipelines and training jobs.
 ---
 
 # Airflow on Hopsworks

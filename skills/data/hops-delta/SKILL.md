@@ -1,6 +1,6 @@
 ---
 name: hops-delta
-description: Maintain Delta feature groups from the Python or PySpark client — optimize, vacuum, checkpoint — and choose a write mode and table layout. Auto-invoke when the user mentions delta_optimize, delta_vacuum, delta_checkpoint, compaction, small files, the _delta_log, time travel, liquid clustering, partitioning a feature group, or append versus upsert.
+description: Call the Delta maintenance methods on a feature group from the Python or PySpark client, and choose a write mode. Auto-invoke when the user mentions delta_optimize, delta_compact, delta_vacuum, delta_checkpoint, delta_cleanup_metadata, the _delta_log, Delta time travel, or append versus upsert on a feature group. For diagnosing small files and slow queries across table formats, hops-table-maintenance is the skill.
 ---
 
 # Delta feature group maintenance

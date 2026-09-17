@@ -5163,8 +5163,6 @@ class FeatureGroup(FeatureGroupBase):
         Returns:
             The version checkpointed, or None when the feature group is not stored as DELTA.
 
-        Raises:
-            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._feature_group_engine._delta_checkpoint(self)
 
@@ -5202,8 +5200,6 @@ class FeatureGroup(FeatureGroupBase):
             The version the log was pruned against, or None when the feature group is not
             stored as DELTA.
 
-        Raises:
-            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         return self._feature_group_engine._delta_cleanup_metadata(self)
 

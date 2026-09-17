@@ -251,7 +251,11 @@ class DeploymentLoggingConfig:
     @public
     @property
     def max_buffer_bytes(self):
-        """Upper bound on the bytes the sidecar buffers before it rejects batches."""
+        """Upper bound on the bytes the job transport's buffer holds on the pod.
+
+        Rows beyond it are dropped and counted. The sidecar is not what buffers for this
+        transport: the file buffer is the predictor's own, on the pod's disk.
+        """
         return self._max_buffer_bytes
 
     @max_buffer_bytes.setter
