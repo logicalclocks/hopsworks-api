@@ -45,7 +45,7 @@ dependencies = [
     "cryptography",
     "mock",
     "avro==1.12.0",
-    "PyMySQL[rsa]<1.2.1",           # 1.2.1 removed escape_dict, which hopsworks_aiomysql imports
+    "PyMySQL[rsa]",
     "tzlocal",
     "fsspec<2025.12.0",
     "retrying",
