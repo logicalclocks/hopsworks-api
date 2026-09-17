@@ -25,6 +25,7 @@ in the engine it was not written for is exactly what this catches.
 from __future__ import annotations
 
 import pathlib
+import sys
 
 import pandas as pd
 import pytest
@@ -59,6 +60,12 @@ WINDOWED = [(label, sql) for label, sql in STATEMENTS if label.startswith("WINDO
 @pytest.fixture(scope="module")
 def spark():
     pytest.importorskip("pyspark")
+    if sys.platform == "win32":
+        # The shapes reference `<featurestore>.<table>`, so binding them needs a database and
+        # tables, and Spark's catalog reaches Hadoop's file operations for those. On Windows that
+        # needs winutils.exe, which CI does not install. The same golden file is bound on Linux
+        # here and against DuckDB in flyingduck, so nothing goes unchecked.
+        pytest.skip("Spark's catalog needs winutils.exe on Windows")
     pandas_version = tuple(int(p) for p in pd.__version__.split(".")[:2])
     if pandas_version < (2, 2):
         pytest.skip(f"pyspark needs pandas >= 2.2; have {pd.__version__}")
