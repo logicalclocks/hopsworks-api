@@ -282,7 +282,7 @@ class Deployment:
         )
         return util.get_hostname_replaced_url(path)
 
-    def get_endpoint_url(self) -> str | None:
+    def get_endpoint_url(self):
         """Get the base endpoint URL for this deployment.
 
         Returns the base URL that can be used with external HTTP clients.
@@ -303,7 +303,7 @@ class Deployment:
         """
         return self._predictor.get_endpoint_url()
 
-    def get_openai_url(self) -> str | None:
+    def get_openai_url(self):
         """Get the OpenAI-compatible API URL for vLLM deployments.
 
         Returns the URL for OpenAI-compatible API endpoints (e.g., /v1/chat/completions).
@@ -322,7 +322,7 @@ class Deployment:
         """
         return self._predictor.get_openai_url()
 
-    def get_inference_url(self) -> str | None:
+    def get_inference_url(self):
         """Get the KServe inference URL for standard model deployments.
 
         Returns the full URL with `:predict` suffix for KServe inference protocol.

@@ -39,7 +39,7 @@ class ServingApi:
         pass
 
     @decorators.catch_not_found("hsml.deployment.Deployment", fallback_return=None)
-    def get_by_id(self, id: int) -> deployment.Deployment | None:
+    def get_by_id(self, id: int):
         """Get the metadata of a deployment with a certain id.
 
         Args:
@@ -63,7 +63,7 @@ class ServingApi:
         return deployment_instance
 
     @decorators.catch_not_found("hsml.deployment.Deployment", fallback_return=None)
-    def get(self, name: str) -> deployment.Deployment | None:
+    def get(self, name: str):
         """Get the metadata of a deployment with a certain name.
 
         Args:
@@ -84,9 +84,7 @@ class ServingApi:
         deployment_instance.model_registry_id = _client._project_id
         return deployment_instance
 
-    def get_all(
-        self, model_name: str = None, status: str = None
-    ) -> list[deployment.Deployment]:
+    def get_all(self, model_name: str = None, status: str = None):
         """Get the metadata of all deployments.
 
         Returns:
@@ -121,7 +119,7 @@ class ServingApi:
         endpoints_json = _client._send_request("GET", path_params)
         return inference_endpoint.InferenceEndpoint.from_response_json(endpoints_json)
 
-    def put(self, deployment_instance) -> deployment.Deployment:
+    def put(self, deployment_instance):
         """Save deployment metadata to model serving.
 
         Args:
@@ -392,9 +390,7 @@ class ServingApi:
     ):
         return "{}.{}.{}".format(deployment_name, project_namespace, domain).lower()
 
-    def _get_hopsworks_inference_path(
-        self, project_id: int, deployment_instance
-    ) -> list[str]:
+    def _get_hopsworks_inference_path(self, project_id: int, deployment_instance):
         """Get the Hopsworks inference path for a deployment.
 
         Inference requests sent to this path will be forwarded by Hopsworks to the Istio ingress endpoint.
@@ -414,9 +410,7 @@ class ServingApi:
             deployment_instance.name + ":predict",
         ]
 
-    def _get_istio_inference_path(
-        self, deployment_instance, base_only: bool = False
-    ) -> list[str]:
+    def _get_istio_inference_path(self, deployment_instance, base_only: bool = False):
         """Get the Istio inference path for a deployment.
 
         Args:

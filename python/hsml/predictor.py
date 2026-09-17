@@ -532,7 +532,7 @@ class Predictor(DeployableComponent):
     def project_name(self, project_name: str):
         self._project_name = project_name
 
-    def get_endpoint_url(self) -> str | None:
+    def get_endpoint_url(self):
         """Get the base endpoint URL for this predictor.
 
         Returns the base URL that can be used with external HTTP clients.
@@ -563,7 +563,7 @@ class Predictor(DeployableComponent):
         # Hopsworks REST API doesn't support base-only endpoints
         return None
 
-    def get_openai_url(self) -> str | None:
+    def get_openai_url(self):
         """Get the OpenAI-compatible API URL for vLLM deployments.
 
         Returns the URL for OpenAI-compatible API endpoints (e.g., /v1/chat/completions).
@@ -588,7 +588,7 @@ class Predictor(DeployableComponent):
 
         return f"{base_url}/v1"
 
-    def get_inference_url(self) -> str | None:
+    def get_inference_url(self):
         """Get the KServe inference URL for standard model deployments.
 
         Returns the full URL with `:predict` suffix for KServe inference protocol.
