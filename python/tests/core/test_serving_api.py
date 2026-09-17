@@ -47,6 +47,21 @@ def _patch_client(mocker, send_request_return) -> MagicMock:
     return client_instance
 
 
+# The advertised vLLM image tags, as the backend serves them: one entry per
+# variant, tags newest first, and a variant that advertises nothing still gets
+# an entry so a caller can tell "none advertised" from "unknown variant".
+_VLLM_IMAGE_TAGS_RESPONSE = {
+    "items": [
+        {
+            "variant": "VLLM",
+            "tags": ["v0.21.0", "v0.15.0"],
+            "defaultTag": "v0.21.0",
+        },
+        {"variant": "VLLM_OMNI", "tags": [], "defaultTag": None},
+    ]
+}
+
+
 def _deployment() -> SimpleNamespace:
     return SimpleNamespace(id=12)
 
@@ -388,3 +403,17 @@ class TestServingApi:
         # Assert
         args, _ = hopsworks_client._send_request.call_args
         assert args[1] == ["project", 1, "inference", "models", "skdepl:predict"]
+
+    def test_get_vllm_image_tags_addresses_the_project_serving_path(self, mocker):
+        # Arrange
+        api = ServingApi()
+        hopsworks_client = _patch_client(mocker, _VLLM_IMAGE_TAGS_RESPONSE)
+
+        # Act
+        response = api._get_vllm_image_tags()
+
+        # Assert
+        args, _ = hopsworks_client._send_request.call_args
+        assert args[0] == "GET"
+        assert args[1] == ["project", 1, "serving", "vllmImageTags"]
+        assert response == _VLLM_IMAGE_TAGS_RESPONSE
