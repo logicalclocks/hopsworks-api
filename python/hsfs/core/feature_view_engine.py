@@ -63,6 +63,18 @@ if TYPE_CHECKING:
 _logger = logging.getLogger(__name__)
 
 
+def _event_time_log_component(fv, event_time):
+    """The event time log component, or an empty one when the root feature group has no event time.
+
+    Without this the logging dataframe gets a column named `None`, or the
+    lookup-time metadata is matched against zero column names and rejected.
+    """
+    name = fv._root_feature_group_event_time_column_name
+    if not name:
+        return None, [], constants.FEATURE_LOGGING.EVENT_TIME
+    return event_time, [name], constants.FEATURE_LOGGING.EVENT_TIME
+
+
 class FeatureViewEngine:
     ENTITY_TYPE = "featureview"
     _TRAINING_DATA_API_PATH = "trainingdatasets"
@@ -1910,11 +1922,7 @@ class FeatureViewEngine:
                         fv.request_parameters,
                         constants.FEATURE_LOGGING.REQUEST_PARAMETERS,
                     ),
-                    event_time=(
-                        event_time,
-                        [fv._root_feature_group_event_time_column_name],
-                        constants.FEATURE_LOGGING.EVENT_TIME,
-                    ),
+                    event_time=_event_time_log_component(fv, event_time),
                     request_id=(
                         [request_id] if isinstance(request_id, str) else request_id,
                         [constants.FEATURE_LOGGING.REQUEST_ID_COLUMN_NAME],
@@ -1970,11 +1978,7 @@ class FeatureViewEngine:
                         fv.request_parameters,
                         constants.FEATURE_LOGGING.REQUEST_PARAMETERS,
                     ),
-                    event_time=(
-                        event_time,
-                        [fv._root_feature_group_event_time_column_name],
-                        constants.FEATURE_LOGGING.EVENT_TIME,
-                    ),
+                    event_time=_event_time_log_component(fv, event_time),
                     request_id=(
                         [request_id] if isinstance(request_id, str) else request_id,
                         [constants.FEATURE_LOGGING.REQUEST_ID_COLUMN_NAME],

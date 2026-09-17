@@ -79,6 +79,7 @@ class StorageConnector(ABC):
     GOOGLE_SHEETS = "GOOGLE_SHEETS"
     REST = "REST"
     ORACLE = "ORACLE"
+    CLICKHOUSE = "CLICKHOUSE"
     UNITY_CATALOG = "UNITY_CATALOG"
     SAP_HANA = "SAP_HANA"
     MONGODB = "MONGODB"
@@ -1812,11 +1813,15 @@ class SnowflakeConnector(StorageConnector):
         }
         if self._password:
             props["password"] = self._password
-        else:
+        elif self._token:
             props["authenticator"] = "oauth"
             props["token"] = self._token
+        elif self._private_key:
+            props["private_key"] = self._private_key_der()
         if self._warehouse:
             props["warehouse"] = self._warehouse
+        if self._role:
+            props["role"] = self._role
         if self._application:
             props["application"] = self._application
         return props
@@ -1848,13 +1853,29 @@ class SnowflakeConnector(StorageConnector):
 
         return props
 
-    def _read_private_key(self) -> str | None:
-        """Reads the private key from the specified key path."""
-        p_key = serialization.load_pem_private_key(
+    def _load_private_key(self):
+        return serialization.load_pem_private_key(
             self._private_key.encode(),
             password=self._passphrase.encode() if self._passphrase else None,
             backend=default_backend(),
         )
+
+    def _private_key_der(self) -> bytes:
+        """Return the private key as unencrypted PKCS#8 DER.
+
+        That is the only form `snowflake.connector.connect` accepts for its
+        `private_key` argument; the spark-snowflake `pem_private_key` option
+        takes the header-stripped string from `_read_private_key` instead.
+        """
+        return self._load_private_key().private_bytes(
+            encoding=serialization.Encoding.DER,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        )
+
+    def _read_private_key(self) -> str | None:
+        """Reads the private key from the specified key path."""
+        p_key = self._load_private_key()
 
         private_key_bytes = p_key.private_bytes(
             encoding=serialization.Encoding.PEM,
@@ -3371,16 +3392,20 @@ class SqlConnector(StorageConnector):
     MYSQL = "MYSQL"
     POSTGRESQL = "POSTGRESQL"
     ORACLE = "ORACLE"
+    CLICKHOUSE = "CLICKHOUSE"
 
     _DRIVERS = {
         MYSQL: "com.mysql.cj.jdbc.Driver",
         POSTGRESQL: "org.postgresql.Driver",
         ORACLE: "oracle.jdbc.driver.OracleDriver",
+        CLICKHOUSE: "com.clickhouse.jdbc.ClickHouseDriver",
     }
     _JDBC_SCHEMES = {
         MYSQL: "mysql",
         POSTGRESQL: "postgresql",
         ORACLE: "oracle:thin",
+        # No protocol in the scheme: the 0.9.x driver defaults to HTTP (port 8123).
+        CLICKHOUSE: "clickhouse",
     }
 
     def __init__(
@@ -3592,6 +3617,9 @@ class SqlConnector(StorageConnector):
                 props["wallet_path"] = self._wallet_path
             if self._wallet_password:
                 props["wallet_password"] = self._wallet_password
+        if self._database_type == self.CLICKHOUSE:
+            # clickhouse-connect's name for the JDBC ``ssl=true`` argument.
+            props["secure"] = str(self._arguments.get("ssl", "false")).lower() == "true"
         return props
 
     @public

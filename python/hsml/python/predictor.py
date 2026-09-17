@@ -25,7 +25,7 @@ class Predictor(Predictor):
         kwargs["model_framework"] = MODEL.FRAMEWORK_PYTHON
         kwargs["model_server"] = PREDICTOR.MODEL_SERVER_PYTHON
 
-        if kwargs["script_file"] is None:
+        if kwargs["script_file"] is None and not kwargs.get("default_predictor"):
             raise ValueError(
                 "Predictor scripts are required in deployments for custom Python models"
             )

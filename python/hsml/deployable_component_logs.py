@@ -32,6 +32,18 @@ class DeployableComponentLogs:
         doc_id: OpenSearch document id. Combined with ``timestamp`` it forms
             the dedupe key that :py:meth:`Deployment.tail_logs` uses to
             avoid yielding the same line on overlapping polls.
+        truncated: The read stopped at the backend's byte budget, so unread
+            lines remain. A reader resuming by cursor needs this: without it
+            a response that could not clear its own overlap is
+            indistinguishable from one that genuinely had nothing new.
+        skipped: The per-request replica cap left this instance unread.
+            ``content`` is a human note, not log lines.
+        read_failed: The kubelet read failed for this instance. ``content`` is
+            a human note, not log lines.
+        pod_uid: Identity of the pod the lines came from.
+        restart_count: Container restart count. With ``pod_uid`` this
+            identifies the container instance, so a cursor is never carried
+            across a restart into a different log.
     """
 
     def __init__(
@@ -40,12 +52,22 @@ class DeployableComponentLogs:
         content: str,
         timestamp: "str | None" = None,
         doc_id: "str | None" = None,
+        truncated: bool = False,
+        skipped: bool = False,
+        read_failed: bool = False,
+        pod_uid: "str | None" = None,
+        restart_count: "int | None" = None,
         **kwargs,
     ):
         self._instance_name = instance_name
         self._content = content
         self._timestamp = timestamp
         self._doc_id = doc_id
+        self._truncated = bool(truncated)
+        self._skipped = bool(skipped)
+        self._read_failed = bool(read_failed)
+        self._pod_uid = pod_uid
+        self._restart_count = restart_count
         self._created_at = datetime.now()
 
     @classmethod
@@ -69,7 +91,24 @@ class DeployableComponentLogs:
         # backends.
         timestamp = util._extract_field_from_json(json_decamelized, "timestamp")
         doc_id = util._extract_field_from_json(json_decamelized, "doc_id")
-        return instance_name, content, timestamp, doc_id
+        # Absent on old backends, which is why each defaults to a falsy value
+        # rather than being required.
+        truncated = util._extract_field_from_json(json_decamelized, "truncated")
+        skipped = util._extract_field_from_json(json_decamelized, "skipped")
+        read_failed = util._extract_field_from_json(json_decamelized, "read_failed")
+        pod_uid = util._extract_field_from_json(json_decamelized, "pod_uid")
+        restart_count = util._extract_field_from_json(json_decamelized, "restart_count")
+        return (
+            instance_name,
+            content,
+            timestamp,
+            doc_id,
+            bool(truncated),
+            bool(skipped),
+            bool(read_failed),
+            pod_uid,
+            restart_count,
+        )
 
     def to_dict(self):
         return {
@@ -77,6 +116,11 @@ class DeployableComponentLogs:
             "content": self._content,
             "timestamp": self._timestamp,
             "doc_id": self._doc_id,
+            "truncated": self._truncated,
+            "skipped": self._skipped,
+            "read_failed": self._read_failed,
+            "pod_uid": self._pod_uid,
+            "restart_count": self._restart_count,
         }
 
     @property
@@ -103,6 +147,41 @@ class DeployableComponentLogs:
     def doc_id(self):
         """OpenSearch document id of the log line (OpenSearch source only)."""
         return self._doc_id
+
+    @property
+    def truncated(self):
+        """Whether the read stopped at the backend's byte budget."""
+        return self._truncated
+
+    @property
+    def skipped(self):
+        """Whether the per-request replica cap left this instance unread."""
+        return self._skipped
+
+    @property
+    def read_failed(self):
+        """Whether the kubelet read failed for this instance."""
+        return self._read_failed
+
+    @property
+    def pod_uid(self):
+        """Uid of the pod these lines came from."""
+        return self._pod_uid
+
+    @property
+    def restart_count(self):
+        """Restart count of the container instance these lines came from."""
+        return self._restart_count
+
+    @property
+    def instance_key(self):
+        """Identity of the container instance, for per-instance cursoring.
+
+        A pod name alone is not the instance: a restarted container starts a
+        new log from zero, and resuming it from the dead instance's cursor
+        would silently skip everything the new one printed.
+        """
+        return (self._instance_name, self._pod_uid, self._restart_count)
 
     @property
     def component(self):

@@ -14,7 +14,7 @@
   <properties>
     <flink.version>1.17.1.0</flink.version>
     <fasterxml.version>2.13.4.2</fasterxml.version>
-    <bouncycastle.version>1.79</bouncycastle.version>
+    <bouncycastle.version>1.81.1</bouncycastle.version>
     <guava.version>14.0.1</guava.version>
     <httpclient.version>4.5.6</httpclient.version>
   </properties>

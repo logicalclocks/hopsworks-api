@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import inspect
 import itertools
 import json
@@ -46,8 +47,14 @@ from hopsworks_common.git_file_status import GitFileStatus
 from six import string_types
 
 
-if HAS_PANDAS:
-    import pandas as pd
+def _pandas():
+    """pandas, if something has imported it; else None.
+
+    A pandas object can only exist once pandas is imported, so the isinstance
+    checks below need nothing more, and ``import hopsworks`` no longer pays the
+    ~0.4 s pandas import for callers that never use a DataFrame.
+    """
+    return sys.modules.get("pandas") if HAS_PANDAS else None
 
 
 FEATURE_STORE_NAME_SUFFIX = "_featurestore"
@@ -56,6 +63,7 @@ FEATURE_STORE_NAME_SUFFIX = "_featurestore"
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    import pandas as pd
     from hsfs import feature_group
 
 
@@ -91,7 +99,10 @@ class NumpyEncoder(json.JSONEncoder):
                 return np.vectorize(encode_binary)(obj), True
             return obj.tolist(), True
 
-        if isinstance(obj, datetime) or (HAS_PANDAS and isinstance(obj, pd.Timestamp)):
+        pd = _pandas()
+        if isinstance(obj, datetime) or (
+            pd is not None and isinstance(obj, pd.Timestamp)
+        ):
             return obj.isoformat(), True
         if isinstance(obj, (bytes, bytearray)):
             return encode_binary(obj), True
@@ -564,10 +575,16 @@ def _convert_to_project_rel_path(path, current_proj_name):
 
 @also_available_as("hopsworks.util._validate_job_conf")
 def _validate_job_conf(config, project_name):
-    # User is required to set the appPath programmatically after getting the configuration
+    # User is required to set the appPath programmatically after getting the
+    # configuration. Docker, ingestion and agent jobs carry no script: an agent
+    # task's instructions are its `prompt`.
     if (
-        config["type"] != "dockerJobConfiguration"
-        and config["type"] != "ingestionJobConfiguration"
+        config["type"]
+        not in (
+            "dockerJobConfiguration",
+            "ingestionJobConfiguration",
+            "agentJobConfiguration",
+        )
         and "appPath" not in config
     ):
         raise JobException("'appPath' not set in job configuration")
@@ -663,11 +680,12 @@ def _handle_tensor_input(input_tensor):
 
 @also_available_as("hsml.util._handle_dataframe_input")
 def _handle_dataframe_input(input_ex):
-    if HAS_PANDAS and isinstance(input_ex, pd.DataFrame):
+    pd = _pandas()
+    if pd is not None and isinstance(input_ex, pd.DataFrame):
         if not input_ex.empty:
             return input_ex.iloc[0].tolist()
         raise ValueError(f"input_example of type {type(input_ex)} can not be empty")
-    if HAS_PANDAS and isinstance(input_ex, pd.Series):
+    if pd is not None and isinstance(input_ex, pd.Series):
         if not input_ex.empty:
             return input_ex.tolist()
         raise ValueError(f"input_example of type {type(input_ex)} can not be empty")
@@ -961,12 +979,25 @@ class AsyncTask:
         return self._requires_connection_pool
 
 
+SHUTDOWN_TIMEOUT_S = 15
+
+
+async def _noop_task() -> None:
+    """Body for the sentinel task that unblocks a task thread's queue."""
+
+
 class AsyncTaskThread(threading.Thread):
     """Generic thread class that can be used to run async tasks in a separate thread.
 
     The thread will create its own event loop and run submitted tasks in that loop.
 
     The thread also store and fetches a connection pool that can be used by the async tasks.
+
+    Call `_shutdown()` when done with the thread.
+    The owner is reachable from the running thread through the callbacks it is
+    constructed with, and a running thread is a garbage collection root, so an
+    owner that relies on its own `__del__` to shut this down is never collected
+    and the thread and its connection pool live for the life of the process.
     """
 
     def __init__(
@@ -990,6 +1021,9 @@ class AsyncTaskThread(threading.Thread):
         self._task_queue: queue.Queue[AsyncTask] = queue.Queue()
         self._event_loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
         self.stop_event = threading.Event()
+        # Set by run() once startup is done. _shutdown waits on it so it cannot
+        # stop the loop while run_until_complete is still initialising the pool.
+        self._ready = threading.Event()
         self._connection_pool_initializer: Callable | None = connection_pool_initializer
         self._connection_test_function: Callable | None = connection_test
         self._connection_pool_params: tuple = connection_pool_params
@@ -1028,22 +1062,84 @@ class AsyncTaskThread(threading.Thread):
                 task.result = e
                 task.event.set()
 
-    def _stop(self):
-        """Stop the thread and close the event loop."""
+    async def _close_connection_pool(self, pool) -> None:
+        """Close every connection the pool holds, free and checked out alike."""
+        pool.close()
+        await pool.wait_closed()
+
+    def _shutdown(self, timeout: float = SHUTDOWN_TIMEOUT_S) -> bool:
+        """Close the connection pool, end the event loop and let the thread exit.
+
+        Returns whether the shutdown finished: the pool closed, if there was one,
+        and the event loop reached a closed state, both within the timeout. A
+        caller that gets False still holds a pool worth retrying.
+
+        Not named `_stop`.
+        `threading.Thread._stop` is the internal method CPython calls from
+        `_wait_for_tstate_lock` to mark a thread finished, so a subclass that
+        defines `_stop` breaks `is_alive()` and `join()` for every instance.
+
+        The pool is closed first and from inside the loop.
+        `aiomysql.Connection.close()` only calls `transport.close()`, and a
+        selector transport does not touch the socket itself: it schedules
+        `_call_connection_lost` on the loop, which is where the socket is closed.
+        Stopping the loop first leaves every connection open on the server.
+
+        A sentinel task follows the stop flag because `_execute_task` blocks on
+        `queue.Queue.get()`, so the loop cannot service anything until a task
+        arrives and the flag alone would leave the thread blocked forever.
+
+        The loop is never closed from here. `run()` closes it in a `finally`, and
+        closing a loop that is still running raises `RuntimeError`.
+        """
+        # Let run() finish starting. Stopping the loop while run_until_complete
+        # is still initialising raises out of run(), which kills the thread with
+        # the loop never closed, so every wait here would then time out.
+        if self.is_alive():
+            self._ready.wait(timeout=timeout)
+
+        loop = self._event_loop
+        if loop.is_closed():
+            return True
+
+        pool_closed = True
+        pool = self._connection_pool
+        if pool is not None:
+            closing = AsyncTask(
+                task_function=self._close_connection_pool, task_args=(pool,)
+            )
+            self.task_queue.put(closing)
+            # Only let go of the pool once it is actually closed. Dropping the
+            # handle on a timeout would leave its connections open on the server
+            # with nothing left to retry the close.
+            pool_closed = closing.event.wait(timeout=timeout)
+            if pool_closed:
+                self._connection_pool = None
+
         self.stop_event.set()
-        self._event_loop.stop()
-        self._event_loop.close()
+        self.task_queue.put(AsyncTask(task_function=_noop_task))
+        # Loop may already be closing under us; the wait below still settles it.
+        with contextlib.suppress(RuntimeError):
+            loop.call_soon_threadsafe(loop.stop)
+
+        deadline = time.monotonic() + timeout
+        while not loop.is_closed() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        return pool_closed and loop.is_closed()
 
     def run(self):
         """Execute the async tasks for the queue."""
         asyncio.set_event_loop(self._event_loop)
-        # Initialize the connection pool by using loop.run_until_complete to make sure the connection pool is initialized before the event loop starts running forever.
-        if self._connection_pool_initializer:
-            self._connection_pool = self._event_loop.run_until_complete(
-                self._connection_pool_initializer(*self._connection_pool_params)
-            )
-        self._event_loop.create_task(self._execute_task())
         try:
+            # Initialize the connection pool by using loop.run_until_complete to make sure the connection pool is initialized before the event loop starts running forever.
+            if self._connection_pool_initializer:
+                self._connection_pool = self._event_loop.run_until_complete(
+                    self._connection_pool_initializer(*self._connection_pool_params)
+                )
+            self._event_loop.create_task(self._execute_task())
+            # The pool exists and the loop is about to run, so a shutdown from
+            # another thread can now see the pool and stop the loop cleanly.
+            self._ready.set()
             self._event_loop.run_forever()
         except Exception as e:
             print(
@@ -1053,6 +1149,8 @@ class AsyncTaskThread(threading.Thread):
             self._event_loop.close()
             # raise e
         finally:
+            # Never leave a shutdown waiting on a thread that is already done.
+            self._ready.set()
             self._event_loop.close()
 
     def _submit(self, task: AsyncTask) -> Any:

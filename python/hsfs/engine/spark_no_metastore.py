@@ -29,14 +29,17 @@ class Engine(spark.Engine):
     def _create_spark_session(self):
         """Create a SparkSession without Hive metastore.
 
-        In Spark Connect mode, configures Delta Lake extensions
-        since there is no metastore to provide them.
+        In Spark Connect mode, configures the Delta Lake and Hudi session
+        extensions since there is no metastore to provide them. Hudi's is
+        required for incremental reads: without HoodieAnalysis the scan loses
+        _hoodie_commit_time to column pruning and returns no rows.
         """
         builder = SparkSession.builder
         if _is_spark_connect_env():
             builder = builder.config(
                 "spark.sql.extensions",
-                "io.delta.sql.DeltaSparkSessionExtension",
+                "io.delta.sql.DeltaSparkSessionExtension,"
+                "org.apache.spark.sql.hudi.HoodieSparkSessionExtension",
             ).config(
                 "spark.sql.catalog.spark_catalog",
                 "org.apache.spark.sql.delta.catalog.DeltaCatalog",

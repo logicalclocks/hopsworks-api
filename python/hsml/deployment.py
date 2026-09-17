@@ -14,13 +14,14 @@
 #   limitations under the License.
 from __future__ import annotations
 
+import warnings
 from typing import TYPE_CHECKING, Any
 
 from hopsworks_apigen import public
 from hopsworks_common import client, usage, util
 from hopsworks_common.client.exceptions import ModelServingException
 from hsml import predictor as predictor_mod
-from hsml.constants import DEPLOYABLE_COMPONENT, PREDICTOR_STATE
+from hsml.constants import DEPLOYABLE_COMPONENT, MODEL_SERVING, PREDICTOR_STATE
 from hsml.core import model_api, serving_api
 from hsml.engine import serving_engine
 
@@ -30,6 +31,7 @@ if TYPE_CHECKING:
 
     from hsfs.core.feature_monitoring_config import FeatureMonitoringConfig
     from hsml.client.istio.utils.infer_type import InferInput
+    from hsml.deployment_schema import DeploymentSchema
     from hsml.deployment_tracing_config import DeploymentTracingConfig
     from hsml.inference_batcher import InferenceBatcher
     from hsml.inference_logger import InferenceLogger
@@ -37,6 +39,22 @@ if TYPE_CHECKING:
     from hsml.resources import Resources
     from hsml.scaling_config import PredictorScalingConfig
     from hsml.transformer import Transformer
+
+
+def _warn_opensearch_source_deprecated() -> None:
+    """Warn that ``source="opensearch"`` is deprecated for deployment logs.
+
+    New backends serve OpenSearch requests from the Kubernetes pod-logs path,
+    so the value only changes behaviour against old backends.
+    """
+    warnings.warn(
+        "source='opensearch' is deprecated; new backends read deployment logs "
+        "directly from the Kubernetes pods (live pods only). Use the default "
+        "source='kubernetes', and `download_logs()` for the archived logs of "
+        "a stopped deployment.",
+        DeprecationWarning,
+        stacklevel=3,
+    )
 
 
 @public
@@ -305,15 +323,20 @@ class Deployment:
         self,
         data: dict | InferInput = None,
         inputs: list | dict = None,
+        validate: bool = True,
     ) -> dict:
         """Send inference requests to the deployment.
 
         One of data or inputs parameters must be set.
-        If both are set, inputs will be ignored.
+        Setting both raises `ModelServingException`.
+        When the deployment has a schema and the protocol is REST, the rows are
+        encoded and validated against it before the request is sent; the pod
+        validates again regardless.
 
         Parameters:
             data: Payload dictionary for the inference request including the model input(s).
             inputs: Model inputs used in the inference requests.
+            validate: Whether to validate the rows against `schema` before sending.
 
         Returns:
             Inference response.
@@ -343,20 +366,171 @@ class Deployment:
             predictions = my_deployment.predict(data)
             ```
         """
-        return self._serving_engine._predict(self, data, inputs)
+        return self._serving_engine._predict(self, data, inputs, validate=validate)
 
     @public
     def get_model(self):
-        """Retrieve the metadata object for the model being used by this deployment."""
+        """Retrieve the metadata object for the model being used by this deployment, or `None` when it has no model."""
+        if not self.has_model:
+            return None
         return self._model_api._get(
             self.model_name, self.model_version, self.model_registry_id
+        )
+
+    @public
+    def get_feature_view(self, init: bool = False) -> Any:
+        """Retrieve the feature view this deployment serves, or `None`.
+
+        A feature view deployment names its view in the deployment env vars; a
+        model deployment resolves it through the model's provenance.
+
+        Parameters:
+            init: Whether to initialise the view for serving with the deployment's training dataset version.
+
+        Returns:
+            The feature view, or `None` when the deployment has neither a feature view nor a model with one.
+
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException: If no project connection is available to reach the feature store.
+        """
+        feature_view = None
+        if self.has_feature_view:
+            # Same route as hsml.core.explicit_provenance: reach the feature
+            # store through the hopsworks project so hsml never imports hsfs.
+            import hopsworks
+
+            if not hopsworks._connected_project:
+                from hopsworks_common.client.exceptions import FeatureStoreException
+
+                raise FeatureStoreException(
+                    "Resolving the feature view of a deployment needs a project "
+                    "connection; use hopsworks.login() first."
+                )
+            feature_store = hopsworks._connected_project.get_feature_store()
+            feature_view = feature_store.get_feature_view(
+                self.feature_view_name, self.feature_view_version
+            )
+        elif self.has_model:
+            model = self.get_model()
+            feature_view = model.get_feature_view(init=False) if model else None
+        if feature_view is not None and init:
+            feature_view.init_serving(
+                training_dataset_version=self.training_dataset_version
+            )
+        return feature_view
+
+    @public
+    def reinfer_schema(self) -> DeploymentSchema:
+        """Re-infer the deployment schema from the current feature view and mark it pending.
+
+        Use after enabling logging or changing the view; `save()` then
+        publishes the new schema as a new revision. Passed features are kept.
+
+        Example:
+            ```python
+            feature_view.enable_logging(extra_log_columns={"channel": "string"})
+
+            deployment = ms.get_deployment("fraud")
+            deployment.reinfer_schema()  # `channel` becomes an optional request field
+            deployment.save()  # publishes the schema as a new revision
+            ```
+
+        Returns:
+            The re-inferred schema, also set on the deployment.
+
+        Raises:
+            hopsworks.client.exceptions.ModelServingException: If the deployment is not served by the default predictor and has no schema to refine.
+        """
+        from hsml.deployment_schema import (
+            OUTPUT_FEATURE_VECTORS,
+            OUTPUT_PREDICTIONS,
+            _infer_deployment_schema,
+        )
+
+        current = self.schema
+        if not self._predictor.default_predictor and current is None:
+            raise ModelServingException(
+                f"Deployment '{self.name}' has no schema to re-infer: it is not served "
+                "by the default predictor and none was set. Set deployment.schema "
+                "explicitly instead."
+            )
+        feature_view = self.get_feature_view(init=False)
+        if feature_view is None:
+            raise ModelServingException(
+                f"Deployment '{self.name}' has no feature view to infer a schema from."
+            )
+        passed = [f.name for f in current.passed_features] if current else None
+        output_kind = (
+            OUTPUT_FEATURE_VECTORS if not self.has_model else OUTPUT_PREDICTIONS
+        )
+        output_columns = None
+        if current and output_kind == OUTPUT_PREDICTIONS:
+            output_columns = current.output.get("columns")
+        self.schema = _infer_deployment_schema(
+            feature_view,
+            passed_features=passed,
+            training_dataset_version=self.training_dataset_version,
+            output_kind=output_kind,
+            output_columns=output_columns,
+        )
+        return self.schema
+
+    @public
+    def create_feature_monitoring(
+        self,
+        name: str,
+        description: str | None = None,
+        start_date_time: int | str | None = None,
+        end_date_time: int | str | None = None,
+        cron_expression: str | None = "0 0 12 ? * * *",
+    ) -> Any:
+        """Create a feature monitoring config on the logging feature group of a feature view deployment.
+
+        Model deployments use `create_model_monitoring()` instead. Finish the
+        returned builder with a detection window, a reference window or value,
+        a comparison, and `save()`.
+
+        Parameters:
+            name: Name of the feature monitoring configuration.
+            description: Description of the feature monitoring configuration.
+            start_date_time: Start date and time from which to start computing statistics.
+            end_date_time: End date and time at which to stop computing statistics.
+            cron_expression: Cron expression scheduling the job (UTC, Quartz).
+
+        Returns:
+            A `FeatureMonitoringConfig` builder.
+
+        Raises:
+            hopsworks.client.exceptions.ModelServingException: If this is a model deployment, or the feature view has no logging enabled.
+        """
+        if self.has_model:
+            raise ModelServingException(
+                "Model deployments are monitored per model version; use "
+                "create_model_monitoring() instead."
+            )
+        feature_view = self.get_feature_view(init=False)
+        if feature_view is None or not feature_view.logging_enabled:
+            raise ModelServingException(
+                f"Deployment '{self.name}' serves a feature view without logging enabled; "
+                "call feature_view.enable_logging() first."
+            )
+        logging_fg = feature_view.feature_logging.get_feature_group(transformed=True)
+        return logging_fg.create_feature_monitoring(
+            name=name,
+            description=description,
+            start_date_time=start_date_time,
+            end_date_time=end_date_time,
+            cron_expression=cron_expression,
         )
 
     @public
     def get_monitoring_configs(self) -> list[FeatureMonitoringConfig]:
         """Get the feature monitoring configurations for the model deployed by this deployment.
 
-        Delegates to the underlying model's ``get_monitoring_configs`` method.
+        For a model deployment these are the configs filtered by the model
+        version; for a feature view deployment the configs on the feature
+        view's logging feature group. Delegates to the underlying model's
+        ``get_monitoring_configs`` method.
 
         Example:
             ```python
@@ -377,7 +551,14 @@ class Deployment:
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
         """
-        return self.get_model().get_monitoring_configs()
+        if self.has_model:
+            return self.get_model().get_monitoring_configs()
+        feature_view = self.get_feature_view(init=False)
+        if feature_view is None or not feature_view.logging_enabled:
+            return []
+        logging_fg = feature_view.feature_logging.get_feature_group(transformed=True)
+        configs = logging_fg.get_feature_monitoring_configs()
+        return configs or []
 
     @public
     def create_model_monitoring(
@@ -429,6 +610,11 @@ class Deployment:
             ``with_reference_*``, ``compare_on``/``compare_on_distribution``, and
             ``save()`` to register it.
         """
+        if not self.has_model:
+            raise ModelServingException(
+                f"Deployment '{self.name}' serves a feature view without a model; use "
+                "create_feature_monitoring() instead."
+            )
         model_meta = self.get_model()
         fv = model_meta.get_feature_view(init=False)
         if fv is None:
@@ -466,6 +652,10 @@ class Deployment:
     def get_logs(self, component: str = "predictor", tail: int = 10):
         """Prints the deployment logs of the predictor or transformer.
 
+        Only the live pods of a running deployment are read. Logs of a
+        stopped deployment are whatever was saved to HopsFS beforehand, retrieved
+        with :py:meth:`download_logs` or the "Log history" section in the UI.
+
         .. note::
             Legacy: this method **prints to stdout and returns ``None``**.
             New code (and any agent / scripted use) should call
@@ -498,7 +688,7 @@ class Deployment:
         self,
         component: str = "predictor",
         tail: int = 100,
-        source: str = "opensearch",
+        source: str = "kubernetes",
         since: str | None = None,
         until: str | None = None,
         pod: str | None = None,
@@ -507,16 +697,17 @@ class Deployment:
 
         Programmatic counterpart to :py:meth:`get_logs`. Suitable for
         agents and scripts: never prints, never short-circuits on
-        deployment state. The default ``source="opensearch"`` reads the
-        project's serving index and works for stopped or restarted
-        deployments — :py:meth:`get_logs` only reads live pod stdout and
-        returns ``None`` when the deployment isn't running.
+        deployment state. The default ``source="kubernetes"`` reads the
+        live pods only; logs of a stopped deployment are whatever was saved beforehand and are
+        archived to HopsFS and retrieved with :py:meth:`download_logs`
+        or the "Log history" section in the UI.
 
         Parameters:
             component: ``predictor`` or ``transformer``.
             tail: Most-recent lines to retrieve. Capped server-side.
-            source: ``opensearch`` (historical, default) or ``kubernetes``
-                (live pod-tailing; only works while running).
+            source: ``kubernetes`` (live pod logs, default) or
+                ``opensearch`` (deprecated; new backends serve it from the
+                Kubernetes path as well).
             since: ISO-8601 lower bound on log timestamp. Ignored on the
                 Kubernetes path.
             until: ISO-8601 upper bound on log timestamp. Ignored on the
@@ -528,6 +719,8 @@ class Deployment:
             matching lines; ``==> <instance> <==\\n`` block headers when
             multiple instances are present.
         """
+        if source == "opensearch":
+            _warn_opensearch_source_deprecated()
         components = list(util._get_members(DEPLOYABLE_COMPONENT))
         if component not in components:
             raise ValueError(
@@ -550,37 +743,48 @@ class Deployment:
         self,
         component: str = "predictor",
         interval: float = 2.0,
-        source: str = "opensearch",
+        source: str = "kubernetes",
         since: str | None = "now",
         timeout: float | None = None,
         stop_on_status: str | None = None,
+        pod: str | None = None,
     ) -> Iterator[str]:
         """Yield only newly observed log chunks as plain text.
 
         Client-side polling, not server-streaming: each tick calls
         :py:meth:`read_logs` with a moving cursor and yields the portion
-        not already seen. Deduplication uses the OpenSearch ``timestamp``
-        + ``doc_id`` pair; a content-hash fallback covers the Kubernetes
-        path.
+        not already seen. The Kubernetes path dedups per pod by
+        overlapping the previous and current tail windows; the OpenSearch
+        path (old backends) uses the ``timestamp`` + ``doc_id`` pair.
+        Only the live pods are followed; the archived logs of a stopped
+        deployment are retrieved with :py:meth:`download_logs`.
 
-        Example::
-
-            for chunk in dep.tail_logs(timeout=120):
+        Example: Following a deployment's live logs
+            ```python
+            for chunk in deployment.tail_logs(timeout=120):
                 print(chunk, end="")
+            ```
 
         Parameters:
             component: ``predictor`` or ``transformer``.
             interval: Seconds between polls.
-            source: ``opensearch`` (default) or ``kubernetes``.
+            source: ``kubernetes`` (default) or ``opensearch`` (deprecated;
+                new backends serve it from the Kubernetes path as well).
             since: ``"now"`` to start from the current instant (default),
                 or an ISO-8601 timestamp to replay from a specific point.
             timeout: Stop after this many seconds. ``None`` runs forever.
             stop_on_status: Stop when ``deployment.get_state().status``
                 matches this string (e.g. ``"Stopped"``).
+            pod: Follow one specific instance by name.
+                The backend reads the first eight replicas of a component per
+                request, so a deployment scaled beyond that needs the later
+                instances tailed one by one.
 
         Yields:
             Plain-text log chunks containing only newly observed content.
         """
+        if source == "opensearch":
+            _warn_opensearch_source_deprecated()
         components = list(util._get_members(DEPLOYABLE_COMPONENT))
         if component not in components:
             raise ValueError(
@@ -596,7 +800,40 @@ class Deployment:
             since=since,
             timeout=timeout,
             stop_on_status=stop_on_status,
+            pod=pod,
         )
+
+    @public
+    @usage._method_logger
+    def download_logs(self, path: str | None = None, latest: bool = False) -> list[str]:
+        """Download the archived logs of this deployment from HopsFS.
+
+        Each running instance archives its own output to the project's ``Logs``
+        dataset without being asked: the container copies its log to
+        ``Logs/Serving/<deployment_name>/`` when it exits, is restarted, or is
+        stopped, so a pod removed by scale-to-zero still leaves its output
+        behind. Files are named
+        ``<UTC yyyyMMdd-HHmmss>_<pod>_<component>.log``, one per instance run.
+
+        Example: Downloading the most recent archives
+            ```python
+            local_paths = deployment.download_logs(latest=True)
+            for local_path in local_paths:
+                print(open(local_path).read())
+            ```
+
+        Parameters:
+            path: Local directory to download the archives into; the current working directory is used when unset.
+            latest: Download only the most recent archives instead of all of them.
+
+        Returns:
+            The local paths of the downloaded archive files.
+
+        Raises:
+            hopsworks.client.exceptions.ModelServingException: If `path` does not exist or the deployment has no archived logs.
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
+        """
+        return self._serving_engine._download_logs(self, path=path, latest=latest)
 
     @public
     def get_url(self):
@@ -752,6 +989,54 @@ class Deployment:
     def has_model(self):
         """Whether the deployment has a model associated."""
         return self.model_name is not None and self.model_version is not None
+
+    @public
+    @property
+    def has_feature_view(self) -> bool:
+        """Whether this deployment serves a feature view without a model."""
+        return self._predictor.has_feature_view
+
+    @public
+    @property
+    def feature_view_name(self) -> str | None:
+        """Name of the feature view served by a feature view deployment."""
+        return self._predictor.feature_view_name
+
+    @public
+    @property
+    def feature_view_version(self) -> int | None:
+        """Version of the feature view served by a feature view deployment."""
+        return self._predictor.feature_view_version
+
+    @public
+    @property
+    def training_dataset_version(self) -> int | None:
+        """Training dataset version whose statistics the deployment's transformations use."""
+        version = (self._predictor.env_vars or {}).get(
+            MODEL_SERVING.TRAINING_DATASET_VERSION_ENV_VAR
+        )
+        if version is not None:
+            return int(version)
+        if self.has_model:
+            model = self.get_model()
+            return model.training_dataset_version if model else None
+        return None
+
+    @public
+    @property
+    def schema(self):
+        """Deployment schema, or `None`; see [`Predictor.schema`][hsml.predictor.Predictor.schema]."""
+        return self._predictor.schema
+
+    @schema.setter
+    def schema(self, schema):
+        self._predictor.schema = schema
+
+    @public
+    @property
+    def schema_id(self) -> str | None:
+        """Id of the schema this deployment's revision serves."""
+        return self._predictor.schema_id
 
     @public
     @property
@@ -956,6 +1241,23 @@ class Deployment:
     @api_protocol.setter
     def api_protocol(self, api_protocol: str):
         self._predictor.api_protocol = api_protocol
+
+    @public
+    @property
+    def knative_mode(self):
+        """Whether the deployment runs in KServe Knative mode.
+
+        `True` selects Knative mode, `False` selects Standard mode and `None` lets the backend decide on creation or keeps the stored mode on an update.
+        See [`Predictor.knative_mode`][hsml.predictor.Predictor.knative_mode] for the full mode semantics.
+
+        Info: Adds Knative mode selection, ~=5.1.0
+            Deployments can now select between KServe Knative and Standard mode.
+        """
+        return self._predictor.knative_mode
+
+    @knative_mode.setter
+    def knative_mode(self, knative_mode: bool | None):
+        self._predictor.knative_mode = knative_mode
 
     @public
     @property

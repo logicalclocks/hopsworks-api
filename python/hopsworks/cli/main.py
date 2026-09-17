@@ -11,8 +11,10 @@ like ``--help`` measurably slow (~2 s+); deferring keeps them snappy.
 from __future__ import annotations
 
 import importlib
+import logging
+import re
 import sys
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import click
 from hopsworks.cli import config, output
@@ -28,6 +30,7 @@ if TYPE_CHECKING:
 # the command (or asks for its --help).
 _LAZY_SUBCOMMANDS: dict[str, str] = {
     "setup": "hopsworks.cli.commands.setup:setup_cmd",
+    "logout": "hopsworks.cli.commands.logout:logout_cmd",
     "login": "hopsworks.cli.commands.login:login_cmd",
     "project": "hopsworks.cli.commands.project:project_group",
     "files": "hopsworks.cli.commands.files:files_group",
@@ -44,14 +47,74 @@ _LAZY_SUBCOMMANDS: dict[str, str] = {
     "agent": "hopsworks.cli.commands.agent:agent_group",
     "transformation": "hopsworks.cli.commands.transformation:transformation_group",
     "superset": "hopsworks.cli.commands.superset:superset_group",
-    "search": "hopsworks.cli.commands.search:search_group",
+    "search": "hopsworks.cli.commands.search:search_cmd",
     "trino": "hopsworks.cli.commands.trino:trino_group",
     "sql": "hopsworks.cli.commands.trino:trino_query",  # top-level alias of `trino query`
     "context": "hopsworks.cli.commands.context:context_cmd",
+    "session": "hopsworks.cli.commands.session:session_group",
+    "git": "hopsworks.cli.commands.git:git_group",
     "skills": "hopsworks.cli.commands.skills:skills_group",
     "init": "hopsworks.cli.commands.init:init_cmd",
     "update": "hopsworks.cli.commands.update:update_cmd",
 }
+
+
+# RESTCodes.ApiKeyErrorCode: the key carries none of the scopes the endpoint accepts.
+_NO_VALID_SCOPE = 320004
+
+
+def _explain_rest_error(exc: BaseException | None) -> str | None:
+    """Reduce a REST failure to the one line a user can act on.
+
+    Returns None for anything that is not the SDK's ``RestAPIError``, so callers
+    can re-raise unrelated exceptions untouched. A missing API key scope names
+    the scope the endpoint wanted and how to grant it; every other REST error
+    keeps the status, the error code and the server's own user message and
+    drops the URL and raw body that ``str(exc)`` carries.
+    """
+    from hopsworks_common.client import (
+        exceptions,  # noqa: PLC0415 - loaded once the SDK has raised
+    )
+
+    if not isinstance(exc, exceptions.RestAPIError):
+        return None
+    response = exc.response
+    try:
+        body = response.json()
+    except Exception:  # noqa: BLE001 - HTML error pages from a proxy
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    code = body.get("errorCode")
+    detail = (
+        body.get("usrMsg")
+        or body.get("errorMsg")
+        or getattr(response, "reason", "")
+        or ""
+    )
+    if code == _NO_VALID_SCOPE:
+        wanted = re.search(r"\[([^\]]+)\]", detail)
+        scopes = [s.strip() for s in wanted.group(1).split(",")] if wanted else []
+        if len(scopes) == 1:
+            need = f"the {scopes[0]} scope, and yours does not have it"
+        elif scopes:
+            need = f"one of the scopes {', '.join(scopes)}, and yours has none of them"
+        else:
+            need = "a scope that yours does not have"
+        return (
+            f"This command needs an API key with {need}. Add it under Account "
+            "Settings > API keys, or run `hops setup --force` to create a key "
+            "with every scope the CLI uses."
+        )
+    status = getattr(response, "status_code", None)
+    where = f"HTTP {status}" + (f", error {code}" if code else "")
+    hint = ""
+    if status == 401:
+        hint = (
+            f" Check the key in {config.CONFIG_PATH}, or run `hops setup --force` "
+            "to create a new one."
+        )
+    return f"Hopsworks refused the request ({where}): {detail}{hint}"
 
 
 try:
@@ -157,6 +220,40 @@ class LazyGroup(click.Group):
         super().__init__(*args, **kwargs)
         self.lazy_subcommands: dict[str, str] = dict(lazy_subcommands or {})
 
+    def invoke(self, ctx: click.Context) -> Any:
+        """Run the command tree, rewriting a REST failure into its reason.
+
+        The SDK raises ``RestAPIError`` with the URL and raw body in its text.
+        Left alone, click shows it as a traceback; embedded by a command into a
+        ``ClickException`` message, the raw text is what the user reads. Both
+        forms are rewritten so the output is the reason (most often a missing
+        key scope) and the fix. Unrelated exceptions pass through untouched.
+
+        Args:
+            ctx: Click context for the root command.
+
+        Returns:
+            Whatever the invoked command returns.
+        """
+        try:
+            return super().invoke(ctx)
+        except click.ClickException as exc:
+            cause = exc.__cause__ or exc.__context__
+            friendly = _explain_rest_error(cause)
+            if friendly:
+                raw = str(cause)
+                exc.message = (
+                    exc.message.replace(raw, friendly)
+                    if raw in exc.message
+                    else f"{exc.message} {friendly}"
+                )
+            raise
+        except Exception as exc:  # noqa: BLE001 - narrowed by _explain_rest_error
+            friendly = _explain_rest_error(exc)
+            if friendly is None:
+                raise
+            raise click.ClickException(friendly) from exc
+
     def list_commands(self, ctx: click.Context) -> Iterable[str]:
         return sorted({*self.commands.keys(), *self.lazy_subcommands.keys()})
 
@@ -237,6 +334,10 @@ def cli(
         verify_flag: True for ``--verify``, False for ``--no-verify``, None if neither was passed.
         json_flag: When True, every output helper switches to JSON mode.
     """
+    # The SDK's package import already ran logging.basicConfig(level=INFO), so
+    # its client/engine chatter ("Initializing external client", "Connection
+    # closed") would print on every command; a CLI reports through output.*.
+    logging.getLogger().setLevel(logging.WARNING)
     output.set_json_mode(json_flag)
     if api_key_stdin:
         if api_key_flag:

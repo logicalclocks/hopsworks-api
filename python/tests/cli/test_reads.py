@@ -532,8 +532,9 @@ def test_trino_sql_alias_registered():
 
 def test_login_banner_does_not_pollute_stdout(authed_config, capsys):
     # hopsworks.login() prints a "Logged in to project ..." banner; the CLI
-    # must keep it off stdout so --json output and pipes stay parseable (#6).
+    # swallows it so --json output and pipes stay parseable (#6).
     import click
+    import hopsworks
     from hopsworks.cli import session
 
     def fake_login(**kwargs):
@@ -541,9 +542,9 @@ def test_login_banner_does_not_pollute_stdout(authed_config, capsys):
         return mock.MagicMock(name="Project")
 
     ctx = click.Context(click.Command("x"))
-    with mock.patch.object(session.auth, "login", side_effect=fake_login):
+    with mock.patch.object(hopsworks, "login", side_effect=fake_login):
         session.get_project(ctx)
 
     captured = capsys.readouterr()
     assert "Logged in to project" not in captured.out
-    assert "Logged in to project" in captured.err
+    assert "Logged in to project" not in captured.err

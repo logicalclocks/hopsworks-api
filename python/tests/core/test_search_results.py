@@ -191,3 +191,42 @@ class TestSearchResults:
         fg = result.feature_groups[0]
         assert fg.project.id == 123
         assert fg.project.name == "my_project"
+
+    def test_search_result_parses_jobs_apps_models_deployments_and_agents(self):
+        json_dict = {
+            "models": [
+                {
+                    "name": "all_MiniLM_L6_v2",
+                    "version": 1,
+                    "framework": "PYTHON",
+                    "parentProjectId": 1,
+                    "parentProjectName": "test_project",
+                }
+            ],
+            "modelsTotal": 3,
+            "modelsFrom": 2,
+            "jobs": [{"name": "nightly", "jobType": "PYSPARK", "parentProjectId": 1}],
+            "apps": [{"name": "dash", "jobType": "PYTHON_APP", "parentProjectId": 1}],
+            "deployments": [{"name": "fraud", "servingTool": "KSERVE"}],
+            "agents": [{"name": "bot", "servingTool": "KSERVE"}],
+        }
+
+        result = search_results.FeaturestoreSearchResult(json_dict)
+
+        assert [m.name for m in result.models] == ["all_MiniLM_L6_v2"]
+        assert result.models[0].version == 1
+        assert result.models[0].project.name == "test_project"
+        assert result.models[0].raw_data["framework"] == "PYTHON"
+        assert result.models_total == 3
+        assert result.models_offset == 2
+        assert [j.name for j in result.jobs] == ["nightly"]
+        assert [a.name for a in result.apps] == ["dash"]
+        assert [d.name for d in result.deployments] == ["fraud"]
+        assert [a.name for a in result.agents] == ["bot"]
+        assert result.jobs_total == 0
+        assert result.feature_groups == []
+
+        as_json = result.json()
+        assert [m["name"] for m in as_json["models"]] == ["all_MiniLM_L6_v2"]
+        assert as_json["modelsTotal"] == 3
+        assert as_json["agents"][0]["name"] == "bot"

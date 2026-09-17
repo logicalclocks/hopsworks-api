@@ -128,6 +128,19 @@ class ExecutionApi:
         ]
         _client._send_request("DELETE", path_params)
 
+    def _rerun(self, job_name: str, id: int) -> dict:
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "jobs",
+            job_name,
+            "executions",
+            id,
+            "rerun",
+        ]
+        return _client._send_request("POST", path_params)
+
     def _stop(self, job_name: str, id: int) -> None:
         _client = client._get_instance()
         path_params = [

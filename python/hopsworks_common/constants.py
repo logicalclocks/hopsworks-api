@@ -167,6 +167,41 @@ class MODEL_SERVING:
     ARTIFACTS_DIR_NAME = "Artifacts"  # legacy, kept for backward compatibility (<4.6)
     # Subfolder for user-uploaded files at Deployments/<name>/resources/<role>/
     DEPLOYMENT_RESOURCES_DIR = "resources"
+    # Project dataset and subdirectory where the backend archives pod logs at
+    # deployment stop/delete time: Logs/Serving/<deployment_name>/
+    LOGS_DATASET = "Logs"
+    ARCHIVED_LOGS_DIR = "Serving"
+    # Content-addressed deployment schemas live at
+    # Deployments/<name>/resources/schema/<schema_id>.json; the id rides on the
+    # predictor as an env var so each revision names the file it serves.
+    DEPLOYMENT_SCHEMA_DIR = "schema"
+    # Derived documents published next to <schema_id>.json for clients that
+    # cannot render them from the schema; the backend serves all three.
+    DEPLOYMENT_SCHEMA_JSON_SCHEMA_SUFFIX = ".jsonschema.json"
+    DEPLOYMENT_SCHEMA_OPENAPI_SUFFIX = ".openapi.json"
+    DEFAULT_PREDICTOR_SCRIPT = "default_predictor.py"
+    DEPLOYMENT_SCHEMA_ID_ENV_VAR = "SERVING_SCHEMA_ID"
+    FEATURE_VIEW_NAME_ENV_VAR = "SERVING_FEATURE_VIEW_NAME"
+    FEATURE_VIEW_VERSION_ENV_VAR = "SERVING_FEATURE_VIEW_VERSION"
+    TRAINING_DATASET_VERSION_ENV_VAR = "SERVING_TRAINING_DATASET_VERSION"
+    MAX_BATCH_ROWS_ENV_VAR = "SERVING_MAX_BATCH_ROWS"
+    # Tells the backend that a model-less deployment's script is a Predict
+    # class to run under the KServe wrapper, not a server to start with python.
+    SCRIPT_KIND_ENV_VAR = "SERVING_SCRIPT_KIND"
+    SCRIPT_KIND_PREDICTOR = "predictor"
+    # which component of the revision validates requests against the schema
+    SCHEMA_ENFORCER_ENV_VAR = "SERVING_SCHEMA_ENFORCER"
+    SCHEMA_ENFORCER_PREDICTOR = "predictor"
+    SCHEMA_ENFORCER_TRANSFORMER = "transformer"
+    RESERVED_ENV_VARS = (
+        DEPLOYMENT_SCHEMA_ID_ENV_VAR,
+        FEATURE_VIEW_NAME_ENV_VAR,
+        FEATURE_VIEW_VERSION_ENV_VAR,
+        TRAINING_DATASET_VERSION_ENV_VAR,
+        SCRIPT_KIND_ENV_VAR,
+        SCHEMA_ENFORCER_ENV_VAR,
+    )
+    DEFAULT_MAX_BATCH_ROWS = 512
 
 
 class RESOURCES:

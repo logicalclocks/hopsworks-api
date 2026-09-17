@@ -2111,3 +2111,45 @@ class TestFeatureViewTrainingDatasetVersionResolution:
         # Assert: no version asked for, even with three of them available.
         assert names == ["fg1_feature"]
         schema.assert_called_once_with(None)
+
+
+class TestFeatureViewDeploy:
+    def test_deploy_builds_predictor_and_deploys(self, mocker):
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type")
+        fg = feature_group.FeatureGroup(
+            name="fg",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            features=[feature.Feature("col1")],
+            id=11,
+            stream=False,
+        )
+        fv = feature_view.FeatureView(
+            name="fv", featurestore_id=99, query=fg.select_all(), version=2, labels=[]
+        )
+        for_feature_view = mocker.patch("hsml.predictor.Predictor.for_feature_view")
+
+        result = fv.deploy(
+            name="d",
+            passed_features=["a"],
+            training_dataset_version=3,
+        )
+
+        for_feature_view.assert_called_once_with(
+            fv,
+            name="d",
+            description=None,
+            training_dataset_version=3,
+            passed_features=["a"],
+            schema=None,
+            script_file=None,
+            resources=None,
+            scaling_configuration=None,
+            environment=None,
+            env_vars=None,
+            tags=None,
+        )
+        assert result is for_feature_view.return_value.deploy.return_value
