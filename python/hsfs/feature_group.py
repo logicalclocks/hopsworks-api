@@ -5117,8 +5117,15 @@ class FeatureGroup(FeatureGroupBase):
         """[`delta_optimize`][hsfs.feature_group.FeatureGroup.delta_optimize] under the other name the engines use.
 
         Delta's SQL calls this OPTIMIZE and delta-rs calls it `optimize.compact`, so both
-        words are the right one to reach for depending on which you last read. Same
-        arguments, same result.
+        words are the right one to reach for depending on which you last read.
+
+        Parameters:
+            after_ingest_date: Rewrite only the partitions at or after this date, as `YYYY-MM-DD`.
+            max_concurrent_tasks: Rewrite tasks to run at once.
+            target_size: Size in bytes the rewritten files aim for.
+
+        Returns:
+            The engine's compaction metrics, or `None` when nothing was rewritten.
         """
         return self.delta_optimize(
             after_ingest_date=after_ingest_date,

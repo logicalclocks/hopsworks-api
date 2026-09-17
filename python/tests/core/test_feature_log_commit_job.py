@@ -112,7 +112,10 @@ class _LocalDatasetApi:
         self._p(path).mkdir(parents=True, exist_ok=True)
 
     def list(self, path, offset=0, limit=1000):
-        entries = sorted(str(p.relative_to(self.root)) for p in self._p(path).iterdir())
+        # posix, as the Dataset API answers, so the comparisons hold on Windows too.
+        entries = sorted(
+            p.relative_to(self.root).as_posix() for p in self._p(path).iterdir()
+        )
         return entries[offset : offset + limit]
 
     def move(self, source, destination, overwrite=False):
@@ -123,7 +126,7 @@ class _LocalDatasetApi:
         self._maybe_fail("upload")
         target = self._p(upload_path) / os.path.basename(local_path)
         shutil.copy(local_path, target)
-        return str(target.relative_to(self.root))
+        return target.relative_to(self.root).as_posix()
 
     def read_content(self, path):
         # The released client answers with a streaming Response.

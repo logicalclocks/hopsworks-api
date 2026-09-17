@@ -290,7 +290,17 @@ class _ArrowBatchBuilder:
                 ]
                 values = values[:count] + [float("nan")] * max(0, count - len(values))
             else:
-                values = params.apply(lambda row: json.dumps(row.to_dict()), axis=1)
+                # pandas 2's to_dict() turns pd.NA into None and pandas 1.x leaves it,
+                # where json.dumps raises on the NAType; both must produce the same row.
+                values = params.apply(
+                    lambda row: json.dumps(
+                        {
+                            name: None if value is pd.NA or value is pd.NaT else value
+                            for name, value in row.to_dict().items()
+                        }
+                    ),
+                    axis=1,
+                )
                 values = values.reindex(range(count))
             columns["request_parameters"] = values
 

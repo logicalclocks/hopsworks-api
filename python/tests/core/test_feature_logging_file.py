@@ -134,6 +134,7 @@ class TestSegmentWriter:
         assert snapshot["rows_received"] == 4
         assert snapshot["rows_written"] == 0
 
+    @posix_only
     def test_a_new_writer_adopts_what_the_old_one_left_open(self, tmp_path):
         first = flf._SegmentWriter(_options(tmp_path), uploader=_Uploads())
         first._append(_stream(2), 2)
@@ -176,6 +177,7 @@ class TestAccounting:
         assert snapshot["upload_buckets"][-1] == 1  # under 30 s
         assert snapshot["upload_seconds_sum"] > 0
 
+    @posix_only
     def test_a_new_writer_counts_the_rows_it_adopts(self, tmp_path):
         first = flf._SegmentWriter(_options(tmp_path), uploader=_Uploads())
         first._append(_stream(4), 4)
@@ -390,7 +392,7 @@ class _LocalDatasetApi:
     def upload(self, local_path, upload_path, overwrite=False):
         target = self.root / upload_path / os.path.basename(local_path)
         target.write_bytes(Path(local_path).read_bytes())
-        return str(target.relative_to(self.root))
+        return target.relative_to(self.root).as_posix()
 
     def move(self, source, destination, overwrite=False):
         (self.root / source).rename(
@@ -569,6 +571,7 @@ class TestPerWorkerBuffers:
         assert [flf._rows_in(p) for p in later.ready_dir.glob("*.arrow")] == [3]
         assert not (tmp_path / f"w{dead_predictor}").exists()
 
+    @posix_only
     def test_a_second_writer_on_one_directory_is_refused(self, tmp_path):
         first = flf._SegmentWriter(
             _options(tmp_path, handoff_seconds=0), uploader=_Uploads()

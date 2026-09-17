@@ -1248,6 +1248,8 @@ class TestDeltaEngine:
         return engine, fg
 
     def test_vacuum_on_python_actually_deletes(self, mocker):
+        # hops-deltalake is linux and darwin-arm64 only; this reaches the real module.
+        pytest.importorskip("deltalake")
         # Arrange
         engine, _ = self._rs_engine(mocker)
         table = mocker.MagicMock()
@@ -1280,6 +1282,8 @@ class TestDeltaEngine:
         spark.sql.assert_called_once_with("VACUUM 'hopsfs://nn:8020/p' RETAIN 24 HOURS")
 
     def test_compact_on_python_bounds_its_own_concurrency(self, mocker):
+        # hops-deltalake is linux and darwin-arm64 only; this reaches the real module.
+        pytest.importorskip("deltalake")
         # Arrange
         engine, _ = self._rs_engine(mocker)
         table = mocker.MagicMock()
@@ -1296,6 +1300,8 @@ class TestDeltaEngine:
         assert result == {"numFilesRemoved": 120}
 
     def test_compact_filters_on_a_date_partition(self, mocker):
+        # hops-deltalake is linux and darwin-arm64 only; this reaches the real module.
+        pytest.importorskip("deltalake")
         # Arrange
         engine, _ = self._rs_engine(
             mocker,
@@ -1414,6 +1420,8 @@ class TestDeltaEngine:
             engine._vacuum("24 HOURS; DROP TABLE x")
 
     def test_active_file_count_on_python(self, mocker):
+        # hops-deltalake is linux and darwin-arm64 only; this reaches the real module.
+        pytest.importorskip("deltalake")
         # Arrange
         engine, _ = self._rs_engine(mocker)
         table = mocker.MagicMock()
@@ -1424,6 +1432,8 @@ class TestDeltaEngine:
         assert engine._active_file_count() == 3
 
     def test_last_optimize_at_reads_the_history(self, mocker):
+        # hops-deltalake is linux and darwin-arm64 only; this reaches the real module.
+        pytest.importorskip("deltalake")
         # Arrange
         engine, _ = self._rs_engine(mocker)
         table = mocker.MagicMock()
@@ -1437,6 +1447,8 @@ class TestDeltaEngine:
         assert engine._last_optimize_at() == 1_700_000_500.0
 
     def test_last_optimize_at_is_none_when_never_compacted(self, mocker):
+        # hops-deltalake is linux and darwin-arm64 only; this reaches the real module.
+        pytest.importorskip("deltalake")
         # Arrange
         engine, _ = self._rs_engine(mocker)
         table = mocker.MagicMock()
@@ -1447,6 +1459,8 @@ class TestDeltaEngine:
         assert engine._last_optimize_at() is None
 
     def test_checkpoint_writes_a_checkpoint(self, mocker):
+        # hops-deltalake is linux and darwin-arm64 only; this reaches the real module.
+        pytest.importorskip("deltalake")
         # Arrange
         _patch_client(mocker, is_external=False)
         fg = _make_fg("hopsfs://nn:8020/p")
@@ -1469,6 +1483,8 @@ class TestDeltaEngine:
         assert result == {"version": 11}
 
     def test_cleanup_metadata_expires_the_log(self, mocker):
+        # hops-deltalake is linux and darwin-arm64 only; this reaches the real module.
+        pytest.importorskip("deltalake")
         # Arrange
         _patch_client(mocker, is_external=False)
         fg = _make_fg("hopsfs://nn:8020/p")
@@ -2881,6 +2897,9 @@ class TestDeltaEngineGlueSync:
 
 def test_commit_properties_become_a_delta_application_transaction(monkeypatch):
     import sys
+
+    # hops-deltalake is linux and darwin-arm64 only; this needs the real CommitProperties.
+    pytest.importorskip("deltalake")
 
     from hsfs.core.delta_engine import DeltaEngine
 

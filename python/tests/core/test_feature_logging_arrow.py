@@ -331,6 +331,12 @@ def test_columns_match_baseline(parameters, hidden, types):
             if isinstance(baseline[name], float) and pd.isna(baseline[name]):
                 assert isinstance(value, float) and pd.isna(value)
                 continue
+            if baseline[name] is pd.NA or baseline[name] is pd.NaT:
+                # pandas 1.x hands a nullable column's missing entry over as pd.NA where
+                # pandas 2 gives None. The Arrow path writes None on both, and the two
+                # markers mean the same absent value.
+                assert value is None, name
+                continue
             assert value == baseline[name], name
     assert expected[0]["model_version"] == "None"
     if parameters:
