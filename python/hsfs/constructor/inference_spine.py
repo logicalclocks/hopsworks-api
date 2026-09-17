@@ -239,8 +239,6 @@ class InferenceSpine:
         self._dataframe = self._build(frame)
 
     def _build(self, frame: pd.DataFrame) -> pd.DataFrame:
-        import pandas as pd
-
         # The frame is the spine as given: one row per entity and moment, in the caller's order.
         # The result comes back in that order, so predictions zip onto it positionally.
         spine = frame.reset_index(drop=True).copy()

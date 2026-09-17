@@ -731,7 +731,9 @@ class TestFeatureViewEngine:
 
         # Act
         fv_engine._create_training_dataset(
-            feature_view_obj=None, training_dataset_obj=MagicMock(), user_write_options={}
+            feature_view_obj=None,
+            training_dataset_obj=MagicMock(),
+            user_write_options={},
         )
 
         # Assert

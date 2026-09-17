@@ -120,4 +120,5 @@ def test_shape_binds_in_spark(spark, label, sql):
     # the statement parses and every identifier and function in it resolves. The golden file
     # spells identifiers with double quotes for readability; what the backend emits is backticks,
     # which is what Spark quotes identifiers with.
-    spark.sql(sql.replace('"', "`")).schema
+    schema = spark.sql(sql.replace('"', "`")).schema
+    assert len(schema.fields) > 0
