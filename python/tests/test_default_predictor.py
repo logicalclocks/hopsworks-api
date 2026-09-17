@@ -957,6 +957,13 @@ class TestNoLookup:
         result = predictor.predict_blocking([{"amount_scaled": 0.5, "cc_num": 1}])
         assert result == [1]
         assert list(predictor.model.seen.columns) == ["amount_scaled", "cc_num"]
+        # Through `predict` as well, which is what the serving wrapper calls. This
+        # deployment takes an early return in __init__, and everything the request path
+        # reads has to be set before it: the awaited path asked for _blocking_lookup and
+        # a model without a feature view answered every request with an AttributeError.
+        assert asyncio.run(
+            predictor.predict([{"amount_scaled": 0.5, "cc_num": 1}])
+        ) == [1]
 
     def test_model_without_any_schema_takes_the_passed_features_in_order(self, pod_env):
         schema = DeploymentSchema(

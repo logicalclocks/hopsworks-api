@@ -465,6 +465,14 @@ class DefaultPredict:
         self.training_dataset_version = _revision_training_dataset_version(
             deployment, self.hopsworks_model
         )
+        # Before any branch below, because every one of them ends in a predictor that
+        # serves, and _fetch reads this on the request path. Resolved once rather than
+        # per request: see _fetch. The name carries no HOPSWORKS_ prefix because that
+        # prefix is reserved, and a deployment that set it would be refused, which would
+        # leave the opt-out reachable by nobody.
+        self._blocking_lookup = os.environ.get(
+            "SERVING_PREDICTOR_ASYNC_LOOKUP", ""
+        ).strip().lower() in ("false", "0", "no")
         if self.hopsworks_model is not None:
             # the same call a hand-written predictor makes: inside a deployment
             # it also initialises the view for serving on the model's training
@@ -574,12 +582,6 @@ class DefaultPredict:
             )
         self._log_worker = None
         self._arrow_builder = None
-        # Resolved here rather than per request: see _fetch. The name carries no
-        # HOPSWORKS_ prefix because that prefix is reserved, and a deployment that set it
-        # would be refused, which would leave the opt-out reachable by nobody.
-        self._blocking_lookup = os.environ.get(
-            "SERVING_PREDICTOR_ASYNC_LOOKUP", ""
-        ).strip().lower() in ("false", "0", "no")
         self._async_logger = async_logger
         self._file_transport = None
         if self.logging_enabled and self.logging_transport == "job":
