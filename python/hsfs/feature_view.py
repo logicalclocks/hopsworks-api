@@ -2166,6 +2166,10 @@ class FeatureView:
                 Passing it re-anchors the query on these rows instead of on the root feature
                 group, the same way `get_batch_data` does, so the view does not have to have
                 been created with a spine group.
+                A column named like a feature the view looks up from a joined feature group is
+                refused: that feature is read from the feature store, not from the frame.
+                The training dataset records that it was built this way, and reading or
+                recreating that version later requires the same `spine_df` again.
                 Cannot be combined with `spine`.
                 Accepts a pandas or polars DataFrame, a list of dicts, or, under the Spark engine, a Spark DataFrame.
 
@@ -2480,6 +2484,10 @@ class FeatureView:
                 Passing it re-anchors the query on these rows instead of on the root feature
                 group, the same way `get_batch_data` does, so the view does not have to have
                 been created with a spine group.
+                A column named like a feature the view looks up from a joined feature group is
+                refused: that feature is read from the feature store, not from the frame.
+                The training dataset records that it was built this way, and reading or
+                recreating that version later requires the same `spine_df` again.
                 Cannot be combined with `spine`.
                 Accepts a pandas or polars DataFrame, a list of dicts, or, under the Spark engine, a Spark DataFrame.
 
@@ -2788,6 +2796,10 @@ class FeatureView:
                 Passing it re-anchors the query on these rows instead of on the root feature
                 group, the same way `get_batch_data` does, so the view does not have to have
                 been created with a spine group.
+                A column named like a feature the view looks up from a joined feature group is
+                refused: that feature is read from the feature store, not from the frame.
+                The training dataset records that it was built this way, and reading or
+                recreating that version later requires the same `spine_df` again.
                 Cannot be combined with `spine`.
                 Accepts a pandas or polars DataFrame, a list of dicts, or, under the Spark engine, a Spark DataFrame.
 
@@ -2884,11 +2896,13 @@ class FeatureView:
             If a materialised training data has deleted. Use `recreate_training_dataset()` to
             recreate the training data.
 
-        Warning: A training dataset built from `spine_df` is not reproducible from its metadata
-            The query is recorded with the training dataset; the dataframe is not.
-            Recreating one means passing the same `spine_df` again.
-            Called without it, the query is re-anchored on the root feature group and the
-            result is a different dataset under the same version.
+        Warning: A training dataset built from `spine_df` needs the frame again
+            The query is recorded with the training dataset, and so is the fact that a
+            `spine_df` anchored it; the dataframe itself is not. Recreating such a version
+            means passing the same `spine_df` again, and calling this without it is refused
+            rather than answered from the feature view's own rows under the same version.
+            The reverse is refused too: a version built without a `spine_df` is not recreated
+            on one.
 
         Warning: Spine Groups/Dataframes
             Spine groups and dataframes are currently only supported with the Spark engine and
@@ -3094,6 +3108,10 @@ class FeatureView:
                 Passing it re-anchors the query on these rows instead of on the root feature
                 group, the same way `get_batch_data` does, so the view does not have to have
                 been created with a spine group.
+                A column named like a feature the view looks up from a joined feature group is
+                refused: that feature is read from the feature store, not from the frame.
+                The training dataset records that it was built this way, and reading or
+                recreating that version later requires the same `spine_df` again.
                 Cannot be combined with `spine`.
                 Accepts a pandas or polars DataFrame, a list of dicts, or, under the Spark engine, a Spark DataFrame.
 
@@ -3296,6 +3314,10 @@ class FeatureView:
                 Passing it re-anchors the query on these rows instead of on the root feature
                 group, the same way `get_batch_data` does, so the view does not have to have
                 been created with a spine group.
+                A column named like a feature the view looks up from a joined feature group is
+                refused: that feature is read from the feature store, not from the frame.
+                The training dataset records that it was built this way, and reading or
+                recreating that version later requires the same `spine_df` again.
                 Cannot be combined with `spine`.
                 Accepts a pandas or polars DataFrame, a list of dicts, or, under the Spark engine, a Spark DataFrame.
 
@@ -3538,6 +3560,10 @@ class FeatureView:
                 Passing it re-anchors the query on these rows instead of on the root feature
                 group, the same way `get_batch_data` does, so the view does not have to have
                 been created with a spine group.
+                A column named like a feature the view looks up from a joined feature group is
+                refused: that feature is read from the feature store, not from the frame.
+                The training dataset records that it was built this way, and reading or
+                recreating that version later requires the same `spine_df` again.
                 Cannot be combined with `spine`.
                 Accepts a pandas or polars DataFrame, a list of dicts, or, under the Spark engine, a Spark DataFrame.
 

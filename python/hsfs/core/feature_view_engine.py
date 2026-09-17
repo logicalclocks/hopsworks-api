@@ -390,12 +390,13 @@ class FeatureViewEngine:
 
         if inference_spine is not None:
             # The spine is the population: its rows are exactly the ones to return, and it
-            # carries its own upper bound. An event-time window or a lookback on top of that
-            # would filter the anchor itself and drop rows the caller asked for, which is why
-            # the backend refuses a filter on a column the spine supplies.
+            # carries its own upper bound. An event-time window on top of that would filter the
+            # anchor itself and drop rows the caller asked for, which is why the backend refuses
+            # a filter on a column the spine supplies. A lookback is different: it bounds which
+            # rows of each feature group are candidates, never which spine rows come back, so
+            # it rides along and is what keeps a large feature group's scan bounded.
             start_time = None
             end_time = None
-            lookback = None
 
         try:
             query = self._feature_view_api._get_batch_query(
@@ -511,6 +512,9 @@ class FeatureViewEngine:
         # batch-data path.
         if lookback is not None:
             training_dataset_obj._lookback = lookback
+        # Recorded with the dataset, since the frame itself is not: it is what lets a later read
+        # or recreate without the frame be refused rather than answered from other rows.
+        training_dataset_obj.spine_anchored = spine_df is not None
         self._set_event_time(feature_view_obj, training_dataset_obj)
         updated_instance = self._create_training_data_metadata(
             feature_view_obj, training_dataset_obj
@@ -524,8 +528,31 @@ class FeatureViewEngine:
             event_time=event_time,
             training_helper_columns=training_helper_columns,
             transformation_context=transformation_context,
+            spine_df=spine_df,
         )
         return updated_instance, td_job
+
+    def _check_spine_matches(self, training_dataset_obj, inference_spine):
+        """Refuse a read or recreate whose population differs from the one the version was built from.
+
+        The spine rows are not recorded with a training dataset, only that there were some. Without
+        this, version N built from a caller's frame quietly answers from the root feature group's
+        history the moment the frame is not passed again, and a version built from history is
+        quietly rebuilt on someone's frame under the same number.
+        """
+        anchored = bool(getattr(training_dataset_obj, "spine_anchored", False))
+        if anchored and inference_spine is None:
+            raise FeatureStoreException(
+                f"Training dataset version {training_dataset_obj.version} was built from a"
+                " `spine_df`, which is not recorded with it. Pass the same `spine_df` again to"
+                " read or recreate it."
+            )
+        if not anchored and inference_spine is not None:
+            raise FeatureStoreException(
+                f"Training dataset version {training_dataset_obj.version} was built from the"
+                " feature view's own rows, not from a `spine_df`. Create a new version to train"
+                " on a frame of your own."
+            )
 
     def _training_spine(self, feature_view_obj, spine_df, spine):
         """Build the spine a training-data call is anchored on, or None when it is not one.
@@ -626,6 +653,8 @@ class FeatureViewEngine:
             # and comes back with `td_updated` regardless of whether we just
             # created it or fetched an existing version.
             query_spine = self._training_spine(feature_view_obj, spine_df, spine)
+            if training_dataset_version:
+                self._check_spine_matches(td_updated, query_spine)
             query = self._get_batch_query(
                 feature_view_obj,
                 training_dataset_version=td_updated.version,
@@ -748,6 +777,10 @@ class FeatureViewEngine:
             training_dataset_obj.statistics_config = statistics_config
             training_dataset_obj.update_statistics_config()
 
+        self._check_spine_matches(
+            training_dataset_obj,
+            self._training_spine(feature_view_obj, spine_df, spine),
+        )
         td_job = self._compute_training_dataset(
             feature_view_obj,
             user_write_options,
@@ -928,6 +961,15 @@ class FeatureViewEngine:
         # `_create_training_dataset` puts the user-supplied Lookback on
         # `training_dataset_obj._lookback` before calling this helper.
         materialisation_spine = self._training_spine(feature_view_obj, spine_df, spine)
+        if training_dataset_obj.spine_anchored and materialisation_spine is None:
+            # The one-directional form of _check_spine_matches: a fresh version created without a
+            # frame reaches here through _create_training_dataset with the flag off, so only the
+            # case where the recorded population is missing is refused.
+            raise FeatureStoreException(
+                f"Training dataset version {training_dataset_obj.version} was built from a"
+                " `spine_df`, which is not recorded with it. Pass the same `spine_df` again to"
+                " materialise it."
+            )
         batch_query = self._get_batch_query(
             feature_view_obj,
             training_dataset_obj.event_start_time,

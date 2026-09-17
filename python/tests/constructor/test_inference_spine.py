@@ -67,6 +67,9 @@ class _FeatureView:
         self.featurestore_id = 67
         self.query = _Query(root, joined)
         self.serving_keys = serving_keys
+        # The view's output schema: every selected feature under its output name, which for a
+        # joined feature group is its prefix and the feature's name.
+        self.features = [f for fg in [root] + joined for f in fg.features]
 
 
 @pytest.fixture
@@ -344,7 +347,7 @@ class TestSpineCeilings:
 
     def test_too_many_rows(self, feature_view, monkeypatch):
         monkeypatch.setattr(inference_spine, "MAX_SPINE_ROWS", 3)
-        with pytest.raises(FeatureStoreException, match="4 rows; the limit is 3"):
+        with pytest.raises(FeatureStoreException, match="more than 3 rows"):
             InferenceSpine(feature_view, _crossed(SPINE_DF, 4))
 
     def test_too_many_columns(self, feature_view, monkeypatch):
@@ -354,6 +357,111 @@ class TestSpineCeilings:
 
     def test_within_the_ceilings(self, feature_view):
         assert InferenceSpine(feature_view, _crossed(SPINE_DF, 1)).row_count == 1
+
+
+def _feature_view_with_event_time_type(hive_type):
+    root = _FeatureGroup(
+        "air_quality",
+        [
+            _Feature("city", "string"),
+            _Feature("date", hive_type),
+            _Feature("pm25", "double"),
+        ],
+        "date",
+    )
+    weather = _FeatureGroup(
+        "weather", [_Feature("city", "string"), _Feature("date", "timestamp")], "date"
+    )
+    keys = [_ServingKey("city", root, True), _ServingKey("city", weather, False)]
+    return _FeatureView(root, [weather], keys)
+
+
+class TestEventTimeType:
+    """The spine's event time is written in the root feature group's own type.
+
+    The backend declares the column in that type and the query service casts the file to it, so a
+    TIMESTAMP column under a BIGINT root failed at the cast, and an epoch given as an integer was
+    parsed as nanoseconds and landed in 1970.
+    """
+
+    def test_an_epoch_root_gets_epoch_milliseconds(self):
+        fv = _feature_view_with_event_time_type("bigint")
+        moment = datetime(2026, 9, 16, tzinfo=timezone.utc)
+        spine = InferenceSpine(fv, [{"city": "Stockholm", "date": moment}])
+
+        assert spine.to_dict()["columns"][2] == {"name": "date", "type": "bigint"}
+        assert list(spine.dataframe["date"]) == [int(moment.timestamp() * 1000)]
+        assert str(spine._arrow_table().schema.field("date").type) == "int64"
+
+    def test_an_integer_prediction_time_is_epoch_milliseconds(self):
+        fv = _feature_view_with_event_time_type("timestamp")
+        spine = InferenceSpine(fv, [{"city": "Stockholm", "date": 1789516800000}])
+
+        assert spine.to_dict()["maxEventTime"] == 1789516800000
+        assert spine.dataframe["date"][0] == pd.Timestamp(
+            1789516800000, unit="ms", tz="UTC"
+        )
+
+    def test_an_integer_prediction_time_under_an_epoch_root_round_trips(self):
+        fv = _feature_view_with_event_time_type("bigint")
+        spine = InferenceSpine(fv, [{"city": "Stockholm", "date": 1789516800000}])
+
+        assert list(spine.dataframe["date"]) == [1789516800000]
+        assert spine.to_dict()["maxEventTime"] == 1789516800000
+
+    def test_a_date_root_gets_dates(self):
+        fv = _feature_view_with_event_time_type("date")
+        spine = InferenceSpine(fv, [{"city": "Stockholm", "date": "2026-09-16"}])
+
+        assert spine.to_dict()["columns"][2] == {"name": "date", "type": "date"}
+        assert list(spine.dataframe["date"]) == [date(2026, 9, 16)]
+        assert str(spine._arrow_table().schema.field("date").type) == "date32[day]"
+
+    def test_an_unsupported_event_time_type_is_refused_up_front(self):
+        fv = _feature_view_with_event_time_type("string")
+        with pytest.raises(
+            FeatureStoreException, match="`string`, which a prediction time"
+        ):
+            InferenceSpine(fv, [{"city": "Stockholm", "date": "2026-09-16"}])
+
+    def test_a_value_that_is_neither_a_timestamp_nor_an_epoch_is_refused(self):
+        fv = _feature_view_with_event_time_type("timestamp")
+        with pytest.raises(FeatureStoreException, match="not a timestamp or an epoch"):
+            InferenceSpine(fv, [{"city": "Stockholm", "date": "yesterday-ish"}])
+
+
+class TestPassthroughShadowingAJoinedFeature:
+    """A frame column named like a joined feature is not a label; it is the feature.
+
+    Root features in the frame are passed features and bind the root lookup. A joined feature
+    group's feature has no such meaning: carrying the frame's copy through would put the looked
+    up column and the caller's column in the result under one name.
+    """
+
+    def test_is_refused(self, feature_view):
+        frame = _crossed(SPINE_DF, 1)
+        frame["temp"] = 21.5
+        with pytest.raises(FeatureStoreException, match=r"\['temp'\] are features"):
+            InferenceSpine(feature_view, frame, allow_passthrough=True)
+
+    def test_a_root_feature_is_still_a_passed_feature(self, feature_view):
+        frame = _crossed(SPINE_DF, 1)
+        frame["pm25"] = 12.0
+        spine = InferenceSpine(feature_view, frame, allow_passthrough=True)
+        assert "pm25" not in [
+            c["name"] for c in spine.to_dict()["columns"] if c.get("passthrough")
+        ]
+
+
+class TestPolarsCeiling:
+    def test_an_oversized_polars_frame_is_refused_before_conversion(
+        self, feature_view, monkeypatch
+    ):
+        pl = pytest.importorskip("polars")
+        monkeypatch.setattr(inference_spine, "MAX_SPINE_ROWS", 2)
+        frame = pl.from_pandas(_crossed(SPINE_DF, 3))
+        with pytest.raises(FeatureStoreException, match="3 rows; the limit is 2"):
+            InferenceSpine(feature_view, frame)
 
 
 class TestSparkSpineDataFrame:
@@ -434,6 +542,65 @@ class TestSparkSpineDataFrame:
         columns = {c["name"]: c for c in spine.to_dict()["columns"]}
         assert columns["label"]["passthrough"] is True
         assert columns["label"]["type"] == "double"
+
+    def test_only_one_row_over_the_ceiling_is_collected(
+        self, mocker, feature_view, spark_session, monkeypatch
+    ):
+        # The ceiling used to be checked after toPandas had brought the whole frame to the
+        # driver, so a frame large enough to matter was one large enough to exhaust it first.
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        monkeypatch.setattr(inference_spine, "MAX_SPINE_ROWS", 2)
+        sdf = spark_session.createDataFrame(
+            [
+                ("a", datetime(2026, 3, 1)),
+                ("b", datetime(2026, 3, 1)),
+                ("c", datetime(2026, 3, 1)),
+            ],
+            ["city", "date"],
+        )
+        limited = mocker.spy(sdf, "limit")
+
+        with pytest.raises(FeatureStoreException, match="more than 2 rows"):
+            InferenceSpine(feature_view, sdf)
+
+        limited.assert_called_once_with(3)
+
+    def test_the_registered_view_is_typed_from_the_schema_not_inferred(
+        self, mocker, feature_view, spark_session
+    ):
+        # A key column that is entirely NULL is a legitimate spine whose lookups come back NULL.
+        # Spark cannot infer a type for it, so registering the view from the pandas frame refused
+        # it; the typed Arrow table the Python engine writes is what is registered instead.
+        from hsfs.engine import spark as spark_engine_mod
+
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        frame = pd.DataFrame(
+            {
+                "country": ["SE"],
+                "city": [None],
+                "street": ["Sveavagen"],
+                "date": [datetime(2026, 3, 1, tzinfo=timezone.utc)],
+                "label": pd.Series([None], dtype="Int64"),
+            }
+        )
+        spine = InferenceSpine(feature_view, frame, allow_passthrough=True)
+        engine = spark_engine_mod.Engine()
+
+        engine._register_spine_temporary_view(spine, spine.table_name)
+        try:
+            schema = spark_session.table(spine.table_name).schema
+            row = spark_session.sql(
+                f"SELECT unix_millis(date) AS ms, city, label FROM {spine.table_name}"
+            ).collect()[0]
+        finally:
+            engine._drop_spine_temporary_view(spine.table_name)
+
+        assert schema["city"].dataType.simpleString() == "string"
+        assert schema["label"].dataType.simpleString() == "bigint"
+        assert row.ms == int(
+            datetime(2026, 3, 1, tzinfo=timezone.utc).timestamp() * 1000
+        )
+        assert row.city is None and row.label is None
 
     def test_an_unrecognised_column_is_still_refused(
         self, mocker, feature_view, spark_session

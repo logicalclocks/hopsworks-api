@@ -134,7 +134,7 @@ class Query:
                     # Spark reads the spine from a session temporary view, not from the file the
                     # Hopsworks Query Service reads, so nothing is uploaded on this path.
                     engine._get_instance()._register_spine_temporary_view(
-                        self._inference_spine.dataframe,
+                        self._inference_spine,
                         self._inference_spine.table_name,
                     )
 

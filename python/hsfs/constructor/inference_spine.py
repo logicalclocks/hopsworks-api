@@ -46,6 +46,12 @@ _TABLE_PREFIX = "__hopsworks_spine_"
 MAX_SPINE_ROWS = 1_000_000
 MAX_SPINE_COLUMNS = 256
 
+# The types a root feature group's event time may have for a spine to bind a prediction time to
+# it. The spine's event time column is written in this type, so the two compare as instants. An
+# integer type holds epoch milliseconds, which is the convention every other event-time filter in
+# the feature store uses for it.
+_EVENT_TIME_TYPES = {"timestamp", "date", "bigint", "int", "integer"}
+
 _DECIMAL = re.compile(r"^decimal\((\d+),\s*(\d+)\)$", re.IGNORECASE)
 
 
@@ -149,7 +155,7 @@ class InferenceSpine:
             )
         if len(frame) > MAX_SPINE_ROWS:
             raise FeatureStoreException(
-                f"`spine_df` has {len(frame)} rows; the limit is {MAX_SPINE_ROWS}."
+                f"`spine_df` has more than {MAX_SPINE_ROWS} rows, which is the limit."
                 " Score the entities in batches, or narrow the prediction times."
             )
         if len(frame.columns) > MAX_SPINE_COLUMNS:
@@ -159,11 +165,25 @@ class InferenceSpine:
             )
 
         self._types = _column_types(feature_view)
+        self._event_time_type = (
+            (self._types.get(self._event_time) or "timestamp").strip().lower()
+        )
+        if self._event_time_type not in _EVENT_TIME_TYPES:
+            raise FeatureStoreException(
+                f"Feature group `{root_fg.name}` keeps its event time `{self._event_time}` as"
+                f" `{self._event_time_type}`, which a prediction time cannot be compared with."
+                f" Supported event time types: {sorted(_EVENT_TIME_TYPES)}."
+            )
         required_keys = {
             sk.required_serving_key for sk in feature_view.serving_keys if sk.required
         }
         root_features = {f.name for f in root_fg.features}
         recognized = required_keys | root_features | {self._event_time}
+        # Every column the view's output carries under its output name, joined features under
+        # their prefix. A frame column matching one of these is not a label: it is a feature the
+        # view looks up, and carrying the frame's copy through would put two columns of one name
+        # in the result, one from the store and one from the caller.
+        defined = {f.name for f in feature_view.features}
 
         # Training data is built from a labels frame, so columns the view does not define are
         # carried to the output rather than refused. Inference has no labels, so it stays strict
@@ -172,6 +192,14 @@ class InferenceSpine:
             c for c in frame.columns if c not in recognized or c == ROW_ID_COLUMN
         ]
         if allow_passthrough:
+            shadowing = sorted(c for c in unknown if c in defined)
+            if shadowing:
+                raise FeatureStoreException(
+                    f"`spine_df` column(s) {shadowing} are features of feature view"
+                    f" `{feature_view.name}` looked up from a joined feature group. A column"
+                    " the view defines is read from the feature store, not from the frame;"
+                    " drop it from `spine_df`."
+                )
             self._passthrough = [c for c in unknown if c != ROW_ID_COLUMN]
             unknown = [c for c in unknown if c == ROW_ID_COLUMN]
         else:
@@ -216,18 +244,23 @@ class InferenceSpine:
         # The frame is the spine as given: one row per entity and moment, in the caller's order.
         # The result comes back in that order, so predictions zip onto it positionally.
         spine = frame.reset_index(drop=True).copy()
-        times = pd.to_datetime(spine[self._event_time], utc=True, errors="coerce")
+        times = _as_utc_timestamps(spine[self._event_time])
         if times.isna().any():
             raise FeatureStoreException(
-                f"`spine_df[{self._event_time!r}]` contains a value that is not a timestamp."
+                f"`spine_df[{self._event_time!r}]` contains a value that is not a timestamp"
+                " or an epoch in milliseconds."
             )
         # The feature store keeps event times to the millisecond, and the file is written to
         # match. A wall-clock timestamp carries microseconds, so without this a spine built from
         # `datetime.now()` is refused for losing precision nobody asked to keep.
-        spine[self._event_time] = times.dt.floor("ms")
+        times = times.dt.floor("ms")
+        # Written in the root feature group's own event time type, so the lookup compares two
+        # values of one type. The backend declares the column in that type and the query service
+        # casts the file to it; a TIMESTAMP column under a BIGINT declaration fails that cast.
+        spine[self._event_time] = _in_event_time_type(times, self._event_time_type)
 
         spine.insert(0, ROW_ID_COLUMN, range(len(spine)))
-        self._max_event_time = int(spine[self._event_time].max().timestamp() * 1000)
+        self._max_event_time = int(times.max().timestamp() * 1000)
         return spine
 
     @property
@@ -273,7 +306,7 @@ class InferenceSpine:
         this, because a file typed differently from its declaration fails at the CAST.
         """
         if column == self._event_time:
-            return "timestamp"
+            return self._event_time_type
         if column in self._passthrough:
             return _PASSTHROUGH_TYPE.get(str(self._frame_dtype(column)), "string")
         return self._types.get(column, "string")
@@ -355,6 +388,11 @@ def _to_pandas(spine_df: Any) -> pd.DataFrame | None:
         import polars as pl
 
         if isinstance(spine_df, pl.DataFrame):
+            if spine_df.height > MAX_SPINE_ROWS:
+                raise FeatureStoreException(
+                    f"`spine_df` has {spine_df.height} rows; the limit is {MAX_SPINE_ROWS}."
+                    " Score the entities in batches, or narrow the prediction times."
+                )
             return spine_df.to_pandas()
     if spark_connect_utils._is_spark_dataframe(spine_df):
         from hsfs import engine
@@ -369,16 +407,47 @@ def _to_pandas(spine_df: Any) -> pd.DataFrame | None:
         # through the driver: the rows are handed back to `createDataFrame` to register the
         # session temporary view, so a pandas spine took this same route. A spine is one row
         # per entity per prediction time and is capped at a million rows, so it is bounded.
+        # The cap is applied before the collect, not after: one row over it is all the driver
+        # needs to see to refuse the frame, and all it is asked to hold.
         #
         # toPandas returns timestamps tz-naive in the Spark session timezone, and _build then
         # reads them as UTC. Those agree only because the Spark engine pins the session
         # timezone to UTC when it starts (hsfs/engine/spark.py). Unpin that and every event
         # time here shifts by the offset, silently.
-        return spine_df.toPandas()
+        return spine_df.limit(MAX_SPINE_ROWS + 1).toPandas()
     raise TypeError(
         "`spine_df` must be a pandas, polars or Spark DataFrame, or a list of dicts;"
         f" got {type(spine_df)!r}."
     )
+
+
+def _as_utc_timestamps(series: pd.Series) -> pd.Series:
+    """The event time column as UTC timestamps, whatever it was given as.
+
+    An integer or float column is epoch milliseconds, the feature store's unit for a numeric event
+    time. Anything else goes through pandas' parser: timestamps, dates and strings. A value that
+    parses as nothing comes back as NaT for the caller to report.
+    """
+    import pandas as pd
+
+    if pd.api.types.is_bool_dtype(series):
+        return pd.Series(
+            [pd.NaT] * len(series), index=series.index, dtype="datetime64[ns, UTC]"
+        )
+    if pd.api.types.is_numeric_dtype(series):
+        return pd.to_datetime(series, unit="ms", utc=True, errors="coerce")
+    return pd.to_datetime(series, utc=True, errors="coerce")
+
+
+def _in_event_time_type(times: pd.Series, hive_type: str) -> pd.Series:
+    """UTC timestamps as the values a column of `hive_type` holds."""
+    import pandas as pd
+
+    if hive_type == "date":
+        return times.dt.date
+    if hive_type in ("bigint", "int", "integer"):
+        return (times - pd.Timestamp(0, tz="UTC")) // pd.Timedelta(milliseconds=1)
+    return times
 
 
 def _column_types(feature_view: FeatureView) -> dict[str, str]:

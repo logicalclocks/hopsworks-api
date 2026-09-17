@@ -311,11 +311,43 @@ class Engine:
         dataframe.createOrReplaceTempView(view)
         return f"SELECT * FROM {view}"
 
-    def _register_spine_temporary_view(self, dataframe, alias):
+    def _register_spine_temporary_view(self, spine, alias):
         # A per-request alias, not a fixed name: two reads in one SparkSession would otherwise
         # overwrite each other's view between registration and analysis, the same race
         # _register_pushdown_query avoids.
-        self._spark_session.createDataFrame(dataframe).createOrReplaceTempView(alias)
+        #
+        # The schema is declared from the same types the Python engine writes to Parquet rather
+        # than inferred by Spark from the frame. Inference refused a key column that is entirely
+        # NULL, which is a legitimate spine whose lookups all come back NULL, and typed an integer
+        # column with missing values as double. Both engines now read one schema.
+        #
+        # A pandas frame with a declared schema, not the Arrow table: PySpark localises Arrow
+        # timestamps through pyarrow's timezone database, which the cluster's Python image does
+        # not ship ("Cannot locate or parse timezone 'UTC'"), while the pandas route converts
+        # tz-aware values itself. Missing values in pandas' nullable extension columns become
+        # None first, since the row converter accepts None and not pd.NA.
+        schema = StructType(
+            [
+                StructField(
+                    column["name"],
+                    Engine._convert_offline_type_to_spark_type(column["type"]),
+                    True,
+                )
+                for column in spine.to_dict()["columns"]
+            ]
+        )
+        frame = spine.dataframe.copy()
+        for column in frame.columns:
+            dtype = frame[column].dtype
+            if pd.api.types.is_extension_array_dtype(dtype) and not isinstance(
+                dtype, pd.DatetimeTZDtype
+            ):
+                frame[column] = (
+                    frame[column].astype(object).where(frame[column].notna(), None)
+                )
+        self._spark_session.createDataFrame(
+            frame, schema=schema
+        ).createOrReplaceTempView(alias)
 
     def _drop_spine_temporary_view(self, alias):
         # Called from a finally block: a read that already failed must not be masked by a cleanup
