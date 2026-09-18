@@ -645,18 +645,21 @@ public abstract class StorageConnector {
       }
       String databaseName = dataSource == null ? database : dataSource.getDatabase();
       String scheme = JDBC_SCHEMES.get(normalizedType);
-      String driver = DRIVERS.get(normalizedType);
 
+      // Arguments go in first so the connector's own fields win the collision. The other order
+      // lets a free-form argument named url, user, password or driver replace the value the
+      // connector supplies, which would point the read at a different server or run it as a
+      // different identity than the one the data source shows. The Python client already resolves
+      // it this way; this path did not, and the two have to agree.
       Map<String, String> options = new HashMap<>();
+      if (arguments != null && !arguments.isEmpty()) {
+        options.putAll(arguments.stream()
+            .collect(Collectors.toMap(Option::getName, Option::getValue)));
+      }
       options.put(Constants.JDBC_URL, buildUrl(normalizedType, scheme, databaseName));
       options.put(Constants.JDBC_USER, getUser());
       options.put(Constants.JDBC_PWD, getPassword());
-      options.put(Constants.JDBC_DRIVER, driver);
-      if (arguments != null && !arguments.isEmpty()) {
-        Map<String, String> argOptions = arguments.stream()
-            .collect(Collectors.toMap(Option::getName, Option::getValue));
-        options.putAll(argOptions);
-      }
+      options.put(Constants.JDBC_DRIVER, DRIVERS.get(normalizedType));
       return options;
     }
 
