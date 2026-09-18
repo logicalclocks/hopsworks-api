@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage for python/hsfs/core/feature_view_api.py: 43%</title>
+    <title>Coverage for python/hsfs/core/feature_view_api.py: 42%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_c827f16f.png">
     <link rel="stylesheet" href="style_cb_4667309f.css" type="text/css">
     <script src="coverage_html_cb_dd2e7eb5.js" defer></script>
@@ -12,7 +12,7 @@
     <div class="content">
         <h1>
             <span class="text">Coverage for </span><b>python<span class="sep">/</span>hsfs<span class="sep">/</span>core<span class="sep">/</span>feature_view_api.py</b>:
-            <span class="pc_cov">43%</span>
+            <span class="pc_cov">42%</span>
         </h1>
         <aside id="help_panel_wrapper">
             <input id="help_panel_state" type="checkbox">
@@ -54,9 +54,9 @@
             </div>
         </aside>
         <h2>
-            <span class="text">169 statements &nbsp;</span>
+            <span class="text">170 statements &nbsp;</span>
             <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">72<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">97<span class="text"> missing</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">98<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">0<span class="text"> excluded</span></button>
         </h2>
         <p class="text">
@@ -65,7 +65,7 @@
             <a id="nextFileLink" class="nav" href="z_8e412babf0efab20_feature_view_engine_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.15.4">coverage.py v7.15.4</a>,
-            created at 2026-09-18 09:14 +0000
+            created at 2026-09-18 13:36 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -633,20 +633,23 @@
     <p class="run run2"><span class="n"><a id="t551" href="#t551">551</a></span><span class="t">        <span class="nam">feature_view_name</span><span class="op">:</span> <span class="nam">str</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t552" href="#t552">552</a></span><span class="t">        <span class="nam">feature_view_version</span><span class="op">:</span> <span class="nam">int</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t553" href="#t553">553</a></span><span class="t">        <span class="nam">transformed</span><span class="op">:</span> <span class="nam">bool</span> <span class="op">=</span> <span class="key">None</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t554" href="#t554">554</a></span><span class="t">    <span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t555" href="#t555">555</a></span><span class="t">        <span class="nam">_client</span> <span class="op">=</span> <span class="nam">client</span><span class="op">.</span><span class="nam">_get_instance</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t556" href="#t556">556</a></span><span class="t">        <span class="nam">path_params</span> <span class="op">=</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_base_path</span> <span class="op">+</span> <span class="op">[</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t557" href="#t557">557</a></span><span class="t">            <span class="nam">feature_view_name</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t558" href="#t558">558</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">_VERSION</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t559" href="#t559">559</a></span><span class="t">            <span class="nam">feature_view_version</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t560" href="#t560">560</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">_LOGGING</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t561" href="#t561">561</a></span><span class="t">        <span class="op">]</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t562" href="#t562">562</a></span><span class="t">        <span class="key">if</span> <span class="nam">transformed</span> <span class="key">is</span> <span class="key">not</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t563" href="#t563">563</a></span><span class="t">            <span class="key">if</span> <span class="nam">transformed</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t564" href="#t564">564</a></span><span class="t">                <span class="nam">path_params</span> <span class="op">+=</span> <span class="op">[</span><span class="nam">self</span><span class="op">.</span><span class="nam">_TRANSFORMED_lOG</span><span class="op">]</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t565" href="#t565">565</a></span><span class="t">            <span class="key">else</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t566" href="#t566">566</a></span><span class="t">                <span class="nam">path_params</span> <span class="op">+=</span> <span class="op">[</span><span class="nam">self</span><span class="op">.</span><span class="nam">_UNTRANSFORMED_LOG</span><span class="op">]</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t567" href="#t567">567</a></span><span class="t">        <span class="nam">_client</span><span class="op">.</span><span class="nam">_send_request</span><span class="op">(</span><span class="str">&quot;DELETE&quot;</span><span class="op">,</span> <span class="nam">path_params</span><span class="op">,</span> <span class="op">{</span><span class="op">}</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t554" href="#t554">554</a></span><span class="t">        <span class="nam">transport</span><span class="op">:</span> <span class="nam">str</span> <span class="op">|</span> <span class="key">None</span> <span class="op">=</span> <span class="key">None</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t555" href="#t555">555</a></span><span class="t">    <span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t556" href="#t556">556</a></span><span class="t">        <span class="nam">_client</span> <span class="op">=</span> <span class="nam">client</span><span class="op">.</span><span class="nam">_get_instance</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t557" href="#t557">557</a></span><span class="t">        <span class="nam">path_params</span> <span class="op">=</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_base_path</span> <span class="op">+</span> <span class="op">[</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t558" href="#t558">558</a></span><span class="t">            <span class="nam">feature_view_name</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t559" href="#t559">559</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">_VERSION</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t560" href="#t560">560</a></span><span class="t">            <span class="nam">feature_view_version</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t561" href="#t561">561</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">_LOGGING</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis mis2 show_mis"><span class="n"><a id="t562" href="#t562">562</a></span><span class="t">        <span class="op">]</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t563" href="#t563">563</a></span><span class="t">        <span class="key">if</span> <span class="nam">transformed</span> <span class="key">is</span> <span class="key">not</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t564" href="#t564">564</a></span><span class="t">            <span class="key">if</span> <span class="nam">transformed</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t565" href="#t565">565</a></span><span class="t">                <span class="nam">path_params</span> <span class="op">+=</span> <span class="op">[</span><span class="nam">self</span><span class="op">.</span><span class="nam">_TRANSFORMED_lOG</span><span class="op">]</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t566" href="#t566">566</a></span><span class="t">            <span class="key">else</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t567" href="#t567">567</a></span><span class="t">                <span class="nam">path_params</span> <span class="op">+=</span> <span class="op">[</span><span class="nam">self</span><span class="op">.</span><span class="nam">_UNTRANSFORMED_LOG</span><span class="op">]</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t568" href="#t568">568</a></span><span class="t">        <span class="com"># The emptied logging group is recreated for this transport when named.</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t569" href="#t569">569</a></span><span class="t">        <span class="nam">query_params</span> <span class="op">=</span> <span class="op">{</span><span class="str">&quot;transport&quot;</span><span class="op">:</span> <span class="nam">transport</span><span class="op">}</span> <span class="key">if</span> <span class="nam">transport</span> <span class="key">else</span> <span class="op">{</span><span class="op">}</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t570" href="#t570">570</a></span><span class="t">        <span class="nam">_client</span><span class="op">.</span><span class="nam">_send_request</span><span class="op">(</span><span class="str">&quot;DELETE&quot;</span><span class="op">,</span> <span class="nam">path_params</span><span class="op">,</span> <span class="nam">query_params</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
 </main>
 <footer>
     <div class="content">
@@ -656,7 +659,7 @@
             <a class="nav" href="z_8e412babf0efab20_feature_view_engine_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.15.4">coverage.py v7.15.4</a>,
-            created at 2026-09-18 09:14 +0000
+            created at 2026-09-18 13:36 +0000
         </p>
     </div>
 </footer>

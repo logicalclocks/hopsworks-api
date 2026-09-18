@@ -65,7 +65,7 @@
             <a id="nextFileLink" class="nav" href="z_0488c2c8c8745178_spark_metrics_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.15.4">coverage.py v7.15.4</a>,
-            created at 2026-09-18 09:14 +0000
+            created at 2026-09-18 13:36 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -2950,8 +2950,8 @@
     <p class="run run2"><span class="n"><a id="t2868" href="#t2868">2868</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t2869" href="#t2869">2869</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t2870" href="#t2870">2870</a></span><span class="t">    <span class="op">@</span><span class="nam">staticmethod</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t2871" href="#t2871">2871</a></span><span class="t">    <span class="key">def</span> <span class="nam">_read_feature_log</span><span class="op">(</span><span class="nam">query</span><span class="op">,</span> <span class="nam">time_col</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t2872" href="#t2872">2872</a></span><span class="t">        <span class="nam">df</span> <span class="op">=</span> <span class="nam">query</span><span class="op">.</span><span class="nam">read</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t2871" href="#t2871">2871</a></span><span class="t">    <span class="key">def</span> <span class="nam">_read_feature_log</span><span class="op">(</span><span class="nam">query</span><span class="op">,</span> <span class="nam">time_col</span><span class="op">,</span> <span class="nam">online</span><span class="op">:</span> <span class="nam">bool</span> <span class="op">=</span> <span class="key">False</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t2872" href="#t2872">2872</a></span><span class="t">        <span class="nam">df</span> <span class="op">=</span> <span class="nam">query</span><span class="op">.</span><span class="nam">read</span><span class="op">(</span><span class="nam">online</span><span class="op">=</span><span class="nam">online</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t2873" href="#t2873">2873</a></span><span class="t">        <span class="key">return</span> <span class="nam">df</span><span class="op">.</span><span class="nam">drop</span><span class="op">(</span><span class="str">&quot;log_id&quot;</span><span class="op">,</span> <span class="nam">time_col</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t2874" href="#t2874">2874</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t2875" href="#t2875">2875</a></span><span class="t">    <span class="key">def</span> <span class="nam">_get_spark_version</span><span class="op">(</span><span class="nam">self</span><span class="op">)</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
@@ -2984,7 +2984,7 @@
             <a class="nav" href="z_0488c2c8c8745178_spark_metrics_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.15.4">coverage.py v7.15.4</a>,
-            created at 2026-09-18 09:14 +0000
+            created at 2026-09-18 13:36 +0000
         </p>
     </div>
 </footer>
