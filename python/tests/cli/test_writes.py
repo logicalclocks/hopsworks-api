@@ -116,8 +116,11 @@ def test_fg_keywords_table(mock_project):
     assert "prod" in result.output
     assert "2026-03-04" in result.output
     # The semantics notice has to be visible, which is why it goes to stderr
-    # rather than through the warnings module.
-    assert "moved to 'hops fg tags/add-tag/remove-tag'" in result.output
+    # rather than through the warnings module. Asserted on both streams because
+    # CliRunner only folds stderr into output on some Click versions.
+    assert "moved to 'hops fg tags/add-tag/remove-tag'" in (
+        result.stdout + result.stderr
+    )
 
 
 def test_fg_add_keyword(mock_project):
@@ -138,7 +141,7 @@ def test_fg_add_keyword_value_is_retired(mock_project):
         cli, ["fg", "add-keyword", "txn", "prod", "--value", "true"]
     )
     assert result.exit_code != 0
-    assert "hops fg add-tag txn prod" in result.output
+    assert "hops fg add-tag txn prod" in (result.stdout + result.stderr)
     fg.add_keywords.assert_not_called()
     fg.add_tag.assert_not_called()
 
