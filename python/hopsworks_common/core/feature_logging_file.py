@@ -529,7 +529,10 @@ class _SegmentWriter:
         """Upload every complete segment, oldest first; `False` after the first failure."""
         for path in sorted(self.ready_dir.glob("*" + CHUNK_SUFFIX)):
             size = path.stat().st_size
-            started = time.monotonic()
+            # perf_counter, not monotonic: this measures one upload, and monotonic's
+            # tick is about 15 ms on Windows, so a fast local upload is recorded as
+            # having taken no time at all.
+            started = time.perf_counter()
             try:
                 self._uploader._upload(path)
             except Exception as error:  # noqa: BLE001 - retried with backoff
@@ -542,7 +545,7 @@ class _SegmentWriter:
                 )
                 return False
             os.remove(path)
-            self._observe_upload(time.monotonic() - started)
+            self._observe_upload(time.perf_counter() - started)
             self.chunks_uploaded += 1
             self.bytes_uploaded += size
             self.rows_uploaded += self._chunk_rows.pop(path.name, 0)

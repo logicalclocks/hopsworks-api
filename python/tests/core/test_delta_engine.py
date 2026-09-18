@@ -2898,13 +2898,14 @@ class TestDeltaEngineGlueSync:
 def test_commit_properties_become_a_delta_application_transaction(monkeypatch):
     import sys
 
-    # hops-deltalake is linux and darwin-arm64 only; this needs the real CommitProperties.
+    # The fake goes first: other tests leave one in sys.modules, and importorskip would
+    # find it and not skip, leaving this to fail on an interpreter that has no real
+    # deltalake. hops-deltalake is linux and darwin-arm64 only, so Windows is exactly
+    # that interpreter.
+    monkeypatch.delitem(sys.modules, "deltalake", raising=False)
     pytest.importorskip("deltalake")
 
     from hsfs.core.delta_engine import DeltaEngine
-
-    # Other tests leave a fake deltalake module behind; this one needs the real classes.
-    monkeypatch.delitem(sys.modules, "deltalake", raising=False)
     assert DeltaEngine._commit_properties(None) is None
     assert DeltaEngine._commit_properties({"mode": "append"}) is None
     properties = DeltaEngine._commit_properties(

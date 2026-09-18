@@ -763,8 +763,11 @@ class TestTypedCommit:
         # not use its precision, an all-null date, a map, and a nested bigint.
         from decimal import Decimal
 
-        # Other tests leave a fake deltalake module behind; this one writes a table.
+        # The fake goes first, then the skip: other tests leave one in sys.modules, and
+        # importorskip would find it and not skip, leaving this to fail where there is no
+        # real deltalake. hops-deltalake is linux and darwin-arm64 only.
         monkeypatch.delitem(sys.modules, "deltalake", raising=False)
+        pytest.importorskip("deltalake")
         from deltalake import DeltaTable, write_deltalake
         from hsfs.core.delta_engine import DeltaEngine
         from hsfs.core.feature_group_base_engine import FeatureGroupBaseEngine
@@ -838,6 +841,7 @@ def test_a_chunk_staged_twice_is_committed_once(tmp_path, mocker, monkeypatch):
     already claimed, or when a stale upload is adopted while its writer still retries.
     """
     monkeypatch.delitem(sys.modules, "deltalake", raising=False)
+    pytest.importorskip("deltalake")
     from deltalake import DeltaTable, write_deltalake
     from hsfs.core.delta_engine import DeltaEngine
 
