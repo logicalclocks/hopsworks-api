@@ -39,10 +39,15 @@ import software.amazon.awssdk.utils.CollectionUtils;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @AllArgsConstructor
@@ -593,6 +598,7 @@ public abstract class StorageConnector {
     public static final String MYSQL = "MYSQL";
     public static final String POSTGRESQL = "POSTGRESQL";
     public static final String CLICKHOUSE = "CLICKHOUSE";
+    public static final String TERADATA = "TERADATA";
 
     private static final Map<String, String> DRIVERS;
     private static final Map<String, String> JDBC_SCHEMES;
@@ -602,12 +608,14 @@ public abstract class StorageConnector {
       drivers.put(MYSQL, "com.mysql.cj.jdbc.Driver");
       drivers.put(POSTGRESQL, "org.postgresql.Driver");
       drivers.put(CLICKHOUSE, "com.clickhouse.jdbc.ClickHouseDriver");
+      drivers.put(TERADATA, "com.teradata.jdbc.TeraDriver");
       DRIVERS = Collections.unmodifiableMap(drivers);
 
       Map<String, String> schemes = new HashMap<>();
       schemes.put(MYSQL, "mysql");
       schemes.put(POSTGRESQL, "postgresql");
       schemes.put(CLICKHOUSE, "clickhouse");
+      schemes.put(TERADATA, "teradata");
       JDBC_SCHEMES = Collections.unmodifiableMap(schemes);
     }
 
@@ -632,6 +640,16 @@ public abstract class StorageConnector {
     @Getter @Setter
     protected List<Option> arguments;
 
+    /**
+     * Connection settings the connector's own fields supply, so an argument repeating one is
+     * dropped rather than forwarded. Spark hands an option it does not recognise to the JDBC
+     * driver as a connection property, where a stray dbs_port or database would contradict the
+     * URL built from those same fields. Mirrors the set in hopsworks-ee and in the Python client.
+     */
+    private static final Set<String> RESERVED_ARGUMENTS = new HashSet<>(Arrays.asList(
+        "host", "port", "dbs_port", "database", "database_type", "user", "username", "password",
+        Constants.JDBC_URL, Constants.JDBC_DRIVER));
+
     @Override
     public Map<String, String> sparkOptions(DataSource dataSource) throws FeatureStoreException {
       String normalizedType = databaseType != null ? databaseType.toUpperCase() : null;
@@ -641,19 +659,43 @@ public abstract class StorageConnector {
       }
       String databaseName = dataSource == null ? database : dataSource.getDatabase();
       String scheme = JDBC_SCHEMES.get(normalizedType);
-      String driver = DRIVERS.get(normalizedType);
 
+      // Arguments go in first so the connector's own fields win the collision. The other order
+      // lets a free-form argument named url, user, password or driver replace the value the
+      // connector supplies, which would point the read at a different server or run it as a
+      // different identity than the one the data source shows. The Python client already resolves
+      // it this way; this path did not, and the two have to agree.
       Map<String, String> options = new HashMap<>();
-      options.put(Constants.JDBC_URL, "jdbc:" + scheme + "://" + getHost() + ":" + getPort() + "/" + databaseName);
+      if (arguments != null && !arguments.isEmpty()) {
+        options.putAll(arguments.stream()
+            .filter(o -> o.getName() != null
+                && !RESERVED_ARGUMENTS.contains(o.getName().trim().toLowerCase(Locale.ROOT)))
+            .collect(Collectors.toMap(o -> o.getName().trim(), Option::getValue)));
+      }
+      options.put(Constants.JDBC_URL, buildUrl(normalizedType, scheme, databaseName));
       options.put(Constants.JDBC_USER, getUser());
       options.put(Constants.JDBC_PWD, getPassword());
-      options.put(Constants.JDBC_DRIVER, driver);
-      if (arguments != null && !arguments.isEmpty()) {
-        Map<String, String> argOptions = arguments.stream()
-            .collect(Collectors.toMap(Option::getName, Option::getValue));
-        options.putAll(argOptions);
-      }
+      options.put(Constants.JDBC_DRIVER, DRIVERS.get(normalizedType));
       return options;
+    }
+
+    /**
+     * Teradata carries the port and the database as comma-separated parameters after a single
+     * slash, e.g. jdbc:teradata://host/DATABASE=db,DBS_PORT=1025. It has no host:port/database
+     * form, so the shape every other engine here uses would not parse.
+     */
+    private String buildUrl(String normalizedType, String scheme, String databaseName) {
+      if (TERADATA.equals(normalizedType)) {
+        List<String> params = new ArrayList<>();
+        if (!Strings.isNullOrEmpty(databaseName)) {
+          params.add("DATABASE=" + databaseName);
+        }
+        if (getPort() != null) {
+          params.add("DBS_PORT=" + getPort());
+        }
+        return "jdbc:" + scheme + "://" + getHost() + "/" + String.join(",", params);
+      }
+      return "jdbc:" + scheme + "://" + getHost() + ":" + getPort() + "/" + databaseName;
     }
 
     public void update() throws FeatureStoreException, IOException {
