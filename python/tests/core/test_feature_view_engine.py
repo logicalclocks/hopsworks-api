@@ -1866,7 +1866,7 @@ class TestFeatureViewEngine:
             fv_engine._compute_training_dataset(
                 feature_view_obj=None,
                 user_write_options={},
-                training_dataset_obj=MagicMock(),
+                training_dataset_obj=None,
                 training_dataset_version=None,
             )
 
@@ -2232,7 +2232,7 @@ class TestFeatureViewEngine:
         fv_engine._compute_training_dataset(
             feature_view_obj=fv,
             user_write_options={},
-            training_dataset_obj=MagicMock(),
+            training_dataset_obj=None,
             training_dataset_version=1,
         )
 
