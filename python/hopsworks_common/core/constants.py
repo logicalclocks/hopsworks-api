@@ -75,6 +75,33 @@ great_expectations_not_installed_message = (
 )
 initialise_expectation_suite_for_single_expectation_api_message = "Initialize Expectation Suite by attaching to a Feature Group to enable single expectation API"
 
+
+def great_expectations_module():
+    """Return the great_expectations module, importing it on first use.
+
+    Reading the version from metadata kept GE off this module's import, but the
+    modules that wrap it -- feature_group, expectation_suite, the engines -- still
+    imported it at their own module load, and they sit on the same spine: a plain
+    `import hsfs` reaches ge_expectation through feature_group and pays GE's ~6.6s
+    module init and ~160MiB whether or not anything validates. Call this where the
+    module is actually used instead. Repeat calls cost a sys.modules lookup.
+    """
+    import great_expectations
+
+    return great_expectations
+
+
+def expectation_configuration_class():
+    """Return GE's ExpectationConfiguration, which moved out of `core` in GE 1.x."""
+    if GE_MAJOR == 1:
+        from great_expectations.expectations.expectation_configuration import (
+            ExpectationConfiguration,
+        )
+
+        return ExpectationConfiguration
+    return great_expectations_module().core.ExpectationConfiguration
+
+
 # Pyarrow
 HAS_PYARROW: bool = importlib.util.find_spec("pyarrow") is not None
 pyarrow_not_installed_message = (

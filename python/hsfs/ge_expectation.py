@@ -26,18 +26,7 @@ import humps
 from hopsworks_apigen import public
 from hopsworks_common.decorators import _uses_great_expectations
 from hsfs import util
-from hsfs.core.constants import GE_MAJOR, HAS_GREAT_EXPECTATIONS
-
-
-if HAS_GREAT_EXPECTATIONS:
-    import great_expectations
-
-    if GE_MAJOR == 1:
-        from great_expectations.expectations.expectation_configuration import (
-            ExpectationConfiguration as _ExpectationConfiguration,
-        )
-    else:
-        _ExpectationConfiguration = great_expectations.core.ExpectationConfiguration
+from hsfs.core.constants import GE_MAJOR, expectation_configuration_class
 
 
 @public
@@ -137,11 +126,12 @@ class GeExpectation:
         Returns:
             The expectation as a Great Expectations object.
         """
+        expectation_configuration = expectation_configuration_class()
         if GE_MAJOR == 1:
-            return _ExpectationConfiguration(
+            return expectation_configuration(
                 type=self.expectation_type, kwargs=self.kwargs, meta=self.meta
             )
-        return _ExpectationConfiguration(
+        return expectation_configuration(
             expectation_type=self.expectation_type, kwargs=self.kwargs, meta=self.meta
         )
 
