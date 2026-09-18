@@ -52,6 +52,78 @@ def test_prefer_host_scheme():
     assert f("https://c.example/x", "https://c.example") == "https://c.example/x"
 
 
+def test_resolve_host_prefers_explicit_flag():
+    cfg = config.HopsConfig(host="https://old.example")
+    # --host wins with no prompt, interactive or not.
+    assert setup_mod._resolve_host(cfg, "https://new.example") == "https://new.example"
+
+
+def test_resolve_host_reuses_cached_when_non_interactive():
+    cfg = config.HopsConfig(host="https://old.example")
+    with mock.patch.object(setup_mod, "_interactive", return_value=False):
+        assert setup_mod._resolve_host(cfg, None) == "https://old.example"
+
+
+def test_resolve_host_prompts_and_switches_cluster(tmp_home):
+    # A dead cluster is cached; on a terminal the user types the new address and
+    # the stale credentials are dropped so they are not carried to the new host.
+    config.save(
+        config.HopsConfig(
+            host="https://dead.example",
+            api_key="K",
+            api_key_name="n",
+            project="p",
+            project_id=9,
+            feature_store_id=3,
+        )
+    )
+    cfg = config.load()
+    with (
+        mock.patch.object(setup_mod, "_interactive", return_value=True),
+        mock.patch.object(
+            setup_mod.click, "prompt", return_value="https://alive.example"
+        ),
+    ):
+        host = setup_mod._resolve_host(cfg, None)
+
+    assert host == "https://alive.example"
+    assert (cfg.api_key, cfg.project, cfg.project_id, cfg.feature_store_id) == (
+        None,
+        None,
+        None,
+        None,
+    )
+
+
+def test_setup_force_prompts_and_runs_flow_against_new_host(tmp_home):
+    """`hops setup --force` on a terminal lets the user repoint to a live cluster."""
+    config.save(
+        config.HopsConfig(
+            host="https://dead.example",
+            api_key="OLD.KEY",
+            api_key_name="n",
+            project="p",
+        )
+    )
+    with (
+        mock.patch.object(setup_mod.requests, "post", side_effect=_flow_post()),
+        mock.patch.object(setup_mod, "_open_browser", return_value=True),
+        mock.patch.object(setup_mod, "_interactive", return_value=True),
+        mock.patch.object(
+            setup_mod.click, "prompt", return_value="https://alive.example"
+        ),
+        mock.patch.object(setup_mod.auth, "verify") as verify,
+    ):
+        verify.return_value = mock.Mock()
+        verify.return_value.name = "demo"
+        result = CliRunner().invoke(cli, ["setup", "--force"])
+
+    assert result.exit_code == 0, result.output
+    assert verify.call_args.kwargs["host"] == "https://alive.example"
+    saved = config.load()
+    assert (saved.host, saved.api_key) == ("https://alive.example", "NEW.KEY")
+
+
 def test_setup_short_circuits_when_cached_key_works(tmp_home, monkeypatch):
     config.save(
         config.HopsConfig(

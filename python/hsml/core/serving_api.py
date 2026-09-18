@@ -232,6 +232,16 @@ class ServingApi:
         endpoints_json = _client._send_request("GET", path_params)
         return inference_endpoint.InferenceEndpoint.from_response_json(endpoints_json)
 
+    def _get_vllm_image_tags(self) -> dict[str, Any]:
+        """Get the vLLM runtime image tags the cluster advertises.
+
+        Returns:
+            One entry per vLLM variant, each with its advertised tags and the default tag.
+        """
+        _client = client._get_instance()
+        path_params = ["project", _client._project_id, "serving", "vllmImageTags"]
+        return _client._send_request("GET", path_params)
+
     def _get_schema(
         self,
         deployment_id: int,

@@ -826,14 +826,20 @@ _SPECS: dict[str, _Spec] = {
                 "databaseType",
                 "Database engine.",
                 required=True,
-                choices=("MYSQL", "POSTGRESQL", "ORACLE"),
+                choices=("MYSQL", "POSTGRESQL", "ORACLE", "CLICKHOUSE"),
             ),
             _Opt(
                 "--host",
                 "host",
                 "Database host. Required, except for ORACLE with --wallet-path.",
             ),
-            _Opt("--port", "port", "Database port.", required=True, kind="int"),
+            _Opt(
+                "--port",
+                "port",
+                "Database port; the HTTP interface port (8123) for CLICKHOUSE.",
+                required=True,
+                kind="int",
+            ),
             _Opt(
                 "--database",
                 "database",

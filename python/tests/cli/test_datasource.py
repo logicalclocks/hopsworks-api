@@ -547,6 +547,32 @@ def test_sql_oracle_takes_a_wallet_instead_of_a_host():
     assert "exactly one of --host, --wallet-path" in _refused(base)
 
 
+def test_sql_clickhouse_is_a_database_type_of_the_sql_connector():
+    body = _create(
+        [
+            "sql",
+            "n",
+            "--database-type",
+            "CLICKHOUSE",
+            "--host",
+            "ch",
+            "--port",
+            "8123",
+            "--database",
+            "loadtest",
+            "--user",
+            "u",
+            "--argument",
+            "ssl=true",
+        ]
+    )
+
+    assert body["type"] == "featurestoreSqlConnectorDTO"
+    assert body["databaseType"] == "CLICKHOUSE"
+    assert body["port"] == 8123
+    assert body["arguments"] == [{"name": "ssl", "value": "true"}]
+
+
 def test_unity_catalog_defaults_to_a_personal_access_token():
     body = _create(["unity-catalog", "n", *_MINIMAL["unity-catalog"]])
 
