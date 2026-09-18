@@ -54,8 +54,8 @@
             </div>
         </aside>
         <h2>
-            <span class="text">382 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">321<span class="text"> run</span></button>
+            <span class="text">384 statements &nbsp;</span>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">323<span class="text"> run</span></button>
             <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">61<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">2<span class="text"> excluded</span></button>
         </h2>
@@ -65,7 +65,7 @@
             <a id="nextFileLink" class="nav" href="z_a66cbfc5f0e52186_deployment_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.15.4">coverage.py v7.15.4</a>,
-            created at 2026-09-18 14:04 +0000
+            created at 2026-09-18 15:17 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -1521,23 +1521,25 @@
     <p class="run run2"><span class="n"><a id="t1439" href="#t1439">1439</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t1440" href="#t1440">1440</a></span><span class="t">    <span class="key">if</span> <span class="nam">inferred</span><span class="op">.</span><span class="nam">suggested_event_time</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t1441" href="#t1441">1441</a></span><span class="t">        <span class="nam">click</span><span class="op">.</span><span class="nam">echo</span><span class="op">(</span><span class="fst">f&quot;</span><span class="fst">Suggested event time: </span><span class="op">{</span><span class="nam">inferred</span><span class="op">.</span><span class="nam">suggested_event_time</span><span class="op">}</span><span class="fst">&quot;</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t1442" href="#t1442">1442</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t1443" href="#t1443">1443</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t1444" href="#t1444">1444</a></span><span class="t"><span class="key">def</span> <span class="nam">_create_connector</span><span class="op">(</span><span class="nam">ctx</span><span class="op">:</span> <span class="nam">click</span><span class="op">.</span><span class="nam">Context</span><span class="op">,</span> <span class="nam">body</span><span class="op">:</span> <span class="nam">dict</span><span class="op">[</span><span class="nam">str</span><span class="op">,</span> <span class="nam">Any</span><span class="op">]</span><span class="op">)</span> <span class="op">-&gt;</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t1445" href="#t1445">1445</a></span><span class="t">    <span class="nam">fs</span> <span class="op">=</span> <span class="nam">session</span><span class="op">.</span><span class="nam">get_feature_store</span><span class="op">(</span><span class="nam">ctx</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t1446" href="#t1446">1446</a></span><span class="t">    <span class="key">from</span> <span class="nam">hopsworks_common</span><span class="op">.</span><span class="nam">core</span> <span class="key">import</span> <span class="nam">rest</span>&nbsp;</span><span class="r"></span></p>
-    <p class="pln"><span class="n"><a id="t1447" href="#t1447">1447</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t1448" href="#t1448">1448</a></span><span class="t">    <span class="key">try</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t1449" href="#t1449">1449</a></span><span class="t">        <span class="nam">rest</span><span class="op">.</span><span class="nam">_send_request</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t1450" href="#t1450">1450</a></span><span class="t">            <span class="str">&quot;POST&quot;</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t1451" href="#t1451">1451</a></span><span class="t">            <span class="nam">rest</span><span class="op">.</span><span class="nam">_project_path</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t1452" href="#t1452">1452</a></span><span class="t">                <span class="str">&quot;featurestores&quot;</span><span class="op">,</span> <span class="nam">getattr</span><span class="op">(</span><span class="nam">fs</span><span class="op">,</span> <span class="str">&quot;id&quot;</span><span class="op">,</span> <span class="key">None</span><span class="op">)</span><span class="op">,</span> <span class="str">&quot;storageconnectors&quot;</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t1453" href="#t1453">1453</a></span><span class="t">            <span class="op">)</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t1454" href="#t1454">1454</a></span><span class="t">            <span class="nam">json_body</span><span class="op">=</span><span class="nam">body</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run run2"><span class="n"><a id="t1455" href="#t1455">1455</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t1456" href="#t1456">1456</a></span><span class="t">    <span class="key">except</span> <span class="nam">Exception</span> <span class="key">as</span> <span class="nam">exc</span><span class="op">:</span>  <span class="com"># noqa: BLE001</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t1457" href="#t1457">1457</a></span><span class="t">        <span class="key">raise</span> <span class="nam">click</span><span class="op">.</span><span class="nam">ClickException</span><span class="op">(</span><span class="fst">f&quot;</span><span class="fst">Create failed: </span><span class="op">{</span><span class="nam">exc</span><span class="op">}</span><span class="fst">&quot;</span><span class="op">)</span> <span class="key">from</span> <span class="nam">exc</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t1458" href="#t1458">1458</a></span><span class="t">    <span class="nam">output</span><span class="op">.</span><span class="nam">success</span><span class="op">(</span><span class="str">&quot;&#10003; Created connector %s&quot;</span><span class="op">,</span> <span class="nam">body</span><span class="op">[</span><span class="str">&quot;name&quot;</span><span class="op">]</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t1442" href="#t1442">1442</a></span><span class="t">    <span class="key">if</span> <span class="nam">inferred</span><span class="op">.</span><span class="nam">suggested_description</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t1443" href="#t1443">1443</a></span><span class="t">        <span class="nam">click</span><span class="op">.</span><span class="nam">echo</span><span class="op">(</span><span class="fst">f&quot;</span><span class="fst">Suggested description: </span><span class="op">{</span><span class="nam">inferred</span><span class="op">.</span><span class="nam">suggested_description</span><span class="op">}</span><span class="fst">&quot;</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t1444" href="#t1444">1444</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t1445" href="#t1445">1445</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t1446" href="#t1446">1446</a></span><span class="t"><span class="key">def</span> <span class="nam">_create_connector</span><span class="op">(</span><span class="nam">ctx</span><span class="op">:</span> <span class="nam">click</span><span class="op">.</span><span class="nam">Context</span><span class="op">,</span> <span class="nam">body</span><span class="op">:</span> <span class="nam">dict</span><span class="op">[</span><span class="nam">str</span><span class="op">,</span> <span class="nam">Any</span><span class="op">]</span><span class="op">)</span> <span class="op">-&gt;</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t1447" href="#t1447">1447</a></span><span class="t">    <span class="nam">fs</span> <span class="op">=</span> <span class="nam">session</span><span class="op">.</span><span class="nam">get_feature_store</span><span class="op">(</span><span class="nam">ctx</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t1448" href="#t1448">1448</a></span><span class="t">    <span class="key">from</span> <span class="nam">hopsworks_common</span><span class="op">.</span><span class="nam">core</span> <span class="key">import</span> <span class="nam">rest</span>&nbsp;</span><span class="r"></span></p>
+    <p class="pln"><span class="n"><a id="t1449" href="#t1449">1449</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t1450" href="#t1450">1450</a></span><span class="t">    <span class="key">try</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t1451" href="#t1451">1451</a></span><span class="t">        <span class="nam">rest</span><span class="op">.</span><span class="nam">_send_request</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t1452" href="#t1452">1452</a></span><span class="t">            <span class="str">&quot;POST&quot;</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t1453" href="#t1453">1453</a></span><span class="t">            <span class="nam">rest</span><span class="op">.</span><span class="nam">_project_path</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t1454" href="#t1454">1454</a></span><span class="t">                <span class="str">&quot;featurestores&quot;</span><span class="op">,</span> <span class="nam">getattr</span><span class="op">(</span><span class="nam">fs</span><span class="op">,</span> <span class="str">&quot;id&quot;</span><span class="op">,</span> <span class="key">None</span><span class="op">)</span><span class="op">,</span> <span class="str">&quot;storageconnectors&quot;</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t1455" href="#t1455">1455</a></span><span class="t">            <span class="op">)</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t1456" href="#t1456">1456</a></span><span class="t">            <span class="nam">json_body</span><span class="op">=</span><span class="nam">body</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t1457" href="#t1457">1457</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t1458" href="#t1458">1458</a></span><span class="t">    <span class="key">except</span> <span class="nam">Exception</span> <span class="key">as</span> <span class="nam">exc</span><span class="op">:</span>  <span class="com"># noqa: BLE001</span>&nbsp;</span><span class="r"></span></p>
+    <p class="mis show_mis"><span class="n"><a id="t1459" href="#t1459">1459</a></span><span class="t">        <span class="key">raise</span> <span class="nam">click</span><span class="op">.</span><span class="nam">ClickException</span><span class="op">(</span><span class="fst">f&quot;</span><span class="fst">Create failed: </span><span class="op">{</span><span class="nam">exc</span><span class="op">}</span><span class="fst">&quot;</span><span class="op">)</span> <span class="key">from</span> <span class="nam">exc</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t1460" href="#t1460">1460</a></span><span class="t">    <span class="nam">output</span><span class="op">.</span><span class="nam">success</span><span class="op">(</span><span class="str">&quot;&#10003; Created connector %s&quot;</span><span class="op">,</span> <span class="nam">body</span><span class="op">[</span><span class="str">&quot;name&quot;</span><span class="op">]</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
 </main>
 <footer>
     <div class="content">
@@ -1547,7 +1549,7 @@
             <a class="nav" href="z_a66cbfc5f0e52186_deployment_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.15.4">coverage.py v7.15.4</a>,
-            created at 2026-09-18 14:04 +0000
+            created at 2026-09-18 15:17 +0000
         </p>
     </div>
 </footer>
