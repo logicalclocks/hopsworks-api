@@ -120,6 +120,26 @@ class TestFeatureGroupEngine:
                 False,
                 False,
             ),
+            (
+                SqlConnector(
+                    id=1,
+                    name="clickhouse",
+                    featurestore_id=1,
+                    database_type=SqlConnector.CLICKHOUSE,
+                ),
+                True,
+                True,
+            ),
+            (
+                SqlConnector(
+                    id=1,
+                    name="clickhouse",
+                    featurestore_id=1,
+                    database_type=SqlConnector.CLICKHOUSE,
+                ),
+                False,
+                False,
+            ),
         ],
     )
     def test_sink_enabled_resolution_for_supported_connectors(
