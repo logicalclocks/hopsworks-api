@@ -275,6 +275,7 @@ class TestModel:
             schema=None,
             passed_features=None,
             default_predictor=None,
+            feature_logging=None,
             knative_mode=None,
         )
         mock_predictor.deploy.assert_called_once()

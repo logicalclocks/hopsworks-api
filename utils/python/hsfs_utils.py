@@ -297,6 +297,20 @@ def offline_fg_materialization(
 
     # get starting offsets
     offset_location = entity.prepare_spark_location() + "/kafka_offsets"
+    # The offsets a run intends to consume, written before its append and removed after the
+    # offsets file is saved. A run that finds one repeats exactly that range, so its Delta
+    # transaction version matches the earlier attempt's and an append that did commit is skipped
+    # instead of being widened by rows that arrived since.
+    pending_offset_location = offset_location + "_pending"
+    # Absence is the only reading of a missing file. A storage, permission or
+    # corruption error has to stop the run: treating it as "no pending range"
+    # would widen the range to the offsets that arrived since and append rows
+    # the earlier attempt's transaction version no longer covers.
+    pending_offsets = (
+        spark.read.json(pending_offset_location).toJSON().first()
+        if _path_exists(spark, pending_offset_location)
+        else None
+    )
     try:
         if initial_check_point_string:
             starting_offset_string = json.dumps(
@@ -333,7 +347,21 @@ def offline_fg_materialization(
         high=True,
     )
     ending_offset_string = json.dumps(_build_offsets(ending_offset_string))
+    appends = write_options_of(job_conf).get("operation") == "insert"
+    if pending_offsets and appends:
+        ending_offset_string = pending_offsets
+        print(
+            f"repeating the range of an unfinished run, endingOffsets: {ending_offset_string}"
+        )
     print(f"endingOffsets: {ending_offset_string}")
+    if appends:
+        # Claim the range before reading it, not after the append. Written after,
+        # it fences nothing: a second execution starting in between (a manual
+        # materialize_log(), or the self re-trigger) reads a wider range, derives
+        # a different txnVersion and appends the overlap a second time.
+        spark.createDataFrame([json.loads(ending_offset_string)]).coalesce(
+            1
+        ).write.mode("overwrite").json(pending_offset_location)
 
     # read kafka topic
     df = (
@@ -436,9 +464,20 @@ def offline_fg_materialization(
     entity.stream = False  # to make sure we dont write to kafka
 
     # Do not apply transformation function at this point since the data written to Kafka already has transformations applied.
+    # A feature log is append-only, so its job configuration carries operation=insert; every other
+    # stream group keeps the upsert on its primary key. An append has no key to make a retry
+    # idempotent, so the run identifies itself to Delta by the offsets it consumed: a rerun after a
+    # commit that never reached the offset file carries the same version and Delta skips it.
+    if write_options.get("operation") == "insert":
+        write_options = dict(write_options)
+        write_options["txnAppId"] = f"hopsworks_feature_log_materialization_{entity.id}"
+        write_options["txnVersion"] = str(
+            sum(int(v) for v in offset_dict[f"{entity._online_topic_name}"].values())
+        )
     entity.insert(
         deduped_df,
         storage="offline",
+        operation=write_options.get("operation", "upsert"),
         transform=False,
         write_options=write_options,
         validation_options={"schema_validation": False},
@@ -447,6 +486,8 @@ def offline_fg_materialization(
     # save offsets
     offset_df = spark.createDataFrame([offset_dict])
     offset_df.coalesce(1).write.mode("overwrite").json(offset_location)
+    if write_options.get("operation") == "insert":
+        _remove_path(spark, pending_offset_location)
 
 
 def update_table_schema_fg(spark: SparkSession, job_conf: dict[Any, Any]) -> None:
@@ -460,6 +501,22 @@ def update_table_schema_fg(spark: SparkSession, job_conf: dict[Any, Any]) -> Non
 
     entity.stream = False
     engine._get_instance()._update_table_schema(entity)
+
+
+def write_options_of(job_conf) -> dict:
+    return job_conf.get("write_options", {}) or {}
+
+
+def _path_exists(spark, location: str) -> bool:
+    jvm = spark._jvm
+    path = jvm.org.apache.hadoop.fs.Path(location)
+    return path.getFileSystem(spark._jsc.hadoopConfiguration()).exists(path)
+
+
+def _remove_path(spark, location: str) -> None:
+    jvm = spark._jvm
+    path = jvm.org.apache.hadoop.fs.Path(location)
+    path.getFileSystem(spark._jsc.hadoopConfiguration()).delete(path, True)
 
 
 def _build_offsets(initial_check_point_string: str):

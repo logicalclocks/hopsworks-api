@@ -328,8 +328,13 @@ class DataSourceApi:
                     else None
                 )
                 values.append(cell.get("value1") if isinstance(cell, dict) else None)
+            # column_name, not name: Feature.__init__ runs the feature-store autofix over `name`
+            # (lower-cased, spaces to underscores), and the backend echoes whatever we send back as
+            # `originalName`. Sending the sanitized form means a source column called USER_ID or
+            # "Order Date" comes back as user_id / order_date, matches no real column, and the caller
+            # silently drops every rename, type and description it was given.
             columns.append(
-                {"name": feature.name, "type": feature.type, "values": values}
+                {"name": feature.column_name, "type": feature.type, "values": values}
             )
 
         try:

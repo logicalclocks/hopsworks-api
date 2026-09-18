@@ -20,7 +20,10 @@ import pytest
 from hsml import resources
 from hsml.constants import PREDICTOR
 from hsml.python.endpoint import Endpoint
-from hsml.scaling_config import PredictorScalingConfig, TransformerScalingConfig
+from hsml.scaling_config import (
+    PredictorScalingConfig,
+    TransformerScalingConfig,
+)
 
 
 SERVING_NUM_INSTANCES_NO_LIMIT = [-1]

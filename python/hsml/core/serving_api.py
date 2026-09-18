@@ -16,6 +16,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import threading
 from typing import Any
 
 from hopsworks_common import tag
@@ -33,6 +35,10 @@ from hsml.client.istio.utils.infer_type import (
     InferRequest,
 )
 from hsml.constants import INFERENCE_ENDPOINTS as IE
+
+
+_logger = logging.getLogger(__name__)
+_GRPC_CHANNEL_LOCK = threading.Lock()
 
 
 class ServingApi:
@@ -232,6 +238,16 @@ class ServingApi:
         endpoints_json = _client._send_request("GET", path_params)
         return inference_endpoint.InferenceEndpoint.from_response_json(endpoints_json)
 
+    def _get_vllm_image_tags(self) -> dict[str, Any]:
+        """Get the vLLM runtime image tags the cluster advertises.
+
+        Returns:
+            One entry per vLLM variant, each with its advertised tags and the default tag.
+        """
+        _client = client._get_instance()
+        path_params = ["project", _client._project_id, "serving", "vllmImageTags"]
+        return _client._send_request("GET", path_params)
+
     def _get_schema(
         self,
         deployment_id: int,
@@ -429,10 +445,14 @@ class ServingApi:
             # The gRPC channel is lazily initialized. The first call to deployment.predict() will initialize
             # the channel, which will be reused in all following calls on the same deployment object.
             # The gRPC channel is freed when calling deployment.stop()
-            print("Initializing gRPC channel...")
-            deployment_instance._grpc_channel = self._create_grpc_channel(
-                deployment_instance
-            )
+            with _GRPC_CHANNEL_LOCK:
+                # concurrent first calls would otherwise open a channel each and
+                # keep only the last, leaking the rest for the object's lifetime
+                if deployment_instance._grpc_channel is None:
+                    _logger.debug("Initializing gRPC channel")
+                    deployment_instance._grpc_channel = self._create_grpc_channel(
+                        deployment_instance
+                    )
         # build an infer request
         request = InferRequest(
             infer_inputs=data,

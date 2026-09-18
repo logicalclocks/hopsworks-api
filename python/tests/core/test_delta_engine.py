@@ -17,6 +17,7 @@ import os
 import sys
 import types
 from datetime import date
+from types import SimpleNamespace
 from unittest import mock
 
 import pandas as pd
@@ -1233,6 +1234,276 @@ class TestDeltaEngine:
         writer = dataset.write.format.return_value.options.return_value
         writer.partitionBy.assert_called_once_with(["pk"])
 
+    def _rs_engine(self, mocker, partition_key=None, features=None):
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.partition_key = partition_key or []
+        fg.features = features or []
+        engine = DeltaEngine(1, "fs", fg, None, None)
+        mocker.patch.object(
+            engine, "_get_delta_rs_location", return_value="hopsfs://nn:8020/p"
+        )
+        mocker.patch.object(engine, "_get_delta_rs_storage_options", return_value={})
+        mocker.patch.object(engine, "_cluster_columns", return_value=[])
+        return engine, fg
+
+    def test_vacuum_on_python_actually_deletes(self, mocker):
+        # hops-deltalake is linux and darwin-arm64 only; this reaches the real module.
+        pytest.importorskip("deltalake")
+        # Arrange
+        engine, _ = self._rs_engine(mocker)
+        table = mocker.MagicMock()
+        table.vacuum.return_value = ["one.parquet"]
+        mocker.patch("deltalake.DeltaTable", return_value=table)
+
+        # Act
+        deleted = engine._vacuum(24)
+
+        # Assert: delta-rs defaults dry_run to True, which would delete nothing.
+        table.vacuum.assert_called_once_with(
+            retention_hours=24, dry_run=False, enforce_retention_duration=False
+        )
+        assert deleted == ["one.parquet"]
+
+    def test_vacuum_on_spark_lifts_the_retention_check(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        spark = mocker.MagicMock()
+        spark.conf.get.return_value = None
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.prepare_spark_location.return_value = "hopsfs://nn:8020/p"
+        engine = DeltaEngine(1, "fs", fg, spark, None)
+
+        # Act
+        engine._vacuum(24)
+
+        # Assert
+        spark.conf.set.assert_any_call(DeltaEngine.RETENTION_CHECK_CONF, "false")
+        spark.sql.assert_called_once_with("VACUUM 'hopsfs://nn:8020/p' RETAIN 24 HOURS")
+
+    def test_compact_on_python_bounds_its_own_concurrency(self, mocker):
+        # hops-deltalake is linux and darwin-arm64 only; this reaches the real module.
+        pytest.importorskip("deltalake")
+        # Arrange
+        engine, _ = self._rs_engine(mocker)
+        table = mocker.MagicMock()
+        table.optimize.compact.return_value = {"numFilesRemoved": 120}
+        mocker.patch("deltalake.DeltaTable", return_value=table)
+
+        # Act
+        result = engine._optimize_compact()
+
+        # Assert
+        table.optimize.compact.assert_called_once_with(
+            partition_filters=None, max_concurrent_tasks=1, target_size=None
+        )
+        assert result == {"numFilesRemoved": 120}
+
+    def test_compact_filters_on_a_date_partition(self, mocker):
+        # hops-deltalake is linux and darwin-arm64 only; this reaches the real module.
+        pytest.importorskip("deltalake")
+        # Arrange
+        engine, _ = self._rs_engine(
+            mocker,
+            partition_key=["log_date"],
+            features=[SimpleNamespace(name="log_date", type="date")],
+        )
+        table = mocker.MagicMock()
+        mocker.patch("deltalake.DeltaTable", return_value=table)
+
+        # Act
+        engine._optimize_compact(after_ingest_date="2026-09-10")
+
+        # Assert
+        table.optimize.compact.assert_called_once_with(
+            partition_filters=[("log_date", ">=", "2026-09-10")],
+            max_concurrent_tasks=1,
+            target_size=None,
+        )
+
+    def test_a_date_filter_without_a_date_partition_is_refused(self, mocker):
+        # Arrange: the logging group's own layout, partitioned by model not by date.
+        engine, _ = self._rs_engine(
+            mocker,
+            partition_key=["model_name", "model_version"],
+            features=[SimpleNamespace(name="model_name", type="string")],
+        )
+
+        # Act / Assert
+        with pytest.raises(FeatureStoreException, match="date column"):
+            engine._optimize_compact(after_ingest_date="2026-09-10")
+
+    def test_compact_on_spark_runs_optimize_with_the_predicate(self, mocker):
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        spark = mocker.MagicMock()
+        spark.sql.return_value.collect.return_value = []
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.prepare_spark_location.return_value = "hopsfs://nn:8020/p"
+        fg.partition_key = ["log_date"]
+        fg.features = [SimpleNamespace(name="log_date", type="date")]
+        engine = DeltaEngine(1, "fs", fg, spark, None)
+
+        # Act
+        engine._optimize_compact(after_ingest_date="2026-09-10")
+
+        # Assert
+        spark.sql.assert_called_once_with(
+            "OPTIMIZE delta.`hopsfs://nn:8020/p` WHERE log_date >= '2026-09-10'"
+        )
+
+    def test_compact_on_spark_sets_and_restores_the_tuning_conf(self, mocker):
+        # OPTIMIZE takes neither as syntax, so on Spark they are session settings; the
+        # session is shared, so they have to go back afterwards.
+        _patch_client(mocker, is_external=False)
+        spark = mocker.MagicMock()
+        spark.sql.return_value.collect.return_value = []
+        spark.conf.get.return_value = None
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.prepare_spark_location.return_value = "hopsfs://nn:8020/p"
+        engine = DeltaEngine(1, "fs", fg, spark, None)
+
+        engine._optimize_compact(max_concurrent_tasks=4, target_size=134217728)
+
+        assert (
+            mocker.call(DeltaEngine.OPTIMIZE_THREADS_CONF, "4")
+            in spark.conf.set.call_args_list
+        )
+        assert (
+            mocker.call(DeltaEngine.OPTIMIZE_FILE_SIZE_CONF, "134217728")
+            in spark.conf.set.call_args_list
+        )
+        # Nothing was set before, so both are unset again rather than pinned.
+        unset = [c.args[0] for c in spark.conf.unset.call_args_list]
+        assert DeltaEngine.OPTIMIZE_THREADS_CONF in unset
+        assert DeltaEngine.OPTIMIZE_FILE_SIZE_CONF in unset
+
+    def test_compact_refuses_a_date_that_is_not_one(self, mocker):
+        # The value lands in an OPTIMIZE predicate, so anything that is not a date is a
+        # rewritten predicate: this one would compact the whole table.
+        _patch_client(mocker, is_external=False)
+        spark = mocker.MagicMock()
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.partition_key = ["log_date"]
+        fg.features = [SimpleNamespace(name="log_date", type="date")]
+        engine = DeltaEngine(1, "fs", fg, spark, None)
+
+        with pytest.raises(FeatureStoreException, match="YYYY-MM-DD"):
+            engine._optimize_compact(after_ingest_date="2026-09-10' OR '1'='1")
+        spark.sql.assert_not_called()
+
+    def test_compact_accepts_a_date_object(self, mocker):
+        _patch_client(mocker, is_external=False)
+        spark = mocker.MagicMock()
+        spark.sql.return_value.collect.return_value = []
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.prepare_spark_location.return_value = "hopsfs://nn:8020/p"
+        fg.partition_key = ["log_date"]
+        fg.features = [SimpleNamespace(name="log_date", type="date")]
+        engine = DeltaEngine(1, "fs", fg, spark, None)
+
+        engine._optimize_compact(after_ingest_date=date(2026, 9, 10))
+
+        spark.sql.assert_called_once_with(
+            "OPTIMIZE delta.`hopsfs://nn:8020/p` WHERE log_date >= '2026-09-10'"
+        )
+
+    def test_vacuum_coerces_the_retention(self, mocker):
+        # Same reason as the compaction predicate: this is formatted into a statement.
+        _patch_client(mocker, is_external=False)
+        spark = mocker.MagicMock()
+        fg = _make_fg("hopsfs://nn:8020/p")
+        fg.prepare_spark_location.return_value = "hopsfs://nn:8020/p"
+        engine = DeltaEngine(1, "fs", fg, spark, None)
+
+        with pytest.raises(ValueError):
+            engine._vacuum("24 HOURS; DROP TABLE x")
+
+    def test_active_file_count_on_python(self, mocker):
+        # hops-deltalake is linux and darwin-arm64 only; this reaches the real module.
+        pytest.importorskip("deltalake")
+        # Arrange
+        engine, _ = self._rs_engine(mocker)
+        table = mocker.MagicMock()
+        table.file_uris.return_value = ["a", "b", "c"]
+        mocker.patch("deltalake.DeltaTable", return_value=table)
+
+        # Act / Assert
+        assert engine._active_file_count() == 3
+
+    def test_last_optimize_at_reads_the_history(self, mocker):
+        # hops-deltalake is linux and darwin-arm64 only; this reaches the real module.
+        pytest.importorskip("deltalake")
+        # Arrange
+        engine, _ = self._rs_engine(mocker)
+        table = mocker.MagicMock()
+        table.history.return_value = [
+            {"operation": "WRITE", "timestamp": 1_700_000_000_000},
+            {"operation": "OPTIMIZE", "timestamp": 1_700_000_500_000},
+        ]
+        mocker.patch("deltalake.DeltaTable", return_value=table)
+
+        # Act / Assert: delta-rs reports milliseconds.
+        assert engine._last_optimize_at() == 1_700_000_500.0
+
+    def test_last_optimize_at_is_none_when_never_compacted(self, mocker):
+        # hops-deltalake is linux and darwin-arm64 only; this reaches the real module.
+        pytest.importorskip("deltalake")
+        # Arrange
+        engine, _ = self._rs_engine(mocker)
+        table = mocker.MagicMock()
+        table.history.return_value = [{"operation": "WRITE", "timestamp": 1}]
+        mocker.patch("deltalake.DeltaTable", return_value=table)
+
+        # Act / Assert
+        assert engine._last_optimize_at() is None
+
+    def test_checkpoint_writes_a_checkpoint(self, mocker):
+        # hops-deltalake is linux and darwin-arm64 only; this reaches the real module.
+        pytest.importorskip("deltalake")
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        engine = DeltaEngine(1, "fs", fg, None, None)
+        mocker.patch.object(
+            engine, "_get_delta_rs_location", return_value="hopsfs://nn:8020/p"
+        )
+        mocker.patch.object(engine, "_get_delta_rs_storage_options", return_value={})
+        table = mocker.MagicMock()
+        table.version.return_value = 11
+        mocker.patch("deltalake.DeltaTable", return_value=table)
+
+        # Act
+        result = engine._checkpoint()
+
+        # Assert
+        # The checkpoint writes; expiring the log is a separate call.
+        table.create_checkpoint.assert_called_once_with()
+        table.cleanup_metadata.assert_not_called()
+        assert result == {"version": 11}
+
+    def test_cleanup_metadata_expires_the_log(self, mocker):
+        # hops-deltalake is linux and darwin-arm64 only; this reaches the real module.
+        pytest.importorskip("deltalake")
+        # Arrange
+        _patch_client(mocker, is_external=False)
+        fg = _make_fg("hopsfs://nn:8020/p")
+        engine = DeltaEngine(1, "fs", fg, None, None)
+        mocker.patch.object(
+            engine, "_get_delta_rs_location", return_value="hopsfs://nn:8020/p"
+        )
+        mocker.patch.object(engine, "_get_delta_rs_storage_options", return_value={})
+        table = mocker.MagicMock()
+        table.version.return_value = 12
+        mocker.patch("deltalake.DeltaTable", return_value=table)
+
+        # Act
+        result = engine._cleanup_metadata()
+
+        # Assert
+        table.cleanup_metadata.assert_called_once_with()
+        assert result == {"version": 12}
+
     def test_optimize_spark_runs_optimize_sql(self, mocker):
         # Arrange
         _patch_client(mocker, is_external=False)
@@ -1496,7 +1767,11 @@ class TestDeltaEngine:
         # Assert
         assert result == "commit"
         fake_deltalake.write_deltalake.assert_called_once_with(
-            "hdfs://nn:8020/p", dataset, mode="append", storage_options=None
+            "hdfs://nn:8020/p",
+            dataset,
+            mode="append",
+            storage_options=None,
+            commit_properties=None,
         )
         delta_table.merge.assert_not_called()
         mock_commit.assert_called_once_with(
@@ -2618,3 +2893,38 @@ class TestDeltaEngineGlueSync:
 
         # Assert
         spark_session.sql.assert_not_called()
+
+
+def test_commit_properties_become_a_delta_application_transaction(monkeypatch):
+    import sys
+
+    # The fake goes first: other tests leave one in sys.modules, and importorskip would
+    # find it and not skip, leaving this to fail on an interpreter that has no real
+    # deltalake. hops-deltalake is linux and darwin-arm64 only, so Windows is exactly
+    # that interpreter.
+    monkeypatch.delitem(sys.modules, "deltalake", raising=False)
+    pytest.importorskip("deltalake")
+
+    from hsfs.core.delta_engine import DeltaEngine
+
+    assert DeltaEngine._commit_properties(None) is None
+    assert DeltaEngine._commit_properties({"mode": "append"}) is None
+    properties = DeltaEngine._commit_properties(
+        {"commit_properties": {"app_id": "hopsworks_feature_log_7", "version": "3"}}
+    )
+    (transaction,) = properties.app_transactions
+    assert (transaction.app_id, transaction.version) == ("hopsworks_feature_log_7", 3)
+    several = DeltaEngine._commit_properties(
+        {
+            "commit_properties": {
+                "transactions": [
+                    {"app_id": "fg/chunk/a", "version": 1},
+                    {"app_id": "fg/chunk/b", "version": 1},
+                ]
+            }
+        }
+    )
+    assert [(t.app_id, t.version) for t in several.app_transactions] == [
+        ("fg/chunk/a", 1),
+        ("fg/chunk/b", 1),
+    ]

@@ -20,6 +20,7 @@ import contextlib
 import json
 import logging
 import re
+import weakref
 from typing import TYPE_CHECKING, Any
 
 from hopsworks_common.core import variable_api
@@ -52,6 +53,36 @@ if HAS_AIOMYSQL and HAS_SQLALCHEMY:
 
 
 _logger = logging.getLogger(__name__)
+
+
+# Longest an explicit close waits for a loop to release its pool's connections.
+_POOL_CLOSE_SECONDS = 10.0
+
+
+def _terminate_pool(pool) -> None:
+    """Close what can still be closed of a pool whose loop is gone.
+
+    A pool is closed properly by `close()` and an awaited `wait_closed()` on its own
+    loop, which also releases the idle connections; once that loop is closed nothing
+    can be awaited on it, `terminate()` drops the connections that were in use, and the
+    idle ones go with the loop when it is collected.
+    """
+    with contextlib.suppress(Exception):
+        pool.terminate()
+
+
+def _opened(opening):
+    """The `(pool, lifetime)` a pool-opening task produced, `None` while it has not."""
+    if not opening.done() or opening.cancelled() or opening.exception() is not None:
+        return None
+    return opening.result()
+
+
+def _running_loop():
+    try:
+        return asyncio.get_running_loop()
+    except RuntimeError:
+        return None
 
 
 class OnlineStoreSqlClient:
@@ -114,7 +145,11 @@ class OnlineStoreSqlClient:
         reachable is never finalized. Each pool holds one connection per feature
         group in the view, so a process that initialises serving repeatedly can
         exhaust the online store's `max_connections`.
+
+        Both kinds of pool go: the task thread's, and the per-loop ones the awaited
+        lookups build, each closed on its own loop where that loop can still run.
         """
+        self._close_loop_connection_pools()
         thread = self._async_task_thread
         if thread is not None:
             if thread._shutdown():
@@ -333,6 +368,9 @@ class OnlineStoreSqlClient:
             else None
         )
 
+        if not hasattr(self, "_loop_connection_pools"):
+            # Keyed by event loop: a pool belongs to the loop that created it.
+            self._loop_connection_pools = weakref.WeakKeyDictionary()
         if not self._async_task_thread:
             # Create the async event thread if it is not already running and start it.
             self._async_task_thread = AsyncTaskThread(
@@ -376,6 +414,28 @@ class OnlineStoreSqlClient:
             self.parametrised_prepared_statements[key],
         )
 
+    async def _get_single_feature_vector_async(
+        self,
+        entry: dict[str, Any],
+        logging_data: bool = False,
+        feature_vector_with_inference_helpers: bool = False,
+    ) -> dict[str, Any]:
+        """[`_get_single_feature_vector`][] awaited on the caller's own event loop.
+
+        Same arguments, same result; the statements are awaited here rather than handed
+        to the task thread.
+        """
+        if logging_data:
+            key = self.SINGLE_LOGGING_VECTOR_KEY
+        elif feature_vector_with_inference_helpers:
+            key = self.SINGLE_VECTOR_WITH_INFERENCE_HELPERS_KEY
+        else:
+            key = self.SINGLE_VECTOR_KEY
+        return await self._single_vector_result_async(
+            entry,
+            self.parametrised_prepared_statements[key],
+        )
+
     def _get_batch_feature_vectors(
         self,
         entries: list[dict[str, Any]],
@@ -408,6 +468,28 @@ class OnlineStoreSqlClient:
             self.parametrised_prepared_statements[key],
         )
 
+    async def _get_batch_feature_vectors_async(
+        self,
+        entries: list[dict[str, Any]],
+        logging_data: bool = False,
+        feature_vector_with_inference_helpers: bool = False,
+    ) -> list[dict[str, Any]]:
+        """[`_get_batch_feature_vectors`][] awaited on the caller's own event loop.
+
+        Same arguments, same result. What differs is that the statements are awaited
+        here rather than handed to the task thread, so several lookups overlap.
+        """
+        if logging_data:
+            key = self.BATCH_LOGGING_VECTOR_KEY
+        elif feature_vector_with_inference_helpers:
+            key = self.BATCH_VECTOR_WITH_INFERENCE_HELPERS_KEY
+        else:
+            key = self.BATCH_VECTOR_KEY
+        return await self._batch_vector_results_async(
+            entries,
+            self.parametrised_prepared_statements[key],
+        )
+
     def _get_inference_helper_vector(self, entry: dict[str, Any]) -> dict[str, Any]:
         """Retrieve single inference helper vector with parallel queries using aiomysql engine.
 
@@ -436,10 +518,10 @@ class OnlineStoreSqlClient:
             entries, self.parametrised_prepared_statements[self.BATCH_HELPER_KEY]
         )
 
-    def _single_vector_result(
+    def _single_statements(
         self, entry: dict[str, Any], prepared_statement_objects: dict[int, sql.text]
-    ) -> dict[str, Any]:
-        """Retrieve single vector with parallel queries using aiomysql engine."""
+    ):
+        """Bind the entry to the prepared statements this lookup needs."""
         if all(isinstance(val, list) for val in entry.values()):
             raise ValueError(
                 "Entry is expected to be single value per primary key. "
@@ -475,21 +557,15 @@ class OnlineStoreSqlClient:
                 prepared_statement_objects[prepared_statement_index]
             )
 
-        # run all the prepared statements in parallel using aiomysql engine
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
                 f"Executing prepared statements for serving vector with entries: {bind_entries}"
             )
-        results_dict = self._async_task_thread._submit(
-            AsyncTask(
-                task_function=self._execute_prep_statements,
-                task_args=(
-                    prepared_statement_execution,
-                    bind_entries,
-                ),
-                requires_connection_pool=True,
-            )
-        )
+        return serving_vector, bind_entries, prepared_statement_execution
+
+    @staticmethod
+    def _stitch_single_result(serving_vector, results_dict):
+        """Fold the rows the statements returned into one serving vector."""
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(f"Retrieved feature vectors: {results_dict}")
             _logger.debug("Constructing serving vector from results")
@@ -497,17 +573,49 @@ class OnlineStoreSqlClient:
             for row in results_dict[key]:
                 if _logger.isEnabledFor(logging.DEBUG):
                     _logger.debug(f"Processing row: {row} for prepared statement {key}")
-                result_dict = dict(row)
-                serving_vector.update(result_dict)
-
+                serving_vector.update(dict(row))
         return serving_vector
 
-    def _batch_vector_results(
+    def _single_vector_result(
+        self, entry: dict[str, Any], prepared_statement_objects: dict[int, sql.text]
+    ) -> dict[str, Any]:
+        """Retrieve single vector with parallel queries using aiomysql engine."""
+        serving_vector, bind_entries, prepared = self._single_statements(
+            entry, prepared_statement_objects
+        )
+        results_dict = self._async_task_thread._submit(
+            AsyncTask(
+                task_function=self._execute_prep_statements,
+                task_args=(prepared, bind_entries),
+                requires_connection_pool=True,
+            )
+        )
+        return self._stitch_single_result(serving_vector, results_dict)
+
+    async def _single_vector_result_async(
+        self, entry: dict[str, Any], prepared_statement_objects: dict[int, sql.text]
+    ) -> dict[str, Any]:
+        """The same single vector, awaited on the caller's own event loop.
+
+        As for the batch: the statements are awaited here against a pool belonging to
+        this loop, rather than queued on the task thread that serves one lookup at a
+        time.
+        """
+        serving_vector, bind_entries, prepared = self._single_statements(
+            entry, prepared_statement_objects
+        )
+        pool = await self._loop_connection_pool()
+        results_dict = await self._execute_prep_statements(
+            prepared, bind_entries, connection_pool=pool
+        )
+        return self._stitch_single_result(serving_vector, results_dict)
+
+    def _batch_statements(
         self,
         entries: list[dict[str, Any]],
         prepared_statement_objects: dict[int, sql.text],
     ):
-        """Execute prepared statements in parallel using aiomysql engine."""
+        """Bind the entries to the prepared statements this batch needs."""
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
                 f"Starting batch vector retrieval for {len(entries)} entries via aiomysql engine."
@@ -517,7 +625,6 @@ class OnlineStoreSqlClient:
         # expect that backend will return correctly ordered vectors.
         batch_results = [{} for _ in range(len(entries))]
         entry_values = {}
-        serving_keys_all_fg = []
         prepared_stmts_to_execute = {}
         # construct the list of entry values for binding to query
         if _logger.isEnabledFor(logging.DEBUG):
@@ -560,14 +667,13 @@ class OnlineStoreSqlClient:
             _logger.debug(
                 f"Executing prepared statements for batch vector with entries: {entry_values}"
             )
-        # run all the prepared statements in parallel using aiomysql engine
-        parallel_results = self._async_task_thread._submit(
-            AsyncTask(
-                task_function=self._execute_prep_statements,
-                task_args=(prepared_stmts_to_execute, entry_values),
-                requires_connection_pool=True,
-            )
-        )
+        return batch_results, entry_values, prepared_stmts_to_execute
+
+    def _stitch_batch_results(
+        self, entries, batch_results, prepared_stmts_to_execute, parallel_results
+    ):
+        """Assemble the rows the statements returned into one vector per entry."""
+        serving_keys_all_fg = []
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug(
                 f"Retrieved feature vectors: {parallel_results}, stitching them."
@@ -619,6 +725,141 @@ class OnlineStoreSqlClient:
                     )
                 )
         return batch_results, serving_keys_all_fg
+
+    def _batch_vector_results(
+        self,
+        entries: list[dict[str, Any]],
+        prepared_statement_objects: dict[int, sql.text],
+    ):
+        """Execute prepared statements in parallel using aiomysql engine."""
+        batch_results, entry_values, prepared = self._batch_statements(
+            entries, prepared_statement_objects
+        )
+        parallel_results = self._async_task_thread._submit(
+            AsyncTask(
+                task_function=self._execute_prep_statements,
+                task_args=(prepared, entry_values),
+                requires_connection_pool=True,
+            )
+        )
+        return self._stitch_batch_results(
+            entries, batch_results, prepared, parallel_results
+        )
+
+    async def _batch_vector_results_async(
+        self,
+        entries: list[dict[str, Any]],
+        prepared_statement_objects: dict[int, sql.text],
+    ):
+        """The same batch, awaited on the caller's own event loop.
+
+        The blocking twin hands the work to `AsyncTaskThread`, which takes one task off
+        its queue, awaits it to completion and only then takes the next, so lookups
+        serialise however many callers there are. A caller that already runs a loop does
+        not need that bridge: it awaits the statements itself, against a pool of its own,
+        and several lookups are then genuinely in flight at once.
+        """
+        batch_results, entry_values, prepared = self._batch_statements(
+            entries, prepared_statement_objects
+        )
+        pool = await self._loop_connection_pool()
+        parallel_results = await self._execute_prep_statements(
+            prepared, entry_values, connection_pool=pool
+        )
+        return self._stitch_batch_results(
+            entries, batch_results, prepared, parallel_results
+        )
+
+    async def _loop_connection_pool(self):
+        """This event loop's own connection pool, created once and kept while the loop lives.
+
+        aiomysql binds a pool to the loop that created it, so a pool made on the
+        `AsyncTaskThread` cannot be awaited from anywhere else. Keying them by loop is
+        what lets a caller await its own.
+
+        Callers that arrive before the pool is open share one opening task rather than
+        each opening a pool of their own. Each pool holds one connection per feature
+        group in the view, so a cold burst of requests would otherwise open that many
+        pools, keep one, and leave the others' connections to the online store's limit.
+        The await is shielded: a caller cancelled while the pool opens does not cancel
+        the opening for the callers behind it.
+
+        The pool closes when its loop shuts down. asyncio has no hook for that, but
+        `asyncio.run` and `asyncio.Runner` finalize the loop's async generators before
+        closing it, so the pool's lifetime is one such generator, suspended on the loop
+        and closing the pool from its `finally`, on the loop, while it still runs. A
+        script that calls `asyncio.run` per lookup builds a loop each time, and without
+        this every one of them would leave its connections open behind it.
+        """
+        loop = asyncio.get_running_loop()
+        self._forget_closed_loops()
+        opening = self._loop_connection_pools.get(loop)
+        if opening is None:
+            opening = loop.create_task(self._open_loop_connection_pool(loop))
+            self._loop_connection_pools[loop] = opening
+        try:
+            pool, _lifetime = await asyncio.shield(opening)
+        except BaseException:
+            if opening.done() and self._loop_connection_pools.get(loop) is opening:
+                # Failed or cancelled while opening: the next caller tries again.
+                del self._loop_connection_pools[loop]
+            raise
+        return pool
+
+    async def _open_loop_connection_pool(self, loop):
+        pool = await self._get_connection_pool(
+            len(self._prepared_statements[self.SINGLE_VECTOR_KEY])
+        )
+        lifetime = self._pool_lifetime(loop, pool, asyncio.current_task())
+        # Iterated once so that it is suspended, registered with the loop, and finalized
+        # by `loop.shutdown_asyncgens()`; kept in this task's result so that nothing
+        # collects it, and with it the pool, before then.
+        await lifetime.__anext__()
+        return pool, lifetime
+
+    async def _pool_lifetime(self, loop, pool, opening):
+        """Suspended for as long as the loop runs; closing it closes the pool, on the loop."""
+        try:
+            yield
+        finally:
+            if self._loop_connection_pools.get(loop) is opening:
+                del self._loop_connection_pools[loop]
+            pool.close()
+            await pool.wait_closed()
+
+    def _forget_closed_loops(self) -> None:
+        """Drop the pools of loops closed without finalizing their async generators.
+
+        Nothing can be awaited on such a loop any more, so the connections still in use
+        are dropped and the idle ones are collected with the loop.
+        """
+        for loop, opening in list(self._loop_connection_pools.items()):
+            if not loop.is_closed():
+                continue
+            del self._loop_connection_pools[loop]
+            opened = _opened(opening)
+            if opened is not None:
+                _terminate_pool(opened[0])
+
+    def _close_loop_connection_pools(self) -> None:
+        """Close every loop's pool now, each on its own loop where that loop can still run."""
+        for loop, opening in list(self._loop_connection_pools.items()):
+            del self._loop_connection_pools[loop]
+            opened = _opened(opening)
+            if opened is None:
+                opening.cancel()
+                continue
+            pool, lifetime = opened
+            if loop.is_closed():
+                _terminate_pool(pool)
+            elif not loop.is_running():
+                loop.run_until_complete(lifetime.aclose())
+            elif _running_loop() is loop:
+                loop.create_task(lifetime.aclose())
+            else:
+                future = asyncio.run_coroutine_threadsafe(lifetime.aclose(), loop)
+                with contextlib.suppress(Exception):
+                    future.result(timeout=_POOL_CLOSE_SECONDS)
 
     def _refresh_mysql_connection(self):
         if _logger.isEnabledFor(logging.DEBUG):

@@ -392,7 +392,9 @@ class TestUtil:
             pass
 
         pred_base = mocker.patch(
-            "hsml.predictor.Predictor.__init__", return_value=None, spec=pred_base_spec
+            "hsml.predictor.Predictor.__init__",
+            return_value=None,
+            spec=pred_base_spec,
         )
         pred_python = mocker.patch("hsml.python.predictor.Predictor.__init__")
         pred_sklearn = mocker.patch("hsml.sklearn.predictor.Predictor.__init__")
