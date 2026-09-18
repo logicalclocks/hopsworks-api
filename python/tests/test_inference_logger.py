@@ -67,7 +67,8 @@ class TestInferenceLogger:
             return_value=json,
         )
         mock_il_init = mocker.patch(
-            "hsml.inference_logger.InferenceLogger.__init__", return_value=None
+            "hsml.inference_logger.InferenceLogger.__init__",
+            return_value=None,
         )
 
         # Act
@@ -87,7 +88,8 @@ class TestInferenceLogger:
             return_value=json,
         )
         mock_il_init = mocker.patch(
-            "hsml.inference_logger.InferenceLogger.__init__", return_value=None
+            "hsml.inference_logger.InferenceLogger.__init__",
+            return_value=None,
         )
 
         # Act

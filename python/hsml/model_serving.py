@@ -52,6 +52,7 @@ _SAFE_GIT_BRANCH_NAME_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 
 
 if TYPE_CHECKING:
+    from hsml.deployment_logging_config import DeploymentLoggingConfig
     from hsml.deployment_schema import DeploymentSchema
     from hsml.deployment_tracing_config import DeploymentTracingConfig
     from hsml.inference_batcher import InferenceBatcher
@@ -59,7 +60,10 @@ if TYPE_CHECKING:
     from hsml.inference_logger import InferenceLogger
     from hsml.model import Model
     from hsml.resources import PredictorResources
-    from hsml.scaling_config import PredictorScalingConfig, TransformerScalingConfig
+    from hsml.scaling_config import (
+        PredictorScalingConfig,
+        TransformerScalingConfig,
+    )
 
 
 @public
@@ -260,6 +264,7 @@ class ModelServing:
         vllm_variant: str | None = None,
         vllm_image_tag: str | None = None,
         tracing: DeploymentTracingConfig | dict | None = None,
+        feature_logging: DeploymentLoggingConfig | dict | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         schema: DeploymentSchema | dict | None = None,
         passed_features: list[str] | None = None,
@@ -303,7 +308,12 @@ class ModelServing:
             inference_logger: Inference logger configuration.
             inference_batcher: Inference batcher configuration.
             transformer: Transformer to be deployed together with the predictor.
-            api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC').
+            api_protocol: API protocol of the deployment, 'REST' or 'GRPC'. Defaults to
+                'REST', which is the protocol `curl` and the published OpenAPI document
+                use; a deployment serves one protocol, not both. 'GRPC' costs less per
+                request under concurrency and is served by the default predictor, but a
+                predictor script written for REST rows cannot read the v2 tensors a gRPC
+                request carries.
             environment: The project Python environment to use
             scaling_configuration: Scaling configuration for the predictor.
             env_vars: Environment variables to set on the predictor.
@@ -318,6 +328,7 @@ class ModelServing:
                 tag explicitly. A deployment also keeps its tag after an admin stops
                 advertising it. Ignored for non-vLLM model servers.
             tracing: Tracing configuration for the predictor.
+            feature_logging: Feature logging configuration for the predictor and its feature-log sidecar; see [`DeploymentLoggingConfig`][hsml.deployment_logging_config.DeploymentLoggingConfig].
             tags: Optionally the tags to attach to the deployment when it is created, in the same shapes accepted by feature groups.
                 A single [`Tag`][hopsworks.tag.Tag], a `{"name": "owner", "value": "team-a"}` dict, or a list of either, for example `[{"name": "owner", "value": "team-a"}]`.
                 The tags ride the create request, so any mandatory deployment tags missing from them cause the backend to reject the creation.
@@ -351,6 +362,7 @@ class ModelServing:
             vllm_variant=vllm_variant,
             vllm_image_tag=vllm_image_tag,
             tracing=tracing,
+            feature_logging=feature_logging,
             tags=tags,
             schema=schema,
             passed_features=passed_features,

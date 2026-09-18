@@ -630,6 +630,20 @@ class TestInference:
         assert schema.inferred is True
         assert schema.output == {"kind": "predictions", "columns": None}
 
+    def test_shared_join_key_is_one_serving_key(self):
+        # Two feature groups joined on the same key: the view reports the key
+        # once per group, a request carries one value for it.
+        key = SimpleNamespace(
+            required_serving_key="cc_num",
+            feature_name="cc_num",
+            feature_group=SimpleNamespace(features=[]),
+        )
+        schema = ds._infer_deployment_schema(
+            _fv(serving_keys=[key, key]), training_dataset_version=3
+        )
+
+        assert [(f.name, f.type) for f in schema.serving_keys] == [("cc_num", "bigint")]
+
     def test_rejects_unknown_and_label_passed_features(self):
         with pytest.raises(ValueError, match="not a feature of feature view 'fv' v2"):
             ds._infer_deployment_schema(_fv(), passed_features=["nope"])
@@ -938,3 +952,72 @@ class TestRequestParameterTypes:
         assert [(f.name, f.type) for f in schema.request_parameters] == [
             ("transaction_time", "bigint")
         ]
+
+
+class TestTensors:
+    """The v2 tensors of the gRPC protocol give back what was put in."""
+
+    def test_integer_predictions_stay_integers(self):
+        (tensor,) = ds._encode_outputs({"predictions": [2**60 + 1, 2]})
+
+        assert tensor["datatype"] == "INT64"
+        assert ds._decode_outputs([tensor]) == {"predictions": [2**60 + 1, 2]}
+
+    def test_values_no_typed_tensor_holds_exactly_travel_as_json(self):
+        beyond_int64 = [2**63, 1]
+        mixed = [1.5, 2**60 + 1]
+        for values in (beyond_int64, mixed):
+            (tensor,) = ds._encode_outputs(values)
+            assert tensor["datatype"] == ds.JSON_DATATYPE
+            assert ds._decode_outputs([tensor]) == {"predictions": values}
+        (tensor,) = ds._encode_outputs([1.5, 2])
+        assert tensor["datatype"] == "FP64"
+
+    def test_booleans_and_scalars_keep_their_type(self):
+        (flags,) = ds._encode_outputs({"flags": [True, False]})
+        (scalar,) = ds._encode_outputs(3)
+
+        assert flags["datatype"] == "BOOL"
+        assert (scalar["datatype"], scalar["shape"]) == ("INT64", [])
+        assert ds._decode_outputs([scalar]) == {"predictions": 3}
+
+    def test_a_bigint_input_beyond_int64_travels_as_json(self):
+        schema = DeploymentSchema(serving_keys=[{"name": "id", "type": "bigint"}])
+
+        (tensor,) = ds._encode_rows(schema, [{"id": 2**70}])
+
+        assert tensor["datatype"] == ds.JSON_DATATYPE
+        assert ds._decode_rows([tensor]) == [{"id": 2**70}]
+
+    def test_rows_that_differ_in_optional_fields_arrive_as_sent(self):
+        # Omitting an optional non-nullable field is valid; a column of the field
+        # would give the row that omitted it a null, which is not.
+        schema = DeploymentSchema(
+            serving_keys=[{"name": "id", "type": "bigint"}],
+            extra_logging_features=[
+                {"name": "trace", "type": "string", "nullable": False}
+            ],
+        )
+        rows = [{"id": 1, "trace": "first"}, {"id": 2}]
+        assert schema.validate_instances(rows) == []
+
+        tensors = ds._encode_rows(schema, rows)
+        decoded = ds._decode_rows(tensors)
+
+        assert [t["name"] for t in tensors] == [ds.ROWS_TENSOR]
+        assert decoded == rows
+        assert schema.validate_instances(decoded) == []
+
+    def test_rows_carrying_the_same_fields_stay_one_tensor_per_field(self):
+        schema = DeploymentSchema(
+            serving_keys=[{"name": "id", "type": "bigint"}],
+            extra_logging_features=[
+                {"name": "trace", "type": "string", "nullable": False}
+            ],
+        )
+        rows = [{"id": 1}, {"id": 2}]
+
+        tensors = ds._encode_rows(schema, rows)
+
+        assert [(t["name"], t["datatype"]) for t in tensors] == [("id", "INT64")]
+        assert ds._decode_rows(tensors) == rows
