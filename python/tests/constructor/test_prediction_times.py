@@ -247,4 +247,3 @@ class TestPrecisionAndUnits:
             "hourly", offset="0", start=datetime(2026, 9, 16, 8, 0, 30), count=1
         ).timestamps
         assert times == [datetime(2026, 9, 16, 9, 0, tzinfo=timezone.utc)]
-
