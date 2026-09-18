@@ -31,8 +31,9 @@ class _Feature:
 
 
 class _FeatureGroup:
-    def __init__(self, name, features, event_time):
+    def __init__(self, name, features, event_time, primary_key=None):
         self.name, self.features, self.event_time = name, features, event_time
+        self.primary_key = primary_key or []
 
 
 class _ServingKey:
@@ -49,9 +50,13 @@ class _Join:
 
 
 class _Query:
-    def __init__(self, root, joined):
+    def __init__(self, root, joined, left_features=None):
         self._left_feature_group = root
         self.joins = [_Join(fg) for fg in joined]
+        # What the view selects from the root, which is what the backend recognises.
+        self._left_features = (
+            left_features if left_features is not None else list(root.features)
+        )
 
     @property
     def featuregroups(self):
@@ -61,15 +66,18 @@ class _Query:
 
 
 class _FeatureView:
-    def __init__(self, root, joined, serving_keys):
+    def __init__(self, root, joined, serving_keys, left_features=None):
         self.name = "air_quality_fv"
         self.version = 1
         self.featurestore_id = 67
-        self.query = _Query(root, joined)
+        self.query = _Query(root, joined, left_features)
         self.serving_keys = serving_keys
         # The view's output schema: every selected feature under its output name, which for a
-        # joined feature group is its prefix and the feature's name.
-        self.features = [f for fg in [root] + joined for f in fg.features]
+        # joined feature group is its prefix and the feature's name. A root column the view does
+        # not select is not in it.
+        self.features = list(self.query._left_features) + [
+            f for fg in joined for f in fg.features
+        ]
 
 
 @pytest.fixture
@@ -428,6 +436,74 @@ class TestEventTimeType:
         fv = _feature_view_with_event_time_type("timestamp")
         with pytest.raises(FeatureStoreException, match="not a timestamp or an epoch"):
             InferenceSpine(fv, [{"city": "Stockholm", "date": "yesterday-ish"}])
+
+
+class TestUnselectedRootColumns:
+    """The recognised set is what the view selects, which is what the backend recognises.
+
+    Accepting every column of the root feature group here let a frame past the client and then
+    failed in the resolver, whose accepted-columns list is built from the stored view and so
+    named a different set.
+    """
+
+    def _view(self):
+        root = _FeatureGroup(
+            "air_quality",
+            [
+                _Feature("city", "string"),
+                _Feature("date", "timestamp"),
+                _Feature("pm25", "double"),
+                _Feature("internal_note", "string"),
+            ],
+            "date",
+            primary_key=["city"],
+        )
+        keys = [_ServingKey("city", root, True)]
+        # The view selects the event time and pm25; internal_note is a column of the feature
+        # group that the view does not carry.
+        return _FeatureView(
+            root,
+            [],
+            keys,
+            left_features=[_Feature("date", "timestamp"), _Feature("pm25", "double")],
+        )
+
+    def test_a_selected_root_feature_is_still_a_passed_feature(self):
+        fv = self._view()
+        spine = InferenceSpine(
+            fv, [{"city": "Stockholm", "date": datetime(2026, 9, 16), "pm25": 7.0}]
+        )
+        assert "pm25" in spine.supplied_columns
+
+    def test_an_unselected_root_column_is_refused_here_rather_than_by_the_backend(self):
+        fv = self._view()
+        with pytest.raises(FeatureStoreException, match=r"\['internal_note'\]"):
+            InferenceSpine(
+                fv,
+                [
+                    {
+                        "city": "Stockholm",
+                        "date": datetime(2026, 9, 16),
+                        "internal_note": "x",
+                    }
+                ],
+            )
+
+    def test_it_is_a_label_when_training_data_allows_passthrough(self):
+        fv = self._view()
+        spine = InferenceSpine(
+            fv,
+            [
+                {
+                    "city": "Stockholm",
+                    "date": datetime(2026, 9, 16),
+                    "internal_note": "x",
+                }
+            ],
+            allow_passthrough=True,
+        )
+        columns = {c["name"]: c for c in spine.to_dict()["columns"]}
+        assert columns["internal_note"]["passthrough"] is True
 
 
 class TestPassthroughShadowingAJoinedFeature:

@@ -112,21 +112,33 @@ def _localize(naive: datetime, tz: ZoneInfo) -> datetime | None:
 
 
 def _to_local_naive(value: date | datetime | str | int, tz: ZoneInfo) -> datetime:
+    """A prediction time as a naive local time in `tz`, at the precision it was given.
+
+    An integer is epoch milliseconds, the unit the feature store keeps event times in and the
+    unit `spine_df` reads an integer column as. Seconds and microseconds are kept: a schedule
+    matches at minute granularity anyway, and truncating them moved an explicit instant back to
+    the start of its minute, which made the latest-values recipe miss the last minute of writes.
+    """
     if isinstance(value, str):
         value = datetime.fromisoformat(value)
+    elif isinstance(value, bool):
+        raise TypeError("A prediction time cannot be a boolean.")
     elif isinstance(value, int):
-        value = datetime.fromtimestamp(value, tz=timezone.utc)
+        value = datetime.fromtimestamp(value // 1000, tz=timezone.utc) + timedelta(
+            milliseconds=value % 1000
+        )
     elif isinstance(value, datetime):
         pass
     elif isinstance(value, date):
         value = datetime(value.year, value.month, value.day)
     else:
         raise TypeError(
-            f"Expected a datetime, date, ISO-8601 string or epoch seconds; got {type(value)!r}."
+            f"Expected a datetime, date, ISO-8601 string or epoch milliseconds;"
+            f" got {type(value)!r}."
         )
     if value.tzinfo is not None:
         value = value.astimezone(tz)
-    return value.replace(tzinfo=None, microsecond=0, second=0)
+    return value.replace(tzinfo=None)
 
 
 @public
@@ -144,10 +156,9 @@ class PredictionTimes:
 
     Example:
         ```python
-        fv.get_batch_data(
-            spine_df=pd.DataFrame([{"country": "SE", "city": "Stockholm", "street": "Sveavagen"}]),
-            prediction_times=PredictionTimes.every("daily", offset="08:00", count=7),
-        )
+        entities = pd.DataFrame([{"country": "SE", "city": "Stockholm", "street": "Sveavagen"}])
+        schedule = PredictionTimes.every("daily", offset="08:00", count=7)
+        fv.get_batch_data(spine_df=schedule.cross(entities, event_time="date"))
         ```
     """
 
@@ -261,8 +272,9 @@ class PredictionTimes:
     ) -> PredictionTimes:
         """Prediction times from an explicit list.
 
-        Accepts `datetime`, `date`, ISO-8601 strings and epoch seconds.
-        Naive values are read in `timezone`.
+        Accepts `datetime`, `date`, ISO-8601 strings and epoch milliseconds, the same unit an
+        integer column of `spine_df` is read in.
+        Naive values are read in `timezone`, at the precision given: an instant keeps its seconds.
         Use this for anything a schedule cannot express.
 
         Example:
@@ -358,19 +370,6 @@ class PredictionTimes:
     def timestamps(self) -> list[datetime]:
         """The resolved prediction times, timezone-aware in UTC, ascending and unique."""
         return list(self._timestamps)
-
-    @classmethod
-    def _from_user_input(
-        cls, value: PredictionTimes | list[Any] | None
-    ) -> PredictionTimes | None:
-        """Accept a `PredictionTimes`, a bare list of timestamps, or None."""
-        if value is None or isinstance(value, cls):
-            return value
-        if isinstance(value, list):
-            return cls.of(value)
-        raise TypeError(
-            f"prediction_times expects a PredictionTimes or a list of timestamps; got {type(value)!r}."
-        )
 
     def __len__(self) -> int:
         return len(self._timestamps)

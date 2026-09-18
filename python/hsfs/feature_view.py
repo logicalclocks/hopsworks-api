@@ -307,6 +307,30 @@ class FeatureView:
         )
 
     @staticmethod
+    def _reject_unknown_kwargs(kwargs: dict[str, Any], method: str) -> None:
+        """Refuse a keyword this method does not take, rather than swallowing it.
+
+        These methods keep `**kwargs` for the deprecated `primary_keys` spelling, which means a
+        misspelled or withdrawn argument is accepted and ignored. `prediction_times` is the one
+        that matters: it existed on earlier revisions of this API, so a caller who passes it gets
+        no reads of its value and an error about a missing prediction time instead.
+        """
+        unexpected = sorted(k for k in kwargs if k != "primary_keys")
+        if not unexpected:
+            return
+        hint = ""
+        if "prediction_times" in unexpected:
+            hint = (
+                " `prediction_times` was replaced by `spine_df`: build the frame with"
+                " `PredictionTimes.cross(entities, event_time=...)` and pass it as `spine_df`."
+            )
+        raise TypeError(
+            f"{method}() got an unexpected keyword argument"
+            f" {unexpected[0]!r}{'' if len(unexpected) == 1 else f' (and {len(unexpected) - 1} more)'}."
+            f"{hint}"
+        )
+
+    @staticmethod
     def _normalize_feature_age(max_feature_age: Any) -> int | None:
         """Seconds, from a `timedelta` or an already-resolved integer of seconds."""
         if max_feature_age is None:
@@ -1609,6 +1633,7 @@ class FeatureView:
             numpy.ndarray: A two-dimensional Numpy array.
             list: A two-dimensional Python list.
         """
+        self._reject_unknown_kwargs(kwargs, "get_batch_data")
         self._warn_spine_deprecated(spine, "get_batch_data")
         if not self._batch_scoring_server._serving_initialized:
             self.init_batch_scoring()
@@ -2180,6 +2205,7 @@ class FeatureView:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
+        self._reject_unknown_kwargs(kwargs, "create_training_data")
         self._warn_spine_deprecated(spine, "create_training_data")
         if not data_source:
             data_source = ds.DataSource(
@@ -2498,6 +2524,7 @@ class FeatureView:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
+        self._reject_unknown_kwargs(kwargs, "create_train_test_split")
         self._warn_spine_deprecated(spine, "create_train_test_split")
         self._validate_train_test_split(
             test_size=test_size, train_end=train_end, test_start=test_start
@@ -2810,6 +2837,7 @@ class FeatureView:
         Raises:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request
         """
+        self._reject_unknown_kwargs(kwargs, "create_train_validation_test_split")
         self._warn_spine_deprecated(spine, "create_train_validation_test_split")
         self._validate_train_validation_test_split(
             validation_size=validation_size,
@@ -3118,6 +3146,7 @@ class FeatureView:
         Returns:
             (X, y): Tuple of dataframe of features and labels. If there are no labels, y returns `None`.
         """
+        self._reject_unknown_kwargs(kwargs, "training_data")
         self._warn_spine_deprecated(spine, "training_data")
         normalized_tags = tag.Tag._normalize(tags)
 
@@ -3325,6 +3354,7 @@ class FeatureView:
             (X_train, X_test, y_train, y_test):
                 Tuple of dataframe of features and labels
         """
+        self._reject_unknown_kwargs(kwargs, "train_test_split")
         self._warn_spine_deprecated(spine, "train_test_split")
         self._validate_train_test_split(
             test_size=test_size, train_end=train_end, test_start=test_start
@@ -3571,6 +3601,7 @@ class FeatureView:
             (X_train, X_val, X_test, y_train, y_val, y_test):
                 Tuple of dataframe of features and labels
         """
+        self._reject_unknown_kwargs(kwargs, "train_validation_test_split")
         self._warn_spine_deprecated(spine, "train_validation_test_split")
         self._validate_train_validation_test_split(
             validation_size=validation_size,
@@ -3664,6 +3695,7 @@ class FeatureView:
         dataframe_type: str | None = "default",
         transformation_context: dict[str, Any] = None,
         n_processes: int | None = None,
+        spine_df: SpineDataFrameTypes | None = None,
         **kwargs,
     ) -> tuple[
         TrainingDatasetDataFrameTypes,
@@ -3717,9 +3749,17 @@ class FeatureView:
                 Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
                 Ignored by the Spark engine, which pushes transformations down to Spark.
 
+            spine_df:
+                The frame the version was built from, required when it was built from one.
+                A spine-anchored training dataset records that a `spine_df` anchored it but not
+                the rows themselves, so reading it back means passing the same frame again;
+                without it the read is refused rather than answered from the feature view's own
+                rows. Leave it unset for a version built from the feature view's rows.
+
         Returns:
             (X, y): Tuple of dataframe of features and labels
         """
+        self._reject_unknown_kwargs(kwargs, "get_training_data")
         td, df = self._feature_view_engine._get_training_data(
             self,
             read_options,
@@ -3730,6 +3770,7 @@ class FeatureView:
             dataframe_type=dataframe_type,
             transformation_context=transformation_context,
             n_processes=n_processes,
+            spine_df=spine_df,
         )
         self.update_last_accessed_training_dataset(td.version)
         util._check_missing_mandatory_tags(td.missing_mandatory_tags)
@@ -3747,6 +3788,7 @@ class FeatureView:
         dataframe_type: str | None = "default",
         transformation_context: dict[str, Any] = None,
         n_processes: int | None = None,
+        spine_df: SpineDataFrameTypes | None = None,
         **kwargs,
     ) -> tuple[
         TrainingDatasetDataFrameTypes,
@@ -3796,10 +3838,18 @@ class FeatureView:
                 Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
                 Ignored by the Spark engine, which pushes transformations down to Spark.
 
+            spine_df:
+                The frame the version was built from, required when it was built from one.
+                A spine-anchored training dataset records that a `spine_df` anchored it but not
+                the rows themselves, so reading it back means passing the same frame again;
+                without it the read is refused rather than answered from the feature view's own
+                rows. Leave it unset for a version built from the feature view's rows.
+
         Returns:
             (X_train, X_test, y_train, y_test):
                 Tuple of dataframe of features and labels
         """
+        self._reject_unknown_kwargs(kwargs, "get_train_test_split")
         td, df = self._feature_view_engine._get_training_data(
             self,
             read_options,
@@ -3811,6 +3861,7 @@ class FeatureView:
             dataframe_type=dataframe_type,
             transformation_context=transformation_context,
             n_processes=n_processes,
+            spine_df=spine_df,
         )
         self.update_last_accessed_training_dataset(td.version)
         return df
@@ -3827,6 +3878,7 @@ class FeatureView:
         dataframe_type: str = "default",
         transformation_context: dict[str, Any] = None,
         n_processes: int | None = None,
+        spine_df: SpineDataFrameTypes | None = None,
         **kwargs,
     ) -> tuple[
         TrainingDatasetDataFrameTypes,
@@ -3878,10 +3930,18 @@ class FeatureView:
                 Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
                 Ignored by the Spark engine, which pushes transformations down to Spark.
 
+            spine_df:
+                The frame the version was built from, required when it was built from one.
+                A spine-anchored training dataset records that a `spine_df` anchored it but not
+                the rows themselves, so reading it back means passing the same frame again;
+                without it the read is refused rather than answered from the feature view's own
+                rows. Leave it unset for a version built from the feature view's rows.
+
         Returns:
             (X_train, X_val, X_test, y_train, y_val, y_test):
                 Tuple of dataframe of features and labels
         """
+        self._reject_unknown_kwargs(kwargs, "get_train_validation_test_split")
         td, df = self._feature_view_engine._get_training_data(
             self,
             read_options,
@@ -3897,6 +3957,7 @@ class FeatureView:
             dataframe_type=dataframe_type,
             transformation_context=transformation_context,
             n_processes=n_processes,
+            spine_df=spine_df,
         )
         self.update_last_accessed_training_dataset(td.version)
         return df

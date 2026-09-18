@@ -13,7 +13,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 from hsfs.constructor.prediction_times import PredictionTimes
@@ -182,19 +182,6 @@ class TestOf:
             PredictionTimes.of([datetime(2026, 9, 14), None])
 
 
-class TestFromUserInput:
-    def test_a_bare_list_is_accepted_as_shorthand(self):
-        pt = PredictionTimes._from_user_input([datetime(2026, 9, 14)])
-        assert iso(pt) == ["2026-09-14T00:00:00+00:00"]
-
-    def test_none_passes_through(self):
-        assert PredictionTimes._from_user_input(None) is None
-
-    def test_rejects_anything_else(self):
-        with pytest.raises(TypeError, match="prediction_times expects"):
-            PredictionTimes._from_user_input("0 8 * * *")
-
-
 class TestSharedFixtures:
     """The same cases the hopsworks-front batch-inference card checks its preview against.
 
@@ -234,3 +221,30 @@ class TestSharedFixtures:
             assert (
                 _interval_to_cron(case["interval"], case["offset"]) == case["cron"]
             ), case["name"]
+
+
+class TestPrecisionAndUnits:
+    """An explicit instant keeps its seconds, and an integer is epoch milliseconds."""
+
+    def test_an_explicit_instant_keeps_its_seconds(self):
+        # The documented latest-values recipe is PredictionTimes.of([now]). Truncating to the
+        # minute made it read as of the start of the current minute and miss the last writes.
+        now = datetime(2026, 9, 16, 8, 30, 45, 123456, tzinfo=timezone.utc)
+        assert PredictionTimes.of([now]).timestamps == [now]
+
+    def test_an_integer_is_epoch_milliseconds(self):
+        # The same unit spine_df reads an integer column in, and the unit the feature store
+        # keeps event times in.
+        moment = datetime(2026, 9, 16, 12, 0, 0, tzinfo=timezone.utc)
+        epoch_ms = int(moment.timestamp() * 1000) + 250
+        assert PredictionTimes.of([epoch_ms]).timestamps == [
+            moment + timedelta(milliseconds=250)
+        ]
+
+    def test_a_schedule_bound_keeps_its_seconds(self):
+        # A start inside a scheduled minute excludes that minute rather than including it.
+        times = PredictionTimes.every(
+            "hourly", offset="0", start=datetime(2026, 9, 16, 8, 0, 30), count=1
+        ).timestamps
+        assert times == [datetime(2026, 9, 16, 9, 0, tzinfo=timezone.utc)]
+

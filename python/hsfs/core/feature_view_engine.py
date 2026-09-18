@@ -597,6 +597,11 @@ class FeatureViewEngine:
             )
         else:
             self._set_event_time(feature_view_obj, training_dataset_obj)
+            # Recorded here as well as on the materialised path: an in-memory version built from
+            # a frame is a version whose population is not reproducible from its metadata either,
+            # and reading it back by version has to be refused rather than answered from the
+            # feature view's own rows.
+            training_dataset_obj.spine_anchored = spine_df is not None
             td_updated = self._create_training_data_metadata(
                 feature_view_obj, training_dataset_obj
             )

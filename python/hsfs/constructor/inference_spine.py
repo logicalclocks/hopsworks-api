@@ -177,8 +177,13 @@ class InferenceSpine:
         required_keys = {
             sk.required_serving_key for sk in feature_view.serving_keys if sk.required
         }
-        root_features = {f.name for f in root_fg.features}
-        recognized = required_keys | root_features | {self._event_time}
+        # The root columns the view selects, not every column the feature group has. A column the
+        # view does not select is in no lookup and in no output, so the backend refuses it
+        # (InferenceSpineResolver builds the same set from the stored view); accepting it here
+        # only moved the refusal one round trip later, under a different list of accepted columns.
+        root_selected = {f.name for f in feature_view.query._left_features or []}
+        root_keys = set(root_fg.primary_key or [])
+        recognized = required_keys | root_selected | root_keys | {self._event_time}
         # Every column the view's output carries under its output name, joined features under
         # their prefix. A frame column matching one of these is not a label: it is a feature the
         # view looks up, and carrying the frame's copy through would put two columns of one name

@@ -796,7 +796,9 @@ class TestFeatureViewEngine:
         mock_fv_engine_create_training_data_metadata.return_value.splits = {}
 
         # Act
-        fv_engine._get_training_data(feature_view_obj=fv)
+        fv_engine._get_training_data(
+            feature_view_obj=fv, training_dataset_obj=MagicMock()
+        )
 
         # Assert
         assert mock_fv_engine_get_training_dataset_metadata.call_count == 2
@@ -910,7 +912,9 @@ class TestFeatureViewEngine:
         mock_fv_engine_create_training_data_metadata.return_value.splits = {}
 
         # Act
-        fv_engine._get_training_data(feature_view_obj=fv)
+        fv_engine._get_training_data(
+            feature_view_obj=fv, training_dataset_obj=MagicMock()
+        )
 
         expected_schema = [
             TrainingDatasetFeature(name="id", type="bigint", label=False),
@@ -1202,7 +1206,9 @@ class TestFeatureViewEngine:
         mock_fv_engine_create_training_data_metadata.return_value.splits = []
 
         # Act
-        fv_engine._get_training_data(feature_view_obj=fv)
+        fv_engine._get_training_data(
+            feature_view_obj=fv, training_dataset_obj=MagicMock()
+        )
 
         # Assert
         assert mock_fv_engine_get_training_dataset_metadata.call_count == 2
@@ -1260,7 +1266,9 @@ class TestFeatureViewEngine:
         mock_fv_engine_create_training_data_metadata.return_value.splits = splits
 
         # Act
-        fv_engine._get_training_data(feature_view_obj=fv, splits=splits)
+        fv_engine._get_training_data(
+            feature_view_obj=fv, splits=splits, training_dataset_obj=MagicMock()
+        )
 
         # Assert
         assert mock_fv_engine_get_training_dataset_metadata.call_count == 2
@@ -1313,7 +1321,9 @@ class TestFeatureViewEngine:
 
         # Act
         with pytest.raises(ValueError) as e_info:
-            fv_engine._get_training_data(feature_view_obj=fv, splits=[ss])
+            fv_engine._get_training_data(
+                feature_view_obj=fv, splits=[ss], training_dataset_obj=MagicMock()
+            )
 
         # Assert
         assert (
@@ -1374,7 +1384,9 @@ class TestFeatureViewEngine:
 
         # Act
         with pytest.raises(ValueError) as e_info:
-            fv_engine._get_training_data(feature_view_obj=fv)
+            fv_engine._get_training_data(
+                feature_view_obj=fv, training_dataset_obj=MagicMock()
+            )
 
         # Assert
         assert (
@@ -1439,7 +1451,9 @@ class TestFeatureViewEngine:
 
         # Act
         with pytest.raises(ValueError) as e_info:
-            fv_engine._get_training_data(feature_view_obj=fv)
+            fv_engine._get_training_data(
+                feature_view_obj=fv, training_dataset_obj=MagicMock()
+            )
 
         # Assert
         assert (
@@ -1852,7 +1866,7 @@ class TestFeatureViewEngine:
             fv_engine._compute_training_dataset(
                 feature_view_obj=None,
                 user_write_options={},
-                training_dataset_obj=None,
+                training_dataset_obj=MagicMock(),
                 training_dataset_version=None,
             )
 
@@ -2218,7 +2232,7 @@ class TestFeatureViewEngine:
         fv_engine._compute_training_dataset(
             feature_view_obj=fv,
             user_write_options={},
-            training_dataset_obj=None,
+            training_dataset_obj=MagicMock(),
             training_dataset_version=1,
         )
 
@@ -2537,7 +2551,7 @@ class TestFeatureViewEngine:
 
         # Act
         _ = fv_engine._create_training_data_metadata(
-            feature_view_obj=fv, training_dataset_obj=None
+            feature_view_obj=fv, training_dataset_obj=MagicMock()
         )
 
         # Assert
@@ -4992,6 +5006,40 @@ class TestTrainingSpine:
         td = MagicMock()
         self._engine()._create_training_dataset(MagicMock(), td, {})
         assert td.spine_anchored is False
+
+    def test_an_in_memory_training_dataset_records_the_spine_too(self, mocker):
+        # _get_training_data creates its own metadata, so the flag had to be set there as well as
+        # in _create_training_dataset. Without it every training_data(spine_df=...) version was
+        # recorded as not spine-anchored and read back from the feature view's own rows.
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine._set_event_time")
+        created = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._create_training_data_metadata"
+        )
+        created.return_value.splits = []
+        created.return_value.training_dataset_type = "IN_MEMORY_TRAINING_DATASET"
+        created.return_value.IN_MEMORY = "IN_MEMORY_TRAINING_DATASET"
+        mocker.patch("hsfs.engine._get_instance")
+        mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._check_feature_group_accessibility"
+        )
+        mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine._get_batch_query")
+        mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine._staged_spine")
+        mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._compute_training_dataset_statistics"
+        )
+        mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_schema",
+            return_value=[],
+        )
+        mocker.patch("hsfs.core.feature_view_engine.InferenceSpine")
+        td = MagicMock()
+
+        self._engine()._get_training_data(
+            MagicMock(), training_dataset_obj=td, spine_df=pd.DataFrame([{"id": 1}])
+        )
+
+        assert td.spine_anchored is True
 
     def test_a_lookback_rides_along_with_a_spine(self, mocker):
         # A lookback bounds which feature group rows are candidates, not which spine rows come

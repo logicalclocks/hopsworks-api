@@ -2409,6 +2409,39 @@ class TestSpineDeprecation:
         assert wrong == [], f"these point at `spine_df` but do not accept it: {wrong}"
 
 
+class TestUnknownKeywordArguments:
+    """`**kwargs` exists for the deprecated `primary_keys` spelling and swallowed everything else."""
+
+    @pytest.fixture(autouse=True)
+    def _client(self, mocker):
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type")
+
+    def _fv(self):
+        return feature_view.FeatureView(
+            name="test_fv", featurestore_id=99, query=fg1.select_all(), version=1
+        )
+
+    def test_the_withdrawn_prediction_times_argument_names_its_replacement(self):
+        with pytest.raises(TypeError, match="PredictionTimes.cross"):
+            self._fv().get_batch_data(prediction_times=["2026-09-16"])
+
+    def test_a_misspelled_argument_is_refused(self):
+        with pytest.raises(TypeError, match="spine_dff"):
+            self._fv().get_batch_data(spine_dff=[{"id": 1}])
+
+    def test_the_deprecated_primary_keys_spelling_still_passes(self, mocker):
+        fv = self._fv()
+        engine = mocker.patch.object(fv, "_feature_view_engine")
+        fv.get_batch_data(primary_keys=True)
+        # The engine takes it positionally, after the read options and the spine group.
+        assert engine._get_batch_data.call_args.args[7] is True
+
+    def test_it_covers_the_training_data_methods_too(self):
+        with pytest.raises(TypeError, match="PredictionTimes.cross"):
+            self._fv().training_data(prediction_times=["2026-09-16"])
+
+
 class TestRecreateTrainingDataset:
     @pytest.fixture(autouse=True)
     def _engine(self, mocker):
