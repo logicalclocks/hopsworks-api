@@ -448,6 +448,7 @@ class ModelServing:
         resources: PredictorResources | dict | None = None,
         scaling_configuration: TransformerScalingConfig | dict | None = None,
         env_vars: dict | None = None,
+        environment: str | None = None,
     ) -> Transformer:
         """Create a Transformer metadata object.
 
@@ -504,6 +505,7 @@ class ModelServing:
             resources: Resources to be allocated for the transformer.
             scaling_configuration: Scaling configuration for the transformer.
             env_vars: Environment variables to set on the transformer.
+            environment: The project Python environment the transformer runs in; defaults to the predictor's.
 
         Returns:
             The transformer metadata object.
@@ -513,6 +515,7 @@ class ModelServing:
             resources=resources,
             scaling_configuration=scaling_configuration,
             env_vars=env_vars,
+            environment=environment,
         )
 
     @public

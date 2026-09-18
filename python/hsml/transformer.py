@@ -43,6 +43,7 @@ class Transformer(DeployableComponent):
         resources: TransformerResources | dict | Default | None = None,  # base
         scaling_configuration: TransformerScalingConfig | dict | Default | None = None,
         env_vars: dict[str, str] | None = None,
+        environment: str | None = None,
         **kwargs,
     ):
         resources = self._validate_resources(
@@ -70,6 +71,7 @@ class Transformer(DeployableComponent):
         )
 
         self._env_vars = env_vars
+        self._environment = environment
 
     @public
     def describe(self):
@@ -108,9 +110,9 @@ class Transformer(DeployableComponent):
 
     @classmethod
     def from_json(cls, json_decamelized):
-        sf, rc, sc, ev = cls.extract_fields_from_json(json_decamelized)
+        sf, rc, sc, ev, env = cls.extract_fields_from_json(json_decamelized)
         return (
-            Transformer(sf, rc, scaling_configuration=sc, env_vars=ev)
+            Transformer(sf, rc, scaling_configuration=sc, env_vars=ev, environment=env)
             if sf is not None
             else None
         )
@@ -121,17 +123,21 @@ class Transformer(DeployableComponent):
             json_decamelized, ["transformer", "script_file"]
         )
         if sf is None:
-            return None, None, None, None
+            return None, None, None, None, None
         sc = TransformerScalingConfig.from_json(json_decamelized)
         rc = TransformerResources.from_json(json_decamelized)
         env_vars = json_decamelized.pop("transformer_env_vars", None)
         ev = dict(e.split("=", 1) for e in env_vars) if env_vars else None
-        return sf, rc, sc, ev
+        # Absent on a backend that predates per-component environments, where the transformer ran
+        # the deployment-wide environment reported as the predictor's.
+        environment = json_decamelized.pop("transformer_environment", None)
+        env = environment["name"] if environment is not None else None
+        return sf, rc, sc, ev, env
 
     def update_from_response_json(self, json_dict):
         json_decamelized = humps.decamelize(json_dict)
-        sf, rc, sc, ev = self.extract_fields_from_json(json_decamelized)
-        self.__init__(sf, rc, scaling_configuration=sc, env_vars=ev)
+        sf, rc, sc, ev, env = self.extract_fields_from_json(json_decamelized)
+        self.__init__(sf, rc, scaling_configuration=sc, env_vars=ev, environment=env)
         return self
 
     def to_dict(self):
@@ -140,6 +146,8 @@ class Transformer(DeployableComponent):
             d = {**d, **self._scaling_configuration.to_dict()}
         if self._env_vars:
             d["transformerEnvVars"] = [f"{k}={v}" for k, v in self._env_vars.items()]
+        if self._environment is not None:
+            d["transformerEnvironment"] = {"name": self._environment}
         return d
 
     @public
@@ -151,6 +159,16 @@ class Transformer(DeployableComponent):
     @env_vars.setter
     def env_vars(self, env_vars: dict[str, str] | None):
         self._env_vars = env_vars
+
+    @public
+    @property
+    def environment(self):
+        """Name of the inference environment the transformer runs in."""
+        return self._environment
+
+    @environment.setter
+    def environment(self, environment: str | None):
+        self._environment = environment
 
     @DeployableComponent.scaling_configuration.setter
     def scaling_configuration(

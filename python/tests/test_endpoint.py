@@ -104,7 +104,7 @@ class TestEndpoint:
             version=p_json["version"],
             serving_tool=p_json["serving_tool"],
             api_protocol=p_json["api_protocol"],
-            environment=p_json["environment_dto"]["name"],
+            environment=p_json["predictor_environment"]["name"],
             config_file=p_json["config_file"],
             resources=p_json["predictor_resources"],
             transformer={
@@ -130,7 +130,7 @@ class TestEndpoint:
         assert e.model_server == PREDICTOR.MODEL_SERVER_PYTHON
         assert e.serving_tool == p_json["serving_tool"]
         assert e.api_protocol == p_json["api_protocol"]
-        assert e.environment == p_json["environment_dto"]["name"]
+        assert e.environment == p_json["predictor_environment"]["name"]
         assert e.config_file == p_json["config_file"]
         assert isinstance(e.resources, resources.PredictorResources)
         mock_validate_serving_tool.assert_called_once_with(p_json["serving_tool"])
