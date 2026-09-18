@@ -2906,6 +2906,7 @@ def test_commit_properties_become_a_delta_application_transaction(monkeypatch):
     pytest.importorskip("deltalake")
 
     from hsfs.core.delta_engine import DeltaEngine
+
     assert DeltaEngine._commit_properties(None) is None
     assert DeltaEngine._commit_properties({"mode": "append"}) is None
     properties = DeltaEngine._commit_properties(
