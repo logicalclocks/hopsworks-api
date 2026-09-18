@@ -33,7 +33,7 @@ import avro.schema
 import hsfs.expectation_suite
 import humps
 from hopsworks_apigen import deprecated, deprecation, public
-from hopsworks_common import client, job
+from hopsworks_common import client, job, spark_connect_utils
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
 from hopsworks_common.core import alerts_api
 from hopsworks_common.core.constants import (
@@ -880,6 +880,97 @@ class FeatureGroupBase:
                 feature_store_id=self._feature_store_id,
             )
         return self.select_all()
+
+    @staticmethod
+    def _distinct_rows(frame: Any) -> Any:
+        """Drop duplicate rows, in whichever dataframe the engine returned.
+
+        Spark is checked before pandas, and by type: a Spark DataFrame carries
+        `drop_duplicates` too, so a capability check would take the pandas branch and fail on
+        its `ignore_index` keyword.
+        """
+        if spark_connect_utils._is_spark_dataframe(frame):
+            return frame.distinct()
+        if HAS_POLARS:
+            import polars as pl
+
+            if isinstance(frame, pl.DataFrame):
+                return frame.unique(maintain_order=True)
+        if hasattr(frame, "drop_duplicates"):  # pandas
+            return frame.drop_duplicates(ignore_index=True)
+        raise FeatureStoreException(
+            f"Cannot take distinct rows of a {type(frame).__name__}. Read the primary keys as"
+            " a dataframe: `dataframe_type` must be one of 'default', 'spark', 'pandas' or"
+            " 'polars'."
+        )
+
+    @public
+    def read_primary_keys(
+        self,
+        online: bool = False,
+        dataframe_type: Literal["default", "spark", "pandas", "polars"] = "default",
+        read_options: dict[str, Any] | None = None,
+    ) -> pd.DataFrame | pl.DataFrame | TypeVar("pyspark.sql.DataFrame"):
+        """Read the distinct primary key values of this feature group, one row per entity.
+
+        A feature group holds one row per entity per event time, so its key columns repeat.
+        This reads only those columns and returns each combination once, which is the set of
+        entities the feature group knows about.
+
+        The result is a frame of entities with no time in it, so it is not yet a `spine_df`:
+        `get_batch_data` needs a prediction time per row. Cross it with the time to compute
+        features as of.
+
+        Example: the latest feature values for every entity
+            ```python
+            import datetime
+            from hsfs.constructor.prediction_times import PredictionTimes
+
+            fg = feature_view.get_root_fg()
+            now = datetime.datetime.now(datetime.timezone.utc)
+
+            spine_df = PredictionTimes.of([now]).cross(
+                fg.read_primary_keys(), event_time=fg.event_time
+            )
+            latest = feature_view.get_batch_data(spine_df=spine_df)
+            ```
+
+        Parameters:
+            online:
+                Read from the online storage rather than the offline storage. Defaults to
+                `False`.
+            dataframe_type:
+                One of `"default"`, `"spark"`, `"pandas"` or `"polars"`, as on
+                [`read`][hsfs.feature_group.FeatureGroup.read]. `"default"` maps to a Spark
+                dataframe under the Spark engine and a Pandas dataframe under the Python
+                engine. `"pandas"` works on both. `"polars"` is a Python-engine type; the Spark
+                engine's converter rejects it, as it does for `read`. Types with no notion of a
+                distinct row, such as `"numpy"` and `"python"`, are refused here even though
+                `read` returns them.
+            read_options:
+                Additional options as key/value pairs to pass to the execution engine.
+
+        Returns:
+            A dataframe of the primary key columns with duplicate rows removed.
+
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException: If the feature group has no
+                primary key, or `dataframe_type` is one that cannot carry distinct rows.
+        """
+        if not self.primary_key:
+            raise FeatureStoreException(
+                f"Feature group `{self.name}` has no primary key, so it has no entities to"
+                " return."
+            )
+        # Deliberately not self.read(): that path applies the scheduler's HOPS_START_TIME /
+        # HOPS_END_TIME window, which would silently narrow the entity population to whatever
+        # interval a job happens to be processing.
+        frame = self.select(self.primary_key).read(
+            online=online,
+            dataframe_type=dataframe_type,
+            read_options=read_options or {},
+        )
+        return self._distinct_rows(frame)
 
     @public
     def filter(self, f: filter_module.Filter | filter_module.Logic) -> query.Query:
@@ -6761,7 +6852,19 @@ class ExternalFeatureGroup(FeatureGroupBase):
 @public
 @typechecked
 class SpineGroup(FeatureGroupBase):
-    # TODO: Add docstring
+    """A dataframe of labels or entities, joined point-in-time with a feature view's features.
+
+    Warning: Deprecated
+        Superseded by the `spine_df` argument on `FeatureView.get_batch_data` and on every
+        training-data method. `spine_df` anchors an existing feature view on rows you supply,
+        so nothing has to be decided when the view is created; a spine group has to be chosen
+        up front and cannot be added to a view afterwards. Create these with
+        `FeatureStore.get_or_create_spine_group`, which carries the same deprecation.
+
+    The metadata is stored in the feature store, the rows are not: the dataframe lives on the
+    object and is supplied again on every read through `spine=`.
+    """
+
     SPINE_GROUP = "ON_DEMAND_FEATURE_GROUP"
     ENTITY_TYPE = "featuregroups"
 
