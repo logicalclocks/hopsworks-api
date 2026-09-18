@@ -21,7 +21,7 @@ import build  # noqa: F401  # eagerly load so test patches resolve build.Project
 import build.env  # noqa: F401  # eagerly load so test patches resolve build.env.DefaultIsolatedEnv
 import pytest
 from hopsworks_common.client.exceptions import RestAPIError
-from hsml import deployment_tracing_config, model_serving
+from hsml import deployment_tracing_config as deployment_tracing_config, model_serving
 
 
 @pytest.fixture
@@ -48,7 +48,8 @@ def stub_apis(mocker):
 
     mocker.patch("hsml.model_serving._dataset_api.DatasetApi", return_value=ds_api)
     mocker.patch(
-        "hsml.model_serving._environment_api.EnvironmentApi", return_value=env_api
+        "hsml.model_serving._environment_api.EnvironmentApi",
+        return_value=env_api,
     )
     return ds_api, env_api, env
 
@@ -414,7 +415,8 @@ class TestDeployAgentScript:
         mocker.patch.object(ms, "get_deployment", return_value=existing)
         new_predictor = mocker.MagicMock(name="new_predictor")
         mock_for_server = mocker.patch(
-            "hsml.model_serving.Predictor.for_server", return_value=new_predictor
+            "hsml.model_serving.Predictor.for_server",
+            return_value=new_predictor,
         )
 
         # Act

@@ -19,7 +19,8 @@ import os
 
 import humps
 import pytest
-from hsml import deployment, deployment_tracing_config, predictor, resources
+from hsml import deployment, predictor, resources
+from hsml import deployment_tracing_config as deployment_tracing_config
 from hsml.client.exceptions import ModelServingException
 from hsml.constants import MODEL, PREDICTOR, PREDICTOR_STATE
 from hsml.core import serving_api

@@ -32,6 +32,15 @@ class TestScalingConfig:
         assert ScaleMetric._has_value("MEMORY")
         assert not ScaleMetric._has_value("BOGUS")
 
+    def test_the_horizontal_pod_autoscalers_metrics_read_back(self):
+        """KServe standard mode scales on CPU or MEMORY, and defaults to CPU."""
+        assert ScaleMetric("CPU") is ScaleMetric.CPU
+        assert ScaleMetric("MEMORY") is ScaleMetric.MEMORY
+        sc = PredictorScalingConfig.from_response_json(
+            {"predictor_scaling_config": {"min_instances": 1, "scale_metric": "CPU"}}
+        )
+        assert sc.scale_metric is ScaleMetric.CPU
+
     def test_predictor_scaling_config_accepts_cpu_and_memory_metrics(self):
         cpu = PredictorScalingConfig(min_instances=1, scale_metric="cpu", target=80)
         memory = PredictorScalingConfig(
