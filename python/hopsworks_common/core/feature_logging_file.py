@@ -101,7 +101,14 @@ def _process_is_alive(pid: int) -> bool:
     worker is still appending to, while a wrong "alive" only leaves rows waiting for the
     next process to start. Pid reuse can produce the second, and does not produce the
     first.
+
+    Windows answers "alive" without asking. `os.kill(pid, 0)` is a probe on POSIX only:
+    on Windows signal 0 is CTRL_C_EVENT, which os.kill delivers to the process group
+    rather than reporting on it, so the probe would interrupt the caller. The writer runs
+    in a Linux pod, so the branch costs nothing there, and it is the safe answer anyway.
     """
+    if os.name == "nt":
+        return True
     try:
         os.kill(pid, 0)
     except ProcessLookupError:

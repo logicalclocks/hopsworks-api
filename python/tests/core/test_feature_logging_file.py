@@ -159,6 +159,27 @@ class TestSegmentWriter:
         assert not writer._has_ready()
 
 
+class TestLiveness:
+    """`_process_is_alive` must not signal anything, on any platform."""
+
+    def test_the_probe_does_not_signal_on_windows(self, mocker):
+        # os.kill(pid, 0) is a probe on POSIX. On Windows signal 0 is CTRL_C_EVENT and
+        # os.kill delivers it to the process group, so the probe would interrupt the
+        # caller: on CI it stopped the whole pytest session with a KeyboardInterrupt.
+        killed = mocker.patch.object(flf.os, "kill")
+        mocker.patch.object(flf.os, "name", "nt")
+
+        assert flf._process_is_alive(4321) is True
+        killed.assert_not_called()
+
+    def test_the_probe_asks_the_operating_system_elsewhere(self, mocker):
+        mocker.patch.object(flf.os, "name", "posix")
+        killed = mocker.patch.object(flf.os, "kill", side_effect=ProcessLookupError)
+
+        assert flf._process_is_alive(4321) is False
+        killed.assert_called_once_with(4321, 0)
+
+
 class TestAccounting:
     def test_rows_and_upload_durations_follow_each_segment(self, tmp_path):
         uploads = _Uploads(fail_first=1)
