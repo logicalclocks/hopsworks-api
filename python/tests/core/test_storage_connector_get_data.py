@@ -15,7 +15,10 @@
 #
 
 import pytest
-from hopsworks_common.client.exceptions import DataSourceException
+from hopsworks_common.client.exceptions import (
+    DataSourceException,
+    FeatureStoreException,
+)
 from hopsworks_common.core.rest_endpoint import RestEndpointConfig
 from hsfs.core import data_source
 from hsfs.core.data_source_data import DataSourceData
@@ -24,6 +27,7 @@ from hsfs.storage_connector import (
     CRMSource,
     HopsFSConnector,
     RestConnector,
+    SqlConnector,
 )
 
 
@@ -45,6 +49,115 @@ class TestStorageConnectorGetData:
         assert data == "result"
         assert isinstance(source.rest_endpoint, RestEndpointConfig)
         connector._get_no_sql_data.assert_called_once_with(source, True)
+
+    def test_sql_connector_raises_on_failed_schema_fetch(self, mocker):
+        connector = SqlConnector(id=1, name="sql", featurestore_id=1)
+        source = data_source.DataSource(query="SELECT * FROM events")
+        mocker.patch.object(
+            connector._data_source_api,
+            "_get_data",
+            return_value=DataSourceData(
+                schema_fetch_failed=True, schema_fetch_logs="clickhouse said no"
+            ),
+        )
+
+        with pytest.raises(DataSourceException) as e_info:
+            connector.get_data(source)
+
+        assert "clickhouse said no" in str(e_info.value)
+        assert "SELECT * FROM events" in str(e_info.value)
+        assert "data source 'sql'" in str(e_info.value)
+        assert isinstance(e_info.value, FeatureStoreException)
+
+    def test_failed_schema_fetch_names_the_table(self, mocker):
+        connector = SqlConnector(id=1, name="sql", featurestore_id=1)
+        source = data_source.DataSource(table="events", database="loadtest")
+        mocker.patch.object(
+            connector._data_source_api,
+            "_get_data",
+            return_value=DataSourceData(
+                schema_fetch_failed=True, schema_fetch_logs="clickhouse said no"
+            ),
+        )
+
+        with pytest.raises(DataSourceException, match="table 'events'"):
+            connector.get_data(source)
+
+    def test_failed_schema_fetch_names_the_path(self, mocker):
+        connector = SqlConnector(id=1, name="sql", featurestore_id=1)
+        source = data_source.DataSource(path="s3://bucket/events")
+        mocker.patch.object(
+            connector._data_source_api,
+            "_get_data",
+            return_value=DataSourceData(
+                schema_fetch_failed=True, schema_fetch_logs="clickhouse said no"
+            ),
+        )
+
+        with pytest.raises(DataSourceException, match="path 's3://bucket/events'"):
+            connector.get_data(source)
+
+    def test_failed_schema_fetch_falls_back_to_the_connector(self, mocker):
+        connector = SqlConnector(id=1, name="sql", featurestore_id=1)
+        source = data_source.DataSource()
+        mocker.patch.object(
+            connector._data_source_api,
+            "_get_data",
+            return_value=DataSourceData(
+                schema_fetch_failed=True, schema_fetch_logs="clickhouse said no"
+            ),
+        )
+
+        with pytest.raises(DataSourceException) as e_info:
+            connector.get_data(source)
+
+        assert "for data source 'sql'" in str(e_info.value)
+        assert "None" not in str(e_info.value)
+
+    def test_failed_schema_fetch_shortens_a_long_query(self, mocker):
+        connector = SqlConnector(id=1, name="sql", featurestore_id=1)
+        source = data_source.DataSource(query="SELECT " + "col, " * 100 + "1")
+        mocker.patch.object(
+            connector._data_source_api,
+            "_get_data",
+            return_value=DataSourceData(
+                schema_fetch_failed=True, schema_fetch_logs="clickhouse said no"
+            ),
+        )
+
+        with pytest.raises(DataSourceException) as e_info:
+            connector.get_data(source)
+
+        assert "..." in str(e_info.value)
+        assert len(str(e_info.value).splitlines()[0]) < 200
+
+    def test_sql_connector_returns_data_on_success(self, mocker):
+        connector = SqlConnector(id=1, name="sql", featurestore_id=1)
+        source = data_source.DataSource(query="SELECT * FROM events")
+        expected = DataSourceData()
+        mocker.patch.object(
+            connector._data_source_api, "_get_data", return_value=expected
+        )
+
+        assert connector.get_data(source) is expected
+
+    def test_sql_connector_passes_through_empty_response(self, mocker):
+        connector = SqlConnector(id=1, name="sql", featurestore_id=1)
+        source = data_source.DataSource(query="SELECT * FROM events")
+        mocker.patch.object(connector._data_source_api, "_get_data", return_value=None)
+
+        assert connector.get_data(source) is None
+
+    def test_infer_metadata_refuses_an_empty_response(self, mocker):
+        connector = SqlConnector(id=1, name="sql", featurestore_id=1)
+        source = data_source.DataSource(table="events")
+        mocker.patch.object(connector._data_source_api, "_get_data", return_value=None)
+        mock_infer = mocker.patch.object(connector._data_source_api, "_infer_metadata")
+
+        with pytest.raises(DataSourceException, match="table 'events'"):
+            connector.infer_metadata(source)
+
+        assert mock_infer.call_count == 0
 
     def test_crm_connector_requires_table(self, mocker):
         connector = CRMAndAnalyticsConnector(
