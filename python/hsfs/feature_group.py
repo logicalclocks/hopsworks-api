@@ -86,6 +86,7 @@ from hsfs.core import feature_monitoring_result as fmr
 from hsfs.core.constants import (
     HAS_CONFLUENT_KAFKA,
     HAS_GREAT_EXPECTATIONS,
+    great_expectations_module,
 )
 from hsfs.core.variable_api import VariableApi
 from hsfs.core.vector_db_client import VectorDbClient
@@ -102,6 +103,8 @@ from hsfs.validation_report import ValidationReport
 if TYPE_CHECKING:
     if HAS_CONFLUENT_KAFKA:
         import confluent_kafka
+    if HAS_GREAT_EXPECTATIONS:
+        import great_expectations
     if HAS_NUMPY:
         import numpy as np
     if HAS_POLARS:
@@ -114,9 +117,6 @@ if TYPE_CHECKING:
     from hsfs.hopsworks_udf import HopsworksUdf
     from hsfs.statistics import Statistics
 
-
-if HAS_GREAT_EXPECTATIONS:
-    import great_expectations
 
 _logger = logging.getLogger(__name__)
 
@@ -1905,7 +1905,7 @@ class FeatureGroupBase:
             hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
         """
         if HAS_GREAT_EXPECTATIONS and isinstance(
-            expectation_suite, great_expectations.core.ExpectationSuite
+            expectation_suite, great_expectations_module().core.ExpectationSuite
         ):
             tmp_expectation_suite = (
                 hsfs.expectation_suite.ExpectationSuite.from_ge_type(
@@ -2083,7 +2083,7 @@ class FeatureGroupBase:
         if self._id:
             if HAS_GREAT_EXPECTATIONS and isinstance(
                 validation_report,
-                great_expectations.core.expectation_validation_result.ExpectationSuiteValidationResult,
+                great_expectations_module().core.expectation_validation_result.ExpectationSuiteValidationResult,
             ):
                 report = ValidationReport(
                     **validation_report.to_json_dict(),
@@ -3026,7 +3026,7 @@ class FeatureGroupBase:
             )
         elif HAS_GREAT_EXPECTATIONS and isinstance(
             expectation_suite,
-            great_expectations.core.expectation_suite.ExpectationSuite,
+            great_expectations_module().core.expectation_suite.ExpectationSuite,
         ):
             self._expectation_suite = hsfs.expectation_suite.ExpectationSuite(
                 **expectation_suite.to_json_dict(),
