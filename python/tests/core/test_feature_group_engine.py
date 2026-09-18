@@ -140,6 +140,26 @@ class TestFeatureGroupEngine:
                 False,
                 False,
             ),
+            (
+                SqlConnector(
+                    id=1,
+                    name="teradata",
+                    featurestore_id=1,
+                    database_type=SqlConnector.TERADATA,
+                ),
+                True,
+                True,
+            ),
+            (
+                SqlConnector(
+                    id=1,
+                    name="teradata",
+                    featurestore_id=1,
+                    database_type=SqlConnector.TERADATA,
+                ),
+                False,
+                False,
+            ),
         ],
     )
     def test_sink_enabled_resolution_for_supported_connectors(

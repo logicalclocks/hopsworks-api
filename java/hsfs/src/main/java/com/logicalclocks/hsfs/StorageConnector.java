@@ -39,6 +39,7 @@ import software.amazon.awssdk.utils.CollectionUtils;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -593,6 +594,7 @@ public abstract class StorageConnector {
     public static final String MYSQL = "MYSQL";
     public static final String POSTGRESQL = "POSTGRESQL";
     public static final String CLICKHOUSE = "CLICKHOUSE";
+    public static final String TERADATA = "TERADATA";
 
     private static final Map<String, String> DRIVERS;
     private static final Map<String, String> JDBC_SCHEMES;
@@ -602,12 +604,14 @@ public abstract class StorageConnector {
       drivers.put(MYSQL, "com.mysql.cj.jdbc.Driver");
       drivers.put(POSTGRESQL, "org.postgresql.Driver");
       drivers.put(CLICKHOUSE, "com.clickhouse.jdbc.ClickHouseDriver");
+      drivers.put(TERADATA, "com.teradata.jdbc.TeraDriver");
       DRIVERS = Collections.unmodifiableMap(drivers);
 
       Map<String, String> schemes = new HashMap<>();
       schemes.put(MYSQL, "mysql");
       schemes.put(POSTGRESQL, "postgresql");
       schemes.put(CLICKHOUSE, "clickhouse");
+      schemes.put(TERADATA, "teradata");
       JDBC_SCHEMES = Collections.unmodifiableMap(schemes);
     }
 
@@ -644,7 +648,7 @@ public abstract class StorageConnector {
       String driver = DRIVERS.get(normalizedType);
 
       Map<String, String> options = new HashMap<>();
-      options.put(Constants.JDBC_URL, "jdbc:" + scheme + "://" + getHost() + ":" + getPort() + "/" + databaseName);
+      options.put(Constants.JDBC_URL, buildUrl(normalizedType, scheme, databaseName));
       options.put(Constants.JDBC_USER, getUser());
       options.put(Constants.JDBC_PWD, getPassword());
       options.put(Constants.JDBC_DRIVER, driver);
@@ -654,6 +658,25 @@ public abstract class StorageConnector {
         options.putAll(argOptions);
       }
       return options;
+    }
+
+    /**
+     * Teradata carries the port and the database as comma-separated parameters after a single
+     * slash, e.g. jdbc:teradata://host/DATABASE=db,DBS_PORT=1025. It has no host:port/database
+     * form, so the shape every other engine here uses would not parse.
+     */
+    private String buildUrl(String normalizedType, String scheme, String databaseName) {
+      if (TERADATA.equals(normalizedType)) {
+        List<String> params = new ArrayList<>();
+        if (!Strings.isNullOrEmpty(databaseName)) {
+          params.add("DATABASE=" + databaseName);
+        }
+        if (getPort() != null) {
+          params.add("DBS_PORT=" + getPort());
+        }
+        return "jdbc:" + scheme + "://" + getHost() + "/" + String.join(",", params);
+      }
+      return "jdbc:" + scheme + "://" + getHost() + ":" + getPort() + "/" + databaseName;
     }
 
     public void update() throws FeatureStoreException, IOException {
