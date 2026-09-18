@@ -138,11 +138,16 @@
     "aliases": []
   },
   {
-    "version": "4.3.6",
-    "title": "4.3.6",
+    "version": "4.3.7",
+    "title": "4.3.7",
     "aliases": [
       "4.3"
     ]
+  },
+  {
+    "version": "4.3.6",
+    "title": "4.3.6",
+    "aliases": []
   },
   {
     "version": "4.3.5",
