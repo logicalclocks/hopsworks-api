@@ -5053,6 +5053,158 @@ class FeatureGroup(FeatureGroupBase):
         return self.remove_rows(delete_df, write_options, "offline")
 
     @public
+    def delta_optimize(
+        self,
+        after_ingest_date: str | None = None,
+        max_concurrent_tasks: int = 1,
+        target_size: int | None = None,
+    ) -> dict | None:
+        """Rewrite this feature group's small Delta files into larger ones.
+
+        A table that is only appended to gains a file per commit, and every reader then
+        opens all of them, so compaction is what keeps the file count flat.
+
+        This method can only be used on feature groups stored as DELTA; it returns None
+        for any other format.
+
+        Example:
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            # get the Feature Group instance
+            fg = fs.get_or_create_feature_group(...)
+
+            # compact everything
+            fg.delta_optimize()
+
+            # compact only the partitions from a date onwards
+            fg.delta_optimize(after_ingest_date="2026-09-10")
+            ```
+
+        Parameters:
+            after_ingest_date:
+                Restrict the rewrite to partitions at or after this date, as `YYYY-MM-DD`.
+                Requires the feature group to be partitioned by a date column, because only
+                a partition column can select files without reading them.
+                Defaults to None, which compacts the whole table.
+            max_concurrent_tasks:
+                Rewrite tasks to run at once.
+                Defaults to 1, so a compaction running beside a writer does not take the
+                whole CPU budget.
+            target_size:
+                Size in bytes to compact towards.
+                Defaults to None, which takes the engine's own target.
+
+        Returns:
+            The engine's optimize metrics, or None when the feature group is not stored as
+            DELTA.
+
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException: If `after_ingest_date` is given
+                and the feature group has no date partition column.
+        """
+        return self._feature_group_engine._delta_optimize(
+            self, after_ingest_date, max_concurrent_tasks, target_size
+        )
+
+    @public
+    def delta_compact(
+        self,
+        after_ingest_date: str | None = None,
+        max_concurrent_tasks: int = 1,
+        target_size: int | None = None,
+    ) -> dict | None:
+        """[`delta_optimize`][hsfs.feature_group.FeatureGroup.delta_optimize] under the other name the engines use.
+
+        Delta's SQL calls this OPTIMIZE and delta-rs calls it `optimize.compact`, so both
+        words are the right one to reach for depending on which you last read.
+
+        Parameters:
+            after_ingest_date: Rewrite only the partitions at or after this date, as `YYYY-MM-DD`.
+            max_concurrent_tasks: Rewrite tasks to run at once.
+            target_size: Size in bytes the rewritten files aim for.
+
+        Returns:
+            The engine's compaction metrics, or `None` when nothing was rewritten.
+        """
+        return self.delta_optimize(
+            after_ingest_date=after_ingest_date,
+            max_concurrent_tasks=max_concurrent_tasks,
+            target_size=target_size,
+        )
+
+    @public
+    def delta_checkpoint(self) -> dict | None:
+        """Write a Delta checkpoint for this feature group.
+
+        A reader opening a Delta table replays every commit since the last checkpoint, so
+        without one the cost of opening the table grows with the number of commits.
+        Spark writes checkpoints on its own every `delta.checkpointInterval` commits;
+        delta-rs writes none, so on a table only ever written from Python this is the only
+        thing that bounds the replay.
+
+        Expiring the log entries a checkpoint covers is a separate call,
+        [`delta_cleanup_metadata`][hsfs.feature_group.FeatureGroup.delta_cleanup_metadata].
+
+        This method can only be used on feature groups stored as DELTA; it returns None
+        for any other format.
+
+        Example:
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            # get the Feature Group instance
+            fg = fs.get_or_create_feature_group(...)
+
+            fg.delta_checkpoint()
+            ```
+
+        Returns:
+            The version checkpointed, or None when the feature group is not stored as DELTA.
+
+        """
+        return self._feature_group_engine._delta_checkpoint(self)
+
+    @public
+    def delta_cleanup_metadata(self) -> dict | None:
+        """Expire the Delta log entries an existing checkpoint already covers.
+
+        The Delta log grows by one entry per commit. A checkpoint stops readers replaying
+        those entries, and this deletes them, which is what stops the log directory itself
+        growing without bound.
+
+        Run it after
+        [`delta_checkpoint`][hsfs.feature_group.FeatureGroup.delta_checkpoint] and never
+        instead of it: the checkpoint is the state a reader falls back to once the
+        individual commits are gone. What may be deleted is bounded by the table's own
+        `delta.logRetentionDuration`, 30 days by default, so recent history and time travel
+        inside that window keep working.
+
+        This method can only be used on feature groups stored as DELTA; it returns None
+        for any other format.
+
+        Example:
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            # get the Feature Group instance
+            fg = fs.get_or_create_feature_group(...)
+
+            fg.delta_checkpoint()
+            fg.delta_cleanup_metadata()
+            ```
+
+        Returns:
+            The version the log was pruned against, or None when the feature group is not
+            stored as DELTA.
+
+        """
+        return self._feature_group_engine._delta_cleanup_metadata(self)
+
+    @public
     def delta_vacuum(
         self,
         retention_hours: int = None,

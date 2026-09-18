@@ -31,6 +31,7 @@ if TYPE_CHECKING:
 
     from hsfs.core.feature_monitoring_config import FeatureMonitoringConfig
     from hsml.client.istio.utils.infer_type import InferInput
+    from hsml.deployment_logging_config import DeploymentLoggingConfig
     from hsml.deployment_schema import DeploymentSchema
     from hsml.deployment_tracing_config import DeploymentTracingConfig
     from hsml.inference_batcher import InferenceBatcher
@@ -329,9 +330,9 @@ class Deployment:
 
         One of data or inputs parameters must be set.
         Setting both raises `ModelServingException`.
-        When the deployment has a schema and the protocol is REST, the rows are
-        encoded and validated against it before the request is sent; the pod
-        validates again regardless.
+        When the deployment has a schema, the rows are encoded and validated
+        against it before the request is sent, and a gRPC deployment sends them
+        as one v2 tensor per field; the pod validates again regardless.
 
         Parameters:
             data: Payload dictionary for the inference request including the model input(s).
@@ -418,6 +419,28 @@ class Deployment:
                 training_dataset_version=self.training_dataset_version
             )
         return feature_view
+
+    @public
+    def commit_feature_logs(self, wait: bool = False) -> list[Any]:
+        """Run the commit job of the feature view this deployment logs through.
+
+        For a view on the `"job"` transport this commits every chunk that reached HopsFS, including what a stopped or killed replica left in the staging directory; for a `"realtime"` view it runs the materialization job.
+
+        Parameters:
+            wait: Whether to wait for the job to finish.
+
+        Returns:
+            The jobs that were started.
+
+        Raises:
+            hopsworks.client.exceptions.ModelServingException: If the deployment serves no feature view with logging enabled.
+        """
+        feature_view = self.get_feature_view(init=False)
+        if feature_view is None or not getattr(feature_view, "logging_enabled", False):
+            raise ModelServingException(
+                f"Deployment '{self.name}' serves no feature view with logging enabled."
+            )
+        return feature_view.materialize_log(wait=wait)
 
     @public
     def reinfer_schema(self) -> DeploymentSchema:
@@ -1209,6 +1232,19 @@ class Deployment:
     @tracing.setter
     def tracing(self, tracing: DeploymentTracingConfig | dict | None):
         self._predictor.tracing = tracing
+
+    @public
+    @property
+    def feature_logging(self):
+        """Feature logging configuration attached to this deployment.
+
+        Edit its fields and call `save()`; a running deployment applies them after `restart()`.
+        """
+        return self._predictor.feature_logging
+
+    @feature_logging.setter
+    def feature_logging(self, feature_logging: DeploymentLoggingConfig | dict | None):
+        self._predictor.feature_logging = feature_logging
 
     @public
     @property

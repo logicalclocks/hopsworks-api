@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import ast
 import json
+import logging
 import os
 import re
 from typing import Any
@@ -33,6 +34,7 @@ from hopsworks_common.constants import (
 )
 from hsml import deployment
 from hsml.deployable_component import DeployableComponent
+from hsml.deployment_logging_config import DeploymentLoggingConfig
 from hsml.deployment_schema import (
     OUTPUT_FEATURE_VECTORS,
     DeploymentSchema,
@@ -50,6 +52,9 @@ from hsml.scaling_config import (
     PredictorScalingConfig,
 )
 from hsml.transformer import Transformer
+
+
+_logger = logging.getLogger(__name__)
 
 
 @public
@@ -94,6 +99,7 @@ class Predictor(DeployableComponent):
         vllm_variant: str | None = None,
         vllm_image_tag: str | None = None,
         tracing: DeploymentTracingConfig | dict | Default | None = None,
+        feature_logging: DeploymentLoggingConfig | dict | Default | None = None,
         git_url: str | None = None,
         git_provider: str | None = None,
         git_branch: str | None = None,
@@ -164,12 +170,15 @@ class Predictor(DeployableComponent):
         self._validate_script_file(
             self._model_framework, self._script_file, self._default_predictor
         )
-        self._api_protocol = api_protocol
+        self._api_protocol = api_protocol or INFERENCE_ENDPOINTS.API_PROTOCOL_REST
         self._environment = environment
         self._project_namespace = project_namespace
         self._project_name = None
         self._env_vars = env_vars
         self._tracing = util._get_obj_from_json(tracing, DeploymentTracingConfig)
+        self._feature_logging = util._get_obj_from_json(
+            feature_logging, DeploymentLoggingConfig
+        )
         self._git_url = git_url
         self._git_provider = git_provider
         self._git_branch = git_branch
@@ -332,6 +341,7 @@ class Predictor(DeployableComponent):
             model, default_predictor, kwargs, passed_features
         )
         kwargs["default_predictor"] = use_default
+        _mark_feature_logging(kwargs, feature_view)
         kwargs["schema"] = _resolve_model_schema(
             model, feature_view, use_default, schema, passed_features
         )
@@ -418,6 +428,9 @@ class Predictor(DeployableComponent):
         )
         env_vars[MODEL_SERVING.FEATURE_VIEW_NAME_ENV_VAR] = feature_view.name
         env_vars[MODEL_SERVING.FEATURE_VIEW_VERSION_ENV_VAR] = str(feature_view.version)
+        kwargs["env_vars"] = env_vars
+        _mark_feature_logging(kwargs, feature_view)
+        env_vars = kwargs.pop("env_vars")
         if training_dataset_version is not None:
             env_vars[MODEL_SERVING.TRAINING_DATASET_VERSION_ENV_VAR] = str(
                 training_dataset_version
@@ -501,6 +514,11 @@ class Predictor(DeployableComponent):
             json_decamelized,
             ["tracing", "tracing_config"],
             as_instance_of=DeploymentTracingConfig,
+        )
+        kwargs["feature_logging"] = util._extract_field_from_json(
+            json_decamelized,
+            ["feature_logging", "feature_logging_config"],
+            as_instance_of=DeploymentLoggingConfig,
         )
         kwargs["git_url"] = util._extract_field_from_json(json_decamelized, "git_url")
         kwargs["git_provider"] = util._extract_field_from_json(
@@ -610,6 +628,11 @@ class Predictor(DeployableComponent):
             predictor_dict = {**predictor_dict, **self._transformer.to_dict()}
         if self._tracing is not None:
             predictor_dict = {**predictor_dict, "tracing": self._tracing.to_dict()}
+        if self._feature_logging is not None:
+            predictor_dict = {
+                **predictor_dict,
+                "featureLogging": self._feature_logging.to_dict(),
+            }
         if self._git_url is not None:
             predictor_dict = {**predictor_dict, "gitUrl": self._git_url}
         if self._git_provider is not None:
@@ -809,6 +832,20 @@ class Predictor(DeployableComponent):
     @tracing.setter
     def tracing(self, tracing: DeploymentTracingConfig | dict | Default | None):
         self._tracing = util._get_obj_from_json(tracing, DeploymentTracingConfig)
+
+    @public
+    @property
+    def feature_logging(self):
+        """Feature logging configuration attached to the predictor."""
+        return self._feature_logging
+
+    @feature_logging.setter
+    def feature_logging(
+        self, feature_logging: DeploymentLoggingConfig | dict | Default | None
+    ):
+        self._feature_logging = util._get_obj_from_json(
+            feature_logging, DeploymentLoggingConfig
+        )
 
     @public
     @property
@@ -1178,6 +1215,86 @@ def _reject_reserved_env_vars(env_vars: dict[str, str] | None) -> None:
         )
 
 
+def _current_feature_logging(feature_view):
+    """The view's logging metadata as the backend has it now.
+
+    A model keeps the view object it was registered with, whose cached metadata predates a `delete_log(transport=...)` made since; the transport check has to see the current layout.
+    """
+    engine = getattr(feature_view, "_feature_view_engine", None)
+    if engine is not None:
+        try:
+            return engine._get_feature_logging(feature_view)
+        except Exception:  # noqa: BLE001 - the cached copy is the fallback
+            # Worth saying out loud: the cached copy is what produced the wrong
+            # transport decision this fetch exists to prevent.
+            _logger.warning(
+                "Could not read the current feature logging of feature view %s v%s; "
+                "falling back to the copy cached on the model, which may name the "
+                "transport it had before a delete_log(transport=...).",
+                getattr(feature_view, "name", "?"),
+                getattr(feature_view, "version", "?"),
+                exc_info=True,
+            )
+    return getattr(feature_view, "feature_logging", None)
+
+
+def _mark_feature_logging(kwargs, feature_view) -> None:
+    """Record the logging transport in the predictor env when the served view logs.
+
+    The deployment page shows feature logging metrics for a deployment that
+    carries this variable, and the predictor reads the same value at startup.
+    """
+    if feature_view is None or not getattr(feature_view, "logging_enabled", False):
+        return
+    logging = _current_feature_logging(feature_view)
+    view_transport = getattr(logging, "transport", None)
+    if view_transport not in ("realtime", "job"):
+        view_transport = "realtime"
+    config = kwargs.get("feature_logging")
+    transport = None
+    if isinstance(config, dict):
+        # A dictionary has not been through DeploymentLoggingConfig yet, so it
+        # still carries whatever spelling the caller wrote.
+        raw = config.get("transport")
+        transport = None if raw is None else str(raw).strip().lower()
+    elif config is not None:
+        transport = getattr(config, "transport", None)
+    # The view owns the transport: its logging group has one layout, so a
+    # deployment cannot log through the other path.
+    if transport is not None and transport != view_transport:
+        raise ValueError(
+            f"Deployment feature logging transport {transport!r} conflicts with "
+            f"feature view '{feature_view.name}' v{feature_view.version}, which logs "
+            f"through {view_transport!r}; a feature view logs through one transport."
+        )
+    # The job-only fields are silently inert on a realtime view. The constructor
+    # can only refuse them when the caller spelled transport="realtime" itself;
+    # here the view's transport is known, so this is where the rest are caught.
+    if view_transport == "realtime":
+        job_only = DeploymentLoggingConfig._JOB_ONLY_FIELDS
+        if isinstance(config, dict):
+            set_job_fields = [n for n in job_only if config.get(n) is not None]
+        elif config is not None:
+            set_job_fields = [
+                n for n in job_only if getattr(config, n, None) is not None
+            ]
+        else:
+            set_job_fields = []
+        if set_job_fields:
+            raise ValueError(
+                f"Feature view '{feature_view.name}' v{feature_view.version} logs "
+                "through the 'realtime' transport, which has no file buffer, so "
+                f"these fields would do nothing: {', '.join(set_job_fields)}."
+            )
+    if isinstance(config, dict):
+        config.setdefault("transport", view_transport)
+    elif config is not None and transport is None:
+        config.transport = view_transport
+    env_vars = dict(kwargs.get("env_vars") or {})
+    env_vars.setdefault(MODEL_SERVING.FEATURE_LOGGING_ENV_VAR, view_transport)
+    kwargs["env_vars"] = env_vars
+
+
 def _resolve_feature_view(model):
     feature_view = getattr(model, "_feature_view", None)
     # A model fetched from the registry carries the backend's feature view
@@ -1213,8 +1330,11 @@ def _resolve_default_predictor(model, default_predictor, kwargs, passed_features
     """Decide whether the default predictor serves `model`, per the resolution table of the spec.
 
     Returns `(use_default, feature_view)`. Automatic mode only turns on for
-    `PYTHON` models with a feature view, no script, no transformer, REST, and
-    KServe; forced mode raises on the first unmet condition.
+    `PYTHON` models with a feature view, no script, no transformer, and KServe;
+    forced mode raises on the first unmet condition. Either API protocol is
+    served: the default predictor owns both ends of the wire, so a deployment
+    created with `api_protocol="GRPC"` reads the v2 tensors of a request and
+    answers in kind.
     """
     if default_predictor is False:
         return False, None
@@ -1225,13 +1345,17 @@ def _resolve_default_predictor(model, default_predictor, kwargs, passed_features
     transformer = kwargs.get("transformer")
     api_protocol = kwargs.get("api_protocol") or INFERENCE_ENDPOINTS.API_PROTOCOL_REST
     serving_tool = kwargs.get("serving_tool") or Predictor._get_default_serving_tool()
+    protocols = (
+        INFERENCE_ENDPOINTS.API_PROTOCOL_REST,
+        INFERENCE_ENDPOINTS.API_PROTOCOL_GRPC,
+    )
 
     if default_predictor is None:
         eligible = (
             framework == MODEL.FRAMEWORK_PYTHON
             and script_file is None
             and transformer is None
-            and api_protocol == INFERENCE_ENDPOINTS.API_PROTOCOL_REST
+            and api_protocol in protocols
             and serving_tool == PREDICTOR.SERVING_TOOL_KSERVE
         )
         if not eligible:
@@ -1246,8 +1370,10 @@ def _resolve_default_predictor(model, default_predictor, kwargs, passed_features
         )
     if transformer is not None:
         problems.append("a transformer is configured")
-    if api_protocol != INFERENCE_ENDPOINTS.API_PROTOCOL_REST:
-        problems.append(f"the API protocol is {api_protocol}, only REST is supported")
+    if api_protocol not in protocols:
+        problems.append(
+            f"the API protocol is {api_protocol}, only REST and GRPC are supported"
+        )
     if serving_tool != PREDICTOR.SERVING_TOOL_KSERVE:
         problems.append(f"the serving tool is {serving_tool}, only KSERVE is supported")
     feature_view = None

@@ -43,7 +43,8 @@ class TestDeployableComponent:
             "hopsworks_common.util._get_obj_from_json", return_value=None
         )
         mock_ib_init = mocker.patch(
-            "hsml.inference_batcher.InferenceBatcher.__init__", return_value=None
+            "hsml.inference_batcher.InferenceBatcher.__init__",
+            return_value=None,
         )
 
         class DeployableComponentChild(deployable_component.DeployableComponent):
@@ -76,7 +77,8 @@ class TestDeployableComponent:
             "hopsworks_common.util._get_obj_from_json", return_value=inf_batcher
         )
         mock_ib_init = mocker.patch(
-            "hsml.inference_batcher.InferenceBatcher.__init__", return_value=None
+            "hsml.inference_batcher.InferenceBatcher.__init__",
+            return_value=None,
         )
 
         class DeployableComponentChild(deployable_component.DeployableComponent):

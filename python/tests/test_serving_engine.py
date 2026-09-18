@@ -369,6 +369,35 @@ class TestSchemaPublishing:
         assert {b["maxItems"] for b in batches} == {16}
         assert json.loads(uploaded[f"{published.schema_id}.json"])["maxBatchRows"] == 16
 
+    def test_published_schema_pins_logging_identity_and_clears_previous_view(
+        self, mocker
+    ):
+        from hsml.deployment_schema import DeploymentSchema
+
+        eng = self._engine(mocker)
+        mocker.patch.object(eng, "_write_schema_documents")
+        schema = DeploymentSchema(
+            serving_keys=["k"],
+            feature_view={"name": "features", "version": 2},
+            training_dataset_version=3,
+        )
+        predictor = _FakePredictor(
+            schema=schema,
+            env_vars={"SERVING_FEATURE_VIEW_NAME": "old_view", "OTHER": "kept"},
+        )
+        deployment = _FakeDeployment(predictor, name="dep")
+        eng._publish_schema(deployment)
+        assert predictor.env_vars["SERVING_SCHEMA_ID"] == schema.schema_id
+        assert predictor.env_vars["SERVING_FEATURE_VIEW_NAME"] == "features"
+        assert predictor.env_vars["SERVING_FEATURE_VIEW_VERSION"] == "2"
+        assert predictor.env_vars["SERVING_TRAINING_DATASET_VERSION"] == "3"
+        predictor._schema = DeploymentSchema(passed_features=["k"])
+        eng._publish_schema(deployment)
+        assert "SERVING_FEATURE_VIEW_NAME" not in predictor.env_vars
+        assert "SERVING_FEATURE_VIEW_VERSION" not in predictor.env_vars
+        assert "SERVING_TRAINING_DATASET_VERSION" not in predictor.env_vars
+        assert predictor.env_vars["OTHER"] == "kept"
+
     def test_publish_propagates_an_unloaded_schema_to_a_new_transformer(self, mocker):
         """A fetched deployment carries only the id; attaching a transformer must hand it over."""
         eng = self._engine(mocker)
@@ -561,6 +590,68 @@ class TestPredictValidation:
             eng._predict(d, {"instances": [[None, 1]]}, None)
         eng._predict(d, {"instances": [[None, 1]]}, None, validate=False)
 
+    def test_grpc_rows_are_validated_and_sent_as_tensors(self, mocker):
+        from hsml import deployment_schema as deployment_schema
+        from hsml.deployment_schema import DeploymentSchema, DeploymentSchemaError
+
+        eng = self._engine(mocker)
+        eng._serving_api._send_inference_request.return_value = [
+            {"name": "predictions", "shape": [1], "datatype": "FP64", "data": [0.25]}
+        ]
+        schema = DeploymentSchema(
+            serving_keys=[{"name": "k", "type": "bigint"}],
+            passed_features=[{"name": "ts", "type": "timestamp"}],
+        )
+        d = self._deployment(mocker, schema)
+        d.api_protocol = "GRPC"
+
+        assert eng._predict(d, None, [{"k": 1, "ts": self.now}]) == {
+            "predictions": [0.25]
+        }
+
+        tensors = eng._serving_api._send_inference_request.call_args.args[1]
+        assert [(t.name, t.datatype, t.data) for t in tensors] == [
+            ("k", "INT64", [1]),
+            ("ts", "BYTES", ['"2026-09-06T10:00:00Z"']),
+        ]
+
+        with pytest.raises(DeploymentSchemaError, match="'k' must not be null"):
+            eng._predict(d, None, [[None, self.now]])
+
+        # an optional field no row carries stays absent instead of becoming null
+        schema._extra_logging_features = deployment_schema._to_fields(["note"])
+        eng._predict(d, None, [{"k": 1, "ts": self.now}])
+        tensors = eng._serving_api._send_inference_request.call_args.args[1]
+        assert [t.name for t in tensors] == ["k", "ts"]
+
+    def test_grpc_takes_the_rest_data_form_and_refuses_both_at_once(self, mocker):
+        """The REST data form describes rows on gRPC too.
+
+        A schema-backed gRPC deployment encodes it rather than refusing the
+        dictionary and naming a parameter that is already in use.
+        """
+        from hopsworks_common.client.exceptions import ModelServingException
+        from hsml.deployment_schema import DeploymentSchema
+
+        eng = self._engine(mocker)
+        eng._serving_api._send_inference_request.return_value = [
+            {"name": "predictions", "shape": [1], "datatype": "FP64", "data": [0.25]}
+        ]
+        schema = DeploymentSchema(serving_keys=[{"name": "k", "type": "bigint"}])
+        d = self._deployment(mocker, schema)
+        d.api_protocol = "GRPC"
+
+        assert eng._predict(d, {"instances": [{"k": 1}]}, None) == {
+            "predictions": [0.25]
+        }
+        tensors = eng._serving_api._send_inference_request.call_args.args[1]
+        assert [(t.name, t.datatype, t.data) for t in tensors] == [("k", "INT64", [1])]
+
+        with pytest.raises(ModelServingException, match="cannot be provided together"):
+            eng._predict(d, {"instances": [{"k": 1}]}, [{"k": 1}])
+        with pytest.raises(ModelServingException, match="missing 'instances' key"):
+            eng._predict(d, {"rows": [{"k": 1}]}, None)
+
     def test_configured_batch_limit_applies_client_side(self, mocker):
         from hsml.deployment_schema import DeploymentSchema, DeploymentSchemaError
 
@@ -576,7 +667,7 @@ class TestPredictValidation:
             eng._predict(d, None, [{"k": 1}, {"k": 2}])
         eng._predict(d, None, [{"k": 1}])
 
-    def test_no_schema_or_grpc_skips_validation(self, mocker):
+    def test_no_schema_or_raw_data_skips_validation(self, mocker):
         eng = self._engine(mocker)
         d = self._deployment(mocker, None)
         eng._predict(d, None, [{"anything": 1}])
