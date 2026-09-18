@@ -56,7 +56,101 @@ else:
 class OnlineStoreRestClientApi:
     SINGLE_VECTOR_ENDPOINT = "feature_store"
     BATCH_VECTOR_ENDPOINT = "batch_feature_store"
+    RONSQL_ENDPOINT = "ronsql"
+    SCAN_ENDPOINT = "scan"
     PING_ENDPOINT = "ping"
+
+    def _execute_ronsql(
+        self, query: str, database: str, explain_mode: str = "REMOVE"
+    ) -> list[dict[str, Any]]:
+        """Execute a RonSQL statement against the RonDB Rest Server /ronsql endpoint.
+
+        RonSQL statements are read-only SELECTs (optionally with CTEs and joins) executed
+        as pushdown queries on the RonDB data nodes.
+        Requires RonDB >= 26.04 for CTE/join support.
+
+        Parameters:
+            query: The complete RonSQL statement, with all literal values already substituted
+                (RonSQL has no parameter binding).
+            database: The single online database the statement is resolved and authorized against.
+            explain_mode: "REMOVE" executes the statement; "FORCE" plans it as an EXPLAIN
+                without executing, which is used to conformance-check generated templates.
+
+        Returns:
+            The result set as a list of row dictionaries keyed by output column name.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the response status code is not 200.
+                RonSQL errors (parse errors, unsupported constructs, missing indexes) surface
+                as status 500 with a plain-text error body.
+        """
+        explain = explain_mode != "REMOVE"
+        payload = {
+            "query": query,
+            "database": database,
+            "explainMode": explain_mode,
+            # the server refuses JSON output for EXPLAIN plans; the plan text itself
+            # is not consumed, a 200 is the conformance verdict
+            "outputFormat": "TEXT" if explain else "JSON",
+        }
+        if _logger.isEnabledFor(logging.DEBUG):
+            # Entity keys and filter values are inlined in the statement and can be
+            # sensitive, so log only operation metadata, never the interpolated SQL.
+            _logger.debug(
+                "Sending RonSQL request: database=%s, explainMode=%s, statement_length=%d",
+                database,
+                explain_mode,
+                len(query),
+            )
+        response = online_store_rest_client._get_instance()._send_request(
+            method="POST",
+            path_params=[self.RONSQL_ENDPOINT],
+            headers={"Content-Type": "application/json"},
+            data=json.dumps(payload),
+        )
+        if explain and response.status_code == 200:
+            return []
+        body = self._handle_rdrs_feature_store_response(response)
+        return body.get("data", [])
+
+    def _execute_scan(
+        self, database: str, table: str, body: dict[str, Any]
+    ) -> list[dict[str, Any]]:
+        """Execute an ordered index scan against the RonDB Rest Server /scan endpoint.
+
+        The scan is RDRS's native row-returning LIMIT primitive: an index scan bounded by
+        key ranges, ordered per the index, capped by `limit`.
+        It serves collect rows on the REST client, since RonSQL has no row-returning reads.
+
+        Parameters:
+            database: The online database the table lives in.
+            table: The online table name (`<feature_group>_<version>`).
+            body: The scan request: `limit`, optional `readColumns`, optional `filters`,
+                and `index` with `name`, `key_columns`, `ranges`, `order`.
+
+        Returns:
+            The scanned rows as a list of row dictionaries keyed by column name.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the response status code is not 200.
+        """
+        if _logger.isEnabledFor(logging.DEBUG):
+            # key values are inlined in the ranges and can be sensitive: log metadata only
+            _logger.debug(
+                "Sending /scan request: database=%s, table=%s, limit=%s, order=%s",
+                database,
+                table,
+                body.get("limit"),
+                (body.get("index") or {}).get("order"),
+            )
+        response = online_store_rest_client._get_instance()._send_request(
+            method="POST",
+            path_params=[database, table, self.SCAN_ENDPOINT],
+            headers={"Content-Type": "application/json"},
+            data=json.dumps(body, cls=NpDatetimeEncoder),
+        )
+        response_body = self._handle_rdrs_feature_store_response(response)
+        return response_body.get("data", [])
 
     def _get_single_raw_feature_vector(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Get a single feature vector from the feature store.
