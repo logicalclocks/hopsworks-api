@@ -1650,12 +1650,19 @@ class VectorServer:
 
     @staticmethod
     def _scan_can_serve(statement) -> bool:
-        """Whether the /scan fallback preserves the statement's filter semantics.
+        """Whether the /scan fallback can serve this statement at all.
 
-        Unfiltered collects always qualify; filtered collects qualify only when the
-        backend carried every condition structured on the statement (all conditions
-        /scan-expressible).
+        The scan indexes on `(entity..., order_col)`, so a statement carrying no order
+        column -- one from a backend predating collect_order_by -- cannot be expressed as
+        a scan, and building the request anyway sends a null key column. Those fall
+        through to the SQL path instead.
+
+        Beyond that the gate is about filter semantics: unfiltered collects always
+        qualify; filtered collects qualify only when the backend carried every condition
+        structured on the statement (all conditions /scan-expressible).
         """
+        if not getattr(statement, "collect_order_by", None):
+            return False
         return not statement.collect_filter_applied or bool(
             getattr(statement, "collect_filters", None)
         )

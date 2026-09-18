@@ -1590,6 +1590,14 @@ class TestScanFilterTree:
         assert VectorServer._scan_can_serve(without) is False
         assert VectorServer._scan_can_serve(make_statement()) is True
 
+    def test_a_statement_without_an_order_column_is_not_scan_servable(self):
+        # The scan indexes on (entity..., order_col). A statement from a backend
+        # predating collect_order_by has none, and serving it anyway appended None
+        # to the scan's key_columns and sent a malformed request.
+        assert (
+            VectorServer._scan_can_serve(make_statement(collect_order_by=None)) is False
+        )
+
 
 class TestReadTimeReclassification:
     def test_planner_refusal_at_read_time_reroutes_to_scan(self, monkeypatch):
