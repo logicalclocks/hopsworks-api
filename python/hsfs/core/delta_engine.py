@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import contextlib
+import datetime
 import logging
 import os
 import warnings
@@ -41,6 +42,29 @@ if TYPE_CHECKING:
 # They are imported on-demand inside methods to provide friendly errors only
 # when the functionality is used.
 _logger = logging.getLogger(__name__)
+
+
+def _as_ingest_date(value: str | datetime.date | None) -> str | None:
+    """`after_ingest_date` as a plain `YYYY-MM-DD` string, or None.
+
+    The Spark path puts this straight into an OPTIMIZE predicate, so a value that is not
+    a date is a value that rewrites the predicate: `2026-09-10' OR '1'='1` compacts the
+    whole table instead of one partition. Parsing it here is what makes the quoting below
+    safe, and it turns a malformed date into an error naming the argument rather than an
+    engine error naming a partition filter.
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime.datetime):
+        value = value.date()
+    if isinstance(value, datetime.date):
+        return value.isoformat()
+    try:
+        return datetime.date.fromisoformat(str(value).strip()).isoformat()
+    except ValueError as error:
+        raise FeatureStoreException(
+            f"after_ingest_date must be a date as YYYY-MM-DD, got {value!r}."
+        ) from error
 
 
 def _is_delta_table_at(spark_session, path: str) -> bool:
@@ -108,6 +132,9 @@ class DeltaEngine:
     DELTA_DOT_PREFIX = "delta."
     DELTA_GLUE_CATALOG_IMPL = "org.apache.spark.sql.delta.catalog.DeltaCatalog"
     APPEND = "append"
+    RETENTION_CHECK_CONF = "spark.databricks.delta.retentionDurationCheck.enabled"
+    OPTIMIZE_THREADS_CONF = "spark.databricks.delta.optimize.maxThreads"
+    OPTIMIZE_FILE_SIZE_CONF = "spark.databricks.delta.optimize.maxFileSize"
 
     def __init__(
         self,
@@ -853,6 +880,28 @@ class DeltaEngine:
             _logger.debug(f"Partition overlap check failed, falling back to merge: {e}")
             return False
 
+    @staticmethod
+    def _commit_properties(write_options):
+        """The Delta application transactions a writer records with its commit.
+
+        `write_options["commit_properties"]` names either one `app_id` and `version` or a list of them under `transactions`; a reader checks `DeltaTable.transaction_version(app_id)` to see whether a retried write already landed.
+        """
+        properties = (write_options or {}).get("commit_properties")
+        if not properties:
+            return None
+        from deltalake import CommitProperties, Transaction
+
+        transactions = properties.get("transactions", [properties])
+        return CommitProperties(
+            app_transactions=[
+                Transaction(
+                    app_id=str(transaction["app_id"]),
+                    version=int(transaction["version"]),
+                )
+                for transaction in transactions
+            ]
+        )
+
     def _write_delta_rs_dataset(
         self,
         dataset: pa.Table | pl.DataFrame | pd.DataFrame,
@@ -892,6 +941,7 @@ class DeltaEngine:
             isinstance(write_options, dict)
             and str(write_options.get("mode", "")).lower() == self.APPEND
         )
+        commit_properties = self._commit_properties(write_options)
 
         try:
             fg_source_table = DeltaRsTable(location, storage_options=storage_options)
@@ -917,6 +967,7 @@ class DeltaEngine:
                 partition_by=self._feature_group.partition_key,
                 configuration=configuration,
                 storage_options=storage_options or None,
+                commit_properties=commit_properties,
             )
         else:
             if (
@@ -936,6 +987,7 @@ class DeltaEngine:
                     dataset,
                     mode=self.APPEND,
                     storage_options=storage_options or None,
+                    commit_properties=commit_properties,
                 )
                 _logger.debug(
                     f"Explicit append mode requested for {location}. Skipping merge operation."
@@ -1311,15 +1363,296 @@ class DeltaEngine:
                 return int(value)
         return None
 
+    def _checkpoint(self) -> dict:
+        """Write a Delta checkpoint, so readers stop replaying the log from commit zero.
+
+        A reader opening the table replays every commit since the last checkpoint.
+        On Spark, Delta writes one itself every `delta.checkpointInterval` commits, so
+        this forces one early; delta-rs writes none at all, so on that engine it is the
+        only thing that bounds the replay.
+
+        Expiring the log entries a checkpoint covers is a separate operation,
+        `_cleanup_metadata`, which needs a checkpoint to already exist.
+
+        Returns:
+            The version checkpointed.
+        """
+        if self._spark_session is not None:
+            return self._checkpoint_spark()
+        return self._checkpoint_delta_rs()
+
+    def _checkpoint_spark(self) -> dict:
+        """Force a checkpoint through the DeltaLog the Spark session already has.
+
+        Delta exposes no SQL for this, so it goes through the JVM object. The
+        checkpoint argument arrived in Delta 2.0 and older builds take none, hence the
+        two-call shape rather than a version test.
+        """
+        delta_log, snapshot = self._spark_delta_log()
+        _logger.debug("Checkpointing Delta table through DeltaLog")
+        try:
+            delta_log.checkpoint(snapshot)
+        except TypeError:
+            delta_log.checkpoint()
+        return {"version": int(snapshot.version())}
+
+    def _checkpoint_delta_rs(self) -> dict:
+        from deltalake import DeltaTable as DeltaRsTable
+
+        location = self._get_delta_rs_location()
+        storage_options = self._get_delta_rs_storage_options()
+        table = DeltaRsTable(location, storage_options=storage_options)
+        version = table.version()
+        _logger.debug(f"Checkpointing Delta table at {location} at version {version}")
+        table.create_checkpoint()
+        return {"version": version}
+
+    def _cleanup_metadata(self) -> dict:
+        """Expire the Delta log entries an existing checkpoint already covers.
+
+        The checkpoint is what makes this safe: it is the state a reader falls back to
+        once the individual commits are gone, so this must run after one and never
+        instead of one. What it may delete is bounded by the table's own
+        `delta.logRetentionDuration` (30 days by default), so recent history stays
+        readable and time travel inside that window keeps working.
+
+        Returns:
+            The version the log was pruned against.
+        """
+        if self._spark_session is not None:
+            delta_log, snapshot = self._spark_delta_log()
+            _logger.debug("Expiring Delta log entries through DeltaLog")
+            delta_log.cleanUpExpiredLogs(snapshot)
+            return {"version": int(snapshot.version())}
+        from deltalake import DeltaTable as DeltaRsTable
+
+        location = self._get_delta_rs_location()
+        table = DeltaRsTable(
+            location, storage_options=self._get_delta_rs_storage_options()
+        )
+        _logger.debug(f"Expiring Delta log entries at {location}")
+        table.cleanup_metadata()
+        return {"version": table.version()}
+
+    def _spark_delta_log(self):
+        """The JVM DeltaLog for this feature group, and its current snapshot."""
+        location = self._feature_group.prepare_spark_location()
+        jvm = self._spark_session._jvm
+        delta_log = jvm.org.apache.spark.sql.delta.DeltaLog.forTable(
+            self._spark_session._jsparkSession, location
+        )
+        return delta_log, delta_log.update()
+
+    def _active_file_count(self) -> int:
+        """Data files the table currently references.
+
+        This is what compaction acts on, and what a reader opens. It tracks the commit
+        count while every commit adds one file, which is what an append-only log does,
+        but it stops growing once files are compacted, where a commit count never would.
+        """
+        if self._spark_session is not None:
+            _, snapshot = self._spark_delta_log()
+            return int(snapshot.allFiles().count())
+        from deltalake import DeltaTable as DeltaRsTable
+
+        table = DeltaRsTable(
+            self._get_delta_rs_location(),
+            storage_options=self._get_delta_rs_storage_options(),
+        )
+        return len(table.file_uris())
+
+    def _last_optimize_at(self) -> float | None:
+        """When the table was last compacted, as epoch seconds, or None if never.
+
+        Read from the table's own history rather than kept as state, so a daily
+        compaction stays correct across job executions and across writers.
+        """
+        if self._spark_session is not None:
+            location = self._feature_group.prepare_spark_location()
+            rows = self._spark_session.sql(
+                f"DESCRIBE HISTORY delta.`{location}`"
+            ).collect()
+            stamps = [
+                r["timestamp"].timestamp()
+                for r in rows
+                if r["operation"] == "OPTIMIZE" and r["timestamp"] is not None
+            ]
+            return max(stamps) if stamps else None
+        from deltalake import DeltaTable as DeltaRsTable
+
+        table = DeltaRsTable(
+            self._get_delta_rs_location(),
+            storage_options=self._get_delta_rs_storage_options(),
+        )
+        stamps = [
+            entry["timestamp"]
+            for entry in table.history()
+            if entry.get("operation") == "OPTIMIZE" and entry.get("timestamp")
+        ]
+        # delta-rs reports commit timestamps in milliseconds.
+        return max(stamps) / 1000.0 if stamps else None
+
+    # Delta refuses a retention below delta.deletedFileRetentionDuration (7 days by
+    # default), because a shorter one can delete files a concurrent reader is still
+    # reading. Both engines are told to accept it, since the caller naming
+    # retention_hours is the one choosing that trade.
+    def _date_partition_column(self) -> str | None:
+        """The partition column a date filter can be expressed on, if the group has one.
+
+        Only partition columns can be filtered here: delta-rs rejects a filter on any
+        other column, and on Spark a predicate over a data column turns the rewrite into
+        a full scan instead of the file selection this is for.
+        """
+        partitions = set(self._feature_group.partition_key or [])
+        if not partitions:
+            return None
+        for feature in self._feature_group.features or []:
+            if feature.name in partitions and str(feature.type).lower() in (
+                "date",
+                "timestamp",
+            ):
+                return feature.name
+        for name in partitions:
+            if "date" in name.lower():
+                return name
+        return None
+
+    def _optimize_compact(
+        self,
+        after_ingest_date: str | None = None,
+        max_concurrent_tasks: int = 1,
+        target_size: int | None = None,
+    ) -> dict:
+        """Rewrite the table's small files into larger ones.
+
+        An append-only table gains one file per commit, and every reader then opens all
+        of them. Compaction is what keeps that file count flat.
+
+        `after_ingest_date` restricts the rewrite to partitions at or after that date,
+        which is how a daily run compacts only what is new instead of rewriting the
+        whole table. It needs the group to be partitioned by a date column.
+
+        `max_concurrent_tasks` is 1 by default: this runs inside the commit job, beside
+        the writes, so the rewrite is deliberately not allowed to take the pod's whole
+        CPU budget. It and `target_size` reach delta-rs directly; on Spark they are set
+        as session configuration for the statement, since OPTIMIZE takes neither as
+        syntax, and are restored afterwards.
+
+        Returns:
+            The engine's optimize metrics.
+        """
+        after_ingest_date = _as_ingest_date(after_ingest_date)
+        partition_column = self._date_partition_column()
+        if after_ingest_date and partition_column is None:
+            raise FeatureStoreException(
+                "delta_optimize(after_ingest_date=...) needs the feature group to be "
+                "partitioned by a date column, because only a partition column can "
+                f"select files without reading them. {self._feature_group.name} is "
+                f"partitioned by {self._feature_group.partition_key or []}. Compact "
+                "the whole table by leaving after_ingest_date unset."
+            )
+        if self._spark_session is not None:
+            location = self._feature_group.prepare_spark_location()
+            statement = f"OPTIMIZE delta.`{location}`"
+            if after_ingest_date:
+                statement += f" WHERE {partition_column} >= '{after_ingest_date}'"
+            _logger.debug(f"Running {statement}")
+            settings = {}
+            if max_concurrent_tasks:
+                settings[self.OPTIMIZE_THREADS_CONF] = str(int(max_concurrent_tasks))
+            if target_size:
+                settings[self.OPTIMIZE_FILE_SIZE_CONF] = str(int(target_size))
+            with self._spark_conf(settings):
+                rows = self._spark_session.sql(statement).collect()
+            return rows[0].asDict(recursive=True) if rows else {}
+
+        from deltalake import DeltaTable as DeltaRsTable
+
+        self._require_spark_for_clustered("compact")
+        location = self._get_delta_rs_location()
+        table = DeltaRsTable(
+            location, storage_options=self._get_delta_rs_storage_options()
+        )
+        filters = (
+            [(partition_column, ">=", after_ingest_date)] if after_ingest_date else None
+        )
+        _logger.debug(f"Compacting Delta table at {location} with filters {filters}")
+        return table.optimize.compact(
+            partition_filters=filters,
+            max_concurrent_tasks=max_concurrent_tasks,
+            target_size=target_size,
+        )
+
     def _vacuum(self, retention_hours: int):
+        if self._spark_session is not None:
+            return self._vacuum_spark(retention_hours)
+        return self._vacuum_delta_rs(retention_hours)
+
+    @contextlib.contextmanager
+    def _spark_conf(self, settings: dict):
+        """Apply session settings for one statement, then put back what was there.
+
+        The session is shared, so anything set here has to be restored; a setting that
+        cannot be read or written is skipped rather than failing the operation it was
+        only meant to tune.
+        """
+        previous = {}
+        for key, value in settings.items():
+            with contextlib.suppress(Exception):
+                previous[key] = self._spark_session.conf.get(key, None)
+                self._spark_session.conf.set(key, value)
+        try:
+            yield
+        finally:
+            for key, value in previous.items():
+                with contextlib.suppress(Exception):
+                    if value is None:
+                        self._spark_session.conf.unset(key)
+                    else:
+                        self._spark_session.conf.set(key, value)
+
+    def _vacuum_spark(self, retention_hours: int):
         location = self._feature_group.prepare_spark_location()
         _logger.debug(
             f"Vacuuming Delta table for feature group {self._feature_group.name} v{self._feature_group.version} at location {location} with retention {retention_hours} hours"
         )
+        # Coerced, not just formatted: this goes into a VACUUM statement, so anything
+        # that is not a number would be rewriting the statement rather than sizing it.
         retention = (
-            f"RETAIN {retention_hours} HOURS" if retention_hours is not None else ""
+            f"RETAIN {int(retention_hours)} HOURS"
+            if retention_hours is not None
+            else ""
         )
-        self._spark_session.sql(f"VACUUM '{location}' {retention}")
+        # Delta refuses a retention under its own seven days unless this is off, which is
+        # the same allowance _vacuum_delta_rs makes with enforce_retention_duration.
+        check = {} if retention_hours is None else {self.RETENTION_CHECK_CONF: "false"}
+        with self._spark_conf(check):
+            self._spark_session.sql(f"VACUUM '{location}' {retention}")
+        return
+
+    def _vacuum_delta_rs(self, retention_hours: int) -> list[str]:
+        """Delete the files the table no longer references.
+
+        delta-rs defaults `dry_run` to True, which returns the list and deletes
+        nothing, so a vacuum that looks like it ran would silently free no space.
+
+        Returns:
+            The files deleted.
+        """
+        from deltalake import DeltaTable as DeltaRsTable
+
+        self._require_spark_for_clustered("vacuum")
+        location = self._get_delta_rs_location()
+        storage_options = self._get_delta_rs_storage_options()
+        table = DeltaRsTable(location, storage_options=storage_options)
+        _logger.debug(
+            f"Vacuuming Delta table at {location} with retention {retention_hours} hours"
+        )
+        return table.vacuum(
+            retention_hours=retention_hours,
+            dry_run=False,
+            enforce_retention_duration=False,
+        )
 
     def _generate_merge_query(
         self,

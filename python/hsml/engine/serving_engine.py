@@ -35,7 +35,8 @@ from hopsworks_common.constants import (
 )
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
 from hopsworks_common.core import dataset_api, inode
-from hsml import default_predictor, deployable_component_logs, deployment_schema
+from hsml import default_predictor, deployable_component_logs
+from hsml import deployment_schema as deployment_schema
 from hsml.core import serving_api
 from hsml.engine import local_engine
 from hsml.utils.local_paths import _ensure_dataset_dir, _resolve_serving_file
@@ -722,6 +723,18 @@ class ServingEngine:
         for component in [predictor] + ([transformer] if transformer else []):
             env_vars = dict(component.env_vars or {})
             env_vars[MODEL_SERVING.DEPLOYMENT_SCHEMA_ID_ENV_VAR] = schema_id
+            if schema is not None:
+                view = schema.feature_view or {}
+                identity = {
+                    MODEL_SERVING.FEATURE_VIEW_NAME_ENV_VAR: view.get("name"),
+                    MODEL_SERVING.FEATURE_VIEW_VERSION_ENV_VAR: view.get("version"),
+                    MODEL_SERVING.TRAINING_DATASET_VERSION_ENV_VAR: schema.training_dataset_version,
+                }
+                for name, value in identity.items():
+                    if value is None:
+                        env_vars.pop(name, None)
+                    else:
+                        env_vars[name] = str(value)
             # each pod validates, or defers, according to its own revision
             env_vars[MODEL_SERVING.SCHEMA_ENFORCER_ENV_VAR] = enforcer
             component.env_vars = env_vars
@@ -1344,21 +1357,55 @@ class ServingEngine:
                 "Inference requests to LLM deployments are not supported by the `predict` method. Please, use any OpenAI API-compatible client instead."
             )
 
-        self._validate_inference_payload(deployment_instance.api_protocol, data, inputs)
-
-        # build inference payload based on API protocol
-        payload = self._build_inference_payload(
-            deployment_instance.api_protocol, data, inputs
+        if data is not None and inputs is not None:
+            raise ModelServingException(
+                "Inference data and inputs parameters cannot be provided together."
+            )
+        # a schema describes rows, so rows sent to a gRPC deployment that has one
+        # are validated as they are over REST and then encoded as v2 tensors.
+        # `data` reaches here in its REST dictionary form; a list of `InferInput`
+        # is already tensors and takes the path below.
+        as_tensors = (
+            deployment_instance.api_protocol == IE.API_PROTOCOL_GRPC
+            and deployment_instance.schema is not None
+            and (
+                isinstance(data, dict)
+                or (
+                    inputs is not None
+                    and not deployment_schema._is_tensor_payload(inputs)
+                )
+            )
         )
-        if validate and deployment_instance.api_protocol == IE.API_PROTOCOL_REST:
-            payload = self._validate_against_schema(deployment_instance, payload)
+        if as_tensors:
+            if inputs is not None:
+                payload = self._parse_inference_inputs(IE.API_PROTOCOL_REST, inputs)
+            else:
+                self._validate_inference_data(IE.API_PROTOCOL_REST, data)
+                payload = data
+            if validate:
+                payload = self._validate_against_schema(deployment_instance, payload)
+            payload = self._encode_tensors(deployment_instance, payload)
+        else:
+            self._validate_inference_payload(
+                deployment_instance.api_protocol, data, inputs
+            )
+
+            # build inference payload based on API protocol
+            payload = self._build_inference_payload(
+                deployment_instance.api_protocol, data, inputs
+            )
+            if validate and deployment_instance.api_protocol == IE.API_PROTOCOL_REST:
+                payload = self._validate_against_schema(deployment_instance, payload)
 
         # if not KServe, send request through Hopsworks
         serving_tool = deployment_instance.predictor.serving_tool
         through_hopsworks = serving_tool != PREDICTOR.SERVING_TOOL_KSERVE
         try:
-            return self._serving_api._send_inference_request(
+            response = self._serving_api._send_inference_request(
                 deployment_instance, payload, through_hopsworks
+            )
+            return (
+                deployment_schema._decode_outputs(response) if as_tensors else response
             )
         except RestAPIError as re:
             # The default predictor answers 404 ENTITY_NOT_FOUND with a
@@ -1517,6 +1564,16 @@ class ServingEngine:
             return data
         # parse inputs
         return self._parse_inference_inputs(api_protocol, inputs)
+
+    def _encode_tensors(self, deployment_instance, payload: dict) -> list[InferInput]:
+        """The rows of a REST payload as one v2 tensor per schema field."""
+        key = "instances" if "instances" in payload else "inputs"
+        return [
+            InferInput(**tensor)
+            for tensor in deployment_schema._encode_rows(
+                deployment_instance.schema, payload[key]
+            )
+        ]
 
     def _validate_against_schema(self, deployment_instance, payload: dict) -> dict:
         """Encode and validate the rows of a REST payload against the deployment schema, when there is one."""

@@ -15,8 +15,11 @@
 #
 from __future__ import annotations
 
+import asyncio
+import inspect
 import os
 import threading
+import time
 from types import SimpleNamespace
 
 import pandas as pd
@@ -47,7 +50,9 @@ class FakeFeatureView:
         self.feature_logging = SimpleNamespace(
             extra_logging_columns=[
                 SimpleNamespace(name=n, type="string") for n in extra_columns
-            ]
+            ],
+            untransformed_features=SimpleNamespace(columns=[]),
+            transformed_features=None,
         )
         self.transformation_functions = list(transformation_functions)
         self.init_serving_calls = []
@@ -60,6 +65,7 @@ class FakeFeatureView:
         self.on_demand_calls = []
         self.missing_rows = set()
         self.lookup_error = None
+        self.lookup_delay = 0.0
         self.log_error = None
 
     def init_serving(self, **kwargs):
@@ -110,7 +116,19 @@ class FakeFeatureView:
         out["amount_scaled"] = 0.5
         return out
 
+    async def get_feature_vectors_async(self, **kwargs):
+        # The real one hands the blocking call to a worker thread; the fake keeps the
+        # same shape so the predictor's awaitable path is exercised end to end.
+        import asyncio
+        import functools
+
+        return await asyncio.get_running_loop().run_in_executor(
+            None, functools.partial(self.get_feature_vectors, **kwargs)
+        )
+
     def get_feature_vectors(self, entry, allow_missing=False, **kwargs):
+        if self.lookup_delay:
+            time.sleep(self.lookup_delay)
         self.lookup_calls.append(
             {"entry": entry, "allow_missing": allow_missing, **kwargs}
         )
@@ -412,7 +430,7 @@ class TestModelInputContract:
         fv.get_feature_vectors = lambda entry, **kw: original(entry[:1], **kw)
 
         with pytest.raises(Exception) as info:
-            predictor.predict([{"cc_num": 1}, {"cc_num": 2}])
+            predictor.predict_blocking([{"cc_num": 1}, {"cc_num": 2}])
 
         assert _status(info.value) == 500
         assert _detail(info.value)["code"] == "CONTRACT_VIOLATION"
@@ -421,7 +439,7 @@ class TestModelInputContract:
         fv.get_feature_vectors = original
         predictor.model.predict = lambda x: pd.Series([1]).to_numpy()
         with pytest.raises(Exception) as info:
-            predictor.predict([{"cc_num": 1}, {"cc_num": 2}])
+            predictor.predict_blocking([{"cc_num": 1}, {"cc_num": 2}])
         assert _detail(info.value)["code"] == "CONTRACT_VIOLATION"
         assert "1 predictions for 2 rows" in _detail(info.value)["message"]
         assert fv.log_calls == []
@@ -439,7 +457,7 @@ class TestModelInputContract:
         predictor = dp.DefaultPredict(FakeDeployment(schema, FakeFeatureView()))
 
         with pytest.raises(Exception) as info:
-            predictor.predict([{"cc_num": 1}])
+            predictor.predict_blocking([{"cc_num": 1}])
 
         assert _detail(info.value)["code"] == "CONTRACT_VIOLATION"
 
@@ -449,7 +467,7 @@ class TestModelInputContract:
         )
 
         with pytest.raises(Exception) as info:
-            predictor.predict([{"cc_num": 1, "extra": 2}], request_id="req-7")
+            predictor.predict_blocking([{"cc_num": 1, "extra": 2}], request_id="req-7")
 
         assert _detail(info.value)["request_id"] == "req-7"
 
@@ -515,7 +533,7 @@ class TestPredict:
     def test_predictions_and_column_selection(self, pod_env):
         predictor, fv = self._model_predictor(pod_env)
 
-        result = predictor.predict([{"cc_num": 1}, {"cc_num": 2}])
+        result = predictor.predict_blocking([{"cc_num": 1}, {"cc_num": 2}])
 
         assert result == [1, 1]
         assert list(predictor.model.seen.columns) == ["amount_scaled", "cc_num"]
@@ -526,9 +544,38 @@ class TestPredict:
     def test_feature_view_deployment_returns_vectors(self, pod_env):
         predictor = dp.DefaultPredict(FakeDeployment(_schema(), FakeFeatureView()))
 
-        result = predictor.predict([{"cc_num": 7}])
+        result = predictor.predict_blocking([{"cc_num": 7}])
 
         assert result == {
+            "predictions": [[7, 1.0, 0.5]],
+            "columns": ["cc_num", "amount", "amount_scaled"],
+        }
+
+    def test_grpc_request_of_tensors_answers_in_tensors(self, pod_env):
+        from hopsworks_common.client.istio.utils.infer_type import InferInput
+
+        predictor, fv = self._model_predictor(pod_env)
+
+        result = predictor.predict_blocking(
+            [InferInput(name="cc_num", shape=[2], datatype="INT64", data=[1, 2])]
+        )
+
+        assert result == [
+            {"name": "predictions", "shape": [2], "datatype": "INT64", "data": [1, 1]}
+        ]
+        assert fv.lookup_calls[0]["entry"] == [{"cc_num": 1}, {"cc_num": 2}]
+
+    def test_grpc_feature_view_deployment_returns_vector_tensors(self, pod_env):
+        from hopsworks_common.client.istio.utils.infer_type import InferInput
+        from hsml.deployment_schema import _decode_outputs
+
+        predictor = dp.DefaultPredict(FakeDeployment(_schema(), FakeFeatureView()))
+
+        result = predictor.predict_blocking(
+            [InferInput(name="cc_num", shape=[1], datatype="INT64", data=[7])]
+        )
+
+        assert _decode_outputs(result) == {
             "predictions": [[7, 1.0, 0.5]],
             "columns": ["cc_num", "amount", "amount_scaled"],
         }
@@ -537,7 +584,7 @@ class TestPredict:
         predictor, _ = self._model_predictor(pod_env)
 
         with pytest.raises(Exception) as info:
-            predictor.predict([{"cc_num": 1, "extra": 2}])
+            predictor.predict_blocking([{"cc_num": 1, "extra": 2}])
 
         assert _status(info.value) == 400
         assert _detail(info.value)["code"] == "SCHEMA_VALIDATION"
@@ -553,7 +600,7 @@ class TestPredict:
         assert predictor.max_batch_rows == 2  # the limit travels with the schema
 
         with pytest.raises(Exception) as info:
-            predictor.predict([[1], [2], [3]])
+            predictor.predict_blocking([[1], [2], [3]])
 
         assert _status(info.value) == 413
 
@@ -564,7 +611,7 @@ class TestPredict:
         predictor, _ = self._model_predictor(pod_env, fv)
 
         with pytest.raises(Exception) as info:
-            predictor.predict([[1], [2], [3]])
+            predictor.predict_blocking([[1], [2], [3]])
 
         assert _status(info.value) == 404
         assert _detail(info.value)["code"] == "ENTITY_NOT_FOUND"
@@ -576,7 +623,7 @@ class TestPredict:
         predictor, _ = self._model_predictor(pod_env, fv)
 
         with pytest.raises(Exception) as info:
-            predictor.predict([[1]])
+            predictor.predict_blocking([[1]])
 
         assert _status(info.value) == 400
         assert _detail(info.value)["code"] == "FEATURE_LOOKUP_FAILED"
@@ -586,7 +633,7 @@ class TestPredict:
         fv.lookup_error = ZeroDivisionError("udf")
         predictor, _ = self._model_predictor(pod_env, fv)
         with pytest.raises(Exception) as info:
-            predictor.predict([[1]])
+            predictor.predict_blocking([[1]])
         assert _status(info.value) == 422
         assert "ZeroDivisionError" in _detail(info.value)["message"]
         assert "udf" not in _detail(info.value)["message"]
@@ -595,7 +642,7 @@ class TestPredict:
 
         fv.lookup_error = ConnectionError("down")
         with pytest.raises(Exception) as info:
-            predictor.predict([[1]])
+            predictor.predict_blocking([[1]])
         assert _status(info.value) == 503
         assert _detail(info.value)["code"] == "FEATURE_STORE_UNAVAILABLE"
 
@@ -608,7 +655,7 @@ class TestPredict:
         predictor = dp.DefaultPredict(deployment, async_logger=object())
 
         with pytest.raises(Exception) as info:
-            predictor.predict([{"cc_num": 1, "budget": "value"}])
+            predictor.predict_blocking([{"cc_num": 1, "budget": "value"}])
 
         message = _detail(info.value)["message"]
         assert _status(info.value) == 422
@@ -625,7 +672,7 @@ class TestPredict:
         predictor, _ = self._model_predictor(pod_env)
 
         with pytest.raises(Exception) as info:
-            predictor.predict([[1]])
+            predictor.predict_blocking([[1]])
 
         assert _status(info.value) == 500
         assert _detail(info.value)["code"] == "MODEL_FAILED"
@@ -648,7 +695,7 @@ class TestPredict:
         deployment = FakeDeployment(schema, fv, FakeModel(COLUMNAR))
         predictor = dp.DefaultPredict(deployment, async_logger=object())
 
-        predictor.predict(
+        predictor.predict_blocking(
             [{"cc_num": 1, "channel": "web"}, {"cc_num": 2}], request_id="req-1"
         )
 
@@ -676,7 +723,7 @@ class TestPredict:
         ]
 
         fv.log_error = RuntimeError("kafka")
-        assert predictor.predict([[1, None]]) == [1]
+        assert predictor.predict_blocking([[1, None]]) == [1]
         assert predictor._log_worker._wait(5)
         assert predictor._log_worker.failed == 1
 
@@ -686,7 +733,7 @@ class TestPredict:
             FakeDeployment(_schema(), fv), async_logger=object()
         )
 
-        predictor.predict([[1]])
+        predictor.predict_blocking([[1]])
 
         assert predictor._log_worker._wait(5)
         _, kwargs = fv.log_calls[0]
@@ -701,7 +748,7 @@ class TestPredict:
             FakeDeployment(_schema(), fv, FakeModel(COLUMNAR)), async_logger=object()
         )
 
-        assert predictor.predict([[1]]) == [1]
+        assert predictor.predict_blocking([[1]]) == [1]
         assert fv.log_started.wait(5)
         # the worker is inside log() while the request has already returned
         assert fv.log_calls == []
@@ -711,22 +758,22 @@ class TestPredict:
         assert len(fv.log_calls) == 1
 
     def test_full_logging_queue_drops_and_counts(self, pod_env, monkeypatch):
-        monkeypatch.setenv("FEATURE_LOGGER_QUEUE_SIZE", "2")
+        monkeypatch.setenv("FEATURE_LOGGER_QUEUE_SIZE", "1")
         fv = FakeFeatureView(logging_enabled=True)
         fv.log_gate = threading.Event()
         predictor = dp.DefaultPredict(
             FakeDeployment(_schema(), fv, FakeModel(COLUMNAR)), async_logger=object()
         )
 
-        predictor.predict([[1]])
-        assert fv.log_started.wait(5)  # the worker holds the first request's row
-        predictor.predict([[2]])  # fills the budget of two rows
-        predictor.predict([[3]])  # dropped
-        assert predictor._log_worker.dropped == 1
+        predictor.predict_blocking([[1]])
+        assert fv.log_started.wait(5)  # the worker holds the first request
+        predictor.predict_blocking([[2]])
+        predictor.predict_blocking([[3]])
+        assert predictor._log_worker.dropped == 2  # the active row retains its budget
 
         fv.log_gate.set()
         assert predictor.close() is True
-        assert len(fv.log_calls) == 2
+        assert len(fv.log_calls) == 1
 
     def test_the_logging_backlog_is_bounded_by_rows_not_requests(
         self, pod_env, monkeypatch
@@ -738,17 +785,17 @@ class TestPredict:
             FakeDeployment(_schema(), fv, FakeModel(COLUMNAR)), async_logger=object()
         )
 
-        predictor.predict([[1], [2], [3]])  # three rows, held by the worker
+        predictor.predict_blocking([[1], [2], [3]])  # three rows, held by the worker
         assert fv.log_started.wait(5)
-        predictor.predict([[4], [5]])  # 3 + 2 rows exceed the budget: dropped
-        assert predictor._log_worker.dropped == 1
-        predictor.predict([[6]])  # 3 + 1 rows fit
+        predictor.predict_blocking([[4], [5]])  # 3 + 2 rows exceed the budget: dropped
+        assert predictor._log_worker.dropped == 2
+        predictor.predict_blocking([[6]])  # 3 + 1 rows fit
 
         fv.log_gate.set()
         assert predictor.close() is True
         assert [len(call[0][0]) for call in fv.log_calls] == [3, 1]
 
-    def test_a_batch_larger_than_the_whole_budget_is_still_logged(
+    def test_a_batch_larger_than_the_whole_budget_is_dropped(
         self, pod_env, monkeypatch
     ):
         monkeypatch.setenv("FEATURE_LOGGER_QUEUE_SIZE", "1")
@@ -757,17 +804,12 @@ class TestPredict:
             FakeDeployment(_schema(), fv, FakeModel(COLUMNAR)), async_logger=object()
         )
 
-        fv.log_gate = threading.Event()
-        predictor.predict([[1], [2], [3]])  # three rows against a budget of one
-        assert fv.log_started.wait(5)
-        # the peak is that one batch: the next request finds the backlog
-        # non-empty and is refused, so nothing accumulates behind it
-        predictor.predict([[4]])
-        assert predictor._log_worker.dropped == 1
-
-        fv.log_gate.set()
+        predictor.predict_blocking([[1], [2], [3]])
+        assert predictor._log_worker.dropped == 3
+        assert fv.log_calls == []
+        predictor.predict_blocking([[4]])
         assert predictor.close() is True
-        assert [len(call[0][0]) for call in fv.log_calls] == [3]
+        assert [len(call[0][0]) for call in fv.log_calls] == [1]
 
     def test_close_drains_the_queue(self, pod_env):
         fv = FakeFeatureView(logging_enabled=True)
@@ -775,7 +817,7 @@ class TestPredict:
             FakeDeployment(_schema(), fv, FakeModel(COLUMNAR)), async_logger=object()
         )
         for _ in range(5):
-            predictor.predict([[1]])
+            predictor.predict_blocking([[1]])
 
         assert predictor.close() is True
         assert len(fv.log_calls) == 5
@@ -833,6 +875,21 @@ class TestWrapperHandover:
         assert "run_kserve_wrapper" in dp.STUB_SCRIPT
         assert os.path.basename(str(stub)) == "default_predictor.py"
 
+    def test_stub_falls_back_to_the_pre_package_module(self, tmp_path, monkeypatch):
+        import importlib.util
+        import sys
+
+        monkeypatch.setitem(sys.modules, "hsml.default_predictor", None)
+        monkeypatch.setitem(sys.modules, "hsml.default_predictor", dp)
+        stub = tmp_path / "default_predictor.py"
+        stub.write_text(dp.STUB_SCRIPT)
+        spec = importlib.util.spec_from_file_location("default_predictor_old", stub)
+        module = importlib.util.module_from_spec(spec)
+
+        spec.loader.exec_module(module)
+
+        assert module.Predict is dp.DefaultPredict
+
 
 def test_frame_to_rows_keeps_collections_distinct_from_null():
     import pandas as pd
@@ -866,7 +923,7 @@ class TestNoLookup:
             FakeDeployment(schema, fv, FakeModel(COLUMNAR)), async_logger=object()
         )
 
-        result = predictor.predict(
+        result = predictor.predict_blocking(
             [
                 {"cc_num": 1, "amount": 2.0, "rate": 0.1},
                 {"cc_num": 2, "amount": 3.0, "rate": 0.2},
@@ -897,9 +954,16 @@ class TestNoLookup:
         assert predictor.feature_view is None
         assert predictor.logging_enabled is False
         assert predictor.model_input_columns == ["amount_scaled", "cc_num"]
-        result = predictor.predict([{"amount_scaled": 0.5, "cc_num": 1}])
+        result = predictor.predict_blocking([{"amount_scaled": 0.5, "cc_num": 1}])
         assert result == [1]
         assert list(predictor.model.seen.columns) == ["amount_scaled", "cc_num"]
+        # Through `predict` as well, which is what the serving wrapper calls. This
+        # deployment takes an early return in __init__, and everything the request path
+        # reads has to be set before it: the awaited path asked for _blocking_lookup and
+        # a model without a feature view answered every request with an AttributeError.
+        assert asyncio.run(
+            predictor.predict([{"amount_scaled": 0.5, "cc_num": 1}])
+        ) == [1]
 
     def test_model_without_any_schema_takes_the_passed_features_in_order(self, pod_env):
         schema = DeploymentSchema(
@@ -913,7 +977,7 @@ class TestNoLookup:
         )
 
         assert predictor.model_input_columns == ["cc_num", "amount_scaled"]
-        assert predictor.predict([{"cc_num": 1, "amount_scaled": 0.5}]) == [1]
+        assert predictor.predict_blocking([{"cc_num": 1, "amount_scaled": 0.5}]) == [1]
         assert list(predictor.model.seen.columns) == ["cc_num", "amount_scaled"]
 
     def test_model_without_feature_view_needs_every_input_passed(self, pod_env):
@@ -924,3 +988,555 @@ class TestNoLookup:
             dp.DefaultPredict(
                 FakeDeployment(schema, None, FakeModel(COLUMNAR)), async_logger=object()
             )
+
+
+@pytest.mark.parametrize("with_model,td", [(True, 3), (False, 3), (False, None)])
+def test_arrow_worker_headers_and_future_legacy_fallback(
+    pod_env, monkeypatch, with_model, td
+):
+    from hopsworks_common import client
+    from hopsworks_common.core import feature_logging_arrow as arrow
+    from hopsworks_common.core.feature_logging_buffer import _BufferBudget
+
+    monkeypatch.setenv("HOPSWORKS_INFERENCE_LOGGER_CAPABILITIES", "features-arrow-v1")
+    monkeypatch.setattr(client, "_get_instance", lambda: SimpleNamespace(_project_id=7))
+    calls, built = [], []
+    budget = _BufferBudget(1000, 64 << 20)
+
+    class Builder:
+        _max_bytes = 8 << 20
+
+        def __init__(self, feature_view, version):
+            assert version == td
+
+        def _build_batch(self, frame, predictions, extra, request_id, log_time):
+            import pyarrow as pa
+
+            built.append((threading.get_ident(), predictions, request_id))
+            return pa.RecordBatch.from_pydict({"n": list(range(len(frame)))})
+
+        def _combine(self, batches):
+            import pyarrow as pa
+
+            return pa.Table.from_batches(batches).combine_chunks().to_batches()[0]
+
+        def _serialize(self, batch):
+            return b"arrow"
+
+    class Logger:
+        _source = "http://predictor:8080"
+        _arrow_disabled = False
+        _async_worker_thread = SimpleNamespace(_budget=budget)
+
+        def log_batch(self, payload, attributes, rows):
+            calls.append((threading.get_ident(), payload, attributes, rows))
+            assert budget._snapshot()["rows"] == rows
+
+    monkeypatch.setattr(arrow, "_ArrowBatchBuilder", Builder)
+    fv = FakeFeatureView(logging_enabled=True)
+    fv._feature_store_id = 9
+    model = FakeModel(COLUMNAR) if with_model else None
+    deployment = FakeDeployment(_schema(training_dataset_version=td), fv, model)
+    deployment.training_dataset_version = td
+    logger = Logger()
+    predictor = dp.DefaultPredict(deployment, async_logger=logger)
+    try:
+        predictor.predict_blocking([[1], [2]], request_id="request-1")
+        assert predictor._log_worker._wait(2)
+        assert len(calls) == 1
+        thread, payload, headers, rows = calls[0]
+        assert thread == built[0][0] and thread != threading.get_ident()
+        assert payload == b"arrow" and rows == 2
+        assert headers["ce-source"] == logger._source
+        assert headers["ce-hopsprojectid"] == "7" and headers["ce-hopsfsid"] == "9"
+        assert headers["ce-hopsschemaid"] == predictor.schema.schema_id
+        assert headers["ce-hopsrequestid"] == "request-1"
+        assert ("ce-hopstdversion" in headers) == (td is not None)
+        assert ("ce-hopsmodelname" in headers) == with_model
+        assert ("ce-hopsmodelversion" in headers) == with_model
+        assert built[0][1] == ([1, 1] if with_model else None)
+        assert built[0][2] == "request-1"
+        assert budget._snapshot() == {"rows": 0, "bytes": 0}
+        logger._arrow_disabled = True
+        predictor.predict_blocking([[3]])
+        assert predictor._log_worker._wait(2)
+        assert len(calls) == 1 and len(fv.log_calls) == 1
+    finally:
+        predictor.close()
+
+
+def test_backlogged_requests_share_one_post(pod_env, monkeypatch):
+    from hopsworks_common import client
+    from hopsworks_common.core import feature_logging_arrow as arrow
+    from hopsworks_common.core.feature_logging_buffer import _BufferBudget
+
+    monkeypatch.setenv("HOPSWORKS_INFERENCE_LOGGER_CAPABILITIES", "features-arrow-v1")
+    monkeypatch.setattr(client, "_get_instance", lambda: SimpleNamespace(_project_id=7))
+    calls, request_ids = [], []
+    budget = _BufferBudget(1000, 64 << 20)
+    release = threading.Event()
+
+    class Builder:
+        _max_bytes = 8 << 20
+
+        def __init__(self, feature_view, version):
+            pass
+
+        def _build_batch(self, frame, predictions, extra, request_id, log_time):
+            import pyarrow as pa
+
+            request_ids.append(request_id)
+            return pa.RecordBatch.from_pydict({"n": list(range(len(frame)))})
+
+        def _combine(self, batches):
+            import pyarrow as pa
+
+            return pa.Table.from_batches(batches).combine_chunks().to_batches()[0]
+
+        def _serialize(self, batch):
+            return b"x" * batch.num_rows
+
+    class Logger:
+        _source = "http://predictor:8080"
+        _arrow_disabled = False
+        _async_worker_thread = SimpleNamespace(_budget=budget)
+
+        def log_batch(self, payload, attributes, rows):
+            # The first post blocks so the next requests pile up behind it.
+            if not calls:
+                release.wait(5)
+            calls.append((payload, attributes["ce-hopsrequestid"], rows))
+
+    monkeypatch.setattr(arrow, "_ArrowBatchBuilder", Builder)
+    fv = FakeFeatureView(logging_enabled=True)
+    fv._feature_store_id = 9
+    predictor = dp.DefaultPredict(
+        FakeDeployment(_schema(), fv, FakeModel(COLUMNAR)), async_logger=Logger()
+    )
+    try:
+        predictor.predict_blocking([[1]], request_id="first")
+        time.sleep(0.05)
+        predictor.predict_blocking([[2], [3]], request_id="second")
+        predictor.predict_blocking([[4]], request_id="third")
+        release.set()
+        assert predictor._log_worker._wait(5)
+        assert [(rid, rows) for _p, rid, rows in calls] == [("first", 1), ("second", 3)]
+        assert calls[1][0] == b"xxx"
+        assert request_ids == ["first", "second", "third"]
+        assert budget._snapshot() == {"rows": 0, "bytes": 0}
+    finally:
+        predictor.close()
+
+
+def test_a_group_over_the_event_limit_is_split(pod_env, monkeypatch):
+    from hopsworks_common import client
+    from hopsworks_common.core import feature_logging_arrow as arrow
+    from hopsworks_common.core.feature_logging_buffer import _BufferBudget
+
+    monkeypatch.setenv("HOPSWORKS_INFERENCE_LOGGER_CAPABILITIES", "features-arrow-v1")
+    monkeypatch.setattr(client, "_get_instance", lambda: SimpleNamespace(_project_id=7))
+    posts = []
+    budget = _BufferBudget(1000, 64 << 20)
+    release = threading.Event()
+
+    class Builder:
+        # Two one-row batches of int64 fit; three do not.
+        _max_bytes = 20
+
+        def __init__(self, feature_view, version):
+            pass
+
+        def _build_batch(self, frame, predictions, extra, request_id, log_time):
+            import pyarrow as pa
+
+            return pa.RecordBatch.from_pydict({"n": [1] * len(frame)})
+
+        def _combine(self, batches):
+            import pyarrow as pa
+
+            return pa.Table.from_batches(batches).combine_chunks().to_batches()[0]
+
+        def _serialize(self, batch):
+            return b"p" * batch.num_rows
+
+    class Logger:
+        _source = "http://predictor:8080"
+        _arrow_disabled = False
+        _async_worker_thread = SimpleNamespace(_budget=budget)
+
+        def log_batch(self, payload, attributes, rows):
+            if not posts:
+                release.wait(5)
+            posts.append(rows)
+
+    monkeypatch.setattr(arrow, "_ArrowBatchBuilder", Builder)
+    fv = FakeFeatureView(logging_enabled=True)
+    fv._feature_store_id = 9
+    predictor = dp.DefaultPredict(
+        FakeDeployment(_schema(), fv, FakeModel(COLUMNAR)), async_logger=Logger()
+    )
+    try:
+        predictor.predict_blocking([[1]], request_id="a")
+        time.sleep(0.05)
+        for rid in ("b", "c", "d"):
+            predictor.predict_blocking([[1]], request_id=rid)
+        release.set()
+        assert predictor._log_worker._wait(5)
+        assert posts == [1, 2, 1]
+    finally:
+        predictor.close()
+
+
+def test_logging_admission_exception_cannot_fail_prediction(
+    pod_env, monkeypatch, caplog
+):
+    predictor = dp.DefaultPredict(
+        FakeDeployment(
+            _schema(), FakeFeatureView(logging_enabled=True), FakeModel(COLUMNAR)
+        ),
+        async_logger=object(),
+    )
+
+    def reject(item):
+        raise RuntimeError("private feature value")
+
+    monkeypatch.setattr(predictor._log_worker, "_submit", reject)
+    try:
+        assert predictor.predict_blocking([[1], [2]]) == [1, 1]
+        assert predictor._log_worker.failed == 2
+        assert "RuntimeError" in caplog.text
+        assert "private feature value" not in caplog.text
+    finally:
+        predictor.close()
+
+
+def test_job_transport_hands_posts_to_the_file_writer(pod_env, monkeypatch):
+    from hopsworks_common.core import feature_logging_arrow as arrow
+    from hopsworks_common.core import feature_logging_file as flf
+
+    # The view logs through the job transport: no sidecar capability, no
+    # wrapper logger, the serialized batch goes to the file writer instead.
+    monkeypatch.setenv("SERVING_FEATURE_LOGGING", "job")
+    monkeypatch.delenv("HOPSWORKS_INFERENCE_LOGGER_CAPABILITIES", raising=False)
+    submitted, closed, triggered, serialized = [], [], [], []
+
+    class Builder:
+        _max_bytes = 8 << 20
+
+        def __init__(self, feature_view, version):
+            pass
+
+        def _build_batch(self, frame, predictions, extra, request_id, log_time):
+            import pyarrow as pa
+
+            return pa.RecordBatch.from_pydict({"n": list(range(len(frame)))})
+
+        def _combine(self, batches):
+            import pyarrow as pa
+
+            return pa.Table.from_batches(batches).combine_chunks().to_batches()[0]
+
+        def _serialize(self, batch):
+            serialized.append(batch)
+            return b"x" * batch.num_rows
+
+        def _complete(self, batch, values):
+            import pyarrow as pa
+
+            for name in ("model_name", "model_version", "td_version"):
+                batch = batch.append_column(
+                    name, pa.array([values[name]] * batch.num_rows)
+                )
+            return batch
+
+    class Transport:
+        def __init__(self, options, project=None):
+            assert options.feature_view_name == "fv" and options.schema_id
+            self.options = options
+
+        def _submit(self, payload, rows):
+            submitted.append((payload, rows))
+
+        def _close(self, timeout=None):
+            closed.append(timeout)
+            return True
+
+    monkeypatch.setattr(arrow, "_ArrowBatchBuilder", Builder)
+    monkeypatch.setattr(flf, "_FileLogTransport", Transport)
+    # The fake has no counters to publish; keep the process registry clean.
+    monkeypatch.setattr(flf, "_expose_metrics", lambda *args: None)
+    fv = FakeFeatureView(logging_enabled=True)
+    predictor = dp.DefaultPredict(FakeDeployment(_schema(), fv, FakeModel(COLUMNAR)))
+    monkeypatch.setattr(
+        predictor, "_trigger_commit_job", lambda timeout: triggered.append(timeout)
+    )
+    assert predictor.logging_enabled and predictor.logging_transport == "job"
+    assert fv.feature_logger is None  # the sidecar logger was never initialised
+    predictor.predict_blocking([[1], [2]], request_id="r1")
+    assert predictor._log_worker._wait(5)
+    assert submitted == [(b"xx", 2)]
+    # What the sidecar reads from the event headers rides the file as columns.
+    (batch,) = serialized
+    assert batch.schema.names == ["n", "model_name", "model_version", "td_version"]
+    assert batch.column("model_name").to_pylist() == ["fraud", "fraud"]
+    assert batch.column("model_version").to_pylist() == ["2", "2"]
+    assert batch.column("td_version").to_pylist() == [3, 3]
+    assert predictor.close(timeout=7.0)
+    # The writer gets what is left of the one shutdown budget, never a second one.
+    assert len(closed) == 1 and 0.0 <= closed[0] <= 7.0
+    assert len(triggered) == 1 and 0.0 <= triggered[0] <= closed[0]
+
+
+def test_logging_transport_prefers_the_backend_variable(monkeypatch):
+    """The backend's variable outranks the client marker.
+
+    It is derived from the view's own logging group and reserved, where the marker
+    is user-editable and goes stale when the view is switched after the deployment
+    was created.
+    """
+    monkeypatch.delenv("SERVING_FEATURE_LOGGING", raising=False)
+    monkeypatch.delenv("HOPSWORKS_FEATURE_LOGGING_TRANSPORT", raising=False)
+    view = SimpleNamespace(feature_logging=SimpleNamespace(transport="job"))
+    assert dp._logging_transport(view) == "job"
+    assert dp._logging_transport(SimpleNamespace(feature_logging=None)) == "realtime"
+
+    # the marker alone still decides, for a pod stamped by an older backend
+    monkeypatch.setenv("SERVING_FEATURE_LOGGING", "JOB")
+    assert dp._logging_transport(view) == "job"
+
+    # and the backend's value wins over a stale marker
+    monkeypatch.setenv("HOPSWORKS_FEATURE_LOGGING_TRANSPORT", "realtime")
+    assert dp._logging_transport(view) == "realtime"
+
+
+def test_a_backlog_never_exceeds_the_receivers_row_limit(pod_env, monkeypatch):
+    from hopsworks_common import client
+    from hopsworks_common.core import feature_logging_arrow as arrow
+    from hopsworks_common.core.feature_logging_buffer import _BufferBudget
+
+    monkeypatch.setenv("HOPSWORKS_INFERENCE_LOGGER_CAPABILITIES", "features-arrow-v1")
+    monkeypatch.setenv("HOPSWORKS_FEATURE_LOGGER_MAX_EVENT_ROWS", "512")
+    monkeypatch.setattr(client, "_get_instance", lambda: SimpleNamespace(_project_id=7))
+    posts = []
+    budget = _BufferBudget(2000, 64 << 20)
+    release = threading.Event()
+
+    class Builder:
+        _max_bytes = 8 << 20
+
+        def __init__(self, feature_view, version):
+            pass
+
+        def _build_batch(self, frame, predictions, extra, request_id, log_time):
+            import pyarrow as pa
+
+            return pa.RecordBatch.from_pydict({"n": list(range(len(frame)))})
+
+        def _combine(self, batches):
+            import pyarrow as pa
+
+            return pa.Table.from_batches(batches).combine_chunks().to_batches()[0]
+
+        def _serialize(self, batch):
+            return b"x" * batch.num_rows
+
+    class Logger:
+        _source = "http://predictor:8080"
+        _arrow_disabled = False
+        _async_worker_thread = SimpleNamespace(_budget=budget)
+
+        def log_batch(self, payload, attributes, rows):
+            if not posts:
+                release.wait(5)
+            posts.append(rows)
+
+    monkeypatch.setattr(arrow, "_ArrowBatchBuilder", Builder)
+    fv = FakeFeatureView(logging_enabled=True)
+    fv._feature_store_id = 9
+    predictor = dp.DefaultPredict(
+        FakeDeployment(_schema(), fv, FakeModel(COLUMNAR)), async_logger=Logger()
+    )
+    try:
+        predictor.predict_blocking([[1]], request_id="first")
+        time.sleep(0.05)
+        # 600 rows pile up behind the blocked first post.
+        for i in range(300):
+            predictor.predict_blocking([[2], [3]], request_id=f"r{i}")
+        release.set()
+        assert predictor._log_worker._wait(10)
+        assert sum(posts) == 601
+        # No post carries more than the sidecar accepts, and the backlog was
+        # still coalesced rather than posted one request at a time.
+        assert max(posts) <= 512 and len(posts) <= 4
+        assert predictor._log_worker.failed == 0 and predictor._log_worker.dropped == 0
+    finally:
+        predictor.close()
+
+
+def test_a_request_larger_than_the_row_limit_is_logged_in_slices():
+    import pandas as pd
+    from hsml.default_predictor import _int_or_none, _row_slices
+
+    rows = [{"id": i} for i in range(5)]
+    vectors = pd.DataFrame({"f": range(5)})
+    predictions = list(range(5))
+    slices = list(_row_slices(rows, vectors, predictions, 2))
+    assert [start for start, *_ in slices] == [0, 2, 4]
+    assert [len(r) for _s, r, _v, _p in slices] == [2, 2, 1]
+    assert slices[1][2]["f"].tolist() == [2, 3] and slices[2][3] == [4]
+    assert list(_row_slices(rows, vectors, None, 10)) == [(0, rows, vectors, None)]
+    assert _int_or_none("4") == 4 and _int_or_none("") is None
+    assert _int_or_none("v1") is None
+
+
+def test_coalesced_requests_share_one_reservation(monkeypatch):
+    from hopsworks_common.core.feature_logging_buffer import (
+        _active_reservation,
+        _BufferBudget,
+    )
+    from hsml.default_predictor import _LogWorker
+
+    seen = []
+
+    def target(items):
+        reservation = _active_reservation.current
+        seen.append((len(items), reservation._rows))
+
+    budget = _BufferBudget(1000, 64 << 20)
+    worker = _LogWorker(target, 1000, budget=budget)
+    # Three requests of two rows each; the worker takes whatever is queued together.
+    for _ in range(3):
+        assert worker._enqueue(([{"a": 1}, {"a": 2}], [[1], [2]], None, "r", None))
+    worker._wait(5)
+    total_rows = sum(rows for _n, rows in seen)
+    assert total_rows == 6, seen
+    # Whatever the coalescing, the reservation visible to a post covers every row of it.
+    for count, rows in seen:
+        assert rows == 2 * count
+    assert budget._snapshot() == {"rows": 0, "bytes": 0}
+    worker._close(1)
+
+
+class TestAsyncPredict:
+    """predict is a coroutine, and answers exactly as the blocking entry point does."""
+
+    def _predictor(self):
+        return dp.DefaultPredict(FakeDeployment(_schema(), FakeFeatureView()))
+
+    def test_predict_is_a_coroutine_function(self):
+        assert inspect.iscoroutinefunction(dp.DefaultPredict.predict)
+        assert not inspect.iscoroutinefunction(dp.DefaultPredict.predict_blocking)
+
+    def test_both_entry_points_answer_the_same(self):
+        rows = [{"cc_num": 1}, {"cc_num": 2}]
+        blocking = self._predictor().predict_blocking(rows)
+        awaited = asyncio.run(self._predictor().predict(rows))
+        assert awaited == blocking
+
+    def test_a_failed_lookup_maps_the_same_either_way(self):
+        def run(entry_error):
+            predictor = self._predictor()
+            predictor.feature_view.lookup_error = entry_error
+            return predictor
+
+        blocking = run(FeatureStoreException("no entity"))
+        with pytest.raises(Exception) as sync_err:
+            blocking.predict_blocking([{"cc_num": 1}])
+        awaited = run(FeatureStoreException("no entity"))
+        with pytest.raises(Exception) as async_err:
+            asyncio.run(awaited.predict([{"cc_num": 1}]))
+        assert sync_err.value.status_code == async_err.value.status_code
+        assert sync_err.value.detail["code"] == async_err.value.detail["code"]
+
+    def test_the_lookup_is_awaited_unless_asked_otherwise(self, monkeypatch):
+        """The default awaits, now that concurrent lookups overlap instead of queueing.
+
+        The setting is read when the predictor is built, which is how a pod gets it, and
+        not per request: this is on the path every prediction takes.
+        """
+        awaited = self._predictor()
+        assert awaited._fetch() == awaited.fetch_feature_vectors_async
+        monkeypatch.setenv("SERVING_PREDICTOR_ASYNC_LOOKUP", "false")
+        blocking = self._predictor()
+        assert blocking._fetch() == blocking.fetch_feature_vectors
+
+    def test_the_loop_is_free_while_the_lookup_runs(self):
+        """The point of the coroutine: other tasks progress during the lookup.
+
+        The fake lookup blocks for 200 ms. A ticker every millisecond alongside it
+        should therefore get many turns; on a blocking predict it gets the one it took
+        before the lookup started, which is what this number distinguishes.
+        """
+        predictor = self._predictor()
+        predictor.feature_view.lookup_delay = 0.2
+        ticks = []
+
+        async def drive():
+            async def ticker():
+                while True:
+                    ticks.append(1)
+                    await asyncio.sleep(0.001)
+
+            task = asyncio.ensure_future(ticker())
+            await asyncio.sleep(0)  # let the ticker take its first turn
+            before = len(ticks)
+            await predictor.predict([{"cc_num": 1}])
+            during = len(ticks) - before
+            task.cancel()
+            return during
+
+        during = asyncio.run(drive())
+        assert during > 10, (
+            f"only {during} ticks ran during a 200 ms lookup: the event loop was held"
+        )
+
+    def test_the_blocking_entry_point_refuses_a_running_loop(self):
+        predictor = self._predictor()
+
+        async def drive():
+            with pytest.raises(RuntimeError, match="running event loop"):
+                predictor.predict_blocking([{"cc_num": 1}])
+
+        asyncio.run(drive())
+
+
+class TestFeatureViewDeploymentIsAsync:
+    """A feature view deployment serves through the same coroutine a model one does."""
+
+    def test_the_stub_binds_predict_to_the_default_predictor(self):
+        namespace = {}
+        exec(compile(dp.STUB_SCRIPT, "stub", "exec"), namespace)
+        assert namespace["Predict"] is dp.DefaultPredict
+
+    def test_the_class_the_stub_binds_serves_coroutines(self):
+        namespace = {}
+        exec(compile(dp.STUB_SCRIPT, "stub", "exec"), namespace)
+        # This is what the model server branches on to decide whether to await.
+        assert inspect.iscoroutinefunction(namespace["Predict"].predict)
+
+    def test_the_stub_imports_without_a_fallback(self):
+        """One import, not a try/except whose branches were identical."""
+        assert dp.STUB_SCRIPT.count("import DefaultPredict as Predict") == 1
+        assert "except ImportError" not in dp.STUB_SCRIPT
+
+
+def test_close_leaves_the_commit_job_trigger_behind_at_the_budget(monkeypatch):
+    """A backend that does not answer must not hold the stopping pod past its budget."""
+    predictor = object.__new__(dp.DefaultPredict)
+    predictor._log_worker = None
+    predictor._file_transport = SimpleNamespace(_close=lambda timeout: True)
+    predictor.feature_view = SimpleNamespace(name="view", version=1)
+    asked = threading.Event()
+
+    def slow_get_job(name):
+        asked.set()
+        time.sleep(0.5)
+
+    monkeypatch.setattr(
+        "hopsworks_common.core.job_api.JobApi",
+        lambda: SimpleNamespace(get_job=slow_get_job),
+    )
+    started = time.monotonic()
+    assert predictor.close(timeout=0.05) is True
+    assert time.monotonic() - started < 0.3
+    assert asked.wait(1)
