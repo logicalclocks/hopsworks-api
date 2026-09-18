@@ -22,6 +22,7 @@ import com.logicalclocks.hsfs.metadata.Option;
 import com.logicalclocks.hsfs.util.Constants;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -74,6 +75,29 @@ class TestSqlConnector {
     assertEquals("secret", options.get(Constants.JDBC_PWD));
     assertEquals("com.teradata.jdbc.TeraDriver", options.get(Constants.JDBC_DRIVER));
     // A non-reserved argument still reaches the driver.
+    assertEquals("LDAP", options.get("LOGMECH"));
+  }
+
+  @Test
+  void testConnectionArgumentsAreNotForwardedAsJdbcProperties() throws FeatureStoreException {
+    // Spark hands an option it does not recognise to the driver as a connection property, so a
+    // host, port, dbs_port or database argument would contradict the URL built from the fields.
+    SqlConnector sc = teradataConnector();
+    sc.setArguments(Arrays.asList(
+        new Option("host", "attacker.example.com"),
+        new Option("DBS_PORT", "9999"),
+        new Option(" database ", "other_db"),
+        new Option("database_type", "MYSQL"),
+        new Option("LOGMECH", "LDAP")));
+
+    Map<String, String> options = sc.sparkOptions(null);
+
+    assertFalse(options.containsKey("host"));
+    assertFalse(options.containsKey("DBS_PORT"));
+    assertFalse(options.containsKey("database"));
+    assertFalse(options.containsKey("database_type"));
+    assertEquals("jdbc:teradata://teradata.example.com/DATABASE=demo_user,DBS_PORT=1025",
+        options.get(Constants.JDBC_URL));
     assertEquals("LDAP", options.get("LOGMECH"));
   }
 

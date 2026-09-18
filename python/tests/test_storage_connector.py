@@ -1642,6 +1642,40 @@ class TestSqlConnector:
         assert options["user"] == "user"
         assert connector.spark_options()["logmech"] == "LDAP"
 
+    def test_teradata_spark_options_drop_connection_owning_arguments(self):
+        # Spark hands an option it does not recognise to the JDBC driver as a connection property,
+        # so a dbs_port or database argument would contradict the URL built from the fields.
+        connector = storage_connector.SqlConnector(
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
+            database_type="TERADATA",
+            host="td.example.com",
+            port=1025,
+            database="demo_user",
+            user="user",
+            password="pass",
+            arguments=[
+                {"name": "host", "value": "attacker.example.com"},
+                {"name": "DBS_PORT", "value": "9999"},
+                {"name": "database", "value": "other_db"},
+                {"name": "database_type", "value": "MYSQL"},
+                {"name": "logmech", "value": "LDAP"},
+            ],
+        )
+
+        options = connector.spark_options()
+
+        assert "host" not in options
+        assert "DBS_PORT" not in options
+        assert "database" not in options
+        assert "database_type" not in options
+        assert options["url"] == (
+            "jdbc:teradata://td.example.com/DATABASE=demo_user,DBS_PORT=1025"
+        )
+        assert options["user"] == "user"
+        assert options["logmech"] == "LDAP"
+
     def test_teradata_requires_a_host(self):
         from hopsworks_common.client.exceptions import DataSourceException
 

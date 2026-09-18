@@ -40,10 +40,14 @@ import software.amazon.awssdk.utils.CollectionUtils;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @AllArgsConstructor
@@ -636,6 +640,16 @@ public abstract class StorageConnector {
     @Getter @Setter
     protected List<Option> arguments;
 
+    /**
+     * Connection settings the connector's own fields supply, so an argument repeating one is
+     * dropped rather than forwarded. Spark hands an option it does not recognise to the JDBC
+     * driver as a connection property, where a stray dbs_port or database would contradict the
+     * URL built from those same fields. Mirrors the set in hopsworks-ee and in the Python client.
+     */
+    private static final Set<String> RESERVED_ARGUMENTS = new HashSet<>(Arrays.asList(
+        "host", "port", "dbs_port", "database", "database_type", "user", "username", "password",
+        Constants.JDBC_URL, Constants.JDBC_DRIVER));
+
     @Override
     public Map<String, String> sparkOptions(DataSource dataSource) throws FeatureStoreException {
       String normalizedType = databaseType != null ? databaseType.toUpperCase() : null;
@@ -654,7 +668,9 @@ public abstract class StorageConnector {
       Map<String, String> options = new HashMap<>();
       if (arguments != null && !arguments.isEmpty()) {
         options.putAll(arguments.stream()
-            .collect(Collectors.toMap(Option::getName, Option::getValue)));
+            .filter(o -> o.getName() != null
+                && !RESERVED_ARGUMENTS.contains(o.getName().trim().toLowerCase(Locale.ROOT)))
+            .collect(Collectors.toMap(o -> o.getName().trim(), Option::getValue)));
       }
       options.put(Constants.JDBC_URL, buildUrl(normalizedType, scheme, databaseName));
       options.put(Constants.JDBC_USER, getUser());

@@ -3620,8 +3620,16 @@ class SqlConnector(StorageConnector):
         return payload
 
     def spark_options(self) -> dict[str, Any]:
+        # The connection settings below are built from the connector's own fields, so an argument
+        # repeating one is dropped rather than forwarded. Spark hands anything it does not
+        # recognise to the JDBC driver as a connection property, where a stray ``dbs_port`` or
+        # ``database`` would contradict the URL that was just built from those same fields.
         opts = {
-            **(self._arguments if self._arguments else {}),
+            **{
+                name: value
+                for name, value in (self._arguments or {}).items()
+                if name.lower() not in self._RESERVED_CONNECTOR_ARGUMENTS
+            },
             "user": self.user,
             "password": self.password,
             "driver": self._DRIVERS.get(
