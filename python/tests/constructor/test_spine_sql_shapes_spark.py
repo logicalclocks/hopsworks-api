@@ -116,7 +116,7 @@ def test_the_golden_file_is_the_same_one_the_backend_generates():
     }
     asof = {label[len("ASOF ") :] for label in labels if label.startswith("ASOF ")}
     assert asof == windowed
-    assert len(windowed) >= 14, (
+    assert len(windowed) >= 17, (
         "shapes were removed from the golden file rather than added"
     )
 
@@ -157,6 +157,47 @@ def test_a_declared_default_fills_a_matched_null_and_nothing_else(spark):
         assert temperature == [42.0, None], (
             "a matched row holding NULL takes the declared default, a spine row that matched"
             f" nothing stays NULL; got {temperature}"
+        )
+    finally:
+        spark.sql("DROP TABLE IF EXISTS test_proj_featurestore.weather_1")
+        spark.sql(
+            "CREATE TABLE test_proj_featurestore.weather_1"
+            " (city STRING, station STRING, date TIMESTAMP,"
+            " temperature_2m_mean DOUBLE, wind_speed_10m_max DOUBLE) USING parquet"
+        )
+
+
+def test_an_empty_string_default_is_a_default(spark):
+    """An empty string is a declared default, not the absence of one.
+
+    The spine generator treated it as absent, so a matched row holding NULL trained as NULL while
+    the online statement answered with the empty string. DuckDB asserts the same two rows.
+    """
+    spark.sql(
+        "CREATE OR REPLACE TEMP VIEW station_rows AS SELECT * FROM VALUES"
+        " ('Stockholm', TIMESTAMP '2026-09-13 00:00:00', CAST(NULL AS STRING))"
+        " AS t(city, date, station)"
+    )
+    spark.sql("DROP TABLE IF EXISTS test_proj_featurestore.weather_1")
+    spark.sql(
+        "CREATE TABLE test_proj_featurestore.weather_1 USING parquet AS SELECT * FROM station_rows"
+    )
+    spark.sql(
+        "CREATE OR REPLACE TEMP VIEW __hopsworks_spine_3f9a AS SELECT * FROM VALUES"
+        " (CAST(0 AS BIGINT), 'SE', 'Stockholm', 'Sveavagen',"
+        " TIMESTAMP '2026-09-14 08:00:00', CAST(NULL AS DOUBLE)),"
+        " (CAST(1 AS BIGINT), 'SE', 'Gothenburg', 'Avenyn',"
+        " TIMESTAMP '2026-09-14 08:00:00', CAST(NULL AS DOUBLE))"
+        " AS t(__hopsworks_spine_row_id, country, city, street, date, label)"
+    )
+    try:
+        rows = spark.sql(
+            _statement("WINDOWED empty_string_default").replace('"', "`")
+        ).collect()
+        station = [row["station"] for row in rows]
+        assert station == ["", None], (
+            "a matched row holding NULL takes the empty-string default, a spine row that matched"
+            f" nothing stays NULL; got {station}"
         )
     finally:
         spark.sql("DROP TABLE IF EXISTS test_proj_featurestore.weather_1")
