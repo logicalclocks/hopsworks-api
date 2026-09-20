@@ -89,8 +89,20 @@ ASOF LEFT JOIN "test_proj_featurestore"."air_quality_epoch_1" "fg0" ON "spine"."
 ASOF LEFT JOIN "test_proj_featurestore"."weather_1" "fg1" ON "spine"."city" = "fg1"."city" AND "spine"."date" >= epoch_ms(CAST("fg1"."date" AS TIMESTAMP))
 ORDER BY "spine"."__hopsworks_spine_row_id";
 
+-- ASOF defaulted_feature
+SELECT "spine"."date" "date", CASE WHEN "fg1"."date" IS NOT NULL AND "fg1"."temperature_2m_mean" IS NULL THEN 42.0 ELSE "fg1"."temperature_2m_mean" END "temperature_2m_mean", "fg1"."wind_speed_10m_max" "wind_speed_10m_max"
+FROM "__hopsworks_spine_3f9a" "spine"
+ASOF LEFT JOIN "test_proj_featurestore"."weather_1" "fg1" ON "spine"."city" = "fg1"."city" AND "spine"."date" >= "fg1"."date"
+ORDER BY "spine"."__hopsworks_spine_row_id";
+
+-- ASOF defaulted_feature_age
+SELECT "spine"."date" "date", CASE WHEN "fg1"."date" >= "spine"."date" - INTERVAL '86400' SECOND THEN CASE WHEN "fg1"."date" IS NOT NULL AND "fg1"."temperature_2m_mean" IS NULL THEN 42.0 ELSE "fg1"."temperature_2m_mean" END ELSE NULL END "temperature_2m_mean", CASE WHEN "fg1"."date" >= "spine"."date" - INTERVAL '86400' SECOND THEN "fg1"."wind_speed_10m_max" ELSE NULL END "wind_speed_10m_max"
+FROM "__hopsworks_spine_3f9a" "spine"
+ASOF LEFT JOIN "test_proj_featurestore"."weather_1" "fg1" ON "spine"."city" = "fg1"."city" AND "spine"."date" >= "fg1"."date"
+ORDER BY "spine"."__hopsworks_spine_row_id";
+
 -- ASOF complex_typed_nulls
-SELECT "spine"."date" "date", CAST(NULL AS FLOAT[]) "wind_dir", CAST(NULL AS STRUCT(label VARCHAR, index INTEGER)) "station_meta"
+SELECT "spine"."date" "date", CAST(NULL AS FLOAT[]) "wind_dir", CAST(NULL AS STRUCT("order" INTEGER, "label" VARCHAR)) "station_meta"
 FROM "__hopsworks_spine_3f9a" "spine"
 ORDER BY "spine"."__hopsworks_spine_row_id";
 
@@ -207,8 +219,24 @@ LEFT JOIN "lookup_fg0" ON "spine"."__hopsworks_spine_row_id" = "lookup_fg0"."__h
 LEFT JOIN "lookup_fg1" ON "spine"."__hopsworks_spine_row_id" = "lookup_fg1"."__hopsworks_spine_row_id" AND "lookup_fg1"."pit_rank_hopsworks" = 1
 ORDER BY "spine"."__hopsworks_spine_row_id");
 
+-- WINDOWED defaulted_feature
+WITH lookup_fg1 AS (SELECT "spine"."__hopsworks_spine_row_id" "__hopsworks_spine_row_id", CASE WHEN "fg1"."date" IS NOT NULL AND "fg1"."temperature_2m_mean" IS NULL THEN 42.0 ELSE "fg1"."temperature_2m_mean" END "temperature_2m_mean", "fg1"."wind_speed_10m_max" "wind_speed_10m_max", ROW_NUMBER() OVER (PARTITION BY "spine"."__hopsworks_spine_row_id" ORDER BY "fg1"."date" DESC) "pit_rank_hopsworks"
+FROM "__hopsworks_spine_3f9a" "spine"
+LEFT JOIN "test_proj_featurestore"."weather_1" "fg1" ON "spine"."city" = "fg1"."city" AND "spine"."date" >= "fg1"."date") (SELECT "spine"."date" "date", "lookup_fg1"."temperature_2m_mean" "temperature_2m_mean", "lookup_fg1"."wind_speed_10m_max" "wind_speed_10m_max"
+FROM "__hopsworks_spine_3f9a" "spine"
+LEFT JOIN "lookup_fg1" ON "spine"."__hopsworks_spine_row_id" = "lookup_fg1"."__hopsworks_spine_row_id" AND "lookup_fg1"."pit_rank_hopsworks" = 1
+ORDER BY "spine"."__hopsworks_spine_row_id");
+
+-- WINDOWED defaulted_feature_age
+WITH lookup_fg1 AS (SELECT "spine"."__hopsworks_spine_row_id" "__hopsworks_spine_row_id", CASE WHEN "fg1"."date" IS NOT NULL AND "fg1"."temperature_2m_mean" IS NULL THEN 42.0 ELSE "fg1"."temperature_2m_mean" END "temperature_2m_mean", "fg1"."wind_speed_10m_max" "wind_speed_10m_max", ROW_NUMBER() OVER (PARTITION BY "spine"."__hopsworks_spine_row_id" ORDER BY "fg1"."date" DESC) "pit_rank_hopsworks"
+FROM "__hopsworks_spine_3f9a" "spine"
+LEFT JOIN "test_proj_featurestore"."weather_1" "fg1" ON "spine"."city" = "fg1"."city" AND "spine"."date" >= "fg1"."date" AND "fg1"."date" >= "spine"."date" - INTERVAL '86400' SECOND) (SELECT "spine"."date" "date", "lookup_fg1"."temperature_2m_mean" "temperature_2m_mean", "lookup_fg1"."wind_speed_10m_max" "wind_speed_10m_max"
+FROM "__hopsworks_spine_3f9a" "spine"
+LEFT JOIN "lookup_fg1" ON "spine"."__hopsworks_spine_row_id" = "lookup_fg1"."__hopsworks_spine_row_id" AND "lookup_fg1"."pit_rank_hopsworks" = 1
+ORDER BY "spine"."__hopsworks_spine_row_id");
+
 -- WINDOWED complex_typed_nulls
-SELECT "spine"."date" "date", CAST(NULL AS ARRAY<FLOAT>) "wind_dir", CAST(NULL AS STRUCT<label: STRING, index: INT>) "station_meta"
+SELECT "spine"."date" "date", CAST(NULL AS ARRAY<FLOAT>) "wind_dir", CAST(NULL AS STRUCT<"order": INT, "label": STRING>) "station_meta"
 FROM "__hopsworks_spine_3f9a" "spine"
 ORDER BY "spine"."__hopsworks_spine_row_id";
 

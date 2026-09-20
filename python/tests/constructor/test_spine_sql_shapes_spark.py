@@ -121,6 +121,52 @@ def test_the_golden_file_is_the_same_one_the_backend_generates():
     )
 
 
+def _statement(label):
+    return next(sql for name, sql in STATEMENTS if name == label)
+
+
+def test_a_declared_default_fills_a_matched_null_and_nothing_else(spark):
+    """The Spark rendering must agree with the DuckDB one, which flyingduck asserts the same way.
+
+    The two apply the feature-age bound in different places, so the guard that decides whether a
+    default applies has to be the lookup's event time rather than the value being NULL.
+    """
+    spark.sql(
+        "CREATE OR REPLACE TEMP VIEW weather_rows AS SELECT * FROM VALUES"
+        " ('Stockholm', 'arlanda', TIMESTAMP '2026-09-13 00:00:00', CAST(NULL AS DOUBLE),"
+        " CAST(3.0 AS DOUBLE))"
+        " AS t(city, station, date, temperature_2m_mean, wind_speed_10m_max)"
+    )
+    spark.sql("DROP TABLE IF EXISTS test_proj_featurestore.weather_1")
+    spark.sql(
+        "CREATE TABLE test_proj_featurestore.weather_1 USING parquet AS SELECT * FROM weather_rows"
+    )
+    spark.sql(
+        "CREATE OR REPLACE TEMP VIEW __hopsworks_spine_3f9a AS SELECT * FROM VALUES"
+        " (CAST(0 AS BIGINT), 'SE', 'Stockholm', 'Sveavagen',"
+        " TIMESTAMP '2026-09-14 08:00:00', CAST(NULL AS DOUBLE)),"
+        " (CAST(1 AS BIGINT), 'SE', 'Gothenburg', 'Avenyn',"
+        " TIMESTAMP '2026-09-14 08:00:00', CAST(NULL AS DOUBLE))"
+        " AS t(__hopsworks_spine_row_id, country, city, street, date, label)"
+    )
+    try:
+        rows = spark.sql(
+            _statement("WINDOWED defaulted_feature").replace('"', "`")
+        ).collect()
+        temperature = [row["temperature_2m_mean"] for row in rows]
+        assert temperature == [42.0, None], (
+            "a matched row holding NULL takes the declared default, a spine row that matched"
+            f" nothing stays NULL; got {temperature}"
+        )
+    finally:
+        spark.sql("DROP TABLE IF EXISTS test_proj_featurestore.weather_1")
+        spark.sql(
+            "CREATE TABLE test_proj_featurestore.weather_1"
+            " (city STRING, station STRING, date TIMESTAMP,"
+            " temperature_2m_mean DOUBLE, wind_speed_10m_max DOUBLE) USING parquet"
+        )
+
+
 @pytest.mark.parametrize("label, sql", WINDOWED, ids=[label for label, _ in WINDOWED])
 def test_shape_binds_in_spark(spark, label, sql):
     # Analysed without being executed: the tables are empty, and what is under test is whether
