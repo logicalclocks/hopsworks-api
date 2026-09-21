@@ -11,7 +11,7 @@ from click.testing import CliRunner
 from hopsworks.cli.main import cli
 
 
-SKILLS_ROOT = Path(__file__).resolve().parents[3] / "skills"
+SKILLS_ROOT = Path(__file__).resolve().parents[2] / "hopsworks" / "skills"
 
 
 SKILL = """---
