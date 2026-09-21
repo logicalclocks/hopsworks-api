@@ -23,6 +23,7 @@ from hsfs.core import (
     kafka_engine,
 )
 from hsfs.statistics_config import StatisticsConfig
+from hsfs.util import _get_timestamp_from_date_string
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, expr, max, row_number
 from pyspark.sql.types import StructField, StructType, _parse_datatype_string
@@ -331,6 +332,13 @@ def offline_fg_materialization(
     )
     low_offsets = _build_offsets(low_offsets_string)
 
+    if not starting_offset_string:
+        # Nothing said where this run should start, so the low watermark would be the whole
+        # retained topic. Bound it by when the feature group came into existence instead.
+        low_offsets = _offsets_since_creation(
+            entity, low_offsets, write_options_of(job_conf)
+        )
+
     # validate and reconcile saved offsets against current topic state
     starting_offset_string = json.dumps(
         _reconcile_offsets(
@@ -517,6 +525,55 @@ def _remove_path(spark, location: str) -> None:
     jvm = spark._jvm
     path = jvm.org.apache.hadoop.fs.Path(location)
     path.getFileSystem(spark._jsc.hadoopConfiguration()).delete(path, True)
+
+
+def _offsets_since_creation(entity, low_offsets: dict, write_options: dict) -> dict:
+    """Offsets a first materialization run should start from, floored at the feature group's creation.
+
+    A run gets told where to start by `-initialCheckPointString`, which only the Python
+    client passes, or by the offsets file a previous run saved. With neither, the start
+    falls back to the topic's low watermark, and the topic is by default
+    `<project>_onlinefs`, shared by every online-enabled feature group in the project: the
+    run reads the whole retained history of all of them just to drop nearly all of it in
+    the featureGroupId filter.
+
+    No record of a feature group can predate the feature group, so its creation time is a
+    sound floor. Kafka stamps a record with the producing client's clock by default, so a
+    client whose clock lags the backend's could stamp one just before that time;
+    `initial_offset_margin_hours` (1 by default) is how far back the floor is moved to
+    absorb the skew, and raising it costs only a longer read.
+
+    The low watermark offsets are returned unchanged whenever the floor cannot be
+    established, so a failed lookup reads too much rather than too little.
+    """
+    if not low_offsets or not entity.created:
+        return low_offsets
+
+    # Everything the floor is derived from is under the guard: an unparseable margin or
+    # creation time is as much a reason to fall back as a broker that will not answer,
+    # and none of the three may take the materialization job down with it.
+    try:
+        margin_hours = float(write_options.get("initial_offset_margin_hours", 1))
+        timestamp = _get_timestamp_from_date_string(entity.created) - int(
+            margin_hours * 60 * 60 * 1000
+        )
+        offsets = _build_offsets(
+            kafka_engine._kafka_get_offsets_for_times(
+                topic_name=entity._online_topic_name,
+                feature_store_id=entity.feature_store_id,
+                offline_write_options={},
+                timestamp=timestamp,
+            )
+        )
+    except Exception as e:
+        print(f"Failed to look offsets up by creation time: {e}")
+        return low_offsets
+
+    if not offsets:
+        return low_offsets
+
+    print(f"No saved offsets, starting from the feature group's creation: {offsets}")
+    return offsets
 
 
 def _build_offsets(initial_check_point_string: str):
