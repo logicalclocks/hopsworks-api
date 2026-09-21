@@ -32,8 +32,11 @@ import pytest
 
 
 HSFS_UTILS = Path(__file__).parents[2] / "utils" / "python"
-# 2026-09-21T10:00:00Z, and one hour before it
-CREATED = "2026-09-21T10:00:00Z"
+# Exactly as the backend serializes a date: the REST layer's format is
+# `yyyy-MM-dd'T'HH:mm:ss.SSSXXX`, so `FeatureGroup.created` always carries three
+# fractional digits. A tidier-looking `2026-09-21T10:00:00Z` here is what let a
+# parser that rejected milliseconds through to a cluster.
+CREATED = "2026-09-21T10:00:00.000Z"
 CREATED_MS = 1789984800000
 HOUR_MS = 60 * 60 * 1000
 
@@ -58,6 +61,40 @@ def entity(mocker):
     feature_group._online_topic_name = "test_project_onlinefs"
     feature_group.feature_store_id = 99
     return feature_group
+
+
+class TestTimestampMs:
+    """Reading the backend's own date format, without going through the SDK's parser."""
+
+    def test_backend_format_with_milliseconds(self, hsfs_utils):
+        # `yyyy-MM-dd'T'HH:mm:ss.SSSXXX` is what the REST layer emits, so this is the
+        # only form that actually turns up in `FeatureGroup.created`.
+        assert hsfs_utils._timestamp_ms(CREATED) == CREATED_MS
+
+    def test_milliseconds_are_kept(self, hsfs_utils):
+        assert hsfs_utils._timestamp_ms("2026-09-21T10:00:00.123Z") == CREATED_MS + 123
+
+    def test_without_fractional_seconds(self, hsfs_utils):
+        assert hsfs_utils._timestamp_ms("2026-09-21T10:00:00Z") == CREATED_MS
+
+    def test_with_microseconds(self, hsfs_utils):
+        assert (
+            hsfs_utils._timestamp_ms("2026-09-21T10:00:00.123456Z") == CREATED_MS + 123
+        )
+
+    def test_offset_timezone_is_the_same_instant_as_z(self, hsfs_utils):
+        # The `XXX` in the backend's format renders as an offset outside UTC. The SDK's
+        # pattern list requires a trailing `Z` and rejects this; parsing it here does not.
+        assert hsfs_utils._timestamp_ms("2026-09-21T12:00:00.000+02:00") == CREATED_MS
+
+    def test_naive_input_is_read_as_utc(self, hsfs_utils):
+        # Not as the job container's local time, which would shift the floor by the
+        # cluster's timezone.
+        assert hsfs_utils._timestamp_ms("2026-09-21T10:00:00.000") == CREATED_MS
+
+    def test_garbage_raises(self, hsfs_utils):
+        with pytest.raises(ValueError):
+            hsfs_utils._timestamp_ms("not a timestamp")
 
 
 class TestOffsetsSinceCreation:

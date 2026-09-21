@@ -229,6 +229,12 @@ def _check_timestamp_format_from_date_string(input_date: str) -> tuple[str, str]
         r"^([0-9]{4})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})$": "%Y%m%d%H%M%S",
         r"^([0-9]{4})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{3})$": "%Y%m%d%H%M%S%f",
         r"^([0-9]{4})([0-9]{2})([0-9]{2})T([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{6})Z$": "ISO",
+        # ISO-8601 with milliseconds, which is what the backend itself emits: the REST
+        # layer serializes every date as ``yyyy-MM-dd'T'HH:mm:ss.SSSXXX``, so a value
+        # read straight back off a DTO (``FeatureGroup.created``, e.g.
+        # ``2026-09-21T13:04:38.000Z``) has three fractional digits and matched neither
+        # the six-digit pattern above nor the no-fraction one below.
+        r"^([0-9]{4})([0-9]{2})([0-9]{2})T([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{3})Z$": "ISO",
         # ISO-8601 without fractional seconds. The job scheduler injects
         # HOPS_START_TIME / HOPS_END_TIME as e.g. ``2026-06-01T10:17:16Z`` (no
         # microseconds), which the %f-mandatory pattern above rejects, so a

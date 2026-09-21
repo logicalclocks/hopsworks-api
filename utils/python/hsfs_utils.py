@@ -7,7 +7,7 @@ import json
 import os
 import sys
 import traceback
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import fsspec.implementations.arrow as pfs
@@ -23,7 +23,6 @@ from hsfs.core import (
     kafka_engine,
 )
 from hsfs.statistics_config import StatisticsConfig
-from hsfs.util import _get_timestamp_from_date_string
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, expr, max, row_number
 from pyspark.sql.types import StructField, StructType, _parse_datatype_string
@@ -527,6 +526,27 @@ def _remove_path(spark, location: str) -> None:
     path.getFileSystem(spark._jsc.hadoopConfiguration()).delete(path, True)
 
 
+def _timestamp_ms(date_string: str) -> int:
+    """Milliseconds since the epoch for a date the backend serialized.
+
+    Parsed here rather than through `hsfs.util`, deliberately. This file ships in the
+    spark-feature-pipeline image beside whatever SDK that image happens to carry, so a
+    parser reached through the SDK is a second thing that has to be current for the floor
+    below to work at all — and when it is not, the floor does not fail loudly, it quietly
+    falls back to reading the whole topic.
+
+    `fromisoformat` also accepts the whole of the backend's `yyyy-MM-dd'T'HH:mm:ss.SSSXXX`
+    format, including the `+02:00` rendering of that trailing `XXX`, which the SDK's
+    pattern list does not.
+    """
+    parsed = datetime.fromisoformat(date_string.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        # The backend always sends an offset; anything that does not is read as UTC
+        # rather than as the job container's local time.
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return int(parsed.timestamp() * 1000)
+
+
 def _offsets_since_creation(entity, low_offsets: dict, write_options: dict) -> dict:
     """Offsets a first materialization run should start from, floored at the feature group's creation.
 
@@ -554,9 +574,7 @@ def _offsets_since_creation(entity, low_offsets: dict, write_options: dict) -> d
     # and none of the three may take the materialization job down with it.
     try:
         margin_hours = float(write_options.get("initial_offset_margin_hours", 1))
-        timestamp = _get_timestamp_from_date_string(entity.created) - int(
-            margin_hours * 60 * 60 * 1000
-        )
+        timestamp = _timestamp_ms(entity.created) - int(margin_hours * 60 * 60 * 1000)
         offsets = _build_offsets(
             kafka_engine._kafka_get_offsets_for_times(
                 topic_name=entity._online_topic_name,
