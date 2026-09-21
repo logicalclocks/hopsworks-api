@@ -533,7 +533,7 @@ class Job:
             start_date_time=self._job_schedule.start_date_time,
             cron_expression=self._job_schedule.cron_expression,
             end_date_time=self._job_schedule.end_date_time,
-            enabled=False,
+            enabled=True,
         )
         return self._update_schedule(job_schedule)
 
@@ -549,7 +549,7 @@ class Job:
             start_date_time=self._job_schedule.start_date_time,
             cron_expression=self._job_schedule.cron_expression,
             end_date_time=self._job_schedule.end_date_time,
-            enabled=True,
+            enabled=False,
         )
         return self._update_schedule(job_schedule)
 

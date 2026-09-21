@@ -107,6 +107,14 @@ FROM "__hopsworks_spine_3f9a" "spine"
 ASOF LEFT JOIN "test_proj_featurestore"."weather_1" "fg1" ON "spine"."city" = "fg1"."city" AND "spine"."date" >= "fg1"."date"
 ORDER BY "spine"."__hopsworks_spine_row_id";
 
+-- ASOF like_filtered_child
+SELECT "spine"."date" "date", "fg1"."temperature_2m_mean" "temperature_2m_mean"
+FROM "__hopsworks_spine_3f9a" "spine"
+ASOF LEFT JOIN (SELECT *
+FROM "test_proj_featurestore"."weather_1" "fg1"
+WHERE "fg1"."station" LIKE 'arlanda\_1' ESCAPE '\') "fg1" ON "spine"."city" = "fg1"."city" AND "spine"."date" >= "fg1"."date"
+ORDER BY "spine"."__hopsworks_spine_row_id";
+
 -- ASOF complex_typed_nulls
 SELECT "spine"."date" "date", CAST(NULL AS FLOAT[]) "wind_dir", CAST(NULL AS STRUCT("order" INTEGER, "label" VARCHAR)) "station_meta"
 FROM "__hopsworks_spine_3f9a" "spine"
@@ -245,6 +253,16 @@ ORDER BY "spine"."__hopsworks_spine_row_id");
 WITH lookup_fg1 AS (SELECT "spine"."__hopsworks_spine_row_id" "__hopsworks_spine_row_id", CASE WHEN "fg1"."date" IS NOT NULL AND "fg1"."station" IS NULL THEN '' ELSE "fg1"."station" END "station", ROW_NUMBER() OVER (PARTITION BY "spine"."__hopsworks_spine_row_id" ORDER BY "fg1"."date" DESC) "pit_rank_hopsworks"
 FROM "__hopsworks_spine_3f9a" "spine"
 LEFT JOIN "test_proj_featurestore"."weather_1" "fg1" ON "spine"."city" = "fg1"."city" AND "spine"."date" >= "fg1"."date") (SELECT "spine"."date" "date", "lookup_fg1"."station" "station"
+FROM "__hopsworks_spine_3f9a" "spine"
+LEFT JOIN "lookup_fg1" ON "spine"."__hopsworks_spine_row_id" = "lookup_fg1"."__hopsworks_spine_row_id" AND "lookup_fg1"."pit_rank_hopsworks" = 1
+ORDER BY "spine"."__hopsworks_spine_row_id");
+
+-- WINDOWED like_filtered_child
+WITH lookup_fg1 AS (SELECT "spine"."__hopsworks_spine_row_id" "__hopsworks_spine_row_id", "fg1"."temperature_2m_mean" "temperature_2m_mean", ROW_NUMBER() OVER (PARTITION BY "spine"."__hopsworks_spine_row_id" ORDER BY "fg1"."date" DESC) "pit_rank_hopsworks"
+FROM "__hopsworks_spine_3f9a" "spine"
+LEFT JOIN (SELECT *
+FROM "test_proj_featurestore"."weather_1" "fg1"
+WHERE "fg1"."station" LIKE 'arlanda\\_1' ESCAPE '\\') "fg1" ON "spine"."city" = "fg1"."city" AND "spine"."date" >= "fg1"."date") (SELECT "spine"."date" "date", "lookup_fg1"."temperature_2m_mean" "temperature_2m_mean"
 FROM "__hopsworks_spine_3f9a" "spine"
 LEFT JOIN "lookup_fg1" ON "spine"."__hopsworks_spine_row_id" = "lookup_fg1"."__hopsworks_spine_row_id" AND "lookup_fg1"."pit_rank_hopsworks" = 1
 ORDER BY "spine"."__hopsworks_spine_row_id");

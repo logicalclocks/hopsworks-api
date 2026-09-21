@@ -1421,10 +1421,16 @@ def _infer_deployment_schema(
         and name not in set(passed_features or [])
     ]
     serving_keys = []
+    seen_serving_keys = set()
     for sk in getattr(feature_view, "serving_keys", None) or [] if looked_up else []:
         name = sk.required_serving_key
         if isinstance(name, list):
             continue
+        # A view joining two feature groups on the same key reports that key once
+        # per group, while a request carries one value for it.
+        if name in seen_serving_keys:
+            continue
+        seen_serving_keys.add(name)
         serving_keys.append(
             SchemaField(name, _serving_key_type(feature_view, sk), nullable=False)
         )
@@ -1580,6 +1586,183 @@ def _check_schema_refinement(
                 + ", ".join(parts)
                 + ". A manual schema may refine types and descriptions but must keep the same fields."
             )
+
+
+# endregion
+
+# region Tensors
+
+
+_TENSOR_DATATYPES = {"integer": "INT64", "float": "FP64", "boolean": "BOOL"}
+JSON_DATATYPE = "BYTES"
+PREDICTIONS = "predictions"
+COLUMNS = "columns"
+# The one tensor of a request whose rows differ in which optional fields they carry.
+ROWS_TENSOR = "__rows__"
+_INT64_RANGE = range(-(2**63), 2**63)
+# The largest magnitude at which every integer is still a double exactly.
+_EXACT_IN_FP64 = 2**53
+
+
+def _is_integer(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _fits_datatype(datatype: str, values: list[Any]) -> bool:
+    """Whether every value comes back from a tensor of `datatype` as the value it was.
+
+    An integer travels in an FP64 tensor only while a double holds it exactly; beyond that it is rounded on the wire, silently.
+    """
+    if any(value is None for value in values):
+        return False
+    if datatype == "BOOL":
+        return all(isinstance(value, bool) for value in values)
+    if datatype == "INT64":
+        return all(_is_integer(value) and value in _INT64_RANGE for value in values)
+    return all(
+        isinstance(value, float)
+        or (_is_integer(value) and abs(value) <= _EXACT_IN_FP64)
+        for value in values
+    )
+
+
+def _value_family(values: list[Any]) -> str:
+    """The family that carries `values` as they are, read off the values themselves.
+
+    A response has no schema to name its types, and integers sent as doubles come back as doubles: `1` as `1.0`, and anything past 2**53 rounded.
+    """
+    if values and all(isinstance(value, bool) for value in values):
+        return "boolean"
+    if values and all(_is_integer(value) for value in values):
+        return "integer"
+    return "float"
+
+
+def _tensor(name: str, values: list[Any], family: str | None = None) -> dict[str, Any]:
+    """One column as a KServe v2 tensor: typed when its values fit one, JSON text otherwise.
+
+    A numeric tensor carries no nulls and one datatype, so a column with a
+    null, a string, a timestamp or a nested value is carried as JSON in a
+    BYTES tensor instead. The datatype travels with the tensor, so the reader
+    needs no schema to decode it.
+    """
+    datatype = _TENSOR_DATATYPES.get(family)
+    if datatype is None or not _fits_datatype(datatype, values):
+        datatype = JSON_DATATYPE
+        values = [json.dumps(_encode_value(value)) for value in values]
+    return {
+        "name": name,
+        "shape": [len(values)],
+        "datatype": datatype,
+        "data": list(values),
+    }
+
+
+def _tensor_values(tensor: Any) -> list[Any]:
+    """The Python values of a tensor, given either as a dict or as an `InferInput`/`InferOutput`."""
+    if isinstance(tensor, dict):
+        datatype, data = tensor.get("datatype"), tensor.get("data")
+    else:
+        datatype, data = tensor.datatype, tensor.data
+    data = list(data or [])
+    if datatype != JSON_DATATYPE:
+        return data
+    return [
+        json.loads(value.decode("utf-8") if isinstance(value, bytes) else value)
+        for value in data
+    ]
+
+
+def _encode_rows(schema: DeploymentSchema, instances: list[Any]) -> list[dict]:
+    """The rows of a request as one tensor per schema field, in schema order.
+
+    A field no row of the batch carries is left out rather than sent as a
+    column of nulls: an optional field is absent, not null, and a validator
+    reads the two differently. A column cannot say which of its rows omitted
+    the field, so a batch whose rows differ in the fields they carry travels
+    as one tensor of whole rows instead, and arrives exactly as it was sent.
+    """
+    columns = schema.columns
+    rows = [
+        instance
+        if isinstance(instance, dict)
+        else dict(zip((f.name for f in columns), instance, strict=True))
+        for instance in instances
+    ]
+    carried = [field for field in columns if any(field.name in row for row in rows)]
+    if any(field.name not in row for field in carried for row in rows):
+        return [_tensor(ROWS_TENSOR, rows)]
+    return [
+        _tensor(field.name, [row[field.name] for row in rows], _family(field.type))
+        for field in carried
+    ]
+
+
+def _decode_rows(tensors: list[Any]) -> list[dict[str, Any]]:
+    """The rows carried by a request's tensors, keyed by field name."""
+    columns = {
+        (tensor["name"] if isinstance(tensor, dict) else tensor.name): _tensor_values(
+            tensor
+        )
+        for tensor in tensors
+    }
+    if list(columns) == [ROWS_TENSOR]:
+        return columns[ROWS_TENSOR]
+    count = max((len(values) for values in columns.values()), default=0)
+    return [{name: values[i] for name, values in columns.items()} for i in range(count)]
+
+
+def _encode_outputs(payload: Any) -> list[dict[str, Any]]:
+    """A response the REST protocol would return, as v2 output tensors.
+
+    One tensor per key of a dict response, a single `predictions` tensor
+    otherwise, so nothing the predictor answered is dropped on the way out. A
+    value that is not a sequence travels as a shapeless tensor and decodes back
+    to itself rather than to a batch of one. Each tensor's datatype comes from
+    its values, so an integer prediction stays an integer.
+    """
+    if not isinstance(payload, dict):
+        payload = {PREDICTIONS: payload}
+    tensors = []
+    for name, values in payload.items():
+        if hasattr(values, "tolist"):
+            values = values.tolist()
+        if isinstance(values, (list, tuple)):
+            values = list(values)
+            tensors.append(_tensor(name, values, _value_family(values)))
+        else:
+            tensors.append(
+                {**_tensor(name, [values], _value_family([values])), "shape": []}
+            )
+    return tensors
+
+
+def _decode_outputs(outputs: list[Any]) -> dict[str, Any]:
+    """The v2 output tensors of a response, as the REST protocol would have returned them."""
+    response = {}
+    for tensor in outputs:
+        name = tensor["name"] if isinstance(tensor, dict) else tensor.name
+        shape = tensor["shape"] if isinstance(tensor, dict) else tensor.shape
+        values = _tensor_values(tensor)
+        response[name] = values[0] if not list(shape or []) else values
+    return response
+
+
+def _is_tensor_payload(inputs: Any) -> bool:
+    """Whether `inputs` already carries v2 tensors as dicts rather than request rows."""
+    first = inputs[0] if isinstance(inputs, (list, tuple)) and inputs else inputs
+    return isinstance(first, dict) and all(
+        key in first for key in ("name", "shape", "datatype", "data")
+    )
+
+
+def _is_tensor_list(inputs: Any) -> bool:
+    """Whether a request arrived as v2 tensors: a v2 tensor carries its own datatype, a v1 row never does."""
+    return (
+        isinstance(inputs, (list, tuple))
+        and len(inputs) > 0
+        and hasattr(inputs[0], "datatype")
+    )
 
 
 # endregion

@@ -2171,6 +2171,8 @@ class FeatureStore:
         max_feature_age: timedelta | None = None,
         extra_log_columns: list[feature.Feature] | list[dict[str, str]] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
+        logging_materialization_interval: str | None = None,
+        logging_transport: str | None = None,
     ) -> feature_view.FeatureView:
         """Create a feature view metadata object and saved it to hopsworks.
 
@@ -2273,6 +2275,9 @@ class FeatureStore:
                 - A list of Tag objects
                 - A list of dictionaries with 'name' and 'value' keys
                 Tags will be attached to the feature view after it is saved.
+            logging_materialization_interval: How often the logs are written to the offline store, `"hour"` or `"day"`.
+            logging_transport: How logged rows reach the logging feature group, `"realtime"` or `"job"`; `None` keeps the platform default.
+                Only used when `logging_enabled` is true; `None` keeps the platform default.
 
         Returns:
             The feature view metadata object.
@@ -2290,12 +2295,23 @@ class FeatureStore:
             training_helper_columns=training_helper_columns or [],
             transformation_functions=transformation_functions or {},
             featurestore_name=self._name,
-            logging_enabled=logging_enabled,
+            # The backend enables logging on the platform transport while it
+            # saves the view; a view that names its transport enables it after.
+            logging_enabled=logging_enabled and logging_transport is None,
             max_feature_age=max_feature_age,
-            extra_log_columns=extra_log_columns,
+            extra_log_columns=extra_log_columns if logging_transport is None else None,
             tags=normalized_tags,
         )
-        return self._feature_view_engine._save(feat_view)
+        feat_view = self._feature_view_engine._save(feat_view)
+        if (logging_enabled or extra_log_columns) and logging_transport is not None:
+            feat_view.enable_logging(
+                extra_log_columns=extra_log_columns,
+                materialization_interval=logging_materialization_interval,
+                transport=logging_transport,
+            )
+        elif logging_enabled and logging_materialization_interval is not None:
+            feat_view.set_log_materialization_interval(logging_materialization_interval)
+        return feat_view
 
     @public
     @usage._method_logger
@@ -2313,6 +2329,8 @@ class FeatureStore:
         max_feature_age: timedelta | None = None,
         extra_log_columns: list[feature.Feature] | list[dict[str, str]] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
+        logging_materialization_interval: str | None = None,
+        logging_transport: str | None = None,
     ) -> feature_view.FeatureView:
         """Get feature view metadata object or create a new one if it doesn't exist.
 
@@ -2380,6 +2398,9 @@ class FeatureStore:
                 - A list of Tag objects
                 - A list of dictionaries with 'name' and 'value' keys
                 Tags will be attached to the feature view after it is saved.
+            logging_materialization_interval: How often the logs are written to the offline store, `"hour"` or `"day"`.
+            logging_transport: How logged rows reach the logging feature group, `"realtime"` or `"job"`; `None` keeps the platform default.
+                Only used when `logging_enabled` is true; `None` keeps the platform default.
 
         Returns:
             The feature view metadata object.
@@ -2399,6 +2420,8 @@ class FeatureStore:
                 max_feature_age=max_feature_age,
                 extra_log_columns=extra_log_columns,
                 tags=tags,
+                logging_materialization_interval=logging_materialization_interval,
+                logging_transport=logging_transport,
             )
         return fv_object
 

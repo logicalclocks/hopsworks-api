@@ -1518,6 +1518,7 @@ class TestSqlConnector:
             ("MYSQL", "com.mysql.cj.jdbc.Driver", "mysql"),
             ("mysql", "com.mysql.cj.jdbc.Driver", "mysql"),  # normalised to uppercase
             ("POSTGRESQL", "org.postgresql.Driver", "postgresql"),
+            ("CLICKHOUSE", "com.clickhouse.jdbc.ClickHouseDriver", "clickhouse"),
         ],
     )
     def test_spark_options_driver(
@@ -1538,6 +1539,7 @@ class TestSqlConnector:
         [
             ("MYSQL", "com.mysql.cj.jdbc.Driver", "mysql"),
             ("POSTGRESQL", "org.postgresql.Driver", "postgresql"),
+            ("CLICKHOUSE", "com.clickhouse.jdbc.ClickHouseDriver", "clickhouse"),
         ],
     )
     def test_read_jdbc_url_scheme(
@@ -1584,6 +1586,31 @@ class TestSqlConnector:
     def test_unsupported_database_type_raises(self):
         with pytest.raises(ValueError, match="Unsupported database_type"):
             self._make_connector("UNSUPPORTED_DB")
+
+    def test_clickhouse_ssl_argument_reaches_the_jdbc_driver(self):
+        # Arrange
+        connector = storage_connector.SqlConnector(
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
+            database_type="CLICKHOUSE",
+            host="ch.example.com",
+            port=8443,
+            database="loadtest",
+            user="user",
+            password="pass",
+            arguments=[{"name": "ssl", "value": "true"}],
+        )
+
+        # Act
+        options = connector.spark_options()
+
+        # Assert
+        assert options["url"] == "jdbc:clickhouse://ch.example.com:8443/loadtest"
+        assert options["driver"] == "com.clickhouse.jdbc.ClickHouseDriver"
+        assert options["ssl"] == "true"
+        assert connector.connector_options()["database_type"] == "CLICKHOUSE"
+        assert connector.connector_options()["secure"] is True
 
     def test_spark_options_includes_arguments(self):
         # Arrange

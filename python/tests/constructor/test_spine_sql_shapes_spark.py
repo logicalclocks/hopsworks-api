@@ -116,7 +116,7 @@ def test_the_golden_file_is_the_same_one_the_backend_generates():
     }
     asof = {label[len("ASOF ") :] for label in labels if label.startswith("ASOF ")}
     assert asof == windowed
-    assert len(windowed) >= 17, (
+    assert len(windowed) >= 18, (
         "shapes were removed from the golden file rather than added"
     )
 

@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import logging
 import os
-import re
 import uuid
 import warnings
 from typing import TYPE_CHECKING, Any
@@ -52,69 +51,48 @@ MAX_SPINE_COLUMNS = 256
 # the feature store uses for it.
 _EVENT_TIME_TYPES = {"timestamp", "date", "bigint", "int", "integer"}
 
-_DECIMAL = re.compile(r"^decimal\((\d+),\s*(\d+)\)$", re.IGNORECASE)
 
+def _pyarrow_type(offline_type: str) -> Any:
+    """The Arrow type a spine column is written as, from the type it is declared as.
 
-def _pyarrow_type(hive_type: str) -> Any:
+    `type_systems` owns this vocabulary and builds the nested types recursively; a private table
+    here answered `string` for every `array<...>` and `struct<...>`, so a passed root feature of
+    complex type was written as a string and the file build failed before the declaration was
+    even compared.
+
+    The one departure is the timestamp. The shared converter returns microseconds, and the event
+    time is written in milliseconds because a wall-clock value too precise for a millisecond event
+    time made the file disagree with its own declaration.
+    """
     import pyarrow as pa
+    from hsfs.core import type_systems
 
-    t = (hive_type or "string").strip().lower()
-    simple = {
-        "string": pa.string(),
-        "boolean": pa.bool_(),
-        "tinyint": pa.int8(),
-        "smallint": pa.int16(),
-        "int": pa.int32(),
-        "integer": pa.int32(),
-        "bigint": pa.int64(),
-        "float": pa.float32(),
-        "double": pa.float64(),
-        "timestamp": pa.timestamp("ms"),
-        "date": pa.date32(),
-        "binary": pa.binary(),
-    }
-    if t in simple:
-        return simple[t]
-    match = _DECIMAL.match(t)
-    if match:
-        return pa.decimal128(int(match.group(1)), int(match.group(2)))
-    return pa.string()
+    t = (offline_type or "string").strip().lower()
+    if t == "timestamp":
+        return pa.timestamp("ms")
+    try:
+        return type_systems._convert_offline_type_to_pyarrow_type(t)
+    except (ValueError, KeyError):
+        return pa.string()
 
 
-# Keyed on `str(dtype)`, which is why each numpy dtype has a capitalised twin: those are the
-# pandas nullable extension dtypes, and a label column read from a frame with missing values is
-# one of them. Without the twin such a column fell through to "string" and then failed in
-# `_arrow_table` on the cast, which is a confusing way to be told a label is nullable.
-_PASSTHROUGH_TYPE = {
-    "int64": "bigint",
-    "Int64": "bigint",
-    "int32": "int",
-    "Int32": "int",
-    "int16": "smallint",
-    "Int16": "smallint",
-    "int8": "tinyint",
-    "Int8": "tinyint",
-    "uint8": "smallint",
-    "UInt8": "smallint",
-    "uint16": "int",
-    "UInt16": "int",
-    "uint32": "bigint",
-    "UInt32": "bigint",
-    "float64": "double",
-    "Float64": "double",
-    "float32": "float",
-    "Float32": "float",
-    "bool": "boolean",
-    "boolean": "boolean",
-    "object": "string",
-    "string": "string",
-    "category": "string",
-    "datetime64[ns]": "timestamp",
-    "datetime64[us]": "timestamp",
-    "datetime64[ms]": "timestamp",
-    "datetime64[ns, UTC]": "timestamp",
-    "datetime64[us, UTC]": "timestamp",
-}
+def _offline_type_of(series: Any) -> str:
+    """The offline type a passthrough column's own dtype maps to.
+
+    Keyed on the Arrow type rather than on `str(dtype)`, which is what the shared mapping does:
+    a table of dtype spellings needed a hand-written entry per spelling and silently answered
+    `string` for the ones it lacked. A timezone other than UTC was the reachable case, and the
+    caller was then told their value does not convert to the feature view's type when what was
+    missing was a table entry.
+    """
+    import pyarrow as pa
+    from hsfs.core import type_systems
+
+    try:
+        arrow_type = pa.Array.from_pandas(series).type
+        return type_systems._convert_pandas_dtype_to_offline_type(arrow_type)
+    except Exception:
+        return "string"
 
 
 class InferenceSpine:
@@ -311,7 +289,7 @@ class InferenceSpine:
         if column == self._event_time:
             return self._event_time_type
         if column in self._passthrough:
-            return _PASSTHROUGH_TYPE.get(str(self._frame_dtype(column)), "string")
+            return _offline_type_of(self._dataframe[column])
         return self._types.get(column, "string")
 
     def _arrow_table(self) -> Any:
@@ -341,9 +319,6 @@ class InferenceSpine:
         path = os.path.join(directory, self._basename)
         pq.write_table(self._arrow_table(), path)
         return path
-
-    def _frame_dtype(self, column: str) -> Any:
-        return self._dataframe[column].dtype
 
     def to_dict(self) -> dict[str, Any]:
         """The wire form of the spine.

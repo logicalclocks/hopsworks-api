@@ -699,6 +699,67 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group._clustered_by = clustered_by or None
 
     @staticmethod
+    def _delta_engine_for(feature_group):
+        """The Delta engine for this group, or None when it is not stored as DELTA."""
+        if feature_group.time_travel_format != "DELTA":
+            return None
+        spark_session, spark_context = (
+            FeatureGroupEngine._get_spark_session_and_context()
+        )
+        return delta_engine.DeltaEngine(
+            feature_group.feature_store_id,
+            feature_group.feature_store_name,
+            feature_group,
+            spark_session,
+            spark_context,
+        )
+
+    @staticmethod
+    def _delta_optimize(
+        feature_group,
+        after_ingest_date=None,
+        max_concurrent_tasks=1,
+        target_size=None,
+    ):
+        engine_instance = FeatureGroupEngine._delta_engine_for(feature_group)
+        if engine_instance is None:
+            return None
+        return engine_instance._optimize_compact(
+            after_ingest_date, max_concurrent_tasks, target_size
+        )
+
+    @staticmethod
+    def _delta_maintenance_state(feature_group):
+        """What a maintenance policy decides on: file count, last compaction, layout.
+
+        The date partition column is in here because it is what says whether a
+        compaction can be bounded to the partitions that have changed, and reading it
+        alongside the rest keeps that a property of one look at the table.
+        """
+        engine_instance = FeatureGroupEngine._delta_engine_for(feature_group)
+        if engine_instance is None:
+            return None
+        return {
+            "active_files": engine_instance._active_file_count(),
+            "last_optimize_at": engine_instance._last_optimize_at(),
+            "date_partition": engine_instance._date_partition_column(),
+        }
+
+    @staticmethod
+    def _delta_checkpoint(feature_group):
+        engine_instance = FeatureGroupEngine._delta_engine_for(feature_group)
+        if engine_instance is None:
+            return None
+        return engine_instance._checkpoint()
+
+    @staticmethod
+    def _delta_cleanup_metadata(feature_group):
+        engine_instance = FeatureGroupEngine._delta_engine_for(feature_group)
+        if engine_instance is None:
+            return None
+        return engine_instance._cleanup_metadata()
+
+    @staticmethod
     def _delta_vacuum(feature_group, retention_hours):
         if feature_group.time_travel_format == "DELTA":
             spark_session, spark_context = (

@@ -2154,6 +2154,7 @@ class TestFeatureViewDeploy:
             environment=None,
             env_vars=None,
             tags=None,
+            feature_logging=None,
         )
         assert result is for_feature_view.return_value.deploy.return_value
 

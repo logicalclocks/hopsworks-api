@@ -26,7 +26,7 @@ from hopsworks_apigen import public
 from hopsworks_common import tag, usage, util
 from hopsworks_common.client.exceptions import RestAPIError
 from hopsworks_common.constants import INFERENCE_ENDPOINTS as IE
-from hopsworks_common.constants import PREDICTOR_STATE
+from hopsworks_common.constants import PREDICTOR, PREDICTOR_STATE
 from hopsworks_common.core import dataset_api as _dataset_api
 from hopsworks_common.core import environment_api as _environment_api
 from hsml.core import serving_api
@@ -52,6 +52,7 @@ _SAFE_GIT_BRANCH_NAME_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 
 
 if TYPE_CHECKING:
+    from hsml.deployment_logging_config import DeploymentLoggingConfig
     from hsml.deployment_schema import DeploymentSchema
     from hsml.deployment_tracing_config import DeploymentTracingConfig
     from hsml.inference_batcher import InferenceBatcher
@@ -59,7 +60,10 @@ if TYPE_CHECKING:
     from hsml.inference_logger import InferenceLogger
     from hsml.model import Model
     from hsml.resources import PredictorResources
-    from hsml.scaling_config import PredictorScalingConfig, TransformerScalingConfig
+    from hsml.scaling_config import (
+        PredictorScalingConfig,
+        TransformerScalingConfig,
+    )
 
 
 @public
@@ -200,6 +204,45 @@ class ModelServing:
         return self._serving_api._get_inference_endpoints()
 
     @public
+    def get_vllm_image_tags(
+        self, variant: str = PREDICTOR.VLLM_VARIANT_VLLM
+    ) -> list[str]:
+        """Get the vLLM runtime image tags a cluster administrator advertises.
+
+        Use this to pick a valid `vllm_image_tag` when creating an LLM deployment.
+        Tags come back newest first, so the first one is what a deployment gets when no tag is
+        given.
+        A deployment keeps the tag it was created with even if that tag stops being advertised,
+        so this list can be missing the tag an existing deployment uses.
+
+        Example:
+            ```python
+            # login and get Hopsworks Model Serving handle using .login() and .get_model_serving()
+
+            # list the tags this cluster advertises for standard vLLM
+            image_tags = ms.get_vllm_image_tags()
+            ```
+
+        Parameters:
+            variant: The vLLM variant to list tags for, `VLLM` or `VLLM_OMNI`.
+
+        Returns:
+            Advertised image tags, newest first. Empty if the variant advertises none.
+        """
+        variants = [PREDICTOR.VLLM_VARIANT_VLLM, PREDICTOR.VLLM_VARIANT_OMNI]
+        if variant not in variants:
+            raise ValueError(
+                "vLLM variant '{}' is not valid. Possible values are '{}'".format(
+                    variant, ", ".join(variants)
+                )
+            )
+        image_tags = self._serving_api._get_vllm_image_tags()
+        for item in image_tags["items"]:
+            if item["variant"] == variant:
+                return item["tags"] or []
+        return []
+
+    @public
     @usage._method_logger
     def create_predictor(
         self,
@@ -221,6 +264,7 @@ class ModelServing:
         vllm_variant: str | None = None,
         vllm_image_tag: str | None = None,
         tracing: DeploymentTracingConfig | dict | None = None,
+        feature_logging: DeploymentLoggingConfig | dict | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         schema: DeploymentSchema | dict | None = None,
         passed_features: list[str] | None = None,
@@ -264,13 +308,27 @@ class ModelServing:
             inference_logger: Inference logger configuration.
             inference_batcher: Inference batcher configuration.
             transformer: Transformer to be deployed together with the predictor.
-            api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC').
+            api_protocol: API protocol of the deployment, 'REST' or 'GRPC'. Defaults to
+                'REST', which is the protocol `curl` and the published OpenAPI document
+                use; a deployment serves one protocol, not both. 'GRPC' costs less per
+                request under concurrency and is served by the default predictor, but a
+                predictor script written for REST rows cannot read the v2 tensors a gRPC
+                request carries.
             environment: The project Python environment to use
             scaling_configuration: Scaling configuration for the predictor.
             env_vars: Environment variables to set on the predictor.
             vllm_variant: vLLM image variant for vLLM deployments. One of `'VLLM'` or `'VLLM_OMNI'`. Ignored for non-vLLM model servers.
-            vllm_image_tag: vLLM image tag override. `None` uses the cluster default; if set, it should match one of the tags made available by a cluster administrator. Ignored for non-vLLM model servers.
+            vllm_image_tag: vLLM image tag override.
+                If set, it must be one of the tags `ModelServing.get_vllm_image_tags`
+                returns for the matching `vllm_variant`; the two variants advertise
+                different tags, and an unqualified call lists the standard vLLM ones.
+                On a new deployment, `None` selects the newest advertised tag of that
+                variant. On an update, `None` means "unchanged": the deployment keeps
+                its current tag, so moving it to the cluster default takes naming that
+                tag explicitly. A deployment also keeps its tag after an admin stops
+                advertising it. Ignored for non-vLLM model servers.
             tracing: Tracing configuration for the predictor.
+            feature_logging: Feature logging configuration for the predictor and its feature-log sidecar; see [`DeploymentLoggingConfig`][hsml.deployment_logging_config.DeploymentLoggingConfig].
             tags: Optionally the tags to attach to the deployment when it is created, in the same shapes accepted by feature groups.
                 A single [`Tag`][hopsworks.tag.Tag], a `{"name": "owner", "value": "team-a"}` dict, or a list of either, for example `[{"name": "owner", "value": "team-a"}]`.
                 The tags ride the create request, so any mandatory deployment tags missing from them cause the backend to reject the creation.
@@ -304,6 +362,7 @@ class ModelServing:
             vllm_variant=vllm_variant,
             vllm_image_tag=vllm_image_tag,
             tracing=tracing,
+            feature_logging=feature_logging,
             tags=tags,
             schema=schema,
             passed_features=passed_features,

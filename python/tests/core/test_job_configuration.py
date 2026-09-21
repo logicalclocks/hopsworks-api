@@ -72,3 +72,32 @@ class TestJobConfiguration:
             "type": job_configuration.JobConfiguration.DTO_TYPE,
         }
         assert expected_dict == result_dict
+
+    def test_to_dict_memory_overhead_factors(self):
+        # Arrange
+        job_config = job_configuration.JobConfiguration(
+            driver_memory_overhead_factor=0.2,
+            executor_memory_overhead_factor=0.35,
+        )
+
+        # Act
+        result_dict = job_config.to_dict()
+
+        # Assert
+        assert result_dict["spark.driver.memoryOverheadFactor"] == 0.2
+        assert result_dict["spark.executor.memoryOverheadFactor"] == 0.35
+
+    def test_positional_arguments_keep_their_meaning(self):
+        # Arrange
+        job_config = job_configuration.JobConfiguration(
+            4096, 2, 8192, 2, 2, False, 2, 4, "spark-feature-pipeline"
+        )
+
+        # Act
+        result_dict = job_config.to_dict()
+
+        # Assert
+        assert result_dict["spark.driver.memory"] == 4096
+        assert result_dict["spark.dynamicAllocation.maxExecutors"] == 4
+        assert "spark.driver.memoryOverheadFactor" not in result_dict
+        assert "spark.executor.memoryOverheadFactor" not in result_dict

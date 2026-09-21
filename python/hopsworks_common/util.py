@@ -361,6 +361,15 @@ def _verify_attribute_key_names(
     external_feature_group: bool = False,
 ) -> None:
     feature_names = {feat.name for feat in feature_group_obj.columns}
+    # With no columns every key check below finds its key missing, so each one blames the
+    # key the caller did give rather than the schema that is not there.
+    if not feature_names:
+        raise FeatureStoreException(
+            f"Feature group '{feature_group_obj.name}' has no features,"
+            " so its keys cannot be verified."
+            " Pass the schema explicitly as `features`,"
+            " or a dataframe to infer it from."
+        )
     if feature_group_obj.primary_key:
         diff = set(feature_group_obj.primary_key) - feature_names
         if diff:

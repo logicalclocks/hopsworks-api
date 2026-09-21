@@ -378,16 +378,21 @@ class Connection:
         """Instantiate the connection.
 
         Creating a `Connection` object implicitly calls this method for you to instantiate the connection.
-        However, it is possible to close the connection gracefully with the `close()` method, in order to clean up materialized certificates.
-        This might be desired when working on external environments such as AWS SageMaker.
-        Subsequently you can call `connect()` again to reopen the connection.
+
+        The connection closes itself when it is garbage collected, and at the end of a
+        `with` block when it is used as a context manager.
+        Closing cleans up any materialized certificates on the local file system, which
+        is worth doing explicitly on external environments such as AWS SageMaker.
+        [`hopsworks.logout`][hopsworks.logout] closes the connection the
+        [`hopsworks.login`][hopsworks.login] flow holds.
 
         Example:
             ```python
             import hopsworks
-            conn = hopsworks.connection()
-            conn.close()
-            conn.connect()
+
+            with hopsworks.connection() as conn:
+                project = conn.get_project("my_project")
+            # the connection is closed here
             ```
         """
         client._stop()
@@ -534,14 +539,11 @@ class Connection:
 
         This will clean up any materialized certificates on the local file system of external environments such as AWS SageMaker.
 
-        Usage is optional.
-
-        Example:
-            ```python
-            import hopsworks
-            conn = hopsworks.connection()
-            conn.close()
-            ```
+        Internal: callers reach this through the context manager, which closes on exit,
+        through [`hopsworks.logout`][hopsworks.logout], or by dropping the connection,
+        which closes it from a finalizer.
+        None of those is required, and a connection that is never closed leaves only
+        those certificates behind.
         """
         if not self._connected:
             return  # the connection is already closed

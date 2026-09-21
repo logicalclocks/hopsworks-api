@@ -79,6 +79,7 @@ class StorageConnector(ABC):
     GOOGLE_SHEETS = "GOOGLE_SHEETS"
     REST = "REST"
     ORACLE = "ORACLE"
+    CLICKHOUSE = "CLICKHOUSE"
     UNITY_CATALOG = "UNITY_CATALOG"
     SAP_HANA = "SAP_HANA"
     MONGODB = "MONGODB"
@@ -688,7 +689,9 @@ class StorageConnector(ABC):
         return self._data_source_api._get_tables(self, database)
 
     @public
-    def get_data(self, data_source: ds.DataSource, use_cached=True) -> DataSourceData:
+    def get_data(
+        self, data_source: ds.DataSource, use_cached: bool = True
+    ) -> DataSourceData | None:
         """Retrieve the data from the data source.
 
         Example:
@@ -707,7 +710,10 @@ class StorageConnector(ABC):
             use_cached (bool): Whether to use cached data if available. Only supported for CRM, Google Sheets, and REST connectors. Defaults to `True`.
 
         Returns:
-            An object containing the data retrieved from the data source.
+            An object containing the data retrieved from the data source, or `None` when the backend answered with an empty body.
+
+        Raises:
+            hopsworks.client.exceptions.DataSourceException: If the schema fetch failed for the data source.
         """
         if self.type in [
             StorageConnector.REST,
@@ -721,7 +727,14 @@ class StorageConnector(ABC):
             if self.type == StorageConnector.REST and data_source.rest_endpoint is None:
                 data_source.rest_endpoint = RestEndpointConfig()
             return self._get_no_sql_data(data_source, use_cached)
-        return self._data_source_api._get_data(data_source)
+        data = self._data_source_api._get_data(data_source)
+        # When the source refuses the read, the backend still answers 200 and reports the failure
+        # in schemaFetchFailed, so the UI can render the source's own message.
+        # Read the features off that reply and the schema is simply empty, with the reason in a
+        # field nobody looked at, so raise it here as the NoSQL path does.
+        if data is not None:
+            self._raise_if_schema_fetch_failed(data, data_source)
+        return data
 
     @public
     def get_data_batch(
@@ -792,7 +805,8 @@ class StorageConnector(ABC):
                 f"{name}:\n{data.schema_fetch_logs}" for name, data in failed.items()
             )
             raise DataSourceException(
-                f"Schema fetch failed for {len(failed)} of {len(results)} resource(s):\n{details}"
+                f"Schema fetch failed for {len(failed)} of {len(results)} resource(s)"
+                f" on data source '{self.name}':\n{details}"
             )
         _logger.info("Schema fetch succeeded for all %d resources.", len(results))
         return results
@@ -855,13 +869,19 @@ class StorageConnector(ABC):
             preview_data: Pre-fetched preview data to skip a server round-trip; if `None`, a preview is fetched via `get_data`.
 
         Returns:
-            An object containing the suggested feature renames, types, descriptions, primary key, and event time.
+            An object containing the suggested feature renames, types, descriptions, primary key, event time, and feature group description.
 
         Raises:
             hopsworks.client.exceptions.PlatformIntelligenceException: If platform intelligence is not enabled on the cluster, or the LLM call fails.
+            hopsworks.client.exceptions.DataSourceException: If the schema fetch failed for the data source, or it returned no data to infer from.
         """
         if preview_data is None:
             preview_data = self.get_data(data_source)
+        if preview_data is None:
+            raise DataSourceException(
+                f"No data was returned for {self._describe_source(data_source)},"
+                " so there is nothing to infer metadata from."
+            )
         return self._data_source_api._infer_metadata(self, preview_data)
 
     def _get_no_sql_data(
@@ -876,11 +896,26 @@ class StorageConnector(ABC):
             data = self._data_source_api._get_no_sql_data(self, data_source)
             _logger.info("Schema fetch in progress...")
 
-        if data.schema_fetch_failed:
-            raise DataSourceException(f"Schema fetch failed:\n{data.schema_fetch_logs}")
+        self._raise_if_schema_fetch_failed(data, data_source)
         _logger.info("Schema fetch succeeded.")
 
         return data
+
+    def _describe_source(self, data_source: ds.DataSource) -> str:
+        """Name a data source for an error message, by the resource it reads and this connector."""
+        described = data_source._describe()
+        if described is None:
+            return f"data source '{self.name}'"
+        return f"{described} on data source '{self.name}'"
+
+    def _raise_if_schema_fetch_failed(
+        self, data: DataSourceData, data_source: ds.DataSource
+    ) -> None:
+        if data.schema_fetch_failed:
+            raise DataSourceException(
+                f"Schema fetch failed for {self._describe_source(data_source)}:"
+                f"\n{data.schema_fetch_logs}"
+            )
 
 
 @public
@@ -3391,16 +3426,20 @@ class SqlConnector(StorageConnector):
     MYSQL = "MYSQL"
     POSTGRESQL = "POSTGRESQL"
     ORACLE = "ORACLE"
+    CLICKHOUSE = "CLICKHOUSE"
 
     _DRIVERS = {
         MYSQL: "com.mysql.cj.jdbc.Driver",
         POSTGRESQL: "org.postgresql.Driver",
         ORACLE: "oracle.jdbc.driver.OracleDriver",
+        CLICKHOUSE: "com.clickhouse.jdbc.ClickHouseDriver",
     }
     _JDBC_SCHEMES = {
         MYSQL: "mysql",
         POSTGRESQL: "postgresql",
         ORACLE: "oracle:thin",
+        # No protocol in the scheme: the 0.9.x driver defaults to HTTP (port 8123).
+        CLICKHOUSE: "clickhouse",
     }
 
     def __init__(
@@ -3612,6 +3651,9 @@ class SqlConnector(StorageConnector):
                 props["wallet_path"] = self._wallet_path
             if self._wallet_password:
                 props["wallet_password"] = self._wallet_password
+        if self._database_type == self.CLICKHOUSE:
+            # clickhouse-connect's name for the JDBC ``ssl=true`` argument.
+            props["secure"] = str(self._arguments.get("ssl", "false")).lower() == "true"
         return props
 
     @public
