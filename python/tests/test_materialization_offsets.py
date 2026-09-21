@@ -61,8 +61,10 @@ def entity(mocker):
 
 
 class TestOffsetsSinceCreation:
-    """A first materialization run starts at the feature group's creation, not at the
-    low watermark of a topic it shares with every other feature group in the project."""
+    """Where a first materialization run starts when nothing handed it offsets.
+
+    Not the low watermark of the topic, which by default it shares with every other online-enabled feature group in the project, but the feature group's own creation time.
+    """
 
     def test_creation_time_offsets_replace_the_low_watermark(
         self, mocker, hsfs_utils, entity
