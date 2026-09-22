@@ -1,16 +1,17 @@
 Read the hopsworks-api source code, found in ${HOME}/hopsworks-api, for how to connect to data sources, save data/features/models, deploy models/apps/agent, use feature groups, use feature views, create transformations, and build offline/online ML systems as well as agents, streamlit apps, and superset dashboards.
 
-Skills are organized into bucket folders under skills/ at the repo root. The
-terminal images clone this repo to /opt/hopsworks-api and symlink each skill
-into every agent's skills directory, so they are served from the image rather
-than copied into a user's project home:
+Skills are organized into bucket folders under python/hopsworks/skills/, so they
+ship inside the installed package and an external `pip install hopsworks` can
+read them. The terminal images clone this repo to /opt/hopsworks-api and symlink
+each skill into every agent's skills directory, so in a cluster they are served
+from the image rather than copied into a user's project home:
 
 ml/ — develop and operate ML systems with FTI pipeline architecture (feature groups, feature views, transformations, training, inference, monitoring)
 agents/ — develop and operate agent tasks and agent deployments
 dashboards/ — Streamlit / custom apps and Superset dashboards
 data/ — data discovery, data sources, Trino SQL, dbt, Spark, table maintenance
 platform/ — cross-cutting platform knowledge and compute (jobs, environments, UI navigation, collaboration, kubectl debugging), not tied to one FTI stage
-Every skill under skills/ must have a reference in the top-level README.md.
+Every skill under python/hopsworks/skills/ must have a reference in the top-level README.md.
 
 Each skill entry in the top-level README.md must link the skill name to its SKILL.md.
 
