@@ -826,7 +826,7 @@ _SPECS: dict[str, _Spec] = {
                 "databaseType",
                 "Database engine.",
                 required=True,
-                choices=("MYSQL", "POSTGRESQL", "ORACLE", "CLICKHOUSE"),
+                choices=("MYSQL", "POSTGRESQL", "ORACLE", "CLICKHOUSE", "TERADATA"),
             ),
             _Opt(
                 "--host",
@@ -836,7 +836,7 @@ _SPECS: dict[str, _Spec] = {
             _Opt(
                 "--port",
                 "port",
-                "Database port; the HTTP interface port (8123) for CLICKHOUSE.",
+                "Database port; the HTTP interface port (8123) for CLICKHOUSE, 1025 for TERADATA.",
                 required=True,
                 kind="int",
             ),
