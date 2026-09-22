@@ -21,6 +21,7 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.text.ParseException;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -57,6 +58,7 @@ import org.apache.hudi.storage.StorageConfiguration;
 import org.apache.hudi.storage.hadoop.HoodieHadoopStorage;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.parquet.Strings;
@@ -143,6 +145,10 @@ public class HudiEngine {
   protected static final String STREAMER_CHECKPOINT_KEY_V2 = "streamer.checkpoint.key.v2";
   protected static final String DELTASTREAMER_CHECKPOINT_KEY = "deltastreamer.checkpoint.key";
   protected static final String INITIAL_CHECKPOINT_STRING = "initialCheckPointString";
+  // Named as in the Python materialization job, which reads the same option out of the
+  // same job configuration: a feature group configured once behaves the same whichever
+  // time travel format it uses.
+  protected static final String INITIAL_OFFSET_MARGIN_HOURS = "initial_offset_margin_hours";
   protected static final String FEATURE_GROUP_SCHEMA = "com.logicalclocks.hsfs.spark.StreamFeatureGroup.avroSchema";
   protected static final String FEATURE_GROUP_ENCODED_SCHEMA =
       "com.logicalclocks.hsfs.spark.StreamFeatureGroup.encodedAvroSchema";
@@ -324,10 +330,73 @@ public class HudiEngine {
   }
 
   /**
-   * Build a checkpoint string with all partitions set to their earliest available offset.
-   * Format: "topicName,0:offset,1:offset,2:offset,..."
+   * The instant a first read of the topic should start at, or null when it cannot be established.
+   *
+   * <p>No record of a feature group can predate the feature group, so its creation time is a sound
+   * floor. Kafka stamps a record with the producing client's clock by default, so a client whose
+   * clock lags the backend's could stamp one just before that time; {@code
+   * initial_offset_margin_hours} (1 by default) is how far back the floor is moved to absorb the
+   * skew, and raising it costs only a longer read.</p>
    */
-  private String buildResetCheckpoint(String topic, Map<String, String> writeOptions) {
+  private Long creationFloor(StreamFeatureGroup streamFeatureGroup, Map<String, String> writeOptions) {
+    Date created = streamFeatureGroup.getCreated();
+    if (created == null) {
+      return null;
+    }
+    double marginHours = 1;
+    if (writeOptions != null && writeOptions.containsKey(INITIAL_OFFSET_MARGIN_HOURS)) {
+      try {
+        marginHours = Double.parseDouble(writeOptions.get(INITIAL_OFFSET_MARGIN_HOURS));
+      } catch (NumberFormatException e) {
+        LOGGER.log(Level.WARNING, "Ignoring unparseable {0}: {1}",
+            new Object[] {INITIAL_OFFSET_MARGIN_HOURS, writeOptions.get(INITIAL_OFFSET_MARGIN_HOURS)});
+      }
+    }
+    return created.getTime() - (long) (marginHours * 60 * 60 * 1000);
+  }
+
+  /**
+   * The offsets to read each partition from so that nothing older than {@code sinceTimestamp} is
+   * read, keyed by partition.
+   *
+   * <p>A partition whose records all predate the timestamp contributes its end offset, since it
+   * holds nothing worth reading. A partition Kafka could not answer for contributes its beginning
+   * offset, so an unanswered lookup reads too much rather than too little.</p>
+   */
+  private Map<org.apache.kafka.common.TopicPartition, Long> offsetsSince(
+      KafkaConsumer<byte[], byte[]> consumer,
+      List<org.apache.kafka.common.TopicPartition> topicPartitions,
+      Map<org.apache.kafka.common.TopicPartition, Long> beginningOffsets,
+      long sinceTimestamp) {
+    Map<org.apache.kafka.common.TopicPartition, Long> lookups = new HashMap<>();
+    for (org.apache.kafka.common.TopicPartition tp : topicPartitions) {
+      lookups.put(tp, sinceTimestamp);
+    }
+    Map<org.apache.kafka.common.TopicPartition, OffsetAndTimestamp> found =
+        consumer.offsetsForTimes(lookups);
+    Map<org.apache.kafka.common.TopicPartition, Long> endOffsets = consumer.endOffsets(topicPartitions);
+
+    Map<org.apache.kafka.common.TopicPartition, Long> startOffsets = new HashMap<>();
+    for (org.apache.kafka.common.TopicPartition tp : topicPartitions) {
+      OffsetAndTimestamp atOrAfter = found.get(tp);
+      if (atOrAfter == null) {
+        startOffsets.put(tp, endOffsets.get(tp));
+      } else {
+        // Retention can drop the record the lookup landed on between the two calls.
+        startOffsets.put(tp, Math.max(atOrAfter.offset(), beginningOffsets.get(tp)));
+      }
+    }
+    return startOffsets;
+  }
+
+  /**
+   * Build a checkpoint string for the topic, starting no earlier than {@code sinceTimestamp}.
+   * Format: "topicName,0:offset,1:offset,2:offset,..."
+   *
+   * <p>A null {@code sinceTimestamp} means no floor could be established, and every partition is
+   * read from its earliest available offset.</p>
+   */
+  private String buildResetCheckpoint(String topic, Map<String, String> writeOptions, Long sinceTimestamp) {
     Properties kafkaProps = new Properties();
     // writeOptions keys are Spark-formatted with "kafka." prefix (e.g. "kafka.bootstrap.servers").
     // Strip the prefix to get standard Kafka consumer property names.
@@ -350,9 +419,12 @@ public class HudiEngine {
           .collect(Collectors.toList());
       Map<org.apache.kafka.common.TopicPartition, Long> beginningOffsets =
           consumer.beginningOffsets(topicPartitions);
+      Map<org.apache.kafka.common.TopicPartition, Long> startOffsets = sinceTimestamp == null
+          ? beginningOffsets
+          : offsetsSince(consumer, topicPartitions, beginningOffsets, sinceTimestamp);
       StringBuilder sb = new StringBuilder(topic);
       for (org.apache.kafka.common.TopicPartition tp : topicPartitions) {
-        sb.append(",").append(tp.partition()).append(":").append(beginningOffsets.get(tp));
+        sb.append(",").append(tp.partition()).append(":").append(startOffsets.get(tp));
       }
       return sb.toString();
     }
@@ -559,31 +631,47 @@ public class HudiEngine {
     // set consumer group id
     hudiWriteOpts.put(ConsumerConfig.GROUP_ID_CONFIG, String.valueOf(streamFeatureGroup.getId()));
 
+    // Nothing tells this run where to start: the Hudi table carries no checkpoint of its own
+    // yet, or it carries one for a topic the feature group no longer writes to.
+    boolean noCheckpointToResumeFrom = false;
+
     // check if table was initiated and if not initiate
     Path basePath = new Path(streamFeatureGroup.getLocation());
     FileSystem fs = basePath.getFileSystem(sparkSession.sparkContext().hadoopConfiguration());
     if (!fs.exists(new Path(basePath, HoodieTableMetaClient.METAFOLDER_NAME))) {
       createEmptyTable(sparkSession, streamFeatureGroup);
-      // set "kafka.auto.offset.reset": "earliest"
-      hudiWriteOpts.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+      noCheckpointToResumeFrom = true;
     }
 
     // it is possible that table was generated from empty topic
     HoodieTimeline commitTimeline = getHoodieTimeline(sparkSession, streamFeatureGroup.getLocation());
+    String currentTopic = streamFeatureGroup.getOnlineTopicName();
     if (commitTimeline.empty()) {
-      // set "kafka.auto.offset.reset": "earliest"
+      noCheckpointToResumeFrom = true;
+    } else if (!writeOptions.containsKey(HudiEngine.INITIAL_CHECKPOINT_STRING)) {
+      // Detect topic change: if the checkpoint references a different topic, reset offsets
+      String checkpointTopic = getCheckpointTopic(commitTimeline);
+      if (checkpointTopic != null && !checkpointTopic.equals(currentTopic)) {
+        LOGGER.warning("Kafka topic changed from '" + checkpointTopic + "' to '" + currentTopic
+            + "'. Resetting checkpoint to read from the new topic.");
+        noCheckpointToResumeFrom = true;
+      }
+    }
+
+    // A checkpoint the caller handed us wins: the Python client computes one from the
+    // offsets it saw before it produced, which is more precise than anything derivable here.
+    if (noCheckpointToResumeFrom && !writeOptions.containsKey(HudiEngine.INITIAL_CHECKPOINT_STRING)) {
+      // Reading from the earliest offset means reading the whole retained topic, and the
+      // topic is by default `<project>_onlinefs`, shared by every online-enabled feature
+      // group in the project. No record of a feature group can predate the feature group,
+      // so its creation time is a sound floor; `earliest` stays as the fallback for when
+      // that floor cannot be established.
       hudiWriteOpts.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-    } else {
-      if (!writeOptions.containsKey(HudiEngine.INITIAL_CHECKPOINT_STRING)) {
-        // Detect topic change: if the checkpoint references a different topic, reset offsets
-        String currentTopic = streamFeatureGroup.getOnlineTopicName();
-        String checkpointTopic = getCheckpointTopic(commitTimeline);
-        if (checkpointTopic != null && !checkpointTopic.equals(currentTopic)) {
-          LOGGER.warning("Kafka topic changed from '" + checkpointTopic + "' to '" + currentTopic
-              + "'. Resetting checkpoint to read from earliest offset of new topic.");
-          hudiWriteOpts.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-          hudiWriteOpts.put(INITIAL_CHECKPOINT_STRING, buildResetCheckpoint(currentTopic, hudiWriteOpts));
-        }
+      String checkpoint = buildResetCheckpoint(currentTopic, hudiWriteOpts,
+          creationFloor(streamFeatureGroup, writeOptions));
+      if (checkpoint != null) {
+        LOGGER.info("No saved offsets, starting from the feature group's creation: " + checkpoint);
+        hudiWriteOpts.put(INITIAL_CHECKPOINT_STRING, checkpoint);
       }
     }
     
