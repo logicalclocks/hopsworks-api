@@ -80,6 +80,7 @@ class StorageConnector(ABC):
     REST = "REST"
     ORACLE = "ORACLE"
     CLICKHOUSE = "CLICKHOUSE"
+    TERADATA = "TERADATA"
     UNITY_CATALOG = "UNITY_CATALOG"
     SAP_HANA = "SAP_HANA"
     MONGODB = "MONGODB"
@@ -3427,19 +3428,36 @@ class SqlConnector(StorageConnector):
     POSTGRESQL = "POSTGRESQL"
     ORACLE = "ORACLE"
     CLICKHOUSE = "CLICKHOUSE"
+    TERADATA = "TERADATA"
 
     _DRIVERS = {
         MYSQL: "com.mysql.cj.jdbc.Driver",
         POSTGRESQL: "org.postgresql.Driver",
         ORACLE: "oracle.jdbc.driver.OracleDriver",
         CLICKHOUSE: "com.clickhouse.jdbc.ClickHouseDriver",
+        TERADATA: "com.teradata.jdbc.TeraDriver",
     }
+    # Connection settings the connector's own fields supply, so a free-form argument must never be
+    # able to replace them.
+    _RESERVED_CONNECTOR_ARGUMENTS = frozenset(
+        {
+            "host",
+            "port",
+            "dbs_port",
+            "database",
+            "database_type",
+            "user",
+            "username",
+            "password",
+        }
+    )
     _JDBC_SCHEMES = {
         MYSQL: "mysql",
         POSTGRESQL: "postgresql",
         ORACLE: "oracle:thin",
         # No protocol in the scheme: the 0.9.x driver defaults to HTTP (port 8123).
         CLICKHOUSE: "clickhouse",
+        TERADATA: "teradata",
     }
 
     def __init__(
@@ -3602,8 +3620,16 @@ class SqlConnector(StorageConnector):
         return payload
 
     def spark_options(self) -> dict[str, Any]:
+        # The connection settings below are built from the connector's own fields, so an argument
+        # repeating one is dropped rather than forwarded. Spark hands anything it does not
+        # recognise to the JDBC driver as a connection property, where a stray ``dbs_port`` or
+        # ``database`` would contradict the URL that was just built from those same fields.
         opts = {
-            **(self._arguments if self._arguments else {}),
+            **{
+                name: value
+                for name, value in (self._arguments or {}).items()
+                if name.lower() not in self._RESERVED_CONNECTOR_ARGUMENTS
+            },
             "user": self.user,
             "password": self.password,
             "driver": self._DRIVERS.get(
@@ -3628,6 +3654,18 @@ class SqlConnector(StorageConnector):
                 raise DataSourceException(
                     "Oracle connector requires either host+port or a wallet."
                 )
+        elif self._database_type == self.TERADATA:
+            # Teradata takes no port after the host and no database path: both are comma-separated
+            # parameters after a single slash, e.g.
+            # jdbc:teradata://host/DATABASE=db,DBS_PORT=1025
+            if not self._host:
+                raise DataSourceException("Teradata connector requires a host.")
+            params = []
+            if self._database:
+                params.append(f"DATABASE={self._database}")
+            if self._port:
+                params.append(f"DBS_PORT={self._port}")
+            opts["url"] = f"jdbc:{scheme}://{self._host}/" + ",".join(params)
         else:
             opts["url"] = f"jdbc:{scheme}://{host_port}/{self._database}"
         return opts
@@ -3654,6 +3692,21 @@ class SqlConnector(StorageConnector):
         if self._database_type == self.CLICKHOUSE:
             # clickhouse-connect's name for the JDBC ``ssl=true`` argument.
             props["secure"] = str(self._arguments.get("ssl", "false")).lower() == "true"
+        if self._database_type == self.TERADATA:
+            # How the logon happens lives in the arguments (``logmech``, ``sslmode`` and the
+            # certificate settings), and Teradata's Python driver takes them under the same names as
+            # the JDBC one. Spark already receives them through ``spark_options``; without this the
+            # Python engine is the only path still attempting a default TD2 logon, so an LDAP-only
+            # source fails here while Spark reads it.
+            props.update(
+                {
+                    name: value
+                    for name, value in self._arguments.items()
+                    # The fields above own these; an argument repeating one would change which
+                    # database is read, or whose identity it is read as.
+                    if name.lower() not in self._RESERVED_CONNECTOR_ARGUMENTS
+                }
+            )
         return props
 
     @public
