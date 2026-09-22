@@ -573,6 +573,29 @@ def test_sql_clickhouse_is_a_database_type_of_the_sql_connector():
     assert body["arguments"] == [{"name": "ssl", "value": "true"}]
 
 
+def test_sql_teradata_is_a_database_type_of_the_sql_connector():
+    body = _create(
+        [
+            "sql",
+            "n",
+            "--database-type",
+            "TERADATA",
+            "--host",
+            "td",
+            "--port",
+            "1025",
+            "--database",
+            "demo_user",
+            "--user",
+            "u",
+        ]
+    )
+
+    assert body["type"] == "featurestoreSqlConnectorDTO"
+    assert body["databaseType"] == "TERADATA"
+    assert body["port"] == 1025
+
+
 def test_unity_catalog_defaults_to_a_personal_access_token():
     body = _create(["unity-catalog", "n", *_MINIMAL["unity-catalog"]])
 

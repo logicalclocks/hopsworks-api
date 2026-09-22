@@ -125,6 +125,7 @@ def create_fv_td(job_conf: dict[Any, Any]) -> None:
     training_helper_columns = user_write_options.get("training_helper_columns")
     primary_keys = user_write_options.get("primary_keys")
     event_time = user_write_options.get("event_time")
+    spine = job_conf.pop("spine", None)
     fv_engine._compute_training_dataset(
         feature_view_obj=fv,
         user_write_options=user_write_options,
@@ -132,7 +133,39 @@ def create_fv_td(job_conf: dict[Any, Any]) -> None:
         event_time=event_time,
         training_helper_columns=training_helper_columns,
         training_dataset_version=job_conf["td_version"],
+        spine_df=None if spine is None else read_staged_spine(fs, spine),
     )
+
+
+def read_staged_spine(fs: Any, spine: dict[str, Any]) -> Any:
+    """The spine the client staged for this job, read back as a Spark DataFrame in spine order.
+
+    The client wrote the file under its own Resources/.hopsworks_spine/ and the backend checked it
+    against the feature view before naming it in the job configuration. The job rebuilds the query
+    from the feature view, so without this the training data would silently be the root feature
+    group's rows rather than the population the caller asked for. A file that is gone, because the
+    sweeper's featurestore_asof_spine_max_file_age_ms passed before the job ran or because it was
+    removed by hand, is an error: the job cannot build the population it was given and must not
+    build another.
+    """
+    from hopsworks_common.client.exceptions import FeatureStoreException
+    from hsfs.constructor.inference_spine import ROW_ID_COLUMN, SPINE_DIR
+
+    basename = spine.get("parquetBasename")
+    if not basename:
+        raise FeatureStoreException(
+            "The training dataset job was given a spine that names no staged file."
+        )
+    path = f"hdfs:///Projects/{fs.project_name}/{SPINE_DIR}/{basename}"
+    try:
+        frame = setup_spark().read.parquet(path)
+    except Exception as e:
+        raise FeatureStoreException(
+            f"The spine this training dataset was built from could not be read at {path}: {e}."
+            " Spine files are kept for featurestore_asof_spine_max_file_age_ms after they are"
+            " written; recreate the training dataset with the same `spine_df` to stage it again."
+        ) from e
+    return frame.orderBy(ROW_ID_COLUMN).drop(ROW_ID_COLUMN)
 
 
 def compute_stats(job_conf: dict[Any, Any]) -> None:
@@ -296,20 +329,23 @@ def offline_fg_materialization(
     )
 
     # get starting offsets
-    offset_location = entity.prepare_spark_location() + "/kafka_offsets"
+    location = entity.prepare_spark_location()
+    offset_location = location + "/kafka_offsets"
     # The offsets a run intends to consume, written before its append and removed after the
     # offsets file is saved. A run that finds one repeats exactly that range, so its Delta
     # transaction version matches the earlier attempt's and an append that did commit is skipped
     # instead of being widened by rows that arrived since.
-    pending_offset_location = offset_location + "_pending"
-    # Absence is the only reading of a missing file. A storage, permission or
-    # corruption error has to stop the run: treating it as "no pending range"
-    # would widen the range to the offsets that arrived since and append rows
-    # the earlier attempt's transaction version no longer covers.
-    pending_offsets = (
-        spark.read.json(pending_offset_location).toJSON().first()
-        if _path_exists(spark, pending_offset_location)
-        else None
+    # It lives beside the feature group directory, not inside it like kafka_offsets: on the
+    # first run the table does not exist yet, and Delta refuses to create one at a location
+    # that already holds a file (DELTA_MISSING_DELTA_TABLE), which left every later run of a
+    # clustered feature group failing on the file the first one wrote. Deleting the feature
+    # group removes only its directory, so the name carries the group's id: a group recreated
+    # under the same name and version has a new id and never reads the old group's claim.
+    pending_offset_location = (
+        f"{location.rstrip('/')}_kafka_offsets_pending_{entity.id}"
+    )
+    pending_offsets = _pending_offsets(
+        spark, location, offset_location + "_pending", pending_offset_location
     )
     try:
         if initial_check_point_string:
@@ -519,6 +555,46 @@ def _remove_path(spark, location: str) -> None:
     path.getFileSystem(spark._jsc.hadoopConfiguration()).delete(path, True)
 
 
+def _move_path(spark, source: str, target: str) -> None:
+    jvm = spark._jvm
+    src = jvm.org.apache.hadoop.fs.Path(source)
+    if not src.getFileSystem(spark._jsc.hadoopConfiguration()).rename(
+        src, jvm.org.apache.hadoop.fs.Path(target)
+    ):
+        raise OSError(f"Could not move {source} to {target}")
+
+
+def _pending_offsets(
+    spark, location: str, legacy_location: str, pending_location: str
+) -> str | None:
+    """The range an unfinished append claimed, as the JSON offsets string, or None.
+
+    `legacy_location` is where clients before this one wrote the claim: inside the
+    table directory, where a claim written before the table was created stopped Delta
+    from ever creating it. With no `_delta_log` there, nothing was appended, so the claim
+    covers nothing and only stands in the way of the create; it is removed. With a table
+    there, the claim belongs to an interrupted append and is moved to `pending_location`
+    so the retry repeats its range. A claim in the new place always wins over a legacy
+    one, because the two share their starting offsets and the newer range covers the
+    older one.
+
+    Absence is the only reading of a missing file. A storage, permission or corruption
+    error has to stop the run: treating it as "no pending range" would widen the range
+    to the offsets that arrived since and append rows the earlier attempt's transaction
+    version no longer covers.
+    """
+    if _path_exists(spark, legacy_location):
+        if _path_exists(spark, pending_location) or not _path_exists(
+            spark, location + "/_delta_log"
+        ):
+            _remove_path(spark, legacy_location)
+        else:
+            _move_path(spark, legacy_location, pending_location)
+    if not _path_exists(spark, pending_location):
+        return None
+    return spark.read.json(pending_location).toJSON().first()
+
+
 def _build_offsets(initial_check_point_string: str):
     if not initial_check_point_string:
         return ""
@@ -611,6 +687,7 @@ if __name__ == "__main__":
             "insert_fg",
             "create_td",
             "create_fv_td",
+            "create_fv_td_spine",
             "compute_stats",
             "ge_validate",
             "import_fg",
@@ -669,7 +746,10 @@ if __name__ == "__main__":
             insert_fg(spark, job_conf)
         elif args.op == "create_td":
             create_td(job_conf)
-        elif args.op == "create_fv_td":
+        elif args.op in ("create_fv_td", "create_fv_td_spine"):
+            # The backend launches a spine-anchored job under its own op so an image whose
+            # entrypoint predates spines refuses it here, at argument parsing, rather than
+            # building the feature view's own rows under the requested version.
             create_fv_td(job_conf)
         elif args.op == "compute_stats":
             compute_stats(job_conf)
