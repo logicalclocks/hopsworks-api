@@ -47,10 +47,6 @@ class GIT:
     ERROR_STATES = ["FAILED", "KILLED", "INITIALIZATION_FAILED", "TIMEDOUT"]
 
 
-class SERVICES:
-    LIST = ["JOBS", "KAFKA", "JUPYTER", "SERVING", "FEATURESTORE", "AIRFLOW"]
-
-
 class OPENSEARCH_CONFIG:
     SSL_CONFIG = "es.net.ssl"
     NODES_WAN_ONLY = "es.nodes.wan.only"
