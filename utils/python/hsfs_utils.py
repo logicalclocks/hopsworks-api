@@ -296,20 +296,23 @@ def offline_fg_materialization(
     )
 
     # get starting offsets
-    offset_location = entity.prepare_spark_location() + "/kafka_offsets"
+    location = entity.prepare_spark_location()
+    offset_location = location + "/kafka_offsets"
     # The offsets a run intends to consume, written before its append and removed after the
     # offsets file is saved. A run that finds one repeats exactly that range, so its Delta
     # transaction version matches the earlier attempt's and an append that did commit is skipped
     # instead of being widened by rows that arrived since.
-    pending_offset_location = offset_location + "_pending"
-    # Absence is the only reading of a missing file. A storage, permission or
-    # corruption error has to stop the run: treating it as "no pending range"
-    # would widen the range to the offsets that arrived since and append rows
-    # the earlier attempt's transaction version no longer covers.
-    pending_offsets = (
-        spark.read.json(pending_offset_location).toJSON().first()
-        if _path_exists(spark, pending_offset_location)
-        else None
+    # It lives beside the feature group directory, not inside it like kafka_offsets: on the
+    # first run the table does not exist yet, and Delta refuses to create one at a location
+    # that already holds a file (DELTA_MISSING_DELTA_TABLE), which left every later run of a
+    # clustered feature group failing on the file the first one wrote. Deleting the feature
+    # group removes only its directory, so the name carries the group's id: a group recreated
+    # under the same name and version has a new id and never reads the old group's claim.
+    pending_offset_location = (
+        f"{location.rstrip('/')}_kafka_offsets_pending_{entity.id}"
+    )
+    pending_offsets = _pending_offsets(
+        spark, location, offset_location + "_pending", pending_offset_location
     )
     try:
         if initial_check_point_string:
@@ -517,6 +520,46 @@ def _remove_path(spark, location: str) -> None:
     jvm = spark._jvm
     path = jvm.org.apache.hadoop.fs.Path(location)
     path.getFileSystem(spark._jsc.hadoopConfiguration()).delete(path, True)
+
+
+def _move_path(spark, source: str, target: str) -> None:
+    jvm = spark._jvm
+    src = jvm.org.apache.hadoop.fs.Path(source)
+    if not src.getFileSystem(spark._jsc.hadoopConfiguration()).rename(
+        src, jvm.org.apache.hadoop.fs.Path(target)
+    ):
+        raise OSError(f"Could not move {source} to {target}")
+
+
+def _pending_offsets(
+    spark, location: str, legacy_location: str, pending_location: str
+) -> str | None:
+    """The range an unfinished append claimed, as the JSON offsets string, or None.
+
+    `legacy_location` is where clients before this one wrote the claim: inside the
+    table directory, where a claim written before the table was created stopped Delta
+    from ever creating it. With no `_delta_log` there, nothing was appended, so the claim
+    covers nothing and only stands in the way of the create; it is removed. With a table
+    there, the claim belongs to an interrupted append and is moved to `pending_location`
+    so the retry repeats its range. A claim in the new place always wins over a legacy
+    one, because the two share their starting offsets and the newer range covers the
+    older one.
+
+    Absence is the only reading of a missing file. A storage, permission or corruption
+    error has to stop the run: treating it as "no pending range" would widen the range
+    to the offsets that arrived since and append rows the earlier attempt's transaction
+    version no longer covers.
+    """
+    if _path_exists(spark, legacy_location):
+        if _path_exists(spark, pending_location) or not _path_exists(
+            spark, location + "/_delta_log"
+        ):
+            _remove_path(spark, legacy_location)
+        else:
+            _move_path(spark, legacy_location, pending_location)
+    if not _path_exists(spark, pending_location):
+        return None
+    return spark.read.json(pending_location).toJSON().first()
 
 
 def _build_offsets(initial_check_point_string: str):
