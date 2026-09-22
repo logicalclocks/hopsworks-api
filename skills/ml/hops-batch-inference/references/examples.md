@@ -1,8 +1,66 @@
 # Batch inference — extended examples
 
-Two complete pipelines beyond the canonical Pandas example in the parent skill: PySpark with a spine group, and scoring via model→feature-view provenance.
+Three complete pipelines beyond the canonical Pandas example in the parent skill: a forecast-horizon score with `spine_df`, PySpark with a spine group, and scoring via model→feature-view provenance.
 
-## Complete Example: PySpark Batch Inference with Spine Group
+## Complete Example: Scoring a Forecast Horizon with `spine_df`
+
+Score every location for each of the next seven days, where the feature view's root feature group
+holds only past observations and a joined feature group holds the forecast. A time range returns
+nothing here; the rows have to be supplied.
+
+```python
+import datetime
+
+import hopsworks
+import joblib
+import pandas as pd
+from hsfs.constructor.prediction_times import PredictionTimes
+
+project = hopsworks.login()
+mr = project.get_model_registry()
+
+# 1. Model
+model = mr.get_model("air_quality_xgboost_model", version=1)
+clf = joblib.load(f"{model.download()}/model.pkl")
+
+# 2. Feature view from the model's provenance. This calls init_batch_scoring() with the
+#    training dataset version the model was trained on, so the transformation statistics
+#    cannot drift from the model the way a hardcoded version can.
+fv = model.get_feature_view(init=True, online=False)
+
+# 3. The view was created with max_feature_age=timedelta(days=1), so a day with
+#    no forecast comes back NULL rather than inheriting the previous day's weather silently.
+
+# 4. The rows to score: every location, every day of the horizon
+tomorrow = datetime.date.today() + datetime.timedelta(days=1)
+locations = pd.DataFrame(
+    [
+        {"country": "sweden", "city": "stockholm", "street": "sveavagen"},
+        {"country": "sweden", "city": "gothenburg", "street": "avenyn"},
+    ]
+)
+schedule = PredictionTimes.every("daily", offset="00:00", start=tomorrow, count=7)
+spine_df = schedule.cross(locations, event_time="date")
+
+# 5. Features as of each row's own prediction time
+batch_df = fv.get_batch_data(
+    spine_df=spine_df,
+    primary_key=False,
+    event_time=False,
+    dataframe_type="pandas",
+)
+
+# 6. Rows come back in spine_df order, so predictions zip back positionally
+predictions = spine_df.copy()
+predictions["predicted_pm25"] = clf.predict(batch_df)
+```
+
+A row whose weather is older than the bound comes back `NULL` rather than carrying the previous
+day forward, so a gap in the forecast is visible instead of silently becoming a prediction.
+
+---
+
+## Complete Example: PySpark Batch Inference with `spine_df`
 
 ```python
 import hopsworks
@@ -34,27 +92,23 @@ import joblib
 model = joblib.load(f"{model_dir}/model.pkl")
 bc_model = spark.sparkContext.broadcast(model)
 
-# 4. Create spine with entities to score
+# 4. The entities to score, one row per entity with the time to score it as of.
+#    Name the time column after the feature view's root feature group event time.
 scoring_entities = spark.sql("""
-    SELECT user_id, current_timestamp() as prediction_time
+    SELECT user_id, current_timestamp() as event_time
     FROM active_users
     WHERE last_active > date_sub(current_date(), 1)
 """)
 
-spine_group = fs.get_or_create_spine_group(
-    name="daily_scoring_spine",
-    version=1,
-    primary_key=["user_id"],
-    event_time="prediction_time",
-    dataframe=scoring_entities,
-)
+# 5. Get the feature view from the model. init_batch_scoring() is called for you with the
+#    training dataset version the model was trained on.
+fv = model_meta.get_feature_view(init=True, online=False)
 
-# 5. Get feature view and retrieve batch data with spine
-fv = fs.get_feature_view("fraud_features_fv", version=1)
-fv.init_batch_scoring(training_dataset_version=1)
-
+# Under the Spark engine `spine_df` takes the Spark DataFrame directly. The rows are collected
+# to the driver to be registered as a session temporary view, which is what the Spark spine
+# path has always done, so keep the spine to the entities you are scoring.
 batch_df = fv.get_batch_data(
-    spine=spine_group,
+    spine_df=scoring_entities,
     dataframe_type="spark",
 )
 

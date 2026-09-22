@@ -125,6 +125,7 @@ def create_fv_td(job_conf: dict[Any, Any]) -> None:
     training_helper_columns = user_write_options.get("training_helper_columns")
     primary_keys = user_write_options.get("primary_keys")
     event_time = user_write_options.get("event_time")
+    spine = job_conf.pop("spine", None)
     fv_engine._compute_training_dataset(
         feature_view_obj=fv,
         user_write_options=user_write_options,
@@ -132,7 +133,39 @@ def create_fv_td(job_conf: dict[Any, Any]) -> None:
         event_time=event_time,
         training_helper_columns=training_helper_columns,
         training_dataset_version=job_conf["td_version"],
+        spine_df=None if spine is None else read_staged_spine(fs, spine),
     )
+
+
+def read_staged_spine(fs: Any, spine: dict[str, Any]) -> Any:
+    """The spine the client staged for this job, read back as a Spark DataFrame in spine order.
+
+    The client wrote the file under its own Resources/.hopsworks_spine/ and the backend checked it
+    against the feature view before naming it in the job configuration. The job rebuilds the query
+    from the feature view, so without this the training data would silently be the root feature
+    group's rows rather than the population the caller asked for. A file that is gone, because the
+    sweeper's featurestore_asof_spine_max_file_age_ms passed before the job ran or because it was
+    removed by hand, is an error: the job cannot build the population it was given and must not
+    build another.
+    """
+    from hopsworks_common.client.exceptions import FeatureStoreException
+    from hsfs.constructor.inference_spine import ROW_ID_COLUMN, SPINE_DIR
+
+    basename = spine.get("parquetBasename")
+    if not basename:
+        raise FeatureStoreException(
+            "The training dataset job was given a spine that names no staged file."
+        )
+    path = f"hdfs:///Projects/{fs.project_name}/{SPINE_DIR}/{basename}"
+    try:
+        frame = setup_spark().read.parquet(path)
+    except Exception as e:
+        raise FeatureStoreException(
+            f"The spine this training dataset was built from could not be read at {path}: {e}."
+            " Spine files are kept for featurestore_asof_spine_max_file_age_ms after they are"
+            " written; recreate the training dataset with the same `spine_df` to stage it again."
+        ) from e
+    return frame.orderBy(ROW_ID_COLUMN).drop(ROW_ID_COLUMN)
 
 
 def compute_stats(job_conf: dict[Any, Any]) -> None:
@@ -729,6 +762,7 @@ if __name__ == "__main__":
             "insert_fg",
             "create_td",
             "create_fv_td",
+            "create_fv_td_spine",
             "compute_stats",
             "ge_validate",
             "import_fg",
@@ -787,7 +821,10 @@ if __name__ == "__main__":
             insert_fg(spark, job_conf)
         elif args.op == "create_td":
             create_td(job_conf)
-        elif args.op == "create_fv_td":
+        elif args.op in ("create_fv_td", "create_fv_td_spine"):
+            # The backend launches a spine-anchored job under its own op so an image whose
+            # entrypoint predates spines refuses it here, at argument parsing, rather than
+            # building the feature view's own rows under the requested version.
             create_fv_td(job_conf)
         elif args.op == "compute_stats":
             compute_stats(job_conf)
