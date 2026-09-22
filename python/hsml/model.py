@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     from hsfs import feature_view
     from hsfs.core.feature_monitoring_config import FeatureMonitoringConfig
     from hsml import deployment
+    from hsml.deployment_logging_config import DeploymentLoggingConfig
     from hsml.deployment_schema import DeploymentSchema
     from hsml.inference_batcher import InferenceBatcher
     from hsml.inference_logger import InferenceLogger
@@ -387,6 +388,7 @@ class Model:
         schema: DeploymentSchema | dict | None = None,
         passed_features: list[str] | None = None,
         default_predictor: bool | None = None,
+        feature_logging: DeploymentLoggingConfig | dict | None = None,
         knative_mode: bool | None = None,
     ) -> deployment.Deployment:
         """Deploy the model.
@@ -439,11 +441,24 @@ class Model:
             inference_batcher: Inference batcher configuration.
             scaling_configuration: Scaling configuration for the predictor.
             transformer: Transformer to be deployed together with the predictor.
-            api_protocol: API protocol to be enabled in the deployment (i.e., 'REST' or 'GRPC').
+            api_protocol: API protocol of the deployment, 'REST' or 'GRPC'. Defaults to
+                'REST', which is the protocol `curl` and the published OpenAPI document
+                use; a deployment serves one protocol, not both. 'GRPC' costs less per
+                request under concurrency and is served by the default predictor, but a
+                predictor script written for REST rows cannot read the v2 tensors a gRPC
+                request carries.
             environment: The inference environment to use.
             env_vars: Environment variables to set on the predictor.
             vllm_variant: vLLM image variant for vLLM deployments. One of `'VLLM'` or `'VLLM_OMNI'`. Ignored for non-vLLM model servers.
-            vllm_image_tag: vLLM image tag override. `None` uses the cluster default; if set, it should match one of the tags made available by a cluster administrator. Ignored for non-vLLM model servers.
+            vllm_image_tag: vLLM image tag override.
+                If set, it must be one of the tags `ModelServing.get_vllm_image_tags`
+                returns for the matching `vllm_variant`; the two variants advertise
+                different tags, and an unqualified call lists the standard vLLM ones.
+                On a new deployment, `None` selects the newest advertised tag of that
+                variant. On an update, `None` means "unchanged": the deployment keeps
+                its current tag, so moving it to the cluster default takes naming that
+                tag explicitly. A deployment also keeps its tag after an admin stops
+                advertising it. Ignored for non-vLLM model servers.
             tags: Optionally the tags to attach to the deployment when it is created, in the same shapes accepted by feature groups.
                 A single [`Tag`][hopsworks.tag.Tag], a `{"name": "owner", "value": "team-a"}` dict, or a list of either, for example `[{"name": "owner", "value": "team-a"}]`.
                 The tags ride the create request, so any mandatory deployment tags missing from them cause the backend to reject the creation.
@@ -453,6 +468,8 @@ class Model:
                 Only with the default predictor.
             default_predictor: `None` selects the default predictor automatically for Python models with a feature view and no script,
                 `True` requires it (also for sklearn models, and together with a `script_file` that subclasses it), `False` never uses it.
+            feature_logging: Feature logging configuration for the predictor and its feature-log sidecar; see [`DeploymentLoggingConfig`][hsml.deployment_logging_config.DeploymentLoggingConfig].
+                Fields left unset keep the platform defaults.
             knative_mode: Whether to deploy in KServe Knative mode.
                 `None` (default) lets the backend decide: LLM (vLLM) deployments default to Standard, every other deployment defaults to Knative mode; on an update, `None` keeps the deployment's current mode.
                 Standard mode does not scale to zero (minimum one instance). It autoscales on a CPU or memory metric between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum), and runs a fixed replica count without autoscaler when `min_instances == max_instances` (the default for LLM deployments).
@@ -487,6 +504,7 @@ class Model:
             schema=schema,
             passed_features=passed_features,
             default_predictor=default_predictor,
+            feature_logging=feature_logging,
             knative_mode=knative_mode,
         )
 

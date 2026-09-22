@@ -33,7 +33,7 @@ import avro.schema
 import hsfs.expectation_suite
 import humps
 from hopsworks_apigen import deprecated, deprecation, public
-from hopsworks_common import client, job
+from hopsworks_common import client, job, spark_connect_utils
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
 from hopsworks_common.core import alerts_api
 from hopsworks_common.core.constants import (
@@ -880,6 +880,97 @@ class FeatureGroupBase:
                 feature_store_id=self._feature_store_id,
             )
         return self.select_all()
+
+    @staticmethod
+    def _distinct_rows(frame: Any) -> Any:
+        """Drop duplicate rows, in whichever dataframe the engine returned.
+
+        Spark is checked before pandas, and by type: a Spark DataFrame carries
+        `drop_duplicates` too, so a capability check would take the pandas branch and fail on
+        its `ignore_index` keyword.
+        """
+        if spark_connect_utils._is_spark_dataframe(frame):
+            return frame.distinct()
+        if HAS_POLARS:
+            import polars as pl
+
+            if isinstance(frame, pl.DataFrame):
+                return frame.unique(maintain_order=True)
+        if hasattr(frame, "drop_duplicates"):  # pandas
+            return frame.drop_duplicates(ignore_index=True)
+        raise FeatureStoreException(
+            f"Cannot take distinct rows of a {type(frame).__name__}. Read the primary keys as"
+            " a dataframe: `dataframe_type` must be one of 'default', 'spark', 'pandas' or"
+            " 'polars'."
+        )
+
+    @public
+    def read_primary_keys(
+        self,
+        online: bool = False,
+        dataframe_type: Literal["default", "spark", "pandas", "polars"] = "default",
+        read_options: dict[str, Any] | None = None,
+    ) -> pd.DataFrame | pl.DataFrame | TypeVar("pyspark.sql.DataFrame"):
+        """Read the distinct primary key values of this feature group, one row per entity.
+
+        A feature group holds one row per entity per event time, so its key columns repeat.
+        This reads only those columns and returns each combination once, which is the set of
+        entities the feature group knows about.
+
+        The result is a frame of entities with no time in it, so it is not yet a `spine_df`:
+        `get_batch_data` needs a prediction time per row. Cross it with the time to compute
+        features as of.
+
+        Example: the latest feature values for every entity
+            ```python
+            import datetime
+            from hsfs.constructor.prediction_times import PredictionTimes
+
+            fg = feature_view.get_root_fg()
+            now = datetime.datetime.now(datetime.timezone.utc)
+
+            spine_df = PredictionTimes.of([now]).cross(
+                fg.read_primary_keys(), event_time=fg.event_time
+            )
+            latest = feature_view.get_batch_data(spine_df=spine_df)
+            ```
+
+        Parameters:
+            online:
+                Read from the online storage rather than the offline storage. Defaults to
+                `False`.
+            dataframe_type:
+                One of `"default"`, `"spark"`, `"pandas"` or `"polars"`, as on
+                [`read`][hsfs.feature_group.FeatureGroup.read]. `"default"` maps to a Spark
+                dataframe under the Spark engine and a Pandas dataframe under the Python
+                engine. `"pandas"` works on both. `"polars"` is a Python-engine type; the Spark
+                engine's converter rejects it, as it does for `read`. Types with no notion of a
+                distinct row, such as `"numpy"` and `"python"`, are refused here even though
+                `read` returns them.
+            read_options:
+                Additional options as key/value pairs to pass to the execution engine.
+
+        Returns:
+            A dataframe of the primary key columns with duplicate rows removed.
+
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException: If the feature group has no
+                primary key, or `dataframe_type` is one that cannot carry distinct rows.
+        """
+        if not self.primary_key:
+            raise FeatureStoreException(
+                f"Feature group `{self.name}` has no primary key, so it has no entities to"
+                " return."
+            )
+        # Deliberately not self.read(): that path applies the scheduler's HOPS_START_TIME /
+        # HOPS_END_TIME window, which would silently narrow the entity population to whatever
+        # interval a job happens to be processing.
+        frame = self.select(self.primary_key).read(
+            online=online,
+            dataframe_type=dataframe_type,
+            read_options=read_options or {},
+        )
+        return self._distinct_rows(frame)
 
     @public
     def filter(self, f: filter_module.Filter | filter_module.Logic) -> query.Query:
@@ -3754,6 +3845,8 @@ class FeatureGroup(FeatureGroupBase):
                 sc.SqlConnector.MYSQL,
                 sc.SqlConnector.POSTGRESQL,
                 sc.SqlConnector.ORACLE,
+                sc.SqlConnector.CLICKHOUSE,
+                sc.SqlConnector.TERADATA,
             ]
         )
         supported_sink_connector = (
@@ -3791,7 +3884,7 @@ class FeatureGroup(FeatureGroupBase):
                 f"Sink cannot be enabled for storage connector type '{connector_type}'. "
                 "Supported connector types: CRM, GOOGLE_SHEETS, REST, SNOWFLAKE, REDSHIFT, "
                 "BIGQUERY, MONGODB, and SQL connectors with database_type MYSQL, POSTGRESQL, "
-                "or ORACLE."
+                "ORACLE, CLICKHOUSE, or TERADATA."
             )
 
         # CRM/Google Sheets/REST connectors always have sink enabled.
@@ -5050,6 +5143,158 @@ class FeatureGroup(FeatureGroupBase):
         # Offline only, whatever the feature group: this exists for callers written before
         # the online delete, and remove_rows is where the choice lives now.
         return self.remove_rows(delete_df, write_options, "offline")
+
+    @public
+    def delta_optimize(
+        self,
+        after_ingest_date: str | None = None,
+        max_concurrent_tasks: int = 1,
+        target_size: int | None = None,
+    ) -> dict | None:
+        """Rewrite this feature group's small Delta files into larger ones.
+
+        A table that is only appended to gains a file per commit, and every reader then
+        opens all of them, so compaction is what keeps the file count flat.
+
+        This method can only be used on feature groups stored as DELTA; it returns None
+        for any other format.
+
+        Example:
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            # get the Feature Group instance
+            fg = fs.get_or_create_feature_group(...)
+
+            # compact everything
+            fg.delta_optimize()
+
+            # compact only the partitions from a date onwards
+            fg.delta_optimize(after_ingest_date="2026-09-10")
+            ```
+
+        Parameters:
+            after_ingest_date:
+                Restrict the rewrite to partitions at or after this date, as `YYYY-MM-DD`.
+                Requires the feature group to be partitioned by a date column, because only
+                a partition column can select files without reading them.
+                Defaults to None, which compacts the whole table.
+            max_concurrent_tasks:
+                Rewrite tasks to run at once.
+                Defaults to 1, so a compaction running beside a writer does not take the
+                whole CPU budget.
+            target_size:
+                Size in bytes to compact towards.
+                Defaults to None, which takes the engine's own target.
+
+        Returns:
+            The engine's optimize metrics, or None when the feature group is not stored as
+            DELTA.
+
+        Raises:
+            hopsworks.client.exceptions.FeatureStoreException: If `after_ingest_date` is given
+                and the feature group has no date partition column.
+        """
+        return self._feature_group_engine._delta_optimize(
+            self, after_ingest_date, max_concurrent_tasks, target_size
+        )
+
+    @public
+    def delta_compact(
+        self,
+        after_ingest_date: str | None = None,
+        max_concurrent_tasks: int = 1,
+        target_size: int | None = None,
+    ) -> dict | None:
+        """[`delta_optimize`][hsfs.feature_group.FeatureGroup.delta_optimize] under the other name the engines use.
+
+        Delta's SQL calls this OPTIMIZE and delta-rs calls it `optimize.compact`, so both
+        words are the right one to reach for depending on which you last read.
+
+        Parameters:
+            after_ingest_date: Rewrite only the partitions at or after this date, as `YYYY-MM-DD`.
+            max_concurrent_tasks: Rewrite tasks to run at once.
+            target_size: Size in bytes the rewritten files aim for.
+
+        Returns:
+            The engine's compaction metrics, or `None` when nothing was rewritten.
+        """
+        return self.delta_optimize(
+            after_ingest_date=after_ingest_date,
+            max_concurrent_tasks=max_concurrent_tasks,
+            target_size=target_size,
+        )
+
+    @public
+    def delta_checkpoint(self) -> dict | None:
+        """Write a Delta checkpoint for this feature group.
+
+        A reader opening a Delta table replays every commit since the last checkpoint, so
+        without one the cost of opening the table grows with the number of commits.
+        Spark writes checkpoints on its own every `delta.checkpointInterval` commits;
+        delta-rs writes none, so on a table only ever written from Python this is the only
+        thing that bounds the replay.
+
+        Expiring the log entries a checkpoint covers is a separate call,
+        [`delta_cleanup_metadata`][hsfs.feature_group.FeatureGroup.delta_cleanup_metadata].
+
+        This method can only be used on feature groups stored as DELTA; it returns None
+        for any other format.
+
+        Example:
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            # get the Feature Group instance
+            fg = fs.get_or_create_feature_group(...)
+
+            fg.delta_checkpoint()
+            ```
+
+        Returns:
+            The version checkpointed, or None when the feature group is not stored as DELTA.
+
+        """
+        return self._feature_group_engine._delta_checkpoint(self)
+
+    @public
+    def delta_cleanup_metadata(self) -> dict | None:
+        """Expire the Delta log entries an existing checkpoint already covers.
+
+        The Delta log grows by one entry per commit. A checkpoint stops readers replaying
+        those entries, and this deletes them, which is what stops the log directory itself
+        growing without bound.
+
+        Run it after
+        [`delta_checkpoint`][hsfs.feature_group.FeatureGroup.delta_checkpoint] and never
+        instead of it: the checkpoint is the state a reader falls back to once the
+        individual commits are gone. What may be deleted is bounded by the table's own
+        `delta.logRetentionDuration`, 30 days by default, so recent history and time travel
+        inside that window keep working.
+
+        This method can only be used on feature groups stored as DELTA; it returns None
+        for any other format.
+
+        Example:
+            ```python
+            # connect to the Feature Store
+            fs = ...
+
+            # get the Feature Group instance
+            fg = fs.get_or_create_feature_group(...)
+
+            fg.delta_checkpoint()
+            fg.delta_cleanup_metadata()
+            ```
+
+        Returns:
+            The version the log was pruned against, or None when the feature group is not
+            stored as DELTA.
+
+        """
+        return self._feature_group_engine._delta_cleanup_metadata(self)
 
     @public
     def delta_vacuum(
@@ -6760,7 +7005,19 @@ class ExternalFeatureGroup(FeatureGroupBase):
 @public
 @typechecked
 class SpineGroup(FeatureGroupBase):
-    # TODO: Add docstring
+    """A dataframe of labels or entities, joined point-in-time with a feature view's features.
+
+    Warning: Deprecated
+        Superseded by the `spine_df` argument on `FeatureView.get_batch_data` and on every
+        training-data method. `spine_df` anchors an existing feature view on rows you supply,
+        so nothing has to be decided when the view is created; a spine group has to be chosen
+        up front and cannot be added to a view afterwards. Create these with
+        `FeatureStore.get_or_create_spine_group`, which carries the same deprecation.
+
+    The metadata is stored in the feature store, the rows are not: the dataframe lives on the
+    object and is supplied again on every read through `spine=`.
+    """
+
     SPINE_GROUP = "ON_DEMAND_FEATURE_GROUP"
     ENTITY_TYPE = "featuregroups"
 

@@ -16,6 +16,20 @@ from hopsworks.cli.commands import setup as setup_mod
 from hopsworks.cli.main import cli
 
 
+@pytest.fixture(autouse=True)
+def isolated_cwd(tmp_path, monkeypatch):
+    """Keep the scaffold `hops setup` writes out of the checkout.
+
+    A successful setup lays the agent instruction files down in the working
+    directory, and CliRunner does not isolate that, so without this every test
+    here writes them into the repository it is running from.
+    """
+    workdir = tmp_path / "cwd"
+    workdir.mkdir()
+    monkeypatch.chdir(workdir)
+    return workdir
+
+
 @pytest.fixture
 def tmp_home(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
@@ -50,6 +64,78 @@ def test_prefer_host_scheme():
     )
     assert f("http://other/x", "https://c.example") == "http://other/x"
     assert f("https://c.example/x", "https://c.example") == "https://c.example/x"
+
+
+def test_resolve_host_prefers_explicit_flag():
+    cfg = config.HopsConfig(host="https://old.example")
+    # --host wins with no prompt, interactive or not.
+    assert setup_mod._resolve_host(cfg, "https://new.example") == "https://new.example"
+
+
+def test_resolve_host_reuses_cached_when_non_interactive():
+    cfg = config.HopsConfig(host="https://old.example")
+    with mock.patch.object(setup_mod, "_interactive", return_value=False):
+        assert setup_mod._resolve_host(cfg, None) == "https://old.example"
+
+
+def test_resolve_host_prompts_and_switches_cluster(tmp_home):
+    # A dead cluster is cached; on a terminal the user types the new address and
+    # the stale credentials are dropped so they are not carried to the new host.
+    config.save(
+        config.HopsConfig(
+            host="https://dead.example",
+            api_key="K",
+            api_key_name="n",
+            project="p",
+            project_id=9,
+            feature_store_id=3,
+        )
+    )
+    cfg = config.load()
+    with (
+        mock.patch.object(setup_mod, "_interactive", return_value=True),
+        mock.patch.object(
+            setup_mod.click, "prompt", return_value="https://alive.example"
+        ),
+    ):
+        host = setup_mod._resolve_host(cfg, None)
+
+    assert host == "https://alive.example"
+    assert (cfg.api_key, cfg.project, cfg.project_id, cfg.feature_store_id) == (
+        None,
+        None,
+        None,
+        None,
+    )
+
+
+def test_setup_force_prompts_and_runs_flow_against_new_host(tmp_home):
+    """`hops setup --force` on a terminal lets the user repoint to a live cluster."""
+    config.save(
+        config.HopsConfig(
+            host="https://dead.example",
+            api_key="OLD.KEY",
+            api_key_name="n",
+            project="p",
+        )
+    )
+    with (
+        mock.patch.object(setup_mod.requests, "post", side_effect=_flow_post()),
+        mock.patch.object(setup_mod, "_open_browser", return_value=True),
+        mock.patch.object(setup_mod, "_interactive", return_value=True),
+        mock.patch.object(
+            setup_mod.click, "prompt", return_value="https://alive.example"
+        ),
+        mock.patch.object(setup_mod.auth, "verify") as verify,
+    ):
+        verify.return_value = mock.Mock()
+        verify.return_value.name = "demo"
+        result = CliRunner().invoke(cli, ["setup", "--force"])
+
+    assert result.exit_code == 0, result.output
+    assert verify.call_args.kwargs["host"] == "https://alive.example"
+    saved = config.load()
+    assert (saved.host, saved.api_key) == ("https://alive.example", "NEW.KEY")
 
 
 def test_setup_short_circuits_when_cached_key_works(tmp_home, monkeypatch):
@@ -185,6 +271,25 @@ def _run_token_flow(argv, wait=None):
     return post
 
 
+def test_setup_honors_explicit_global_no_verify(tmp_home):
+    # The global --no-verify is accepted on every command; when the user passes
+    # it explicitly, the token flow must not fail on a self-signed certificate
+    # while claiming verification the user just turned off.
+    post = _run_token_flow(
+        [
+            "setup",
+            "--host",
+            "https://10.0.0.1",
+            "--key-name",
+            "k",
+            "--force",
+            "--no-verify",
+        ],
+    )
+    for call in post.call_args_list:
+        assert call.kwargs["verify"] is False
+
+
 def test_setup_new_host_drops_cached_project(tmp_home):
     """--host for another cluster must not verify the cached project there."""
     config.save(
@@ -311,7 +416,12 @@ def test_setup_signs_in_again_when_the_cached_key_is_dead(tmp_home):
     assert config.load().api_key == "NEW.KEY"
 
 
-def test_setup_success_prints_a_single_line(tmp_home):
+def test_setup_success_prints_a_single_line(tmp_home, isolated_cwd):
+    """A re-run with nothing to do stays quiet.
+
+    The scaffold still runs on this path, so the repository is set up first:
+    "quiet" means nothing changed, not that nothing was checked.
+    """
     config.save(
         config.HopsConfig(
             host="https://c.app.hopsworks.ai",
@@ -324,6 +434,10 @@ def test_setup_success_prints_a_single_line(tmp_home):
     verified.name = "demo"
 
     with mock.patch.object(setup_mod.auth, "verify", return_value=verified):
+        assert CliRunner().invoke(cli, ["setup"]).exit_code == 0
+        # Everything the scaffold writes is now present, including the skills
+        # whose absence the `hops skills install` hint reports.
+        CliRunner().invoke(cli, ["init"])
         result = CliRunner().invoke(cli, ["setup"])
 
     lines = [line for line in result.output.splitlines() if line.strip()]
@@ -392,3 +506,36 @@ def test_setup_failure_without_tls_trouble_has_no_hint(tmp_home):
         )
 
     assert "--insecure" not in result.output
+
+
+def test_setup_scaffolds_on_the_cached_key_path(tmp_home, isolated_cwd):
+    """A returning user in a new repository must still get the files.
+
+    The cached-key short-circuit is the common path; returning from it before
+    scaffolding left new repositories bare and never refreshed an existing one
+    after an SDK upgrade.
+    """
+    config.save(
+        config.HopsConfig(
+            host="https://c.app.hopsworks.ai", api_key="AAA.BBB", project="demo"
+        )
+    )
+    with mock.patch.object(setup_mod, "_cached_key_works", return_value=True):
+        result = CliRunner().invoke(cli, ["setup"])
+
+    assert result.exit_code == 0, result.output
+    assert (isolated_cwd / "AGENTS.md").is_file()
+    assert (isolated_cwd / ".claude/skills/hops/SKILL.md").is_file()
+
+
+def test_no_scaffold_is_honoured_on_the_cached_key_path(tmp_home, isolated_cwd):
+    config.save(
+        config.HopsConfig(
+            host="https://c.app.hopsworks.ai", api_key="AAA.BBB", project="demo"
+        )
+    )
+    with mock.patch.object(setup_mod, "_cached_key_works", return_value=True):
+        result = CliRunner().invoke(cli, ["setup", "--no-scaffold"])
+
+    assert result.exit_code == 0, result.output
+    assert not (isolated_cwd / "AGENTS.md").exists()

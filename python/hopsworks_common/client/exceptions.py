@@ -282,8 +282,12 @@ class ModelServingException(Exception):
 
 @public("hopsworks.client.exceptions.DataSourceException")
 @also_available_as("hsml.client.exceptions.DataSourceException")
-class DataSourceException(Exception):
-    """Generic data source exception."""
+class DataSourceException(FeatureStoreException):
+    """Raised when a data source cannot be read or its schema cannot be fetched.
+
+    This exception is a subclass of `FeatureStoreException`, so code that already
+    catches that keeps catching a failed read on the way into a feature group.
+    """
 
 
 @public("hopsworks.client.exceptions.PlatformIntelligenceException")

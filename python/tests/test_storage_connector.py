@@ -1518,6 +1518,7 @@ class TestSqlConnector:
             ("MYSQL", "com.mysql.cj.jdbc.Driver", "mysql"),
             ("mysql", "com.mysql.cj.jdbc.Driver", "mysql"),  # normalised to uppercase
             ("POSTGRESQL", "org.postgresql.Driver", "postgresql"),
+            ("CLICKHOUSE", "com.clickhouse.jdbc.ClickHouseDriver", "clickhouse"),
         ],
     )
     def test_spark_options_driver(
@@ -1538,6 +1539,7 @@ class TestSqlConnector:
         [
             ("MYSQL", "com.mysql.cj.jdbc.Driver", "mysql"),
             ("POSTGRESQL", "org.postgresql.Driver", "postgresql"),
+            ("CLICKHOUSE", "com.clickhouse.jdbc.ClickHouseDriver", "clickhouse"),
         ],
     )
     def test_read_jdbc_url_scheme(
@@ -1584,6 +1586,139 @@ class TestSqlConnector:
     def test_unsupported_database_type_raises(self):
         with pytest.raises(ValueError, match="Unsupported database_type"):
             self._make_connector("UNSUPPORTED_DB")
+
+    def test_teradata_url_carries_the_port_and_database_as_parameters(self):
+        # Arrange
+        connector = storage_connector.SqlConnector(
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
+            database_type="TERADATA",
+            host="td.example.com",
+            port=1025,
+            database="demo_user",
+            user="user",
+            password="pass",
+        )
+
+        # Act
+        options = connector.spark_options()
+
+        # Assert
+        # Teradata has no host:port/database form: both are comma-separated parameters after a
+        # single slash, so the shape every other engine here uses would not parse.
+        assert (
+            options["url"]
+            == "jdbc:teradata://td.example.com/DATABASE=demo_user,DBS_PORT=1025"
+        )
+        assert options["driver"] == "com.teradata.jdbc.TeraDriver"
+        assert connector.connector_options()["database_type"] == "TERADATA"
+
+    def test_teradata_connection_arguments_reach_both_engines(self):
+        # Spark gets arguments through the JDBC option map. The Arrow Flight path reads
+        # connector_options, so dropping them there leaves the Python engine attempting a default
+        # TD2 logon against a source Spark can read.
+        connector = storage_connector.SqlConnector(
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
+            database_type="TERADATA",
+            host="td.example.com",
+            port=1025,
+            database="demo_user",
+            user="user",
+            password="pass",
+            arguments=[
+                {"name": "logmech", "value": "LDAP"},
+                {"name": "sslmode", "value": "REQUIRE"},
+                # The dedicated fields own this one; an argument must not redirect the read.
+                {"name": "user", "value": "someone_else"},
+            ],
+        )
+
+        options = connector.connector_options()
+        assert options["logmech"] == "LDAP"
+        assert options["sslmode"] == "REQUIRE"
+        assert options["user"] == "user"
+        assert connector.spark_options()["logmech"] == "LDAP"
+
+    def test_teradata_spark_options_drop_connection_owning_arguments(self):
+        # Spark hands an option it does not recognise to the JDBC driver as a connection property,
+        # so a dbs_port or database argument would contradict the URL built from the fields.
+        connector = storage_connector.SqlConnector(
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
+            database_type="TERADATA",
+            host="td.example.com",
+            port=1025,
+            database="demo_user",
+            user="user",
+            password="pass",
+            arguments=[
+                {"name": "host", "value": "attacker.example.com"},
+                {"name": "DBS_PORT", "value": "9999"},
+                {"name": "database", "value": "other_db"},
+                {"name": "database_type", "value": "MYSQL"},
+                {"name": "logmech", "value": "LDAP"},
+            ],
+        )
+
+        options = connector.spark_options()
+
+        assert "host" not in options
+        assert "DBS_PORT" not in options
+        assert "database" not in options
+        assert "database_type" not in options
+        assert options["url"] == (
+            "jdbc:teradata://td.example.com/DATABASE=demo_user,DBS_PORT=1025"
+        )
+        assert options["user"] == "user"
+        assert options["logmech"] == "LDAP"
+
+    def test_teradata_requires_a_host(self):
+        from hopsworks_common.client.exceptions import DataSourceException
+
+        connector = storage_connector.SqlConnector(
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
+            database_type="TERADATA",
+            port=1025,
+            database="demo_user",
+            user="user",
+            password="pass",
+        )
+
+        with pytest.raises(
+            DataSourceException, match="Teradata connector requires a host"
+        ):
+            connector.spark_options()
+
+    def test_clickhouse_ssl_argument_reaches_the_jdbc_driver(self):
+        # Arrange
+        connector = storage_connector.SqlConnector(
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
+            database_type="CLICKHOUSE",
+            host="ch.example.com",
+            port=8443,
+            database="loadtest",
+            user="user",
+            password="pass",
+            arguments=[{"name": "ssl", "value": "true"}],
+        )
+
+        # Act
+        options = connector.spark_options()
+
+        # Assert
+        assert options["url"] == "jdbc:clickhouse://ch.example.com:8443/loadtest"
+        assert options["driver"] == "com.clickhouse.jdbc.ClickHouseDriver"
+        assert options["ssl"] == "true"
+        assert connector.connector_options()["database_type"] == "CLICKHOUSE"
+        assert connector.connector_options()["secure"] is True
 
     def test_spark_options_includes_arguments(self):
         # Arrange
