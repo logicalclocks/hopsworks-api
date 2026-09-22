@@ -13,7 +13,10 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+import datetime
+import inspect
 import json
+import typing
 import warnings
 
 import pytest
@@ -2154,3 +2157,309 @@ class TestFeatureViewDeploy:
             feature_logging=None,
         )
         assert result is for_feature_view.return_value.deploy.return_value
+
+
+class TestServingKeysAlias:
+    """`entry` is the original name for the serving keys and is kept working, with a warning."""
+
+    METHODS = [
+        "get_feature_vector",
+        "get_feature_vectors",
+        "get_inference_helper",
+        "get_inference_helpers",
+    ]
+
+    @pytest.mark.parametrize("method", METHODS)
+    def test_serving_keys_is_first_and_entry_is_last(self, method):
+        # Positional callers were passing the serving keys first and must keep working, so
+        # serving_keys takes that position and entry moves to the end as a keyword.
+        params = list(
+            inspect.signature(getattr(feature_view.FeatureView, method)).parameters
+        )
+        assert params[1] == "serving_keys"
+        assert params[-1] == "entry"
+
+    def test_entry_is_returned_with_a_deprecation_warning(self):
+        with pytest.warns(DeprecationWarning, match="Use `serving_keys` instead"):
+            resolved = feature_view.FeatureView._resolve_serving_keys(
+                None, {"id": 1}, "get_feature_vector"
+            )
+        assert resolved == {"id": 1}
+
+    def test_serving_keys_alone_does_not_warn(self):
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            assert feature_view.FeatureView._resolve_serving_keys(
+                {"id": 1}, None, "get_feature_vector"
+            ) == {"id": 1}
+
+    def test_both_names_together_are_refused(self):
+        # They name one argument, so disagreeing values are a caller bug, not a preference.
+        with pytest.raises(
+            FeatureStoreException, match="both `serving_keys` and `entry`"
+        ):
+            feature_view.FeatureView._resolve_serving_keys(
+                {"id": 1}, {"id": 2}, "get_feature_vector"
+            )
+
+    def test_neither_name_is_passed_through_untouched(self):
+        assert (
+            feature_view.FeatureView._resolve_serving_keys(
+                None, None, "get_feature_vector"
+            )
+            is None
+        )
+
+
+class TestMaxFeatureAge:
+    @pytest.fixture(autouse=True)
+    def _engine(self, mocker):
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type")
+
+    def _fv(self, max_feature_age):
+        return feature_view.FeatureView(
+            name="test_fv",
+            featurestore_id=99,
+            query=fg1.select_all(),
+            version=1,
+            max_feature_age=max_feature_age,
+        )
+
+    def test_a_timedelta_goes_on_the_wire_as_seconds(self):
+        fv = self._fv(datetime.timedelta(hours=12))
+        assert json.loads(fv.json())["maxFeatureAgeSecs"] == 43200
+
+    def test_the_signature_matches_what_is_accepted(self):
+        """The annotation is the API reference, so a form it advertises has to work.
+
+        It advertised the withdrawn per-feature-group map, which always raises.
+        """
+        # Compared as source text, which is both what mkdocstrings renders and all that can be
+        # read here: `get_type_hints` cannot resolve this signature, whose other annotations
+        # name TYPE_CHECKING-only classes.
+        annotation = (
+            inspect.signature(feature_view.FeatureView.__init__)
+            .parameters["max_feature_age"]
+            .annotation
+        )
+        assert annotation == "timedelta | int | None"
+
+    def test_the_withdrawn_map_form_names_its_replacement(self):
+        with pytest.raises(TypeError, match="not a bound per feature group"):
+            self._fv({"weather": datetime.timedelta(days=1)})
+
+    def test_it_reads_back_as_a_timedelta(self):
+        assert self._fv(datetime.timedelta(days=1)).max_feature_age == (
+            datetime.timedelta(days=1)
+        )
+
+    def test_unbounded_by_default(self):
+        fv = self._fv(None)
+        assert fv.max_feature_age is None
+        assert "maxFeatureAgeSecs" not in json.loads(fv.json())
+
+    def test_the_bound_is_read_only(self):
+        # A bound changed after training would silently skew inference against the training set.
+        with pytest.raises(AttributeError):
+            self._fv(datetime.timedelta(days=1)).max_feature_age = datetime.timedelta(
+                days=2
+            )
+
+    @pytest.mark.parametrize(
+        "bound", [datetime.timedelta(0), datetime.timedelta(seconds=-1)]
+    )
+    def test_a_non_positive_bound_is_refused(self, bound):
+        with pytest.raises(FeatureStoreException, match="positive duration"):
+            self._fv(bound)
+
+    def test_a_number_is_refused(self):
+        with pytest.raises(TypeError, match="must be a timedelta"):
+            self._fv(3600.0)
+
+    def test_a_refresh_carries_the_bound_without_assigning_the_property(self, mocker):
+        # The property has no setter, so a refresh must not go through one.
+        fv = self._fv(datetime.timedelta(days=1))
+        refreshed = self._fv(datetime.timedelta(hours=1))
+        refreshed._serving_keys = [ServingKey(feature_name="primary_key", join_index=0)]
+        mocker.patch.object(
+            feature_view.FeatureView, "from_response_json", return_value=refreshed
+        )
+        fv.update_from_response_json({})
+        assert fv.max_feature_age == datetime.timedelta(hours=1)
+
+
+class TestGetRootFg:
+    @pytest.fixture(autouse=True)
+    def _engine(self, mocker):
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type")
+
+    def test_it_is_the_left_side_of_the_query(self):
+        fv = feature_view.FeatureView(
+            name="test_fv",
+            featurestore_id=99,
+            query=fg1.select_all(),
+            version=1,
+        )
+        assert fv.get_root_fg() is fg1
+
+    def test_a_join_does_not_change_the_root(self):
+        # The root is what the view is anchored on, not whichever feature group is joined in.
+        fv = feature_view.FeatureView(
+            name="test_fv",
+            featurestore_id=99,
+            query=fg1.select_all().join(fg2.select_all()),
+            version=1,
+        )
+        assert fv.get_root_fg() is fg1
+
+    def test_the_return_type_is_the_base_not_the_subclass(self):
+        """The annotation has to admit every root the docstring promises.
+
+        An external feature group and a spine group are siblings of `FeatureGroup`, not
+        subclasses, so the narrower annotation made those two roots fail under
+        `HOPSWORKS_RUN_WITH_TYPECHECK`, which the CI unit-test job sets.
+        """
+        hints = typing.get_type_hints(feature_view.FeatureView.get_root_fg)
+        assert hints["return"] is feature_group.FeatureGroupBase
+        for cls in (
+            feature_group.FeatureGroup,
+            feature_group.ExternalFeatureGroup,
+            feature_group.SpineGroup,
+        ):
+            assert issubclass(cls, hints["return"])
+
+    def test_an_external_feature_group_root_comes_back(self):
+        external = object.__new__(feature_group.ExternalFeatureGroup)
+        fv = feature_view.FeatureView(
+            name="test_fv",
+            featurestore_id=99,
+            query=fg1.select_all(),
+            version=1,
+        )
+        fv._query._left_feature_group = external
+        assert fv.get_root_fg() is external
+
+    def test_its_event_time_names_the_spine_column(self):
+        # This is what makes get_root_fg() useful for building a spine_df.
+        fv = feature_view.FeatureView(
+            name="test_fv",
+            featurestore_id=99,
+            query=fg1.select_all(),
+            version=1,
+        )
+        assert fv.get_root_fg().event_time == fg1.event_time
+
+
+class TestSpineDeprecation:
+    @pytest.fixture(autouse=True)
+    def _engine(self, mocker):
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type")
+
+    def test_passing_spine_warns(self):
+        with pytest.warns(DeprecationWarning, match="`spine` is deprecated"):
+            feature_view.FeatureView._warn_spine_deprecated(
+                [{"a": 1}], "get_batch_data"
+            )
+
+    def test_not_passing_spine_does_not_warn(self):
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            feature_view.FeatureView._warn_spine_deprecated(None, "get_batch_data")
+
+    def test_the_warning_points_at_spine_df(self):
+        with pytest.warns(DeprecationWarning, match="Use `spine_df` instead"):
+            feature_view.FeatureView._warn_spine_deprecated([{"a": 1}], "training_data")
+
+    def test_every_method_taking_spine_warns(self):
+        # A method that accepts `spine` but never warns is a deprecation with a hole in it.
+        import inspect
+
+        missing = []
+        for name, member in inspect.getmembers(
+            feature_view.FeatureView, predicate=inspect.isfunction
+        ):
+            try:
+                takes_spine = "spine" in inspect.signature(member).parameters
+            except (ValueError, TypeError):
+                continue
+            if not takes_spine:
+                continue
+            source = inspect.getsource(member)
+            if "_warn_spine_deprecated" not in source:
+                missing.append(name)
+        assert missing == [], f"these accept `spine` but never warn: {missing}"
+
+    def test_every_method_pointing_at_spine_df_accepts_it(self):
+        """A deprecation that names a replacement the method does not take is a dead end.
+
+        `recreate_training_dataset` told callers to use `spine_df` and had no such parameter,
+        so the only way to follow the advice was to not use the method.
+        """
+        wrong = []
+        for name, member in inspect.getmembers(
+            feature_view.FeatureView, predicate=inspect.isfunction
+        ):
+            doc = inspect.getdoc(member) or ""
+            if "use `spine_df` instead" not in doc:
+                continue
+            if "spine_df" not in inspect.signature(member).parameters:
+                wrong.append(name)
+        assert wrong == [], f"these point at `spine_df` but do not accept it: {wrong}"
+
+
+class TestUnknownKeywordArguments:
+    """`**kwargs` exists for the deprecated `primary_keys` spelling and swallowed everything else."""
+
+    @pytest.fixture(autouse=True)
+    def _client(self, mocker):
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type")
+
+    def _fv(self):
+        return feature_view.FeatureView(
+            name="test_fv", featurestore_id=99, query=fg1.select_all(), version=1
+        )
+
+    def test_the_withdrawn_prediction_times_argument_names_its_replacement(self):
+        with pytest.raises(TypeError, match="PredictionTimes.cross"):
+            self._fv().get_batch_data(prediction_times=["2026-09-16"])
+
+    def test_a_misspelled_argument_is_refused(self):
+        with pytest.raises(TypeError, match="spine_dff"):
+            self._fv().get_batch_data(spine_dff=[{"id": 1}])
+
+    def test_the_deprecated_primary_keys_spelling_still_passes(self, mocker):
+        fv = self._fv()
+        engine = mocker.patch.object(fv, "_feature_view_engine")
+        fv.get_batch_data(primary_keys=True)
+        # The engine takes it positionally, after the read options and the spine group.
+        assert engine._get_batch_data.call_args.args[7] is True
+
+    def test_it_covers_the_training_data_methods_too(self):
+        with pytest.raises(TypeError, match="PredictionTimes.cross"):
+            self._fv().training_data(prediction_times=["2026-09-16"])
+
+
+class TestRecreateTrainingDataset:
+    @pytest.fixture(autouse=True)
+    def _engine(self, mocker):
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type")
+
+    def test_the_spine_reaches_the_engine(self, mocker):
+        # Without it the dataset is rebuilt anchored on the root feature group, since the
+        # frame is not recorded with the training dataset.
+        fv = feature_view.FeatureView(
+            name="test_fv", featurestore_id=99, query=fg1.select_all(), version=1
+        )
+        engine = mocker.patch.object(fv, "_feature_view_engine")
+        engine._recreate_training_dataset.return_value = (mocker.MagicMock(), "job")
+        mocker.patch.object(fv, "update_last_accessed_training_dataset")
+        frame = [{"id": 1}]
+
+        fv.recreate_training_dataset(training_dataset_version=3, spine_df=frame)
+
+        assert engine._recreate_training_dataset.call_args.kwargs["spine_df"] is frame

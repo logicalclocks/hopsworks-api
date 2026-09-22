@@ -174,6 +174,12 @@ class Engine:
             )
         return self._jdbc(sql_query, online_conn, dataframe_type, read_options, schema)
 
+    def _register_spine_temporary_view(self, spine: Any, alias: str) -> None:
+        raise FeatureStoreException(
+            "ASOF batch inference needs the Hopsworks Query Service, which is not available for"
+            " this query. Remove read_options={'use_spark': True} or enable the service."
+        )
+
     def _is_flyingduck_query_supported(
         self, query: query.Query, read_options: dict[str, Any] | None = None
     ) -> bool:
