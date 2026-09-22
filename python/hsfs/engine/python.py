@@ -632,7 +632,7 @@ class Engine:
         # single pushed-down query has nowhere to go until that payload can carry one.
         return False
 
-    def _register_pushdown_query(self, fs_query: FsQuery) -> str:
+    def _register_pushdown_query(self, fs_query: FsQuery, spine: Any = None) -> str:
         raise NotImplementedError(
             "Source pushdown is not supported by the python engine."
         )

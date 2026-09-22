@@ -128,14 +128,25 @@ class Query:
                 if fs_query.pushdown_query is not None:
                     engine_instance = engine._get_instance()
                     if engine_instance._is_source_pushdown_supported():
-                        return (
-                            engine_instance._register_pushdown_query(fs_query),
-                            online_conn,
+                        # A spine's rows live here, not in the backend, so the engine needs the
+                        # spine itself to fill in the placeholder the backend left for it.
+                        spine = (
+                            self._left_feature_group
+                            if isinstance(self._left_feature_group, fg_mod.SpineGroup)
+                            else None
                         )
-                    _logger.debug(
-                        "The query can be pushed down to its source, but the current engine "
-                        "cannot execute it. Reading each feature group separately instead."
-                    )
+                        pushdown_read = engine_instance._register_pushdown_query(
+                            fs_query, spine
+                        )
+                        if pushdown_read is not None:
+                            return pushdown_read, online_conn
+                        # The engine declined to inline the spine and warned why; fall through to
+                        # reading each feature group separately.
+                    else:
+                        _logger.debug(
+                            "The query can be pushed down to its source, but the current engine "
+                            "cannot execute it. Reading each feature group separately instead."
+                        )
 
                 sql_query = self._to_string(fs_query, online)
                 # Register on demand feature groups as temporary tables
@@ -759,6 +770,10 @@ class Query:
             "filter": self._filter,
             "limit": self._limit,
             "hiveEngine": self._python_engine,
+            # Tells the backend this client knows to substitute a spine placeholder in a
+            # pushed-down query. Without it the backend keeps spines off the pushdown path, so
+            # that older clients never receive a placeholder they would send on verbatim.
+            "spinePushdown": True,
         }
         if self._lookback is not None:
             payload["lookback"] = self._lookback.to_dict()
