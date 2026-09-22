@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Coverage for python/hsfs/core/transformation_function_engine.py: 82%</title>
+    <title>Coverage for python/hsfs/core/transformation_function_engine.py: 84%</title>
     <link rel="icon" sizes="32x32" href="favicon_32_cb_c827f16f.png">
     <link rel="stylesheet" href="style_cb_4667309f.css" type="text/css">
     <script src="coverage_html_cb_dd2e7eb5.js" defer></script>
@@ -12,7 +12,7 @@
     <div class="content">
         <h1>
             <span class="text">Coverage for </span><b>python<span class="sep">/</span>hsfs<span class="sep">/</span>core<span class="sep">/</span>transformation_function_engine.py</b>:
-            <span class="pc_cov">82%</span>
+            <span class="pc_cov">84%</span>
         </h1>
         <aside id="help_panel_wrapper">
             <input id="help_panel_state" type="checkbox">
@@ -55,8 +55,8 @@
         </aside>
         <h2>
             <span class="text">520 statements &nbsp;</span>
-            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">429<span class="text"> run</span></button>
-            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">91<span class="text"> missing</span></button>
+            <button type="button" class="run button_toggle_run" value="run" data-shortcut="r" title="Toggle lines run">435<span class="text"> run</span></button>
+            <button type="button" class="mis show_mis button_toggle_mis" value="mis" data-shortcut="m" title="Toggle lines missing">85<span class="text"> missing</span></button>
             <button type="button" class="exc show_exc button_toggle_exc" value="exc" data-shortcut="x" title="Toggle lines excluded">3<span class="text"> excluded</span></button>
         </h2>
         <p class="text">
@@ -65,7 +65,7 @@
             <a id="nextFileLink" class="nav" href="z_8e412babf0efab20_type_systems_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.15.4">coverage.py v7.15.4</a>,
-            created at 2026-09-22 08:55 +0000
+            created at 2026-09-22 13:45 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -1282,12 +1282,12 @@
     <p class="pln"><span class="n"><a id="t1200" href="#t1200">1200</a></span><span class="t"><span class="str">            List of transformation functions.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t1201" href="#t1201">1201</a></span><span class="t"><span class="str">        &quot;&quot;&quot;</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t1202" href="#t1202">1202</a></span><span class="t">        <span class="com"># check if transformation functions require statistics</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t1203" href="#t1203">1203</a></span><span class="t">        <span class="nam">is_stat_required</span> <span class="op">=</span> <span class="nam">any</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t1204" href="#t1204">1204</a></span><span class="t">            <span class="nam">tf</span><span class="op">.</span><span class="nam">hopsworks_udf</span><span class="op">.</span><span class="nam">statistics_required</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t1205" href="#t1205">1205</a></span><span class="t">            <span class="key">for</span> <span class="nam">tf</span> <span class="key">in</span> <span class="nam">feature_view</span><span class="op">.</span><span class="nam">transformation_functions</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis mis2 show_mis"><span class="n"><a id="t1206" href="#t1206">1206</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t1207" href="#t1207">1207</a></span><span class="t">        <span class="key">if</span> <span class="key">not</span> <span class="nam">is_stat_required</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t1208" href="#t1208">1208</a></span><span class="t">            <span class="nam">td_tffn_stats</span> <span class="op">=</span> <span class="key">None</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t1203" href="#t1203">1203</a></span><span class="t">        <span class="nam">is_stat_required</span> <span class="op">=</span> <span class="nam">any</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t1204" href="#t1204">1204</a></span><span class="t">            <span class="nam">tf</span><span class="op">.</span><span class="nam">hopsworks_udf</span><span class="op">.</span><span class="nam">statistics_required</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t1205" href="#t1205">1205</a></span><span class="t">            <span class="key">for</span> <span class="nam">tf</span> <span class="key">in</span> <span class="nam">feature_view</span><span class="op">.</span><span class="nam">transformation_functions</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run run2"><span class="n"><a id="t1206" href="#t1206">1206</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t1207" href="#t1207">1207</a></span><span class="t">        <span class="key">if</span> <span class="key">not</span> <span class="nam">is_stat_required</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t1208" href="#t1208">1208</a></span><span class="t">            <span class="nam">td_tffn_stats</span> <span class="op">=</span> <span class="key">None</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t1209" href="#t1209">1209</a></span><span class="t">        <span class="key">else</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t1210" href="#t1210">1210</a></span><span class="t">            <span class="com"># if there are any transformation functions that require statistics get related statistics and</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t1211" href="#t1211">1211</a></span><span class="t">            <span class="com"># populate with relevant arguments</span>&nbsp;</span><span class="r"></span></p>
@@ -1304,18 +1304,18 @@
     <p class="mis mis2 show_mis"><span class="n"><a id="t1222" href="#t1222">1222</a></span><span class="t">                <span class="nam">training_dataset_version</span><span class="op">=</span><span class="nam">training_dataset_version</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis mis2 show_mis"><span class="n"><a id="t1223" href="#t1223">1223</a></span><span class="t">            <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t1224" href="#t1224">1224</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t1225" href="#t1225">1225</a></span><span class="t">        <span class="key">if</span> <span class="nam">is_stat_required</span> <span class="key">and</span> <span class="nam">td_tffn_stats</span> <span class="key">is</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t1225" href="#t1225">1225</a></span><span class="t">        <span class="key">if</span> <span class="nam">is_stat_required</span> <span class="key">and</span> <span class="nam">td_tffn_stats</span> <span class="key">is</span> <span class="key">None</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t1226" href="#t1226">1226</a></span><span class="t">            <span class="key">raise</span> <span class="nam">ValueError</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis mis2 show_mis"><span class="n"><a id="t1227" href="#t1227">1227</a></span><span class="t">                <span class="str">&quot;No statistics available for initializing transformation functions.&quot;</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis mis2 show_mis"><span class="n"><a id="t1228" href="#t1228">1228</a></span><span class="t">                <span class="str">&quot;Training data can be created by `feature_view.create_training_data` or `feature_view.training_data`.&quot;</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis mis2 show_mis"><span class="n"><a id="t1229" href="#t1229">1229</a></span><span class="t">            <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t1230" href="#t1230">1230</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t1231" href="#t1231">1231</a></span><span class="t">        <span class="key">if</span> <span class="nam">is_stat_required</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t1231" href="#t1231">1231</a></span><span class="t">        <span class="key">if</span> <span class="nam">is_stat_required</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t1232" href="#t1232">1232</a></span><span class="t">            <span class="key">for</span> <span class="nam">transformation_function</span> <span class="key">in</span> <span class="nam">feature_view</span><span class="op">.</span><span class="nam">transformation_functions</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis show_mis"><span class="n"><a id="t1233" href="#t1233">1233</a></span><span class="t">                <span class="nam">transformation_function</span><span class="op">.</span><span class="nam">transformation_statistics</span> <span class="op">=</span> <span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis mis2 show_mis"><span class="n"><a id="t1234" href="#t1234">1234</a></span><span class="t">                    <span class="nam">td_tffn_stats</span><span class="op">.</span><span class="nam">feature_descriptive_statistics</span>&nbsp;</span><span class="r"></span></p>
     <p class="mis mis2 show_mis"><span class="n"><a id="t1235" href="#t1235">1235</a></span><span class="t">                <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="mis show_mis"><span class="n"><a id="t1236" href="#t1236">1236</a></span><span class="t">        <span class="key">return</span> <span class="nam">feature_view</span><span class="op">.</span><span class="nam">transformation_functions</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t1236" href="#t1236">1236</a></span><span class="t">        <span class="key">return</span> <span class="nam">feature_view</span><span class="op">.</span><span class="nam">transformation_functions</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t1237" href="#t1237">1237</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t1238" href="#t1238">1238</a></span><span class="t">    <span class="op">@</span><span class="nam">staticmethod</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t1239" href="#t1239">1239</a></span><span class="t">    <span class="key">def</span> <span class="nam">_fit_and_transform</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
@@ -1812,7 +1812,7 @@
             <a class="nav" href="z_8e412babf0efab20_type_systems_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.15.4">coverage.py v7.15.4</a>,
-            created at 2026-09-22 08:55 +0000
+            created at 2026-09-22 13:45 +0000
         </p>
     </div>
 </footer>
