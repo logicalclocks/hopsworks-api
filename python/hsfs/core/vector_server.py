@@ -132,9 +132,8 @@ def _resume(steps, fetched):
 def _supplies_values(supplied: Any) -> bool:
     """True when the caller supplied feature values alongside the entries.
 
-    Both shapes the serving calls use are accepted: one mapping for a single
-    vector, or one per entry for a batch. A batch commonly carries an empty
-    mapping per entry, which supplies nothing.
+    Both shapes the serving calls use are accepted: one mapping for a single vector, or one per entry for a batch.
+    A batch commonly carries an empty mapping per entry, which supplies nothing.
     """
     if not supplied:
         return False
@@ -246,8 +245,7 @@ class VectorServer:
         self._parent_feature_groups: list[FeatureGroup] = []
         self.__all_features_on_demand: bool | None = None
         self.__required_feature_names: set[str] | None = None
-        # One prepared projection per output shape, which the transform and
-        # on-demand flags select between.
+        # One prepared projection per output shape, which the transform and on-demand flags select between.
         self.__rest_projections: dict[tuple[bool, bool], tuple[int, ...] | None] = {}
         self.__all_feature_groups_online: bool | None = None
         self._feature_view_logging_enabled: bool = False
@@ -449,8 +447,7 @@ class VectorServer:
                 features=entity.features,
             )
         )
-        # Prepared against the engine's view of the row, so it belongs to the
-        # engine that was just built.
+        # Prepared against the engine's view of the row, so it belongs to the engine that was just built.
         self.__rest_projections = {}
         # This logic needs to move to the above engine init
         online_store_rest_client._init_or_reset_online_store_rest_client(
@@ -588,7 +585,9 @@ class VectorServer:
         if use_rest is None:
             serving_vector = {}
         elif use_rest:
-            serving_vector = self.rest_client_engine._get_single_feature_vector(
+            # The REST client blocks, for up to the whole timeout when every connection is taken, so it runs on a worker thread rather than on the caller's loop.
+            serving_vector = await asyncio.to_thread(
+                self.rest_client_engine._get_single_feature_vector,
                 rondb_entry,
                 drop_missing=not allow_missing,
                 return_type=self.rest_client_engine.RETURN_TYPE_FEATURE_VALUE_DICT,
@@ -690,8 +689,7 @@ class VectorServer:
             logging_data,
             projection,
         )
-        # A projection the engine could not use comes back as the usual
-        # mapping, which the general assembly below completes.
+        # A projection the engine could not use comes back as the usual mapping, which the general assembly below completes.
         projected = projection is not None and not isinstance(serving_vector, dict)
 
         self._raise_transformation_warnings(
@@ -797,10 +795,9 @@ class VectorServer:
     ) -> Any:
         """The same batch, with the online lookup awaited on the caller's event loop.
 
-        One body prepares and assembles for both drivers; only the fetch differs. The
-        SQL lookup is awaited against a connection pool of this loop's own, so several
-        are in flight at once instead of queueing on the client's task thread. A REST
-        deployment has no such path, so it keeps the blocking call.
+        One body prepares and assembles for both drivers; only the fetch differs.
+        The SQL lookup is awaited against a connection pool of this loop's own, so several are in flight at once instead of queueing on the client's task thread.
+        The REST client has no awaitable path, so its blocking call runs on a worker thread and the loop keeps serving.
 
         `timeout` bounds the read in seconds, as for [`_get_feature_vectors`][].
         """
@@ -810,7 +807,9 @@ class VectorServer:
         if use_rest is None:
             batch_results = []
         elif use_rest:
-            batch_results = self.rest_client_engine._get_batch_feature_vectors(
+            # Off the loop, as for the single vector: the REST client blocks.
+            batch_results = await asyncio.to_thread(
+                self.rest_client_engine._get_batch_feature_vectors,
                 entries=rondb_entries,
                 drop_missing=not allow_missing,
                 return_type=self.rest_client_engine.RETURN_TYPE_FEATURE_VALUE_DICT,
@@ -964,8 +963,7 @@ class VectorServer:
             logging_data,
             projection,
         )
-        # The engine drops the projection for the whole batch when any row could
-        # not be read by position, so one row answers for all.
+        # The engine drops the projection for the whole batch when any row could not be read by position, so one row answers for all.
         projected = projection is not None and not (
             batch_results and isinstance(batch_results[0], dict)
         )
@@ -1081,14 +1079,11 @@ class VectorServer:
     def _rest_row_projection(self, target_columns: list[str]) -> tuple[int, ...] | None:
         """Where each output column sits in a REST wire row, or `None` when one does not.
 
-        The RDRS response is an ordered row, which the general path turns into a
-        dictionary and then reads back into an ordered list. When every output
-        column is a served feature the row carries, the same list can be taken
-        straight from the row by position. Prepared once per output shape,
-        because the view's schema is what decides it.
+        The RDRS response is an ordered row, which the general path turns into a dictionary and then reads back into an ordered list.
+        When every output column is a served feature the row carries, the same list can be taken straight from the row by position.
+        Prepared once per output shape, because the view's schema is what decides it.
 
-        A name that occupies more than one position resolves to its last, which
-        is the position a dictionary built from the row would have kept.
+        A name that occupies more than one position resolves to its last, which is the position a dictionary built from the row would have kept.
         """
         engine = self._rest_client_engine
         if engine is None:
@@ -1106,8 +1101,7 @@ class VectorServer:
         try:
             return tuple(positions[name] for name in target_columns)
         except KeyError:
-            # An output column the response does not carry: the general path
-            # knows where to find it, this one does not.
+            # An output column the response does not carry: the general path knows where to find it, this one does not.
             return None
 
     def _prepared_rest_projection(
@@ -1120,17 +1114,11 @@ class VectorServer:
     ) -> tuple[int, ...] | None:
         """The projection to read this request's vectors with, if it can be read that way.
 
-        Returns `None` whenever anything between the response row and the
-        caller's vector needs the feature name to value mapping: values merged
-        in from elsewhere, a transformation that has something to do, a return
-        value handler for a column being returned, or the logging of a served
-        vector. Those are what the general path exists for.
+        Returns `None` whenever anything between the response row and the caller's vector needs the feature name to value mapping: values merged in from elsewhere, a transformation that has something to do, a return value handler for a column being returned, or the logging of a served vector.
+        Those are what the general path exists for.
 
-        What decides it is whether there is work to do, not whether the caller
-        left `transform` and `on_demand_features` at their defaults. Both
-        default to true, so asking about the flags alone excluded every ordinary
-        call: a view with no transformation functions has nothing to apply
-        whatever they say, and that is the common case.
+        What decides it is whether there is work to do, not whether the caller left `transform` and `on_demand_features` at their defaults.
+        Both default to true, so asking about the flags alone excluded every ordinary call: a view with no transformation functions has nothing to apply whatever they say, and that is the common case.
         """
         if (
             _supplies_values(passed_features)
@@ -1143,8 +1131,7 @@ class VectorServer:
         target_columns = self._output_columns(transform, on_demand_features)
         if any(name in self._return_feature_value_handlers for name in target_columns):
             # A handler rewrites the value of the feature it is registered for.
-            # One registered for a feature this call does not return changes
-            # nothing about what it returns.
+            # One registered for a feature this call does not return changes nothing about what it returns.
             return None
         shape = (bool(transform), bool(on_demand_features))
         if shape not in self.__rest_projections:
@@ -1154,8 +1141,7 @@ class VectorServer:
     def _output_columns(self, transform: bool, on_demand_features: bool) -> list[str]:
         """The columns a call with these flags returns, in order.
 
-        The same choice `_assemble_feature_vector` makes when it reads its
-        result back into a list, so the projection describes the same vector.
+        The same choice `_assemble_feature_vector` makes when it reads its result back into a list, so the projection describes the same vector.
         """
         if transform:
             return self.transformed_feature_vector_col_name
@@ -1222,9 +1208,8 @@ class VectorServer:
             return None
 
         if not allow_missing:
-            # Only this branch reads it, and the names it is built from are
-            # fixed by the schema. Building the set per row cost a batch two
-            # set constructions for every vector it assembled.
+            # Only this branch reads it, and the names it is built from are fixed by the schema.
+            # Building the set per row cost a batch two set constructions for every vector it assembled.
             missing_features = self._required_feature_names.difference(
                 result_dict.keys()
             )
@@ -2485,9 +2470,8 @@ class VectorServer:
     def _required_feature_names(self) -> set[str]:
         """The features a vector must carry for it to be complete.
 
-        On-demand features are excluded because they are computed rather than
-        fetched. The schema fixes the answer, so it is built once instead of
-        once per assembled vector.
+        On-demand features are excluded because they are computed rather than fetched.
+        The schema fixes the answer, so it is built once instead of once per assembled vector.
         """
         if self.__required_feature_names is None:
             self.__required_feature_names = set(

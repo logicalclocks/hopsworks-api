@@ -100,7 +100,19 @@ def _answered(body: bytes = b"{}", status: int = 200):
         def __init__(self):
             self.status = status
             self.headers = {"Content-Type": "application/json"}
-            self.data = body
+            self._left = body
+            self.released = False
+            self.closed = False
+
+        def read(self, amt=None):
+            chunk, self._left = self._left[:amt], self._left[amt:]
+            return chunk
+
+        def release_conn(self):
+            self.released = True
+
+        def close(self):
+            self.closed = True
 
     return _PoolResponse()
 
@@ -407,6 +419,76 @@ class TestTheDeadlineIsTheDeadline:
         with pytest.raises(TimeoutError):
             client._send_request("POST", ["feature_store"], data="{}", timeout=0.2)
 
+    def test_a_refused_connection_is_a_connection_error_not_a_timeout(self, mocker):
+        """urllib3's NewConnectionError subclasses its connect timeout, so it is checked first."""
+        client = self._client(mocker)
+        client._pool.request.side_effect = urllib3.exceptions.NewConnectionError(
+            None, "refused"
+        )
+
+        with pytest.raises(requests.exceptions.ConnectionError) as raised:
+            client._send_request("POST", ["feature_store"], data="{}")
+        assert not isinstance(raised.value, TimeoutError)
+
+    @pytest.mark.parametrize(
+        "error, requests_type",
+        [
+            (
+                urllib3.exceptions.ReadTimeoutError(None, "url", "slow"),
+                requests.exceptions.ReadTimeout,
+            ),
+            (
+                urllib3.exceptions.ConnectTimeoutError(None, "slow"),
+                requests.exceptions.ConnectTimeout,
+            ),
+        ],
+    )
+    def test_a_timeout_is_both_the_requests_type_and_the_builtin(
+        self, mocker, error, requests_type
+    ):
+        """Callers that caught the Requests timeout keep catching it, and so do callers of the documented TimeoutError."""
+        client = self._client(mocker)
+        client._pool.request.side_effect = error
+
+        with pytest.raises(requests_type) as raised:
+            client._send_request("POST", ["feature_store"], data="{}")
+        assert isinstance(raised.value, TimeoutError)
+        assert isinstance(raised.value, requests.exceptions.RequestException)
+
+    def test_a_tls_failure_keeps_its_requests_type(self, mocker):
+        client = self._client(mocker)
+        client._pool.request.side_effect = urllib3.exceptions.SSLError("bad cert")
+
+        with pytest.raises(requests.exceptions.SSLError):
+            client._send_request("POST", ["feature_store"], data="{}")
+
+    def test_waiting_for_a_connection_slot_raises_both_timeout_types(self, mocker):
+        client = self._client(mocker)
+        client._connection_slots = threading.BoundedSemaphore(1)
+        client._connection_slots.acquire()
+
+        with pytest.raises(requests.exceptions.Timeout) as raised:
+            client._send_request("POST", ["feature_store"], data="{}", timeout=0.05)
+        assert isinstance(raised.value, TimeoutError)
+
+    def test_a_body_that_outlasts_the_deadline_is_cut_off(self, mocker):
+        """urllib3 bounds each socket read, so the body is read in chunks against the deadline."""
+        client = self._client(mocker)
+        response = _answered(b"x" * (3 * client._READ_CHUNK_BYTES))
+        read = response.read
+
+        def slow_read(amt=None):
+            time.sleep(0.05)
+            return read(amt)
+
+        response.read = slow_read
+        client._pool.request.return_value = response
+
+        with pytest.raises(TimeoutError, match="still answering"):
+            client._send_request("POST", ["feature_store"], data="{}", timeout=0.08)
+        assert response.closed, "a connection left mid-body was handed back open"
+        assert response.released
+
     def test_a_connection_failure_keeps_its_requests_type(self, mocker):
         """Callers already handle the Requests exception, so it stays that."""
         client = self._client(mocker)
@@ -467,6 +549,24 @@ class TestEveryRequestGoesThroughThePool:
 
         assert client._pool.connection_pool_kw["cert_reqs"] == "CERT_REQUIRED"
         assert client._pool.connection_pool_kw["ca_certs"] == "/ca.pem"
+
+    def test_a_reset_closes_the_pool_it_replaces(self, mocker):
+        client = self._client(mocker)
+        mocker.patch("requests.utils.get_environ_proxies", return_value={})
+        client._setup_pool()
+        first = client._pool
+        clear = mocker.spy(first, "clear")
+
+        client._setup_pool()
+
+        assert client._pool is not first
+        clear.assert_called_once_with()
+
+    def test_the_session_property_refuses_rather_than_being_ignored(self, mocker):
+        client = self._client(mocker)
+
+        with pytest.raises(FeatureStoreException, match="Requests session"):
+            _ = client.session
 
     def test_a_requests_adapter_is_refused(self, mocker):
         """Accepting one and sending elsewhere would be a silent change."""

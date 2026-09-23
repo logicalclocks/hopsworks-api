@@ -194,10 +194,8 @@ class OnlineStoreRestClientApi:
                 - 500: Internal server error.
         """
         if response.status_code == 200:
-            # Decoded once at every log level. DEBUG used to decode the body a
-            # second time and pretty-print every feature value, which made
-            # tracing cost more than the call it was tracing and put feature
-            # values in the log.
+            # Decoded once at every log level.
+            # DEBUG used to decode the body a second time and pretty-print every feature value, which made tracing cost more than the call it was tracing and put feature values in the log.
             decoded = response.json()
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug(

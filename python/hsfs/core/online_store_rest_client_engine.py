@@ -32,12 +32,9 @@ _logger = logging.getLogger(__name__)
 def _parse_date(value: str) -> date:
     """Parse an RDRS date, which the server writes as `YYYY-MM-DD`.
 
-    `date.fromisoformat` is around thirty times faster than `strptime` for that
-    exact shape. It is only used for that shape: from Python 3.11 it also
-    accepts forms `strptime("%Y-%m-%d")` rejects, and a wider parser here would
-    silently start accepting wire values this client never accepted. Anything
-    else goes to the original parser, which keeps both its acceptance and its
-    error.
+    `date.fromisoformat` is around thirty times faster than `strptime` for that exact shape.
+    It is only used for that shape: from Python 3.11 it also accepts forms `strptime("%Y-%m-%d")` rejects, and a wider parser here would silently start accepting wire values this client never accepted.
+    Anything else goes to the original parser, which keeps both its acceptance and its error.
     """
     if len(value) == 10 and value[4] == "-" and value[7] == "-":
         return date.fromisoformat(value)
@@ -99,13 +96,9 @@ class OnlineStoreRestClientEngine:
                 if feat.inference_helper_column:
                     self._is_inference_helpers_list.append(True)
                 elif feat.training_helper_column:
-                    # Neither an inference helper nor a served feature, but it
-                    # does occupy a position in the response row, so it needs
-                    # one here too. Skipping it shifted every flag after it
-                    # against the names, which returned the wrong features:
-                    # a view with a training helper served that helper and
-                    # dropped a real feature. `None` matches neither selection,
-                    # so it is excluded from both.
+                    # Neither an inference helper nor a served feature, but it does occupy a position in the response row, so it needs one here too.
+                    # Skipping it shifted every flag after it against the names, which returned the wrong features: a view with a training helper served that helper and dropped a real feature.
+                    # `None` matches neither selection, so it is excluded from both.
                     self._is_inference_helpers_list.append(None)
                 else:
                     self._is_inference_helpers_list.append(False)
@@ -130,12 +123,8 @@ class OnlineStoreRestClientEngine:
             A dictionary mapping feature indices to their type strings for features that require decoding.
             The indices correspond to the position in _ordered_feature_names.
         """
-        # Walked in the same order the response row is, rather than looked up by
-        # name. A label holds no position in that row, so looking one up raised
-        # `ValueError` and no view with a date or binary label could build its
-        # REST engine at all; and a name that appears twice, which a joined view
-        # can produce, resolved both occurrences to the first position, leaving
-        # the second undecoded.
+        # Walked in the same order the response row is, rather than looked up by name.
+        # A label holds no position in that row, so looking one up raised `ValueError` and no view with a date or binary label could build its REST engine at all; and a name that appears twice, which a joined view can produce, resolved both occurrences to the first position, leaving the second undecoded.
         feature_to_decode = {}
         position = 0
         for feat in features:
@@ -196,10 +185,8 @@ class OnlineStoreRestClientEngine:
     def _is_projectable_row(self, row_feature_values: list[Any] | None) -> bool:
         """Whether this row can be read by position.
 
-        A row carries one value per non-label feature. One that does not is not
-        the row the projection was prepared against, whether it is short, wide
-        or absent for a reason the caller has to be told about, so it is read by
-        name instead and described in full.
+        A row carries one value per non-label feature.
+        One that does not is not the row the projection was prepared against, whether it is short, wide or absent for a reason the caller has to be told about, so it is read by name instead and described in full.
         """
         if row_feature_values is None:
             return True
@@ -213,25 +200,20 @@ class OnlineStoreRestClientEngine:
     ) -> bool:
         """Whether every row of this batch can be read by position.
 
-        All of them or none. A caller reads a batch as one result, so a mix of
-        rows read by position and rows read by name would be a result whose
-        shape varies from entry to entry, and nothing downstream is prepared to
-        read that.
+        All of them or none.
+        A caller reads a batch as one result, so a mix of rows read by position and rows read by name would be a result whose shape varies from entry to entry, and nothing downstream is prepared to read that.
         """
         if not all(self._is_projectable_row(row) for row in rows):
             return False
         if not drop_missing:
             return True
         if len(detailed_statuses) != len(rows):
-            # One entry's statuses per row, or there is a row whose reads are
-            # not described. Reading such a batch by position would answer for
-            # a row without having checked whether anything behind it failed.
+            # One entry's statuses per row, or there is a row whose reads are not described.
+            # Reading such a batch by position would answer for a row without having checked whether anything behind it failed.
             return False
         for statuses in detailed_statuses:
-            # One entry's statuses, which a caller has to be told about if any
-            # read behind them failed. A shape this cannot read is itself a
-            # reason to take the descriptive path: that path reports a missing
-            # status as an error rather than answering with the row anyway.
+            # One entry's statuses, which a caller has to be told about if any read behind them failed.
+            # A shape this cannot read is itself a reason to take the descriptive path: that path reports a missing status as an error rather than answering with the row anyway.
             if not isinstance(statuses, list):
                 return False
             for status in statuses:
@@ -246,10 +228,8 @@ class OnlineStoreRestClientEngine:
     ) -> list[Any] | None:
         """Decode binary and date values from the RonDB Rest Server response.
 
-        A null row has nothing to decode. RonDB answers a failed read with a
-        null feature vector inside an HTTP 200, and indexing it here raised
-        `TypeError` for any view carrying a date or binary feature, before the
-        null-row branches below ever ran.
+        A null row has nothing to decode.
+        RonDB answers a failed read with a null feature vector inside an HTTP 200, and indexing it here raised `TypeError` for any view carrying a date or binary feature, before the null-row branches below ever ran.
 
         Parameters:
             feature_values: List of feature values from the RonDB Rest Server, or `None` for a null row.
@@ -263,9 +243,8 @@ class OnlineStoreRestClientEngine:
         width = len(feature_values)
         for feature_index, data_type in self._feature_to_decode.items():
             if feature_index >= width:
-                # A row narrower than the schema it was decoded against. It is
-                # reported as such further up; decoding is not the place to
-                # raise IndexError about it.
+                # A row narrower than the schema it was decoded against.
+                # It is reported as such further up; decoding is not the place to raise IndexError about it.
                 continue
             if (
                 data_type == self.BINARY_TYPE
@@ -439,9 +418,7 @@ class OnlineStoreRestClientEngine:
                 list(response.get("detailedStatus", None) or ()),
                 drop_missing,
             ):
-                # Checked for the batch before any of it is read, so what comes
-                # back is every row by position or every row by name, never a
-                # mix of the two.
+                # Checked for the batch before any of it is read, so what comes back is every row by position or every row by name, never a mix of the two.
                 projection = None
             return [
                 self._convert_rdrs_response_to_feature_value_row(
@@ -512,10 +489,8 @@ class OnlineStoreRestClientEngine:
             and not failed_read_feature_names
             and self._is_projectable_row(row_feature_values)
         ):
-            # Every read answered and the row is the width the projection was
-            # prepared against, so the caller's vector can be taken from it by
-            # position. Anything else falls through to the mapping, which the
-            # caller knows how to complete and to report on.
+            # Every read answered and the row is the width the projection was prepared against, so the caller's vector can be taken from it by position.
+            # Anything else falls through to the mapping, which the caller knows how to complete and to report on.
             if row_feature_values is None:
                 return None if drop_missing else [None] * len(projection)
             return [row_feature_values[index] for index in projection]

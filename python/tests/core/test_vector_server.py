@@ -379,6 +379,38 @@ class TestNativeAsyncLookup:
         asyncio.run(server._get_feature_vectors_async())
         assert seen["logging_data"] is True
 
+    def test_the_rest_client_runs_off_the_event_loop(self, mocker):
+        """The REST client blocks, so the async driver must not call it on the loop thread."""
+        import asyncio
+        import threading
+
+        server, _ = self._server(mocker)
+        rest = server.rest_client_engine
+        seen = {}
+
+        def blocking(entries, **kwargs):
+            seen["thread"] = threading.current_thread()
+            seen["timeout"] = kwargs["timeout"]
+            return [{"a": 1}]
+
+        rest._get_batch_feature_vectors = blocking
+        mocker.patch.object(VectorServer, "_batch_lookup_arguments", return_value=True)
+
+        def steps(*args, **kwargs):
+            return (yield ["entry"], "rest", False, False, None)
+
+        mocker.patch.object(VectorServer, "_feature_vectors_steps", steps)
+
+        async def run():
+            loop_thread = threading.current_thread()
+            result = await server._get_feature_vectors_async(timeout=3)
+            return loop_thread, result
+
+        loop_thread, result = asyncio.run(run())
+        assert result == [{"a": 1}]
+        assert seen["thread"] is not loop_thread
+        assert seen["timeout"] == 3
+
     def test_a_body_that_suspends_twice_is_refused(self):
         from hsfs.core import vector_server
 

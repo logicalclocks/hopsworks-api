@@ -1016,9 +1016,7 @@ class FeatureView:
         self._assert_no_offline_only_partition_features()
 
         if not self._vector_server._serving_initialized:
-            # force_rest_client is forwarded here as the batch method already
-            # does it: without it, a first single call asking for REST used to
-            # initialise SQL and then pick REST anyway.
+            # force_rest_client is forwarded here as the batch method already does it: without it, a first single call asking for REST used to initialise SQL and then pick REST anyway.
             self.init_serving(external=external, init_rest_client=force_rest_client)
 
         if n_processes is None:
@@ -1059,8 +1057,7 @@ class FeatureView:
         handed to a worker thread and nothing queues on the client's task thread, which
         serves one lookup at a time however many callers there are.
 
-        Falls back to the blocking path where there is nothing to overlap: a REST client
-        deployment, or a request with no serving keys.
+        A REST client deployment has no awaitable path, so its blocking call runs on a worker thread and does not hold up the event loop.
 
         Takes the arguments of [`get_feature_vector`][hsfs.feature_view.FeatureView.get_feature_vector].
 
@@ -1074,8 +1071,9 @@ class FeatureView:
         """
         entry = kwargs.pop("entry", None)
         external = kwargs.pop("external", None)
+        force_rest_client = kwargs.get("force_rest_client", False)
         if not self._vector_server._serving_initialized:
-            self.init_serving(external=external)
+            self.init_serving(external=external, init_rest_client=force_rest_client)
         if kwargs.get("n_processes") is None:
             kwargs["n_processes"] = self._transformation_n_processes
         vector_db_features = None
@@ -1094,8 +1092,7 @@ class FeatureView:
         synchronous method hands the work to a task thread that serves one lookup at a
         time however many callers there are, which is the ceiling this method removes.
 
-        Falls back to the blocking path when the lookup is not the SQL client's to make: a
-        REST client deployment, or a request with no serving keys.
+        A REST client deployment has no awaitable path, so its blocking call runs on a worker thread and does not hold up the event loop.
 
         Takes the arguments of [`get_feature_vectors`][hsfs.feature_view.FeatureView.get_feature_vectors].
 

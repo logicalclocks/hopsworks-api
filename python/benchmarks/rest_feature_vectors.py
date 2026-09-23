@@ -25,8 +25,7 @@ out, so the numbers are the library's and not the cluster's:
 
     python -m benchmarks.rest_feature_vectors --json before.json
 
-Written to run unchanged on a revision that predates any of the three changes,
-which is what makes a before and after comparison possible.
+Written to run unchanged on a revision that predates any of the three changes, which is what makes a before and after comparison possible.
 """
 
 from __future__ import annotations
@@ -107,8 +106,8 @@ def _engine(features) -> online_store_rest_client_engine.OnlineStoreRestClientEn
 def _accepted(method) -> frozenset:
     """Which arguments a revision's method declares.
 
-    Resolved once per method. Reading the signature costs tens of microseconds,
-    which is more than some of the work measured here.
+    Resolved once per method.
+    Reading the signature costs tens of microseconds, which is more than some of the work measured here.
     """
     return frozenset(inspect.signature(method).parameters)
 
@@ -116,8 +115,7 @@ def _accepted(method) -> frozenset:
 def _call_supported(method, /, **kwargs):
     """Call `method` with the arguments the revision under test declares.
 
-    The assembly signature has grown arguments this benchmark has no opinion
-    about, and an older revision rejects them by name.
+    The assembly signature has grown arguments this benchmark has no opinion about, and an older revision rejects them by name.
     """
     accepted = _accepted(method)
     return method(**{k: v for k, v in kwargs.items() if k in accepted})
@@ -178,8 +176,7 @@ def _decode_case(date_columns: int, iterations: int) -> dict:
 def _assemble_case(date_columns: int, rows: int, iterations: int) -> dict:
     """A whole batch response becoming feature vectors.
 
-    The conversion and the assembly together, which is every piece of client
-    work between the response body and the rows the caller is handed.
+    The conversion and the assembly together, which is every piece of client work between the response body and the rows the caller is handed.
     """
     features = _schema(date_columns)
     engine = _engine(features)
@@ -237,9 +234,7 @@ def _serving_case(date_columns: int, rows: int, iterations: int) -> dict:
 
     This is the whole of the client's work for one `get_feature_vectors` call:
     the response becoming rows, and the rows becoming the caller's vectors.
-    `response_only` is the floor, what the stubbed response costs to produce,
-    since a fresh body has to be built for every call: decoding rewrites the
-    row it is given.
+    `response_only` is the floor, what the stubbed response costs to produce, since a fresh body has to be built for every call: decoding rewrites the row it is given.
     """
     from hsfs import feature_group as fg_mod
     from hsfs import serving_key as sk_mod
@@ -278,9 +273,8 @@ def _serving_case(date_columns: int, rows: int, iterations: int) -> dict:
     entries = [{"f0": index} for index in range(rows)]
 
     def read():
-        # The public defaults. A view with no transformation functions has
-        # nothing to apply whatever they say, and opting out of them would be
-        # measuring a call almost nobody makes.
+        # The public defaults.
+        # A view with no transformation functions has nothing to apply whatever they say, and opting out of them would be measuring a call almost nobody makes.
         return _call_supported(
             server._get_feature_vectors,
             entries=entries,

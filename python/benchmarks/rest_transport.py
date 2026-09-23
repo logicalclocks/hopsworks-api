@@ -15,15 +15,11 @@
 #
 """What the calling thread spends to send one online store request.
 
-The specification gates replacing Requests on a direct urllib3 client cutting
-calling-thread CPU by at least 25 percent against cached-URL Requests. This
-measures that: the same request, to the same local server, over a warm
-connection, through each transport.
+The specification gates replacing Requests on a direct urllib3 client cutting calling-thread CPU by at least 25 percent against cached-URL Requests.
+This measures that: the same request, to the same local server, over a warm connection, through each transport.
 
-A loopback server answers so both transports do real socket work, and it is the
-same server for both, so what differs is the client. CPU is process time, which
-is what the gate is about; wall time is reported beside it because a serving
-thread waits for both.
+A loopback server answers so both transports do real socket work, and it is the same server for both, so what differs is the client.
+CPU is process time, which is what the gate is about; wall time is reported beside it because a serving thread waits for both.
 
     python -m benchmarks.rest_transport --json transports.json
 """
@@ -58,9 +54,7 @@ def _body(rows: int, columns: int) -> bytes:
 
 class _Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
-    # Without this the reply leaves in several small writes and loopback pays a
-    # delayed acknowledgement for it, which puts 40 ms of waiting into every
-    # call and measures the kernel rather than the client.
+    # Without this the reply leaves in several small writes and loopback pays a delayed acknowledgement for it, which puts 40 ms of waiting into every call and measures the kernel rather than the client.
     disable_nagle_algorithm = True
     body = b"{}"
 
@@ -89,9 +83,7 @@ def _measure(call, iterations: int) -> dict:
     for _ in range(50):
         call()
     wall = []
-    # Thread time, not process time: the server answers on its own threads in
-    # this process, and its work is identical for both transports, so counting
-    # it would measure the same thing twice and hide the difference.
+    # Thread time, not process time: the server answers on its own threads in this process, and its work is identical for both transports, so counting it would measure the same thing twice and hide the difference.
     cpu_started = time.thread_time()
     started = time.perf_counter()
     for _ in range(iterations):
