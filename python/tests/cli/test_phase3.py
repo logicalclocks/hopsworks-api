@@ -167,9 +167,11 @@ def test_job_history(mock_project):
     e1 = mock.MagicMock()
     e1.id, e1.state, e1.final_status = 1, "FINISHED", "SUCCEEDED"
     e1.submission_time = "2026-04-01"
+    e1.duration = 41_400
     e2 = mock.MagicMock()
     e2.id, e2.state, e2.final_status = 2, "RUNNING", "-"
     e2.submission_time = "2026-04-02"
+    e2.duration = None
     job.get_executions.return_value = [e1, e2]
     api.get_job.return_value = job
     mock_project.get_job_api.return_value = api
@@ -178,6 +180,9 @@ def test_job_history(mock_project):
     # Most recent first
     lines = [ln for ln in result.output.splitlines() if ln.startswith(("1", "2"))]
     assert lines and lines[0].startswith("2")
+    # The finished run's duration in seconds; a running one has none yet.
+    assert lines[1].split()[-1] == "41"
+    assert lines[0].split()[-1] == "-"
 
 
 def test_job_logs(mock_project):
@@ -403,6 +408,14 @@ def test_superset_dashboard_list(mock_project):
     result = CliRunner().invoke(cli, ["superset", "dashboard", "list"])
     assert result.exit_code == 0, result.output
     assert "Ops" in result.output
+
+
+def test_superset_outside_the_cluster_fails_with_a_reason(mock_project):
+    with mock.patch("hopsworks_common.client._is_external", return_value=True):
+        result = CliRunner().invoke(cli, ["superset", "dashboard", "list"])
+    assert result.exit_code != 0
+    assert "only inside the cluster" in result.output
+    mock_project.get_superset_api.assert_not_called()
 
 
 def test_superset_dashboard_create(mock_project):

@@ -402,7 +402,47 @@ if __name__ == "__main__":
 
 ---
 
-## 7. Debugging cheatsheet
+## 7. Dashboard programs
+
+Every dashboard `/hops dashboard` builds has one program that builds it, filled
+in from [references/dashboard_program.py](references/dashboard_program.py): a
+module docstring naming the title, the feature groups and the charts; `TITLE`,
+`FEATURE_GROUPS` and `CHARTS`; the idempotent steps above; `--delete`; and a
+last line printing the dashboard URL.
+
+- **Where they live:** `Users/<user>/dashboards/<slug>.py` in the project, which
+  is `~/dashboards/<slug>.py` in a Hopsworks terminal (the FUSE mount) and
+  `./dashboards/<slug>.py` from an external client, mirrored with
+  `hops files upload` and `hops files download` so both places hold the same programs.
+- **Where they run:** the SDK reaches Superset only inside the cluster
+  (`get_superset_api()` refuses an external client, and so does `hops superset`).
+  In a terminal, run the program directly. From an external client, run it as a
+  Hopsworks job, which also uploads it to `Users/<user>/dashboards/`; `--list`
+  run the same way stands in for `hops superset dashboard list`.
+- **A re-run is an update.** Datasets are reused by name, the charts the
+  dashboard had are replaced (so a chart dropped from `CHARTS` goes too), and the
+  dashboard keeps its id, URL and title.
+- **`--delete` removes only what the program made:** the dashboard, its
+  charts, and its datasets that no other chart still uses. A chart of the same
+  name on another dashboard is left alone.
+- An ML system's dashboard (the app phase of `/hops ml`) keeps its program in
+  the system's repository, under `<slug>/dashboards/`, instead of the user's home.
+
+```bash
+python ~/dashboards/customers-overview.py            # create or update, prints the URL
+python ~/dashboards/customers-overview.py --delete   # after confirming the exact title
+hops superset dashboard list                         # confirm
+# from an external client: the same program as a job
+hops job deploy customers-overview-dashboard dashboards/customers-overview.py \
+  --env python-feature-pipeline --upload-dir Users/<user>/dashboards --overwrite --run --wait
+hops job logs customers-overview-dashboard --stdout                 # the URL, or the --list JSON
+```
+
+A chart Superset rejects (a legacy viz type, `Empty query?`, an unknown field)
+is fixed in the program and the program re-run, at most three times per chart;
+a chart that still fails is dropped from `CHARTS` with a line saying why.
+
+## 8. Debugging cheatsheet
 
 | Symptom | Likely cause | Fix |
 |---|---|---|

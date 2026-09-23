@@ -576,7 +576,7 @@ def job_logs(
 @click.argument("name")
 @click.pass_context
 def job_history(ctx: click.Context, name: str) -> None:
-    """List past executions of a job (newest first).
+    """List past executions of a job (newest first), with how long each ran.
 
     Args:
         ctx: Click context.
@@ -589,10 +589,17 @@ def job_history(ctx: click.Context, name: str) -> None:
             getattr(e, "state", "?"),
             getattr(e, "final_status", "-"),
             getattr(e, "submission_time", "-"),
+            _duration_s(e),
         ]
         for e in executions
     ]
-    output.print_table(["ID", "STATE", "FINAL", "SUBMITTED"], rows)
+    output.print_table(["ID", "STATE", "FINAL", "SUBMITTED", "DURATION_S"], rows)
+
+
+def _duration_s(execution: Any) -> int | str:
+    """Seconds the execution ran, from the millisecond duration the backend reports."""
+    duration = getattr(execution, "duration", None)
+    return round(duration / 1000) if isinstance(duration, (int, float)) else "-"
 
 
 # Quartz cron (sec min hour day-of-month month day-of-week) for the common
@@ -909,6 +916,7 @@ def _execution_to_dict(execution: Any) -> dict[str, Any]:
         "state": getattr(execution, "state", None),
         "final_status": getattr(execution, "final_status", None),
         "submission_time": getattr(execution, "submission_time", None),
+        "duration_s": _duration_s(execution),
     }
 
 

@@ -1,0 +1,8 @@
+# pytest configuration for this ML system. Nothing here is installed anywhere:
+# the pipelines are self-contained job entrypoints and the unit tests import
+# their functions from src/.
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests/unit"]
+markers = ["integration: needs a Hopsworks connection; run only with pytest tests/integration"]

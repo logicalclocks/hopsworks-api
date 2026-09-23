@@ -110,7 +110,13 @@ dev-pandas1 = [
     "sqlalchemy<=1.4.48",
     "delta-spark==4.3.1",
 ]
-dev = ["hopsworks[dev-no-opt,great-expectations,polars,python,mcp,trino]"]
+dev = [
+    "hopsworks[dev-no-opt,great-expectations,polars,python,mcp,trino]",
+    # The system template and app skeleton shipped under hopsworks/skills are
+    # exercised by the unit tests; neither library is a runtime dependency.
+    "pyyaml",
+    "fastapi",
+]
 polars = [
     "polars>=0.20.31,<=1.40.1",
     "pyarrow>=17.0",
@@ -165,7 +171,17 @@ include = [
 # Skill playbooks are data, not importable code: the folder names carry hyphens
 # and the tree has no __init__.py, so packages.find excludes it above and the
 # files ride along as package data instead.
-"hopsworks" = ["skills/**/*.md", "skills/**/*.py"]
+"hopsworks" = [
+    "skills/**/*.md",
+    "skills/**/*.py",
+    "skills/**/*.toml",
+    "skills/**/*.yaml",
+    "skills/**/*.txt",
+    "skills/**/*.html",
+    "skills/**/*.js",
+    "skills/**/*.css",
+    "skills/**/gitignore",
+]
 
 [tool.setuptools.dynamic]
 version = { attr = "hopsworks_common.version.__version__" }

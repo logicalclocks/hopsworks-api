@@ -1,0 +1,201 @@
+# A batch churn system after every phase ran and verify passed.
+# The rules and the meaning of each field are in system-yaml.md.
+schema_version: 1
+
+system:
+  name: Telco churn call list
+  slug: telco-churn
+  target: {cluster: https://hopsworks.acme.internal, project: skillstest, stage: development}
+  repo: {url: https://github.com/acme/ml-systems, host: github.com, default_branch: main, branch: hops/telco-churn, pr: 12}
+  created: 2026-09-22
+  versions: {hopsworks: 4.6.0, cli: 4.6.0, skills: 2026-09-22, protocol: hops-train/references/autoresearch.md@1133d9c}
+  progress: {phase: verify, done: [reqs, data, features, train, infer, app, verify], now: "", remaining_estimate: 0m,
+             estimate_basis: finished}
+  status: deployed
+
+requirements:
+  description: >
+    Each month, rank current customers by their risk of cancelling within the next month,
+    so the retention team can call the 500 most at risk.
+  problem:
+    task: classification
+    target: churn
+    entity: customer_id
+    prediction_time: monthly, 1st, after the billing snapshot lands
+    horizon: 1 month
+    label_maturity: 1 month
+    generalises_to: new_periods
+  system_type: batch
+  data_sources:
+    - {name: telco_customers, kind: feature_group, version: 1, grain: one row per customer, event_time: snapshot_date, status: present}
+    - {name: billing, kind: datasource, type: snowflake, connector: acme_snowflake, table: BILLING.INVOICES,
+       grain: one row per invoice, event_time: invoice_date, status: present,
+       needs: [account url, user, database, schema, warehouse; password by stdin or HOPSWORKS_DS_SNOWFLAKE_PASSWORD]}
+    - {name: usage_events, kind: synthetic, shape: events, grain: one row per call, entity: customer_id,
+       event_time: ts, status: present}
+  sizing: {tier: small}
+  budget:
+    training: {max_runs: 5, wall_clock: 60m, per_run: 10m, rounds: 3, import_timeout: 20m}
+    inference: {max_attempts: 5, wall_clock: 60m, max_replicas: 4, max_memory_mb: 4096, max_cores: 2, gpu: false}
+    operations: {streams: 1, scheduled_jobs: 4}
+  data_policy:
+    fixtures: generated
+    export_ok: false
+    log_fields: [customer_id, prediction, score]
+  models:
+    sources: [huggingface]
+    licences: [apache-2.0, mit, bsd-3-clause]
+    token_secret: hf_token
+  features:
+    - {name: tenure_months, computed_in: feature_pipeline, from: telco_customers, note: months since signup at the snapshot}
+    - {name: charges_ratio, computed_in: feature_pipeline, from: billing, note: last invoice over the six-month mean}
+    - {name: calls_30d, computed_in: feature_pipeline, from: usage_events, note: calls in the 30 days before the snapshot}
+  targets:
+    metric: pr_auc
+    target: 0.65
+    direction: max
+    baseline: {value: 0.43, metric: precision_at_500, note: the current month-to-month rule at 500 calls}
+    prevalence: 0.26
+    how_measured: held-out temporal test split, never used for selection
+    secondary: [precision_at_500]
+  sla:
+    batch: {rows_per_run: 5200, cadence: monthly, window: closed billing month, must_finish_by: "06:00 UTC"}
+  operations:
+    features: {run: scheduled, engine: polars, cadence: "0 0 2 1 * ?", window: previous calendar month, backfill_from: 2025-01-01}
+    training: {run: scheduled, cadence: "0 0 3 1 * ?", promote: when the test metric holds on the new split}
+    inference: {run: scheduled, cadence: "0 0 4 1 * ?"}
+    ordering: cadence
+    alerts: {receiver: ml-oncall, on: [job_failed, freshness_missed, retrain_rejected]}
+  consumers: ui
+  monitoring: predictions and inputs logged to the prediction feature group; drift on the FV
+  open_questions: []
+  started: 2026-09-22T09:02Z
+  finished: 2026-09-22T09:13Z
+  status: met
+
+data:
+  billing:
+    connector: {name: acme_snowflake, type: snowflake, created: 2026-09-22}
+    mounted_as: {feature_group: billing_invoices, version: 1, external: true, event_time: invoice_date}
+  usage_events:
+    generator: {file: src/telco_churn/synthetic_data.py, seed: 20260922,
+                story: "calls per customer follow tenure and plan; churners' volume decays over the last 60 days"}
+    environment: {name: python-feature-pipeline}
+    writes: {feature_group: usage_events, version: 1, primary_key: event_id, event_time: ts, online: true, ttl: 7d, offline_backfill_every: 1h}
+    backfill: {run_id: data-backfill-1, rows: 100000, from: 2026-06-01, to: 2026-09-22, job: telco-churn-data-backfill, execution: 1031,
+               materialized: {execution: 1032, offline_rows: 100000}}
+    live: {rate_per_s: 5, entities: 2000, tick_s: 10, job: telco-churn-events, execution: 1033}
+    tests:
+      unit: tests/unit/test_data.py
+      integration: {file: tests/integration/test_synthetic_data.py, job: telco-churn-tests, environment: python-feature-pipeline}
+      last_run: {when: 2026-09-22T09:40Z, run_id: tests-data-1, commit: 41c0f2e, unit: "6 passed", integration: "3 passed", test_objects_deleted: true}
+  started: 2026-09-22T09:13Z
+  finished: 2026-09-22T09:19Z
+  status: met
+
+features:
+  started: 2026-09-22T09:19Z
+  finished: 2026-09-22T09:33Z
+  status: met
+  pipelines:
+    - name: telco_churn_features
+      run: scheduled
+      engine: polars
+      environment: {name: python-feature-pipeline}
+      reads: [telco_customers, billing_invoices, usage_events]
+      transformations: [tenure bucket, charges ratio, calls in 30 days]
+      writes: {feature_group: telco_churn_customers, version: 1, online: false}
+      job: {name: telco-churn-features, type: python,
+            schedule: {cron: "0 0 2 1 * ?", window: {start_offset_s: -2678400, end_offset_s: 0}, catchup: false, max_active_runs: 1},
+            backfill: {from: 2025-01-01, to: 2026-09-01, execution: 1042}, alert: ml-oncall}
+      benchmark: {file: benchmarks/benchmark_features.py, last_run: {run_id: bench-features-1, commit: 41c0f2e, execution: 1043, kind: full_window,
+                  rows_per_s: 9400, full_window_s: 41, fits_before_inference: true}}
+      tests:
+        unit: tests/unit/test_features.py
+        integration: {file: tests/integration/test_feature_pipeline.py, job: telco-churn-tests, environment: python-feature-pipeline}
+        last_run: {when: 2026-09-22T10:14Z, run_id: tests-features-1, commit: 41c0f2e, unit: "14 passed", integration: "6 passed", test_objects_deleted: true}
+      status: met
+
+training:
+  required: true
+  environment: {name: pandas-training-pipeline, transformation_libraries: [scikit-learn==1.8.0]}
+  feature_view: {name: telco_churn_fv, version: 1, label: churn,
+                 features: [tenure_months, charges_ratio, calls_30d, monthly_charges, contract],
+                 transformations: [one_hot(contract), min_max(monthly_charges)]}
+  eda: eda.md
+  leakage: [months_to_contract_end]
+  pretrained: {searched: true, candidates: [], chosen: none, note: tabular churn on private features; no Hub model fits the task}
+  split: {kind: temporal, validation_fraction: 0.15, test_fraction: 0.15, start: 2025-01-01, label_cutoff: 2026-08-22,
+          note: event_time present and generalises_to new_periods, so time-ordered with test last}
+  harness: {evaluate: src/telco_churn/evaluate.py, commit: 3f9e2a1, training_dataset_version: 1}
+  runs:
+    - {run_id: train-1-1, n: 1, attempt: 1, commit: 8c1d0e4, bundle: runs/train-1-1, execution: 1101, state: finished,
+       model: {name: telco_churn_research, version: 1}, algorithm: logistic_regression, changed: baseline, pr_auc_validation: 0.58, status: keep, met: false}
+    - {run_id: train-2-1, n: 2, attempt: 1, commit: b72f9aa, bundle: runs/train-2-1, execution: 1104, state: finished,
+       model: {name: telco_churn_research, version: 2}, algorithm: xgboost, changed: xgboost max_depth 6, pr_auc_validation: 0.55, status: discard, met: false}
+    - {run_id: train-3-1, n: 3, attempt: 1, commit: e04c7d2, bundle: runs/train-3-1, execution: 1107, state: finished,
+       model: {name: telco_churn_research, version: 3}, algorithm: logistic_regression, changed: +charges_ratio interaction, pr_auc_validation: 0.66, status: keep, met: true}
+  acceptance:
+    - {run_id: train-accept-1, commit: e04c7d2, bundle: runs/train-accept-1, execution: 1109, state: finished,
+       model: {name: telco_churn_model, version: 1}, pr_auc_validation: 0.66, pr_auc_test: 0.65, met: true}
+  model: {name: telco_churn_model, version: 1, framework: sklearn, commit: e04c7d2}
+  retraining: {job: telco-churn-train, mode: retrain, schedule: {cron: "0 0 3 1 * ?"}, alert: ml-oncall,
+               promote: register a new telco_churn_model version only when pr_auc_test >= 0.65 on the new split; else keep serving version 1 and alert}
+  tests:
+    unit: tests/unit/test_training.py
+    integration: {file: tests/integration/test_training_pipeline.py, job: telco-churn-tests, environment: pandas-training-pipeline}
+    last_run: {when: 2026-09-22T11:02Z, run_id: tests-training-1, commit: e04c7d2, unit: "9 passed", integration: "4 passed", test_objects_deleted: true}
+  started: 2026-09-22T09:33Z
+  finished: 2026-09-22T11:05Z
+  status: met
+
+inference:
+  mode: batch
+  environment: {name: pandas-training-pipeline, reused_from: training}
+  batch:
+    reads: {feature_view: telco_churn_fv, window: closed billing month}
+    writes: {feature_group: telco_churn_predictions, version: 1}
+    job: {name: telco-churn-inference, type: python,
+          schedule: {cron: "0 0 4 1 * ?", window: {start_offset_s: -2678400, end_offset_s: 0}}, alert: ml-oncall}
+  benchmark:
+    file: benchmarks/benchmark_inference.py
+    job: telco-churn-benchmark
+    params: {start: 2026-08-01, end: 2026-09-01}
+  measured:
+    - {n: 1, run_id: bench-1, commit: 9a1b2c3, execution: 1120, kind: full_window, model_version: 1,
+       rows: 5200, rows_per_s: 1800, window_s: 2.9, budget_s: 7159, fits_window: true, met: true}
+  tests:
+    unit: tests/unit/test_inference.py
+    integration: {file: tests/integration/test_inference_pipeline.py, job: telco-churn-tests, environment: pandas-training-pipeline}
+    last_run: {when: 2026-09-22T11:40Z, run_id: tests-inference-1, commit: 9a1b2c3, unit: "7 passed", integration: "5 passed", test_objects_deleted: true}
+  started: 2026-09-22T11:05Z
+  finished: 2026-09-22T11:42Z
+  status: met
+
+app:
+  wanted: true
+  kind: dashboard
+  name: telco-churn-dashboard
+  program: dashboards/telco-churn.py
+  url: https://hopsworks.acme.internal/hopsworks-api/superset/superset/dashboard/7/
+  started: 2026-09-22T11:42Z
+  finished: 2026-09-22T11:50Z
+  status: met
+
+verify:
+  last_run: 2026-09-22T12:05Z
+  commit: 9a1b2c3
+  claims: 24
+  failed: 0
+  stale: []
+  expired: []
+  failures: []
+  tests: {unit: "36 passed", integration: not run}
+  status: pass
+
+decisions:
+  - {phase: reqs, by: user, what: system_type batch, why: predictions are worked monthly}
+  - {phase: reqs, by: claude, what: temporal split, why: event time present, generalises to new periods}
+  - {phase: data, by: user, what: synthetic usage events at 5/s, why: no call data yet; small tier}
+  - {phase: train, by: claude, what: added charges_ratio interaction, why: run 2 discarded, the agent's next idea}
+  - {phase: app, by: user, what: dashboard wanted, why: retention team reads a list}

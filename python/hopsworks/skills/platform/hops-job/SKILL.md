@@ -59,6 +59,76 @@ Pick the environment for the job's role: `python-feature-pipeline` (feature
 pipelines), `pandas-training-pipeline` (training). Inference environments (e.g.
 `pandas-inference-pipeline`) are deployment-only and cannot run as jobs.
 
+## Windows and backfill
+
+A scheduled program processes one data window per fire. The scheduler sets
+`HOPS_START_TIME` and `HOPS_END_TIME` (ISO-8601 with a trailing `Z`) on every
+execution; by default the window is the previous fire to this one. Move it with
+offsets when the window is not the interval, for example a month closed on the
+1st and scored on the 4th:
+
+```bash
+hops job schedule telco-churn-inference "0 0 4 1 * ?" \
+  --start-offset-seconds -2678400 --end-offset-seconds 0      # negative looks back from the fire
+hops job schedule-info telco-churn-inference                  # verify cron, offsets, next fire
+```
+
+The **same program** serves history: `hops job backfill` runs it once over a past
+interval with the same two variables set, so there is one code path.
+
+```bash
+hops job backfill telco-churn-features --start-time 2025-01-01 --end-time 2026-09-01 --wait
+```
+
+`--catchup` with `--max-catchup-runs` replays fires missed during an outage
+instead of skipping them; `--max-active-runs 1` (the default) keeps a slow run
+from overlapping the next. Write the program so a replayed or retried window is
+an upsert on the sink's primary key and event time, never a duplicate.
+
+## Continuous jobs
+
+A 24x7 program consuming a stream is a PySpark Structured Streaming job in
+`spark-feature-pipeline`: it reads a Kafka connector or an online-enabled feature
+group's topic, applies the model-independent transformations, and writes with
+`fg.insert_stream(...)`, checkpointing under `Resources/<slug>/checkpoints/<job>`
+so a restart resumes where it stopped.
+
+```python
+query = fg.insert_stream(
+    features_df,
+    query_name="usage_stream",
+    output_mode="append",
+    await_termination=True,
+    checkpoint_dir="Resources/telco-churn/checkpoints/usage-stream",
+)
+```
+
+```bash
+hops job deploy telco-churn-usage-stream usage_stream.py --type pyspark --env spark-feature-pipeline --overwrite
+hops job run telco-churn-usage-stream          # never scheduled: an execution that stays up
+hops job history telco-churn-usage-stream      # the check is a RUNNING execution
+hops job stop telco-churn-usage-stream
+```
+
+Hopsworks jobs have no restart policy. Whatever checks the system (`/hops verify`,
+`/hops status`) looks for a running execution and, when there is none, reports it
+and starts it again with `hops job run`; the failure alert covers the time in
+between. A continuous job holds a driver and its executors for as long as it
+runs, so count it against the system's `budget.operations.streams`.
+
+## Alerts
+
+Every job a system owns gets a failure alert, so a failed run reaches a person
+without anyone watching a terminal:
+
+```bash
+hops alert receiver list
+hops alert receiver create ml-oncall --email oncall@acme.example --slack "#ml-alerts"
+hops alert job create telco-churn-features --receiver ml-oncall --status failed --severity critical
+hops alert job create telco-churn-train --receiver ml-oncall --status long_running --severity warning
+hops alert job list telco-churn-features
+```
+
 ## Orchestrating Hopsworks Jobs with Airflow
 
 Airflow is the **workflow orchestrator**: it runs a DAG of jobs (tasks) with dependencies between them. Use it when you want to chain Hopsworks jobs together — e.g. derived-feature pipelines that run only after their upstream parents succeed — or trigger a job in response to an event like a file landing in HopsFS. One DAG to monitor beats five separate jobs. For a single pipeline, a plain scheduled job is enough.
