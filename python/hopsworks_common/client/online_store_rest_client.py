@@ -378,13 +378,27 @@ class OnlineStoreRestClientSingleton:
         if proxy:
             # The URL itself is not logged: a proxy URL commonly carries user:password@host, and this would be the one place that puts it in a log file.
             _logger.debug("Sending online store requests through a proxy")
-            self._pool = urllib3.ProxyManager(proxy, **options)
+            self._pool = urllib3.ProxyManager(
+                proxy, proxy_headers=self._proxy_auth_headers(proxy), **options
+            )
         else:
             self._pool = urllib3.PoolManager(num_pools=2, **options)
         if previous is not None:
             # Closes the idle keep-alive sockets now rather than when the pool is collected.
             # A read still using one of them finishes on it.
             previous.clear()
+
+    @staticmethod
+    def _proxy_auth_headers(proxy: str) -> dict[str, str] | None:
+        """The `Proxy-Authorization` header for credentials in a proxy URL, as Requests sends it.
+
+        urllib3 does not read credentials from the proxy URL, so without this an authenticated proxy answers 407.
+        The header goes on plain requests and on the CONNECT that opens an HTTPS tunnel.
+        """
+        username, password = requests.utils.get_auth_from_url(proxy)
+        if not username and not password:
+            return None
+        return urllib3.util.make_headers(proxy_basic_auth=f"{username}:{password}")
 
     def _environment_proxy(self) -> str | None:
         """The proxy the environment names for the online store host, if any.
@@ -514,10 +528,12 @@ class OnlineStoreRestClientSingleton:
         return response
 
     def _read_body(self, raw, remaining, deadline) -> bytes:
-        """Read the body in chunks, each one bounded by what is left of the deadline.
+        """Read the body one socket read at a time, each bounded by what is left of the deadline.
 
-        urllib3's timeout bounds each socket read rather than the body, so a server that sends a large answer in pieces would otherwise hold the call past its deadline.
+        urllib3's timeout bounds each socket read rather than the body, and `read(amt)` keeps reading until it has `amt` bytes, so a server that sends steadily would hold the call past its deadline however small the chunk.
+        `read1` returns after at most one read of the socket, which is what lets the deadline be checked between them.
         """
+        read_once = self._read_once(raw)
         chunks = []
         try:
             while True:
@@ -529,13 +545,21 @@ class OnlineStoreRestClientSingleton:
                 sock = getattr(getattr(raw, "connection", None), "sock", None)
                 if sock is not None:
                     sock.settimeout(left)
-                chunk = raw.read(self._READ_CHUNK_BYTES)
+                chunk = read_once(self._READ_CHUNK_BYTES)
                 if not chunk:
                     break
                 chunks.append(chunk)
         except urllib3.exceptions.HTTPError as error:
             raw.close()
             raise _as_requests_error(error, deadline) from error
+        except TimeoutError as error:
+            raw.close()
+            if isinstance(error, _OnlineStoreTimeout):
+                raise
+            # The urllib3 1.x fallback reads the socket directly, so its timeout arrives unwrapped.
+            raise _OnlineStoreTimeout(
+                f"The online store did not answer within {deadline} seconds."
+            ) from error
         except BaseException:
             # A connection left mid-body cannot carry the next request, so it is closed rather than handed back.
             raw.close()
@@ -543,6 +567,18 @@ class OnlineStoreRestClientSingleton:
         finally:
             raw.release_conn()
         return b"".join(chunks)
+
+    @staticmethod
+    def _read_once(raw):
+        """The reader that returns after at most one socket read."""
+        read1 = getattr(raw, "read1", None)
+        if read1 is not None:
+            return read1
+        # urllib3 1.x has no read1; the http.client response underneath does, and no request here asks for a compressed body, so there is nothing to decode.
+        fp = getattr(raw, "_fp", None)
+        if fp is not None and hasattr(fp, "read1"):
+            return fp.read1
+        return raw.read
 
     def _resolve_timeout(self, timeout: float | None) -> float:
         """The deadline for one call, in seconds.

@@ -103,13 +103,17 @@ def _engine(features) -> online_store_rest_client_engine.OnlineStoreRestClientEn
 
 
 @functools.cache
-def _accepted(method) -> frozenset:
-    """Which arguments a revision's method declares.
+def _accepted(method) -> frozenset | None:
+    """Which arguments a revision's method declares, or `None` when it takes any keyword.
 
     Resolved once per method.
     Reading the signature costs tens of microseconds, which is more than some of the work measured here.
     """
-    return frozenset(inspect.signature(method).parameters)
+    parameters = inspect.signature(method).parameters.values()
+    if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters):
+        # A driver that forwards `**kwargs` declares none of what it passes on, so filtering by name would drop all of it.
+        return None
+    return frozenset(p.name for p in parameters)
 
 
 def _call_supported(method, /, **kwargs):
@@ -118,6 +122,8 @@ def _call_supported(method, /, **kwargs):
     The assembly signature has grown arguments this benchmark has no opinion about, and an older revision rejects them by name.
     """
     accepted = _accepted(method)
+    if accepted is None:
+        return method(**kwargs)
     return method(**{k: v for k, v in kwargs.items() if k in accepted})
 
 

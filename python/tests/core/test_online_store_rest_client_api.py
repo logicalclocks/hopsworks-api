@@ -561,6 +561,65 @@ class TestEveryRequestGoesThroughThePool:
 
         assert isinstance(client._pool, urllib3.ProxyManager)
 
+    def test_proxy_credentials_become_a_proxy_authorization_header(self, mocker):
+        client = self._client(mocker)
+        mocker.patch(
+            "requests.utils.get_environ_proxies",
+            return_value={"https": "http://us%40er:p%3Ass@proxy.example:3128"},
+        )
+
+        client._setup_pool()
+
+        # Percent-decoded, as Requests decodes them.
+        expected = urllib3.util.make_headers(proxy_basic_auth="us@er:p:ss")
+        assert client._pool.proxy_headers == expected
+
+    def test_an_authenticated_proxy_is_answered(self, mocker):
+        """Against a real proxy that demands credentials: without them it answers 407."""
+        import base64
+        import http.server
+
+        seen = {}
+
+        class _Proxy(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):  # noqa: N802 - http.server's naming
+                seen["auth"] = self.headers.get("Proxy-Authorization")
+                self.rfile.read(int(self.headers.get("Content-Length", 0)))
+                wanted = "Basic " + base64.b64encode(b"user:secret").decode()
+                status, body = (200, b"{}") if seen["auth"] == wanted else (407, b"")
+                self.send_response(status)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *_args):
+                pass
+
+        server = http.server.HTTPServer(("127.0.0.1", 0), _Proxy)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            client = self._client(mocker)
+            client._base_url = furl("http://rdrs.example.invalid:4406/0.1.0")
+            client._endpoint_urls = {}
+            client._timeout_seconds = 5
+            client._auth = None
+            client._auth_header_cache = {}
+            client._connection_slots = threading.BoundedSemaphore(1)
+            mocker.patch(
+                "requests.utils.get_environ_proxies",
+                return_value={
+                    "http": f"http://user:secret@127.0.0.1:{server.server_port}"
+                },
+            )
+            client._setup_pool()
+
+            response = client._send_request("POST", ["feature_store"], data="{}")
+        finally:
+            server.shutdown()
+            server.server_close()
+
+        assert response.status_code == 200
+
     def test_certificate_verification_reaches_the_pool(self, mocker):
         client = self._client(mocker, verify=True)
         mocker.patch("requests.utils.get_environ_proxies", return_value={})
@@ -618,3 +677,68 @@ class TestEveryRequestGoesThroughThePool:
 
         assert client._pool.request.call_args.kwargs["headers"]["X-API-KEY"] == "secret"
         assert response.json() == {"features": [1]}
+
+
+class TestTheDeadlineHoldsAgainstASteadyServer:
+    """A server that keeps sending resets a socket timeout, so only the deadline stops it.
+
+    Driven against a real loopback socket: a mocked read returns whenever asked, which is exactly the behaviour that hid this.
+    """
+
+    def _dripping_server(self, total_bytes, piece, interval):
+        import socket
+
+        listener = socket.socket()
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(1)
+        stop = threading.Event()
+
+        def serve():
+            conn, _ = listener.accept()
+            with conn:
+                conn.recv(65536)
+                conn.sendall(
+                    b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+                    + f"Content-Length: {total_bytes}\r\n\r\n".encode()
+                )
+                sent = 0
+                while sent < total_bytes and not stop.is_set():
+                    try:
+                        conn.sendall(b"x" * piece)
+                    except OSError:
+                        return
+                    sent += piece
+                    time.sleep(interval)
+
+        threading.Thread(target=serve, daemon=True).start()
+        return listener, stop
+
+    def _client(self, port):
+        client = OnlineStoreRestClientSingleton.__new__(OnlineStoreRestClientSingleton)
+        client._base_url = furl(f"http://127.0.0.1:{port}/0.1.0")
+        client._endpoint_urls = {}
+        client._timeout_seconds = 5
+        client._auth = None
+        client._auth_header_cache = {}
+        client._connection_slots = threading.BoundedSemaphore(1)
+        client._max_connections = 1
+        client._pool = urllib3.PoolManager()
+        return client
+
+    def test_a_caller_timeout_ends_a_body_that_keeps_arriving(self):
+        # 200 pieces 5 ms apart take a second; each arrives well inside any socket timeout.
+        listener, stop = self._dripping_server(
+            total_bytes=200 * 64, piece=64, interval=0.005
+        )
+        client = self._client(listener.getsockname()[1])
+        started = time.monotonic()
+        try:
+            with pytest.raises(TimeoutError):
+                client._send_request("POST", ["feature_store"], data="{}", timeout=0.05)
+        finally:
+            stop.set()
+            listener.close()
+
+        assert time.monotonic() - started < 0.3, (
+            "the body kept the call past its deadline"
+        )
