@@ -389,3 +389,46 @@ class TestNativeAsyncLookup:
         next(gen)
         with pytest.raises(RuntimeError, match="more than once"):
             vector_server._resume(gen, None)
+
+    def test_the_async_drivers_take_a_timeout(self, mocker):
+        # The public async methods forward every keyword of the blocking ones,
+        # timeout included, and the step bodies do not accept it.
+        import asyncio
+
+        server, sql = self._server(mocker)
+
+        async def awaited(entries, **kwargs):
+            return ([{"a": 1}], None)
+
+        sql._get_batch_feature_vectors_async = awaited
+        mocker.patch.object(VectorServer, "_batch_lookup_arguments", return_value=False)
+
+        def steps(*args, **kwargs):
+            assert "timeout" not in kwargs
+            return (yield ["entry"], "sql", False, False)
+
+        mocker.patch.object(VectorServer, "_feature_vectors_steps", steps)
+
+        result = asyncio.run(server._get_feature_vectors_async(timeout=5))
+        assert result == [{"a": 1}]
+
+    def test_a_slow_async_read_raises_timeout_error(self, mocker):
+        import asyncio
+
+        server, sql = self._server(mocker)
+
+        async def slow(entry, **kwargs):
+            await asyncio.sleep(10)
+
+        sql._get_single_feature_vector_async = slow
+        mocker.patch.object(
+            VectorServer, "_single_lookup_arguments", return_value=False
+        )
+
+        def steps(*args, **kwargs):
+            return (yield {"pk": 1}, "sql", False, False)
+
+        mocker.patch.object(VectorServer, "_feature_vector_steps", steps)
+
+        with pytest.raises(TimeoutError):
+            asyncio.run(server._get_feature_vector_async(timeout=0.01))

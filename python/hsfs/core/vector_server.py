@@ -15,6 +15,7 @@
 #
 from __future__ import annotations
 
+import asyncio
 import itertools
 import logging
 import warnings
@@ -126,6 +127,15 @@ def _resume(steps, fetched):
     except StopIteration as finished:
         return finished.value
     raise RuntimeError("the feature vector body suspended more than once")
+
+
+async def _bounded(awaitable, timeout: float | None):
+    """Await a lookup within `timeout` seconds, raising the `TimeoutError` the blocking path raises."""
+    try:
+        return await asyncio.wait_for(awaitable, timeout)
+    except asyncio.TimeoutError:
+        # Before Python 3.11 asyncio's TimeoutError is not the builtin one.
+        raise TimeoutError(f"Online feature read took longer than {timeout}s") from None
 
 
 class VectorServer:
@@ -539,8 +549,13 @@ class VectorServer:
             )
         return _resume(steps, serving_vector)
 
-    async def _get_feature_vector_async(self, *args: Any, **kwargs: Any) -> Any:
-        """The same vector, with the online lookup awaited on the caller's event loop."""
+    async def _get_feature_vector_async(
+        self, *args: Any, timeout: float | None = None, **kwargs: Any
+    ) -> Any:
+        """The same vector, with the online lookup awaited on the caller's event loop.
+
+        `timeout` bounds the SQL read in seconds, as for [`_get_feature_vector`][].
+        """
         steps = self._feature_vector_steps(*args, **kwargs)
         rondb_entry, choice, allow_missing, logging_data = next(steps)
         use_rest = self._single_lookup_arguments(rondb_entry, choice)
@@ -553,10 +568,13 @@ class VectorServer:
                 return_type=self.rest_client_engine.RETURN_TYPE_FEATURE_VALUE_DICT,
             )
         else:
-            serving_vector = await self.sql_client._get_single_feature_vector_async(
-                rondb_entry,
-                logging_data=logging_data,
-                feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
+            serving_vector = await _bounded(
+                self.sql_client._get_single_feature_vector_async(
+                    rondb_entry,
+                    logging_data=logging_data,
+                    feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
+                ),
+                timeout,
             )
         return _resume(steps, serving_vector)
 
@@ -716,13 +734,17 @@ class VectorServer:
             )
         return _resume(steps, batch_results)
 
-    async def _get_feature_vectors_async(self, *args: Any, **kwargs: Any) -> Any:
+    async def _get_feature_vectors_async(
+        self, *args: Any, timeout: float | None = None, **kwargs: Any
+    ) -> Any:
         """The same batch, with the online lookup awaited on the caller's event loop.
 
         One body prepares and assembles for both drivers; only the fetch differs. The
         SQL lookup is awaited against a connection pool of this loop's own, so several
         are in flight at once instead of queueing on the client's task thread. A REST
         deployment has no such path, so it keeps the blocking call.
+
+        `timeout` bounds the SQL read in seconds, as for [`_get_feature_vectors`][].
         """
         steps = self._feature_vectors_steps(*args, **kwargs)
         rondb_entries, choice, allow_missing, logging_data = next(steps)
@@ -736,10 +758,13 @@ class VectorServer:
                 return_type=self.rest_client_engine.RETURN_TYPE_FEATURE_VALUE_DICT,
             )
         else:
-            batch_results, _ = await self.sql_client._get_batch_feature_vectors_async(
-                rondb_entries,
-                logging_data=logging_data,
-                feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
+            batch_results, _ = await _bounded(
+                self.sql_client._get_batch_feature_vectors_async(
+                    rondb_entries,
+                    logging_data=logging_data,
+                    feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
+                ),
+                timeout,
             )
         return _resume(steps, batch_results)
 
