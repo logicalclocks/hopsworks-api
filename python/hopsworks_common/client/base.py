@@ -21,6 +21,7 @@ import hashlib
 import logging
 import os
 import struct
+import threading
 import time
 from pathlib import Path
 
@@ -404,6 +405,18 @@ class Client:
         return ca_chain_path, client_cert_path, client_key_path
 
     @staticmethod
+    def _replace_file(path, content):
+        """Write `content` to `path` so that a reader sees the old file or the new one, never a partial one.
+
+        The PEM paths are derived from the project and connector id only, so every connector object for the same Kafka connector in a process writes the same files.
+        Truncating one in place made a concurrent confluent_kafka Producer fail with "no certificate or crl found".
+        """
+        temp_path = f"{path}.{os.getpid()}.{threading.get_ident()}.tmp"
+        with Path(temp_path).open("w") as f:
+            f.write(content)
+        os.replace(temp_path, path)
+
+    @staticmethod
     def _der_to_pem(der_bytes, pem_type="CERTIFICATE"):
         """Convert DER-encoded bytes to PEM string."""
         b64 = base64.b64encode(der_bytes).decode("ascii")
@@ -420,8 +433,7 @@ class Client:
         for cert_der in ks_certs + ts_certs:
             ca_chain += self._der_to_pem(cert_der)
 
-        with Path(ca_chain_path).open("w") as f:
-            f.write(ca_chain)
+        self._replace_file(ca_chain_path, ca_chain)
 
     def _write_client_cert(self, ks_keys, client_cert_path):
         """Writes client certificate PEM from keystore private key entries."""
@@ -430,8 +442,7 @@ class Client:
             for cert_der in cert_chain:
                 client_cert += self._der_to_pem(cert_der)
 
-        with Path(client_cert_path).open("w") as f:
-            f.write(client_cert)
+        self._replace_file(client_cert_path, client_cert)
 
     def _write_client_key(self, ks_keys, client_key_path):
         """Writes client private key PEM from keystore."""
@@ -442,5 +453,4 @@ class Client:
                 Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()
             ).decode()
 
-        with Path(client_key_path).open("w") as f:
-            f.write(client_key)
+        self._replace_file(client_key_path, client_key)

@@ -15,6 +15,7 @@
 #
 
 import os
+import threading
 
 import pytest
 import requests
@@ -128,3 +129,30 @@ class TestBaseClient:
         client.TOKEN_EXPIRED_RETRY_INTERVAL = 0  # Disable wait for tests
 
         return client
+
+    def test_replace_file_is_never_seen_partial(self, tmp_path):
+        path = tmp_path / "ca_chain.pem"
+        content = (
+            "-----BEGIN CERTIFICATE-----\n"
+            + "A" * 200_000
+            + "\n-----END CERTIFICATE-----\n"
+        )
+        Client._replace_file(str(path), content)
+        stop = threading.Event()
+        seen = set()
+
+        def write():
+            while not stop.is_set():
+                Client._replace_file(str(path), content)
+
+        writer = threading.Thread(target=write)
+        writer.start()
+        try:
+            for _ in range(2000):
+                seen.add(len(path.read_text()))
+        finally:
+            stop.set()
+            writer.join()
+
+        assert seen == {len(content)}
+        assert sorted(p.name for p in tmp_path.iterdir()) == ["ca_chain.pem"]
