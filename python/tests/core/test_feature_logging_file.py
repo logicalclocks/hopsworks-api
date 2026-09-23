@@ -20,6 +20,7 @@ import os
 import queue
 import sys
 import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -325,6 +326,40 @@ class TestWriterMain:
         assert statuses[-1]["bytes_ready"] == 0
         assert statuses[-1]["chunks_uploaded"] == 1
         assert len(uploads.paths) == 1
+
+    def test_drain_waits_for_an_upload_the_thread_is_finishing(self, tmp_path):
+        writer = flf._SegmentWriter(_options(tmp_path), uploader=_Uploads())
+        assert writer._append(_stream(3), 3)
+        assert writer._rotate()
+        uploader = flf._Uploader(writer)
+        counting = threading.Event()
+        release = threading.Event()
+        observe = writer._observe_upload
+
+        def slow_observe(seconds):
+            # The chunk file is already removed here and not yet counted.
+            counting.set()
+            release.wait(5)
+            observe(seconds)
+
+        writer._observe_upload = slow_observe
+        uploader.start()
+        uploader.wake.set()
+        assert counting.wait(5)
+        drained = []
+        drainer = threading.Thread(
+            target=lambda: drained.append(
+                (uploader._drain(time.monotonic() + 5), writer.chunks_uploaded)
+            )
+        )
+        drainer.start()
+        drainer.join(0.2)
+        assert drainer.is_alive()
+        release.set()
+        drainer.join(5)
+        uploader.stopping.set()
+
+        assert drained == [(True, 1)]
 
 
 @posix_only
