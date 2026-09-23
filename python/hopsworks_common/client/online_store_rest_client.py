@@ -442,8 +442,13 @@ class OnlineStoreRestClientSingleton:
         # The clock starts before anything this call does, because all of it is time the caller is waiting: admission, preparing the request, the round trip, and reading the body off the socket.
         started = time.monotonic()
         deadline = self._resolve_timeout(timeout)
+        # A caller's timeout bounds the whole call.
+        # The configured default keeps the meaning it had under Requests, a bound on each connection attempt and each socket read, so a large batch whose reads each arrive in time still succeeds however long it takes in total.
+        whole_call = timeout is not None
 
         def remaining() -> float:
+            if not whole_call:
+                return deadline
             return deadline - (time.monotonic() - started)
 
         # Read once and released by name.
@@ -463,12 +468,14 @@ class OnlineStoreRestClientSingleton:
                 _logger.debug(f"Provided Data: {data}")
                 _logger.debug(f"Provided Headers: {headers}")
             return self._send_through_pool(
-                method, url, headers, data, remaining, deadline
+                method, url, headers, data, remaining, deadline, whole_call
             )
         finally:
             slots.release()
 
-    def _send_through_pool(self, method, url, headers, data, remaining, deadline):
+    def _send_through_pool(
+        self, method, url, headers, data, remaining, deadline, whole_call=True
+    ):
         """Send through the pool, and answer with what callers already read.
 
         Callers read `.status_code`, `.json()`, `.content`, `.text` and `.url`, so the result is a `requests.Response`; building one costs a few microseconds and keeps every caller unchanged.
@@ -484,7 +491,11 @@ class OnlineStoreRestClientSingleton:
                 url,
                 body=body,
                 headers=sent,
-                timeout=urllib3.Timeout(total=max(remaining(), 0.001)),
+                timeout=(
+                    urllib3.Timeout(total=max(remaining(), 0.001))
+                    if whole_call
+                    else urllib3.Timeout(connect=deadline, read=deadline)
+                ),
                 retries=False,
                 preload_content=False,
             )
@@ -537,7 +548,7 @@ class OnlineStoreRestClientSingleton:
         """The deadline for one call, in seconds.
 
         A caller's timeout is seconds and is taken as given; only the configured default carries the historical millisecond reading.
-        Unset means that configured default, so every call has a deadline.
+        Unset means that configured default, which bounds each connection attempt and socket read rather than the whole call.
         It has to be a real length of time: zero, negative and NaN each describe a call that cannot succeed, and passing them through would have produced a timeout whose behaviour depends on which layer looked at it first.
         """
         if timeout is None:

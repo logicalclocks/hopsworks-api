@@ -998,7 +998,7 @@ class FeatureView:
             timeout: Seconds to wait for the online read, as a deadline for the whole of it.
                 It covers waiting for a free connection, sending the request and receiving the answer, and raises `TimeoutError` when it runs out.
                 Must be a finite number of seconds greater than zero.
-                Unset means the configured default: the REST client's `timeout` setting, and no deadline for a SQL read, which is what a caller that names no timeout got before.
+                Unset keeps what a caller that names no timeout got before: the REST client's configured `timeout` bounds each connection attempt and each socket read rather than the whole call, and a SQL read has no deadline.
             entry:
                 Deprecated alias for `serving_keys`, kept so existing code keeps working.
                 Passing it emits a `DeprecationWarning`; passing both is an error.
@@ -1261,7 +1261,7 @@ class FeatureView:
             timeout: Seconds to wait for the online read, as a deadline for the whole of it.
                 It covers waiting for a free connection, sending the request and receiving the answer, and raises `TimeoutError` when it runs out.
                 Must be a finite number of seconds greater than zero.
-                Unset means the configured default: the REST client's `timeout` setting, and no deadline for a SQL read, which is what a caller that names no timeout got before.
+                Unset keeps what a caller that names no timeout got before: the REST client's configured `timeout` bounds each connection attempt and each socket read rather than the whole call, and a SQL read has no deadline.
             entry:
                 Deprecated alias for `serving_keys`, kept so existing code keeps working.
                 Passing it emits a `DeprecationWarning`; passing both is an error.

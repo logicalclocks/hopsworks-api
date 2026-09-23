@@ -180,9 +180,29 @@ class TestRestTimeoutAndUrlCaching:
 
         client._send_request("POST", ["feature_store"], data="{}")
 
-        assert client._pool.request.call_args.kwargs["timeout"].total == pytest.approx(
-            2, abs=0.02
-        )
+        # Bounds each connection attempt and socket read, as Requests' timeout did.
+        bound = client._pool.request.call_args.kwargs["timeout"]
+        assert bound.total is None
+        assert bound.connect_timeout == 2
+        assert bound.read_timeout == 2
+
+    def test_a_large_body_is_not_cut_off_by_the_configured_default(self, mocker):
+        """Each read arrives in time; only a caller's own timeout bounds the total."""
+        client = self._client(mocker)
+        client._timeout_seconds = 0.08
+        response = _answered(b"x" * (3 * client._READ_CHUNK_BYTES))
+        read = response.read
+
+        def slow_read(amt=None):
+            time.sleep(0.04)
+            return read(amt)
+
+        response.read = slow_read
+        client._pool.request.return_value = response
+
+        answered = client._send_request("POST", ["feature_store"], data="{}")
+
+        assert len(answered.content) == 3 * client._READ_CHUNK_BYTES
 
     @pytest.mark.parametrize(
         "configured, seconds",
