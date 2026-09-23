@@ -110,8 +110,13 @@ def td_compute(
         description: Free-form description.
         data_format: Output format (parquet, csv, tfrecord, ...).
     """
-    fv = _get_fv(ctx, feature_view, fv_version)
     splits = _parse_splits(split)
+    # A random split has no time window: the split's own time bounds would turn it into a time split.
+    if splits and (start_time or end_time):
+        raise click.UsageError(
+            "--start-time and --end-time cannot be used with --split."
+        )
+    fv = _get_fv(ctx, feature_view, fv_version)
 
     try:
         if splits:
@@ -119,8 +124,6 @@ def td_compute(
                 test_size=splits.get("test") or splits.get("validation") or 0.2,
                 description=description,
                 data_format=data_format,
-                start_time=start_time,
-                end_time=end_time,
             )
         else:
             td_version, _ = fv.create_training_data(
