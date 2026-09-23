@@ -15,6 +15,8 @@
 #
 
 import os
+import stat
+import threading
 
 import pytest
 import requests
@@ -128,3 +130,85 @@ class TestBaseClient:
         client.TOKEN_EXPIRED_RETRY_INTERVAL = 0  # Disable wait for tests
 
         return client
+
+    @pytest.mark.skipif(
+        os.name == "nt", reason="Windows cannot replace a file a reader has open"
+    )
+    def test_replace_file_is_never_seen_partial(self, tmp_path):
+        path = tmp_path / "ca_chain.pem"
+        # Two contents of one length, so every write replaces the file and a partial read shows as a length.
+        contents = ["A" * 200_000, "B" * 200_000]
+        Client._replace_file(str(path), contents[0])
+        stop = threading.Event()
+        seen = set()
+
+        def write():
+            turn = 0
+            while not stop.is_set():
+                turn += 1
+                Client._replace_file(str(path), contents[turn % 2])
+
+        writer = threading.Thread(target=write)
+        writer.start()
+        try:
+            for _ in range(2000):
+                seen.add(len(path.read_text()))
+        finally:
+            stop.set()
+            writer.join()
+
+        assert seen == {200_000}
+        assert sorted(p.name for p in tmp_path.iterdir()) == ["ca_chain.pem"]
+
+    @pytest.mark.skipif(os.name == "nt", reason="Windows has no POSIX file modes")
+    def test_replace_file_keeps_the_file_private(self, tmp_path):
+        path = tmp_path / "client_key.pem"
+        path.write_text("old")
+        os.chmod(path, 0o600)
+        previous = os.umask(0o022)
+        try:
+            Client._replace_file(str(path), "new")
+        finally:
+            os.umask(previous)
+
+        assert path.read_text() == "new"
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+    def test_replace_file_leaves_identical_content_alone(self, tmp_path, mocker):
+        path = tmp_path / "ca_chain.pem"
+        path.write_text("same")
+        replace = mocker.patch("os.replace")
+
+        Client._replace_file(str(path), "same")
+
+        replace.assert_not_called()
+        assert list(tmp_path.iterdir()) == [path]
+
+    def test_replace_file_retries_while_the_target_is_held(self, tmp_path, mocker):
+        path = tmp_path / "ca_chain.pem"
+        path.write_text("old")
+        real_replace = os.replace
+        held = [PermissionError("in use"), PermissionError("in use")]
+
+        def replace_once_released(src, dst):
+            if held:
+                raise held.pop()
+            real_replace(src, dst)
+
+        replace = mocker.patch("os.replace", side_effect=replace_once_released)
+        mocker.patch("time.sleep")
+
+        Client._replace_file(str(path), "new")
+
+        assert replace.call_count == 3
+        assert path.read_text() == "new"
+        assert list(tmp_path.iterdir()) == [path]
+
+    def test_replace_file_removes_the_temporary_file_on_failure(self, tmp_path, mocker):
+        path = tmp_path / "ca_chain.pem"
+        mocker.patch("os.replace", side_effect=OSError("disk full"))
+
+        with pytest.raises(OSError, match="disk full"):
+            Client._replace_file(str(path), "content")
+
+        assert list(tmp_path.iterdir()) == []
