@@ -103,7 +103,7 @@ def _engine(features) -> online_store_rest_client_engine.OnlineStoreRestClientEn
     )
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def _accepted(method) -> frozenset:
     """Which arguments a revision's method declares.
 

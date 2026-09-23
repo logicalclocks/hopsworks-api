@@ -16,6 +16,7 @@
 
 from copy import deepcopy
 from datetime import datetime
+from types import SimpleNamespace
 from unittest.mock import PropertyMock
 
 import pytest
@@ -45,6 +46,52 @@ class TestVectorServer:
             return_value=self.COLS,
         )
         return server
+
+    def test_logging_metadata_rows_stay_parallel_without_request_parameters(
+        self, mocker
+    ):
+        # A logged view with no request parameters used to extend the parallel
+        # request-parameter list with None and raise TypeError, which reached
+        # clients as TRANSFORMATION_FAILED on every prediction.
+        server = VectorServer.__new__(VectorServer)
+        server._feature_view_logging_enabled = True
+        server._fetch_inference_helpers_for_transformations = False
+        server._root_feature_group = SimpleNamespace(event_time="event_time")
+        server._inference_helper_col_name = []
+        entries = [{"customer_id": 1}, {"customer_id": 2}]
+        captured = {}
+
+        mocker.patch.object(
+            VectorServer, "_which_client_and_ensure_initialised", return_value="rest"
+        )
+        mocker.patch.object(VectorServer, "_raise_transformation_warnings")
+        mocker.patch.object(
+            VectorServer, "_validate_entry", side_effect=lambda entry, **kwargs: entry
+        )
+        mocker.patch.object(
+            VectorServer,
+            "rest_client_engine",
+            new_callable=PropertyMock,
+            return_value=mocker.MagicMock(
+                **{"_get_batch_feature_vectors.return_value": [{"a": 1}, {"a": 2}]}
+            ),
+        )
+        mocker.patch.object(VectorServer, "_assemble_feature_vector", return_value=[1])
+        mocker.patch.object(
+            VectorServer,
+            "_handle_feature_vector_return_type",
+            side_effect=lambda vectors, **kwargs: (
+                captured.update(metadata=kwargs.get("logging_meta_data")) or vectors
+            ),
+        )
+
+        server._get_feature_vectors(
+            entries=entries, vector_db_features=[], logging_data=True
+        )
+
+        metadata = captured["metadata"]
+        assert metadata.serving_keys == entries
+        assert metadata.request_parameters == [{}, {}]
 
     def test_handle_return_type_empty_single_vector_pandas_does_not_crash(self, mocker):
         # An online lookup that misses makes assemble_feature_vector return None.
@@ -245,6 +292,147 @@ class TestReadDeadline:
         client._get_single_feature_vector({"id": 1})
 
         assert client._single_vector_result.call_args.kwargs["timeout"] is None
+
+
+class TestNativeAsyncLookup:
+    """The awaitable drivers reach the client's async methods, not a worker thread."""
+
+    def _server(self, mocker):
+        server = VectorServer.__new__(VectorServer)
+        sql = mocker.MagicMock()
+        mocker.patch.object(
+            VectorServer, "sql_client", new_callable=PropertyMock, return_value=sql
+        )
+        mocker.patch.object(
+            VectorServer,
+            "rest_client_engine",
+            new_callable=PropertyMock,
+            return_value=mocker.MagicMock(),
+        )
+        server._fetch_inference_helpers_for_transformations = False
+        return server, sql
+
+    def test_the_batch_driver_awaits_the_sql_client(self, mocker):
+        import asyncio
+
+        server, sql = self._server(mocker)
+
+        async def awaited(entries, **kwargs):
+            return ([{"a": 1}], None)
+
+        sql._get_batch_feature_vectors_async = awaited
+        mocker.patch.object(VectorServer, "_batch_lookup_arguments", return_value=False)
+
+        def steps(*args, **kwargs):
+            # The body hands out everything the fetch needs, including the two options
+            # that shape it.
+            return (yield ["entry"], "sql", False, False, None)
+
+        mocker.patch.object(VectorServer, "_feature_vectors_steps", steps)
+
+        assert asyncio.run(server._get_feature_vectors_async()) == [{"a": 1}]
+        # The blocking client must not be touched on the awaited path.
+        sql._get_batch_feature_vectors.assert_not_called()
+
+    def test_the_single_driver_awaits_the_sql_client(self, mocker):
+        import asyncio
+
+        server, sql = self._server(mocker)
+
+        async def awaited(entry, **kwargs):
+            return {"a": 1}
+
+        sql._get_single_feature_vector_async = awaited
+        mocker.patch.object(
+            VectorServer, "_single_lookup_arguments", return_value=False
+        )
+
+        def steps(*args, **kwargs):
+            return (yield {"pk": 1}, "sql", False, False, None)
+
+        mocker.patch.object(VectorServer, "_feature_vector_steps", steps)
+
+        assert asyncio.run(server._get_feature_vector_async()) == {"a": 1}
+        sql._get_single_feature_vector.assert_not_called()
+
+    def test_the_options_come_from_the_body_not_the_call(self, mocker):
+        # The body already has allow_missing and logging_data bound, so the drivers take
+        # them from the yield. Recovering them from the call instead cost an
+        # inspect.signature bind on every request and could disagree with the body.
+        import asyncio
+
+        server, sql = self._server(mocker)
+        seen = {}
+
+        async def awaited(entries, **kwargs):
+            seen.update(kwargs)
+            return ([{"a": 1}], None)
+
+        sql._get_batch_feature_vectors_async = awaited
+        mocker.patch.object(VectorServer, "_batch_lookup_arguments", return_value=False)
+
+        def steps(*args, **kwargs):
+            return (yield ["entry"], "sql", True, True, None)
+
+        mocker.patch.object(VectorServer, "_feature_vectors_steps", steps)
+
+        asyncio.run(server._get_feature_vectors_async())
+        assert seen["logging_data"] is True
+
+    def test_a_body_that_suspends_twice_is_refused(self):
+        from hsfs.core import vector_server
+
+        def steps():
+            yield "first"
+            yield "second"
+
+        gen = steps()
+        next(gen)
+        with pytest.raises(RuntimeError, match="more than once"):
+            vector_server._resume(gen, None)
+
+    def test_the_async_drivers_take_a_timeout(self, mocker):
+        # The public async methods forward every keyword of the blocking ones,
+        # timeout included, and the step bodies do not accept it.
+        import asyncio
+
+        server, sql = self._server(mocker)
+
+        async def awaited(entries, **kwargs):
+            return ([{"a": 1}], None)
+
+        sql._get_batch_feature_vectors_async = awaited
+        mocker.patch.object(VectorServer, "_batch_lookup_arguments", return_value=False)
+
+        def steps(*args, **kwargs):
+            assert "timeout" not in kwargs
+            return (yield ["entry"], "sql", False, False, None)
+
+        mocker.patch.object(VectorServer, "_feature_vectors_steps", steps)
+
+        result = asyncio.run(server._get_feature_vectors_async(timeout=5))
+        assert result == [{"a": 1}]
+
+    def test_a_slow_async_read_raises_timeout_error(self, mocker):
+        import asyncio
+
+        server, sql = self._server(mocker)
+
+        async def slow(entry, **kwargs):
+            await asyncio.sleep(10)
+
+        sql._get_single_feature_vector_async = slow
+        mocker.patch.object(
+            VectorServer, "_single_lookup_arguments", return_value=False
+        )
+
+        def steps(*args, **kwargs):
+            return (yield {"pk": 1}, "sql", False, False, None)
+
+        mocker.patch.object(VectorServer, "_feature_vector_steps", steps)
+
+        with pytest.raises(TimeoutError):
+            asyncio.run(server._get_feature_vector_async(timeout=0.01))
 
 
 class TestRestProjectionEquivalence:

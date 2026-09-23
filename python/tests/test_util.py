@@ -392,7 +392,9 @@ class TestUtil:
             pass
 
         pred_base = mocker.patch(
-            "hsml.predictor.Predictor.__init__", return_value=None, spec=pred_base_spec
+            "hsml.predictor.Predictor.__init__",
+            return_value=None,
+            spec=pred_base_spec,
         )
         pred_python = mocker.patch("hsml.python.predictor.Predictor.__init__")
         pred_sklearn = mocker.patch("hsml.sklearn.predictor.Predictor.__init__")
@@ -988,3 +990,30 @@ class TestValidateJobConf:
     def test_python_job_configuration_requires_app_path(self):
         with pytest.raises(JobException):
             util._validate_job_conf({"type": "pythonJobConfiguration"}, "proj")
+
+
+class TestVerifyAttributeKeyNames:
+    class _FeatureGroupStub:
+        def __init__(self, columns):
+            self.name = "fg_name"
+            self.columns = columns
+            self.primary_key = ["id"]
+            self.event_time = None
+            self.partition_key = []
+            self.foreign_key = []
+
+    def test_empty_schema_is_refused_before_the_key_checks(self):
+        # With no columns the primary key check reports the key the caller did give as
+        # missing, so it has to be the schema that is reported instead.
+        fg = self._FeatureGroupStub(columns=[])
+
+        with pytest.raises(FeatureStoreException) as e_info:
+            util._verify_attribute_key_names(fg, True)
+
+        assert "has no features" in str(e_info.value)
+        assert "Provided primary key" not in str(e_info.value)
+
+    def test_a_schema_that_has_the_key_passes(self):
+        fg = self._FeatureGroupStub(columns=[Feature(name="id", type="int")])
+
+        assert util._verify_attribute_key_names(fg, True) is None

@@ -704,5 +704,45 @@ public class TestStorageConnector {
       Assertions.assertEquals("s3://bucket/warehouse/test_db.db/test_table",
         glueConnector.getPath("s3://bucket/warehouse/test_db.db/test_table"));
     }
+
+    @Test
+    public void test_read_clickhouse() throws Exception {
+      // Arrange
+      StorageConnector.SqlConnector connector = new StorageConnector.SqlConnector();
+      connector.setDatabaseType(StorageConnector.SqlConnector.CLICKHOUSE);
+      connector.setHost("ch.example.com");
+      connector.setPort(8123);
+      connector.setUser("test_user");
+      connector.setPassword("test_password");
+
+      StorageConnector.SqlConnector spyConnector = spy(connector);
+      doNothing().when(spyConnector).update();
+
+      SparkEngine sparkEngine = Mockito.mock(SparkEngine.class);
+      SparkEngine.setInstance(sparkEngine);
+
+      StorageConnectorUtils storageConnectorUtils = new StorageConnectorUtils();
+      ArgumentCaptor<Map> mapArg = ArgumentCaptor.forClass(Map.class);
+
+      DataSource dataSource = new DataSource();
+      dataSource.setQuery("select * from events");
+      dataSource.setDatabase("loadtest");
+
+      Map<String, String> expectedOptions = new HashMap<>();
+      expectedOptions.put("query", "select * from events");
+      expectedOptions.put("url", "jdbc:clickhouse://ch.example.com:8123/loadtest");
+      expectedOptions.put("driver", "com.clickhouse.jdbc.ClickHouseDriver");
+      expectedOptions.put("user", "test_user");
+      expectedOptions.put("password", "test_password");
+
+      // Act
+      storageConnectorUtils.read(spyConnector, dataSource, null);
+
+      // Assert
+      Mockito.verify(sparkEngine).read(Mockito.any(), Mockito.eq(Constants.JDBC_FORMAT), mapArg.capture(),
+          Mockito.isNull());
+      Assertions.assertEquals(expectedOptions, mapArg.getValue());
+      SparkEngine.setInstance(null);
+    }
   }
 }

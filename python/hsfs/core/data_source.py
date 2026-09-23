@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import json
+import textwrap
 from typing import TYPE_CHECKING, Any
 
 import humps
@@ -314,8 +315,23 @@ class DataSource:
         """
         return self._storage_connector.get_tables(database)
 
+    def _describe(self) -> str | None:
+        """Name this data source for an error message, by whichever of table, query or path it reads.
+
+        Returns `None` when the source names none of the three, so the caller can
+        fall back to whatever it does know about it.
+        """
+        if self._table:
+            return f"table '{self._table}'"
+        if self._query:
+            query = textwrap.shorten(self._query, width=120, placeholder=" ...")
+            return f"query '{query}'"
+        if self._path:
+            return f"path '{self._path}'"
+        return None
+
     @public
-    def get_data(self, use_cached: bool = True) -> dsd.DataSourceData:
+    def get_data(self, use_cached: bool = True) -> dsd.DataSourceData | None:
         """Retrieve the data from the data source.
 
         Example:
@@ -335,7 +351,10 @@ class DataSource:
                 Defaults to `True`.
 
         Returns:
-            An object containing the data retrieved from the data source.
+            An object containing the data retrieved from the data source, or `None` when the backend answered with an empty body.
+
+        Raises:
+            hopsworks.client.exceptions.DataSourceException: If the schema fetch failed for the data source.
         """
         return self._storage_connector.get_data(self, use_cached=use_cached)
 
@@ -381,13 +400,14 @@ class DataSource:
                 print(f.original_name, "->", f.new_name, f.type, f.description)
             print("primary key:", inferred.suggested_primary_key)
             print("event time:", inferred.suggested_event_time)
+            print("description:", inferred.suggested_description)
             ```
 
         Parameters:
             preview_data: Pre-fetched preview data to skip a server round-trip; if `None`, a preview is fetched via `get_data`.
 
         Returns:
-            An object containing the suggested feature renames, types, descriptions, primary key, and event time.
+            An object containing the suggested feature renames, types, descriptions, primary key, event time, and feature group description.
 
         Raises:
             hopsworks.client.exceptions.PlatformIntelligenceException: If platform intelligence is not enabled on the cluster, or the LLM call fails.
