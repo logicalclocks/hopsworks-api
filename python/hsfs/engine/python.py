@@ -58,7 +58,10 @@ from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core import inode
 from hopsworks_common.core.constants import HAS_POLARS, polars_not_installed_message
-from hopsworks_common.core.type_systems import _create_extended_type
+from hopsworks_common.core.type_systems import (
+    _convert_offline_type_to_pyarrow_type,
+    _create_extended_type,
+)
 from hopsworks_common.decorators import _uses_great_expectations, _uses_polars
 from hopsworks_common.util import _generate_fully_qualified_feature_name
 from hsfs import (
@@ -334,6 +337,166 @@ class Engine:
         if schema:
             result_df = Engine._cast_columns(result_df, schema)
         return self._return_dataframe_type(result_df, dataframe_type)
+
+    def _stream_batches(
+        self,
+        sql_query: str | FsQuery,
+        connector: sc.JdbcConnector | None,
+        read_options: dict[str, Any] | None,
+        online: bool,
+        batch_size: int,
+        arrow_flight_config: dict[str, Any] | None = None,
+        schema: list[feature.Feature] | None = None,
+    ) -> Iterator[pa.RecordBatch]:
+        """The record batches of a read, without materialising the whole result.
+
+        Online reads go through a server-side cursor and fetch `batch_size` rows
+        at a time, so the client holds a batch rather than the result. Wrapping
+        an already buffered result in chunks would not: the buffering is what
+        costs the memory. Offline reads take the Arrow Flight stream as the
+        server produces it.
+
+        The cursor and its connection are released when the caller stops,
+        whether it ran out of batches, left early or raised.
+
+        Every batch of an online read is built against one schema, taken from
+        the query's own feature types. Letting each batch describe itself from
+        the values it happens to hold makes the batches of one read disagree: a
+        nullable column is `null` in an all-null batch and `string` in the next,
+        and a decimal's precision and scale follow whichever values arrived, so
+        putting the batches back together fails.
+        """
+        if not online:
+            if not isinstance(sql_query, FsQuery):
+                raise ValueError(
+                    "Streaming an offline read needs the Hopsworks Query Service."
+                )
+            from hsfs.core import arrow_flight_client
+
+            yield from arrow_flight_client._get_instance()._stream_query(
+                sql_query, arrow_flight_config or {}
+            )
+            return
+
+        if self._mysql_online_fs_engine is None:
+            self._mysql_online_fs_engine = util_sql._create_mysql_engine(
+                connector,
+                (
+                    client._is_external()
+                    if not read_options or "external" not in read_options
+                    else read_options["external"]
+                ),
+            )
+        statement = sql.text(sql_query) if isinstance(sql_query, str) else sql_query
+        # stream_results asks the driver for a server-side cursor; without it
+        # the whole result is already in the client before the first partition.
+        with self._mysql_online_fs_engine.connect().execution_options(
+            stream_results=True, max_row_buffer=batch_size
+        ) as connection:
+            result = connection.execute(statement)
+            names = list(result.keys())
+            declared = Engine._declared_arrow_types(schema)
+            batch_schema = None
+            # fetchmany rather than partitions(): partitions() is only in
+            # SQLAlchemy from 1.4.24 and this client supports 1.x from earlier
+            # than that, while fetchmany streams the same way on both.
+            while True:
+                rows = result.fetchmany(batch_size)
+                if not rows:
+                    break
+                columns = list(zip(*rows, strict=True))
+                arrays = [
+                    Engine._online_array(list(column), declared.get(name))
+                    for column, name in zip(columns, names, strict=True)
+                ]
+                if batch_schema is None:
+                    # Declared where the query says so, and settled here for
+                    # anything it does not describe, so that the stream has one
+                    # schema either way.
+                    batch_schema = pa.schema(
+                        [
+                            pa.field(name, array.type)
+                            for name, array in zip(names, arrays, strict=True)
+                        ]
+                    )
+                else:
+                    arrays = [
+                        Engine._as_batch_field(array, field)
+                        for array, field in zip(arrays, batch_schema, strict=True)
+                    ]
+                yield pa.RecordBatch.from_arrays(arrays, schema=batch_schema)
+
+    @staticmethod
+    def _as_batch_field(array: pa.Array, field: pa.Field) -> pa.Array:
+        """One column of a later batch, as the schema of the read describes it.
+
+        A column the query does not describe is settled by the first batch, and
+        a first batch that was entirely null settles it as null, because nothing
+        else can be read from it. A later batch with real values cannot be cast
+        to that, so the caller is told which column it was and what to do about
+        it rather than being handed an Arrow cast error it never asked for.
+        Passing the query's features, as `read_batches` does, describes the
+        column before any row is read and this cannot arise.
+        """
+        if array.type == field.type:
+            return array
+        try:
+            return array.cast(field.type)
+        except pa.ArrowInvalid as error:
+            raise FeatureStoreException(
+                f"Column {field.name!r} arrived as {array.type} after the read "
+                f"settled on {field.type}, so the batches of this read cannot "
+                "share one schema. That column has no declared type: pass the "
+                "query's features so that it is known before the first row."
+            ) from error
+
+    @staticmethod
+    def _online_array(values: list[Any], declared: pa.DataType | None) -> pa.Array:
+        """One column of an online batch, built against its declared type."""
+        if declared is not None and pa.types.is_boolean(declared):
+            # The online store keeps a boolean as TINYINT, so it arrives as 0 or 1.
+            return pa.array(values).cast(pa.bool_())
+        return pa.array(values, type=declared)
+
+    @staticmethod
+    def _declared_arrow_types(
+        schema: list[feature.Feature] | None,
+    ) -> dict[str, pa.DataType]:
+        """The Arrow type each column of an online read arrives as, where it is known.
+
+        Building every batch against a declared type is what makes an all-null
+        batch describe its column the same way a full one does, and keeps a
+        decimal's precision and scale from following the values that happened to
+        arrive. A feature whose type has no Arrow equivalent is left out, and the
+        first batch settles that column for the rest of the read.
+
+        The online store keeps arrays, maps and structs serialised in VARBINARY,
+        so those columns are declared binary, which is what the rows hold.
+        A name two features share with different types is left out too, since
+        the column it names cannot be told apart.
+        """
+        declared = {}
+        ambiguous = set()
+        for feat in schema or []:
+            offline_type = (feat.type or "").strip().lower()
+            if offline_type.startswith(("array<", "map<", "struct<")):
+                arrow_type = pa.binary()
+            else:
+                try:
+                    arrow_type = _convert_offline_type_to_pyarrow_type(feat.type)
+                except Exception:  # noqa: BLE001 - an unmappable type is settled by the first batch
+                    _logger.debug(
+                        "No Arrow type for feature %s (%s); its batches follow the first",
+                        feat.name,
+                        feat.type,
+                    )
+                    continue
+            if declared.get(feat.name, arrow_type) != arrow_type:
+                ambiguous.add(feat.name)
+            declared[feat.name] = arrow_type
+        for name in ambiguous:
+            del declared[name]
+        return declared
 
     def _jdbc(
         self,

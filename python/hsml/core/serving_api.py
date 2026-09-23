@@ -38,6 +38,9 @@ from hsml.constants import INFERENCE_ENDPOINTS as IE
 
 
 _logger = logging.getLogger(__name__)
+# Guards the lazy creation of a deployment's gRPC channel. Concurrent first
+# callers would otherwise each build one and keep only the last, leaking the
+# rest for the lifetime of the object.
 _GRPC_CHANNEL_LOCK = threading.Lock()
 
 
@@ -440,19 +443,7 @@ class ServingApi:
     def _send_inference_request_via_grpc_protocol(
         self, deployment_instance, data: list[InferInput]
     ) -> list[InferOutput]:
-        # get grpc channel
-        if deployment_instance._grpc_channel is None:
-            # The gRPC channel is lazily initialized. The first call to deployment.predict() will initialize
-            # the channel, which will be reused in all following calls on the same deployment object.
-            # The gRPC channel is freed when calling deployment.stop()
-            with _GRPC_CHANNEL_LOCK:
-                # concurrent first calls would otherwise open a channel each and
-                # keep only the last, leaking the rest for the object's lifetime
-                if deployment_instance._grpc_channel is None:
-                    _logger.debug("Initializing gRPC channel")
-                    deployment_instance._grpc_channel = self._create_grpc_channel(
-                        deployment_instance
-                    )
+        channel = self._grpc_channel(deployment_instance)
         # build an infer request
         request = InferRequest(
             infer_inputs=data,
@@ -460,12 +451,47 @@ class ServingApi:
         )
 
         # send infer request
-        infer_response = deployment_instance._grpc_channel.infer(
-            infer_request=request, headers=None
-        )
+        infer_response = channel.infer(infer_request=request, headers=None)
 
         # extract infer outputs
         return infer_response.outputs
+
+    def _warm_rest_transport(
+        self, deployment_instance, through_hopsworks: bool = False
+    ) -> None:
+        """Open the connection the first REST prediction reuses, without predicting.
+
+        A `GET` of the model's metadata has no side effects, and whatever it
+        answers, the session is left holding a connection with its TLS
+        handshake done. Requests sent through Hopsworks use the client session
+        that logging in and downloading the schema have already opened.
+        """
+        if through_hopsworks:
+            return
+        _client = client.istio._get_instance()
+        if _client is None:
+            return
+        path_params = self._get_istio_inference_path(
+            deployment_instance, base_only=True
+        ) + ["v1", "models", deployment_instance.name]
+        try:
+            _client._send_request("GET", path_params, with_base_path_params=False)
+        except Exception as e:  # noqa: BLE001 - the connection is open whatever the endpoint answers
+            _logger.debug("Warm-up request to %s answered %s", path_params, e)
+
+    def _grpc_channel(self, deployment_instance):
+        """The deployment's gRPC channel, created once and reused by every later call.
+
+        The channel is freed when calling `deployment.stop()`.
+        """
+        if deployment_instance._grpc_channel is None:
+            with _GRPC_CHANNEL_LOCK:
+                if deployment_instance._grpc_channel is None:
+                    _logger.debug("Initializing gRPC channel")
+                    deployment_instance._grpc_channel = self._create_grpc_channel(
+                        deployment_instance
+                    )
+        return deployment_instance._grpc_channel
 
     def _create_grpc_channel(self, deployment_instance):
         _client = client.istio._get_instance()

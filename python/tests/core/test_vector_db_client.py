@@ -536,3 +536,76 @@ class TestVectorDbClient:
         )
 
         assert result["f_ts"] == datetime(1970, 1, 1)
+
+
+class TestBatchedEmbeddingReads:
+    """One round trip per embedding group, not one per entry.
+
+    A batch of N entries joined to J embedding groups used to cost N times J
+    sequential reads before the online store was touched at all.
+    """
+
+    def _client(self, mocker, hits_per_entry):
+        client = vector_db_client.VectorDbClient.__new__(
+            vector_db_client.VectorDbClient
+        )
+        client._fg_vdb_col_fg_col_map = {1: {"vdb_col": "col"}}
+        client._fg_col_vdb_col_map = {1: {"col": "vdb_col"}}
+        client._fg_vdb_col_td_col_map = {1: {"vdb_col": "col"}}
+        client._fg_embedding_map = {1: mocker.Mock()}
+        mocker.patch.object(
+            vector_db_client.VectorDbClient,
+            "_convert_to_pandas_type",
+            side_effect=lambda _s, r: r,
+        )
+        searches = {}
+        opensearch = mocker.Mock()
+        opensearch._multi_search.side_effect = lambda body: (
+            searches.update(body=body)
+            or {"responses": [{"hits": {"hits": hits}} for hits in hits_per_entry]}
+        )
+        mocker.patch(
+            "hsfs.core.vector_db_client.OpenSearchClientSingleton",
+            return_value=opensearch,
+        )
+        return client, opensearch, searches
+
+    def test_one_request_carries_every_entry(self, mocker):
+        client, opensearch, searches = self._client(
+            mocker,
+            [[{"_source": {"vdb_col": 1}}], [{"_source": {"vdb_col": 2}}]],
+        )
+
+        results = client._read_many(
+            1, ["col"], [{"col": "a"}, {"col": "b"}], index_name="idx"
+        )
+
+        assert results == [[{"col": 1}], [{"col": 2}]]
+        assert opensearch._multi_search.call_count == 1
+        # a header and a body per entry, and the query is the same match query
+        assert len(searches["body"]) == 4
+        assert searches["body"][0] == {"index": "idx"}
+        assert searches["body"][1]["query"] == {
+            "bool": {"must": [{"match": {"vdb_col": "a"}}]}
+        }
+
+    def test_an_entry_that_matched_nothing_keeps_its_place(self, mocker):
+        client, _, _ = self._client(mocker, [[], [{"_source": {"vdb_col": 2}}]])
+
+        results = client._read_many(
+            1, ["col"], [{"col": "a"}, {"col": "b"}], index_name="idx"
+        )
+
+        assert results == [[], [{"col": 2}]]
+
+    def test_no_entries_is_no_request(self, mocker):
+        client, opensearch, _ = self._client(mocker, [])
+
+        assert client._read_many(1, ["col"], [], index_name="idx") == []
+        opensearch._multi_search.assert_not_called()
+
+    def test_a_feature_group_without_an_embedding_is_refused(self, mocker):
+        client, _, _ = self._client(mocker, [])
+
+        with pytest.raises(FeatureStoreException, match="does not have embedding"):
+            client._read_many(99, ["col"], [{"col": "a"}], index_name="idx")

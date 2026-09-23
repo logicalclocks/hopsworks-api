@@ -1344,6 +1344,41 @@ class ServingEngine:
 
     # Model inference
 
+    def _init_predict(self, deployment_instance) -> None:
+        """Do everything the first `predict()` would otherwise do on the request path.
+
+        The schema document is downloaded, and the transport the deployment's
+        protocol selects is connected. No prediction is sent: a prediction can
+        log rows and have application side effects, so it is not a warm-up.
+        """
+        self._prepare_predict(deployment_instance)
+        if deployment_instance.api_protocol != IE.API_PROTOCOL_GRPC:
+            through_hopsworks = (
+                deployment_instance.predictor.serving_tool
+                != PREDICTOR.SERVING_TOOL_KSERVE
+            )
+            self._serving_api._warm_rest_transport(
+                deployment_instance, through_hopsworks
+            )
+
+    def _prepare_predict(self, deployment_instance) -> None:
+        """Download the schema and open the gRPC channel once per deployment object.
+
+        `predict()` and `init_predict()` both come through here, so concurrent
+        first callers of either prepare once. A failure leaves the object
+        unprepared, and the next call tries again.
+        """
+        if deployment_instance._predict_prepared:
+            return
+        with deployment_instance._predict_init_lock:
+            if deployment_instance._predict_prepared:
+                return
+            # Reading the property is what downloads and caches the document.
+            _ = deployment_instance.schema
+            if deployment_instance.api_protocol == IE.API_PROTOCOL_GRPC:
+                self._serving_api._grpc_channel(deployment_instance)
+            deployment_instance._predict_prepared = True
+
     def _predict(
         self,
         deployment_instance,
@@ -1361,6 +1396,7 @@ class ServingEngine:
             raise ModelServingException(
                 "Inference data and inputs parameters cannot be provided together."
             )
+        self._prepare_predict(deployment_instance)
         # a schema describes rows, so rows sent to a gRPC deployment that has one
         # are validated as they are over REST and then encoded as v2 tensors.
         # `data` reaches here in its REST dictionary form; a list of `InferInput`

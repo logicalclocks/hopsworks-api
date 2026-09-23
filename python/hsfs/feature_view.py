@@ -864,6 +864,7 @@ class FeatureView:
         transformation_context: dict[str, Any] = None,
         logging_data: bool = False,
         n_processes: int | None = None,
+        timeout: float | None = None,
         entry: dict[str, Any] | None = None,
     ) -> (
         list[Any]
@@ -990,7 +991,10 @@ class FeatureView:
                 Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
                 When not set, the value passed to `init_serving` is used.
                 Ignored by the Spark engine, which pushes transformations down to Spark.
-
+            timeout: Seconds to wait for the online read, for a read served by the SQL client.
+                It covers the wait for a free connection as well as the query, and raises `TimeoutError` when it runs out.
+                Unset waits indefinitely, which is what a caller that names no timeout got before.
+                A read served by the REST client does not take it yet and uses that client's configured timeout instead.
             entry:
                 Deprecated alias for `serving_keys`, kept so existing code keeps working.
                 Passing it emits a `DeprecationWarning`; passing both is an error.
@@ -1030,6 +1034,7 @@ class FeatureView:
             transformation_context=transformation_context,
             logging_data=logging_data,
             n_processes=n_processes,
+            timeout=timeout,
         )
 
     @public
@@ -1104,8 +1109,7 @@ class FeatureView:
             kwargs["n_processes"] = self._transformation_n_processes
         vector_db_features = []
         if self._vector_db_client:
-            for _entry in entry:
-                vector_db_features.append(self._get_vector_db_result(_entry))
+            vector_db_features = self._get_vector_db_results(entry)
         return await self._vector_server._get_feature_vectors_async(
             entries=entry, vector_db_features=vector_db_features, **kwargs
         )
@@ -1126,6 +1130,7 @@ class FeatureView:
         transformation_context: dict[str, Any] = None,
         logging_data: bool = False,
         n_processes: int | None = None,
+        timeout: float | None = None,
         entry: list[dict[str, Any]] | None = None,
     ) -> (
         list[list[Any]]
@@ -1249,7 +1254,10 @@ class FeatureView:
                 Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
                 When not set, the value passed to `init_serving` is used.
                 Ignored by the Spark engine, which pushes transformations down to Spark.
-
+            timeout: Seconds to wait for the online read, for a read served by the SQL client.
+                It covers the wait for a free connection as well as the query, and raises `TimeoutError` when it runs out.
+                Unset waits indefinitely, which is what a caller that names no timeout got before.
+                A read served by the REST client does not take it yet and uses that client's configured timeout instead.
             entry:
                 Deprecated alias for `serving_keys`, kept so existing code keeps working.
                 Passing it emits a `DeprecationWarning`; passing both is an error.
@@ -1274,8 +1282,7 @@ class FeatureView:
 
         vector_db_features = []
         if self._vector_db_client:
-            for _entry in serving_keys:
-                vector_db_features.append(self._get_vector_db_result(_entry))
+            vector_db_features = self._get_vector_db_results(serving_keys)
 
         return self._vector_server._get_feature_vectors(
             entries=serving_keys,
@@ -1291,6 +1298,7 @@ class FeatureView:
             transformation_context=transformation_context,
             logging_data=logging_data,
             n_processes=n_processes,
+            timeout=timeout,
         )
 
     @public
@@ -1423,25 +1431,51 @@ class FeatureView:
     ) -> dict[str, Any] | None:
         if not self._vector_db_client:
             return {}
-        result_vectors = {}
-        for join_index, fg in self._vector_db_client.embedding_fg_by_join_index.items():
-            complete, fg_entry = self._vector_db_client._filter_entry_by_join_index(
-                entry, join_index
-            )
-            if not complete:
-                # Not retrieving from vector db if entry is not completed
-                continue
-            vector_db_features = self._vector_db_client._read(
-                fg.id,
-                fg.columns,
-                keys=fg_entry,
-                index_name=fg.embedding_index.index_name,
-            )
+        return self._get_vector_db_results([entry])[0]
 
-            # if result is not empty
-            if vector_db_features:
-                vector_db_features = vector_db_features[0]  # get the first result
-                result_vectors.update(vector_db_features)
+    def _get_vector_db_results(
+        self,
+        entries: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """The embedding features of every entry, one round trip per embedding group.
+
+        A batch of N entries joined to J embedding groups used to cost N times J
+        sequential reads before the online store was touched at all. The entries
+        an embedding group can answer are collected and read together, and the
+        results are put back by the position of the entry they belong to, so the
+        matching, the join prefix and the treatment of an entry the group cannot
+        answer are what they were.
+        """
+        if not self._vector_db_client:
+            return [{} for _ in entries]
+        result_vectors: list[dict[str, Any]] = [{} for _ in entries]
+        for join_index, fg in self._vector_db_client.embedding_fg_by_join_index.items():
+            positions = []
+            key_sets = []
+            for position, entry in enumerate(entries):
+                complete, fg_entry = self._vector_db_client._filter_entry_by_join_index(
+                    entry, join_index
+                )
+                if not complete:
+                    # Not retrieving from vector db if entry is not completed
+                    continue
+                positions.append(position)
+                key_sets.append(fg_entry)
+            if not key_sets:
+                continue
+            for position, found in zip(
+                positions,
+                self._vector_db_client._read_many(
+                    fg.id,
+                    fg.columns,
+                    key_sets,
+                    index_name=fg.embedding_index.index_name,
+                ),
+                strict=True,
+            ):
+                # if result is not empty
+                if found:
+                    result_vectors[position].update(found[0])
         return result_vectors
 
     @public
