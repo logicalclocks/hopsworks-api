@@ -1082,16 +1082,16 @@ class OnlineStoreSqlClient:
                 if key not in entries:
                     prepared_statements.pop(key)
 
+        tasks = [
+            asyncio.create_task(
+                self._query_async_sql(
+                    prepared_statements[key], entries[key], connection_pool
+                ),
+                name="query_prep_statement_key" + str(key),
+            )
+            for key in prepared_statements
+        ]
         try:
-            tasks = [
-                asyncio.create_task(
-                    self._query_async_sql(
-                        prepared_statements[key], entries[key], connection_pool
-                    ),
-                    name="query_prep_statement_key" + str(key),
-                )
-                for key in prepared_statements
-            ]
             # Run the queries in parallel using asyncio.gather
             results = await asyncio.wait_for(
                 asyncio.gather(*tasks),
@@ -1099,14 +1099,19 @@ class OnlineStoreSqlClient:
                 if self.connection_options
                 else 120,
             )
-        except asyncio.CancelledError as e:
-            if _logger.isEnabledFor(logging.ERROR):
-                _logger.error(f"Failed executing prepared statements: {e}")
-            raise e
-        except asyncio.TimeoutError as e:
-            if _logger.isEnabledFor(logging.ERROR):
+        except BaseException as e:
+            if isinstance(e, asyncio.TimeoutError):
                 _logger.error(f"Query timed out: {e}")
-            raise e
+            elif isinstance(e, asyncio.CancelledError):
+                _logger.error(f"Failed executing prepared statements: {e}")
+            # gather does not cancel the other queries when one fails, and each
+            # holds a pooled connection. Settle them before the failure reaches
+            # a retry, which would otherwise queue behind them for the same
+            # connections.
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
 
         # Create a dict of results with the prepared statement index as key
         results_dict = {}

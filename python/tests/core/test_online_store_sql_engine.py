@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import pytest
 from hsfs.core import online_store_sql_engine
 from hsfs.core.online_store_sql_engine import OnlineStoreSqlClient
 
@@ -70,3 +71,42 @@ class TestConcurrencyFollowsTheConfiguredPool:
         client._init_async_mysql_connection(options={})
 
         assert started["thread"]._max_concurrent_tasks == 1
+
+
+class TestAFailedStatementSettlesTheOthers:
+    """A retry must not queue behind the first attempt's remaining queries."""
+
+    def test_the_other_queries_are_cancelled_before_the_error_is_raised(self, mocker):
+        import asyncio
+
+        client = OnlineStoreSqlClient.__new__(OnlineStoreSqlClient)
+        client._connection_options = None
+        mocker.patch.object(
+            OnlineStoreSqlClient,
+            "connection_options",
+            new_callable=mocker.PropertyMock,
+            return_value=None,
+        )
+        settled = []
+
+        async def query(stmt, _bind, _pool):
+            if stmt == "fails":
+                raise ConnectionError("gone")
+            try:
+                await asyncio.sleep(3600)
+            finally:
+                settled.append(stmt)
+
+        client._query_async_sql = query
+
+        async def run():
+            with pytest.raises(ConnectionError):
+                await client._execute_prep_statements(
+                    {1: "fails", 2: "slow", 3: "slower"},
+                    {1: {}, 2: {}, 3: {}},
+                    connection_pool=None,
+                )
+            # Settled by the time the error reached the caller, not later.
+            return sorted(settled)
+
+        assert asyncio.run(run()) == ["slow", "slower"]

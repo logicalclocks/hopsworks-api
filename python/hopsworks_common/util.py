@@ -1093,6 +1093,9 @@ class AsyncTaskThread(threading.Thread):
     async def _run_task(self, task: AsyncTask) -> Any:
         """Run one submitted task and publish its outcome to whoever is waiting."""
         try:
+            if task.requires_connection_pool and self.stop_event.is_set():
+                # The pool is being closed; a read now would hold it open.
+                raise RuntimeError("The async task thread is shutting down.")
             if task.requires_connection_pool:
                 task.result = await self._run_pool_task(task)
             else:
@@ -1165,7 +1168,12 @@ class AsyncTaskThread(threading.Thread):
         `_wait_for_tstate_lock` to mark a thread finished, so a subclass that
         defines `_stop` breaks `is_alive()` and `join()` for every instance.
 
-        The pool is closed first and from inside the loop.
+        In-flight tasks are cancelled first.
+        `wait_closed()` waits for every checked-out connection to come back, so a
+        close issued under a running read waits for that read, which with no
+        timeout can be forever.
+
+        The pool is then closed from inside the loop, before the loop stops.
         `aiomysql.Connection.close()` only calls `transport.close()`, and a
         selector transport does not touch the socket itself: it schedules
         `_call_connection_lost` on the loop, which is where the socket is closed.
@@ -1189,6 +1197,14 @@ class AsyncTaskThread(threading.Thread):
             # The loop is open but nothing is running it, so the pool cannot be
             # closed from here. Say so and keep the handle for another attempt.
             return False
+
+        # Refuse new work, then cancel what is running so its connections are
+        # released before the pool waits for them.
+        self.stop_event.set()
+        with contextlib.suppress(RuntimeError, concurrent.futures.TimeoutError):
+            asyncio.run_coroutine_threadsafe(self._cancel_in_flight(), loop).result(
+                timeout=timeout
+            )
 
         pool_closed = True
         pool = self._connection_pool
@@ -1218,11 +1234,6 @@ class AsyncTaskThread(threading.Thread):
             if pool_closed:
                 self._connection_pool = None
 
-        self.stop_event.set()
-        with contextlib.suppress(RuntimeError, concurrent.futures.TimeoutError):
-            asyncio.run_coroutine_threadsafe(self._cancel_in_flight(), loop).result(
-                timeout=timeout
-            )
         # Loop may already be closing under us; the wait below still settles it.
         with contextlib.suppress(RuntimeError):
             loop.call_soon_threadsafe(loop.stop)
