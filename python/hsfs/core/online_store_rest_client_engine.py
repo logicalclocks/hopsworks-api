@@ -18,7 +18,7 @@ from __future__ import annotations
 import base64
 import itertools
 import logging
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from hsfs import training_dataset_feature as td_feature_mod
@@ -27,6 +27,18 @@ from hsfs.core import online_store_rest_client_api
 
 
 _logger = logging.getLogger(__name__)
+
+
+def _parse_date(value: str) -> date:
+    """Parse an RDRS date, which the server writes as `YYYY-MM-DD`.
+
+    `date.fromisoformat` is around thirty times faster than `strptime` for that exact shape.
+    It is only used for that shape: from Python 3.11 it also accepts forms `strptime("%Y-%m-%d")` rejects, and a wider parser here would silently start accepting wire values this client never accepted.
+    Anything else goes to the original parser, which keeps both its acceptance and its error.
+    """
+    if len(value) == 10 and value[4] == "-" and value[7] == "-":
+        return date.fromisoformat(value)
+    return datetime.strptime(value, "%Y-%m-%d").date()
 
 
 class OnlineStoreRestClientEngine:
@@ -83,7 +95,12 @@ class OnlineStoreRestClientEngine:
                     )
                 if feat.inference_helper_column:
                     self._is_inference_helpers_list.append(True)
-                elif not feat.training_helper_column:
+                elif feat.training_helper_column:
+                    # Neither an inference helper nor a served feature, but it does occupy a position in the response row, so it needs one here too.
+                    # Skipping it shifted every flag after it against the names, which returned the wrong features: a view with a training helper served that helper and dropped a real feature.
+                    # `None` matches neither selection, so it is excluded from both.
+                    self._is_inference_helpers_list.append(None)
+                else:
                     self._is_inference_helpers_list.append(False)
         self._feature_to_decode = self._get_feature_to_decode(features)
         if _logger.isEnabledFor(logging.DEBUG):
@@ -106,12 +123,16 @@ class OnlineStoreRestClientEngine:
             A dictionary mapping feature indices to their type strings for features that require decoding.
             The indices correspond to the position in _ordered_feature_names.
         """
+        # Walked in the same order the response row is, rather than looked up by name.
+        # A label holds no position in that row, so looking one up raised `ValueError` and no view with a date or binary label could build its REST engine at all; and a name that appears twice, which a joined view can produce, resolved both occurrences to the first position, leaving the second undecoded.
         feature_to_decode = {}
+        position = 0
         for feat in features:
+            if feat.label:
+                continue
             if feat.type in self.FEATURE_TYPE_TO_DECODE:
-                feature_to_decode[self._ordered_feature_names.index(feat.name)] = (
-                    feat.type
-                )
+                feature_to_decode[position] = feat.type
+            position += 1
         return feature_to_decode
 
     def _build_base_payload(
@@ -161,17 +182,70 @@ class OnlineStoreRestClientEngine:
             _logger.debug(f"Base payload: {base_payload}")
         return base_payload
 
-    def _decode_rdrs_feature_values(self, feature_values: list[Any]) -> list[Any]:
+    def _is_projectable_row(self, row_feature_values: list[Any] | None) -> bool:
+        """Whether this row can be read by position.
+
+        A row carries one value per non-label feature.
+        One that does not is not the row the projection was prepared against, whether it is short, wide or absent for a reason the caller has to be told about, so it is read by name instead and described in full.
+        """
+        if row_feature_values is None:
+            return True
+        return len(row_feature_values) == len(self._is_inference_helpers_list)
+
+    def _is_projectable_batch(
+        self,
+        rows: list[list[Any] | None],
+        detailed_statuses: list[Any],
+        drop_missing: bool,
+    ) -> bool:
+        """Whether every row of this batch can be read by position.
+
+        All of them or none.
+        A caller reads a batch as one result, so a mix of rows read by position and rows read by name would be a result whose shape varies from entry to entry, and nothing downstream is prepared to read that.
+        """
+        if not all(self._is_projectable_row(row) for row in rows):
+            return False
+        if not drop_missing:
+            return True
+        if len(detailed_statuses) != len(rows):
+            # One entry's statuses per row, or there is a row whose reads are not described.
+            # Reading such a batch by position would answer for a row without having checked whether anything behind it failed.
+            return False
+        for statuses in detailed_statuses:
+            # One entry's statuses, which a caller has to be told about if any read behind them failed.
+            # A shape this cannot read is itself a reason to take the descriptive path: that path reports a missing status as an error rather than answering with the row anyway.
+            if not isinstance(statuses, list):
+                return False
+            for status in statuses:
+                if not isinstance(status, dict) or "httpStatus" not in status:
+                    return False
+                if status["httpStatus"] != 200:
+                    return False
+        return True
+
+    def _decode_rdrs_feature_values(
+        self, feature_values: list[Any] | None
+    ) -> list[Any] | None:
         """Decode binary and date values from the RonDB Rest Server response.
 
+        A null row has nothing to decode.
+        RonDB answers a failed read with a null feature vector inside an HTTP 200, and indexing it here raised `TypeError` for any view carrying a date or binary feature, before the null-row branches below ever ran.
+
         Parameters:
-            feature_values: List of feature values from the RonDB Rest Server
+            feature_values: List of feature values from the RonDB Rest Server, or `None` for a null row.
 
         Returns:
             List of decoded feature values with binary values base64 decoded and date strings
-            converted to datetime.date objects
+            converted to datetime.date objects, or `None` for a null row.
         """
+        if feature_values is None:
+            return None
+        width = len(feature_values)
         for feature_index, data_type in self._feature_to_decode.items():
+            if feature_index >= width:
+                # A row narrower than the schema it was decoded against.
+                # It is reported as such further up; decoding is not the place to raise IndexError about it.
+                continue
             if (
                 data_type == self.BINARY_TYPE
                 and feature_values[feature_index] is not None
@@ -183,9 +257,9 @@ class OnlineStoreRestClientEngine:
                 data_type == self.DATE_TYPE
                 and feature_values[feature_index] is not None
             ):
-                feature_values[feature_index] = datetime.strptime(
-                    feature_values[feature_index], "%Y-%m-%d"
-                ).date()
+                feature_values[feature_index] = _parse_date(
+                    feature_values[feature_index]
+                )
         return feature_values
 
     def _get_single_feature_vector(
@@ -196,6 +270,8 @@ class OnlineStoreRestClientEngine:
         drop_missing: bool = False,
         inference_helpers_only: bool = False,
         return_type: str = RETURN_TYPE_FEATURE_VALUE_DICT,
+        timeout: float | None = None,
+        projection: tuple[int, ...] | None = None,
     ) -> (
         tuple[list[Any] | dict[str, Any], list[dict[str, Any]] | None] | dict[str, Any]
     ):
@@ -212,6 +288,9 @@ class OnlineStoreRestClientEngine:
             drop_missing: Whether to drop missing features from the feature vector. Requires including detailed status.
             inference_helpers_only: Whether to return only the inference helper columns.
             return_type: The type of the return value. Either "feature_value_dict", "feature_value_list" or "response_json".
+            timeout: Seconds to wait for the response. The configured REST default applies when unset.
+            projection: Response positions to read the caller's vector from, in the caller's order.
+                Set by a caller that wants the row itself rather than a feature name to value mapping.
 
         Returns:
             The response json containing the feature vector as well as status information
@@ -243,7 +322,7 @@ class OnlineStoreRestClientEngine:
         payload["passedFeatures"] = passed_features
 
         response = self._online_store_rest_client_api._get_single_raw_feature_vector(
-            payload=payload
+            payload=payload, timeout=timeout
         )
         if return_type != self.RETURN_TYPE_RESPONSE_JSON:
             return self._convert_rdrs_response_to_feature_value_row(
@@ -252,6 +331,7 @@ class OnlineStoreRestClientEngine:
                 drop_missing=drop_missing,
                 inference_helpers_only=inference_helpers_only,
                 return_type=return_type,
+                projection=projection,
             )
         return response
 
@@ -263,6 +343,8 @@ class OnlineStoreRestClientEngine:
         drop_missing: bool = False,
         inference_helpers_only: bool = False,
         return_type: str = RETURN_TYPE_FEATURE_VALUE_DICT,
+        timeout: float | None = None,
+        projection: tuple[int, ...] | None = None,
     ) -> tuple[list[list[Any] | dict[str, Any]], list[dict[str, Any]]] | dict[str, Any]:
         """Get a list of feature vectors from the online feature store via RonDB Rest Server Feature Store API.
 
@@ -278,6 +360,9 @@ class OnlineStoreRestClientEngine:
             drop_missing: Whether to drop missing features from the feature vector. Requires including detailed status.
             inference_helpers_only: Whether to return only the inference helper columns.
             return_type: The type of the return value. Either "feature_value_dict", "feature_value_list" or "response_json".
+            timeout: Seconds to wait for the response. The configured REST default applies when unset.
+            projection: Response positions to read the caller's vector from, in the caller's order.
+                Set by a caller that wants the row itself rather than a feature name to value mapping.
 
         Returns:
             The response json containing the feature vector as well as status information
@@ -320,7 +405,7 @@ class OnlineStoreRestClientEngine:
             )
 
         response = self._online_store_rest_client_api._get_batch_raw_feature_vectors(
-            payload=payload
+            payload=payload, timeout=timeout
         )
 
         if return_type != self.RETURN_TYPE_RESPONSE_JSON:
@@ -328,6 +413,13 @@ class OnlineStoreRestClientEngine:
                 _logger.debug(
                     "Converting batch response to feature value rows for each."
                 )
+            if projection is not None and not self._is_projectable_batch(
+                response["features"],
+                list(response.get("detailedStatus", None) or ()),
+                drop_missing,
+            ):
+                # Checked for the batch before any of it is read, so what comes back is every row by position or every row by name, never a mix of the two.
+                projection = None
             return [
                 self._convert_rdrs_response_to_feature_value_row(
                     row_feature_values=row,
@@ -335,6 +427,7 @@ class OnlineStoreRestClientEngine:
                     drop_missing=drop_missing,
                     return_type=return_type,
                     inference_helpers_only=inference_helpers_only,
+                    projection=projection,
                 )
                 for row, detailed_status in itertools.zip_longest(
                     response["features"], response.get("detailedStatus", []) or []
@@ -349,7 +442,8 @@ class OnlineStoreRestClientEngine:
         detailed_status: list[dict[str, Any]] = None,
         return_type: str = RETURN_TYPE_FEATURE_VALUE_LIST,
         inference_helpers_only: bool = False,
-    ) -> list[Any] | dict[str, Any]:
+        projection: tuple[int, ...] | None = None,
+    ) -> list[Any] | dict[str, Any] | None:
         """Convert the response from the RonDB Rest Server Feature Store API to a feature:value dict.
 
         When RonDB Server encounter an error it may send a null value for the feature vector. This function
@@ -362,10 +456,14 @@ class OnlineStoreRestClientEngine:
                 Keys include operationId, featureGroupId, httpStatus and message.
             return_type: The type of the return value. Either "feature_value_dict" or "feature_value_list".
             inference_helpers_only: Whether to return only the inference helper columns.
+            projection: Response positions to read the caller's vector from, in the caller's order.
+                Ignored when a read failed, since the row is then not the shape it was prepared against.
 
         Returns:
             A dictionary with the feature names as keys and the feature values as values. Values types are not guaranteed to
             match the feature type in the metadata. Timestamp SQL types are converted to python datetime.
+            A projected row is returned as a list in the projection's order instead, or as `None` for a
+            null row the caller asked to have dropped.
         """
         row_feature_values = self._decode_rdrs_feature_values(row_feature_values)
         if drop_missing and (
@@ -385,6 +483,17 @@ class OnlineStoreRestClientEngine:
                 _logger.debug(
                     f"Feature names which failed on read: {failed_read_feature_names}."
                 )
+
+        if (
+            projection is not None
+            and not failed_read_feature_names
+            and self._is_projectable_row(row_feature_values)
+        ):
+            # Every read answered and the row is the width the projection was prepared against, so the caller's vector can be taken from it by position.
+            # Anything else falls through to the mapping, which the caller knows how to complete and to report on.
+            if row_feature_values is None:
+                return None if drop_missing else [None] * len(projection)
+            return [row_feature_values[index] for index in projection]
 
         if return_type == self.RETURN_TYPE_FEATURE_VALUE_LIST:
             if row_feature_values is None and drop_missing:
@@ -421,7 +530,15 @@ class OnlineStoreRestClientEngine:
                 ]
             if _logger.isEnabledFor(logging.DEBUG):
                 _logger.debug("Returning feature vector as list.")
-            return row_feature_values
+            return [
+                value
+                for (value, is_helper) in zip(
+                    row_feature_values,
+                    self.is_inference_helpers_list,
+                    strict=False,
+                )
+                if is_helper is inference_helpers_only
+            ]
 
         if return_type == self.RETURN_TYPE_FEATURE_VALUE_DICT:
             if row_feature_values is None and drop_missing:

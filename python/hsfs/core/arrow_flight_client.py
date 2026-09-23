@@ -16,6 +16,8 @@
 from __future__ import annotations
 
 import base64
+import contextlib
+import inspect
 import json
 import logging
 import warnings
@@ -42,6 +44,8 @@ from pyarrow.flight import FlightServerError
 
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from hsfs.constructor import query
     from hsfs.constructor.fs_query import FsQuery
 
@@ -427,32 +431,68 @@ class ArrowFlightClient:
         _logger.debug("Client certificates registered.")
 
     def _handle_afs_exception(user_message="None"):
+        def _needs_certificates(instance, error) -> bool:
+            return instance._server_version is None and (
+                isinstance(error, FlightServerError)
+                and "Please register client certificates first." in str(error)
+            )
+
+        def _translated(error, func_name):
+            """The exception a caller should see, or None to re-raise as is."""
+            _logger.debug("Caught exception in %s: %s", func_name, str(error))
+            _logger.exception(error)
+            if _is_feature_query_service_queue_full_error(error):
+                return FeatureStoreException(
+                    "Hopsworks Query Service is busy right now. Please try again later."
+                )
+            if (
+                _is_no_commits_found_error(error)
+                or _is_no_metadata_found_error(error)
+                or _is_no_data_found_error(error)
+            ):
+                return FeatureStoreException(str(error).split("Details:")[0])
+            return FeatureStoreException(user_message)
+
         def decorator(func):
+            if inspect.isgeneratorfunction(func):
+                # A plain wrapper returns the generator before its body runs, so
+                # everything that fails while the caller iterates, which is the
+                # flight info lookup, the do_get and every read_chunk, would
+                # escape this handler unmapped. Iterating here is what puts them
+                # inside it.
+                @wraps(func)
+                def afs_stream_error_handler_wrapper(instance, *args, **kw):
+                    produced = False
+                    try:
+                        for item in func(instance, *args, **kw):
+                            produced = True
+                            yield item
+                        return
+                    except Exception as e:
+                        # Certificates are registered before the first batch, so
+                        # a stream that has already produced one is not retried:
+                        # starting it again would repeat the rows already read.
+                        if produced or not _needs_certificates(instance, e):
+                            raise _translated(e, func.__name__) from e
+                        instance._register_certificates()
+                    # Registered, and nothing has been handed to the caller yet,
+                    # so starting again repeats no rows.
+                    try:
+                        yield from func(instance, *args, **kw)
+                    except Exception as e:
+                        raise _translated(e, func.__name__) from e
+
+                return afs_stream_error_handler_wrapper
+
             @wraps(func)
             def afs_error_handler_wrapper(instance, *args, **kw):
                 try:
                     return func(instance, *args, **kw)
                 except Exception as e:
-                    message = str(e)
-                    _logger.debug("Caught exception in %s: %s", func.__name__, message)
-                    _logger.exception(e)
-                    if instance._server_version is None and (
-                        isinstance(e, FlightServerError)
-                        and "Please register client certificates first." in message
-                    ):
+                    if _needs_certificates(instance, e):
                         instance._register_certificates()
                         return func(instance, *args, **kw)
-                    if _is_feature_query_service_queue_full_error(e):
-                        raise FeatureStoreException(
-                            "Hopsworks Query Service is busy right now. Please try again later."
-                        ) from e
-                    if (
-                        _is_no_commits_found_error(e)
-                        or _is_no_metadata_found_error(e)
-                        or _is_no_data_found_error(e)
-                    ):
-                        raise FeatureStoreException(str(e).split("Details:")[0]) from e
-                    raise FeatureStoreException(user_message) from e
+                    raise _translated(e, func.__name__) from e
 
             return afs_error_handler_wrapper
 
@@ -498,6 +538,45 @@ class ArrowFlightClient:
             return pl.from_arrow(reader.read_all())
         return reader.read_pandas()
 
+    @_handle_afs_exception(user_message=READ_ERROR)
+    def _stream_dataset(
+        self, descriptor, timeout=None, headers=None
+    ) -> Iterator[pyarrow.RecordBatch]:
+        """Yield the record batches of a dataset as the server sends them.
+
+        `_get_dataset` materialises the whole result before the caller sees any
+        of it, so a read costs the memory of its result and its first row waits
+        for its last. This reads the stream a batch at a time instead. Every
+        endpoint the flight info names is consumed, since a partitioned result
+        is not all on the first one.
+
+        The reader is closed when the caller stops, whether it ran out of
+        batches, left early or raised, so a cancelled read does not leave the
+        connection consuming a result nobody will take.
+        """
+        if timeout is None:
+            timeout = self.timeout
+        info = self._get_flight_info(descriptor)
+        if headers is None:
+            headers = self._certificates_headers()
+        options = pyarrow.flight.FlightCallOptions(timeout=timeout, headers=headers)
+
+        for endpoint in info.endpoints:
+            reader = self._connection.do_get(endpoint.ticket, options)
+            try:
+                while True:
+                    try:
+                        chunk = reader.read_chunk()
+                    except StopIteration:
+                        break
+                    if chunk.data is not None and chunk.data.num_rows:
+                        yield chunk.data
+            finally:
+                # cancel() is what tells the server to stop producing; close()
+                # alone waits for the rest of a result the caller walked away from.
+                with contextlib.suppress(Exception):
+                    reader.cancel()
+
     # retry is handled in get_dataset
     @_handle_afs_exception(user_message=READ_ERROR)
     def _read_query(self, query_object: FsQuery, arrow_flight_config, dataframe_type):
@@ -521,6 +600,31 @@ class ArrowFlightClient:
                 else None
             ),
             dataframe_type=dataframe_type,
+        )
+
+    def _stream_query(
+        self, query_object: FsQuery, arrow_flight_config
+    ) -> Iterator[pyarrow.RecordBatch]:
+        """The record batches of a query, as the server produces them."""
+        query_encoded = query_object.hqs_payload.encode("ascii")
+        descriptor = pyarrow.flight.FlightDescriptor.for_command(query_encoded)
+        return self._stream_dataset(
+            descriptor,
+            (
+                arrow_flight_config.get("timeout", self.timeout)
+                if arrow_flight_config
+                else self.timeout
+            ),
+            headers=(
+                [
+                    (
+                        b"hopsworks-signature",
+                        query_object.hqs_payload_signature.encode("ascii"),
+                    )
+                ]
+                if query_object.hqs_payload_signature
+                else None
+            ),
         )
 
     # retry is handled in get_dataset

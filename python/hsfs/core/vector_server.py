@@ -15,6 +15,7 @@
 #
 from __future__ import annotations
 
+import asyncio
 import itertools
 import logging
 import warnings
@@ -85,6 +86,36 @@ if TYPE_CHECKING:
 _logger = logging.getLogger(__name__)
 
 
+def _with_entry_values(
+    request_parameters: dict[str, Any] | list[dict[str, Any]] | None,
+    entries: dict[str, Any] | list[dict[str, Any]] | None,
+) -> dict[str, Any] | list[dict[str, Any]] | None:
+    """Request parameters backed by the entry's own values, in new dictionaries.
+
+    The entry's values stand in for the on-demand features a retrieved vector
+    does not carry, which happens when the serving key is not in the online
+    store yet. An explicitly passed parameter always wins.
+
+    The result is request-local. The caller's dictionaries are read and never
+    written, so one request cannot leave its parameters behind in the next, and
+    two concurrent requests through one feature view cannot see each other's.
+    """
+    if not request_parameters or not entries:
+        return request_parameters
+    if isinstance(request_parameters, dict):
+        if isinstance(entries, dict):
+            return {**entries, **request_parameters}
+        if len(entries) == 1:
+            return {**entries[0], **request_parameters}
+        return request_parameters
+    if isinstance(entries, list) and len(entries) == len(request_parameters):
+        return [
+            {**entry, **parameters}
+            for entry, parameters in zip(entries, request_parameters, strict=True)
+        ]
+    return request_parameters
+
+
 def _resume(steps, fetched):
     """Hand a fetch back to a suspended lookup and take its result.
 
@@ -96,6 +127,28 @@ def _resume(steps, fetched):
     except StopIteration as finished:
         return finished.value
     raise RuntimeError("the feature vector body suspended more than once")
+
+
+def _supplies_values(supplied: Any) -> bool:
+    """True when the caller supplied feature values alongside the entries.
+
+    Both shapes the serving calls use are accepted: one mapping for a single vector, or one per entry for a batch.
+    A batch commonly carries an empty mapping per entry, which supplies nothing.
+    """
+    if not supplied:
+        return False
+    if isinstance(supplied, dict):
+        return True
+    return any(item for item in supplied)
+
+
+async def _bounded(awaitable, timeout: float | None):
+    """Await a lookup within `timeout` seconds, raising the `TimeoutError` the blocking path raises."""
+    try:
+        return await asyncio.wait_for(awaitable, timeout)
+    except asyncio.TimeoutError:
+        # Before Python 3.11 asyncio's TimeoutError is not the builtin one.
+        raise TimeoutError(f"Online feature read took longer than {timeout}s") from None
 
 
 class VectorServer:
@@ -191,6 +244,9 @@ class VectorServer:
         self._serving_initialized: bool = False
         self._parent_feature_groups: list[FeatureGroup] = []
         self.__all_features_on_demand: bool | None = None
+        self.__required_feature_names: set[str] | None = None
+        # One prepared projection per output shape, which the transform and on-demand flags select between.
+        self.__rest_projections: dict[tuple[bool, bool], tuple[int, ...] | None] = {}
         self.__all_feature_groups_online: bool | None = None
         self._feature_view_logging_enabled: bool = False
         self._skip_feature_decoding_fg_ids = skip_feature_decoding_fg_ids or set()
@@ -308,6 +364,9 @@ class VectorServer:
             for feature in entity.features
             if feature.on_demand_transformation_function
         ]
+        # Built from the names above, so it cannot outlive them.
+        self.__required_feature_names = None
+        self.__rest_projections = {}
 
         self._fetch_inference_helpers_for_transformations = (
             self._requires_inference_helpers_for_transformations()
@@ -388,6 +447,8 @@ class VectorServer:
                 features=entity.features,
             )
         )
+        # Prepared against the engine's view of the row, so it belongs to the engine that was just built.
+        self.__rest_projections = {}
         # This logic needs to move to the above engine init
         online_store_rest_client._init_or_reset_online_store_rest_client(
             optional_config=config_rest_client,
@@ -478,10 +539,15 @@ class VectorServer:
             return None
         return online_client_choice == self.DEFAULT_REST_CLIENT
 
-    def _get_feature_vector(self, *args: Any, **kwargs: Any) -> Any:
-        """Assemble a single serving vector, looking it up on this thread."""
+    def _get_feature_vector(
+        self, *args: Any, timeout: float | None = None, **kwargs: Any
+    ) -> Any:
+        """Assemble a single serving vector, looking it up on this thread.
+
+        `timeout` bounds the online read in seconds, as a deadline for the whole of it.
+        """
         steps = self._feature_vector_steps(*args, **kwargs)
-        rondb_entry, choice, allow_missing, logging_data = next(steps)
+        rondb_entry, choice, allow_missing, logging_data, projection = next(steps)
         use_rest = self._single_lookup_arguments(rondb_entry, choice)
         if use_rest is None:
             serving_vector = {}
@@ -492,6 +558,8 @@ class VectorServer:
                 rondb_entry,
                 drop_missing=not allow_missing,
                 return_type=self.rest_client_engine.RETURN_TYPE_FEATURE_VALUE_DICT,
+                timeout=timeout,
+                projection=projection,
             )
         else:
             if _logger.isEnabledFor(logging.DEBUG):
@@ -500,27 +568,40 @@ class VectorServer:
                 rondb_entry,
                 logging_data=logging_data,
                 feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
+                timeout=timeout,
             )
         return _resume(steps, serving_vector)
 
-    async def _get_feature_vector_async(self, *args: Any, **kwargs: Any) -> Any:
-        """The same vector, with the online lookup awaited on the caller's event loop."""
+    async def _get_feature_vector_async(
+        self, *args: Any, timeout: float | None = None, **kwargs: Any
+    ) -> Any:
+        """The same vector, with the online lookup awaited on the caller's event loop.
+
+        `timeout` bounds the read in seconds, as for [`_get_feature_vector`][].
+        """
         steps = self._feature_vector_steps(*args, **kwargs)
-        rondb_entry, choice, allow_missing, logging_data = next(steps)
+        rondb_entry, choice, allow_missing, logging_data, projection = next(steps)
         use_rest = self._single_lookup_arguments(rondb_entry, choice)
         if use_rest is None:
             serving_vector = {}
         elif use_rest:
-            serving_vector = self.rest_client_engine._get_single_feature_vector(
+            # The REST client blocks, for up to the whole timeout when every connection is taken, so it runs on a worker thread rather than on the caller's loop.
+            serving_vector = await asyncio.to_thread(
+                self.rest_client_engine._get_single_feature_vector,
                 rondb_entry,
                 drop_missing=not allow_missing,
                 return_type=self.rest_client_engine.RETURN_TYPE_FEATURE_VALUE_DICT,
+                timeout=timeout,
+                projection=projection,
             )
         else:
-            serving_vector = await self.sql_client._get_single_feature_vector_async(
-                rondb_entry,
-                logging_data=logging_data,
-                feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
+            serving_vector = await _bounded(
+                self.sql_client._get_single_feature_vector_async(
+                    rondb_entry,
+                    logging_data=logging_data,
+                    feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
+                ),
+                timeout,
             )
         return _resume(steps, serving_vector)
 
@@ -571,21 +652,32 @@ class VectorServer:
             else None
         )
 
-        # Make a copy of request parameters to be stored in logging meta data since it might be updated below.
+        # What the caller sent, for the log. Only the log reads it, and only a
+        # copy is safe to keep: the log is written after this call returns.
         request_parameters_copy = (
-            request_parameters.copy() if request_parameters else {}
+            request_parameters.copy()
+            if logging_meta_data is not None and request_parameters
+            else {}
         )
 
-        # Adding values in entry to request_parameters if it is not explicitly mentioned so that on-demand feature can be computed using the values in entry if they are not present in retrieved feature vector. This happens when no features can be retrieved from the feature view since the serving key is not yet there.
-        if request_parameters and entry:
-            for key, value in entry.items():
-                request_parameters.setdefault(key, value)
+        request_parameters = _with_entry_values(request_parameters, entry)
 
         rondb_entry = self._validate_entry(
             entry=entry,
             allow_missing=allow_missing,
             passed_features=passed_features,
             vector_db_features=vector_db_features,
+        )
+        projection = (
+            self._prepared_rest_projection(
+                transform=transform,
+                on_demand_features=on_demand_features,
+                passed_features=passed_features,
+                vector_db_features=vector_db_features,
+                logging_meta_data=logging_meta_data,
+            )
+            if len(rondb_entry) > 0 and online_client_choice == self.DEFAULT_REST_CLIENT
+            else None
         )
         # The one suspension point, as for the batch: the driver fetches and hands the
         # rows back, and everything below assembles them. What goes out is everything the
@@ -595,11 +687,27 @@ class VectorServer:
             online_client_choice,
             allow_missing,
             logging_data,
+            projection,
         )
+        # A projection the engine could not use comes back as the usual mapping, which the general assembly below completes.
+        projected = projection is not None and not isinstance(serving_vector, dict)
 
         self._raise_transformation_warnings(
             transform=transform, on_demand_features=on_demand_features
         )
+
+        if projected:
+            # The row was read by position and already is the caller's vector.
+            # Nothing the general assembly does is left to do for it.
+            return self._handle_feature_vector_return_type(
+                serving_vector,
+                batch=False,
+                inference_helper=False,
+                return_type=return_type,
+                transform=transform,
+                on_demand_feature=on_demand_features,
+                logging_meta_data=None,
+            )
 
         vector = self._assemble_feature_vector(
             result_dict=serving_vector,
@@ -649,10 +757,15 @@ class VectorServer:
             return None
         return online_client_choice == self.DEFAULT_REST_CLIENT
 
-    def _get_feature_vectors(self, *args: Any, **kwargs: Any) -> Any:
-        """Assemble a batch of serving vectors, looking them up on this thread."""
+    def _get_feature_vectors(
+        self, *args: Any, timeout: float | None = None, **kwargs: Any
+    ) -> Any:
+        """Assemble a batch of serving vectors, looking them up on this thread.
+
+        `timeout` bounds the online read in seconds, as a deadline for the whole of it.
+        """
         steps = self._feature_vectors_steps(*args, **kwargs)
-        rondb_entries, choice, allow_missing, logging_data = next(steps)
+        rondb_entries, choice, allow_missing, logging_data, projection = next(steps)
         use_rest = self._batch_lookup_arguments(rondb_entries, choice)
         if use_rest is None:
             batch_results = []
@@ -663,6 +776,8 @@ class VectorServer:
                 entries=rondb_entries,
                 drop_missing=not allow_missing,
                 return_type=self.rest_client_engine.RETURN_TYPE_FEATURE_VALUE_DICT,
+                timeout=timeout,
+                projection=projection,
             )
         else:
             if _logger.isEnabledFor(logging.DEBUG):
@@ -671,33 +786,44 @@ class VectorServer:
                 rondb_entries,
                 logging_data=logging_data,
                 feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
+                timeout=timeout,
             )
         return _resume(steps, batch_results)
 
-    async def _get_feature_vectors_async(self, *args: Any, **kwargs: Any) -> Any:
+    async def _get_feature_vectors_async(
+        self, *args: Any, timeout: float | None = None, **kwargs: Any
+    ) -> Any:
         """The same batch, with the online lookup awaited on the caller's event loop.
 
-        One body prepares and assembles for both drivers; only the fetch differs. The
-        SQL lookup is awaited against a connection pool of this loop's own, so several
-        are in flight at once instead of queueing on the client's task thread. A REST
-        deployment has no such path, so it keeps the blocking call.
+        One body prepares and assembles for both drivers; only the fetch differs.
+        The SQL lookup is awaited against a connection pool of this loop's own, so several are in flight at once instead of queueing on the client's task thread.
+        The REST client has no awaitable path, so its blocking call runs on a worker thread and the loop keeps serving.
+
+        `timeout` bounds the read in seconds, as for [`_get_feature_vectors`][].
         """
         steps = self._feature_vectors_steps(*args, **kwargs)
-        rondb_entries, choice, allow_missing, logging_data = next(steps)
+        rondb_entries, choice, allow_missing, logging_data, projection = next(steps)
         use_rest = self._batch_lookup_arguments(rondb_entries, choice)
         if use_rest is None:
             batch_results = []
         elif use_rest:
-            batch_results = self.rest_client_engine._get_batch_feature_vectors(
+            # Off the loop, as for the single vector: the REST client blocks.
+            batch_results = await asyncio.to_thread(
+                self.rest_client_engine._get_batch_feature_vectors,
                 entries=rondb_entries,
                 drop_missing=not allow_missing,
                 return_type=self.rest_client_engine.RETURN_TYPE_FEATURE_VALUE_DICT,
+                timeout=timeout,
+                projection=projection,
             )
         else:
-            batch_results, _ = await self.sql_client._get_batch_feature_vectors_async(
-                rondb_entries,
-                logging_data=logging_data,
-                feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
+            batch_results, _ = await _bounded(
+                self.sql_client._get_batch_feature_vectors_async(
+                    rondb_entries,
+                    logging_data=logging_data,
+                    feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
+                ),
+                timeout,
             )
         return _resume(steps, batch_results)
 
@@ -771,20 +897,14 @@ class VectorServer:
             else None
         )
 
+        # Deep-copied only for the log, which is its only reader and is written
+        # after this call returns. A batch that logs nothing pays nothing.
         request_parameters_copy = (
-            deepcopy(request_parameters) if request_parameters else None
+            deepcopy(request_parameters)
+            if logging_meta_data is not None and request_parameters
+            else None
         )
-        # Adding values in entry to request_parameters if it is not explicitly mentioned so that on-demand feature can be computed using the values in entry if they are not present in retrieved feature vector.
-        if request_parameters and entries:
-            if isinstance(request_parameters, list) and len(entries) == len(
-                request_parameters
-            ):
-                for idx, entry in enumerate(entries):
-                    for key, value in entry.items():
-                        request_parameters[idx].setdefault(key, value)
-            elif isinstance(request_parameters, dict) and len(entries) == 1:
-                for key, value in entries[0].items():
-                    request_parameters.setdefault(key, value)
+        request_parameters = _with_entry_values(request_parameters, entries)
 
         online_client_choice = self._which_client_and_ensure_initialised(
             force_rest_client=force_rest_client, force_sql_client=force_sql_client
@@ -819,6 +939,18 @@ class VectorServer:
             else:
                 skipped_empty_entries.append(idx)
 
+        projection = (
+            self._prepared_rest_projection(
+                transform=transform,
+                on_demand_features=on_demand_features,
+                passed_features=passed_features,
+                vector_db_features=vector_db_features,
+                logging_meta_data=logging_meta_data,
+            )
+            if len(rondb_entries) > 0
+            and online_client_choice == self.DEFAULT_REST_CLIENT
+            else None
+        )
         # The one suspension point. Everything above prepares the lookup and everything
         # below assembles its rows; only the fetch itself differs between the blocking
         # driver and the awaiting one. What goes out with it is everything the fetch
@@ -829,13 +961,20 @@ class VectorServer:
             online_client_choice,
             allow_missing,
             logging_data,
+            projection,
+        )
+        # The engine drops the projection for the whole batch when any row could not be read by position, so one row answers for all.
+        projected = projection is not None and not (
+            batch_results and isinstance(batch_results[0], dict)
         )
 
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug("Assembling feature vectors from batch results")
-        next_skipped = (
-            skipped_empty_entries.pop(0) if len(skipped_empty_entries) > 0 else None
-        )
+        # Consumed with iterators: `pop(0)` shifts the whole list on every row,
+        # which makes assembling a batch cost the square of its size.
+        skipped = iter(skipped_empty_entries)
+        results = iter(batch_results)
+        next_skipped = next(skipped, None)
         vectors = []
 
         # If request parameter is a dictionary then copy it to list with the same length as that of entires
@@ -874,28 +1013,40 @@ class VectorServer:
             if next_skipped == idx:
                 if _logger.isEnabledFor(logging.DEBUG):
                     _logger.debug("Entry %d was skipped, setting to empty dict.", idx)
-                next_skipped = (
-                    skipped_empty_entries.pop(0)
-                    if len(skipped_empty_entries) > 0
-                    else None
-                )
+                next_skipped = next(skipped, None)
                 result_dict = {}
+                vector = self._assemble_feature_vector(
+                    result_dict=result_dict,
+                    passed_values=passed_values,
+                    vector_db_result=vector_db_result,
+                    allow_missing=allow_missing,
+                    client=online_client_choice,
+                    transform=transform,
+                    on_demand_features=on_demand_features,
+                    request_parameters=request_parameter,
+                    transformation_context=transformation_context,
+                    logging_meta_data=logging_meta_data,
+                    n_processes=n_processes,
+                )
+            elif projected:
+                # Read by position, so the row already is the caller's vector.
+                result_dict = {}
+                vector = next(results)
             else:
-                result_dict = batch_results.pop(0)
-
-            vector = self._assemble_feature_vector(
-                result_dict=result_dict,
-                passed_values=passed_values,
-                vector_db_result=vector_db_result,
-                allow_missing=allow_missing,
-                client=online_client_choice,
-                transform=transform,
-                on_demand_features=on_demand_features,
-                request_parameters=request_parameter,
-                transformation_context=transformation_context,
-                logging_meta_data=logging_meta_data,
-                n_processes=n_processes,
-            )
+                result_dict = next(results)
+                vector = self._assemble_feature_vector(
+                    result_dict=result_dict,
+                    passed_values=passed_values,
+                    vector_db_result=vector_db_result,
+                    allow_missing=allow_missing,
+                    client=online_client_choice,
+                    transform=transform,
+                    on_demand_features=on_demand_features,
+                    request_parameters=request_parameter,
+                    transformation_context=transformation_context,
+                    logging_meta_data=logging_meta_data,
+                    n_processes=n_processes,
+                )
 
             if logging_meta_data is not None:
                 logging_meta_data.event_time.append(
@@ -924,6 +1075,79 @@ class VectorServer:
             on_demand_feature=transform,
             logging_meta_data=logging_meta_data,
         )
+
+    def _rest_row_projection(self, target_columns: list[str]) -> tuple[int, ...] | None:
+        """Where each output column sits in a REST wire row, or `None` when one does not.
+
+        The RDRS response is an ordered row, which the general path turns into a dictionary and then reads back into an ordered list.
+        When every output column is a served feature the row carries, the same list can be taken straight from the row by position.
+        Prepared once per output shape, because the view's schema is what decides it.
+
+        A name that occupies more than one position resolves to its last, which is the position a dictionary built from the row would have kept.
+        """
+        engine = self._rest_client_engine
+        if engine is None:
+            return None
+        positions = {}
+        for index, (name, is_helper) in enumerate(
+            zip(
+                engine.ordered_feature_names,
+                engine.is_inference_helpers_list,
+                strict=False,
+            )
+        ):
+            if is_helper is False:
+                positions[name] = index
+        try:
+            return tuple(positions[name] for name in target_columns)
+        except KeyError:
+            # An output column the response does not carry: the general path knows where to find it, this one does not.
+            return None
+
+    def _prepared_rest_projection(
+        self,
+        transform: bool,
+        on_demand_features: bool,
+        passed_features: Any,
+        vector_db_features: Any,
+        logging_meta_data: LoggingMetaData | None,
+    ) -> tuple[int, ...] | None:
+        """The projection to read this request's vectors with, if it can be read that way.
+
+        Returns `None` whenever anything between the response row and the caller's vector needs the feature name to value mapping: values merged in from elsewhere, a transformation that has something to do, a return value handler for a column being returned, or the logging of a served vector.
+        Those are what the general path exists for.
+
+        What decides it is whether there is work to do, not whether the caller left `transform` and `on_demand_features` at their defaults.
+        Both default to true, so asking about the flags alone excluded every ordinary call: a view with no transformation functions has nothing to apply whatever they say, and that is the common case.
+        """
+        if (
+            _supplies_values(passed_features)
+            or _supplies_values(vector_db_features)
+            or logging_meta_data is not None
+            or (transform and self._model_dependent_transformation_functions)
+            or (on_demand_features and self._on_demand_transformation_functions)
+        ):
+            return None
+        target_columns = self._output_columns(transform, on_demand_features)
+        if any(name in self._return_feature_value_handlers for name in target_columns):
+            # A handler rewrites the value of the feature it is registered for.
+            # One registered for a feature this call does not return changes nothing about what it returns.
+            return None
+        shape = (bool(transform), bool(on_demand_features))
+        if shape not in self.__rest_projections:
+            self.__rest_projections[shape] = self._rest_row_projection(target_columns)
+        return self.__rest_projections[shape]
+
+    def _output_columns(self, transform: bool, on_demand_features: bool) -> list[str]:
+        """The columns a call with these flags returns, in order.
+
+        The same choice `_assemble_feature_vector` makes when it reads its result back into a list, so the projection describes the same vector.
+        """
+        if transform:
+            return self.transformed_feature_vector_col_name
+        if on_demand_features:
+            return self._on_demand_feature_vector_col_name
+        return self._untransformed_feature_vector_col_name
 
     def _assemble_feature_vector(
         self,
@@ -973,12 +1197,6 @@ class VectorServer:
                 _logger.debug("Updating with passed features: %s", passed_values)
             result_dict.update(passed_values)
 
-        missing_features = (
-            set(self.feature_vector_col_name)
-            .difference(result_dict.keys())
-            .difference(self._on_demand_feature_names)
-        )
-
         # for backward compatibility, before 3.4, if result is empty,
         # instead of throwing error, it skips the result
         # Maybe we drop this behaviour for 4.0
@@ -989,15 +1207,21 @@ class VectorServer:
         ):
             return None
 
-        if not allow_missing and len(missing_features) > 0:
-            raise exceptions.FeatureStoreException(
-                f"Feature(s) {str(missing_features)} is missing from vector."
-                "Possible reasons: "
-                "1. There is no match in the given entry."
-                " Please check if the entry exists in the online feature store"
-                " or provide the feature as passed_feature. "
-                f"2. Required entries [{', '.join(self.required_serving_keys)}] are not provided."
+        if not allow_missing:
+            # Only this branch reads it, and the names it is built from are fixed by the schema.
+            # Building the set per row cost a batch two set constructions for every vector it assembled.
+            missing_features = self._required_feature_names.difference(
+                result_dict.keys()
             )
+            if missing_features:
+                raise exceptions.FeatureStoreException(
+                    f"Feature(s) {str(missing_features)} is missing from vector."
+                    "Possible reasons: "
+                    "1. There is no match in the given entry."
+                    " Please check if the entry exists in the online feature store"
+                    " or provide the feature as passed_feature. "
+                    f"2. Required entries [{', '.join(self.required_serving_keys)}] are not provided."
+                )
         if len(self.return_feature_value_handlers) > 0:
             self._apply_return_value_handlers(result_dict, client=client)
         feature_dict, encoded_feature_dict = result_dict, result_dict
@@ -2241,6 +2465,19 @@ class VectorServer:
             ]
             self._transformed_feature_vector_col_name.extend(output_column_names)
         return self._transformed_feature_vector_col_name
+
+    @property
+    def _required_feature_names(self) -> set[str]:
+        """The features a vector must carry for it to be complete.
+
+        On-demand features are excluded because they are computed rather than fetched.
+        The schema fixes the answer, so it is built once instead of once per assembled vector.
+        """
+        if self.__required_feature_names is None:
+            self.__required_feature_names = set(
+                self.feature_vector_col_name
+            ).difference(self._on_demand_feature_names)
+        return self.__required_feature_names
 
     @property
     def _all_features_on_demand(self) -> bool:
