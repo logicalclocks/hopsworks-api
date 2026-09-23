@@ -49,7 +49,8 @@ class TestInferenceEndpoint:
             return_value=json,
         )
         mock_ie_init = mocker.patch(
-            "hsml.inference_endpoint.InferenceEndpointPort.__init__", return_value=None
+            "hsml.inference_endpoint.InferenceEndpointPort.__init__",
+            return_value=None,
         )
 
         # Act
@@ -170,7 +171,8 @@ class TestInferenceEndpoint:
             return_value=json,
         )
         mock_ie_init = mocker.patch(
-            "hsml.inference_endpoint.InferenceEndpoint.__init__", return_value=None
+            "hsml.inference_endpoint.InferenceEndpoint.__init__",
+            return_value=None,
         )
 
         # Act
@@ -208,7 +210,8 @@ class TestInferenceEndpoint:
         ][0]
         json_copy = copy.deepcopy(json)
         mock_ie_port_from_json = mocker.patch(
-            "hsml.inference_endpoint.InferenceEndpointPort.from_json", return_value=None
+            "hsml.inference_endpoint.InferenceEndpointPort.from_json",
+            return_value=None,
         )
 
         # Act

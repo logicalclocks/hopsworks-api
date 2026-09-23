@@ -127,6 +127,20 @@ if HAS_POLARS:
 _logger = logging.getLogger(__name__)
 
 
+def _request_parameters_json(row: pd.Series) -> dict:
+    """One request-parameter row as a JSON-serialisable dict.
+
+    pandas 2's `to_dict` turns `pd.NA` and `NaT` into `None`; pandas 1.x hands them over
+    as they are and `json.dumps` raises `TypeError` on the `NAType`. Both must produce
+    the same stored string, so the conversion is done here rather than left to the
+    installed pandas.
+    """
+    return {
+        name: None if value is pd.NA or value is pd.NaT else value
+        for name, value in row.to_dict().items()
+    }
+
+
 class Engine:
     def __init__(self) -> None:
         _logger.debug("Initialising Python Engine...")
@@ -162,6 +176,12 @@ class Engine:
                 ),
             )
         return self._jdbc(sql_query, online_conn, dataframe_type, read_options, schema)
+
+    def _register_spine_temporary_view(self, spine: Any, alias: str) -> None:
+        raise FeatureStoreException(
+            "ASOF batch inference needs the Hopsworks Query Service, which is not available for"
+            " this query. Remove read_options={'use_spark': True} or enable the service."
+        )
 
     def _is_flyingduck_query_supported(
         self, query: query.Query, read_options: dict[str, Any] | None = None
@@ -2730,7 +2750,7 @@ class Engine:
                 constants.FEATURE_LOGGING.EMPTY_REQUEST_PARAMETER_COLUMN_VALUE
                 if request_parameter_data.empty
                 else request_parameter_data.apply(
-                    lambda x: json.dumps(x.to_dict()), axis=1
+                    lambda x: json.dumps(_request_parameters_json(x)), axis=1
                 )
             )
 
@@ -3162,8 +3182,8 @@ class Engine:
         return log_vectors, None, None
 
     @staticmethod
-    def _read_feature_log(query, time_col):
-        df = query.read()
+    def _read_feature_log(query, time_col, online: bool = False):
+        df = query.read(online=online)
         return df.drop(["log_id", time_col], axis=1)
 
     def _check_supported_dataframe(self, dataframe: Any) -> bool:

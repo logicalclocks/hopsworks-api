@@ -826,14 +826,20 @@ _SPECS: dict[str, _Spec] = {
                 "databaseType",
                 "Database engine.",
                 required=True,
-                choices=("MYSQL", "POSTGRESQL", "ORACLE"),
+                choices=("MYSQL", "POSTGRESQL", "ORACLE", "CLICKHOUSE", "TERADATA"),
             ),
             _Opt(
                 "--host",
                 "host",
                 "Database host. Required, except for ORACLE with --wallet-path.",
             ),
-            _Opt("--port", "port", "Database port.", required=True, kind="int"),
+            _Opt(
+                "--port",
+                "port",
+                "Database port; the HTTP interface port (8123) for CLICKHOUSE, 1025 for TERADATA.",
+                required=True,
+                kind="int",
+            ),
             _Opt(
                 "--database",
                 "database",
@@ -1433,6 +1439,8 @@ def connector_infer_metadata(
         )
     if inferred.suggested_event_time:
         click.echo(f"Suggested event time: {inferred.suggested_event_time}")
+    if inferred.suggested_description:
+        click.echo(f"Suggested description: {inferred.suggested_description}")
 
 
 def _create_connector(ctx: click.Context, body: dict[str, Any]) -> None:

@@ -49,7 +49,7 @@ dependencies = [
     "tzlocal",
     "fsspec<2025.12.0",
     "retrying",
-    "hopsworks_aiomysql[sa]==0.2.2",
+    "hopsworks_aiomysql[sa]==0.2.3",
     "opensearch-py>=1.1.0,<=2.8.0",
     "tqdm",
     "grpcio>=1.49.1,<2.0.0",         # ^1.49.1
@@ -150,7 +150,7 @@ requires = ["setuptools", "hopsworks-apigen[build]>=1.0.4,<2.0.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-exclude = ["tests*"]
+exclude = ["tests*", "hopsworks.skills*"]
 include = [
     "../README.md",
     "../LICENSE",
@@ -162,6 +162,10 @@ include = [
 
 [tool.setuptools.package-data]
 "hopsworks.cli.templates" = ["*.md"]
+# Skill playbooks are data, not importable code: the folder names carry hyphens
+# and the tree has no __init__.py, so packages.find excludes it above and the
+# files ride along as package data instead.
+"hopsworks" = ["skills/**/*.md", "skills/**/*.py"]
 
 [tool.setuptools.dynamic]
 version = { attr = "hopsworks_common.version.__version__" }
@@ -202,6 +206,7 @@ exclude = [
     "site-packages",
     "venv",
     "java",
+    "hopsworks/skills",              # Copy-paste examples shipped to users, not SDK code
     "transformation_test_helper.py", # File excluded from ruff formatting to maintain formatting required for tests
 ]
 
@@ -277,6 +282,9 @@ disable = [
     "SIG305",
 ]
 ignore_kwargs = true
+# The skill scripts are examples a user copies into their own pipeline, held to
+# the conventions of the skill that ships them rather than to the SDK's.
+exclude = "hopsworks/skills/.*"
 
 [tool.coverage.run]
 source = ["hopsworks", "hsfs", "hsml", "hopsworks_common"]

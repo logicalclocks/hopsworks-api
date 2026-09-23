@@ -18,8 +18,9 @@ import copy
 
 import pytest
 from hopsworks_common.constants import SCALING_CONFIG
+from hsml import deployment_logging_config as deployment_logging_config
+from hsml import deployment_tracing_config as deployment_tracing_config
 from hsml import (
-    deployment_tracing_config,
     inference_batcher,
     inference_logger,
     predictor,
@@ -27,6 +28,7 @@ from hsml import (
     transformer,
     util,
 )
+from hsml.constants import INFERENCE_ENDPOINTS as IE
 from hsml.constants import MODEL, PREDICTOR
 
 
@@ -1245,6 +1247,55 @@ class TestPredictor:
         assert restored.tracing.enabled is True
         assert restored.tracing.otel_tracing_storage == "offline"
 
+    def test_feature_logging_wire_round_trip(self, mocker):
+        # The logging config rides the predictor as a nested payload and comes
+        # back typed; an unset config puts nothing on the wire.
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        mocker.patch(
+            "hsml.predictor.Predictor._validate_serving_tool",
+            return_value=PREDICTOR.SERVING_TOOL_KSERVE,
+        )
+        mocker.patch(
+            "hsml.predictor.Predictor._validate_resources",
+            return_value=resources.PredictorResources(0),
+        )
+
+        bare = predictor.Predictor(
+            name="my_model",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="my_model",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+        )
+        assert "featureLogging" not in bare.to_dict()
+        assert bare.feature_logging is None
+
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="my_model",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+            feature_logging={"flush_interval_seconds": 120, "batch_rows": 64},
+        )
+        assert isinstance(
+            p.feature_logging, deployment_logging_config.DeploymentLoggingConfig
+        )
+
+        serialized = p.to_dict()
+        assert serialized["featureLogging"] == {
+            "flushIntervalSeconds": 120,
+            "batchRows": 64,
+        }
+        restored = predictor.Predictor.from_response_json(serialized)
+        assert restored.feature_logging.flush_interval_seconds == 120
+        assert restored.feature_logging.batch_rows == 64
+        assert restored.feature_logging.sidecar_cpu is None
+
+        # Editing the attached config changes what the next save sends.
+        restored.feature_logging.flush_interval_seconds = 30
+        assert restored.to_dict()["featureLogging"]["flushIntervalSeconds"] == 30
+
     def test_git_wire_round_trip(self, mocker):
         # Git metadata should survive serialisation for git-backed agent deployments.
         self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
@@ -1836,7 +1887,6 @@ class TestPredictorDefaultPredictor:
         [
             ({"script_file": "s.py"}, MODEL.FRAMEWORK_PYTHON, "fv", True),
             ({"transformer": "t"}, MODEL.FRAMEWORK_PYTHON, "fv", True),
-            ({"api_protocol": "GRPC"}, MODEL.FRAMEWORK_PYTHON, "fv", True),
             ({}, MODEL.FRAMEWORK_SKLEARN, "fv", True),
             ({}, MODEL.FRAMEWORK_PYTHON, None, True),
             ({}, MODEL.FRAMEWORK_PYTHON, "fv", False),
@@ -1896,13 +1946,36 @@ class TestPredictorDefaultPredictor:
         no_fv.model_schema = None
         with pytest.raises(ValueError, match="no feature view"):
             predictor.Predictor.for_model(no_fv, name="d", default_predictor=True)
-        with pytest.raises(ValueError, match="API protocol is GRPC"):
-            predictor.Predictor.for_model(
-                self._model(mocker),
-                name="d",
-                default_predictor=True,
-                api_protocol="GRPC",
-            )
+
+    @pytest.mark.parametrize(
+        "kwargs, expected",
+        [
+            ({}, IE.API_PROTOCOL_REST),
+            ({"api_protocol": IE.API_PROTOCOL_GRPC}, IE.API_PROTOCOL_GRPC),
+            (
+                {"default_predictor": True, "api_protocol": IE.API_PROTOCOL_GRPC},
+                IE.API_PROTOCOL_GRPC,
+            ),
+        ],
+    )
+    def test_the_chosen_api_protocol_reaches_the_predictor(
+        self, mocker, kwargs, expected
+    ):
+        """REST is the default, and the default predictor serves either protocol."""
+        self._mock(mocker)
+        captured = {}
+        mocker.patch(
+            "hopsworks_common.util._get_predictor_for_model",
+            side_effect=lambda model, **kw: captured.update(kw) or "predictor",
+        )
+
+        deployed = predictor.Predictor.for_model(
+            self._model(mocker), name="d", **kwargs
+        )
+
+        assert captured["default_predictor"] is True
+        assert (captured.get("api_protocol") or IE.API_PROTOCOL_REST) == expected
+        assert deployed == "predictor"
 
     def test_forced_sklearn_and_custom_script_keep_schema(self, mocker):
         self._mock(mocker)
