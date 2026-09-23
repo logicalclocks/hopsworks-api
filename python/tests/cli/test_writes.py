@@ -8,6 +8,7 @@ test.
 
 from __future__ import annotations
 
+import inspect
 import json
 from datetime import datetime
 from unittest import mock
@@ -15,6 +16,7 @@ from unittest import mock
 import pytest
 from click.testing import CliRunner
 from hopsworks.cli.main import cli
+from hsfs.feature_view import FeatureView
 
 
 # --- fg delete ------------------------------------------------------------
@@ -328,6 +330,33 @@ def test_td_compute_with_split(mock_project):
     )
     assert result.exit_code == 0, result.output
     fv.create_train_test_split.assert_called_once()
+    # The method raises on a keyword it does not declare.
+    declared = inspect.signature(FeatureView.create_train_test_split).parameters
+    assert set(fv.create_train_test_split.call_args.kwargs) <= set(declared) - {
+        "kwargs"
+    }
+
+
+def test_td_compute_with_split_refuses_a_time_window(mock_project):
+    fs = mock_project.get_feature_store.return_value
+    fv = mock.MagicMock()
+    fs.get_feature_view.return_value = fv
+    result = CliRunner().invoke(
+        cli,
+        [
+            "td",
+            "compute",
+            "enriched",
+            "1",
+            "--split",
+            "train:0.8,test:0.2",
+            "--start-time",
+            "2024-01-01",
+        ],
+    )
+    assert result.exit_code == 2, result.output
+    assert "cannot be used with --split" in result.output
+    fv.create_train_test_split.assert_not_called()
 
 
 # --- model register --------------------------------------------------------
