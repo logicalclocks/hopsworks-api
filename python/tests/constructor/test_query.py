@@ -1324,6 +1324,19 @@ class TestReadBatches:
 
         assert engine_instance._stream_batches.call_args.args[4] == 7
 
+    def test_joined_features_are_declared_under_their_prefixed_names(self, mocker):
+        """The SQL output names a prefixed join's columns with the prefix."""
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        q = TestQuery.fg1.select_all().join(
+            TestQuery.fg2.select_all(), on=["id"], prefix="r_"
+        )
+
+        names = [f.name for f in q._output_features()]
+
+        assert names == ["id", "label", "tf_name", "r_id", "r_tf1_name"]
+        # The query's own features are not renamed.
+        assert [f.name for f in TestQuery.fg2.features] == ["id", "tf1_name"]
+
     @pytest.mark.parametrize("batch_size", [0, -1])
     def test_a_batch_size_below_one_is_refused(self, mocker, batch_size):
         q = self._query(mocker, mocker.Mock())

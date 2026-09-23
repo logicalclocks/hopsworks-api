@@ -116,3 +116,41 @@ class TestStreamedBatchesShareOneSchema:
         )
 
         assert pa.Table.from_batches(batches).num_rows == 4
+
+    def test_a_boolean_arriving_as_tinyint_is_a_boolean(self):
+        """The online store keeps a boolean as TINYINT, so rows carry 0 and 1."""
+        engine = Engine.__new__(Engine)
+        batches = self._batches(
+            engine,
+            [[(1,), (0,)], [(None,), (None,)]],
+            ["flag"],
+            [feature.Feature("flag", type="boolean")],
+        )
+
+        table = pa.Table.from_batches(batches)
+        assert table.schema.field("flag").type == pa.bool_()
+        assert table.column("flag").to_pylist() == [True, False, None, None]
+
+    def test_a_complex_feature_keeps_the_bytes_the_online_store_holds(self):
+        """An array is VARBINARY online; reading its bytes as a list would corrupt it."""
+        engine = Engine.__new__(Engine)
+        batches = self._batches(
+            engine,
+            [[(b"\x02\x04",), (None,)]],
+            ["items"],
+            [feature.Feature("items", type="array<int>")],
+        )
+
+        assert batches[0].schema.field("items").type == pa.binary()
+        assert batches[0].column(0).to_pylist() == [b"\x02\x04", None]
+
+    def test_a_name_two_features_share_is_not_declared(self):
+        declared = Engine._declared_arrow_types(
+            [
+                feature.Feature("amount", type="double"),
+                feature.Feature("amount", type="string"),
+                feature.Feature("id", type="bigint"),
+            ]
+        )
+
+        assert declared == {"id": pa.int64()}

@@ -406,7 +406,7 @@ class Engine:
                     break
                 columns = list(zip(*rows, strict=True))
                 arrays = [
-                    pa.array(list(column), type=declared.get(name))
+                    Engine._online_array(list(column), declared.get(name))
                     for column, name in zip(columns, names, strict=True)
                 ]
                 if batch_schema is None:
@@ -451,27 +451,51 @@ class Engine:
             ) from error
 
     @staticmethod
+    def _online_array(values: list[Any], declared: pa.DataType | None) -> pa.Array:
+        """One column of an online batch, built against its declared type."""
+        if declared is not None and pa.types.is_boolean(declared):
+            # The online store keeps a boolean as TINYINT, so it arrives as 0 or 1.
+            return pa.array(values).cast(pa.bool_())
+        return pa.array(values, type=declared)
+
+    @staticmethod
     def _declared_arrow_types(
         schema: list[feature.Feature] | None,
     ) -> dict[str, pa.DataType]:
-        """The Arrow type each feature declares, for the ones that have an Arrow type.
+        """The Arrow type each column of an online read arrives as, where it is known.
 
         Building every batch against a declared type is what makes an all-null
         batch describe its column the same way a full one does, and keeps a
         decimal's precision and scale from following the values that happened to
         arrive. A feature whose type has no Arrow equivalent is left out, and the
         first batch settles that column for the rest of the read.
+
+        The online store keeps arrays, maps and structs serialised in VARBINARY,
+        so those columns are declared binary, which is what the rows hold.
+        A name two features share with different types is left out too, since
+        the column it names cannot be told apart.
         """
         declared = {}
+        ambiguous = set()
         for feat in schema or []:
-            try:
-                declared[feat.name] = _convert_offline_type_to_pyarrow_type(feat.type)
-            except Exception:  # noqa: BLE001 - an unmappable type is settled by the first batch
-                _logger.debug(
-                    "No Arrow type for feature %s (%s); its batches follow the first",
-                    feat.name,
-                    feat.type,
-                )
+            offline_type = (feat.type or "").strip().lower()
+            if offline_type.startswith(("array<", "map<", "struct<")):
+                arrow_type = pa.binary()
+            else:
+                try:
+                    arrow_type = _convert_offline_type_to_pyarrow_type(feat.type)
+                except Exception:  # noqa: BLE001 - an unmappable type is settled by the first batch
+                    _logger.debug(
+                        "No Arrow type for feature %s (%s); its batches follow the first",
+                        feat.name,
+                        feat.type,
+                    )
+                    continue
+            if declared.get(feat.name, arrow_type) != arrow_type:
+                ambiguous.add(feat.name)
+            declared[feat.name] = arrow_type
+        for name in ambiguous:
+            del declared[name]
         return declared
 
     def _jdbc(
