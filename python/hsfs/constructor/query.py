@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import contextlib
+import copy
 import json
 import logging
 import warnings
@@ -542,7 +543,7 @@ class Query:
             read_options.get("arrow_flight_config"),
             # The query's own types, so every batch of this read describes its
             # columns the same way rather than following the values it holds.
-            schema=self.features,
+            schema=self._output_features(),
         )
         try:
             yield batches
@@ -554,6 +555,17 @@ class Query:
             close = getattr(batches, "close", None)
             if close is not None:
                 close()
+
+    def _output_features(self) -> list[Feature]:
+        """The query's features named as the columns of its SQL output, join prefixes included."""
+        features = list(self._left_features)
+        for join_obj in self.joins:
+            for feat in join_obj.query._left_features:
+                if join_obj.prefix:
+                    feat = copy.copy(feat)
+                    feat.name = join_obj.prefix + feat.name
+                features.append(feat)
+        return features
 
     def _read_with_time_filter(
         self,

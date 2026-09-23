@@ -372,6 +372,56 @@ class _Rendezvous:
         return self.peak
 
 
+class TestShutdownCancelsInFlightReads:
+    """A read still running must not hold the pool close open."""
+
+    def test_a_read_with_no_timeout_does_not_stall_the_close(self):
+        in_flight = []
+
+        class _WaitingPool(_FakePool):
+            """Like aiomysql: wait_closed waits for checked-out connections."""
+
+            async def wait_closed(self):
+                while in_flight:
+                    await asyncio.sleep(0.01)
+                self.waited = True
+
+        async def hold(connection_pool=None):
+            in_flight.append(True)
+            try:
+                await asyncio.sleep(3600)
+            finally:
+                in_flight.clear()
+
+        pool = _WaitingPool()
+        thread = AsyncTaskThread(connection_pool_initializer=_pool_initializer(pool))
+        thread.start()
+        future = thread._schedule(
+            AsyncTask(task_function=hold, requires_connection_pool=True)
+        )
+        while not in_flight:
+            time.sleep(0.01)
+
+        started = time.monotonic()
+        assert thread._shutdown(timeout=5) is True
+        assert time.monotonic() - started < 2
+        assert pool.waited
+        assert future.done()
+
+    def test_a_read_submitted_during_shutdown_is_refused(self):
+        thread = AsyncTaskThread(
+            connection_pool_initializer=_pool_initializer(_FakePool())
+        )
+        thread.start()
+        thread._ready.wait(5)
+        thread.stop_event.set()
+        try:
+            with pytest.raises(RuntimeError, match="shutting down"):
+                thread._submit(_read_task(), timeout=5)
+        finally:
+            thread._shutdown()
+
+
 class _Gone(Exception):
     """Stands in for the driver error a closed pooled connection raises."""
 

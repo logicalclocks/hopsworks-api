@@ -456,6 +456,29 @@ class ServingApi:
         # extract infer outputs
         return infer_response.outputs
 
+    def _warm_rest_transport(
+        self, deployment_instance, through_hopsworks: bool = False
+    ) -> None:
+        """Open the connection the first REST prediction reuses, without predicting.
+
+        A `GET` of the model's metadata has no side effects, and whatever it
+        answers, the session is left holding a connection with its TLS
+        handshake done. Requests sent through Hopsworks use the client session
+        that logging in and downloading the schema have already opened.
+        """
+        if through_hopsworks:
+            return
+        _client = client.istio._get_instance()
+        if _client is None:
+            return
+        path_params = self._get_istio_inference_path(
+            deployment_instance, base_only=True
+        ) + ["v1", "models", deployment_instance.name]
+        try:
+            _client._send_request("GET", path_params, with_base_path_params=False)
+        except Exception as e:  # noqa: BLE001 - the connection is open whatever the endpoint answers
+            _logger.debug("Warm-up request to %s answered %s", path_params, e)
+
     def _grpc_channel(self, deployment_instance):
         """The deployment's gRPC channel, created once and reused by every later call.
 

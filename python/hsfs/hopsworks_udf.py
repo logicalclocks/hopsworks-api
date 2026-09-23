@@ -26,7 +26,7 @@ import logging
 import re
 import textwrap
 import warnings
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, time
 from enum import Enum
@@ -69,6 +69,10 @@ _REQUEST_TRANSFORMATION_CONTEXT: contextvars.ContextVar[dict[str, Any] | None] =
 @contextlib.contextmanager
 def _serving_transformation_context(context: dict[str, Any] | None):
     """Make `context` the transformation context for this thread, for the duration."""
+    if context and not isinstance(context, dict):
+        raise FeatureStoreException(
+            "Transformation context variable must be passed as dictionary."
+        )
     token = _REQUEST_TRANSFORMATION_CONTEXT.set(context or None)
     try:
         yield
@@ -76,41 +80,13 @@ def _serving_transformation_context(context: dict[str, Any] | None):
         _REQUEST_TRANSFORMATION_CONTEXT.reset(token)
 
 
-class _RequestTransformationContext(Mapping):
-    """The transformation context of whichever request is reading it.
+def _fixed_context(context: dict[str, Any]) -> Callable[[], dict[str, Any]]:
+    """A context resolver that always answers with `context`, for a wrapper that is serialised to Spark."""
 
-    A cached wrapper's scope is shared by every caller of the UDF, so writing a
-    request's context into it and then running the wrapper is a race: another
-    request can overwrite the entry in between, and the first is transformed
-    under the second's context. The scope holds this instead, and it resolves
-    the context when the UDF reads it, on the thread that is reading.
-    """
+    def resolve() -> dict[str, Any]:
+        return context
 
-    __slots__ = ("_udf",)
-
-    def __init__(self, udf: HopsworksUdf):
-        self._udf = udf
-
-    def _current(self) -> dict[str, Any]:
-        return self._udf.transformation_context
-
-    def __getitem__(self, key):
-        return self._current()[key]
-
-    def __iter__(self):
-        return iter(self._current())
-
-    def __len__(self) -> int:
-        return len(self._current())
-
-    def __eq__(self, other) -> bool:
-        return self._current() == other
-
-    def __hash__(self):
-        raise TypeError("The transformation context is not hashable.")
-
-    def __repr__(self) -> str:
-        return repr(self._current())
+    return resolve
 
 
 class UDFExecutionMode(Enum):
@@ -753,9 +729,9 @@ class HopsworksUdf:
         # Adding variables required to be injected into the scope.
         variables_to_inject = {
             UDFKeyWords.STATISTICS.value: self.transformation_statistics,
-            # Resolved when the UDF reads it rather than written in now: the
-            # scope belongs to the cached wrapper, which every caller shares.
-            UDFKeyWords.CONTEXT.value: _RequestTransformationContext(self),
+            # Called by the wrapper on every run, which binds the result to a local `context` the UDF reads as a closure variable.
+            # The scope belongs to the cached wrapper, which every caller shares, so the context is resolved on the calling thread rather than written in.
+            "_transformation_context": self._current_transformation_context,
             "_output_col_names": self.output_column_names,
         }
         variables_to_inject.update(**kwargs)
@@ -810,6 +786,7 @@ class HopsworksUdf:
             + "\n"
             + (convert_timstamp_function + "\n" if date_time_output_index else "\n")
             + "def wrapper(*args):\n"
+            + "   context = _transformation_context()\n"
             + f"   {self._formatted_function_source}\n"
             + f"   transformed_features = {self.function_name}(*args)\n"
         )
@@ -877,6 +854,7 @@ class HopsworksUdf:
                 + f"""import pandas as pd
 {convert_timstamp_function}
 def renaming_wrapper(*args):
+    context = _transformation_context()
     {self._formatted_function_source}
     df = {self.function_name}(*args)
     if isinstance(df, tuple):
@@ -894,6 +872,7 @@ def renaming_wrapper(*args):
                 + f"""import pandas as pd
 {convert_timstamp_function}
 def renaming_wrapper(*args):
+    context = _transformation_context()
     {self._formatted_function_source}
     df = {self.function_name}(*args)
     # If the output is a dataframe, then it should be a single column dataframe, so we can squeeze it to a series.
@@ -1116,10 +1095,13 @@ def renaming_wrapper(*args):
             # current values are None / empty prevents the cached scope from
             # carrying state from a previous call.
             scope[UDFKeyWords.STATISTICS.value] = self.transformation_statistics
-            # The context is not refreshed here. The scope holds a resolver that
-            # reads it when the UDF does, so assigning the caller's context now
-            # would be the race this exists to avoid: another request can
-            # overwrite the entry between this return and the wrapper running.
+            if engine_type == "spark":
+                # A Spark UDF is serialised with its scope, so it carries the context as a value, refreshed per call as the statistics are.
+                scope["_transformation_context"] = _fixed_context(
+                    self.transformation_context
+                )
+            # Otherwise the scope holds a resolver the wrapper calls when it runs, so nothing request-specific is assigned here.
+            # Assigning the caller's context now would be a race: another request can overwrite the entry between this return and the wrapper running.
             return wrapper_fn
 
         # Cache miss: generate a new wrapper.
@@ -1131,6 +1113,9 @@ def renaming_wrapper(*args):
             from pyspark.sql.functions import pandas_udf
 
             wrapper_fn, scope = self._pandas_udf_wrapper()
+            scope["_transformation_context"] = _fixed_context(
+                self.transformation_context
+            )
             spark_udf = pandas_udf(
                 f=wrapper_fn,
                 returnType=self._create_pandas_udf_return_schema_from_list(),
@@ -1146,6 +1131,9 @@ def renaming_wrapper(*args):
             from pyspark.sql.functions import udf as pyspark_udf
 
             wrapper_fn, scope = self._python_udf_wrapper(rename_outputs=True)
+            scope["_transformation_context"] = _fixed_context(
+                self.transformation_context
+            )
             spark_udf = pyspark_udf(
                 f=wrapper_fn,
                 returnType=self._create_pandas_udf_return_schema_from_list(),
@@ -1622,6 +1610,9 @@ def renaming_wrapper(*args):
     @property
     def execution_mode(self) -> UDFExecutionMode:
         return self._execution_mode
+
+    def _current_transformation_context(self) -> dict[str, Any]:
+        return self.transformation_context
 
     @public
     @property

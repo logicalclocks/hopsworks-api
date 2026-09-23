@@ -767,36 +767,45 @@ class TestInitPredict:
         eng._serving_api = mocker.Mock()
         return eng
 
-    def _deployment(self, mocker, protocol="REST"):
+    def _deployment(self, mocker, protocol="REST", serving_tool="KSERVE"):
         deployment = mocker.Mock()
         deployment.api_protocol = protocol
+        deployment.predictor.serving_tool = serving_tool
         deployment._predict_init_lock = threading.Lock()
+        deployment._predict_prepared = False
         return deployment
 
-    def test_rest_prepares_the_schema_and_the_istio_client(self, mocker):
-        istio = mocker.patch("hopsworks_common.client.istio._get_instance")
+    def test_rest_prepares_the_schema_and_opens_the_connection(self, mocker):
         eng = self._engine(mocker)
         deployment = self._deployment(mocker)
 
         eng._init_predict(deployment)
 
-        istio.assert_called_once_with()
+        eng._serving_api._warm_rest_transport.assert_called_once_with(deployment, False)
         eng._serving_api._grpc_channel.assert_not_called()
         eng._serving_api._send_inference_request.assert_not_called()
+        assert deployment._predict_prepared is True
+
+    def test_a_deployment_behind_hopsworks_warms_through_hopsworks(self, mocker):
+        eng = self._engine(mocker)
+        deployment = self._deployment(mocker, serving_tool="DEFAULT")
+
+        eng._init_predict(deployment)
+
+        eng._serving_api._warm_rest_transport.assert_called_once_with(deployment, True)
 
     def test_grpc_prepares_the_channel(self, mocker):
-        mocker.patch("hopsworks_common.client.istio._get_instance")
         eng = self._engine(mocker)
         deployment = self._deployment(mocker, protocol="GRPC")
 
         eng._init_predict(deployment)
 
         eng._serving_api._grpc_channel.assert_called_once_with(deployment)
+        eng._serving_api._warm_rest_transport.assert_not_called()
         eng._serving_api._send_inference_request.assert_not_called()
 
     def test_preparation_never_sends_a_prediction(self, mocker):
         """A prediction can log rows and have side effects, so it is not a warm-up."""
-        mocker.patch("hopsworks_common.client.istio._get_instance")
         eng = self._engine(mocker)
         deployment = self._deployment(mocker)
 
@@ -806,7 +815,6 @@ class TestInitPredict:
 
     def test_concurrent_callers_prepare_once(self, mocker):
         """Four first callers must not each download the schema and open a transport."""
-        mocker.patch("hopsworks_common.client.istio._get_instance")
         eng = self._engine(mocker)
         deployment = self._deployment(mocker, protocol="GRPC")
         entered = []
@@ -821,10 +829,64 @@ class TestInitPredict:
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as callers:
             list(callers.map(lambda _: eng._init_predict(deployment), range(4)))
 
-        assert eng._serving_api._grpc_channel.call_count == 4, (
-            "each caller still asks, but never while another is preparing"
+        assert entered == [0]
+
+    def test_predict_shares_the_preparation(self, mocker):
+        """A predict racing init_predict must not prepare a second time."""
+        eng = self._engine(mocker)
+        deployment = self._deployment(mocker, protocol="GRPC")
+
+        eng._init_predict(deployment)
+        eng._prepare_predict(deployment)
+
+        eng._serving_api._grpc_channel.assert_called_once_with(deployment)
+
+    def test_a_failed_preparation_is_tried_again(self, mocker):
+        eng = self._engine(mocker)
+        deployment = self._deployment(mocker, protocol="GRPC")
+        eng._serving_api._grpc_channel.side_effect = [RuntimeError("down"), "channel"]
+
+        with pytest.raises(RuntimeError):
+            eng._prepare_predict(deployment)
+        assert deployment._predict_prepared is False
+
+        eng._prepare_predict(deployment)
+        assert deployment._predict_prepared is True
+
+
+class TestWarmRestTransport:
+    def test_a_metadata_get_opens_the_connection(self, mocker):
+        from hsml.core import serving_api
+
+        istio = mocker.patch("hsml.core.serving_api.client.istio._get_instance")
+        deployment = mocker.Mock()
+        deployment.name = "fraud"
+        deployment.project_namespace = "proj"
+
+        serving_api.ServingApi()._warm_rest_transport(deployment)
+
+        istio.return_value._send_request.assert_called_once_with(
+            "GET",
+            ["v1", "proj", "fraud", "v1", "models", "fraud"],
+            with_base_path_params=False,
         )
-        assert entered == [0, 1, 2, 3]
+
+    def test_an_error_answer_is_not_raised(self, mocker):
+        from hsml.core import serving_api
+
+        istio = mocker.patch("hsml.core.serving_api.client.istio._get_instance")
+        istio.return_value._send_request.side_effect = RuntimeError("404")
+
+        serving_api.ServingApi()._warm_rest_transport(mocker.Mock())
+
+    def test_through_hopsworks_sends_nothing(self, mocker):
+        from hsml.core import serving_api
+
+        istio = mocker.patch("hsml.core.serving_api.client.istio._get_instance")
+
+        serving_api.ServingApi()._warm_rest_transport(mocker.Mock(), True)
+
+        istio.assert_not_called()
 
 
 class TestSchemaIsRetryable:

@@ -99,6 +99,7 @@ class Deployment:
         # Concurrent first callers prepare once and share the outcome, rather
         # than each downloading the schema and opening a transport.
         self._predict_init_lock = threading.Lock()
+        self._predict_prepared = False
 
     @public
     @usage._method_logger
@@ -379,9 +380,12 @@ class Deployment:
         """Prepare this deployment for inference, so the first `predict()` does not.
 
         Downloads the schema the deployment's revision names and connects the
-        transport its API protocol selects. Calling it is optional: `predict()`
-        prepares the same way on its first call, through the same code. Call it
-        when the first request should not pay for discovery, for instance when
+        transport its API protocol selects: the gRPC channel, or for REST an
+        open connection to the model's endpoint, made with a metadata `GET`.
+        Calling it is optional: `predict()` prepares the schema and the channel
+        the same way on its first call, through the same code, and opens its
+        connection with the request itself. Call it when the first request
+        should not pay for discovery or the connection setup, for instance when
         a serving process starts before it takes traffic.
 
         No prediction is sent. A prediction can log rows and have application
