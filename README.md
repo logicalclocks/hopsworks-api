@@ -150,7 +150,7 @@
 | python/hopsworks\_common/app.py                                                  |      297 |       16 |     95% |134, 143, 181, 239, 255, 267, 273, 354, 439-442, 486-487, 551, 557 |
 | python/hopsworks\_common/client/\_\_init\_\_.py                                  |       87 |       15 |     83% |45-61, 69, 82, 95, 128, 136, 146, 186, 194 |
 | python/hopsworks\_common/client/auth.py                                          |       36 |       14 |     61% |39-40, 52, 55-56, 71-72, 77-83 |
-| python/hopsworks\_common/client/base.py                                          |      211 |       55 |     74% |73-78, 86-91, 95, 99, 103-104, 115, 118-119, 161, 191, 195, 224, 353, 358, 364, 385, 392-404, 409-411, 419-424, 428-434, 438-446 |
+| python/hopsworks\_common/client/base.py                                          |      231 |       53 |     77% |74-79, 87-92, 96, 100, 104-105, 116, 119-120, 162, 192, 196, 225, 354, 359, 365, 386, 393-405, 431, 441-443, 451-455, 459-464, 468-475 |
 | python/hopsworks\_common/client/exceptions.py                                    |      148 |        8 |     95% |48-50, 56, 155-159, 167, 179 |
 | python/hopsworks\_common/client/external.py                                      |      206 |       74 |     64% |63-106, 121, 127-139, 144-189, 192-196, 271-294, 392-393, 401-405, 432, 435, 439, 443 |
 | python/hopsworks\_common/client/hopsworks.py                                     |      102 |       63 |     38% |56-82, 86-92, 96, 99, 102, 105, 113-118, 126-131, 134-142, 145-149, 157-164, 175, 178, 182 |
@@ -497,7 +497,7 @@
 | python/hsml/utils/schema/tensor.py                                               |        8 |        0 |    100% |           |
 | python/hsml/utils/schema/tensor\_schema.py                                       |       34 |        0 |    100% |           |
 | python/hsml/version.py                                                           |        2 |        2 |      0% |     17-22 |
-| **TOTAL**                                                                        | **49077** | **13144** | **73%** |           |
+| **TOTAL**                                                                        | **49097** | **13142** | **73%** |           |
 
 
 ## Setup coverage badge
