@@ -325,6 +325,11 @@ def _encode_row(complex_feature_writers, writer, row):
     # all keys in the row
     if isinstance(row, dict):
         for k in row:
+            # NaT is a datetime subclass, so it would pass the timezone branch below and reach avro as a
+            # timestamp it cannot write.
+            if HAS_PANDAS and row[k] is pd.NaT:
+                row[k] = None
+                continue
             # for avro to be able to serialize them, they need to be python data types
             if HAS_NUMPY and isinstance(row[k], np.ndarray):
                 row[k] = row[k].tolist()
