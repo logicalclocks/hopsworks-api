@@ -17,13 +17,13 @@
 from __future__ import annotations
 
 import base64
+import contextlib
 import hashlib
 import logging
 import os
 import struct
-import threading
+import tempfile
 import time
-from pathlib import Path
 
 import furl
 import requests
@@ -410,11 +410,18 @@ class Client:
 
         The PEM paths are derived from the project and connector id only, so every connector object for the same Kafka connector in a process writes the same files.
         Truncating one in place made a concurrent confluent_kafka Producer fail with "no certificate or crl found".
+        The file is created with mode 0600 whatever the umask, since one of them is an unencrypted private key under /tmp.
         """
-        temp_path = f"{path}.{os.getpid()}.{threading.get_ident()}.tmp"
-        with Path(temp_path).open("w") as f:
-            f.write(content)
-        os.replace(temp_path, path)
+        directory, name = os.path.split(path)
+        fd, temp_path = tempfile.mkstemp(dir=directory or None, prefix=f".{name}.")
+        try:
+            with os.fdopen(fd, "w") as f:
+                f.write(content)
+            os.replace(temp_path, path)
+        except BaseException:
+            with contextlib.suppress(FileNotFoundError):
+                os.unlink(temp_path)
+            raise
 
     @staticmethod
     def _der_to_pem(der_bytes, pem_type="CERTIFICATE"):

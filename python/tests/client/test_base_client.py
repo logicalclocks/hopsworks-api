@@ -15,6 +15,7 @@
 #
 
 import os
+import stat
 import threading
 
 import pytest
@@ -156,3 +157,25 @@ class TestBaseClient:
 
         assert seen == {len(content)}
         assert sorted(p.name for p in tmp_path.iterdir()) == ["ca_chain.pem"]
+
+    def test_replace_file_keeps_the_file_private(self, tmp_path):
+        path = tmp_path / "client_key.pem"
+        path.write_text("old")
+        os.chmod(path, 0o600)
+        previous = os.umask(0o022)
+        try:
+            Client._replace_file(str(path), "new")
+        finally:
+            os.umask(previous)
+
+        assert path.read_text() == "new"
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+    def test_replace_file_removes_the_temporary_file_on_failure(self, tmp_path, mocker):
+        path = tmp_path / "ca_chain.pem"
+        mocker.patch("os.replace", side_effect=OSError("disk full"))
+
+        with pytest.raises(OSError, match="disk full"):
+            Client._replace_file(str(path), "content")
+
+        assert list(tmp_path.iterdir()) == []
