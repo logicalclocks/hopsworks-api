@@ -65,21 +65,37 @@ def _validate(doc: dict) -> list[str]:
 # region The command and the agents
 
 
-def test_the_cli_bundle_ships_the_command_and_both_agents_and_retires_fti():
+COMMANDS = ["hops.md", "hops-ml.md"]
+AGENTS = {
+    # The ML agents inherit the model of /hops-ml, the session's own.
+    "hops-train-agent": None,
+    "hops-infer-agent": None,
+    # Spawned from /hops, which runs on Haiku: inheriting would build on Haiku too.
+    "hops-dashboard-builder": "opus",
+    "hops-app-builder": "opus",
+}
+
+
+def _front(name: str) -> dict:
+    return yaml.safe_load(
+        (TEMPLATES / name).read_text(encoding="utf-8").split("---")[1]
+    )
+
+
+def test_the_cli_bundle_ships_both_commands_and_every_agent_and_retires_fti():
     files = scaffold.build_files(internal=True, project="p")
-    assert ".claude/commands/hops.md" in files
-    assert ".claude/agents/hops-train-agent.md" in files
-    assert ".claude/agents/hops-infer-agent.md" in files
+    for command in COMMANDS:
+        assert f".claude/commands/{command}" in files
+    for agent in AGENTS:
+        assert f".claude/agents/{agent}.md" in files
     assert not any("hops-fti" in path for path in files)
     assert not (TEMPLATES / "hops-fti.md").exists()
 
 
-@pytest.mark.parametrize("name", ["hops-train-agent", "hops-infer-agent"])
-def test_agent_definitions_use_the_subagent_frontmatter(name):
-    text = (TEMPLATES / f"{name}.md").read_text(encoding="utf-8")
-    front = yaml.safe_load(text.split("---")[1])
+@pytest.mark.parametrize(("name", "model"), sorted(AGENTS.items()))
+def test_agent_definitions_use_the_subagent_frontmatter(name, model):
+    front = _front(f"{name}.md")
     assert front["name"] == name
-    assert front["description"]
     # `tools` is the key Claude Code reads for subagents; `allowed-tools` is ignored there.
     assert "allowed-tools" not in front
     assert set(front["tools"].split(", ")) == {
@@ -90,37 +106,59 @@ def test_agent_definitions_use_the_subagent_frontmatter(name):
         "Write",
         "Bash",
     }
-    assert "model" not in front
+    assert front.get("model") == model
     assert "never asks the user" in front["description"]
 
 
-def test_the_command_dispatches_every_factory_and_verb():
+def test_the_menu_runs_on_haiku_and_hands_every_build_to_a_stronger_agent():
+    front = _front("hops.md")
     text = (TEMPLATES / "hops.md").read_text(encoding="utf-8")
-    front = yaml.safe_load(text.split("---")[1])
-    assert "argument-hint" in front
-    for heading in (
-        "## /hops ml",
-        "## /hops dashboard",
-        "## /hops app",
-        "## /hops status",
-    ):
-        assert heading in text
-    for verb in ("`status`", "`verify`", "`stop`", "`dashboard`", "`app`", "`ml`"):
-        assert verb in text
-    assert "hops-train-agent" in text and "hops-infer-agent" in text
+    assert front["model"] == "haiku"
     assert "AskUserQuestion" in text
+    for section in ("## Explore", "## Status", "## Dashboard", "## App"):
+        assert section in text
+    assert "hops-dashboard-builder" in text and "hops-app-builder" in text
+    assert "`/hops-ml`" in text
+    # The menu carries no build instructions of its own.
+    for build_step in ("hops app create", "dashboard_program.py", "system_template"):
+        assert build_step not in text
+    # State the first menu needs is injected, not fetched by a tool call.
+    assert "!`ls -d */system.yaml" in text
 
 
-def test_every_skill_the_templates_name_is_shipped():
+def test_the_ml_factory_runs_on_the_session_model():
+    front = _front("hops-ml.md")
+    text = (TEMPLATES / "hops-ml.md").read_text(encoding="utf-8")
+    assert "model" not in front
+    assert "argument-hint" in front
+    for phase in (
+        "### reqs",
+        "### data",
+        "### features",
+        "### train",
+        "### infer",
+        "### app",
+        "### verify",
+        "### stop",
+        "### Finishing",
+    ):
+        assert phase in text
+    for agent in AGENTS:
+        assert agent in text
+    assert "!`hops fg list" in text and "!`ls -d */system.yaml" in text
+
+
+def test_every_skill_and_agent_the_templates_name_is_shipped():
     shipped = {p.parent.name for p in SKILLS.glob("*/*/SKILL.md")}
-    for template in ("hops.md", "hops-train-agent.md", "hops-infer-agent.md"):
+    for template in [*COMMANDS, *(f"{a}.md" for a in AGENTS)]:
         text = (TEMPLATES / template).read_text(encoding="utf-8")
         named = set(re.findall(r"\*\*(hops-[a-z-]+)\*\*", text))
         named |= set(re.findall(r"`(hops-[a-z-]+)/references/", text))
-        agents = {n for n in named if n.endswith("-agent")}
+        agents = {n for n in named if n in AGENTS}
         assert all((TEMPLATES / f"{a}.md").is_file() for a in agents), agents
         named -= agents
-        assert named, template
+        # The menu loads no skill; everything that builds does.
+        assert named or template == "hops.md", template
         assert named <= shipped, f"{template} names missing skills: {named - shipped}"
 
 
@@ -128,11 +166,9 @@ def test_the_repository_dev_copies_match_the_templates():
     repo_claude = Path(scaffold.__file__).resolve().parents[3] / ".claude"
     if not repo_claude.is_dir():
         pytest.skip("not running from a source checkout")
-    for rel, template in (
-        ("commands/hops.md", "hops.md"),
-        ("agents/hops-train-agent.md", "hops-train-agent.md"),
-        ("agents/hops-infer-agent.md", "hops-infer-agent.md"),
-    ):
+    pairs = [(f"commands/{c}", c) for c in COMMANDS]
+    pairs += [(f"agents/{a}.md", f"{a}.md") for a in AGENTS]
+    for rel, template in pairs:
         assert (repo_claude / rel).read_text(encoding="utf-8") == (
             TEMPLATES / template
         ).read_text(encoding="utf-8")

@@ -11,7 +11,7 @@ An **online inference pipeline** is one of the three FTI pipelines (Feature, Tra
 
 - **Input:** a registered model + an online-serving feature view.
 - **Output:** a running KServe HTTP endpoint serving predictions.
-  Inside a `/hops ml` system the output is also the `inference` block of `system.yaml`
+  Inside a `/hops-ml` system the output is also the `inference` block of `system.yaml`
   (`mode: realtime`, the deployment pinned to `realtime.model_version`): write that
   block and preserve every other line
   ([hops-reqs/references/system-yaml.md](../hops-reqs/references/system-yaml.md)).
@@ -367,7 +367,7 @@ those vectors matches the deployment's predictions, within
 training/serving skew check, and it is why the inference environment must hold
 `training.environment.transformation_libraries` at exactly those versions.
 
-Inside a `/hops ml` system the deployment is the registered model with the
+Inside a `/hops-ml` system the deployment is the registered model with the
 template's `src/<slug_pkg>/predictor.py`, a `DefaultPredict` subclass that keeps
 the default feature lookup, transformations and schema validation but returns
 the positive-class probability for a classifier, the number `evaluate.py` and

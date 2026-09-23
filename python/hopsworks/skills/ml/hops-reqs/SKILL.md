@@ -1,13 +1,13 @@
 ---
 name: hops-reqs
-description: Specify and build an ML system on Hopsworks as feature, training and inference (FTI) pipelines recorded in one system.yaml. Auto-invoke when the user wants to build an ML system, predict something from their data, write down ML requirements, or follow or resume a system.yaml by hand; the /hops ml command loads it. Covers the system types and SLA vocabulary, the system.yaml schema, the phase gates, the data-source routes, the system template, the test harness and the repository contract.
+description: Specify and build an ML system on Hopsworks as feature, training and inference (FTI) pipelines recorded in one system.yaml. Auto-invoke when the user wants to build an ML system, predict something from their data, write down ML requirements, or follow or resume a system.yaml by hand; the /hops-ml command loads it. Covers the system types and SLA vocabulary, the system.yaml schema, the phase gates, the data-source routes, the system template, the test harness and the repository contract.
 ---
 
 # ML system requirements and the system of record
 
 An ML system is decomposed into separately developed and operated **feature,
 training and inference pipelines**, connected only through the feature store,
-and specified in one YAML file, `<repo>/<slug>/system.yaml`. `/hops ml` (Claude
+and specified in one YAML file, `<repo>/<slug>/system.yaml`. `/hops-ml` (Claude
 Code) drives it phase by phase; any agent can follow the same file by hand.
 
 ## Contract
