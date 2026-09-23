@@ -455,9 +455,8 @@ def offline_fg_materialization(
     # limit the number of records ingested
     # default limit is 5M
     limit = 5000000
-    write_options = job_conf.get("write_options", {})
-    if write_options:
-        limit = int(write_options.get("job_limit", limit))
+    write_options = write_options_of(job_conf)
+    limit = int(write_options.get("job_limit", limit))
     filtered_df = filtered_df.limit(limit)
 
     # deserialize dataframe so that it can be properly saved
