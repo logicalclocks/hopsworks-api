@@ -411,13 +411,25 @@ class Client:
         The PEM paths are derived from the project and connector id only, so every connector object for the same Kafka connector in a process writes the same files.
         Truncating one in place made a concurrent confluent_kafka Producer fail with "no certificate or crl found".
         The file is created with mode 0600 whatever the umask, since one of them is an unencrypted private key under /tmp.
+        A file that already holds `content` is left alone: the stores rarely change, and Windows refuses to replace a file another handle has open.
         """
+        with contextlib.suppress(OSError), open(path) as f:
+            if f.read() == content:
+                return
         directory, name = os.path.split(path)
         fd, temp_path = tempfile.mkstemp(dir=directory or None, prefix=f".{name}.")
         try:
             with os.fdopen(fd, "w") as f:
                 f.write(content)
-            os.replace(temp_path, path)
+            for attempt in range(50):
+                try:
+                    os.replace(temp_path, path)
+                    break
+                except PermissionError:
+                    # Windows: a reader has the target open; it is released within milliseconds.
+                    if attempt == 49:
+                        raise
+                    time.sleep(0.02)
         except BaseException:
             with contextlib.suppress(FileNotFoundError):
                 os.unlink(temp_path)
