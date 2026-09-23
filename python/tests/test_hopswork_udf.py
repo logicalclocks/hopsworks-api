@@ -1530,12 +1530,12 @@ def test_function():
         print(scope)
 
         assert scope["_output_col_names"] == ["test_func_feature_"]
-        assert scope["context"] == {"test_value": 100}
+        assert scope["_transformation_context"]() == {"test_value": 100}
         assert all(
             value in scope
             for value in {
                 "_output_col_names",
-                "context",
+                "_transformation_context",
             }
         )
 
@@ -1552,10 +1552,11 @@ def test_function():
         scope = test_func._prepare_transformation_function_scope()
 
         assert scope["_output_col_names"] == ["test_func_feature_"]
-        assert scope["context"] == {"test_value": 100}
+        assert scope["_transformation_context"]() == {"test_value": 100}
         assert scope["statistics"] == 10
         assert all(
-            value in scope for value in {"_output_col_names", "context", "statistics"}
+            value in scope
+            for value in {"_output_col_names", "_transformation_context", "statistics"}
         )
 
     def test_prepare_transformation_function_scope_kwargs_statistics_context(self):
@@ -1571,12 +1572,17 @@ def test_function():
         scope = test_func._prepare_transformation_function_scope(test="values")
 
         assert scope["_output_col_names"] == ["test_func_feature_"]
-        assert scope["context"] == {"test_value": 100}
+        assert scope["_transformation_context"]() == {"test_value": 100}
         assert scope["statistics"] == 10
         assert scope["test"] == "values"
         assert all(
             value in scope
-            for value in {"_output_col_names", "context", "statistics", "test"}
+            for value in {
+                "_output_col_names",
+                "_transformation_context",
+                "statistics",
+                "test",
+            }
         )
 
     @pytest.mark.parametrize("execution_mode", ["python", "pandas", "default"])
@@ -1898,12 +1904,40 @@ class TestACachedWrapperDoesNotShareOneRequestsContext:
         function = self._udf()
         function._get_udf(online=True, engine_type="python")
         scope = next(iter(function._udf_cache.values()))[1]
-        in_scope = scope[hopsworks_udf.UDFKeyWords.CONTEXT.value]
+        resolve = scope["_transformation_context"]
 
         with hopsworks_udf._serving_transformation_context({"offset": 1}):
-            assert in_scope["offset"] == 1
+            assert resolve()["offset"] == 1
         with hopsworks_udf._serving_transformation_context({"offset": 2}):
-            assert in_scope["offset"] == 2
+            assert resolve()["offset"] == 2
+
+    @pytest.mark.parametrize("mode", ["python", "pandas"])
+    def test_the_udf_is_handed_a_real_dict(self, mode):
+        """A read-only view broke UDFs that copy, extend or serialise their context."""
+        import pandas as pd
+
+        @udf(int, mode=mode)
+        def uses_dict(feature, context):
+            import json
+
+            assert isinstance(context, dict)
+            extended = context.copy()
+            extended.setdefault("extra", 1)
+            json.dumps(context | {"more": 2})
+            return feature + extended["offset"] + extended["extra"]
+
+        uses_dict.output_column_names = ["out"]
+        wrapper = uses_dict._get_udf(online=(mode == "python"), engine_type="python")
+        with hopsworks_udf._serving_transformation_context({"offset": 10}):
+            if mode == "python":
+                assert wrapper(1) == 12
+            else:
+                assert wrapper(pd.Series([1])).tolist() == [12]
+
+    def test_a_request_context_that_is_not_a_dict_is_refused(self):
+        with pytest.raises(FeatureStoreException, match="as dictionary"):  # noqa: SIM117
+            with hopsworks_udf._serving_transformation_context(["not", "a", "dict"]):
+                pass
 
     def test_two_threads_running_the_cached_wrapper_keep_their_own(self):
         function = self._udf()
