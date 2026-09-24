@@ -106,9 +106,19 @@ data** (when there is no data yet). Record one `requirements.data_sources+=` ent
   `data.<name>.generator.story=<the story>` and `data.status=pending`;
 - **new data source**: ask which system holds the data, proposing connector types from the table in
   `data-sources.md` (Snowflake, a SQL database, S3 and so on). Ask for that type's required options
-  that are not secrets, all in one free-text answer. For the secret, print the exact
-  `hops datasource create <type> <name> ... --password -` line for the user to run in their own
-  terminal, and wait until `hops datasource info <name>` finds it. Then list its tables
+  that are not secrets, all in one free-text answer. Never ask for a secret: print the exact
+  command for the user to paste into a **separate shell, not Claude Code's `!` prefix** (that puts
+  it in the conversation). Read each secret without echo into its `HOPSWORKS_DS_<TYPE>_<OPTION>`
+  variable (the table in `data-sources.md` names it), inside a subshell:
+
+  ```bash
+  ( read -rsp 'Snowflake password: ' HOPSWORKS_DS_SNOWFLAKE_PASSWORD; echo
+    export HOPSWORKS_DS_SNOWFLAKE_PASSWORD
+    hops datasource create snowflake <name> --url <url> --user <user> ... )
+  ```
+
+  Never print `--password -` for a terminal: it echoes what is typed. Ask the user to say when it
+  has run, then check with `hops datasource info <name>`. Then list its tables
   (`hops datasource databases <name>`, `hops datasource tables <name> --database <db>`), ask which
   table, and record `{name, kind: datasource, type, connector, table, status: connected}`. Mounting
   or ingesting it is `/hops-build`'s job.

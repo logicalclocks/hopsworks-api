@@ -32,9 +32,21 @@ repository. A secret option takes `-` to read one line from stdin, or its value
 from `HOPSWORKS_DS_<TYPE>_<OPTION>`. The agent's shell has no terminal to type
 into, so the data phase offers two ways, in this order:
 
-- Print the exact `hops datasource create <type> <name> ... --password -` line
-  for the user to run in their own terminal, then continue once
-  `hops datasource info <name>` finds the connector.
+- Print the exact command for the user to paste into a separate shell, then
+  continue once `hops datasource info <name>` finds the connector. It reads each
+  secret with `read -rs`, so nothing is echoed, into that secret's environment
+  variable inside a subshell, so nothing outlives the command:
+
+  ```bash
+  ( read -rsp 'Snowflake password: ' HOPSWORKS_DS_SNOWFLAKE_PASSWORD; echo
+    export HOPSWORKS_DS_SNOWFLAKE_PASSWORD
+    hops datasource create snowflake acme_snowflake --url ... --user ... --database ... )
+  ```
+
+  One `read -rsp` per secret the chosen mode needs. Tell the user not to run it
+  with Claude Code's `!` prefix, which puts the command and its output into the
+  conversation, and not to use `--password -` at a terminal, which echoes what
+  is typed.
 - The user writes the secret to a file outside the repository (`chmod 600`),
   and the data phase runs the command with `--password - < <file>`, then asks
   the user to delete the file. The file's content never appears in a command or

@@ -120,8 +120,8 @@ Make every `requirements.data_sources` entry `present` and record it under `data
   key and event time must match the declared grain. A mismatch goes back to `reqs` as an
   `open_question`.
 - New connector: follow the secret procedure in `references/data-sources.md` (print the exact
-  `hops datasource create <type> <name> ... --password -` line for the user's own terminal, or
-  redirect a file the user wrote), confirm with `hops datasource info`, find and inspect the
+  command, which reads each secret with `read -rs` inside a subshell, for the user to paste into a
+  separate shell, or redirect a file the user wrote), confirm with `hops datasource info`, find and inspect the
   table, then mount (offline reads) or ingest (online, vector index, or an API) by the
   **hops-data-sources** rule. A connector is created once and never deleted.
 - File or URL: land it under `Resources/<slug>/data/`.
