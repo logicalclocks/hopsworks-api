@@ -714,7 +714,14 @@ def _interview(
             for p in existing
             if (_read(p).get("requirements") or {}).get("status") != "met"
         ]
-        options = [(f"Continue {p.name}", "interview not finished") for p in pending]
+        # The repository is the interview's last question, so a system that has
+        # one is waiting only for /hops-build.
+        options = [
+            (f"Build {p.name}", "interview done; starts /hops-build")
+            if (_read(p).get("system") or {}).get("repo")
+            else (f"Continue {p.name}", "interview not finished")
+            for p in pending
+        ]
         options.append(("Start a new ML system", ""))
         picked = _choose("What do you want to build?", options)
         if picked < len(pending):

@@ -170,3 +170,14 @@ def test_a_system_from_an_older_template_still_resumes(tmp_path, monkeypatch, qu
     (tmp_path / "recs-example" / "set.py").unlink()
     done = _run(tmp_path, monkeypatch, [], "recs-example")
     assert done.exit_code == 0, done.output
+
+
+def test_a_finished_interview_is_offered_as_ready_to_build(
+    tmp_path, monkeypatch, quiet
+):
+    first = _run(tmp_path, monkeypatch, ["2", "1", "1"])
+    assert first.exit_code == 0, first.output
+    done = _run(tmp_path, monkeypatch, ["1"])
+    assert done.exit_code == 0, done.output
+    assert "Build churn-example" in done.output
+    assert 'claude "/hops-build churn-example"' in done.output
