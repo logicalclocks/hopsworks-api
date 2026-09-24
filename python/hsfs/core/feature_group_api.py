@@ -17,7 +17,12 @@ from __future__ import annotations
 
 import warnings
 
+import humps
 from hopsworks_common import client
+from hopsworks_common.client.exceptions import (
+    PlatformIntelligenceException,
+    RestAPIError,
+)
 from hsfs import decorators, feature_group_commit, util
 from hsfs import feature_group as fg_mod
 from hsfs.core import (
@@ -26,6 +31,16 @@ from hsfs.core import (
     ingestion_job_conf,
     job,
 )
+
+
+# Backend PlatformIntelligenceErrorCode values: range 520000 + the per-code
+# offset, see RESTCodes.java in hopsworks-rest-utils.
+_PI_LLM_NOT_CONFIGURED = 520012
+_PI_DUPLICATE_CHECK_FAILED = 520016
+_PI_DUPLICATE_CHECK_DISABLED = 520017
+_PI_DUPLICATE_CHECK_NOT_FOUND = 520018
+_PI_DUPLICATE_CHECK_ALREADY_RUNNING = 520019
+_PI_DUPLICATE_CHECK_NOT_OWNER = 520020
 
 
 class FeatureGroupApi:
@@ -64,6 +79,8 @@ class FeatureGroupApi:
                 "mandatorytags",
             ]
         }
+        if getattr(feature_group_instance, "_not_check_duplicate", False):
+            query_params["skipDuplicateCheck"] = True
         headers = {"content-type": "application/json"}
         return feature_group_instance.update_from_response_json(
             _client._send_request(
@@ -74,6 +91,93 @@ class FeatureGroupApi:
                 query_params=query_params,
             ),
         )
+
+    def _check_duplicates(
+        self,
+        feature_group_instance: fg_mod.FeatureGroup
+        | fg_mod.ExternalFeatureGroup
+        | fg_mod.SpineGroup,
+        recheck: bool = False,
+    ) -> dict:
+        """Fetch the duplicate-check result stored for a feature group.
+
+        Parameters:
+            feature_group_instance: metadata object of the feature group to check
+            recheck: run a fresh synchronous check instead of returning the stored result
+
+        Returns:
+            decamelized duplicate-check result
+        """
+        _client = client._get_instance()
+        path_params = [
+            "project",
+            _client._project_id,
+            "featurestores",
+            feature_group_instance.feature_store_id,
+            "featuregroups",
+            feature_group_instance.id,
+            "duplicates",
+        ]
+        # A recheck mutates the stored result and spends LLM budget, so the
+        # backend exposes it as a POST subresource rather than a GET flag.
+        if recheck:
+            method, path = "POST", path_params + ["recheck"]
+        else:
+            method, path = "GET", path_params
+
+        try:
+            response = _client._send_request(method, path)
+        except RestAPIError as err:
+            # Translate the backend PlatformIntelligenceErrorCodes the
+            # duplicate-check path can raise into a typed exception so callers
+            # don't have to string-match server messages.
+            if err.error_code == _PI_LLM_NOT_CONFIGURED:
+                raise PlatformIntelligenceException(
+                    PlatformIntelligenceException.NOT_CONFIGURED,
+                    "Platform intelligence is not enabled on this Hopsworks "
+                    "cluster: the LLM API key is not configured. Ask the "
+                    "cluster admin to set PLATFORM_INTELLIGENCE_LLM_API_KEY.",
+                ) from err
+            if err.error_code == _PI_DUPLICATE_CHECK_FAILED:
+                raise PlatformIntelligenceException(
+                    PlatformIntelligenceException.DUPLICATE_CHECK_FAILED,
+                    "Platform intelligence call failed while checking for "
+                    f"duplicate feature groups: {err}",
+                ) from err
+            if err.error_code == _PI_DUPLICATE_CHECK_DISABLED:
+                raise PlatformIntelligenceException(
+                    PlatformIntelligenceException.DUPLICATE_CHECK_DISABLED,
+                    "The duplicate feature group check is disabled on this "
+                    "Hopsworks cluster. Ask the cluster admin to enable the "
+                    "enable_duplicate_feature_check variable and configure "
+                    "platform intelligence.",
+                ) from err
+            if err.error_code == _PI_DUPLICATE_CHECK_NOT_FOUND:
+                raise PlatformIntelligenceException(
+                    PlatformIntelligenceException.DUPLICATE_CHECK_NOT_FOUND,
+                    "No duplicate check result found for feature group "
+                    f"`{feature_group_instance.name}`, version "
+                    f"`{feature_group_instance.version}`.",
+                ) from err
+            if err.error_code == _PI_DUPLICATE_CHECK_ALREADY_RUNNING:
+                raise PlatformIntelligenceException(
+                    PlatformIntelligenceException.DUPLICATE_CHECK_ALREADY_RUNNING,
+                    "A duplicate check is already running for feature group "
+                    f"`{feature_group_instance.name}`, version "
+                    f"`{feature_group_instance.version}`; retry once it "
+                    "completes.",
+                ) from err
+            if err.error_code == _PI_DUPLICATE_CHECK_NOT_OWNER:
+                raise PlatformIntelligenceException(
+                    PlatformIntelligenceException.DUPLICATE_CHECK_NOT_OWNER,
+                    "Only the project that owns feature group "
+                    f"`{feature_group_instance.name}` can rerun its duplicate "
+                    "check; a shared feature group can be read but not "
+                    "rechecked from a consumer project.",
+                ) from err
+            raise
+
+        return humps.decamelize(response)
 
     @decorators._catch_not_found(
         "hsfs.feature_group.FeatureGroupBase", fallback_return=[]
