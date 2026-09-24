@@ -44,6 +44,10 @@ def _doc(target: Path) -> dict:
 def test_an_example_asks_only_where_the_code_goes(tmp_path, monkeypatch, quiet):
     done = _run(tmp_path, monkeypatch, ["2", "1", "1"])
     assert done.exit_code == 0, done.output
+    first = done.output.index("What do you want to build?")
+    assert done.output.index("1. Start a new ML system") > first
+    assert done.output.index("2. Build an example ML system") > first
+    assert "3. Help desk agent: answers support questions" in done.output
     doc = _doc(tmp_path / "churn-example")
     assert doc["system"]["example"] == "churn-example"
     assert doc["app"]["wanted"] is True
@@ -177,7 +181,7 @@ def test_a_finished_interview_is_offered_as_ready_to_build(
 ):
     first = _run(tmp_path, monkeypatch, ["2", "1", "1"])
     assert first.exit_code == 0, first.output
-    done = _run(tmp_path, monkeypatch, ["1"])
+    done = _run(tmp_path, monkeypatch, ["3"])
     assert done.exit_code == 0, done.output
     assert "Build churn-example" in done.output
     assert 'claude "/hops-build churn-example"' in done.output

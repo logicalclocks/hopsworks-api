@@ -264,27 +264,26 @@ def _create(cwd: Path, slug: str, example: str | None = None) -> _System:
 # region The interview
 
 
-def _problem(prefetch: _Prefetch, cwd: Path) -> _System:
-    choice = _choose(
-        "What should the ML system predict?",
-        [
-            ("Describe what I want to predict", "recommended"),
-            ("Example ML system", "synthetic data, an app included"),
-        ],
-    )
-    if choice == 1:
-        examples = _load(REFERENCES / "new_system.py", "new_system").examples()
-        names = list(examples)
-        picked = names[
-            _choose("Which example?", [(examples[name]["label"], "") for name in names])
-        ]
-        system = _create(cwd, picked, example=picked)
-        _target(system, prefetch)
-        system.save()
-        return system
+def _example(prefetch: _Prefetch, cwd: Path) -> _System:
+    examples = _load(REFERENCES / "new_system.py", "new_system").examples()
+    names = list(examples)
+    picked = names[
+        _choose(
+            "Which example ML system?",
+            [(examples[name]["label"], "") for name in names],
+        )
+    ]
+    system = _create(cwd, picked, example=picked)
+    _target(system, prefetch)
+    system.save()
+    return system
 
+
+def _problem(prefetch: _Prefetch, cwd: Path) -> _System:
     problem = click.prompt(
-        click.style("Describe it in a sentence", bold=True),
+        click.style(
+            "What should the ML system predict? Describe it in a sentence", bold=True
+        ),
         prompt_suffix="\n> ",
     ).strip()
     names = [name for name, _ in prefetch.ready().feature_groups]
@@ -708,26 +707,31 @@ def _interview(
         if not (cwd / slug / "system.yaml").exists():
             raise click.ClickException(f"no system {slug!r} in {cwd}")
         system = _System(cwd / slug)
-    elif existing:
+    else:
         pending = [
             p
             for p in existing
             if (_read(p).get("requirements") or {}).get("status") != "met"
         ]
+        options = [
+            ("Start a new ML system", "you describe what it should predict"),
+            ("Build an example ML system", "synthetic data, an app included"),
+        ]
         # The repository is the interview's last question, so a system that has
         # one is waiting only for /hops-build.
-        options = [
+        options += [
             (f"Build {p.name}", "interview done; starts /hops-build")
             if (_read(p).get("system") or {}).get("repo")
             else (f"Continue {p.name}", "interview not finished")
             for p in pending
         ]
-        options.append(("Start a new ML system", ""))
         picked = _choose("What do you want to build?", options)
-        if picked < len(pending):
-            system = _System(pending[picked])
-    if system is None:
-        system = _problem(prefetch, cwd)
+        if picked == 0:
+            system = _problem(prefetch, cwd)
+        elif picked == 1:
+            system = _example(prefetch, cwd)
+        else:
+            system = _System(pending[picked - 2])
     if system.requirements.get("status") == "met":
         _launch(system, launch)
         return

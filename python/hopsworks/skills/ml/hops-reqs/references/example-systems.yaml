@@ -4,7 +4,7 @@
 # so neither the data sources nor the app are asked for.
 
 churn-example:
-  label: Churn next month (batch)
+  label: "Churn: which customers will cancel next month (batch)"
   system:
     name: Churn next month
   requirements:
@@ -39,7 +39,7 @@ churn-example:
     status: pending
 
 recs-example:
-  label: Personalized recommendations (real-time)
+  label: "Personalized recommendations: the products each shopper is likely to buy next (real-time)"
   system:
     name: Personalized recommendations
   requirements:
@@ -74,10 +74,10 @@ recs-example:
       deployment's purchase probability, with the shopper's recent history beside them
     status: pending
 
-support-agent-example:
-  label: Customer Service Agent (agentic)
+helpdesk-example:
+  label: "Help desk agent: answers support questions from the customer's account and orders (agentic)"
   system:
-    name: Customer service agent
+    name: Help desk agent
   requirements:
     description: answer customer support questions from the customer's account and orders
     system_type: agent
@@ -104,7 +104,7 @@ support-agent-example:
   app:
     wanted: true
     kind: chat
-    name: support-agent-example-app
+    name: helpdesk-example-app
     description: >-
       A support chat: a customer picker, the conversation, and a side panel with the account and
       orders the agent looked up for each answer

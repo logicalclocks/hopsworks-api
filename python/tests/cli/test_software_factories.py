@@ -143,8 +143,8 @@ def test_the_interview_runs_on_haiku_and_records_every_answer_as_it_goes():
 
 def test_the_first_question_offers_a_description_or_an_example_system():
     text = (TEMPLATES / "hops-ml.md").read_text(encoding="utf-8")
-    assert "**Describe what I want to predict (Recommended)**" in text
-    assert "**Example ML system**" in text
+    assert "**Start a new ML system (Recommended)**" in text
+    assert "**Build an example ML system**" in text
     labels = {
         slug: entry["label"]
         for slug, entry in yaml.safe_load(
@@ -152,9 +152,9 @@ def test_the_first_question_offers_a_description_or_an_example_system():
         ).items()
     }
     assert labels == {
-        "churn-example": "Churn next month (batch)",
-        "recs-example": "Personalized recommendations (real-time)",
-        "support-agent-example": "Customer Service Agent (agentic)",
+        "churn-example": "Churn: which customers will cancel next month (batch)",
+        "recs-example": "Personalized recommendations: the products each shopper is likely to buy next (real-time)",
+        "helpdesk-example": "Help desk agent: answers support questions from the customer's account and orders (agentic)",
     }
     for slug in labels:
         assert f"`{slug}`" in text
@@ -186,7 +186,7 @@ def test_an_example_system_records_synthetic_data_and_an_app(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "example", ["churn-example", "recs-example", "support-agent-example"]
+    "example", ["churn-example", "recs-example", "helpdesk-example"]
 )
 def test_every_example_creates_a_valid_system(tmp_path, example):
     new_system = _load(REQS / "new_system.py")

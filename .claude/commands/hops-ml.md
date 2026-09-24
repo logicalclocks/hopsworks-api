@@ -40,15 +40,15 @@ first question below whose answer is not yet recorded.
 
 ## The interview
 
-**1. What should it predict?** Use the arguments when they say it. Otherwise ask with exactly two
-options:
+**1. What do you want to build?** Use the arguments when they say what to predict. Otherwise ask
+with exactly two options, as `hops build` does:
 
-- **Describe what I want to predict (Recommended)**: "Type it in the box below, for example which
-  customers will churn next month." A typed answer is the problem. When this option is picked
-  without text, reply with one line asking for the sentence and take the next message as the
-  problem; this is the only question asked in prose.
-- **Example ML system**: then ask which, with the three options of *Example systems* below, and
-  follow that section instead of the rest of the interview.
+- **Start a new ML system (Recommended)**: "Type what it should predict in the box below, for
+  example which customers will churn next month." A typed answer is the problem. When this option
+  is picked without text, reply with one line asking for the sentence and take the next message as
+  the problem; this is the only question asked in prose.
+- **Build an example ML system**: then ask which, with the three options of *Example systems*
+  below, and follow that section instead of the rest of the interview.
 
 Then create the system, with a slug of two or three words from the problem:
 
@@ -134,10 +134,10 @@ data** (when there is no data yet). Record one `requirements.data_sources+=` ent
 
 An example is a complete system on synthetic data: never ask for data sources and never ask whether
 an app is wanted; it always gets a Python app with a JavaScript UI. The options are the labels in
-`hops-reqs/references/example-systems.yaml`: **Churn next month (batch)** (`churn-example`),
-**Personalized recommendations (real-time)** (`recs-example`) and **Customer Service Agent
-(agentic)** (`support-agent-example`). Create it with the example's own slug, which writes its whole
-`system.yaml`, then record the target:
+`hops-reqs/references/example-systems.yaml`, each with its slug: **Churn** (`churn-example`, batch),
+**Personalized recommendations** (`recs-example`, real-time) and **Help desk agent**
+(`helpdesk-example`, agentic); use each `label` as the option's description. Create it with the
+example's own slug, which writes its whole `system.yaml`, then record the target:
 
 ```bash
 python <skills>/hops-reqs/references/new_system.py <example> --example <example>
