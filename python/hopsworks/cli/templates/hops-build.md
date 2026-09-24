@@ -1,6 +1,6 @@
 ---
 description: Hopsworks ML system builder. Completes the specification the /hops-ml interview recorded (target, features, budget, data policy), then builds, verifies and deploys the ML system (feature, training and inference pipelines) and ends with a pull request. Phases can be run alone; also verify and stop.
-argument-hint: "[reqs|data|features|train|infer|app] [--only] [instruction] | verify [integration|benchmark] | stop"
+argument-hint: "[<slug>] [reqs|data|features|train|infer|app] [--only] [instruction] | verify [integration|benchmark] | stop"
 ---
 
 You are running `/hops-build` with arguments: `$ARGUMENTS`
@@ -16,7 +16,8 @@ Already known, no need to look again before the first question:
 
 | First word | Do |
 | --- | --- |
-| none | with a `system.yaml` above: resume it, starting with `reqs` while `requirements.status` is `pending`; without one: reply that `/hops-ml` runs the interview first, and stop |
+| the slug of a system above | work on that system only, and dispatch the rest of the arguments by this table (`hops build` starts the build this way) |
+| none | with a `system.yaml` above: resume it (with several, ask which), starting with `reqs` while `requirements.status` is `pending`; without one: reply that `hops build` in a shell or `/hops-ml` here runs the interview first, and stop |
 | `reqs`, `data`, `features`, `train`, `infer`, `app` (and the old `f`, `t`, `i`) | that phase, then every later phase that is not met (below) |
 | `verify` | `verify`; `verify integration` or `verify benchmark` also runs those |
 | `stop` | stop the ML system here |

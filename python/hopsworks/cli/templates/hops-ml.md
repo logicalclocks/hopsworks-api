@@ -133,21 +133,19 @@ data** (when there is no data yet). Record one `requirements.data_sources+=` ent
 ## Example systems
 
 An example is a complete system on synthetic data: never ask for data sources and never ask whether
-an app is wanted. It always gets a Python app with a JavaScript UI. Create it as in question 1
-with the example's slug and name, record everything in one `set.py` call, and add
-`'system.example=<slug>'`. Every data source is `{name, kind: synthetic, shape, status:
-needs_generation}` with a `data.<name>.generator.story`, and `data.status=pending`. The app is
-`{wanted: true, kind: <kind>, name: <slug>-app, description: <the app line>, status: pending}`.
+an app is wanted; it always gets a Python app with a JavaScript UI. The options are the labels in
+`hops-reqs/references/example-systems.yaml`: **Churn next month (batch)** (`churn-example`),
+**Personalized recommendations (real-time)** (`recs-example`) and **Customer Service Agent
+(agentic)** (`support-agent-example`). Create it with the example's own slug, which writes its whole
+`system.yaml`, then record the target:
 
-| Option | Slug | Type and SLA | Synthetic data (shape: story) | App (`kind`: description) |
-| --- | --- | --- | --- | --- |
-| **Churn next month (batch)** | `churn-example` | `batch`, `sla.batch={cadence: daily}` | `customers` (batch): 5,000 telco customers with plan, tenure, monthly charges and support calls; about 15% churn within a month, more often on month-to-month plans with rising charges and many calls. `usage_events` (events): daily calls, data use and top-ups per customer; churners' usage decays over their last 60 days | `query_ui`: a churn-risk console. The highest-risk customers ranked with a risk bar, a search by customer id showing the score, the features behind it and its trend, and totals by plan |
-| **Personalized recommendations (real-time)** | `recs-example` | `realtime`, `sla.realtime={p99_ms: 100, throughput_qps: 100}` | `users` (batch): 2,000 shoppers with age band, country and favourite categories. `items` (batch): 500 products with category, price and popularity. `interactions` (events): views, add-to-carts and purchases; a user mostly buys in their favourite categories and near their usual price | `query_ui`: a storefront. Pick a user and see their top ten items as product cards ranked by the deployment's purchase probability, with the user's recent history beside them |
-| **Customer Service Agent (agentic)** | `support-agent-example` | `agent`, `sla.agent={p99_ms: 5000, throughput_qps: 2}` | `customers` (batch): 1,000 customers with plan and account status. `orders` (batch): their orders with status and delivery dates. `tickets` (events): support tickets with topic, text and resolution; most are late deliveries, refunds and plan changes | `chat`: a support chat. A customer picker, the conversation, and a side panel with the account and orders the agent looked up for each answer |
+```bash
+python <skills>/hops-reqs/references/new_system.py <example> --example <example>
+python <example>/set.py 'system.target={cluster: <Host>, project: <Project>, stage: development}'
+```
 
-Record `requirements.consumers=ui` and `requirements.description=<the option's name>`. The agentic
-example still needs its LLM: ask the *Which LLM?* question of the Agentic branch, and nothing else.
-Then ask *Where the code goes* and *Finish*.
+The agentic example still needs its LLM: ask the *Which LLM?* question of the Agentic branch, and
+nothing else. Then ask *Where the code goes* and *Finish*.
 
 ## Where the code goes
 

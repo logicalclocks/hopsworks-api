@@ -145,13 +145,20 @@ def test_the_first_question_offers_a_description_or_an_example_system():
     text = (TEMPLATES / "hops-ml.md").read_text(encoding="utf-8")
     assert "**Describe what I want to predict (Recommended)**" in text
     assert "**Example ML system**" in text
-    for example in (
-        "**Churn next month (batch)**",
-        "**Personalized recommendations (real-time)**",
-        "**Customer Service Agent (agentic)**",
-    ):
-        assert example in text
-    assert "system.example=" in text
+    labels = {
+        slug: entry["label"]
+        for slug, entry in yaml.safe_load(
+            (REQS / "example-systems.yaml").read_text(encoding="utf-8")
+        ).items()
+    }
+    assert labels == {
+        "churn-example": "Churn next month (batch)",
+        "recs-example": "Personalized recommendations (real-time)",
+        "support-agent-example": "Customer Service Agent (agentic)",
+    }
+    for slug in labels:
+        assert f"`{slug}`" in text
+    assert "--example <example>" in text
     build = (TEMPLATES / "hops-build.md").read_text(encoding="utf-8")
     assert "`app.wanted` is recorded, never ask" in build
 
@@ -176,6 +183,19 @@ def test_an_example_system_records_synthetic_data_and_an_app(tmp_path):
         "app={wanted: true, kind: query_ui, name: churn-example-app, status: pending}",
     )
     assert done.returncode == 0, done.stderr
+
+
+@pytest.mark.parametrize(
+    "example", ["churn-example", "recs-example", "support-agent-example"]
+)
+def test_every_example_creates_a_valid_system(tmp_path, example):
+    new_system = _load(REQS / "new_system.py")
+    target = new_system.create(tmp_path / example, example)
+    done = _set(target, "system.target={cluster: c, project: p, stage: development}")
+    assert done.returncode == 0, done.stderr
+    doc = yaml.safe_load((target / "system.yaml").read_text(encoding="utf-8"))
+    assert doc["system"]["example"] == example
+    assert doc["app"]["wanted"] is True
 
 
 def test_the_builder_runs_on_the_session_model():

@@ -1,0 +1,111 @@
+# The example ML systems offered by `hops build` and `/hops-ml`.
+# `new_system.py <repo>/<slug> --example <slug>` merges one entry into a new system.yaml.
+# An example runs on synthetic data and always gets a Python app with a JavaScript UI,
+# so neither the data sources nor the app are asked for.
+
+churn-example:
+  label: Churn next month (batch)
+  system:
+    name: Churn next month
+  requirements:
+    description: which telco customers will churn in the next 30 days
+    system_type: batch
+    sla:
+      batch: {cadence: daily}
+    consumers: ui
+    data_sources:
+      - {name: customers, kind: synthetic, shape: batch, status: needs_generation}
+      - {name: usage_events, kind: synthetic, shape: events, status: needs_generation}
+  data:
+    customers:
+      generator:
+        story: >-
+          5,000 telco customers with plan, tenure, monthly charges and support calls; about 15%
+          churn within a month, more often on month-to-month plans with rising charges and many
+          support calls
+    usage_events:
+      generator:
+        story: >-
+          daily calls, data use and top-ups per customer; churners' usage decays over their last
+          60 days
+    status: pending
+  app:
+    wanted: true
+    kind: query_ui
+    name: churn-example-app
+    description: >-
+      A churn-risk console: the highest-risk customers ranked with a risk bar, a search by
+      customer id showing the score, the features behind it and its trend, and totals by plan
+    status: pending
+
+recs-example:
+  label: Personalized recommendations (real-time)
+  system:
+    name: Personalized recommendations
+  requirements:
+    description: which products a shopper is most likely to buy next, scored per request
+    system_type: realtime
+    sla:
+      realtime: {p99_ms: 100, throughput_qps: 100}
+    consumers: ui
+    data_sources:
+      - {name: users, kind: synthetic, shape: batch, status: needs_generation}
+      - {name: items, kind: synthetic, shape: batch, status: needs_generation}
+      - {name: interactions, kind: synthetic, shape: events, status: needs_generation}
+  data:
+    users:
+      generator:
+        story: 2,000 shoppers with age band, country and favourite categories
+    items:
+      generator:
+        story: 500 products with category, price and popularity
+    interactions:
+      generator:
+        story: >-
+          views, add-to-carts and purchases; a shopper mostly buys in their favourite categories
+          and near their usual price
+    status: pending
+  app:
+    wanted: true
+    kind: query_ui
+    name: recs-example-app
+    description: >-
+      A storefront: pick a shopper and see their top ten products as product cards ranked by the
+      deployment's purchase probability, with the shopper's recent history beside them
+    status: pending
+
+support-agent-example:
+  label: Customer Service Agent (agentic)
+  system:
+    name: Customer service agent
+  requirements:
+    description: answer customer support questions from the customer's account and orders
+    system_type: agent
+    sla:
+      agent: {p99_ms: 5000, throughput_qps: 2}
+    consumers: ui
+    data_sources:
+      - {name: customers, kind: synthetic, shape: batch, status: needs_generation}
+      - {name: orders, kind: synthetic, shape: batch, status: needs_generation}
+      - {name: tickets, kind: synthetic, shape: events, status: needs_generation}
+  data:
+    customers:
+      generator:
+        story: 1,000 customers with plan and account status
+    orders:
+      generator:
+        story: their orders with status and delivery dates
+    tickets:
+      generator:
+        story: >-
+          support tickets with topic, text and resolution; most are late deliveries, refunds and
+          plan changes
+    status: pending
+  app:
+    wanted: true
+    kind: chat
+    name: support-agent-example-app
+    description: >-
+      A support chat: a customer picker, the conversation, and a side panel with the account and
+      orders the agent looked up for each answer
+    status: pending
