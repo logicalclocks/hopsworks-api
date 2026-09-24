@@ -141,6 +141,43 @@ def test_the_interview_runs_on_haiku_and_records_every_answer_as_it_goes():
     assert "!`hops fg list" in text and "!`hops datasource list" in text
 
 
+def test_the_first_question_offers_a_description_or_an_example_system():
+    text = (TEMPLATES / "hops-ml.md").read_text(encoding="utf-8")
+    assert "**Describe what I want to predict (Recommended)**" in text
+    assert "**Example ML system**" in text
+    for example in (
+        "**Churn next month (batch)**",
+        "**Personalized recommendations (real-time)**",
+        "**Customer Service Agent (agentic)**",
+    ):
+        assert example in text
+    assert "system.example=" in text
+    build = (TEMPLATES / "hops-build.md").read_text(encoding="utf-8")
+    assert "`app.wanted` is recorded, never ask" in build
+
+
+def test_an_example_system_records_synthetic_data_and_an_app(tmp_path):
+    target = _load(REQS / "new_system.py").create(tmp_path / "churn-example")
+    done = _set(
+        target,
+        "schema_version=1",
+        "system={name: Churn next month, slug: churn-example, status: draft, "
+        "example: churn-example, target: {cluster: c, project: p, stage: development}}",
+        "requirements.status=pending",
+        "requirements.system_type=batch",
+        "requirements.sla.batch={cadence: daily}",
+        "requirements.data_sources+={name: customers, kind: synthetic, shape: batch, "
+        "status: needs_generation}",
+        "requirements.data_sources+={name: usage_events, kind: synthetic, "
+        "shape: events, status: needs_generation}",
+        "data.customers.generator.story=5,000 telco customers",
+        "data.status=pending",
+        "requirements.consumers=ui",
+        "app={wanted: true, kind: query_ui, name: churn-example-app, status: pending}",
+    )
+    assert done.returncode == 0, done.stderr
+
+
 def test_the_builder_runs_on_the_session_model():
     front = _front("hops-build.md")
     text = (TEMPLATES / "hops-build.md").read_text(encoding="utf-8")

@@ -37,6 +37,15 @@ its "Apps built by `/hops app`" and "Fix loop" sections and `references/app_skel
 - **delete:** `hops app delete <name> --yes`, remove the source directory, and the environment
   clone when one was created for this app.
 
+## Look
+
+The UI is what the user sees of the whole system, so it has to look finished. Start from the
+skeleton's `static/app.css` and keep its tokens and components (the header band, cards, stat
+tiles, tables with score bars, badges, loading and empty states); add to it rather than
+restyling. Every view shows a loading state, an empty state and an error in words, numbers are
+formatted (percentages, thousands separators, dates), and the layout works from a phone width up.
+No CDN and no build step: fonts are the system stack, charts are inline SVG or CSS.
+
 ## Fix loop
 
 On a failed start, a stop in serving, or a failed smoke test: `hops app logs <name>`, name the cause

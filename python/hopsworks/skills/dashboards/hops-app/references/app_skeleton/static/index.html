@@ -12,16 +12,34 @@
   <script type="module" src="static/app.js"></script>
 </head>
 <body>
-  <header class="band"><h1>Customer lookup</h1></header>
+  <header class="band">
+    <div class="mark" aria-hidden="true">H</div>
+    <div>
+      <h1>Customer lookup</h1>
+      <div class="sub">Churn scores from telco_churn_predictions</div>
+    </div>
+  </header>
   <main>
-    <form id="lookup">
-      <label for="customer">Customer id</label>
-      <input id="customer" name="customer" type="number" min="1" required>
-      <button type="submit">Look up</button>
-    </form>
-    <section id="result" aria-live="polite"></section>
-    <h2>Highest risk</h2>
-    <table id="top"><thead><tr><th>Customer</th><th>Score</th></tr></thead><tbody></tbody></table>
+    <section class="grid">
+      <div class="card stat"><div class="label">Average risk, top list</div><div class="value" id="avg">–</div></div>
+      <div class="card stat"><div class="label">Highest risk</div><div class="value danger" id="max">–</div></div>
+    </section>
+    <section class="card">
+      <h2>Look up a customer</h2>
+      <form id="lookup">
+        <label for="customer">Customer id</label>
+        <input id="customer" name="customer" type="number" min="1" required>
+        <button type="submit">Look up</button>
+      </form>
+      <div id="result" aria-live="polite"></div>
+    </section>
+    <section class="card">
+      <h2>Highest risk</h2>
+      <table id="top">
+        <thead><tr><th>Customer</th><th>Risk</th></tr></thead>
+        <tbody><tr><td colspan="2"><div class="loading"></div><div class="loading"></div></td></tr></tbody>
+      </table>
+    </section>
   </main>
 </body>
 </html>

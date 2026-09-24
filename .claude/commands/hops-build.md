@@ -105,6 +105,14 @@ following "The requirements conversation" in `hops-reqs/SKILL.md`:
 - `operations` (scheduled with cadence and window, or continuous; the alert receiver), the sizing
   tier (`small` proposed), `budget`, `data_policy`, `models`, and the reviewers for the pull request.
 
+An example system (`system.example` set) asks nothing here: choose every answer yourself from the
+example's story, recorded in `system.yaml`, as a person building a convincing demo would (for
+`churn-example`: classification of `churned` within 30 days per customer, PR-AUC 0.6 or better
+against a 0.15 prevalence baseline; for `recs-example`: classification of a purchase per user and
+item, ROC-AUC 0.75 or better, ranked by the probability; the `small` tier, the default budget,
+`data_policy` fixtures generated). Print the requirements back in a few lines and continue
+without asking.
+
 For a new connector the interview recorded as `connected`, the data phase mounts or ingests it. A
 task outside classification, regression and forecasting, or an agent system, is captured in full
 and the command stops after `reqs` saying v1 builds none of it. Print the requirements back and ask
@@ -193,10 +201,12 @@ or accept as is (`inference.status: accepted` and a `decisions` line).
 
 ### app
 
-When `inference` is satisfied, ask once whether the user wants an app, proposing what fits: a
-dashboard over the prediction feature group for batch, a query UI against the deployment for
-realtime. On yes, write a description from `system.yaml` (the prediction feature group or
-deployment, the entity, the consumers) and spawn **hops-dashboard-builder** (`action: create`,
+When `inference` is satisfied and the interview did not record `app.wanted`, ask once whether the
+user wants an app, proposing what fits: a dashboard over the prediction feature group for batch, a
+query UI against the deployment for realtime. When `app.wanted` is recorded, never ask: build it,
+with `kind: dashboard` going to the dashboard builder and every other kind to the app builder. On
+yes, take `app.description` when recorded, add what `system.yaml` says it reads (the prediction
+feature group or deployment, the entity, the consumers), and spawn **hops-dashboard-builder** (`action: create`,
 `program: <slug>/dashboards/<slug>.py`) or **hops-app-builder** (`action: create`, the source under
 `<slug>/app/`) with the prompt `/hops` gives them, so the program or source is committed with the
 system. Record `app`. On no, `app: {wanted: false, status: skipped}`.
