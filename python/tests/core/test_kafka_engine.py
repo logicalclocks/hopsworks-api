@@ -381,6 +381,150 @@ class TestKafkaEngine:
         # Assert
         assert result == f"{topic_name},0:0"
 
+    def _offsets_for_times_consumer(self, mocker, partitions, results):
+        """A consumer over `partitions` whose offsets_for_times answers with `results`.
+
+        `results` maps a partition id to the (offset, error) pair the lookup returns, and
+        `partitions` maps it to its (low, high) watermarks.
+        """
+        topic_metadata = TopicMetadata()
+        topic_metadata.partitions = {}
+        for partition_id in partitions:
+            partition_metadata = PartitionMetadata()
+            partition_metadata.id = partition_id
+            topic_metadata.partitions[partition_id] = partition_metadata
+        topic_mock = mocker.MagicMock()
+        topic_mock.topics = {"test_topic": topic_metadata}
+
+        consumer = mocker.MagicMock()
+        consumer.list_topics = mocker.MagicMock(return_value=topic_mock)
+        consumer.get_watermark_offsets = mocker.MagicMock(
+            side_effect=lambda partition: partitions[partition.partition]
+        )
+
+        def offsets_for_times(lookups, timeout=None):
+            answers = []
+            for lookup in lookups:
+                offset, error = results[lookup.partition]
+                answer = mocker.MagicMock()
+                answer.partition = lookup.partition
+                answer.offset = offset
+                answer.error = error
+                answers.append(answer)
+            return answers
+
+        consumer.offsets_for_times = mocker.MagicMock(side_effect=offsets_for_times)
+        mocker.patch(
+            "hsfs.core.kafka_engine._init_kafka_consumer",
+            return_value=consumer,
+        )
+        return consumer
+
+    def test_kafka_get_offsets_for_times(self, mocker):
+        # Arrange - the timestamp lands mid-partition, which is the whole point: the
+        # offsets returned skip the records written before it.
+        consumer = self._offsets_for_times_consumer(
+            mocker,
+            partitions={0: (0, 100), 1: (0, 100)},
+            results={0: (37, None), 1: (61, None)},
+        )
+
+        # Act
+        result = kafka_engine._kafka_get_offsets_for_times(
+            topic_name="test_topic",
+            feature_store_id=99,
+            offline_write_options={},
+            timestamp=1789984800000,
+        )
+
+        # Assert - and the timestamp is what was looked up, in the offset field
+        assert result == "test_topic,0:37,1:61"
+        lookups = consumer.offsets_for_times.call_args[0][0]
+        assert [lookup.offset for lookup in lookups] == [1789984800000, 1789984800000]
+        consumer.close.assert_called_once()
+
+    def test_kafka_get_offsets_for_times_past_the_last_record(self, mocker):
+        # Arrange - Kafka answers a timestamp newer than every record with a negative
+        # offset. The partition holds nothing worth reading, so the reader belongs at its
+        # end rather than at its start.
+        self._offsets_for_times_consumer(
+            mocker, partitions={0: (5, 100)}, results={0: (-1, None)}
+        )
+
+        # Act
+        result = kafka_engine._kafka_get_offsets_for_times(
+            topic_name="test_topic",
+            feature_store_id=99,
+            offline_write_options={},
+            timestamp=1789984800000,
+        )
+
+        # Assert
+        assert result == "test_topic,0:100"
+
+    def test_kafka_get_offsets_for_times_floors_at_the_low_watermark(self, mocker):
+        # Arrange - retention dropped the record the lookup landed on, leaving an offset
+        # that is no longer readable.
+        self._offsets_for_times_consumer(
+            mocker, partitions={0: (40, 100)}, results={0: (12, None)}
+        )
+
+        # Act
+        result = kafka_engine._kafka_get_offsets_for_times(
+            topic_name="test_topic",
+            feature_store_id=99,
+            offline_write_options={},
+            timestamp=1789984800000,
+        )
+
+        # Assert
+        assert result == "test_topic,0:40"
+
+    def test_kafka_get_offsets_for_times_falls_back_on_partition_error(self, mocker):
+        # Arrange - one partition could not be answered for. Reading it from the start is
+        # wasteful, which is what this lookup exists to avoid, but re-reading records is
+        # recoverable where skipping them is not.
+        self._offsets_for_times_consumer(
+            mocker,
+            partitions={0: (7, 100), 1: (3, 100)},
+            results={0: (-1, mocker.Mock()), 1: (61, None)},
+        )
+
+        # Act
+        result = kafka_engine._kafka_get_offsets_for_times(
+            topic_name="test_topic",
+            feature_store_id=99,
+            offline_write_options={},
+            timestamp=1789984800000,
+        )
+
+        # Assert - the unanswered partition reads from its low watermark, not from its end
+        assert result == "test_topic,0:7,1:61"
+
+    def test_kafka_get_offsets_for_times_no_topic(self, mocker):
+        # Arrange
+        topic_mock = mocker.MagicMock()
+        topic_mock.topics = {}
+        consumer = mocker.MagicMock()
+        consumer.list_topics = mocker.MagicMock(return_value=topic_mock)
+        mocker.patch(
+            "hsfs.core.kafka_engine._init_kafka_consumer",
+            return_value=consumer,
+        )
+
+        # Act
+        result = kafka_engine._kafka_get_offsets_for_times(
+            topic_name="test_topic",
+            feature_store_id=99,
+            offline_write_options={},
+            timestamp=1789984800000,
+        )
+
+        # Assert - and the consumer is still closed on the way out
+        assert result == ""
+        consumer.offsets_for_times.assert_not_called()
+        consumer.close.assert_called_once()
+
     def test_kafka_get_offsets_no_topic(self, mocker):
         # Arrange
         topic_name = "test_topic"

@@ -793,6 +793,35 @@ class TestUtil:
         )
         assert timestamp == 1640995200000
 
+    def test_convert_event_time_to_timestamp_iso_milliseconds(self):
+        # What the backend itself emits: the REST layer serializes every date as
+        # `yyyy-MM-dd'T'HH:mm:ss.SSSXXX`, so anything read back off a DTO carries three
+        # fractional digits. That fell between the six-digit and no-fraction patterns
+        # and raised, which is how `FeatureGroup.created` came back unparseable.
+        timestamp = hopsworks_common.util._get_timestamp_from_date_string(
+            "2022-01-01T00:00:00.000Z"
+        )
+        assert timestamp == 1640995200000
+
+    def test_convert_event_time_to_timestamp_iso_milliseconds_are_kept(self):
+        # The milliseconds are part of the value, not padding to be dropped.
+        timestamp = hopsworks_common.util._get_timestamp_from_date_string(
+            "2022-01-01T00:00:00.123Z"
+        )
+        assert timestamp == 1640995200123
+
+    def test_convert_event_time_to_timestamp_iso_microseconds(self):
+        timestamp = hopsworks_common.util._get_timestamp_from_date_string(
+            "2022-01-01T00:00:00.123456Z"
+        )
+        assert timestamp == 1640995200123
+
+    def test_convert_event_time_to_timestamp_iso_no_fractional_seconds(self):
+        timestamp = hopsworks_common.util._get_timestamp_from_date_string(
+            "2022-01-01T00:00:00Z"
+        )
+        assert timestamp == 1640995200000
+
     def test_convert_event_time_to_timestamp_yyyy_mm_dd_hh_mm_ss_error(self):
         with pytest.raises(ValueError):
             hopsworks_common.util._get_timestamp_from_date_string("2022-13-01 00:00:00")
