@@ -67,6 +67,7 @@ def test_a_described_batch_system_records_every_answer(tmp_path, monkeypatch, qu
     answers = [
         "1",
         "which customers churn next month",
+        "1",  # a new repository, asked while the description is read
         "1",  # batch, recommended first
         "",  # keep the proposed slug
         "2",  # daily
@@ -76,7 +77,6 @@ def test_a_described_batch_system_records_every_answer(tmp_path, monkeypatch, qu
         "5,000 customers, 15% churn",
         "1",  # a dashboard
         "the retention team reads it every morning",
-        "1",  # a new repository
     ]
     done = _run(tmp_path, monkeypatch, answers)
     assert done.exit_code == 0, done.output
@@ -91,6 +91,10 @@ def test_a_described_batch_system_records_every_answer(tmp_path, monkeypatch, qu
         doc["data"]["customers"]["generator"]["story"] == "5,000 customers, 15% churn"
     )
     assert doc["app"]["kind"] == "dashboard"
+    assert doc["system"]["repo"] == {"url": "new"}
+    assert done.output.index("Where should the code go?") < done.output.index(
+        "What type of ML system?"
+    )
 
 
 def test_a_resumed_interview_skips_what_is_answered(tmp_path, monkeypatch, quiet):
@@ -158,3 +162,11 @@ def test_the_login_banner_is_silenced_for_its_own_thread_only(monkeypatch):
     written = real.getvalue()
     assert "a prompt" in written
     assert "Logged in" not in written
+
+
+def test_a_system_from_an_older_template_still_resumes(tmp_path, monkeypatch, quiet):
+    first = _run(tmp_path, monkeypatch, ["2", "2", "1"])
+    assert first.exit_code == 0, first.output
+    (tmp_path / "recs-example" / "set.py").unlink()
+    done = _run(tmp_path, monkeypatch, [], "recs-example")
+    assert done.exit_code == 0, done.output

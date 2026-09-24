@@ -57,6 +57,7 @@ dependencies = [
     "packaging",                     # ^21.0
     "hopsworks-apigen>=1.0.4,<2.0.0",
     "click>=8.1",
+    "pyyaml",                        # hops build and the ML system template read and write system.yaml
     "tomli>=2.0; python_version < '3.11'",
     "tomli-w>=1.0",
     "build",
@@ -112,9 +113,8 @@ dev-pandas1 = [
 ]
 dev = [
     "hopsworks[dev-no-opt,great-expectations,polars,python,mcp,trino]",
-    # The system template and app skeleton shipped under hopsworks/skills are
-    # exercised by the unit tests; neither library is a runtime dependency.
-    "pyyaml",
+    # The app skeleton shipped under hopsworks/skills is exercised by the unit
+    # tests; FastAPI is a dependency of the app, not of this package.
     "fastapi",
 ]
 polars = [

@@ -150,7 +150,18 @@ def _interpret(problem: str, feature_groups: list[str]) -> dict | None:
     )
     try:
         done = subprocess.run(
-            [claude, "-p", "--model", "haiku", prompt],
+            # No tools and no skills: the user's words are in the prompt, and a
+            # one-shot answer needs neither.
+            [
+                claude,
+                "-p",
+                "--model",
+                "haiku",
+                "--tools",
+                "",
+                "--disable-slash-commands",
+            ]
+            + ["--strict-mcp-config", "--no-session-persistence", prompt],
             capture_output=True,
             text=True,
             timeout=60,
@@ -187,15 +198,10 @@ class _System:
     def __init__(self, target: Path) -> None:
         self.target = target
         self.suggested: list[str] = []
-        self.setter = _load(target / "set.py", f"set_{target.name.replace('-', '_')}")
-        path = target / "system.yaml"
-        import yaml
-
-        self.doc: dict = (
-            yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-            if path.exists()
-            else {}
-        )
+        # The shipped set.py, not the system's copy: a system created by an older
+        # template may predate the UI registration.
+        self.setter = _load(REFERENCES / "system_template" / "set.py", "system_set")
+        self.doc = _read(target)
 
     @property
     def requirements(self) -> dict:
@@ -224,6 +230,15 @@ class _System:
             yaml.safe_dump(self.doc, sort_keys=False, allow_unicode=True, width=100),
         )
         self.setter.register(self.doc, self.target)
+
+
+def _read(target: Path) -> dict:
+    import yaml
+
+    path = target / "system.yaml"
+    if not path.exists():
+        return {}
+    return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
 
 def _systems(cwd: Path) -> list[Path]:
@@ -273,8 +288,18 @@ def _problem(prefetch: _Prefetch, cwd: Path) -> _System:
         prompt_suffix="\n> ",
     ).strip()
     names = [name for name, _ in prefetch.ready().feature_groups]
-    output.info("Reading your description...")
-    advice = _interpret(problem, names) or {}
+    # Haiku takes about six seconds; the repository question does not depend on it,
+    # so it is asked while the description is read.
+    reading: dict = {}
+    reader = threading.Thread(
+        target=lambda: reading.update(_interpret(problem, names) or {}), daemon=True
+    )
+    reader.start()
+    repo = _repository_choice(cwd)
+    if reader.is_alive():
+        output.info("Reading your description...")
+    reader.join(timeout=60)
+    advice = dict(reading)
     recommended = advice.get("system_type", "batch")
     order = [recommended, *(t for t in SYSTEM_TYPES if t != recommended)]
     labels = {"batch": "Batch", "realtime": "Real-time", "agent": "Agentic"}
@@ -307,6 +332,7 @@ def _problem(prefetch: _Prefetch, cwd: Path) -> _System:
     system.put("requirements.status", "pending")
     system.put("requirements.description", problem)
     system.put("requirements.system_type", system_type)
+    system.put("system.repo", {"url": repo})
     system.save()
     system.suggested = advice.get("feature_groups", [])
     return system
@@ -590,9 +616,10 @@ def _agent(ctx: click.Context, system: _System, prefetch: _Prefetch) -> None:
     )
 
 
-def _repository(system: _System) -> None:
+def _repository_choice(cwd: Path) -> str:
+    """The repository URL the code goes to, or "new" for one created at build start."""
     origin = subprocess.run(
-        ["git", "-C", str(system.target.parent), "remote", "get-url", "origin"],
+        ["git", "-C", str(cwd), "remote", "get-url", "origin"],
         capture_output=True,
         text=True,
         check=False,
@@ -601,7 +628,11 @@ def _repository(system: _System) -> None:
     if origin:
         options.insert(0, (f"This repository ({origin})", "recommended"))
     picked = _choose("Where should the code go?", options)
-    system.put("system.repo", {"url": origin if origin and picked == 0 else "new"})
+    return origin if origin and picked == 0 else "new"
+
+
+def _repository(system: _System) -> None:
+    system.put("system.repo", {"url": _repository_choice(system.target.parent)})
     system.save()
 
 
@@ -658,9 +689,19 @@ def build_cmd(ctx: click.Context, slug: str | None, no_launch: bool) -> None:
         slug: An existing system in this directory to resume.
         no_launch: Record the interview only.
     """
-    cwd = Path.cwd()
     prefetch = _Prefetch(ctx)
     prefetch.start()
+    try:
+        _interview(ctx, prefetch, slug, not no_launch)
+    finally:
+        # A login still importing the SDK at interpreter exit fails noisily.
+        prefetch.join(timeout=15)
+
+
+def _interview(
+    ctx: click.Context, prefetch: _Prefetch, slug: str | None, launch: bool
+) -> None:
+    cwd = Path.cwd()
     existing = _systems(cwd)
     system: _System | None = None
     if slug:
@@ -669,7 +710,9 @@ def build_cmd(ctx: click.Context, slug: str | None, no_launch: bool) -> None:
         system = _System(cwd / slug)
     elif existing:
         pending = [
-            p for p in existing if _System(p).requirements.get("status") != "met"
+            p
+            for p in existing
+            if (_read(p).get("requirements") or {}).get("status") != "met"
         ]
         options = [(f"Continue {p.name}", "interview not finished") for p in pending]
         options.append(("Start a new ML system", ""))
@@ -679,7 +722,7 @@ def build_cmd(ctx: click.Context, slug: str | None, no_launch: bool) -> None:
     if system is None:
         system = _problem(prefetch, cwd)
     if system.requirements.get("status") == "met":
-        _launch(system, not no_launch)
+        _launch(system, launch)
         return
     prefetch.ready()
     if prefetch.error:
@@ -694,7 +737,7 @@ def build_cmd(ctx: click.Context, slug: str | None, no_launch: bool) -> None:
         _agent(ctx, system, prefetch)
     if not system.doc.get("system", {}).get("repo"):
         _repository(system)
-    _launch(system, not no_launch)
+    _launch(system, launch)
 
 
 # endregion
