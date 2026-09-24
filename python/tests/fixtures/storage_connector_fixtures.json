@@ -544,7 +544,7 @@
     },
     "get_kafka": {
         "response": {
-            "type": "featurestoreKafkaConnectorDTO",
+            "type": "featureStoreKafkaConnectorDTO",
             "description": "Kafka connector description",
             "featurestoreId": 67,
             "id": 1,
@@ -576,7 +576,7 @@
     },
     "get_kafka_internal": {
         "response": {
-            "type": "featurestoreKafkaConnectorDTO",
+            "type": "featureStoreKafkaConnectorDTO",
             "description": "Kafka connector description",
             "featurestoreId": 67,
             "id": 1,
@@ -609,7 +609,7 @@
     },
     "get_kafka_external": {
         "response": {
-            "type": "featurestoreKafkaConnectorDTO",
+            "type": "featureStoreKafkaConnectorDTO",
             "description": "Kafka connector description",
             "featurestoreId": 67,
             "id": 1,
@@ -642,7 +642,7 @@
     },
     "get_kafka_basic_info": {
         "response": {
-            "type": "featurestoreKafkaConnectorDTO",
+            "type": "featureStoreKafkaConnectorDTO",
             "featurestoreId": 67,
             "id": 1,
             "name": "test_kafka",
