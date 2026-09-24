@@ -27,7 +27,7 @@
         <handy.version>2.1.8</handy.version>
         <lombok.version>1.18.36</lombok.version>
         <lombok.plugin.version>1.18.20.0</lombok.plugin.version>
-        <fasterxml.jackson.databind.version>2.21.4</fasterxml.jackson.databind.version>
+        <fasterxml.jackson.databind.version>2.21.5</fasterxml.jackson.databind.version>
         <datasketches.version>6.2.0</datasketches.version>
         <spark.version>4.1.3.0</spark.version>
         <hudi.groupId>io.hops.hudi</hudi.groupId>
@@ -349,7 +349,7 @@
                 <scala.version>2.13.17</scala.version>
                 <scala-short.version>2.13</scala-short.version>
                 <avro.version>1.12.1</avro.version>
-                <fasterxml.jackson.databind.version>2.21.4</fasterxml.jackson.databind.version>
+                <fasterxml.jackson.databind.version>2.21.5</fasterxml.jackson.databind.version>
                 <artifact.spark.version>spark4.1</artifact.spark.version>
             </properties>
         </profile>
