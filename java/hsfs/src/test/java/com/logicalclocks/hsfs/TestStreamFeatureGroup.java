@@ -35,8 +35,12 @@ class TestStreamFeatureGroup {
   @Test
   void testParsingJson() throws JsonProcessingException {
     // Arrange
-    Logger logger = Logger.getRootLogger();
-    logger.removeAllAppenders();
+    // Capture on the logger under test, not the root logger. An appender on root sees every
+    // library's output, so any unrelated line logged while this JSON is parsed - which is what
+    // a fresh JVM does on a CI runner - is counted as a deprecation warning and fails the
+    // assertion. Removing the appender afterwards also leaves the root logger's own
+    // configuration alone, which removeAllAppenders() did not.
+    Logger logger = Logger.getLogger(FeatureGroupBase.class);
     Appender appender = Mockito.mock(Appender.class);
     logger.addAppender(appender);
 
@@ -51,13 +55,13 @@ class TestStreamFeatureGroup {
     // Assert
     Assert.assertEquals(false, fg.getDeprecated());
     Mockito.verify(appender, Mockito.times(0)).doAppend(argument.capture());
+    logger.removeAppender(appender);
   }
 
   @Test
   void testParsingJsonWhenDeprecated() throws JsonProcessingException {
     // Arrange
-    Logger logger = Logger.getRootLogger();
-    logger.removeAllAppenders();
+    Logger logger = Logger.getLogger(FeatureGroupBase.class);
     Appender appender = Mockito.mock(Appender.class);
     logger.addAppender(appender);
 
@@ -75,6 +79,7 @@ class TestStreamFeatureGroup {
     Assert.assertEquals(Level.WARN, argument.getValue().getLevel());
     Assert.assertEquals("Feature Group `test_fg`, version `1` is deprecated", argument.getValue().getMessage());
     Assert.assertEquals("com.logicalclocks.hsfs.FeatureGroupBase", argument.getValue().getLoggerName());
+    logger.removeAppender(appender);
   }
 
   @Test
