@@ -250,7 +250,7 @@ class TestModel:
             scaling_configuration=scaling_configuration,
             transformer=transformer,
             api_protocol=p_json["api_protocol"],
-            environment=p_json["environment_dto"]["name"],
+            environment=p_json["predictor_environment"]["name"],
         )
 
         # Assert
@@ -267,7 +267,7 @@ class TestModel:
             scaling_configuration=scaling_configuration,
             transformer=transformer,
             api_protocol=p_json["api_protocol"],
-            environment=p_json["environment_dto"]["name"],
+            environment=p_json["predictor_environment"]["name"],
             env_vars=None,
             vllm_variant=None,
             vllm_image_tag=None,

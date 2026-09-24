@@ -42,7 +42,7 @@
           "kafka_topic_dto": {
             "name": "topic"
           },
-          "environment_dto": {
+          "predictor_environment": {
             "name": "pandas-inference-pipeline"
           },
           "project_namespace": "test",
@@ -121,7 +121,7 @@
           "kafka_topic_dto": {
             "name": "topic"
           },
-          "environment_dto": {
+          "predictor_environment": {
             "name": "pandas-inference-pipeline"
           },
           "project_namespace": "test",
@@ -185,7 +185,7 @@
           "kafka_topic_dto": {
             "name": "topic"
           },
-          "environment_dto": {
+          "predictor_environment": {
             "name": "pandas-inference-pipeline"
           },
           "project_namespace": "test",
@@ -238,7 +238,7 @@
       "kafka_topic_dto": {
         "name": "topic"
       },
-      "environment_dto": {
+      "predictor_environment": {
         "name": "tensorflow-inference-pipeline"
       },
       "predictor_scaling_config": {
@@ -291,7 +291,7 @@
       "kafka_topic_dto": {
         "name": "topic"
       },
-      "environment_dto": {
+      "predictor_environment": {
         "name": "tensorflow-inference-pipeline"
       },
       "predictor_scaling_config": {
@@ -349,7 +349,7 @@
       "kafka_topic_dto": {
         "name": "topic"
       },
-      "environment_dto": {
+      "predictor_environment": {
         "name": "pandas-inference-pipeline"
       },
       "predictor_scaling_config": {
@@ -404,7 +404,7 @@
       "kafka_topic_dto": {
         "name": "topic"
       },
-      "environment_dto": {
+      "predictor_environment": {
         "name": "pandas-inference-pipeline"
       },
       "predictor_scaling_config": {
@@ -462,7 +462,7 @@
       "kafka_topic_dto": {
         "name": "topic"
       },
-      "environment_dto": {
+      "predictor_environment": {
         "name": "pandas-inference-pipeline"
       },
       "predictor_scaling_config": {
@@ -517,7 +517,7 @@
       "kafka_topic_dto": {
         "name": "topic"
       },
-      "environment_dto": {
+      "predictor_environment": {
         "name": "pandas-inference-pipeline"
       },
       "predictor_scaling_config": {
@@ -567,7 +567,7 @@
         "requests": { "cores": 1.0, "memory": 4096, "gpus": 1 },
         "limits": { "cores": 2.0, "memory": 8192, "gpus": 1 }
       },
-      "environment_dto": {
+      "predictor_environment": {
         "name": "llm-inference-pipeline"
       },
       "project_namespace": "test",
@@ -607,7 +607,7 @@
         "requests": { "cores": 1.0, "memory": 4096, "gpus": 1 },
         "limits": { "cores": 2.0, "memory": 8192, "gpus": 1 }
       },
-      "environment_dto": {
+      "predictor_environment": {
         "name": "llm-inference-pipeline"
       },
       "project_namespace": "test",

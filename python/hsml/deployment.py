@@ -1298,7 +1298,12 @@ class Deployment:
     @public
     @property
     def environment(self):
-        """Name of inference environment."""
+        """Name of the inference environment the predictor runs in.
+
+        Warning: Deprecated
+            Use `deployment.predictor.environment`, or
+            `deployment.transformer.environment` for the transformer's own environment.
+        """
         return self._predictor.environment
 
     @environment.setter

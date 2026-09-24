@@ -376,7 +376,7 @@ class TestTransformer:
         json_copy = copy.deepcopy(json)
 
         # Act
-        sf, rc, sc, ev = transformer.Transformer.extract_fields_from_json(json_copy)
+        sf, rc, sc, ev, _ = transformer.Transformer.extract_fields_from_json(json_copy)
 
         # env_vars not present in this fixture
         assert ev is None
@@ -557,7 +557,7 @@ class TestTransformer:
         json["transformer_env_vars"] = ["FOO=bar"]
 
         # Act
-        sf, rc, sc, ev = transformer.Transformer.extract_fields_from_json(json)
+        sf, rc, sc, ev, _ = transformer.Transformer.extract_fields_from_json(json)
 
         # Assert
         assert ev == {"FOO": "bar"}
@@ -632,9 +632,56 @@ class TestTransformer:
             "transformer_env_vars"
         ]
 
-        _, _, _, ev = transformer.Transformer.extract_fields_from_json(wire)
+        _, _, _, ev, _ = transformer.Transformer.extract_fields_from_json(wire)
 
         assert ev == {"TR_FOO": "bar", "TR_K": "V=with=eq"}
+
+    def test_environment_wire_round_trip(self, mocker, backend_fixtures):
+        import humps
+
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        t = transformer.Transformer(
+            script_file="t.py", resources=None, environment="my-inference-pipeline"
+        )
+        assert t.to_dict()["transformerEnvironment"] == {
+            "name": "my-inference-pipeline"
+        }
+
+        wire = copy.deepcopy(
+            backend_fixtures["transformer"]["get_deployment_with_transformer"][
+                "response"
+            ]
+        )
+        wire["transformer_environment"] = humps.decamelize(t.to_dict())[
+            "transformer_environment"
+        ]
+
+        _, _, _, _, env = transformer.Transformer.extract_fields_from_json(wire)
+
+        assert env == "my-inference-pipeline"
+
+    def test_environment_absent_on_legacy_backend(self, mocker, backend_fixtures):
+        # A backend that predates per-component environments sends no
+        # transformer_environment at all; the transformer ran the deployment-wide
+        # one, which is reported as the predictor's.
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        wire = copy.deepcopy(
+            backend_fixtures["transformer"]["get_deployment_with_transformer"][
+                "response"
+            ]
+        )
+        wire.pop("transformer_environment", None)
+
+        _, _, _, _, env = transformer.Transformer.extract_fields_from_json(wire)
+
+        assert env is None
+
+    def test_environment_omitted_from_wire_when_unset(self, mocker):
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        t = transformer.Transformer(script_file="t.py", resources=None)
+
+        assert t.environment is None
+        assert "transformerEnvironment" not in t.to_dict()
 
     # auxiliary methods
     def _mock_serving_variables(self, mocker, num_instances, force_scale_to_zero=False):
