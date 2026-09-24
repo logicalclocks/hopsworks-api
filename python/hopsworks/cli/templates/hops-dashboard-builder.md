@@ -1,6 +1,6 @@
 ---
 name: hops-dashboard-builder
-description: Builds, edits or deletes a Superset dashboard over Hopsworks feature groups through one idempotent program per dashboard, from the choices /hops collected. Spawned by /hops and by /hops-ml's app phase; never asks the user.
+description: Builds, edits or deletes a Superset dashboard over Hopsworks feature groups through one idempotent program per dashboard, from the choices /hops collected. Spawned by /hops and by /hops-build's app phase; never asks the user.
 model: opus
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---

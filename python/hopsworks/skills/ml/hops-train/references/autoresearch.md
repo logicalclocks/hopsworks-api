@@ -1,7 +1,7 @@
 # autoresearch: the training loop protocol
 
 The protocol the training agent (`hops-train-agent`) follows for the experiment
-loop of a `/hops-ml` system. It is written against `system.yaml` keys, not
+loop of a `/hops-build` system. It is written against `system.yaml` keys, not
 against one system, so one file serves every system.
 
 To change how the loop searches, copy this file into the system directory, edit

@@ -65,9 +65,9 @@ def _validate(doc: dict) -> list[str]:
 # region The command and the agents
 
 
-COMMANDS = ["hops.md", "hops-ml.md"]
+COMMANDS = ["hops.md", "hops-ml.md", "hops-build.md"]
 AGENTS = {
-    # The ML agents inherit the model of /hops-ml, the session's own.
+    # The ML agents inherit the model of /hops-build, the session's own.
     "hops-train-agent": None,
     "hops-infer-agent": None,
     # Spawned from /hops, which runs on Haiku: inheriting would build on Haiku too.
@@ -82,7 +82,7 @@ def _front(name: str) -> dict:
     )
 
 
-def test_the_cli_bundle_ships_both_commands_and_every_agent_and_retires_fti():
+def test_the_cli_bundle_ships_every_command_and_agent_and_retires_fti():
     files = scaffold.build_files(internal=True, project="p")
     for command in COMMANDS:
         assert f".claude/commands/{command}" in files
@@ -126,9 +126,24 @@ def test_the_menu_runs_on_haiku_and_hands_every_build_to_a_stronger_agent():
     assert "!`ls -d */system.yaml" in text
 
 
-def test_the_ml_factory_runs_on_the_session_model():
+def test_the_interview_runs_on_haiku_and_records_every_answer_as_it_goes():
     front = _front("hops-ml.md")
     text = (TEMPLATES / "hops-ml.md").read_text(encoding="utf-8")
+    assert front["model"] == "haiku"
+    assert "AskUserQuestion" in text and "set.py" in text
+    for branch in ("### Batch", "### Real-time", "### Agentic", "### Data sources"):
+        assert branch in text
+    # The interview builds nothing: that is /hops-build, on the session model.
+    assert "`/hops-build`" in text
+    for agent in AGENTS:
+        assert agent not in text
+    assert "### train" not in text
+    assert "!`hops fg list" in text and "!`hops datasource list" in text
+
+
+def test_the_builder_runs_on_the_session_model():
+    front = _front("hops-build.md")
+    text = (TEMPLATES / "hops-build.md").read_text(encoding="utf-8")
     assert "model" not in front
     assert "argument-hint" in front
     for phase in (
@@ -395,6 +410,58 @@ def test_the_validator_is_the_gate_for_an_atomic_write(tmp_path):
     )
     assert failed.returncode == 1
     assert "schema_version" in failed.stderr
+
+
+def test_a_draft_may_lack_what_the_interview_has_not_asked_yet():
+    draft = {
+        "schema_version": 1,
+        "system": {
+            "name": "Churn",
+            "slug": "churn",
+            "target": {"cluster": "c", "project": "p", "stage": "development"},
+            "status": "draft",
+        },
+        "requirements": {"status": "pending", "description": "who churns"},
+    }
+    assert _validate(draft) == []
+    draft["requirements"]["system_type"] = "nonsense"
+    assert any("system_type" in p for p in _validate(draft))
+    draft["requirements"].update(system_type="batch", status="met")
+    assert any("task" in p for p in _validate(draft))
+
+
+def _set(target: Path, *assignments: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, str(target / "set.py"), *assignments],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_set_records_interview_answers_and_refuses_an_invalid_one(tmp_path):
+    target = _load(REQS / "new_system.py").create(tmp_path / "churn")
+    done = _set(
+        target,
+        "schema_version=1",
+        "system={name: Churn, slug: churn, status: draft, "
+        "target: {cluster: c, project: p, stage: development}}",
+        "requirements.status=pending",
+        "requirements.system_type=batch",
+        "requirements.sla.batch={cadence: daily}",
+        "requirements.data_sources+={name: customers, kind: feature_group, "
+        "version: 1, status: present}",
+    )
+    assert done.returncode == 0, done.stderr
+    written = (target / "system.yaml").read_text(encoding="utf-8")
+    doc = yaml.safe_load(written)
+    assert doc["requirements"]["sla"] == {"batch": {"cadence": "daily"}}
+    assert doc["requirements"]["data_sources"][0]["version"] == 1
+    refused = _set(target, "requirements.system_type=nonsense")
+    assert refused.returncode == 1
+    assert "system_type" in refused.stderr
+    assert (target / "system.yaml").read_text(encoding="utf-8") == written
+    assert not list(target.glob(".system.yaml.*"))
 
 
 # endregion

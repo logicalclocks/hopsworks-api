@@ -93,9 +93,12 @@ def _check_secrets(problems: list[str], node: object, where: str = "") -> None:
 
 
 def _check_requirements(problems: list[str], req: dict) -> None:
+    # While the interview runs (status pending) a field not yet asked may be absent;
+    # whatever is present must still be well formed.
+    draft = req.get("status") == "pending"
     problem = req.get("problem") or {}
     task = problem.get("task")
-    if task not in TASKS_BUILT | TASKS_CAPTURED:
+    if not (draft and task is None) and task not in TASKS_BUILT | TASKS_CAPTURED:
         problems.append(f"requirements.problem.task {task!r} is not a known task")
     if problem.get("generalises_to") not in (None, "new_periods", "new_entities"):
         problems.append(
@@ -103,19 +106,20 @@ def _check_requirements(problems: list[str], req: dict) -> None:
         )
 
     system_type = req.get("system_type")
-    if system_type not in SYSTEM_TYPES:
+    if not (draft and system_type is None) and system_type not in SYSTEM_TYPES:
         problems.append(
             f"requirements.system_type {system_type!r} is not one of {sorted(SYSTEM_TYPES)}"
         )
     sla = req.get("sla") or {}
-    if len(sla) != 1:
-        problems.append(
-            f"requirements.sla must hold exactly one block, found {sorted(sla)}"
-        )
-    elif system_type in SYSTEM_TYPES and system_type not in sla:
-        problems.append(
-            f"requirements.sla holds {sorted(sla)} but system_type is {system_type}"
-        )
+    if sla or not draft:
+        if len(sla) != 1:
+            problems.append(
+                f"requirements.sla must hold exactly one block, found {sorted(sla)}"
+            )
+        elif system_type in SYSTEM_TYPES and system_type not in sla:
+            problems.append(
+                f"requirements.sla holds {sorted(sla)} but system_type is {system_type}"
+            )
 
     for i, source in enumerate(req.get("data_sources") or []):
         where = f"requirements.data_sources[{i}]"

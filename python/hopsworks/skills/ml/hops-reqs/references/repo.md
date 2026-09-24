@@ -1,6 +1,6 @@
 # The repository contract
 
-Everything `/hops-ml` writes is code, and it lives in a GitHub repository from
+Everything `/hops-build` writes is code, and it lives in a GitHub repository from
 the first phase. GitHub is the only forge; a GitHub Enterprise host works
 through `gh`'s `GH_HOST`, recorded as `system.repo.host`.
 
@@ -25,7 +25,7 @@ gh api user --jq .login              # the owner for a new repository
 ## Branches and commits
 
 - One branch per system, `hops/<slug>`, cut from the default branch. A later
-  `/hops-ml <phase> <instruction>` on a system whose branch has merged works on
+  `/hops-build <phase> <instruction>` on a system whose branch has merged works on
   `hops/<slug>/<yyyymmdd>-<short-instruction>` and ends with its own pull request.
 - Every phase ends with one commit, `[<slug>] <phase>: <one line>`, covering its
   block of `system.yaml` and the files it wrote, pushed to `origin`.

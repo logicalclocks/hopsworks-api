@@ -1,6 +1,6 @@
 ---
 name: hops-features
-description: Design, build, backfill and schedule a feature pipeline program (batch or streaming) that writes model-independent features to feature groups. Auto-invoke when the user wants a feature pipeline or new features computed from a data source; inside /hops-ml it builds the features phase from system.yaml.
+description: Design, build, backfill and schedule a feature pipeline program (batch or streaming) that writes model-independent features to feature groups. Auto-invoke when the user wants a feature pipeline or new features computed from a data source; inside /hops-build it builds the features phase from system.yaml.
 ---
 
 # Feature Pipeline
@@ -11,7 +11,7 @@ A feature pipeline reads from data sources, applies model-independent transforma
 
 ## Contract
 - **Input:** the ML-system requirements (inputs, new features to compute, freshness/SLAs, framework preferences, dependencies).
-- **Output:** a feature pipeline program, its sink feature group(s), and its job (scheduled or continuous). Inside a `/hops-ml` system the output is also one entry of `features.pipelines` in `system.yaml`: write that entry and preserve every other line ([hops-reqs/references/system-yaml.md](../hops-reqs/references/system-yaml.md)).
+- **Output:** a feature pipeline program, its sink feature group(s), and its job (scheduled or continuous). Inside a `/hops-build` system the output is also one entry of `features.pipelines` in `system.yaml`: write that entry and preserve every other line ([hops-reqs/references/system-yaml.md](../hops-reqs/references/system-yaml.md)).
 - **Pre-condition:** the ML-system requirements exist (see hops-reqs); data sources and feature groups are known.
 
 ## Where a feature is computed

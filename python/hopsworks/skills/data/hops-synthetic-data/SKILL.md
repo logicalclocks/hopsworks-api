@@ -13,7 +13,7 @@ the system, seeded and run as a Hopsworks job, never on the laptop.
 - **Input:** the shape (batch tables or events), the entity and its
   cardinality, the event time, the columns with types and rough distributions,
   and the **story**: which columns carry the signal the target depends on, and
-  how strongly. Inside `/hops-ml` these are a `kind: synthetic` entry of
+  how strongly. Inside `/hops-build` these are a `kind: synthetic` entry of
   `requirements.data_sources` and its `data.<source>` block.
 - **Output:** feature groups with rows; for events, an online-enabled feature
   group fed by a running `<slug>-events` job.

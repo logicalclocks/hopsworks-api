@@ -1,6 +1,6 @@
 ---
 name: hops-app-builder
-description: Builds, edits or deletes a Hopsworks Python app with a JavaScript UI from a description in natural language, deploys it, and fixes it from its logs until it serves. Spawned by /hops and by /hops-ml's app phase; never asks the user.
+description: Builds, edits or deletes a Hopsworks Python app with a JavaScript UI from a description in natural language, deploys it, and fixes it from its logs until it serves. Spawned by /hops and by /hops-build's app phase; never asks the user.
 model: opus
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---

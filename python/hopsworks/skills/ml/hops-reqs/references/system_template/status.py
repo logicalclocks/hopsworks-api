@@ -2,7 +2,7 @@
 """Print the progress of an ML system from its system.yaml.
 
 Runs from any terminal without a Claude session or the system lock, and changes
-nothing, so it answers while `/hops-ml` is mid-phase in another terminal:
+nothing, so it answers while `/hops-build` is mid-phase in another terminal:
 
     python <slug>/status.py                 # the phase table, once
     python <slug>/status.py --watch 30      # redraw every 30 seconds

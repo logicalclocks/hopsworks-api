@@ -10,7 +10,7 @@ produces a registered model the I side deploys.
 ## Contract
 - **Input:** a feature view.
 - **Output:** a registered model (with metrics + plots) in the model registry.
-  Inside a `/hops-ml` system the output is also the `training` block of
+  Inside a `/hops-build` system the output is also the `training` block of
   `system.yaml`: write that block and preserve every other line (the rules are in
   [hops-reqs/references/system-yaml.md](../hops-reqs/references/system-yaml.md)).
   Outside one, nothing is written to `reqs/`.
@@ -242,7 +242,7 @@ always an accepted one and a batch job reading the newest version is safe.
 
 ## Experiment loop
 
-Inside `/hops-ml`, the training agent improves the model with an auto-research
+Inside `/hops-build`, the training agent improves the model with an auto-research
 loop: `training_pipeline.py` is the one editable file, `evaluate.py`, the
 training dataset version and the environment are frozen, one idea per run,
 every run committed and registered, keep or revert, never pause to ask. The

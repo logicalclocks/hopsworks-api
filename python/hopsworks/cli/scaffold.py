@@ -234,6 +234,7 @@ CLI_BUNDLE = {
     ".claude/skills/hops/SKILL.md": "SKILL.md",
     ".claude/commands/hops.md": "hops.md",
     ".claude/commands/hops-ml.md": "hops-ml.md",
+    ".claude/commands/hops-build.md": "hops-build.md",
     ".claude/agents/hops-train-agent.md": "hops-train-agent.md",
     ".claude/agents/hops-infer-agent.md": "hops-infer-agent.md",
     ".claude/agents/hops-dashboard-builder.md": "hops-dashboard-builder.md",

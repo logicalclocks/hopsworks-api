@@ -17,6 +17,10 @@ below and passes on that example.
    file alone says how far the system got and what each step decided and measured. Each block
    also records `started` and `finished`, and `system.progress` the current position and the
    remaining estimate (Progress and estimates, below).
+   Write a field with `python <slug>/set.py 'dotted.key=<yaml value>'` (`key+=value` appends to a
+   list): it validates and renames into place, so an invalid write never replaces the file. While
+   `requirements.status` is `pending` the file is a draft, and `task`, `system_type` and `sla` may
+   still be missing, since the `/hops-ml` interview records them one answer at a time.
 2. **Only as wordy as needed.** A field is one line unless it genuinely needs a `>` block. A
    `note` is one sentence. A decision is one line. The reader has the pipeline code next to the
    file; the YAML says what and why, the code says how.

@@ -8,7 +8,7 @@ description: Use when writing Python or PySpark code for batch inference with Ho
 ## Contract
 - **Input:** a feature view + a registered model from the Model Registry.
 - **Output:** predictions, either logged (monitoring) or persisted (downstream consumption).
-  Inside a `/hops-ml` system the output is also the `inference` block of `system.yaml`
+  Inside a `/hops-build` system the output is also the `inference` block of `system.yaml`
   (`mode: batch`): write that block and preserve every other line
   ([hops-reqs/references/system-yaml.md](../hops-reqs/references/system-yaml.md)).
 - **Pre-condition:** the model is trained and registered; the feature view is materialized offline.

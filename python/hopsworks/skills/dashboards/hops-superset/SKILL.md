@@ -425,7 +425,7 @@ last line printing the dashboard URL.
 - **`--delete` removes only what the program made:** the dashboard, its
   charts, and its datasets that no other chart still uses. A chart of the same
   name on another dashboard is left alone.
-- An ML system's dashboard (the app phase of `/hops-ml`) keeps its program in
+- An ML system's dashboard (the app phase of `/hops-build`) keeps its program in
   the system's repository, under `<slug>/dashboards/`, instead of the user's home.
 
 ```bash

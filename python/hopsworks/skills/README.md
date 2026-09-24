@@ -20,7 +20,7 @@ into bucket folders:
 - [hops-unstructured-data](data/hops-unstructured-data/SKILL.md) — parse files into a feature group.
 
 ## ml/ — FTI pipeline architecture: feature store, training, inference
-- [hops-reqs](ml/hops-reqs/SKILL.md) — specify and build an ML system recorded in one `system.yaml` (what `/hops-ml` loads).
+- [hops-reqs](ml/hops-reqs/SKILL.md) — specify and build an ML system recorded in one `system.yaml` (what `/hops-build` loads).
 - [hops-features](ml/hops-features/SKILL.md) — specify a feature pipeline.
 - [hops-eda](ml/hops-eda/SKILL.md) — EDA before training: profiler, leakage first, the full checklist.
 - [hops-fg](ml/hops-fg/SKILL.md) — feature groups.

@@ -1,6 +1,6 @@
 ---
-description: Hopsworks menu. Explore data, build or edit a Superset dashboard or a Python app with a JavaScript UI, show status. Building an ML system is `/hops-ml`.
-argument-hint: "[explore | dashboard | app | status] [instruction]"
+description: Hopsworks menu. Explore data, start an ML system, build or edit a Superset dashboard or a Python app with a JavaScript UI, show status.
+argument-hint: "[explore | ml | dashboard | app | status] [instruction]"
 model: haiku
 ---
 
@@ -8,7 +8,7 @@ You are running `/hops` with arguments: `$ARGUMENTS`
 
 This command runs on a fast model for menus and questions only. You never write code, a
 dashboard program, an app or `system.yaml` here: the building goes to a sub-agent on a stronger
-model, and ML systems are `/hops-ml`.
+model, and an ML system is built by `/hops-build` after the `/hops-ml` interview.
 
 Already known, no need to look again:
 - ML systems in this directory: !`ls -d */system.yaml 2>/dev/null | head -5 || true`
@@ -32,9 +32,11 @@ Already known, no need to look again:
 | `dashboard` | Dashboard (below), with the rest as the instruction. |
 | `app` | App (below), with the rest as the instruction. |
 | `status` | Status (below). |
-| `ml`, `reqs`, `data`, `features`, `train`, `infer`, `verify`, `stop`, `f`, `t`, `i` | Reply with one line: the ML factory is `/hops-ml` (for example `/hops-ml`, `/hops-ml reqs`, `/hops-ml verify`), and stop. |
+| `ml` | Run the interview: invoke the `hops-ml` command with the Skill tool, passing the rest as its arguments, and follow it. |
+| `reqs`, `data`, `features`, `train`, `infer`, `verify`, `stop`, `f`, `t`, `i` | Reply with one line: building and running phases is `/hops-build` (for example `/hops-build train`, `/hops-build verify`), and stop. |
 
-Choosing **Build or resume an ML system** from the menu gets the same one-line answer.
+Choosing **Build or resume an ML system** from the menu runs the interview the same way. When the
+system's `requirements.status` is already `met`, reply with one line that `/hops-build` continues it.
 
 ## Explore
 

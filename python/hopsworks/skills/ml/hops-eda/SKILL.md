@@ -12,7 +12,7 @@ how to run it and what must never be skipped.
 
 ## Contract
 - **Input:** a feature view, the prediction problem type, and a split strategy.
-- **Output:** an EDA report. Inside a `/hops-ml` system it is `<slug>/eda.md`
+- **Output:** an EDA report. Inside a `/hops-build` system it is `<slug>/eda.md`
   and its leakage findings go into `training.leakage` in `system.yaml`;
   otherwise `eda-<ml-system-name>.md`.
 - **Pre-condition:** the feature view already exists.
