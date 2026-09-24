@@ -42,6 +42,40 @@ def test_importing_the_sdk_does_not_execute_great_expectations():
         assert isinstance(result["ge_major"], int)
 
 
+def test_importing_hsfs_does_not_execute_great_expectations():
+    # The version read moved off the spine in the parent change, but the modules that
+    # wrap GE still imported it at their own module load, and they are on the spine too:
+    # `import hsfs` reaches ge_expectation through feature_group -> expectation_suite ->
+    # expectation_engine -> expectation_api, so a plain feature store import still paid
+    # GE's module init (measured in a Spark driver: 357MiB/8.2s versus 196MiB/1.6s).
+    # Subprocess-isolated for the same reason as the test above.
+    code = (
+        "import json, sys\n"
+        "import hsfs\n"
+        "import hsfs.feature_group, hsfs.expectation_suite, hsfs.validation_report\n"
+        "print(json.dumps({'ge_loaded': 'great_expectations' in sys.modules}))\n"
+    )
+    out = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True
+    )
+    result = json.loads(out.stdout.strip().splitlines()[-1])
+    assert result["ge_loaded"] is False
+
+
+def test_great_expectations_accessor_imports_the_module():
+    # The laziness must not turn into "the validation path silently stops working":
+    # the accessor has to hand back the real module when something asks for it.
+    from hopsworks_common.core.constants import (
+        HAS_GREAT_EXPECTATIONS,
+        great_expectations_module,
+    )
+
+    if not HAS_GREAT_EXPECTATIONS:
+        pytest.skip("great_expectations is not installed")
+    assert great_expectations_module().__name__ == "great_expectations"
+    assert "great_expectations" in sys.modules
+
+
 def test_loading_a_validation_module_does_not_log_ge_metric_chatter():
     # GE 1.x registers its core metrics from its own module init and logs "Multiple
     # declarations of metric ... for engine ..." at INFO for each one it declares twice.
@@ -53,7 +87,8 @@ def test_loading_a_validation_module_does_not_log_ge_metric_chatter():
         "import json, sys\n"
         "import hopsworks\n"
         "try:\n"
-        "    import hsfs.expectation_suite\n"
+        "    from hopsworks_common.core.constants import great_expectations_module\n"
+        "    great_expectations_module()\n"
         "except Exception as e:\n"
         "    print(json.dumps({'ge_loaded': False, 'error': type(e).__name__}))\n"
         "else:\n"

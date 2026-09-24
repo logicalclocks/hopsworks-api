@@ -89,11 +89,11 @@ from hsfs.core import (
 from hsfs.core.constants import (
     GE_MAJOR,
     HAS_AIOMYSQL,
-    HAS_GREAT_EXPECTATIONS,
     HAS_NUMPY,
     HAS_PANDAS,
     HAS_PYARROW,
     HAS_SQLALCHEMY,
+    great_expectations_module,
 )
 from hsfs.core.feature_logging import LoggingMetaData
 from hsfs.core.type_systems import PYARROW_HOPSWORKS_DTYPE_MAPPING
@@ -102,9 +102,6 @@ from hsfs.feature_group import ExternalFeatureGroup, FeatureGroup
 from hsfs.hopsworks_udf import HopsworksUdf, UDFExecutionMode
 from hsfs.training_dataset_split import TrainingDatasetSplit
 
-
-if HAS_GREAT_EXPECTATIONS:
-    import great_expectations
 
 if HAS_NUMPY:
     import numpy as np
@@ -924,6 +921,7 @@ class Engine:
             dataframe = dataframe.to_pandas()
         if ge_validate_kwargs is None:
             ge_validate_kwargs = {}
+        great_expectations = great_expectations_module()
         if GE_MAJOR == 1:
             # GE 1.x removed from_pandas; use the get_context + dataframe asset chain.
             context = great_expectations.get_context(mode="ephemeral")

@@ -125,15 +125,16 @@ from hsfs.core import (
     transformation_execution_dag,
     transformation_function_engine,
 )
-from hsfs.core.constants import GE_MAJOR, HAS_AVRO, HAS_GREAT_EXPECTATIONS
+from hsfs.core.constants import (
+    GE_MAJOR,
+    HAS_AVRO,
+    great_expectations_module,
+)
 from hsfs.core.feature_logging import LoggingMetaData
 from hsfs.decorators import _uses_great_expectations
 from hsfs.storage_connector import StorageConnector
 from hsfs.training_dataset_split import TrainingDatasetSplit
 
-
-if HAS_GREAT_EXPECTATIONS:
-    import great_expectations
 
 if HAS_AVRO:
     import avro
@@ -1807,6 +1808,7 @@ class Engine:
     ):
         if ge_validate_kwargs is None:
             ge_validate_kwargs = {}
+        great_expectations = great_expectations_module()
         if GE_MAJOR == 1:
             # GE 1.x removed BaseDataContext + RuntimeBatchRequest. The Spark
             # validation path under 1.x uses get_context + spark dataframe assets.

@@ -26,6 +26,8 @@ from hopsworks_common.core.constants import (
     HAS_POLARS,
     HAS_PYARROW,
     HAS_SQLALCHEMY,
+    expectation_configuration_class,
+    great_expectations_module,
     great_expectations_not_installed_message,
     initialise_expectation_suite_for_single_expectation_api_message,
 )
@@ -43,6 +45,8 @@ __all__ = [
     "HAS_PANDAS",
     "HAS_POLARS",
     "HAS_SQLALCHEMY",
+    "expectation_configuration_class",
+    "great_expectations_module",
     "great_expectations_not_installed_message",
     "initialise_expectation_suite_for_single_expectation_api_message",
 ]
