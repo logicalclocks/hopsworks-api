@@ -8,6 +8,9 @@ description: Use when writing Python or PySpark code for batch inference with Ho
 ## Contract
 - **Input:** a feature view + a registered model from the Model Registry.
 - **Output:** predictions, either logged (monitoring) or persisted (downstream consumption).
+  Inside a `/hops-build` system the output is also the `inference` block of `system.yaml`
+  (`mode: batch`): write that block and preserve every other line
+  ([hops-reqs/references/system-yaml.md](../hops-reqs/references/system-yaml.md)).
 - **Pre-condition:** the model is trained and registered; the feature view is materialized offline.
 
 ## Smoke-test (cheap pre/post-flight)
@@ -505,6 +508,23 @@ preds_fg.insert(predictions_df)   # predictions_df = keys + event_time + predict
 ```
 
 ---
+
+## Tests
+
+The inference row of [hops-reqs/references/tests.md](../hops-reqs/references/tests.md) for batch.
+Unit, offline: the scoring window follows the cadence, the model's columns are
+assembled in training order, and only `data_policy.log_fields` are written
+(the template's `prediction_rows`). Integration: a small window scored into
+`<ident>_predictions_test_<run_id>` has the expected count, schema and value
+range, and is deleted.
+
+The SLA is measured by `benchmarks/benchmark_inference.py` from the hops-reqs
+template, never estimated: a `full_window` run over the declared window, timed
+end to end (read, score, write), passes when it fits between the inference cron
+fire and `sla.batch.must_finish_by` less the measured feature job. A scaled
+`sample` run is a screening estimate and never the basis of `met`. Batch
+inference runs in the training environment when it can, which removes
+training/serving skew in the model and transformation libraries by construction.
 
 ## Next Steps
 

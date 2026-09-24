@@ -1,0 +1,9 @@
+# Copied into the system directory as .gitignore.
+.hops.lock
+runs/
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+evaluation/
+.system.yaml.*

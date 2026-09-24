@@ -1,0 +1,121 @@
+/* Hopsworks app look: tokens first, then components. Extend, don't restyle. */
+:root {
+  --accent: #1eb182;
+  --accent-soft: rgba(30, 177, 130, 0.14);
+  --bg: #f5f7f9;
+  --panel: #ffffff;
+  --text: #1a1f2b;
+  --muted: #5f6b7a;
+  --line: #e3e8ee;
+  --danger: #d6455d;
+  --warn: #e0a100;
+  --radius: 12px;
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 4px 12px rgba(16, 24, 40, 0.06);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1117;
+    --panel: #161b25;
+    --text: #eef1f5;
+    --muted: #9aa5b4;
+    --line: #262d3a;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+h1, h2, h3 { line-height: 1.25; margin: 0; }
+h2 { font-size: 1.05rem; font-weight: 600; }
+
+.band {
+  display: flex; align-items: center; gap: 0.75rem;
+  padding: 0.9rem 1.5rem;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+.band .mark {
+  width: 2rem; height: 2rem; border-radius: 8px;
+  display: grid; place-items: center;
+  background: var(--accent); color: #fff; font-weight: 700;
+}
+.band h1 { font-size: 1.15rem; }
+.band .sub { color: var(--muted); font-size: 0.85rem; }
+
+main {
+  max-width: 72rem; margin: 1.5rem auto; padding: 0 1.5rem;
+  display: grid; gap: 1.25rem;
+}
+.grid { display: grid; gap: 1.25rem; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); }
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 1.25rem;
+}
+.card > h2 { margin-bottom: 0.75rem; }
+
+.stat .label { color: var(--muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.stat .value { font-size: 1.9rem; font-weight: 700; margin-top: 0.25rem; }
+.stat .value.accent { color: var(--accent); }
+.stat .value.danger { color: var(--danger); }
+
+form { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+label { color: var(--muted); font-size: 0.9rem; }
+input, select, button { font: inherit; border-radius: 8px; padding: 0.5rem 0.75rem; }
+input, select {
+  border: 1px solid var(--line); background: var(--bg); color: var(--text); min-width: 10rem;
+}
+input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+button {
+  border: none; background: var(--accent); color: #fff; font-weight: 600; cursor: pointer;
+}
+button:hover { filter: brightness(1.05); }
+button:disabled { opacity: 0.6; cursor: progress; }
+
+table { width: 100%; border-collapse: collapse; }
+th {
+  text-align: left; color: var(--muted); font-weight: 500; font-size: 0.8rem;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+td, th { padding: 0.6rem 0.5rem; border-bottom: 1px solid var(--line); }
+tbody tr:hover { background: var(--accent-soft); }
+td.num { font-variant-numeric: tabular-nums; }
+
+.bar { display: flex; align-items: center; gap: 0.5rem; }
+.bar .track { flex: 1; height: 0.5rem; border-radius: 999px; background: var(--line); overflow: hidden; }
+.bar .fill { height: 100%; border-radius: 999px; background: var(--accent); }
+.bar .fill.high { background: var(--danger); }
+.bar .fill.mid { background: var(--warn); }
+.bar .num { min-width: 3.5rem; text-align: right; }
+
+.badge {
+  display: inline-block; padding: 0.1rem 0.55rem; border-radius: 999px;
+  font-size: 0.78rem; font-weight: 600; background: var(--accent-soft); color: var(--accent);
+}
+.badge.high { background: rgba(214, 69, 93, 0.14); color: var(--danger); }
+
+.muted { color: var(--muted); }
+.empty, .error { color: var(--muted); padding: 1rem 0; text-align: center; }
+.error { color: var(--danger); }
+.loading {
+  height: 1rem; border-radius: 6px; margin: 0.6rem 0;
+  background: linear-gradient(90deg, var(--line), var(--bg), var(--line));
+  background-size: 200% 100%; animation: shimmer 1.2s infinite;
+}
+@keyframes shimmer { to { background-position: -200% 0; } }
+
+@media (max-width: 40rem) {
+  .band { padding: 0.75rem 1rem; }
+  main { padding: 0 1rem; }
+  input, select { min-width: 0; flex: 1; }
+}

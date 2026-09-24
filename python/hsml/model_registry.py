@@ -207,6 +207,7 @@ class ModelRegistry:
         selected_formats: list[str] | None = None,
         selected_variants: list[str] | None = None,
         selected_filenames: list[str] | None = None,
+        revision: str | None = None,
         timeout: int = 36000,
         poll_interval: int = 5,
     ) -> model.Model:
@@ -248,11 +249,13 @@ class ModelRegistry:
             selected_filenames: Explicit per-file allowlist. When non-empty this
                 overrides ``selected_formats`` / ``selected_variants`` and the backend
                 downloads exactly these paths.
+            revision: Hub branch, tag or commit sha to import; the default branch when omitted.
+                Every file is downloaded from the commit this resolves to, and that commit sha is recorded in the registered model's description.
             timeout: Maximum seconds to wait for the import to reach a terminal state.
             poll_interval: Seconds between status polls.
 
         Returns:
-            The newly registered model entity.
+            The newly registered model entity; its description names the Hub commit its files came from.
 
         Raises:
             hopsworks.client.exceptions.HuggingFaceImportException: If the backend
@@ -274,6 +277,7 @@ class ModelRegistry:
                 selected_formats=selected_formats,
                 selected_variants=selected_variants,
                 selected_filenames=selected_filenames,
+                revision=revision,
             )
         except RestAPIError as e:
             self._raise_hf_exception_from_rest_error(e)
@@ -320,9 +324,11 @@ class ModelRegistry:
                         if total > last_completed:
                             pbar.update(total - last_completed)
                         pbar.close()
+                    resolved = last_status.get("revision")
+                    at_revision = f" at revision {resolved}" if resolved else ""
                     print(
                         f"✔ HuggingFace import succeeded: "
-                        f"'{hugging_face_model_id}' downloaded "
+                        f"'{hugging_face_model_id}'{at_revision} downloaded "
                         f"({done}/{total} files)."
                     )
                     return self._resolve_imported_model(

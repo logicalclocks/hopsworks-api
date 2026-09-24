@@ -57,6 +57,7 @@ dependencies = [
     "packaging",                     # ^21.0
     "hopsworks-apigen>=1.0.4,<2.0.0",
     "click>=8.1",
+    "pyyaml",                        # hops build and the ML system template read and write system.yaml
     "tomli>=2.0; python_version < '3.11'",
     "tomli-w>=1.0",
     "build",
@@ -110,7 +111,12 @@ dev-pandas1 = [
     "sqlalchemy<=1.4.48",
     "delta-spark==4.3.1",
 ]
-dev = ["hopsworks[dev-no-opt,great-expectations,polars,python,mcp,trino]"]
+dev = [
+    "hopsworks[dev-no-opt,great-expectations,polars,python,mcp,trino]",
+    # The app skeleton shipped under hopsworks/skills is exercised by the unit
+    # tests; FastAPI is a dependency of the app, not of this package.
+    "fastapi",
+]
 polars = [
     "polars>=0.20.31,<=1.40.1",
     "pyarrow>=17.0",
@@ -165,7 +171,17 @@ include = [
 # Skill playbooks are data, not importable code: the folder names carry hyphens
 # and the tree has no __init__.py, so packages.find excludes it above and the
 # files ride along as package data instead.
-"hopsworks" = ["skills/**/*.md", "skills/**/*.py"]
+"hopsworks" = [
+    "skills/**/*.md",
+    "skills/**/*.py",
+    "skills/**/*.toml",
+    "skills/**/*.yaml",
+    "skills/**/*.txt",
+    "skills/**/*.html",
+    "skills/**/*.js",
+    "skills/**/*.css",
+    "skills/**/gitignore",
+]
 
 [tool.setuptools.dynamic]
 version = { attr = "hopsworks_common.version.__version__" }

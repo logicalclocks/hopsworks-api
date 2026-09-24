@@ -233,7 +233,12 @@ def _prune_empty_dirs(start: Path, stop: Path) -> None:
 CLI_BUNDLE = {
     ".claude/skills/hops/SKILL.md": "SKILL.md",
     ".claude/commands/hops.md": "hops.md",
-    ".claude/agents/hops-fti.md": "hops-fti.md",
+    ".claude/commands/hops-ml.md": "hops-ml.md",
+    ".claude/commands/hops-build.md": "hops-build.md",
+    ".claude/agents/hops-train-agent.md": "hops-train-agent.md",
+    ".claude/agents/hops-infer-agent.md": "hops-infer-agent.md",
+    ".claude/agents/hops-dashboard-builder.md": "hops-dashboard-builder.md",
+    ".claude/agents/hops-app-builder.md": "hops-app-builder.md",
 }
 AGENTS_PATH = "AGENTS.md"
 HOPS_PERMISSION = "Bash(hops *)"

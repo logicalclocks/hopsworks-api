@@ -218,6 +218,78 @@ A full dashboard (statistics, monitoring history, data sample) is in
 
 ---
 
+## Apps built by `/hops app`
+
+`/hops app` turns a description in natural language into a running app from
+[references/app_skeleton/](references/app_skeleton/):
+
+- **Shape.** A `custom` app: `app.py` (FastAPI) serves a JSON API under `/api`
+  and a static UI from `static/` (`index.html`, `app.js` as plain ES modules,
+  `app.css`) in one process on `0.0.0.0:$APP_PORT`, with `/health` for the
+  readiness probe. No build step and no CDN, because the app runs air-gapped;
+  every URL in the UI is relative (`fetch("api/top")`, `src="static/app.js"`),
+  and `index.html` adds the trailing slash relative URLs need under the proxy
+  mount. A framework that needs a build (React, Vue, Svelte) only for a
+  git-backed app whose repository can hold the built assets. Streamlit when the
+  description is a data view with no custom interaction.
+- **The description is the module docstring** of `app.py`, updated on every
+  edit, so the next edit starts from what the app is now.
+- **Where the source lives.** `Users/<user>/apps/<name>/` (`~/apps/<name>/` in a
+  terminal; `./apps/<name>/` from a laptop, mirrored with `hops files upload`),
+  or a git-backed app when the working directory is a GitHub repository
+  (`--git-url`, `--git-branch`, `--git-auto-redeploy`, so a push is a
+  redeploy). An ML system's app keeps its source in the system's repository
+  under `<slug>/app/`.
+- **Environment.** `python-agent-pipeline` ships FastAPI and uvicorn, so the
+  skeleton runs there with no clone. A library neither base has goes into
+  `app-requirements.txt` and a clone `<name>-app-env` (see **Custom libraries**).
+
+```bash
+find apps/customer-lookup -name __pycache__ -prune -exec rm -rf {} +
+hops files mkdir Users/<user>/apps                    # the parent must exist; the upload copies the directory
+hops files upload apps/customer-lookup Users/<user>/apps/
+hops app create customer-lookup --path /Projects/<project>/Users/<user>/apps/customer-lookup/app.py \
+  --app-kind custom --entrypoint-command "python app.py" --app-port 8080 \
+  --readiness-probe-path /health --environment python-agent-pipeline --start
+hops app url customer-lookup
+```
+
+**Smoke tests** go to the app itself, not the proxy URL, which needs a browser
+session (an API key gets a 401). `--start` returning `serving=yes` means the
+readiness probe on `/health` passed. In a Hopsworks terminal, whose `kubectl`
+reaches the project namespace, then call the page and each API route the
+description implies:
+
+```bash
+POD=$(kubectl get pods -o name | grep customer-lookup)
+kubectl port-forward "$POD" 18080:8080 &
+curl -s localhost:18080/health; curl -s localhost:18080/ | head; curl -s localhost:18080/api/top
+```
+
+From an external client without `kubectl`, the readiness probe is the smoke
+test, and the URL is handed to the user to open.
+
+## Fix loop
+
+When the app fails to start, stops serving, or a smoke test fails, fix it
+without asking, at most five attempts:
+
+1. `hops app logs <name>`: read the error and name the cause in one line.
+2. Change the source. A missing library is an environment fix (a pin in
+   `app-requirements.txt` installed into the clone), never a workaround in the
+   code. Out of memory: raise `--memory` once and say so.
+3. Upload (`hops files upload ... --overwrite`), or push for a git-backed app.
+4. A running app: `hops app redeploy <name>`. An app that failed to start:
+   `hops app start <name>` (redeploy refuses an app that is not running). Wait
+   for `RUNNING` and serving, and rerun the smoke tests.
+
+After the fifth attempt, stop with the last lines of the logs and what was tried.
+
+**Edit** changes the source as asked, updates the docstring, redeploys and
+reruns the smoke tests. **Delete** confirms the exact name, runs
+`hops app delete <name> --yes`, and removes the source directory and the
+environment clone when one was created for the app.
+
 ## Custom libraries
 
 If the app needs libraries not in `python-app-pipeline`, clone that base env and
