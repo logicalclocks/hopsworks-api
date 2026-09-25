@@ -312,3 +312,39 @@ class PySparkValidator(DataFrameValidator):
                 is_string_length_exceeded = True
 
         return errors, column_lengths, is_pk_null, is_string_length_exceeded
+
+    @staticmethod
+    def _guard_null_primary_keys(feature_group, df):
+        """Return `df` with every primary key column failing the query that reads a null from it.
+
+        The check is evaluated by the write that consumes `df`, so it adds no pass over the data.
+
+        Raises:
+            ValueError: A primary key column is missing from `df`.
+        """
+        import pyspark.sql.functions as sf
+
+        if not feature_group.primary_key:
+            return df
+        fields = {field.name: field for field in df.schema.fields}
+        for pk in feature_group.primary_key:
+            if pk not in fields:
+                raise ValueError(
+                    f"Primary key column {pk} is missing in input dataframe"
+                )
+        guarded = df.withColumns(
+            {
+                pk: sf.when(
+                    sf.col(pk).isNull(),
+                    sf.raise_error(
+                        sf.lit(f"Primary key column {pk} contains null values.")
+                    ),
+                ).otherwise(sf.col(pk))
+                for pk in feature_group.primary_key
+            }
+        )
+        # withColumns drops the field metadata (comment, char/varchar length) the written table inherits
+        for pk in feature_group.primary_key:
+            if fields[pk].metadata:
+                guarded = guarded.withMetadata(pk, fields[pk].metadata)
+        return guarded
