@@ -493,6 +493,24 @@ class TestSparkDataframe(BaseDataFrameTest):
         ):
             guarded.collect()
 
+    def test_guard_null_primary_keys_keeps_field_metadata(
+        self, spark_df, feature_group_data
+    ):
+        # Arrange
+        from pyspark.sql.functions import col
+
+        metadata = {"comment": "the key", "__CHAR_VARCHAR_TYPE_STRING": "varchar(10)"}
+        df = spark_df.withColumn(
+            "primary_key", col("primary_key").alias("primary_key", metadata=metadata)
+        )
+
+        # Act
+        guarded = PySparkValidator._guard_null_primary_keys(feature_group_data, df)
+
+        # Assert
+        assert guarded.schema["primary_key"].metadata == metadata
+        assert guarded.columns == df.columns
+
     def test_guard_null_primary_keys_missing_column(self, spark_df, feature_group_data):
         # Act & Assert
         with pytest.raises(

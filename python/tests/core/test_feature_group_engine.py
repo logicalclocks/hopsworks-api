@@ -1185,7 +1185,9 @@ class TestFeatureGroupEngine:
         mocker.patch(
             "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
         )
-        mocker.patch("hsfs.core.great_expectation_engine.GreatExpectationEngine")
+        mock_ge_engine = mocker.patch(
+            "hsfs.core.great_expectation_engine.GreatExpectationEngine"
+        )
         mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
         mocker.patch(
             "hsfs.core.feature_group_engine._is_spark_dataframe", return_value=True
@@ -1236,6 +1238,10 @@ class TestFeatureGroupEngine:
         assert mock_guard.called == (expected == "guard")
         written = mock_engine_get_instance.return_value._save_dataframe.call_args[0][1]
         assert written is (mock_guard.return_value if expected == "guard" else spark_df)
+        ge_validated = mock_ge_engine.return_value._validate.call_args.kwargs[
+            "dataframe"
+        ]
+        assert ge_validated is spark_df
 
     def test_insert_overwrite_validates_spark_dataframe_before_delete(self, mocker):
         # Arrange

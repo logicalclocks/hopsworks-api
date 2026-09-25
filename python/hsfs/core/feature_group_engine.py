@@ -125,6 +125,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
 
         Returns:
             The DataFrame to write and its features.
+            Great Expectations validates the DataFrame given, since its expectations would trip the null primary key check of the one returned.
         """
         validation_options = validation_options or {}
         requested = [
@@ -193,7 +194,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group.embedding_index, dataframe_features
         )
 
-        feature_dataframe, dataframe_features = self._validate_dataframe_schema(
+        write_dataframe, dataframe_features = self._validate_dataframe_schema(
             feature_group, feature_dataframe, dataframe_features, validation_options
         )
 
@@ -220,7 +221,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         return (
             engine._get_instance()._save_dataframe(
                 feature_group,
-                feature_dataframe,
+                write_dataframe,
                 (
                     hudi_engine.HudiEngine.HUDI_BULK_INSERT
                     if feature_group.time_travel_format in ["HUDI", "DELTA", "ICEBERG"]
@@ -324,7 +325,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group.embedding_index, dataframe_features
         )
 
-        feature_dataframe, dataframe_features = self._validate_dataframe_schema(
+        write_dataframe, dataframe_features = self._validate_dataframe_schema(
             feature_group,
             feature_dataframe,
             dataframe_features,
@@ -379,7 +380,7 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         return (
             engine._get_instance()._save_dataframe(
                 feature_group,
-                feature_dataframe,
+                write_dataframe,
                 "bulk_insert" if overwrite else operation,
                 feature_group.online_enabled,
                 storage,

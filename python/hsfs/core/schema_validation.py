@@ -326,12 +326,13 @@ class PySparkValidator(DataFrameValidator):
 
         if not feature_group.primary_key:
             return df
+        fields = {field.name: field for field in df.schema.fields}
         for pk in feature_group.primary_key:
-            if pk not in df.columns:
+            if pk not in fields:
                 raise ValueError(
                     f"Primary key column {pk} is missing in input dataframe"
                 )
-        return df.withColumns(
+        guarded = df.withColumns(
             {
                 pk: sf.when(
                     sf.col(pk).isNull(),
@@ -342,3 +343,8 @@ class PySparkValidator(DataFrameValidator):
                 for pk in feature_group.primary_key
             }
         )
+        # withColumns drops the field metadata (comment, char/varchar length) the written table inherits
+        for pk in feature_group.primary_key:
+            if fields[pk].metadata:
+                guarded = guarded.withMetadata(pk, fields[pk].metadata)
+        return guarded
