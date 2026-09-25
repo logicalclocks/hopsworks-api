@@ -14,6 +14,7 @@
 #
 from __future__ import annotations
 
+import logging
 import warnings
 from typing import TYPE_CHECKING, Any
 
@@ -23,6 +24,7 @@ from hopsworks_common.core.sink_job_configuration import (
     FeatureColumnMapping,
     SinkJobConfiguration,
 )
+from hopsworks_common.spark_connect_utils import _is_spark_dataframe
 from hsfs import engine, feature, util
 from hsfs import feature_group as fg
 from hsfs.core import (
@@ -37,7 +39,7 @@ from hsfs.core import (
 )
 from hsfs.core.deltastreamer_jobconf import DeltaStreamerJobConf
 from hsfs.core.multi_table_ingestion import MultiTableIngestionJob
-from hsfs.core.schema_validation import DataFrameValidator
+from hsfs.core.schema_validation import DataFrameValidator, PySparkValidator
 from hsfs.storage_connector import StorageConnector
 
 
@@ -45,6 +47,9 @@ if TYPE_CHECKING:
     import pandas as pd
     import polars as pl
     from hsfs.feature import Feature
+
+
+_logger = logging.getLogger(__name__)
 
 
 class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
@@ -103,6 +108,53 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
         ]
         return updated_schema + transformed_features
 
+    @staticmethod
+    def _validate_dataframe_schema(
+        feature_group: fg.FeatureGroup | fg.ExternalFeatureGroup,
+        feature_dataframe,
+        dataframe_features: list[Feature],
+        validation_options: dict | None,
+        overwrite: bool = False,
+    ):
+        """Validate the DataFrame to write into `feature_group` against its schema.
+
+        An explicit `schema_validation`, or the older `online_schema_validation`, validation option decides whether the validation runs.
+        Without one, a Spark DataFrame written to a feature group that is not online enabled skips the validation, because it would evaluate the DataFrame an extra time.
+        Its primary keys are still checked for nulls by the write itself.
+        An overwrite always validates up front, because it deletes the existing data before that write runs.
+
+        Returns:
+            The DataFrame to write and its features.
+        """
+        validation_options = validation_options or {}
+        requested = [
+            validation_options[key]
+            for key in ("schema_validation", "online_schema_validation")
+            if key in validation_options
+        ]
+        if requested and not all(requested):
+            return feature_dataframe, dataframe_features
+        if (
+            not requested
+            and not overwrite
+            and not feature_group.online_enabled
+            and _is_spark_dataframe(feature_dataframe)
+        ):
+            _logger.info(
+                f"Skipping schema validation of the DataFrame written to offline feature group {feature_group.name}, "
+                "null primary keys fail the write instead. "
+                'Pass validation_options={"schema_validation": True} to run it.'
+            )
+            return (
+                PySparkValidator._guard_null_primary_keys(
+                    feature_group, feature_dataframe
+                ),
+                dataframe_features,
+            )
+        return feature_dataframe, DataFrameValidator()._validate_schema(
+            feature_group, feature_dataframe, dataframe_features
+        )
+
     def _save(
         self,
         feature_group: fg.FeatureGroup | fg.ExternalFeatureGroup,
@@ -141,16 +193,9 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group.embedding_index, dataframe_features
         )
 
-        if not validation_options or (
-            validation_options.get(
-                "online_schema_validation", True
-            )  # for backwards compatibility
-            and validation_options.get("schema_validation", True)
-        ):
-            # validate df schema
-            dataframe_features = DataFrameValidator()._validate_schema(
-                feature_group, feature_dataframe, dataframe_features
-            )
+        feature_dataframe, dataframe_features = self._validate_dataframe_schema(
+            feature_group, feature_dataframe, dataframe_features, validation_options
+        )
 
         self._save_feature_group_metadata(
             feature_group,
@@ -279,16 +324,13 @@ class FeatureGroupEngine(feature_group_base_engine.FeatureGroupBaseEngine):
             feature_group.embedding_index, dataframe_features
         )
 
-        if not validation_options or (
-            validation_options.get(
-                "online_schema_validation", True
-            )  # for backwards compatibility
-            and validation_options.get("schema_validation", True)
-        ):
-            # validate df schema
-            dataframe_features = DataFrameValidator()._validate_schema(
-                feature_group, feature_dataframe, dataframe_features
-            )
+        feature_dataframe, dataframe_features = self._validate_dataframe_schema(
+            feature_group,
+            feature_dataframe,
+            dataframe_features,
+            validation_options,
+            overwrite=bool(overwrite),
+        )
 
         if not feature_group._id:
             # only save metadata if feature group does not exist

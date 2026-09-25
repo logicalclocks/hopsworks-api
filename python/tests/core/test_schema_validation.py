@@ -466,3 +466,38 @@ class TestSparkDataframe(BaseDataFrameTest):
 
         # Assert
         assert isinstance(validator, PySparkValidator)
+
+    def test_guard_null_primary_keys_keeps_rows(self, spark_df, feature_group_data):
+        # Act
+        guarded = PySparkValidator._guard_null_primary_keys(
+            feature_group_data, spark_df
+        )
+
+        # Assert
+        assert guarded.schema == spark_df.schema
+        assert guarded.collect() == spark_df.collect()
+
+    def test_guard_null_primary_keys_fails_on_null(self, spark_df, feature_group_data):
+        # Arrange
+        from pyspark.errors import PySparkException
+
+        df = self._modify_row(spark_df, 0, primary_key=None)
+
+        # Act
+        guarded = PySparkValidator._guard_null_primary_keys(feature_group_data, df)
+
+        # Assert
+        with pytest.raises(
+            PySparkException,
+            match="Primary key column primary_key contains null values.",
+        ):
+            guarded.collect()
+
+    def test_guard_null_primary_keys_missing_column(self, spark_df, feature_group_data):
+        # Act & Assert
+        with pytest.raises(
+            ValueError, match="Primary key column primary_key is missing"
+        ):
+            PySparkValidator._guard_null_primary_keys(
+                feature_group_data, spark_df.drop("primary_key")
+            )

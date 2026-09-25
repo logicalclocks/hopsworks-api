@@ -1156,6 +1156,141 @@ class TestFeatureGroupEngine:
         assert mock_fg_api.return_value._delete_content.call_count == 0
         assert mock_validate_schema.called == should_validate_schema
 
+    @pytest.mark.parametrize("method", ["_insert", "_save"])
+    @pytest.mark.parametrize(
+        "online_enabled,validation_options,expected",
+        [
+            # FeatureGroup.insert() always passes save_report
+            (False, {"save_report": True}, "guard"),
+            (False, None, "guard"),
+            (False, {"schema_validation": True}, "validate"),
+            (False, {"online_schema_validation": True}, "validate"),
+            (False, {"schema_validation": False}, "none"),
+            (True, {"save_report": True}, "validate"),
+            (True, None, "validate"),
+            (True, {"schema_validation": False}, "none"),
+        ],
+    )
+    def test_schema_validation_spark_dataframe(
+        self, method, online_enabled, validation_options, expected, mocker
+    ):
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.engine._get_type")
+        mock_engine_get_instance = mocker.patch("hsfs.engine._get_instance")
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine._save_feature_group_metadata"
+        )
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
+        )
+        mocker.patch("hsfs.core.great_expectation_engine.GreatExpectationEngine")
+        mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+        mocker.patch(
+            "hsfs.core.feature_group_engine._is_spark_dataframe", return_value=True
+        )
+        mock_validate_schema = mocker.patch(
+            "hsfs.core.schema_validation.DataFrameValidator._validate_schema"
+        )
+        mock_guard = mocker.patch(
+            "hsfs.core.schema_validation.PySparkValidator._guard_null_primary_keys"
+        )
+        spark_df = mocker.Mock()
+
+        fg_engine = feature_group_engine.FeatureGroupEngine(
+            feature_store_id=feature_store_id
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=["id"],
+            foreign_key=[],
+            partition_key=[],
+            online_enabled=online_enabled,
+        )
+
+        # Act
+        if method == "_insert":
+            fg_engine._insert(
+                feature_group=fg,
+                feature_dataframe=spark_df,
+                overwrite=None,
+                operation=None,
+                storage=None,
+                write_options=None,
+                validation_options=validation_options,
+            )
+        else:
+            fg_engine._save(
+                feature_group=fg,
+                feature_dataframe=spark_df,
+                write_options=None,
+                validation_options=validation_options,
+            )
+
+        # Assert
+        assert mock_validate_schema.called == (expected == "validate")
+        assert mock_guard.called == (expected == "guard")
+        written = mock_engine_get_instance.return_value._save_dataframe.call_args[0][1]
+        assert written is (mock_guard.return_value if expected == "guard" else spark_df)
+
+    def test_insert_overwrite_validates_spark_dataframe_before_delete(self, mocker):
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.engine._get_type")
+        mocker.patch("hsfs.engine._get_instance")
+        mocker.patch(
+            "hsfs.core.feature_group_engine.FeatureGroupEngine._verify_schema_compatibility"
+        )
+        mocker.patch("hsfs.core.great_expectation_engine.GreatExpectationEngine")
+        mock_fg_api = mocker.patch("hsfs.core.feature_group_api.FeatureGroupApi")
+        mocker.patch(
+            "hsfs.core.feature_group_engine._is_spark_dataframe", return_value=True
+        )
+        mock_guard = mocker.patch(
+            "hsfs.core.schema_validation.PySparkValidator._guard_null_primary_keys"
+        )
+        mock_validate_schema = mocker.patch(
+            "hsfs.core.schema_validation.DataFrameValidator._validate_schema",
+            side_effect=ValueError("Primary key column id contains null values."),
+        )
+
+        fg_engine = feature_group_engine.FeatureGroupEngine(
+            feature_store_id=feature_store_id
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=feature_store_id,
+            primary_key=["id"],
+            foreign_key=[],
+            partition_key=[],
+            online_enabled=False,
+            id=10,
+        )
+
+        # Act
+        with pytest.raises(ValueError, match="contains null values"):
+            fg_engine._insert(
+                feature_group=fg,
+                feature_dataframe=mocker.Mock(),
+                overwrite=True,
+                operation=None,
+                storage=None,
+                write_options=None,
+                validation_options={"save_report": True},
+            )
+
+        # Assert
+        assert mock_validate_schema.call_count == 1
+        assert mock_guard.call_count == 0
+        assert mock_fg_api.return_value._delete_content.call_count == 0
+
     def test_insert_storage(self, mocker):
         # Arrange
         feature_store_id = 99
