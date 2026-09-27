@@ -29,9 +29,12 @@ its "Apps built by `/hops app`" and "Fix loop" sections and `references/app_skel
   hops app url <name>
   ```
 
-  `serving=yes` means the readiness probe on `/health` passed. In a Hopsworks terminal, smoke-test
-  the pod through `kubectl port-forward`: the page and one call of each API route the description
-  implies (the proxy URL needs a browser session).
+  `serving=yes` means the readiness probe on `/health` passed. `hops app info <name>` must show
+  `Routing: root`: in the compatibility prefix mode the proxy forwards
+  `/hopsworks-api/pythonapp/<project>/<name>/...` unchanged, so an app written for `/` answers 404
+  to every browser request while `/health` and a port-forward still pass. In a Hopsworks terminal,
+  smoke-test the pod through `kubectl port-forward`: the page and one call of each API route the
+  description implies (the proxy URL needs a browser session).
 - **edit:** change the source as `change` says, update the docstring so the next edit starts from
   what the app now is, upload or push, `hops app redeploy <name>`, and rerun the smoke tests.
 - **delete:** `hops app delete <name> --yes`, remove the source directory, and the environment
