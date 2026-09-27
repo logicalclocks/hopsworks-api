@@ -21,6 +21,7 @@ import threading
 from typing import Any
 
 from hopsworks_common import tag
+from hopsworks_common.client.exceptions import RestAPIError
 from hsml import (
     client,
     decorators,
@@ -461,10 +462,13 @@ class ServingApi:
     ) -> None:
         """Open the connection the first REST prediction reuses, without predicting.
 
-        A `GET` of the model's metadata has no side effects, and whatever it
-        answers, the session is left holding a connection with its TLS
-        handshake done. Requests sent through Hopsworks use the client session
-        that logging in and downloading the schema have already opened.
+        A `GET` of the model's metadata has no side effects.
+        Any HTTP answer means the session now holds a connection with its TLS handshake done, so an error status is not raised.
+        A DNS, connect or TLS failure opened nothing, so it is raised: the first prediction would otherwise meet it instead.
+        Requests sent through Hopsworks use the client session that logging in and downloading the schema have already opened.
+
+        Raises:
+            requests.exceptions.RequestException: The model's endpoint could not be reached.
         """
         if through_hopsworks:
             return
@@ -476,8 +480,10 @@ class ServingApi:
         ) + ["v1", "models", deployment_instance.name]
         try:
             _client._send_request("GET", path_params, with_base_path_params=False)
-        except Exception as e:  # noqa: BLE001 - the connection is open whatever the endpoint answers
-            _logger.debug("Warm-up request to %s answered %s", path_params, e)
+        except RestAPIError as e:
+            _logger.debug(
+                "Warm-up request to %s answered %s", path_params, e.response.status_code
+            )
 
     def _grpc_channel(self, deployment_instance):
         """The deployment's gRPC channel, created once and reused by every later call.
