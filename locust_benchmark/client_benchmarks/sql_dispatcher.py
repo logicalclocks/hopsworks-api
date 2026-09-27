@@ -26,7 +26,7 @@ and those are the point of the benchmark:
 
 Run it on two revisions and compare:
 
-    python -m benchmarks.sql_dispatcher --json before.json
+    python -m client_benchmarks.sql_dispatcher --json before.json
 
 Written so it runs unchanged on a revision that predates the bounded-concurrency
 arguments, which is what makes a before/after comparison possible.
