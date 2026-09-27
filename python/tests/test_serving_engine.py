@@ -854,6 +854,30 @@ class TestInitPredict:
         assert deployment._predict_prepared is True
 
 
+class TestPredictWithoutValidation:
+    def test_a_rest_prediction_that_skips_validation_never_reads_the_schema(
+        self, mocker
+    ):
+        """validate=False must keep working when the schema artifact cannot be read."""
+        eng = serving_engine.ServingEngine.__new__(serving_engine.ServingEngine)
+        eng._serving_api = mocker.Mock()
+        eng._serving_api._send_inference_request.return_value = {"predictions": [1]}
+        deployment = mocker.Mock()
+        deployment.api_protocol = "REST"
+        deployment.model_server = "PYTHON"
+        deployment.predictor.serving_tool = "KSERVE"
+        deployment._predict_prepared = False
+        type(deployment).schema = mocker.PropertyMock(
+            side_effect=AssertionError("the schema was read")
+        )
+
+        result = eng._predict(
+            deployment, data={"instances": [[1, 2]]}, inputs=None, validate=False
+        )
+
+        assert result == {"predictions": [1]}
+
+
 class TestWarmRestTransport:
     def test_a_metadata_get_opens_the_connection(self, mocker):
         from hsml.core import serving_api
@@ -875,9 +899,26 @@ class TestWarmRestTransport:
         from hsml.core import serving_api
 
         istio = mocker.patch("hsml.core.serving_api.client.istio._get_instance")
-        istio.return_value._send_request.side_effect = RuntimeError("404")
+        from hopsworks_common.client.exceptions import RestAPIError
+
+        response = mocker.Mock(status_code=404)
+        response.json.return_value = {"errorMsg": "no such model"}
+        istio.return_value._send_request.side_effect = RestAPIError("url", response)
 
         serving_api.ServingApi()._warm_rest_transport(mocker.Mock())
+
+    def test_a_connection_failure_is_raised(self, mocker):
+        """Nothing was opened, so init_predict must not report the transport as ready."""
+        import requests
+        from hsml.core import serving_api
+
+        istio = mocker.patch("hsml.core.serving_api.client.istio._get_instance")
+        istio.return_value._send_request.side_effect = (
+            requests.exceptions.ConnectionError("no route to host")
+        )
+
+        with pytest.raises(requests.exceptions.ConnectionError):
+            serving_api.ServingApi()._warm_rest_transport(mocker.Mock())
 
     def test_through_hopsworks_sends_nothing(self, mocker):
         from hsml.core import serving_api

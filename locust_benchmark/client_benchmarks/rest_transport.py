@@ -21,7 +21,7 @@ This measures that: the same request, to the same local server, over a warm conn
 A loopback server answers so both transports do real socket work, and it is the same server for both, so what differs is the client.
 CPU is process time, which is what the gate is about; wall time is reported beside it because a serving thread waits for both.
 
-    python -m benchmarks.rest_transport --json transports.json
+    python -m client_benchmarks.rest_transport --json transports.json
 """
 
 from __future__ import annotations

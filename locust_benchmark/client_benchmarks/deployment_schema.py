@@ -24,7 +24,7 @@ the floor, what `json.dumps` alone costs for the same rows.
 The nested case replaces one scalar field with an eight-element array of
 structs, which is where re-parsing a type string per value used to show.
 
-    python -m benchmarks.deployment_schema --json before.json
+    python -m client_benchmarks.deployment_schema --json before.json
 
 Written to run unchanged on a revision that predates the compiled checks.
 """

@@ -23,7 +23,7 @@ out, so the numbers are the library's and not the cluster's:
   date and binary columns are paid for, and
 * `assemble`, the whole of a batch response becoming feature vectors.
 
-    python -m benchmarks.rest_feature_vectors --json before.json
+    python -m client_benchmarks.rest_feature_vectors --json before.json
 
 Written to run unchanged on a revision that predates any of the three changes, which is what makes a before and after comparison possible.
 """

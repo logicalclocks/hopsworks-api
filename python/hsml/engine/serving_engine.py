@@ -1396,7 +1396,9 @@ class ServingEngine:
             raise ModelServingException(
                 "Inference data and inputs parameters cannot be provided together."
             )
-        self._prepare_predict(deployment_instance)
+        if deployment_instance.api_protocol == IE.API_PROTOCOL_GRPC or validate:
+            # A REST request that skips validation never reads the schema, so it must not depend on the schema artifact being readable.
+            self._prepare_predict(deployment_instance)
         # a schema describes rows, so rows sent to a gRPC deployment that has one
         # are validated as they are over REST and then encoded as v2 tensors.
         # `data` reaches here in its REST dictionary form; a list of `InferInput`
