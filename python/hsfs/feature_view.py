@@ -55,6 +55,7 @@ from hsfs.core import (
     feature_monitoring_result_engine,
     feature_view_engine,
     job,
+    partition_grains,
     statistics_engine,
     transformation_execution_dag,
     transformation_function_engine,
@@ -793,7 +794,7 @@ class FeatureView:
     def _offline_only_partition_features(self) -> list[str]:
         """Names of selected features that are `partitioned_by` grain columns not available online.
 
-        Grain columns are derived from `event_time`.
+        Grain columns are the `year`, `month`, ... columns a Hudi feature group derives from `event_time` for its temporal transforms.
         Unless the feature group enabled `online_partition_columns`, they live only in the
         offline store, so the online serving APIs cannot return them.
         Walks the query (including joins) so it covers every feature group in the view.
@@ -802,11 +803,12 @@ class FeatureView:
 
         def _walk(query) -> None:
             fg = query._left_feature_group
-            partitioned_by = getattr(fg, "partitioned_by", None) or []
+            is_hudi = (getattr(fg, "time_travel_format", None) or "").upper() == "HUDI"
+            grains = partition_grains._grains(fg) if is_hudi else []
             online_grains = bool(getattr(fg, "online_partition_columns", False))
-            if partitioned_by and not online_grains:
+            if grains and not online_grains:
                 for feat in query._left_features:
-                    if feat.name in partitioned_by and feat.name not in offending:
+                    if feat.name in grains and feat.name not in offending:
                         offending.append(feat.name)
             for join in query._joins:
                 _walk(join.query)
