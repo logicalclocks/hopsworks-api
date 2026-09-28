@@ -85,6 +85,20 @@ a question you are about to ask depends on.
   confirmation, an agent escalation, the app question, and the pull request. Free text after the
   phase is an instruction to that phase (a regenerate); none is a rerun.
 
+### Edits from the Hopsworks UI
+
+`system.edits` lists changes a user made to `system.yaml` from the Hopsworks UI (the Brewer
+panel's system architecture), not yet applied. Each is one commit, `[<slug>] edit: <box> in
+system.yaml` with a `Brewer-Edit: <id>` trailer, and one entry: `{id, paths, box, phase, at, by}`,
+where `paths` are the dotted paths it changed (`features.pipelines[0]`, `data.customers`). The UI
+shows the phase as edited and offers Apply changes, which starts
+`/hops-build <slug> <phase> Apply the edits made in the Hopsworks UI ...`, and Revert, which
+`git revert`s those commits. Applying: the edit is the new specification for those paths, so the
+named phase and every later phase it invalidates are rebuilt as for any `/hops-build <phase>
+<instruction>` change (an edit that breaks a requirement is a requirements change and is asked
+about first); then delete the applied entries from `system.edits` with `set.py` and record the
+phase `met`, or `unmet` with why. Never apply an edit that is not listed, and never revert one.
+
 ### Before reqs: the repository
 
 The interview created `<slug>/` from the system template and recorded `system.repo.url`: the

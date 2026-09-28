@@ -81,6 +81,8 @@ system:
   repo: {url: https://github.com/acme/ml-systems, host: github.com, default_branch: main, branch: hops/telco-churn, pr: 12}
   #     push: ssh when gh is logged out and an SSH key pushes: no pr, a compare link instead (repo.md)
   created: 2026-09-22
+  edits: [{id: e1a2b3c, paths: ["features.pipelines[0]"], box: telco_churn_features, phase: features,
+           at: 2026-09-23T10:02Z, by: meb10000}]   # UI edits not yet applied; /hops-build removes an entry once applied
   versions: {hopsworks: 4.6.0, cli: 4.6.0, skills: 2026-09-22, protocol: hops-train/references/autoresearch.md@1133d9c}
   progress: {phase: train, done: [reqs, data, features], now: "run 4 of 5, execution 1107 at 6m of 10m",
              remaining_estimate: 51m, estimate_basis: "runs so far; defaults for infer, app, verify"}
