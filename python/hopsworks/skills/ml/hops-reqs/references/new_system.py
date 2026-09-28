@@ -15,8 +15,9 @@ example-systems.yaml, as a draft whose requirements are still pending.
 Also puts AGENTS.md (this directory's copy) at the root of the repository the
 system is in, or beside the system outside one, with a CLAUDE.md that imports
 it, so a coding agent there knows the system is built from system.yaml and
-checks what a changed system.yaml means downstream. An existing AGENTS.md gets
-that section appended once; an existing CLAUDE.md is left alone.
+checks what a changed system.yaml means downstream. The section is a marked
+block: an existing AGENTS.md keeps its text, and in a Hopsworks home the block
+also goes into `.claude/CLAUDE.md` instead of a new CLAUDE.md.
 """
 
 from __future__ import annotations
@@ -68,18 +69,41 @@ def repo_root(directory: Path) -> Path:
     return Path(found) if found else directory
 
 
+# The Hopsworks home scaffolder and the terminal images keep any
+# `<!-- X_AUTO_BEGIN -->` block out of their digests and put it back when they
+# rewrite the file, so the section survives in a home's AGENTS.md.
+BEGIN = "<!-- ML_SYSTEMS_AUTO_BEGIN -->"
+END = "<!-- ML_SYSTEMS_AUTO_END -->"
+
+
+def add_section(path: Path) -> None:
+    """Write the AGENTS.md section into `path` as a marked block, replacing an earlier one."""
+    block = f"{BEGIN}\n{AGENTS.read_text(encoding='utf-8').strip()}\n{END}\n"
+    if not path.exists():
+        path.write_text(block, encoding="utf-8")
+        return
+    text = path.read_text(encoding="utf-8")
+    if BEGIN in text and END in text:
+        head, rest = text.split(BEGIN, 1)
+        text = head + block + rest.split(END, 1)[1].lstrip("\n")
+    else:
+        text = text.rstrip("\n") + "\n\n" + block
+    path.write_text(text, encoding="utf-8")
+
+
 def install_agents(root: Path) -> None:
-    """Put AGENTS.md and a CLAUDE.md importing it at `root`, without overwriting either."""
-    text = AGENTS.read_text(encoding="utf-8")
-    agents = root / "AGENTS.md"
-    if not agents.exists():
-        agents.write_text(text, encoding="utf-8")
-    elif text.splitlines()[0] not in agents.read_text(encoding="utf-8"):
-        with agents.open("a", encoding="utf-8") as existing:
-            existing.write("\n" + text)
-    claude = root / "CLAUDE.md"
-    if not claude.exists():
-        claude.write_text("@AGENTS.md\n", encoding="utf-8")
+    """Give coding agents at `root` the AGENTS.md section.
+
+    In a Hopsworks home, whose `.claude/CLAUDE.md` is what Claude reads, the
+    section goes into it and into the home's AGENTS.md. Elsewhere it goes into
+    AGENTS.md, with a CLAUDE.md that imports it unless one exists.
+    """
+    add_section(root / "AGENTS.md")
+    home_claude = root / ".claude" / "CLAUDE.md"
+    if home_claude.exists():
+        add_section(home_claude)
+    elif not (root / "CLAUDE.md").exists():
+        (root / "CLAUDE.md").write_text("@AGENTS.md\n", encoding="utf-8")
 
 
 def create(target: Path, example: str | None = None) -> Path:

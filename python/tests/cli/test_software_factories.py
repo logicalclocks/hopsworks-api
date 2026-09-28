@@ -636,26 +636,34 @@ def test_a_new_system_puts_agents_md_at_the_repository_root(tmp_path):
     new_system = _load(REQS / "new_system.py")
     new_system.create(repo / "systems" / "churn")
     agents = (repo / "AGENTS.md").read_text(encoding="utf-8")
-    assert "built from system.yaml" in agents.splitlines()[0]
+    assert agents.startswith("<!-- ML_SYSTEMS_AUTO_BEGIN -->\n# ML systems built from")
     assert "hops fg lineage" in agents and "Brewer-Edit" in agents
     assert (repo / "CLAUDE.md").read_text(encoding="utf-8") == "@AGENTS.md\n"
     assert not (repo / "systems" / "AGENTS.md").exists()
 
-    # A second system appends nothing; the user's own files are kept.
+    # A second system rewrites the block in place; the user's CLAUDE.md is kept.
     (repo / "CLAUDE.md").write_text("# mine\n", encoding="utf-8")
     new_system.create(repo / "systems" / "recs")
     assert (repo / "AGENTS.md").read_text(encoding="utf-8") == agents
     assert (repo / "CLAUDE.md").read_text(encoding="utf-8") == "# mine\n"
 
 
-def test_an_existing_agents_md_gets_the_section_appended_once(tmp_path):
-    (tmp_path / "AGENTS.md").write_text("# Our rules\n", encoding="utf-8")
+def test_a_hopsworks_home_gets_the_section_in_its_scaffolded_files(tmp_path):
+    platform = "You are in the Hopsworks project p.\n"
+    kube = "<!-- KUBECTL_FALLBACK_AUTO_BEGIN -->\nkubectl\n<!-- KUBECTL_FALLBACK_AUTO_END -->\n"
+    (tmp_path / ".claude").mkdir()
+    (tmp_path / "AGENTS.md").write_text(platform + "\n" + kube, encoding="utf-8")
+    (tmp_path / ".claude" / "CLAUDE.md").write_text(platform, encoding="utf-8")
     new_system = _load(REQS / "new_system.py")
     new_system.create(tmp_path / "churn")
     new_system.create(tmp_path / "recs")
-    text = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
-    assert text.startswith("# Our rules\n")
-    assert text.count("# ML systems built from system.yaml") == 1
+    for name in ("AGENTS.md", ".claude/CLAUDE.md"):
+        text = (tmp_path / name).read_text(encoding="utf-8")
+        assert text.startswith(platform)
+        assert text.count("<!-- ML_SYSTEMS_AUTO_BEGIN -->") == 1
+        assert text.endswith("<!-- ML_SYSTEMS_AUTO_END -->\n")
+    assert kube in (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+    assert not (tmp_path / "CLAUDE.md").exists()
 
 
 def _new_system(tmp_path: Path) -> Path:

@@ -111,9 +111,9 @@ repository with `gh repo create` (owner from `gh api user`, name from the slug, 
 `<slug>-<project>` when the owner already has a repository of that name, private) and record its
 URL; cut `hops/<slug>` from the default branch, or `hops/<slug>-<project>` when `hops/<slug>`
 holds another project's build, and record `system.repo`. A home directory that is not a
-repository becomes a work tree tracking only `<slug>/` and the root `AGENTS.md` and `CLAUDE.md`,
-as repo.md shows; those two tell any agent in the repository that the system is built from
-`system.yaml` and how to follow a change downstream, and go in the first commit. Every phase ends with one commit,
+repository becomes a work tree tracking only `<slug>/`, as repo.md shows. The root `AGENTS.md`
+tells any agent there that the system is built from `system.yaml` and how to follow a change
+downstream; in a repository of its own, commit it and its `CLAUDE.md` with the first phase. Every phase ends with one commit,
 `[<slug>] <phase>: <one line>`, pushed. Run `hops mlsystem register <slug>` once at the start: it
 lists the system in the project's ML systems in the Hopsworks UI (from an external client it
 records the repository URL) and is a no-op refresh when the interview already registered it.
