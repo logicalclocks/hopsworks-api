@@ -14,7 +14,7 @@
 
   <properties>
     <javax.version>2.2.11</javax.version>
-    <kafka.version>4.3.1</kafka.version>
+    <kafka.version>3.9.2</kafka.version>
   </properties>
 
   <dependencies>
@@ -91,7 +91,30 @@
       <version>2.11.0</version>
     </dependency>
 
-    <!-- https://mvnrepository.com/artifact/org.apache.kafka/kafka-clients -->
+    <!-- https://mvnrepository.com/artifact/org.apache.kafka/kafka-clients
+
+         Deliberately NOT tracking the broker version. This dependency is compile-scoped and
+         goes unrelocated into the jar-with-dependencies published as
+         hsfs-spark-spark4.1-<ver>.jar, which lands in /srv/hops/spark/hopsworks-jars/ - the
+         same directory as the Spark image's own kafka-clients and the Hudi slim bundle's
+         copy, both 3.9.1. hopsworks-ee puts that directory on extraClassPath as a single
+         `hopsworks-jars/*` wildcard, so which copy loads is decided by directory listing
+         order.
+
+         That is harmless while the versions agree on API, and breaks when they do not:
+         kafka-clients 4.x removed KafkaConsumer.poll(long), which Spark 4.1's
+         KafkaOffsetReaderConsumer calls, and committed(TopicPartition), which Hudi's
+         KafkaOffsetGen calls. With 4.3.1 here, whether a Spark streaming job or a Hudi
+         streamer ran depended on file order.
+
+         hsfs itself only uses KafkaProducer and ProducerRecord, which have been stable
+         since 0.x, so nothing here needs a 4.x client - and a 3.9.x client talks to a 4.3.1
+         broker perfectly well, since Kafka's client/broker compatibility runs both ways.
+         3.9.2 rather than the image's 3.9.1 because it carries the CVE fix and is still
+         API-identical.
+
+         Raise this only together with the Spark image's kafka-clients and Hudi's bundled
+         copy, or after kafka-clients stops being shaded into the assembly. -->
     <dependency>
       <groupId>org.apache.kafka</groupId>
       <artifactId>kafka-clients</artifactId>
