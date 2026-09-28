@@ -1233,6 +1233,15 @@ class AsyncTaskThread(threading.Thread):
                 pool_closed = False
             if pool_closed:
                 self._connection_pool = None
+            else:
+                # Stopping the loop now would leave the pool with no loop to close it on, and a later shutdown would see the closed loop and report success.
+                # The loop stays up so that shutdown can be retried.
+                _logger.warning(
+                    "Online store connection pool did not close within %s seconds; "
+                    "the task thread is kept so a later shutdown can retry.",
+                    timeout,
+                )
+                return False
 
         # Loop may already be closing under us; the wait below still settles it.
         with contextlib.suppress(RuntimeError):
@@ -1268,8 +1277,10 @@ class AsyncTaskThread(threading.Thread):
             # Recorded so a caller is told why nothing will run, rather than
             # waiting on a thread that has already given up.
             self._startup_error = e
-            print(
-                f"An error occurred in the async task thread the event loop has been closed: {str(e)}"
+            _logger.error(
+                "The online store task thread could not start and has stopped: %s",
+                e,
+                exc_info=e,
             )
             self._event_loop.stop()
             self._event_loop.close()

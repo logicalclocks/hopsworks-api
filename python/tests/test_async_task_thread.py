@@ -586,6 +586,36 @@ class TestAFailedCloseKeepsThePool:
     leaving nothing to retry the close with.
     """
 
+    def test_a_retried_shutdown_closes_the_pool_the_first_one_could_not(self):
+        """The loop stays up after a failed close, so the retry has somewhere to close it."""
+        pool = _FakePool()
+
+        async def make_pool(*_args):
+            return pool
+
+        thread = AsyncTaskThread(connection_pool_initializer=make_pool)
+        attempts = []
+
+        async def close_on_second_try(the_pool):
+            attempts.append(the_pool)
+            if len(attempts) == 1:
+                raise OSError("the server hung up")
+            the_pool.close()
+            await the_pool.wait_closed()
+
+        thread._close_connection_pool = close_on_second_try
+        thread.start()
+        assert thread._submit(AsyncTask(task_function=_noop)) == 1
+
+        assert thread._shutdown() is False
+        assert not thread._event_loop.is_closed(), (
+            "the loop was stopped with the pool open"
+        )
+
+        assert thread._shutdown() is True
+        assert pool.closed and pool.waited
+        assert thread._connection_pool is None
+
     def test_a_pool_that_would_not_close_is_kept(self):
         pool = _FakePool()
 

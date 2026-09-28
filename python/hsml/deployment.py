@@ -99,6 +99,8 @@ class Deployment:
         # Concurrent first callers prepare once and share the outcome, rather
         # than each downloading the schema and opening a transport.
         self._predict_init_lock = threading.Lock()
+        # Separate from the preparation lock, which is held while the channel is created.
+        self._grpc_channel_lock = threading.Lock()
         self._predict_prepared = False
 
     @public

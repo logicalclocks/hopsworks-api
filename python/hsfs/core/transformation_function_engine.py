@@ -680,8 +680,7 @@ class TransformationFunctionEngine:
                     data=task_inputs(tf),
                     online=online,
                     engine_type=engine_type,
-                    # A worker process does not inherit the caller's context
-                    # variable, so the request's context travels with the task.
+                    # A forked worker inherits whatever context the pool was forked under, and its initializer clears that, so the request's context travels with each task instead.
                     transformation_context=transformation_context,
                 ),
                 collect=merge,
@@ -832,8 +831,7 @@ class TransformationFunctionEngine:
                 "udf": tf.hopsworks_udf,
                 "online": online,
                 "engine_type": engine_type,
-                # A worker process does not inherit the caller's context
-                # variable, so the request's context travels with the task.
+                # A forked worker inherits whatever context the pool was forked under, and its initializer clears that, so the request's context travels with each task instead.
                 "transformation_context": transformation_context,
             }
             if use_shm:
