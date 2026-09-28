@@ -43,7 +43,10 @@ Load these skills before you start (from `.claude/skills/<name>/` in the reposit
 3. **Select features** that EDA supports, preferring features that already exist. Record them in
    `training.feature_view.features`. You never build a feature pipeline: a missing feature is
    your recommendation.
-4. **Create the feature view** with the label and the model-dependent transformations, and the
+4. **Create the feature view** with the label and the model-dependent transformations, rooted at
+   the labels group and joining the feature groups at their own grain: with an `event_time` on
+   every group the view's training data is a point-in-time join, so never create a feature group
+   of snapshots or pre-joined features and labels to get that (**hops-fv**). Then create the
    training dataset version with the three parts (`fv.create_train_validation_test_split`, with
    the boundaries of step 2 for a time split, or `fv.create_training_data` for a grouped split).
 5. **Shortlist pretrained candidates** when public models cover the task (see "Pretrained first"

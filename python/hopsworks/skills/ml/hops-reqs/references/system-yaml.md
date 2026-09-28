@@ -177,7 +177,8 @@ features:                             # owner: features
       environment: {name: python-feature-pipeline}     # a base had everything; nothing cloned
       reads: [telco_customers, billing_invoices]
       transformations: [tenure bucket, charges ratio, service count]   # MITs only
-      writes: {feature_group: telco_churn_customers, version: 1, online: false}
+      writes: {feature_group: telco_churn_customers, version: 1, online: false, primary_key: [customer_id], event_time: snapshot_date,
+               parents: [telco_customers, billing_invoices]}   # created with parents=; no snapshot or training group, the feature view joins point in time
       job: {name: telco-churn-features, type: python, schedule: {cron: "0 0 2 1 * ?", window: {start_offset_s: -2678400, end_offset_s: 0}, catchup: false, max_active_runs: 1},
             backfill: {from: 2025-01-01, to: 2026-09-01, execution: 1042}, alert: ml-oncall}
       #     continuous: job: {name: telco-churn-usage-stream, type: pyspark, checkpoint: Resources/telco-churn/checkpoints/usage, trigger: 30s, execution: 1050, alert: ml-oncall}

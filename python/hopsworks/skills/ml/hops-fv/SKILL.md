@@ -85,6 +85,17 @@ query = (
 | `fg.select_except(["col1"])` | Select all except named features |
 | `fg.select_all(include_primary_key=False, include_event_time=False)` | Select all, excluding keys/timestamps |
 
+### Point-in-time correct training data
+
+A feature view's training data is point-in-time correct when its root feature group and every joined feature group have an `event_time`: each root row gets, from each joined group, the latest row at or before the root row's event time for its join key, so no feature leaks from after the moment being predicted. Make the root the group whose rows are the prediction times, usually the labels (one row per entity per prediction time), and join the feature groups at their natural grain. Never build an intermediate feature group of per-entity snapshots or pre-joined features and labels for this: it duplicates data the join already produces correctly and hides the lineage.
+
+```python
+query = labels_fg.select(["customer_id", "churned"]).join(
+    customers_fg.select(["customer_id", "plan", "tenure_months"]), on=["customer_id"]
+).join(usage_fg.select(["customer_id", "calls_30d", "data_mb_30d"]), on=["customer_id"])
+fv = fs.get_or_create_feature_view("churn_fv", version=1, query=query, labels=["churned"])
+```
+
 Joins: `join_type` is `"left"` (default), `"inner"`, `"right"`, `"full"`, `"cross"`, or `"left_semi_join"`; `left_on`/`right_on` join on differently named keys; `prefix` avoids column-name clashes.
 
 ```python

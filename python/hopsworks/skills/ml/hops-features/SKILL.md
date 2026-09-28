@@ -53,6 +53,9 @@ Will it be a simple job execution or a scheduled job (optionally with incrementa
 ### Sink
 One or more feature groups should be the sink of the feature pipelines. Use the **hops-fg** skill to create and write them (online vs offline, schema, provenance). For external/source data, use **hops-data-sources**; for PySpark processing, **hops-spark**. Set a `description=` on each sink feature group and on every `Feature(...)`: undescribed features land as empty envelopes in the UI and are not discoverable.
 
+- **Lineage.** A feature group computed from other feature groups is created with `parents=[fg1, fg2, ...]`, every group the pipeline reads, so its provenance in Hopsworks reaches back to the data it came from. Record them as `writes.parents` in the pipeline's `system.yaml` entry.
+- **No feature groups for point-in-time correctness.** Write each feature at its natural grain with an `event_time` for when the value became true: one row per entity per change or per window. Do not materialize per-prediction-time snapshots of every entity, or a pre-joined table of features and labels, to make training data point-in-time correct. The feature view does that: when the root and every joined feature group have an `event_time`, training data is a point-in-time join, taking for each root row the latest value of each joined feature at or before that row's event time (see **hops-fv**). The labels go in their own feature group, one row per entity per prediction time with the label as of the horizon; that group is usually the view's root.
+
 ### Data processing framework
 Which framework was chosen based on expected workload size, feature freshness requirements, and user preferences.
 

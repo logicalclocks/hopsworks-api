@@ -156,15 +156,25 @@ def main(argv: list[str] | None = None) -> int:
     import hopsworks
 
     fs = hopsworks.login().get_feature_store()
-    source = fs.get_feature_group(spec["reads"][0], version=1)
+    sources = [fs.get_feature_group(name, version=1) for name in spec["reads"]]
+    source = sources[0]
     df = source.filter(
         (source.get_feature(source.event_time) >= begin)
         & (source.get_feature(source.event_time) < finish)
     ).read(dataframe_type="pandas")
     features = transform(df)
 
-    sink = fs.get_feature_group(
-        spec["writes"]["feature_group"], version=spec["writes"]["version"]
+    writes = spec["writes"]
+    # parents records the groups this one is computed from, so its lineage in
+    # Hopsworks reaches back to the data it came from.
+    sink = fs.get_or_create_feature_group(
+        writes["feature_group"],
+        version=writes["version"],
+        primary_key=writes.get("primary_key"),
+        event_time=writes.get("event_time"),
+        online_enabled=bool(writes.get("online")),
+        description=writes.get("description", ""),
+        parents=sources,
     )
     problems = validate(features, sink.primary_key)
     if problems:

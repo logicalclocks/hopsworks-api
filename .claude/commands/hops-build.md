@@ -151,8 +151,11 @@ Load **hops-features**, **hops-fg**, **hops-transformations**, **hops-job**,
 `streaming`, write a pipeline from `src/<slug_pkg>/feature_pipeline.py` (one per pipeline) that
 runs as `requirements.operations.features` says: scheduled (the window from `HOPS_START_TIME` and
 `HOPS_END_TIME`) or continuous (Structured Streaming). Engine by estimated peak memory. Sink
-feature groups with a description on every feature; validation before write; idempotent over
-the window. Write the unit and integration tests. Commit, build the bundle, run the backfill
+feature groups with a description on every feature, created with `parents=` naming every feature
+group the pipeline reads; validation before write; idempotent over the window. Features are written
+at their natural grain with an `event_time`, and labels in their own group at the prediction time:
+never a snapshot or pre-joined group for point-in-time correctness, which the feature view's join
+provides (**hops-fv**). Write the unit and integration tests. Commit, build the bundle, run the backfill
 with `hops job backfill`, verify with bounded reads (`hops sql` count and newest event time,
 `hops fg preview`), attach the schedule with its offsets and a failure alert
 (`hops alert job create ... --status failed`), or start the continuous execution; for a batch

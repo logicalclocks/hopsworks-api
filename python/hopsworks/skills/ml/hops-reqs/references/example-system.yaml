@@ -104,7 +104,8 @@ features:
       environment: {name: python-feature-pipeline}
       reads: [telco_customers, billing_invoices, usage_events]
       transformations: [tenure bucket, charges ratio, calls in 30 days]
-      writes: {feature_group: telco_churn_customers, version: 1, online: false}
+      writes: {feature_group: telco_churn_customers, version: 1, online: false, primary_key: [customer_id], event_time: snapshot_date,
+               parents: [telco_customers, billing_invoices, usage_events]}
       job: {name: telco-churn-features, type: python,
             schedule: {cron: "0 0 2 1 * ?", window: {start_offset_s: -2678400, end_offset_s: 0}, catchup: false, max_active_runs: 1},
             backfill: {from: 2025-01-01, to: 2026-09-01, execution: 1042}, alert: ml-oncall}
