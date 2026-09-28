@@ -633,7 +633,12 @@ class FeatureMonitoringConfigEngine:
         # instead of time-travelling by commit. Shared by the detection and reference
         # window runs below — both read the same entity for ROLLING_TIME/ALL_TIME
         # windows, and TRAINING_DATASET references never use it.
-        event_time_feature = self._resolve_event_time_feature(entity, config.event_time)
+        # The built-in ingestion configuration slices by commit time by definition.
+        event_time_feature = (
+            None
+            if config.trigger_type == fmc.TriggerType.INGESTION
+            else self._resolve_event_time_feature(entity, config.event_time)
+        )
         if model_filter is not None and event_time_feature is None:
             # Model monitoring has no commit-time path: the logging FG cannot be read
             # with as_of. The backend persists log_time on these configs; fall back to

@@ -370,17 +370,15 @@ class StatisticsApi:
             filter_name = col_name + ("_eq" if filter_eq_times else "_gtoeq")
             filters.append(filter_name + ":" + str(start_commit_time))
 
-        # event-time window bounds, mirroring the commit-time bounds above.
+        # event-time lookups are equality only: monitoring registers and reads exact window bounds.
         if end_event_time is not None:
             col_name = "window_end_event_time"
             sorts.append(col_name + ":desc")
-            filter_name = col_name + ("_eq" if filter_eq_times else "_ltoeq")
-            filters.append(filter_name + ":" + str(end_event_time))
+            filters.append(col_name + "_eq:" + str(end_event_time))
         if start_event_time is not None:
             col_name = "window_start_event_time"
             sorts.append(col_name + ":asc")
-            filter_name = col_name + ("_eq" if filter_eq_times else "_gtoeq")
-            filters.append(filter_name + ":" + str(start_event_time))
+            filters.append(col_name + "_eq:" + str(start_event_time))
         if event_time is not None:
             filters.append("event_time_eq:" + str(event_time))
 
