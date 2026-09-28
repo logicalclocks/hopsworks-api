@@ -88,7 +88,8 @@ requirements back and ask to proceed; write `status: met` on yes.
 [references/system_template/](references/system_template/) into the system:
 `status.py` (the progress table, runnable from any terminal), `bundle.py` (the
 run bundle), the self-contained entrypoints under `src/<slug_pkg>/` (feature,
-training with its three modes, the frozen `evaluate.py` harness, batch
+training with its three modes, the frozen `evaluate.py` harness, `charts.py` for the
+model's performance charts in `images/`, batch
 inference, and `predictor.py` for a realtime deployment), `tests/` (the `system.yaml` validator, the unit tests, the
 integration conftest, the parity test, `run_integration.py`) and
 `benchmarks/benchmark_inference.py`.

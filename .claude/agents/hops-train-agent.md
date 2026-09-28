@@ -75,7 +75,9 @@ Load these skills before you start (from `.claude/skills/<name>/` in the reposit
    the result. Unit tests every run; the integration suite only on the run you would declare met.
 8. **Acceptance.** On the best kept run's commit, `--mode accept` (train + validation, test
    scored once, `<ident>_model` registered only if the target holds). Record the `acceptance` row
-   with both numbers. If test holds: set `training.model`, write and run the training unit and
+   with both numbers. Every registered model carries its performance charts as PNG files in
+   `images/` inside the model directory (the template's `charts.py`; **hops-train**): check the
+   accepted version's files list them, and add them if a hand-written pipeline skipped them. If test holds: set `training.model`, write and run the training unit and
    integration tests and record `training.tests.last_run`, deploy the retraining job
    (`<slug>-train`, `--mode retrain`, on `requirements.operations.training.cadence`, with its
    failure alert), set `status: met`, commit `[<slug>] train: <model> v<version>, <metric>_test

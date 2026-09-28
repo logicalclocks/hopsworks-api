@@ -141,6 +141,22 @@ joblib.dump(model, f"{model_dir}/model.pkl")
 # Save anything the predictor needs at serving time next to the model, e.g.
 # the input feature order: json.dump(list(X_train.columns), open(f"{model_dir}/feature_names.json", "w"))
 
+# Performance charts as PNG files in images/, uploaded with the model and shown with it in the registry.
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+from sklearn.metrics import ConfusionMatrixDisplay, PrecisionRecallDisplay, RocCurveDisplay
+
+os.makedirs(f"{model_dir}/images", exist_ok=True)
+scores = model.predict_proba(X_test)[:, 1]
+for name, display in {
+    "roc_curve": RocCurveDisplay.from_predictions(y_test, scores),
+    "precision_recall_curve": PrecisionRecallDisplay.from_predictions(y_test, scores),
+    "confusion_matrix": ConfusionMatrixDisplay.from_predictions(y_test, scores >= 0.5),
+}.items():
+    display.figure_.savefig(f"{model_dir}/images/{name}.png", dpi=120, bbox_inches="tight")
+    plt.close(display.figure_)
+
 mr = project.get_model_registry()
 hw_model = mr.python.create_model(
     name="my_model",
@@ -154,6 +170,13 @@ hw_model.save(model_dir)                    # uploads the whole dir (model + plo
 ```
 
 **Set `description=`** on the model (and keep `metrics=`): an undescribed model is an empty envelope in the registry.
+
+**Save performance charts in `images/`.** Every registered model gets PNG charts of how it performs on the part it was scored on, in an `images/` directory inside the model directory before `save()`.
+Classification: ROC curve, precision-recall curve, confusion matrix, calibration, and the score distribution per class.
+Regression: predicted against actual, and residuals.
+Both: feature importance, when the model exposes `feature_importances_` or `coef_`.
+Use the `Agg` backend (jobs have no display), close each figure, and never let a chart failure stop the registration.
+A system built from the hops-reqs template does this in `src/<pkg>/charts.py`, called by the training pipeline's `_register`.
 
 Hints:
 - `save()` moves the local files into the registry; pass `keep_original_files=True`

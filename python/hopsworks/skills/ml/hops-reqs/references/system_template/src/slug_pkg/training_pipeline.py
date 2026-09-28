@@ -248,6 +248,10 @@ def _register(
     metrics: dict,
     description: str,
     td_version: int,
+    charts: Any,
+    task: str,
+    y_eval: Any,
+    y_scored: Any,
 ) -> int:
     import tempfile
 
@@ -257,6 +261,10 @@ def _register(
     joblib.dump(model, model_dir / "model.pkl")
     (model_dir / "features.txt").write_text(
         "\n".join(x_example.columns), encoding="utf-8"
+    )
+    # Uploaded with the model, under images/, so the registry shows them with it.
+    charts.save_charts(
+        model_dir, task, model, list(x_example.columns), y_eval, y_scored
     )
     registered = project.get_model_registry().python.create_model(
         name=name,
@@ -332,7 +340,8 @@ def main(argv: list[str] | None = None) -> int:
 
     model = train(x_fit, y_fit, system, deadline)
     signal.alarm(0)
-    metrics = evaluate.evaluate(system["requirements"], y_eval, predict(model, x_eval))
+    y_scored = predict(model, x_eval)
+    metrics = evaluate.evaluate(system["requirements"], y_eval, y_scored)
     met = evaluate.meets(
         system["requirements"], metrics[system["requirements"]["targets"]["metric"]]
     )
@@ -357,6 +366,10 @@ def main(argv: list[str] | None = None) -> int:
             metrics,
             args.description or f"{args.mode} at {manifest['commit']}",
             td_version,
+            importlib.import_module(f"{ident(system)}.charts"),
+            system["requirements"]["problem"]["task"],
+            y_eval,
+            y_scored,
         )
         result.update(registered=True, model={"name": name, "version": version})
     result["finished"] = datetime.now(timezone.utc).isoformat()

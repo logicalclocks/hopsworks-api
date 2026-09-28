@@ -9,8 +9,9 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+import numpy as np
 import pytest
-from slug_pkg import evaluate, training_pipeline
+from slug_pkg import charts, evaluate, training_pipeline
 
 
 def test_time_split_is_ordered_and_leaves_out_immature_labels():
@@ -83,3 +84,47 @@ def test_research_always_registers_and_accept_only_when_met(system):
     assert training_pipeline.should_register("accept", met=True)
     assert training_pipeline.model_name("research", system).endswith("_research")
     assert training_pipeline.model_name("retrain", system).endswith("_model")
+
+
+def test_chart_curves_agree_with_the_harness_auc():
+    y = np.array([1, 0, 1, 0, 1, 0, 0])
+    s = np.array([0.9, 0.8, 0.7, 0.1, 0.4, 0.4, 0.2])
+    fpr, tpr, precision, recall = charts._curves(y, s)
+    assert float(np.sum(np.diff(fpr) * (tpr[1:] + tpr[:-1]) / 2)) == pytest.approx(
+        evaluate.roc_auc(y, s)
+    )
+    assert fpr[-1] == tpr[-1] == recall[-1] == 1.0
+
+
+@pytest.mark.parametrize(
+    ("task", "expected"),
+    [
+        (
+            "classification",
+            {
+                "roc_curve.png",
+                "precision_recall_curve.png",
+                "confusion_matrix.png",
+                "calibration.png",
+                "score_distribution.png",
+            },
+        ),
+        ("regression", {"predicted_vs_actual.png", "residuals.png"}),
+    ],
+)
+def test_charts_are_written_under_images_for_the_task(tmp_path, task, expected):
+    pytest.importorskip("matplotlib")
+    rng = np.random.default_rng(0)
+    y = rng.integers(0, 2, 200) if task == "classification" else rng.normal(size=200)
+    scored = (
+        np.clip(y * 0.6 + rng.random(200) * 0.4, 0, 1)
+        if task == "classification"
+        else y + rng.normal(size=200)
+    )
+
+    class Model:
+        feature_importances_ = np.array([0.7, 0.3])
+
+    written = charts.save_charts(tmp_path, task, Model(), ["a", "b"], y, scored)
+    assert set(written) == expected | {"feature_importance.png"}
+    assert all((tmp_path / "images" / name).stat().st_size > 0 for name in written)
