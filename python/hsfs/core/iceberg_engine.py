@@ -1637,7 +1637,14 @@ class IcebergEngine:
         if _client._is_external():
             parsed_url = urlparse(location)
             try:
-                pyiceberg_loc = f"hdfs://{self._variable_api._get_loadbalancer_external_domain('namenode')}:{parsed_url.port}{parsed_url.path}"
+                namenode = self._variable_api._get_loadbalancer_external_domain(
+                    "namenode"
+                )
+                if not namenode:
+                    raise FeatureStoreException(
+                        "loadbalancer_external_domain_namenode is empty."
+                    )
+                pyiceberg_loc = f"hdfs://{namenode}:{parsed_url.port}{parsed_url.path}"
                 _logger.debug(
                     f"External client, using namenode url + pyiceberg location: {pyiceberg_loc}"
                 )
