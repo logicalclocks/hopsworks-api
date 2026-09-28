@@ -243,6 +243,7 @@ class TestDeltaEngine:
                 spark_context=None,
             )
         assert "datanode load balancer" in str(e.value)
+        assert "contact your system administrator" in str(e.value.__cause__)
 
     @pytest.mark.parametrize("spark_context", [mock.Mock(), None])
     def test_setup_delta_rs_external_spark_skipped(self, mocker, spark_context):
@@ -342,6 +343,7 @@ class TestDeltaEngine:
         with pytest.raises(FeatureStoreException) as e:
             engine._get_delta_rs_location()
         assert "namenode load balancer" in str(e.value)
+        assert "contact your system administrator" in str(e.value.__cause__)
 
     def test_setup_delta_read_opts_snapshot_query(self, mocker):
         # Arrange

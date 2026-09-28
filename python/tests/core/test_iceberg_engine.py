@@ -1691,6 +1691,7 @@ class TestPyIcebergEngine:
         with pytest.raises(FeatureStoreException) as e:
             iceberg_engine._get_pyiceberg_location()
         assert "namenode load balancer" in str(e.value)
+        assert "contact your system administrator" in str(e.value.__cause__)
 
     def test_get_pyiceberg_properties_gcs_sets_credentials_env(
         self, mocker, monkeypatch

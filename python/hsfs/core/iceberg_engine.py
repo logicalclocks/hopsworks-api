@@ -1642,7 +1642,11 @@ class IcebergEngine:
                 )
                 if not namenode:
                     raise FeatureStoreException(
-                        "loadbalancer_external_domain_namenode is empty."
+                        "Client could not get namenode service hostname from "
+                        "loadbalancer_external_domain_namenode. "
+                        "The variable is either not set or empty in Hopsworks cluster configuration. "
+                        "The datanode and namenode load balancers may not be enabled on this cluster; "
+                        "contact your system administrator."
                     )
                 pyiceberg_loc = f"hdfs://{namenode}:{parsed_url.port}{parsed_url.path}"
                 _logger.debug(
