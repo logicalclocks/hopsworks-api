@@ -263,15 +263,22 @@ def _create(cwd: Path, slug: str, example: str | None = None) -> _System:
 # region The interview
 
 
-def _example(prefetch: _Prefetch, cwd: Path) -> _System:
+def _example(prefetch: _Prefetch, cwd: Path, picked: str | None = None) -> _System:
     examples = _load(REFERENCES / "new_system.py", "new_system").examples()
     names = list(examples)
-    picked = names[
-        _choose(
-            "Which example ML system?",
-            [(examples[name]["label"], "") for name in names],
+    if picked is None:
+        picked = names[
+            _choose(
+                "Which example ML system?",
+                [(examples[name]["label"], "") for name in names],
+            )
+        ]
+    elif picked not in examples:
+        raise click.BadParameter(
+            f"{picked!r} is not one of {', '.join(names)}", param_hint="--example"
         )
-    ]
+    if (cwd / picked / "system.yaml").exists():
+        return _System(cwd / picked)
     system = _create(cwd, picked, example=picked)
     _target(system, prefetch)
     system.save()
@@ -684,8 +691,15 @@ def _launch(ctx: click.Context, system: _System, launch: bool) -> None:
     is_flag=True,
     help="Record the interview but do not start Claude Code.",
 )
+@click.option(
+    "--example",
+    metavar="NAME",
+    help="Build this example system (churn-example, recs-example or helpdesk-example) without the menu; resumes it if it already exists here.",
+)
 @click.pass_context
-def build_cmd(ctx: click.Context, slug: str | None, no_launch: bool) -> None:
+def build_cmd(
+    ctx: click.Context, slug: str | None, no_launch: bool, example: str | None
+) -> None:
     """Interview for a new ML system, then build it with Claude Code.
 
     Asks what to predict and the questions that follow (batch, real-time or
@@ -700,23 +714,32 @@ def build_cmd(ctx: click.Context, slug: str | None, no_launch: bool) -> None:
         ctx: Click context.
         slug: An existing system in this directory to resume.
         no_launch: Record the interview only.
+        example: An example system to build, as the Hopsworks UI starts one.
     """
+    if slug and example:
+        raise click.UsageError("pass either SLUG or --example, not both")
     prefetch = _Prefetch(ctx)
     prefetch.start()
     try:
-        _interview(ctx, prefetch, slug, not no_launch)
+        _interview(ctx, prefetch, slug, not no_launch, example)
     finally:
         # A login still importing the SDK at interpreter exit fails noisily.
         prefetch.join(timeout=15)
 
 
 def _interview(
-    ctx: click.Context, prefetch: _Prefetch, slug: str | None, launch: bool
+    ctx: click.Context,
+    prefetch: _Prefetch,
+    slug: str | None,
+    launch: bool,
+    example: str | None = None,
 ) -> None:
     cwd = Path.cwd()
     existing = _systems(cwd)
     system: _System | None = None
-    if slug:
+    if example:
+        system = _example(prefetch, cwd, example)
+    elif slug:
         if not (cwd / slug / "system.yaml").exists():
             raise click.ClickException(f"no system {slug!r} in {cwd}")
         system = _System(cwd / slug)

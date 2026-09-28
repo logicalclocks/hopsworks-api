@@ -67,6 +67,19 @@ def test_an_example_asks_only_where_the_code_goes(tmp_path, monkeypatch, quiet):
     assert 'claude "/hops-build churn-example"' in done.output
 
 
+def test_the_ui_starts_an_example_by_name_and_resumes_it(tmp_path, monkeypatch, quiet):
+    done = _run(tmp_path, monkeypatch, ["1"], "--example", "recs-example")
+    assert done.exit_code == 0, done.output
+    assert "What do you want to build?" not in done.output
+    assert _doc(tmp_path / "recs-example")["system"]["repo"] == {"url": "new"}
+    again = _run(tmp_path, monkeypatch, [], "--example", "recs-example")
+    assert again.exit_code == 0, again.output
+    assert "Where should the code go?" not in again.output
+    assert 'claude "/hops-build recs-example"' in again.output
+    unknown = _run(tmp_path, monkeypatch, [], "--example", "fraud")
+    assert unknown.exit_code != 0 and "churn-example" in unknown.output
+
+
 def test_a_described_batch_system_records_every_answer(tmp_path, monkeypatch, quiet):
     advice = {
         "system_type": "batch",
