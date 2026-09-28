@@ -21,6 +21,11 @@ gh api user --jq .login              # the owner for a new repository
   system under `<repo>/<slug>/`. Otherwise, or when the user declines, offer
   `gh repo create <owner>/<name> --private --source . --push`, with the name and
   visibility from the user. Never create a repository or push without that answer.
+- **A name the owner already uses is never reused.** When `system.repo.url` is `new`
+  (the interview's answer, and every example's), check `gh repo view <owner>/<slug>`
+  first; if it exists, the same system was built before in another project, so name
+  the new one `<slug>-<project>`, then `<slug>-<project>-2` and so on. Never push to,
+  or take over, a repository this build did not create.
 
 ## Branches and commits
 

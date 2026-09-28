@@ -83,7 +83,8 @@ a question you are about to ask depends on.
 The interview created `<slug>/` from the system template and recorded `system.repo.url`: the
 current GitHub repository, or `new`. Follow `hops-reqs/references/repo.md`: `gh auth status` must
 pass (otherwise say how to fix it and stop); for `new`, create the repository with
-`gh repo create` (owner from `gh api user`, name from the slug, private) and record its URL; cut
+`gh repo create` (owner from `gh api user`, name from the slug, or `<slug>-<project>` when the
+owner already has a repository of that name, private) and record its URL; cut
 `hops/<slug>` from the default branch and record `system.repo`. Every phase ends with one commit,
 `[<slug>] <phase>: <one line>`, pushed. Run `hops mlsystem register <slug>` once at the start: it
 lists the system in the project's ML systems in the Hopsworks UI (from an external client it
