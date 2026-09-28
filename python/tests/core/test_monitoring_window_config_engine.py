@@ -1297,12 +1297,24 @@ class TestEntitiesWithoutCommitHistory:
     """
 
     def test_reads_by_commit_time(self, backend_fixtures):
-        assert mwce._reads_by_commit_time(_make_fv_entity())
-        assert mwce._reads_by_commit_time(_make_hudi_fg("HUDI"))
-        assert mwce._reads_by_commit_time(_make_hudi_fg("DELTA"))
-        assert mwce._reads_by_commit_time(_make_hudi_fg("ICEBERG"))
-        assert not mwce._reads_by_commit_time(_make_hudi_fg(None))
-        assert not mwce._reads_by_commit_time(_make_external_fg(backend_fixtures))
+        assert mwce.MonitoringWindowConfigEngine._reads_by_commit_time(
+            _make_fv_entity()
+        )
+        assert mwce.MonitoringWindowConfigEngine._reads_by_commit_time(
+            _make_hudi_fg("HUDI")
+        )
+        assert mwce.MonitoringWindowConfigEngine._reads_by_commit_time(
+            _make_hudi_fg("DELTA")
+        )
+        assert mwce.MonitoringWindowConfigEngine._reads_by_commit_time(
+            _make_hudi_fg("ICEBERG")
+        )
+        assert not mwce.MonitoringWindowConfigEngine._reads_by_commit_time(
+            _make_hudi_fg(None)
+        )
+        assert not mwce.MonitoringWindowConfigEngine._reads_by_commit_time(
+            _make_external_fg(backend_fixtures)
+        )
 
     def test_external_fg_dispatches_to_feature_group_fetch(
         self, backend_fixtures, mocker

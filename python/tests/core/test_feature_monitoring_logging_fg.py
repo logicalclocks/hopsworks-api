@@ -35,6 +35,7 @@ from hsfs.core import monitoring_window_config as mwc
 from hsfs.core.feature_descriptive_statistics import FeatureDescriptiveStatistics
 from hsfs.core.feature_monitoring_result import FeatureMonitoringResult
 from hsfs.core.feature_statistics_result import FeatureStatisticsResult
+from hsfs.feature import Feature
 from hsfs.feature_group_commit import FeatureGroupCommit
 from hsfs.util import _is_sub_hour_cron
 
@@ -60,6 +61,7 @@ def _make_fg(stream: bool = True) -> fg_mod.FeatureGroup:
         id=DEFAULT_FG_ID,
         stream=stream,
         time_travel_format="DELTA",
+        features=[Feature(name="log_time", type="timestamp")],
     )
 
 
@@ -67,16 +69,16 @@ def _make_fm_config(
     model_name: str | None = "iris",
     model_version: int | None = 1,
     config_id: int = DEFAULT_CONFIG_ID,
+    trigger_type: fmc.TriggerType = fmc.TriggerType.CRON,
+    event_time: str | None = None,
 ) -> MagicMock:
     cfg = MagicMock(spec=fmc.FeatureMonitoringConfig)
     cfg.id = config_id
     cfg.model_name = model_name
     cfg.model_version = model_version
-    cfg.trigger_type = fmc.TriggerType.CRON
+    cfg.trigger_type = trigger_type
     cfg.feature_statistics_configs = []
-    # These tests predate event-time windows and exercise the commit-time (event_time=None) path;
-    # model-monitoring event_time resolution is covered separately.
-    cfg.event_time = None
+    cfg.event_time = event_time
     cfg.get_feature_names.return_value = ["petal_length"]
     detection_wc = MagicMock(spec=mwc.MonitoringWindowConfig)
     detection_wc.window_config_type = mwc.WindowConfigType.ROLLING_TIME
@@ -760,6 +762,124 @@ class TestRunFeatureMonitoringIdeaD:
         run_single.assert_called_once()
         call_kwargs = run_single.call_args.kwargs
         assert call_kwargs["end_commit_time_override"] == ingestion_commit_time
+
+    def _add_rolling_reference_window(self, config: MagicMock) -> None:
+        reference_wc = MagicMock(spec=mwc.MonitoringWindowConfig)
+        reference_wc.window_config_type = mwc.WindowConfigType.ROLLING_TIME
+        reference_wc.time_offset = "7d"
+        config.reference_window_config = reference_wc
+
+    def test_model_monitoring_event_time_none_uses_log_time_fallback(self, mocker):
+        """A model-monitoring config with event_time=None falls back to log_time for both windows."""
+        engine = self._make_engine()
+        fg = _make_fg()
+        config = _make_fm_config(event_time=None)
+        self._add_rolling_reference_window(config)
+
+        mocker.patch.object(
+            engine._feature_monitoring_config_api,
+            "_get_by_name",
+            return_value=config,
+        )
+        mocker.patch.object(
+            engine,
+            "_get_latest_fg_commit_time",
+            return_value=_HOURLY_COMMIT_TIME,
+        )
+        mocker.patch.object(
+            engine._result_engine,
+            "_get_latest_by_config_id",
+            return_value=None,
+        )
+        run_single = mocker.patch.object(
+            engine._monitoring_window_config_engine,
+            "_run_single_window_monitoring",
+            return_value=[_make_fds()],
+        )
+        mocker.patch.object(
+            engine._result_engine,
+            "_run_and_save_statistics_comparison",
+            return_value=MagicMock(spec=FeatureMonitoringResult),
+        )
+
+        engine._run_feature_monitoring(entity=fg, config_name="cfg")
+
+        assert run_single.call_count == 2
+        for call in run_single.call_args_list:
+            assert call.kwargs["event_time_feature"].name == "log_time"
+
+    def test_model_monitoring_event_time_log_time_resolves_from_entity(self, mocker):
+        """A model-monitoring config with event_time="log_time" resolves it on both windows."""
+        engine = self._make_engine()
+        fg = _make_fg()
+        config = _make_fm_config(event_time="log_time")
+        self._add_rolling_reference_window(config)
+
+        mocker.patch.object(
+            engine._feature_monitoring_config_api,
+            "_get_by_name",
+            return_value=config,
+        )
+        mocker.patch.object(
+            engine,
+            "_get_latest_fg_commit_time",
+            return_value=_HOURLY_COMMIT_TIME,
+        )
+        mocker.patch.object(
+            engine._result_engine,
+            "_get_latest_by_config_id",
+            return_value=None,
+        )
+        run_single = mocker.patch.object(
+            engine._monitoring_window_config_engine,
+            "_run_single_window_monitoring",
+            return_value=[_make_fds()],
+        )
+        mocker.patch.object(
+            engine._result_engine,
+            "_run_and_save_statistics_comparison",
+            return_value=MagicMock(spec=FeatureMonitoringResult),
+        )
+
+        engine._run_feature_monitoring(entity=fg, config_name="cfg")
+
+        assert run_single.call_count == 2
+        for call in run_single.call_args_list:
+            assert call.kwargs["event_time_feature"].name == "log_time"
+
+    def test_ingestion_config_ignores_event_time_on_both_windows(self, mocker):
+        """The built-in ingestion configuration slices by commit time regardless of event_time."""
+        engine = self._make_engine()
+        fg = _make_fg()
+        config = _make_fm_config(
+            model_name=None,
+            model_version=None,
+            trigger_type=fmc.TriggerType.INGESTION,
+            event_time="datetime",
+        )
+        self._add_rolling_reference_window(config)
+
+        mocker.patch.object(
+            engine._feature_monitoring_config_api,
+            "_get_by_name",
+            return_value=config,
+        )
+        run_single = mocker.patch.object(
+            engine._monitoring_window_config_engine,
+            "_run_single_window_monitoring",
+            return_value=[_make_fds()],
+        )
+        mocker.patch.object(
+            engine._result_engine,
+            "_run_and_save_statistics_comparison",
+            return_value=MagicMock(spec=FeatureMonitoringResult),
+        )
+
+        engine._run_feature_monitoring(entity=fg, config_name="cfg")
+
+        assert run_single.call_count == 2
+        for call in run_single.call_args_list:
+            assert call.kwargs["event_time_feature"] is None
 
 
 # ---------------------------------------------------------------------------

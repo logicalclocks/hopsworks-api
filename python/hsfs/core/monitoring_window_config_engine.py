@@ -41,28 +41,6 @@ _MAX_COMMITS_FOR_MERGE = 100
 _COMMIT_TIME_FORMATS = ("HUDI", "DELTA", "ICEBERG")
 
 
-def _reads_by_commit_time(
-    entity: feature_group.FeatureGroupBase | feature_view.FeatureView,
-) -> bool:
-    """Whether commit-time windows on `entity` can be read and registered as such.
-
-    A feature view is read through its query, so its left feature group decides and the answer stays `True` here.
-    A feature group qualifies only with a time-travel format that keeps commits.
-    External feature groups and feature groups without a time-travel format have no commit history: their windows read the latest snapshot and their statistics carry a computation time only.
-
-    Parameters:
-        entity: The feature group or feature view a monitoring window reads from.
-
-    Returns:
-        `True` when the window engine may use commit-time bounds for `entity`.
-    """
-    if isinstance(entity, feature_view.FeatureView):
-        return True
-    if isinstance(entity, feature_group.FeatureGroup):
-        return entity.time_travel_format in _COMMIT_TIME_FORMATS
-    return False
-
-
 class MonitoringWindowConfigEngine:
     _MAX_TIME_RANGE_LENGTH = 12
 
@@ -413,7 +391,7 @@ class MonitoringWindowConfigEngine:
                         before_transf_stats.feature_descriptive_statistics
                     )
         elif model_filter is None and (
-            event_time_feature is not None or _reads_by_commit_time(entity)
+            event_time_feature is not None or self._reads_by_commit_time(entity)
         ):
             # Check if statistics already exists. Skip when a model_filter is in play —
             # registered stats are aggregated over the whole logging FG, not per-model,
@@ -495,7 +473,7 @@ class MonitoringWindowConfigEngine:
             # entity without a commit history gets a row stamped with the computation
             # time alone.
             register_commit_bounds = (
-                event_time_feature is None and _reads_by_commit_time(entity)
+                event_time_feature is None and self._reads_by_commit_time(entity)
             )
             registered_stats = (
                 self._statistics_engine._compute_and_save_monitoring_statistics(
@@ -552,6 +530,28 @@ class MonitoringWindowConfigEngine:
                 f"{missing}; only {sorted(by_name)} were returned."
             )
         return [by_name[name] for name in feature_names]
+
+    @staticmethod
+    def _reads_by_commit_time(
+        entity: feature_group.FeatureGroupBase | feature_view.FeatureView,
+    ) -> bool:
+        """Whether commit-time windows on `entity` can be read and registered as such.
+
+        A feature view is read through its query, so its left feature group decides and the answer stays `True` here.
+        A feature group qualifies only with a time-travel format that keeps commits.
+        External feature groups and feature groups without a time-travel format have no commit history: their windows read the latest snapshot and their statistics carry a computation time only.
+
+        Parameters:
+            entity: The feature group or feature view a monitoring window reads from.
+
+        Returns:
+            `True` when the window engine may use commit-time bounds for `entity`.
+        """
+        if isinstance(entity, feature_view.FeatureView):
+            return True
+        if isinstance(entity, feature_group.FeatureGroup):
+            return entity.time_travel_format in _COMMIT_TIME_FORMATS
+        return False
 
     def _fetch_entity_data_in_monitoring_window(
         self,
@@ -718,7 +718,7 @@ class MonitoringWindowConfigEngine:
         if (
             model_filter is not None
             or event_time_feature is not None
-            or not _reads_by_commit_time(entity)
+            or not self._reads_by_commit_time(entity)
         ):
             # Logging FGs are not created with delta.enableChangeDataFeed=true, so
             # as_of(exclude_until=...) — which compiles to a Delta CDF read — would fail
@@ -766,7 +766,7 @@ class MonitoringWindowConfigEngine:
         # The merge path enumerates per-commit statistics via commit-time windows,
         # so it needs a commit history. A feature group without one (external, or
         # no time-travel format) must fall back to a full-window re-profile.
-        if not _reads_by_commit_time(entity):
+        if not self._reads_by_commit_time(entity):
             return False
         if profile_flags is None:
             return False

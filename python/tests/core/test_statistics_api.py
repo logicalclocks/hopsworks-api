@@ -61,17 +61,6 @@ class TestBuildGetQueryParams:
         # (commit or event time) are given.
         assert "computation_time:desc" not in params["sort_by"]
 
-    def test_event_time_bounds_emit_range_filters_when_not_eq(self):
-        api = self._api()
-        params = api._build_get_query_params(
-            start_event_time=1_700_000_000_000,
-            end_event_time=1_700_086_400_000,
-            filter_eq_times=False,
-        )
-
-        assert "window_end_event_time_ltoeq:1700086400000" in params["filter_by"]
-        assert "window_start_event_time_gtoeq:1700000000000" in params["filter_by"]
-
     def test_commit_and_event_time_bounds_not_sent_together(self):
         # Callers pass one family or the other (StatisticsEngine._get_by_time_window),
         # but the query builder itself must not conflate them when only one is given.

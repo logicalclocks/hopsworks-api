@@ -114,7 +114,7 @@ take `event_time`.
 `None` (default) slices detection/reference windows by the entity's own event-time feature when one is defined, otherwise by commit time.
 A feature name slices by that feature instead (must be TIMESTAMP, DATE or BIGINT).
 `False` forces commit-time windows even when an event-time feature is defined.
-`fv.create_model_monitoring(...)` always slices by `log_time` and ignores this parameter.
+`fv.create_model_monitoring(...)` always slices by `log_time` and does not take this parameter.
 
 **Comparison metrics** — numerical: `mean`, `min`, `max`, `sum`, `std_dev`, `count`,
 `completeness`, `distinctness`, `entropy`, `uniqueness`, `approximate_num_distinct_values`,
