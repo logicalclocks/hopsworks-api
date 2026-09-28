@@ -57,6 +57,7 @@ python <skills>/hops-reqs/references/new_system.py <slug>      # <skills>: .clau
 python <slug>/set.py 'schema_version=1' 'system.name=<short title>' 'system.slug=<slug>' \
   'system.target={cluster: <Host>, project: <Project>, stage: development}' 'system.status=draft' \
   'requirements.status=pending' 'requirements.description=<the problem in the user words>'
+hops mlsystem register <slug> --name '<short title>'   # lists it in the project's ML systems
 ```
 
 **2. What type of system?** Recommend from the problem: **batch** when predictions are used on a
@@ -142,6 +143,7 @@ example's own slug, which writes its whole `system.yaml`, then record the target
 ```bash
 python <skills>/hops-reqs/references/new_system.py <example> --example <example>
 python <example>/set.py 'system.target={cluster: <Host>, project: <Project>, stage: development}'
+hops mlsystem register <example>
 ```
 
 The agentic example still needs its LLM: ask the *Which LLM?* question of the Agentic branch, and

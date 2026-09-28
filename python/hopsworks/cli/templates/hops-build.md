@@ -85,7 +85,9 @@ current GitHub repository, or `new`. Follow `hops-reqs/references/repo.md`: `gh 
 pass (otherwise say how to fix it and stop); for `new`, create the repository with
 `gh repo create` (owner from `gh api user`, name from the slug, private) and record its URL; cut
 `hops/<slug>` from the default branch and record `system.repo`. Every phase ends with one commit,
-`[<slug>] <phase>: <one line>`, pushed.
+`[<slug>] <phase>: <one line>`, pushed. Run `hops mlsystem register <slug>` once at the start: it
+lists the system in the project's ML systems in the Hopsworks UI (from an external client it
+records the repository URL) and is a no-op refresh when the interview already registered it.
 
 ### reqs: complete the specification
 

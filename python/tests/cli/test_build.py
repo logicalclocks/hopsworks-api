@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 import io
-import json
+import subprocess
 import sys
 import threading
 from typing import TYPE_CHECKING
 
+import click
 import pytest
 from click.testing import CliRunner
 from hopsworks.cli import auth
-from hopsworks.cli.commands import build
+from hopsworks.cli.commands import build, mlsystem
 from hopsworks.cli.main import cli
 
 
@@ -24,10 +25,17 @@ yaml = pytest.importorskip("yaml")
 
 @pytest.fixture
 def quiet(monkeypatch):
-    """No login, no project listing, no model call, no Claude Code."""
+    """No login, no project listing, no model call, no Claude Code; registrations are recorded."""
     monkeypatch.setattr(build._Prefetch, "run", lambda self: None)
     monkeypatch.setattr(build.shutil, "which", lambda name: None)
     monkeypatch.delenv("TMUX", raising=False)
+    registered = []
+    monkeypatch.setattr(
+        mlsystem,
+        "register",
+        lambda ctx, path, name=None: registered.append((path, name)),
+    )
+    return registered
 
 
 def _run(tmp_path: Path, monkeypatch, answers: list[str], *args: str):
@@ -109,26 +117,60 @@ def test_a_resumed_interview_skips_what_is_answered(tmp_path, monkeypatch, quiet
     assert "Latency" not in done.output and "Which data" not in done.output
 
 
-def test_every_write_registers_the_system_for_the_ui(tmp_path, monkeypatch, quiet):
-    home = tmp_path / "hopsfs" / "Users" / "meb10000"
-    home.mkdir(parents=True)
-    monkeypatch.setenv("HOPSFS_USER_HOME_DIR", str(home))
-    done = _run(home, monkeypatch, ["2", "1", "1"])
+def test_a_finished_interview_registers_the_system_once(tmp_path, monkeypatch, quiet):
+    done = _run(tmp_path, monkeypatch, ["2", "1", "1"])
     assert done.exit_code == 0, done.output
-    entry = json.loads((home / ".hops" / "builds" / "churn-example.json").read_text())
-    assert entry["slug"] == "churn-example"
-    assert entry["path"] == "Users/meb10000/churn-example/system.yaml"
+    assert quiet == [(tmp_path / "churn-example", "Churn next month")]
 
 
-def test_a_system_outside_hopsfs_is_not_registered(tmp_path, monkeypatch, quiet):
-    home = tmp_path / "hopsfs" / "Users" / "meb10000"
-    home.mkdir(parents=True)
-    monkeypatch.setenv("HOPSFS_USER_HOME_DIR", str(home))
-    elsewhere = tmp_path / "laptop"
-    elsewhere.mkdir()
-    done = _run(elsewhere, monkeypatch, ["2", "1", "1"])
+def test_a_failed_registration_does_not_lose_the_interview(
+    tmp_path, monkeypatch, quiet
+):
+    def refuse(ctx, path, name=None):
+        raise RuntimeError("registry unavailable")
+
+    monkeypatch.setattr(mlsystem, "register", refuse)
+    done = _run(tmp_path, monkeypatch, ["2", "1", "1"])
     assert done.exit_code == 0, done.output
-    assert not (home / ".hops").exists()
+    assert "Not registered in the project's ML systems" in done.output
+    assert (tmp_path / "churn-example" / "system.yaml").exists()
+
+
+def test_code_in_the_hopsfs_mount_is_registered_by_its_project_path(
+    tmp_path, monkeypatch
+):
+    home = tmp_path / "hopsfs" / "Users" / "meb10000"
+    (home / "churn-example").mkdir(parents=True)
+    monkeypatch.setenv("HOPSFS_USER_HOME_DIR", str(home))
+    assert (
+        mlsystem.code_location(home / "churn-example", "churndemo")
+        == "/Projects/churndemo/Users/meb10000/churn-example"
+    )
+
+
+def test_code_outside_hopsfs_is_registered_by_its_repository(tmp_path, monkeypatch):
+    monkeypatch.delenv("HOPSFS_USER_HOME_DIR", raising=False)
+    repo = tmp_path / "laptop"
+    (repo / "churn-example").mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo),
+            "remote",
+            "add",
+            "origin",
+            "git@github.com:o/churn.git",
+        ],
+        check=True,
+    )
+    assert (
+        mlsystem.code_location(repo / "churn-example") == "git@github.com:o/churn.git"
+    )
+    (tmp_path / "loose").mkdir()
+    with pytest.raises(click.ClickException):
+        mlsystem.code_location(tmp_path / "loose")
 
 
 def test_the_interpretation_drops_what_it_cannot_use(monkeypatch):

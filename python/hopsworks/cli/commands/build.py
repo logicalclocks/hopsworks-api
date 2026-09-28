@@ -193,7 +193,7 @@ def _interpret(problem: str, feature_groups: list[str]) -> dict | None:
 
 
 class _System:
-    """One system directory: its system.yaml, validated and registered on every write."""
+    """One system directory: its system.yaml, validated on every write."""
 
     def __init__(self, target: Path) -> None:
         self.target = target
@@ -229,7 +229,6 @@ class _System:
             self.target / "system.yaml",
             yaml.safe_dump(self.doc, sort_keys=False, allow_unicode=True, width=100),
         )
-        self.setter.register(self.doc, self.target)
 
 
 def _read(target: Path) -> dict:
@@ -640,12 +639,26 @@ def _repository(system: _System) -> None:
 # region Launch
 
 
-def _launch(system: _System, launch: bool) -> None:
+def _register(ctx: click.Context, system: _System) -> None:
+    """Add the system to the project's registry, so every member sees it in the Hopsworks UI."""
+    from hopsworks.cli.commands import mlsystem
+
+    name = (system.doc.get("system") or {}).get("name")
+    try:
+        mlsystem.register(ctx, system.target, name)
+    except Exception as exc:  # noqa: BLE001 - the interview is recorded either way
+        output.warn(
+            f"Not registered in the project's ML systems ({exc}); run `hops mlsystem register {system.target}`."
+        )
+
+
+def _launch(ctx: click.Context, system: _System, launch: bool) -> None:
     slug = system.target.name
     command = ["claude", f"/hops-build {slug}"]
     printable = f'claude "/hops-build {slug}"'
     status = system.target / "status.py"
     output.success(f"Interview recorded in {system.target / 'system.yaml'}")
+    _register(ctx, system)
     subprocess.run([sys.executable, str(status)], check=False)
     if not launch or not shutil.which("claude"):
         click.echo(f"\nBuild it with:  cd {system.target.parent} && {printable}")
@@ -733,7 +746,7 @@ def _interview(
         else:
             system = _System(pending[picked - 2])
     if system.requirements.get("status") == "met":
-        _launch(system, launch)
+        _launch(ctx, system, launch)
         return
     prefetch.ready()
     if prefetch.error:
@@ -748,7 +761,7 @@ def _interview(
         _agent(ctx, system, prefetch)
     if not system.doc.get("system", {}).get("repo"):
         _repository(system)
-    _launch(system, launch)
+    _launch(ctx, system, launch)
 
 
 # endregion
