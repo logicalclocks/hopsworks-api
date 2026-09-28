@@ -9,6 +9,8 @@ Already known, no need to look again before the first question:
 - ML systems in this directory: !`ls -d */system.yaml 2>/dev/null | head -5 || true`
 - Repository: !`git remote get-url origin 2>/dev/null || echo "not a git repository with an origin"`
 - GitHub CLI: !`gh auth status 2>&1 | grep -m1 -E "Logged in|not logged" || echo "gh is not installed"`
+- GitHub token from Hopsworks Account Settings: !`grep -q "@github.com" ~/.git-credentials 2>/dev/null && echo "present in ~/.git-credentials" || echo "none"`
+- GitHub SSH key: !`timeout 10 ssh -o BatchMode=yes -T git@github.com 2>&1 | grep -oE "Hi [A-Za-z0-9-]+" || echo "none GitHub accepts"`
 - Feature groups: !`hops fg list 2>&1 | head -40`
 - Data sources: !`hops datasource list 2>&1 | head -20`
 
@@ -81,8 +83,10 @@ a question you are about to ask depends on.
 ### Before reqs: the repository
 
 The interview created `<slug>/` from the system template and recorded `system.repo.url`: the
-current GitHub repository, or `new`. Follow `hops-reqs/references/repo.md`: `gh auth status` must
-pass (otherwise say how to fix it and stop); for `new`, create the repository with
+current GitHub repository, or `new`. Follow `hops-reqs/references/repo.md`: GitHub access is any one
+of the `gh` login, a GitHub token from Hopsworks Account Settings (as `GH_TOKEN`), or an SSH
+key GitHub accepts, the last without `gh` so the user creates a new repository and the pull
+request (stop and say how to fix it only when none works); for `new`, create the repository with
 `gh repo create` (owner from `gh api user`, name from the slug, or `<slug>-<project>` when the
 owner already has a repository of that name, private) and record its URL; cut
 `hops/<slug>` from the default branch and record `system.repo`. Every phase ends with one commit,

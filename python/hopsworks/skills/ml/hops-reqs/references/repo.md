@@ -6,16 +6,44 @@ through `gh`'s `GH_HOST`, recorded as `system.repo.host`.
 
 ## Before `reqs`
 
+### GitHub access
+
+Any one of three is enough. Check them in this order and use the first that works:
+
 ```bash
-gh auth status                       # must succeed; otherwise stop and say how to fix it
-git rev-parse --show-toplevel        # inside a work tree?
-git remote get-url origin            # on GitHub?
-gh api user --jq .login              # the owner for a new repository
+# 1. The GitHub CLI's own login.
+gh auth status
+
+# 2. A GitHub token registered in Hopsworks (Account Settings, Git providers). A Hopsworks
+#    terminal writes it to ~/.git-credentials for git over HTTPS; gh takes the same token
+#    from GH_TOKEN. Export it in each shell that runs gh, and never print it.
+export GH_TOKEN="$(sed -nE 's#^https://[^:@]*:([^@]+)@github\.com.*#\1#p' ~/.git-credentials 2>/dev/null | head -1)"
+[ -n "$GH_TOKEN" ] && gh api user --jq .login || unset GH_TOKEN
+
+# 3. An SSH key GitHub accepts: <project home>/.ssh/id_rsa, which is ~/.ssh in a terminal.
+ssh -o BatchMode=yes -T git@github.com 2>&1 | grep -oE "Hi [A-Za-z0-9-]+"   # "Hi <login>" when it works
 ```
 
-- `gh` missing or logged out: tell the user to install it from https://cli.github.com
-  and run `gh auth login`, and stop there. Hopsworks terminals ship `gh` and keep
-  `~/.config/gh` in the user's HopsFS home, so one login covers every terminal.
+With the CLI login or a token, `gh` works: it creates the repository, opens the pull
+request and requests the Copilot review. An SSH key alone reaches git, not the GitHub
+API, so the build uses `git@github.com:<owner>/<name>.git` remotes and changes three
+things: for a new repository, ask the user to create an empty private one on github.com
+and give its SSH URL, or to add a token; push the branch at every phase as usual; at the
+end, print the compare URL (`https://github.com/<owner>/<name>/compare/<default>...hops/<slug>`)
+instead of opening the pull request, and record `system.repo.pr: manual`, with the review
+rounds skipped and said so.
+
+None of the three: stop and tell the user any one fixes it: `gh auth login`, a GitHub
+token in Hopsworks Account Settings (Git providers) and a new terminal, or an SSH key
+at `<project home>/.ssh/id_rsa` added to their GitHub account. Hopsworks terminals keep
+`~/.config/gh` and `~/.ssh` in the project's HopsFS home, so each project needs one of
+them once.
+
+```bash
+git rev-parse --show-toplevel        # inside a work tree?
+git remote get-url origin            # on GitHub?
+gh api user --jq .login              # the owner for a new repository (CLI login or token)
+```
 - **Existing or new repository is the user's call**, asked with `AskUserQuestion`.
   Inside a work tree whose `origin` is on GitHub, propose that repository with the
   system under `<repo>/<slug>/`. Otherwise, or when the user declines, offer
