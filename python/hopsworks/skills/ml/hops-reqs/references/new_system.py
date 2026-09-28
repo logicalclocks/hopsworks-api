@@ -12,12 +12,9 @@ existing system is never overwritten.
 With `--example`, also writes the system.yaml of that entry of
 example-systems.yaml, as a draft whose requirements are still pending.
 
-Also puts AGENTS.md (this directory's copy) at the root of the repository the
-system is in, or beside the system outside one, with a CLAUDE.md that imports
-it, so a coding agent there knows the system is built from system.yaml and
-checks what a changed system.yaml means downstream. The section is a marked
-block: an existing AGENTS.md keeps its text, and in a Hopsworks home the block
-also goes into `.claude/CLAUDE.md` instead of a new CLAUDE.md.
+The copy includes AGENTS.md, with a CLAUDE.md that imports it, so a coding
+agent started in the system's directory knows the system is built from
+system.yaml and checks what a changed system.yaml means downstream.
 """
 
 from __future__ import annotations
@@ -25,7 +22,6 @@ from __future__ import annotations
 import argparse
 import re
 import shutil
-import subprocess
 from pathlib import Path
 
 import yaml
@@ -33,7 +29,6 @@ import yaml
 
 TEMPLATE = Path(__file__).resolve().parent / "system_template"
 EXAMPLES = Path(__file__).resolve().parent / "example-systems.yaml"
-AGENTS = Path(__file__).resolve().parent / "AGENTS.md"
 SLUG = re.compile(r"^[a-z][a-z0-9-]*$")
 
 
@@ -56,54 +51,6 @@ def example_doc(name: str, slug: str) -> dict:
     }
     doc["requirements"] = {"status": "pending", **doc.get("requirements", {})}
     return {"schema_version": 1, **doc}
-
-
-def repo_root(directory: Path) -> Path:
-    """The top of the git work tree `directory` is in, or `directory` outside one."""
-    found = subprocess.run(
-        ["git", "-C", str(directory), "rev-parse", "--show-toplevel"],
-        capture_output=True,
-        text=True,
-        check=False,
-    ).stdout.strip()
-    return Path(found) if found else directory
-
-
-# The Hopsworks home scaffolder and the terminal images keep any
-# `<!-- X_AUTO_BEGIN -->` block out of their digests and put it back when they
-# rewrite the file, so the section survives in a home's AGENTS.md.
-BEGIN = "<!-- ML_SYSTEMS_AUTO_BEGIN -->"
-END = "<!-- ML_SYSTEMS_AUTO_END -->"
-
-
-def add_section(path: Path) -> None:
-    """Write the AGENTS.md section into `path` as a marked block, replacing an earlier one."""
-    block = f"{BEGIN}\n{AGENTS.read_text(encoding='utf-8').strip()}\n{END}\n"
-    if not path.exists():
-        path.write_text(block, encoding="utf-8")
-        return
-    text = path.read_text(encoding="utf-8")
-    if BEGIN in text and END in text:
-        head, rest = text.split(BEGIN, 1)
-        text = head + block + rest.split(END, 1)[1].lstrip("\n")
-    else:
-        text = text.rstrip("\n") + "\n\n" + block
-    path.write_text(text, encoding="utf-8")
-
-
-def install_agents(root: Path) -> None:
-    """Give coding agents at `root` the AGENTS.md section.
-
-    In a Hopsworks home, whose `.claude/CLAUDE.md` is what Claude reads, the
-    section goes into it and into the home's AGENTS.md. Elsewhere it goes into
-    AGENTS.md, with a CLAUDE.md that imports it unless one exists.
-    """
-    add_section(root / "AGENTS.md")
-    home_claude = root / ".claude" / "CLAUDE.md"
-    if home_claude.exists():
-        add_section(home_claude)
-    elif not (root / "CLAUDE.md").exists():
-        (root / "CLAUDE.md").write_text("@AGENTS.md\n", encoding="utf-8")
 
 
 def create(target: Path, example: str | None = None) -> Path:
@@ -141,7 +88,6 @@ def create(target: Path, example: str | None = None) -> Path:
             ),
             encoding="utf-8",
         )
-    install_agents(repo_root(target.parent))
     return target
 
 

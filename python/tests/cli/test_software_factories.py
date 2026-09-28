@@ -217,7 +217,7 @@ def test_the_builder_runs_on_the_session_model():
         assert phase in text
     for agent in AGENTS:
         assert agent in text
-    assert "!`hops fg list" in text and "!`ls -d */system.yaml" in text
+    assert "!`hops fg list" in text and "*/system.yaml 2>/dev/null" in text
 
 
 def test_every_skill_and_agent_the_templates_name_is_shipped():
@@ -627,43 +627,14 @@ def test_status_runs_as_a_script_without_a_session(tmp_path):
 # region The generated system, bundles and the prelude
 
 
-def test_a_new_system_puts_agents_md_at_the_repository_root(tmp_path):
-    import subprocess
-
-    repo = tmp_path / "repo"
-    (repo / "systems").mkdir(parents=True)
-    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+def test_a_new_system_carries_its_agents_md(tmp_path):
     new_system = _load(REQS / "new_system.py")
-    new_system.create(repo / "systems" / "churn")
-    agents = (repo / "AGENTS.md").read_text(encoding="utf-8")
-    assert agents.startswith("<!-- ML_SYSTEMS_AUTO_BEGIN -->\n# ML systems built from")
+    target = new_system.create(tmp_path / "churn")
+    agents = (target / "AGENTS.md").read_text(encoding="utf-8")
+    assert "built from system.yaml" in agents.splitlines()[0]
     assert "hops fg lineage" in agents and "Brewer-Edit" in agents
-    assert (repo / "CLAUDE.md").read_text(encoding="utf-8") == "@AGENTS.md\n"
-    assert not (repo / "systems" / "AGENTS.md").exists()
-
-    # A second system rewrites the block in place; the user's CLAUDE.md is kept.
-    (repo / "CLAUDE.md").write_text("# mine\n", encoding="utf-8")
-    new_system.create(repo / "systems" / "recs")
-    assert (repo / "AGENTS.md").read_text(encoding="utf-8") == agents
-    assert (repo / "CLAUDE.md").read_text(encoding="utf-8") == "# mine\n"
-
-
-def test_a_hopsworks_home_gets_the_section_in_its_scaffolded_files(tmp_path):
-    platform = "You are in the Hopsworks project p.\n"
-    kube = "<!-- KUBECTL_FALLBACK_AUTO_BEGIN -->\nkubectl\n<!-- KUBECTL_FALLBACK_AUTO_END -->\n"
-    (tmp_path / ".claude").mkdir()
-    (tmp_path / "AGENTS.md").write_text(platform + "\n" + kube, encoding="utf-8")
-    (tmp_path / ".claude" / "CLAUDE.md").write_text(platform, encoding="utf-8")
-    new_system = _load(REQS / "new_system.py")
-    new_system.create(tmp_path / "churn")
-    new_system.create(tmp_path / "recs")
-    for name in ("AGENTS.md", ".claude/CLAUDE.md"):
-        text = (tmp_path / name).read_text(encoding="utf-8")
-        assert text.startswith(platform)
-        assert text.count("<!-- ML_SYSTEMS_AUTO_BEGIN -->") == 1
-        assert text.endswith("<!-- ML_SYSTEMS_AUTO_END -->\n")
-    assert kube in (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
-    assert not (tmp_path / "CLAUDE.md").exists()
+    assert (target / "CLAUDE.md").read_text(encoding="utf-8") == "@AGENTS.md\n"
+    assert not (tmp_path / "AGENTS.md").exists()
 
 
 def _new_system(tmp_path: Path) -> Path:

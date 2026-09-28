@@ -67,6 +67,29 @@ def test_an_example_asks_only_where_the_code_goes(tmp_path, monkeypatch, quiet):
     assert 'claude "/hops-build churn-example"' in done.output
 
 
+def test_the_build_starts_in_the_system_directory(tmp_path, monkeypatch, quiet):
+    """Claude Code starts in <slug>/, so it reads the AGENTS.md the template put there."""
+    assert (
+        _run(tmp_path, monkeypatch, ["1"], "--example", "churn-example").exit_code == 0
+    )
+    windows = []
+    real_run = subprocess.run
+    monkeypatch.setenv("TMUX", "/tmp/tmux-1/default,1,0")
+    monkeypatch.setattr(build.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(
+        build.subprocess,
+        "run",
+        lambda cmd, **kw: (
+            windows.append(cmd) if cmd[0] == "tmux" else real_run(cmd, **kw)
+        ),
+    )
+    done = CliRunner().invoke(cli, ["build", "churn-example"])
+    assert done.exit_code == 0, done.output
+    [window] = windows
+    assert window[window.index("-c") + 1] == str(tmp_path / "churn-example")
+    assert (tmp_path / "churn-example" / "AGENTS.md").is_file()
+
+
 def test_the_ui_starts_an_example_by_name_and_resumes_it(tmp_path, monkeypatch, quiet):
     done = _run(tmp_path, monkeypatch, ["1"], "--example", "recs-example")
     assert done.exit_code == 0, done.output

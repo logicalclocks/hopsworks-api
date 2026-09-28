@@ -1,16 +1,17 @@
-# ML systems built from system.yaml
+# An ML system built from system.yaml
 
-Each directory in this repository that holds a `system.yaml` is an ML system built on Hopsworks with Claude Code, by `/hops-build <slug>` (Brewer in the Hopsworks UI).
+This directory is an ML system built on Hopsworks with Claude Code, by `/hops-build <slug>` (Brewer in the Hopsworks UI), where `<slug>` is this directory's name.
 `system.yaml` is the specification: the requirements, the data sources, the feature pipelines, training, inference and the app.
-The code in the directory, its jobs and schedules, and the Hopsworks assets it creates (feature groups, feature views, training datasets, models, deployments, apps) are built from it, and must stay in step with it.
+The code here, its jobs and schedules, and the Hopsworks assets it creates (feature groups, feature views, training datasets, models, deployments, apps) are built from it, and must stay in step with it.
+Paths the hops skills write as `<slug>/<path>` are `<path>` in this directory.
 
 ## When system.yaml has changed
 
 Before anything else in a session, check whether `system.yaml` changed since what is built was last recorded, and what that means for the system.
 
-- Edits made in the Hopsworks UI are listed under `system.edits`, each with the paths it changed, and each is one commit with a `Brewer-Edit: <id>` trailer: `git log --grep "Brewer-Edit" -p -- <slug>/system.yaml`.
+- Edits made in the Hopsworks UI are listed under `system.edits`, each with the paths it changed, and each is one commit with a `Brewer-Edit: <id>` trailer: `git log --grep "Brewer-Edit" -p -- system.yaml`.
   Apply them with `/hops-build <slug> <phase> Apply the edits ...`, which rebuilds what they change and removes the entries.
-- Edits made any other way: `git log -p -- <slug>/system.yaml` since the phase's last commit (`[<slug>] <phase>: ...`).
+- Edits made any other way: `git log -p -- system.yaml` since the phase's last commit (`[<slug>] <phase>: ...`).
 
 For each change, decide which pipelines or assets it touches: a schedule means rescheduling the job, a feature means changing the feature pipeline and usually a new feature group version, a model or split setting means retraining, an SLA or window means the inference job or deployment, and so on.
 Change what is needed, record it in `system.yaml`, and leave the rest untouched.

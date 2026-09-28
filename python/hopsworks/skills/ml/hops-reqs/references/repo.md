@@ -77,15 +77,6 @@ git checkout -- .gitignore           # restore tracked files the scaffold does n
 git switch -c hops/<slug>            # or hops/<slug>-<project>, above
 ```
 
-- **AGENTS.md at the repository root.** The template writes a marked
-  `ML_SYSTEMS_AUTO` block into the root `AGENTS.md`: the system is built from
-  `system.yaml`, a changed `system.yaml` is checked for what it changes, and a
-  changed component's downstream is found with `hops ... lineage` and rebuilt.
-  In a repository of its own, the template also writes a `CLAUDE.md` that
-  imports it; commit both with the first phase. In a home work tree, AGENTS.md
-  and `.claude/CLAUDE.md` are the member's Hopsworks instructions, which the
-  platform refreshes: the block goes into both, and neither is tracked.
-
 ## Branches and commits
 
 - One branch per system, `hops/<slug>`, cut from the default branch. A later

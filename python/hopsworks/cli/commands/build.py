@@ -668,11 +668,11 @@ def _launch(ctx: click.Context, system: _System, launch: bool) -> None:
     _register(ctx, system)
     subprocess.run([sys.executable, str(status)], check=False)
     if not launch or not shutil.which("claude"):
-        click.echo(f"\nBuild it with:  cd {system.target.parent} && {printable}")
+        click.echo(f"\nBuild it with:  cd {system.target} && {printable}")
         return
     if os.environ.get("TMUX") and shutil.which("tmux"):
         subprocess.run(
-            ["tmux", "new-window", "-n", slug, "-c", str(system.target.parent)]
+            ["tmux", "new-window", "-n", slug, "-c", str(system.target)]
             + [shlex.join(command)],
             check=True,
         )
@@ -680,7 +680,8 @@ def _launch(ctx: click.Context, system: _System, launch: bool) -> None:
             f"\nBuilding in the tmux window '{slug}'; the Hopsworks UI shows its progress."
         )
         return
-    os.chdir(system.target.parent)
+    # In the system directory, so Claude Code reads its AGENTS.md.
+    os.chdir(system.target)
     os.execvp("claude", command)
 
 
@@ -705,7 +706,7 @@ def build_cmd(
     Asks what to predict and the questions that follow (batch, real-time or
     agentic; cadence or SLAs; data; how predictions are used; where the code
     goes), writing each answer to ./<slug>/system.yaml. Then starts
-    `claude "/hops-build <slug>"`, in a new tmux window when run inside tmux,
+    `claude "/hops-build <slug>"` in <slug>/, in a new tmux window when run inside tmux,
     which completes the specification and builds the system. With SLUG,
     resumes that system's interview, or starts its build when the interview is
     done.

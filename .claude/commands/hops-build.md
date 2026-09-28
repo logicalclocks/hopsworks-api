@@ -6,7 +6,7 @@ argument-hint: "[<slug>] [reqs|data|features|train|infer|app] [--only] [instruct
 You are running `/hops-build` with arguments: `$ARGUMENTS`
 
 Already known, no need to look again before the first question:
-- ML systems in this directory: !`ls -d */system.yaml 2>/dev/null | head -5 || true`
+- ML systems here (`system.yaml` alone: this directory is the system): !`ls -d system.yaml */system.yaml 2>/dev/null | head -5 || true`
 - Repository: !`git remote get-url origin 2>/dev/null || echo "not a git repository with an origin"`
 - GitHub CLI: !`gh auth status 2>&1 | grep -m1 -E "Logged in|not logged" || echo "gh is not installed"`
 - GitHub token from Hopsworks Account Settings: !`grep -q "@github.com" ~/.git-credentials 2>/dev/null && echo "present in ~/.git-credentials" || echo "none"`
@@ -32,6 +32,10 @@ Load **hops-reqs** first: its `SKILL.md` and `references/` are the knowledge thi
 template, bundles, tests, the repository contract). Find a skill at `.claude/skills/<name>/` in the
 repository, else `~/.claude/skills/<name>/` (in a Hopsworks terminal that links to
 `/opt/hops/agent-skills/`).
+
+**Where it runs.** Brewer and `hops build` start Claude Code in the system's directory, `<slug>/`,
+so it reads the system's `AGENTS.md`. There, every `<slug>/<path>` in this command and in the
+skills is `<path>` in the current directory; started in the directory above, paths are as written.
 
 **Ask fast.** The listings above are current: put the first `AskUserQuestion` on screen from them
 before running anything else, and batch the questions a step needs into one call. Look up only what
@@ -111,9 +115,10 @@ repository with `gh repo create` (owner from `gh api user`, name from the slug, 
 `<slug>-<project>` when the owner already has a repository of that name, private) and record its
 URL; cut `hops/<slug>` from the default branch, or `hops/<slug>-<project>` when `hops/<slug>`
 holds another project's build, and record `system.repo`. A home directory that is not a
-repository becomes a work tree tracking only `<slug>/`, as repo.md shows. The root `AGENTS.md`
-tells any agent there that the system is built from `system.yaml` and how to follow a change
-downstream; in a repository of its own, commit it and its `CLAUDE.md` with the first phase. Every phase ends with one commit,
+repository becomes a work tree tracking only `<slug>/`, as repo.md shows. `<slug>/AGENTS.md`, from
+the template with a `CLAUDE.md` that imports it, tells an agent started there that the system is
+built from `system.yaml` and how to follow a change downstream; it is committed with the rest of
+`<slug>/`. Every phase ends with one commit,
 `[<slug>] <phase>: <one line>`, pushed. Run `hops mlsystem register <slug>` once at the start: it
 lists the system in the project's ML systems in the Hopsworks UI (from an external client it
 records the repository URL) and is a no-op refresh when the interview already registered it.
