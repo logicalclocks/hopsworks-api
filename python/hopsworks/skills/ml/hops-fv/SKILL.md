@@ -91,7 +91,7 @@ A feature view's training data is point-in-time correct when its root feature gr
 
 Choose the root by what a batch scoring run needs:
 
-- **A batch system that scores every current entity on a schedule** (churn, credit risk, propensity): root the view at the entity group with one row per entity per scoring time, such as a daily customer snapshot the source provides. Join the other feature groups at their natural grain, and join the labels group on its whole primary key, the entity and the snapshot time, so each row gets the label for exactly that snapshot. Training data keeps the rows whose label has matured; batch inference is `fv.get_batch_data(start_time=today, end_time=tomorrow)`, with no spine.
+- **A batch system that scores every current entity on a schedule** (churn, credit risk, propensity): root the view at the entity group with one row per entity per scoring time, such as a daily customer snapshot the source provides. Join the other feature groups at their natural grain, and join the labels group on its whole primary key, the entity and the snapshot time, so each row gets the label for exactly that snapshot. Training data ends at the newest snapshot whose label has matured, so its time bounds, not a filter, leave out the unlabelled rows; batch inference is `fv.get_batch_data(start_time=today, end_time=tomorrow)`, with no spine.
 - **Scoring at times no feature group has rows for** (future horizons, event-driven times): root the view at the labels group and pass the entities and times to score as `spine_df` (see **hops-batch-inference**).
 
 ```python
@@ -103,9 +103,9 @@ query = (
 )
 fv = fs.get_or_create_feature_view("churn_fv", version=1, query=query, labels=["churned"])
 
-# Training data: only rows whose label has matured. A comparison is never true for NULL.
+# Training data: snapshots up to the newest one whose label has matured (today minus the horizon).
 X_train, X_test, y_train, y_test = fv.train_test_split(
-    test_size=0.15, extra_filter=labels_fg.churned.isin([0, 1])
+    train_start=first_snapshot, train_end=test_start, test_start=test_start, test_end=last_labelled
 )
 
 # Batch inference: every customer in today's snapshot, features as of today.
@@ -113,6 +113,8 @@ batch = fv.get_batch_data(start_time=today, end_time=today + timedelta(days=1))
 ```
 
 Join the labels on the entity alone and the as-of join gives a snapshot whose label has not matured the latest earlier label: a wrong label, not a missing one. The labels group's primary key therefore includes the snapshot time.
+
+Never put the label in a training dataset's `extra_filter`. The filter is stored with the training dataset and reapplied to every batch read made with that version (`init_batch_scoring`), where the label is not selected, so scoring fails, and a filter that did run would drop the unlabelled rows batch inference has to score.
 
 Never build an intermediate feature group of pre-joined features and labels, or of snapshots derived from other feature groups, to get point-in-time correctness: the view's join already produces it correctly and the extra group hides the lineage.
 

@@ -46,8 +46,9 @@ Load these skills before you start (from `.claude/skills/<name>/` in the reposit
 4. **Create the feature view** with the label and the model-dependent transformations, rooted as
    **hops-fv** says: for a batch system that scores every current entity, at the entity group
    with a row per entity per scoring time, with the labels group joined on its whole primary key
-   (entity and snapshot time) and the training data filtered to matured labels
-   (`extra_filter=labels_fg.<label>.isin([...])`); otherwise at the labels group. Join the other
+   (entity and snapshot time) and the training data ending at the newest snapshot whose label has
+   matured (time bounds, never an `extra_filter` on the label, which batch reads of that training
+   dataset version reapply); otherwise at the labels group. Join the other
    feature groups at their own grain: with an `event_time` on every group the view's training data
    is a point-in-time join, so never create a feature group of snapshots or pre-joined features and
    labels to get that. Then create the
