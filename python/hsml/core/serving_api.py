@@ -39,9 +39,8 @@ from hsml.constants import INFERENCE_ENDPOINTS as IE
 
 
 _logger = logging.getLogger(__name__)
-# Guards the lazy creation of a deployment's gRPC channel. Concurrent first
-# callers would otherwise each build one and keep only the last, leaking the
-# rest for the lifetime of the object.
+# Guards the lazy creation of the gRPC channel of a deployment object that has no lock of its own.
+# Concurrent first callers would otherwise each build one and keep only the last, leaking the rest for the lifetime of the object.
 _GRPC_CHANNEL_LOCK = threading.Lock()
 
 
@@ -491,7 +490,8 @@ class ServingApi:
         The channel is freed when calling `deployment.stop()`.
         """
         if deployment_instance._grpc_channel is None:
-            with _GRPC_CHANNEL_LOCK:
+            # Per deployment, so a slow first channel for one deployment does not hold up another's.
+            with getattr(deployment_instance, "_grpc_channel_lock", _GRPC_CHANNEL_LOCK):
                 if deployment_instance._grpc_channel is None:
                     _logger.debug("Initializing gRPC channel")
                     deployment_instance._grpc_channel = self._create_grpc_channel(
