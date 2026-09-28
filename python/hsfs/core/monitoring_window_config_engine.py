@@ -649,28 +649,37 @@ class MonitoringWindowConfigEngine:
         # model_version STRING columns (FeatureLoggingController), so cast to str for
         # the version comparison.
         fv_query = entity.query
-        if model_filter is not None:
-            model_name, model_version = model_filter
-            fv_query = fv_query.filter(Feature("model_name") == model_name).filter(
-                Feature("model_version") == str(model_version)
-            )
-        if event_time_feature is not None:
-            time_filter = util._build_time_filter(
-                event_time_feature, start_time, end_time
-            )
-            if time_filter is not None:
-                fv_query = fv_query.filter(time_filter)
+        # Query.filter appends to the query in place and the feature view keeps this
+        # instance, so a window filter left behind would narrow the next read: the
+        # reference window would be read as its intersection with the detection
+        # window. The query is handed back with its own filter once the read is built.
+        original_filter = fv_query._filter
+        try:
+            if model_filter is not None:
+                model_name, model_version = model_filter
+                fv_query = fv_query.filter(Feature("model_name") == model_name).filter(
+                    Feature("model_version") == str(model_version)
+                )
+            if event_time_feature is not None:
+                time_filter = util._build_time_filter(
+                    event_time_feature, start_time, end_time
+                )
+                if time_filter is not None:
+                    fv_query = fv_query.filter(time_filter)
 
-        if model_filter is not None or event_time_feature is not None:
-            # Logging FGs are not created with delta.enableChangeDataFeed=true, so
-            # as_of(exclude_until=...) — which compiles to a Delta CDF read — would fail
-            # with DELTA_MISSING_CHANGE_DATA. An event-time filter reads the plain
-            # (latest snapshot) query instead, which works for any feature group.
-            entity_df = fv_query.read()
-        else:
-            entity_df = fv_query.as_of(
-                exclude_until=start_time, wallclock_time=end_time
-            ).read()
+            if model_filter is not None or event_time_feature is not None:
+                # Logging FGs are not created with delta.enableChangeDataFeed=true, so
+                # as_of(exclude_until=...) — which compiles to a Delta CDF read — would
+                # fail with DELTA_MISSING_CHANGE_DATA. An event-time filter reads the
+                # plain (latest snapshot) query instead, which works for any feature
+                # group.
+                entity_df = fv_query.read()
+            else:
+                entity_df = fv_query.as_of(
+                    exclude_until=start_time, wallclock_time=end_time
+                ).read()
+        finally:
+            fv_query._filter = original_filter
 
         if feature_names:
             entity_df = entity_df.select(feature_names)

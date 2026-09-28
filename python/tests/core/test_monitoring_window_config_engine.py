@@ -499,6 +499,50 @@ class TestMonitoringWindowConfigEngine:
         as_of_mock.assert_not_called()
         assert read_mock.call_count == 1
 
+    def test_fetch_feature_view_data_leaves_no_window_filter_behind(
+        self, mocker, backend_fixtures
+    ):
+        # The feature view keeps one Query instance and Query.filter appends to it
+        # in place, so the detection window's filter must not reach the reference
+        # window's read: each read sees the feature view's own filter plus its window.
+        mocker.patch(ENGINE_GET_TYPE, return_value="spark")
+        mocker.patch("hsfs.engine._get_instance")
+        mocker.patch(CLIENT_GET_INSTANCE)
+        unit_test_fv = feature_view.FeatureView.from_response_json(
+            backend_fixtures["feature_view"]["get"]["response"]
+        )
+        mocker.patch("hsfs.core.vector_server.VectorServer")
+        original_filter = unit_test_fv.query._filter
+        assert original_filter is not None
+        seen_filters = []
+        mocker.patch(
+            "hsfs.constructor.query.Query.read",
+            autospec=True,
+            side_effect=lambda self, *args, **kwargs: seen_filters.append(self._filter),
+        )
+        config_engine = mwce.MonitoringWindowConfigEngine()
+        event_time_feature = Feature(DEFAULT_FEATURE_NAME, type="timestamp")
+        windows = [(1_000, 2_000), (500, 1_000)]
+
+        # Act
+        for start_time, end_time in windows:
+            config_engine._fetch_feature_view_data(
+                entity=unit_test_fv,
+                feature_names=None,
+                start_time=start_time,
+                end_time=end_time,
+                event_time_feature=event_time_feature,
+            )
+
+        # Assert
+        assert unit_test_fv.query._filter is original_filter
+        assert len(seen_filters) == 2
+        for seen, (start_time, end_time) in zip(seen_filters, windows, strict=True):
+            expected = util._build_time_filter(event_time_feature, start_time, end_time)
+            assert seen._left_l is original_filter
+            assert seen._right_l._left_f._value == expected._left_f._value
+            assert seen._right_l._right_f._value == expected._right_f._value
+
     def test_fetch_entity_data_in_monitoring_window(self, backend_fixtures, mocker):
         # Arrange
         mocker.patch("hsfs.engine._get_type", return_value="spark")
