@@ -38,8 +38,11 @@ function message(className, text, columns = 2) {
   return tr;
 }
 
+// A reload keeps the rows on screen, dimmed by aria-busy, and replaces them
+// only when the new ones arrive, so nothing on the page moves.
 async function loadTop() {
   const body = document.querySelector("#top tbody");
+  body.setAttribute("aria-busy", "true");
   try {
     const top = await getJSON("api/top");
     if (!top.length) {
@@ -60,6 +63,8 @@ async function loadTop() {
     document.querySelector("#max").textContent = percent(top[0].score);
   } catch (error) {
     body.replaceChildren(message("error", `Could not load: ${error.message}`));
+  } finally {
+    body.removeAttribute("aria-busy");
   }
 }
 

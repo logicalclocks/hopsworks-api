@@ -26,6 +26,9 @@
 }
 
 * { box-sizing: border-box; }
+/* Keep the scrollbar's space: content that shrinks while it reloads would
+   otherwise drop the scrollbar and shift the centred page sideways. */
+html { scrollbar-gutter: stable; }
 body {
   margin: 0;
   font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -113,6 +116,8 @@ td.num { font-variant-numeric: tabular-nums; }
   background-size: 200% 100%; animation: shimmer 1.2s infinite;
 }
 @keyframes shimmer { to { background-position: -200% 0; } }
+/* A list being reloaded keeps its rows, dimmed, until the new ones arrive. */
+[aria-busy="true"] { opacity: 0.55; transition: opacity 0.15s; }
 
 @media (max-width: 40rem) {
   .band { padding: 0.75rem 1rem; }

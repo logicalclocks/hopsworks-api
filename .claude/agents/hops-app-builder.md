@@ -55,6 +55,9 @@ skeleton's `static/app.css` and keep its tokens and components (the header band,
 tiles, tables with score bars, badges, loading and empty states); add to it rather than
 restyling. Every view shows a loading state, an empty state and an error in words, numbers are
 formatted (percentages, thousands separators, dates), and the layout works from a phone width up.
+Nothing moves when the user interacts: a list or panel that reloads keeps its current content,
+dimmed with `aria-busy`, until the new content replaces it (placeholders only on the first load),
+and the page reserves the scrollbar gutter, so a filter or a selection never makes the layout jump.
 No CDN and no build step: fonts are the system stack, charts are inline SVG or CSS.
 
 ## Fix loop

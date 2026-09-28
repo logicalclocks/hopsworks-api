@@ -235,6 +235,11 @@ A full dashboard (statistics, monitoring history, data sample) is in
   mount. A framework that needs a build (React, Vue, Svelte) only for a
   git-backed app whose repository can hold the built assets. Streamlit when the
   description is a data view with no custom interaction.
+- **Nothing moves on interaction.** A list or panel that reloads (a filter, a
+  selection) keeps its current content, dimmed with `aria-busy`, until the new
+  content replaces it; placeholders only on the first load. The skeleton's
+  `app.css` reserves the scrollbar gutter, so content that shrinks for a moment
+  never shifts the page sideways.
 - **The description is the module docstring** of `app.py`, updated on every
   edit, so the next edit starts from what the app is now.
 - **Where the source lives.** `Users/<user>/apps/<name>/` (`~/apps/<name>/` in a
