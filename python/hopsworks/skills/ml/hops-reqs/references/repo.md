@@ -70,12 +70,19 @@ gh api user --jq .login              # the owner for a new repository (CLI login
   Make it a work tree that tracks only the system, and keep the local scaffold:
 
 ```bash
-git init -b <default_branch> . && printf '/*\n!/.gitignore\n!/<slug>/\n' > .git/info/exclude
+git init -b <default_branch> . && printf '/*\n!/.gitignore\n!/AGENTS.md\n!/CLAUDE.md\n!/<slug>/\n' > .git/info/exclude
 git remote add origin <url> && git fetch origin <default_branch>
 git reset origin/<default_branch>    # mixed: the index follows the remote, the files stay
 git checkout -- .gitignore           # restore tracked files the scaffold does not have
 git switch -c hops/<slug>            # or hops/<slug>-<project>, above
 ```
+
+- **AGENTS.md at the repository root.** The template puts `AGENTS.md` (and a
+  `CLAUDE.md` that imports it) at the root of the work tree: the system is built
+  from `system.yaml`, a changed `system.yaml` is checked for what it changes, and
+  a changed component's downstream is found with `hops ... lineage` and rebuilt.
+  Keep both tracked and in the first commit; an existing AGENTS.md got the
+  section appended, never replaced.
 
 ## Branches and commits
 

@@ -627,6 +627,37 @@ def test_status_runs_as_a_script_without_a_session(tmp_path):
 # region The generated system, bundles and the prelude
 
 
+def test_a_new_system_puts_agents_md_at_the_repository_root(tmp_path):
+    import subprocess
+
+    repo = tmp_path / "repo"
+    (repo / "systems").mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    new_system = _load(REQS / "new_system.py")
+    new_system.create(repo / "systems" / "churn")
+    agents = (repo / "AGENTS.md").read_text(encoding="utf-8")
+    assert "built from system.yaml" in agents.splitlines()[0]
+    assert "hops fg lineage" in agents and "Brewer-Edit" in agents
+    assert (repo / "CLAUDE.md").read_text(encoding="utf-8") == "@AGENTS.md\n"
+    assert not (repo / "systems" / "AGENTS.md").exists()
+
+    # A second system appends nothing; the user's own files are kept.
+    (repo / "CLAUDE.md").write_text("# mine\n", encoding="utf-8")
+    new_system.create(repo / "systems" / "recs")
+    assert (repo / "AGENTS.md").read_text(encoding="utf-8") == agents
+    assert (repo / "CLAUDE.md").read_text(encoding="utf-8") == "# mine\n"
+
+
+def test_an_existing_agents_md_gets_the_section_appended_once(tmp_path):
+    (tmp_path / "AGENTS.md").write_text("# Our rules\n", encoding="utf-8")
+    new_system = _load(REQS / "new_system.py")
+    new_system.create(tmp_path / "churn")
+    new_system.create(tmp_path / "recs")
+    text = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+    assert text.startswith("# Our rules\n")
+    assert text.count("# ML systems built from system.yaml") == 1
+
+
 def _new_system(tmp_path: Path) -> Path:
     new_system = _load(REQS / "new_system.py")
     target = new_system.create(tmp_path / "telco-churn")
