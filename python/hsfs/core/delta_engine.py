@@ -544,7 +544,11 @@ class DeltaEngine:
                 )
                 if not datanode_ip:
                     raise FeatureStoreException(
-                        "loadbalancer_external_domain_datanode is empty."
+                        "Client could not get datanode service hostname from "
+                        "loadbalancer_external_domain_datanode. "
+                        "The variable is either not set or empty in Hopsworks cluster configuration. "
+                        "The datanode and namenode load balancers may not be enabled on this cluster; "
+                        "contact your system administrator."
                     )
                 _logger.debug(
                     f"Setting HOPSFS_CLOUD_DATANODE_HOSTNAME_OVERRIDE to {datanode_ip}"
@@ -584,7 +588,11 @@ class DeltaEngine:
                 )
                 if not namenode:
                     raise FeatureStoreException(
-                        "loadbalancer_external_domain_namenode is empty."
+                        "Client could not get namenode service hostname from "
+                        "loadbalancer_external_domain_namenode. "
+                        "The variable is either not set or empty in Hopsworks cluster configuration. "
+                        "The datanode and namenode load balancers may not be enabled on this cluster; "
+                        "contact your system administrator."
                     )
                 deltars_loc = f"hdfs://{namenode}:{parsed_url.port}{parsed_url.path}"
                 _logger.debug(
