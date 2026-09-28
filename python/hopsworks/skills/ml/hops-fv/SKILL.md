@@ -87,14 +87,34 @@ query = (
 
 ### Point-in-time correct training data
 
-A feature view's training data is point-in-time correct when its root feature group and every joined feature group have an `event_time`: each root row gets, from each joined group, the latest row at or before the root row's event time for its join key, so no feature leaks from after the moment being predicted. Make the root the group whose rows are the prediction times, usually the labels (one row per entity per prediction time), and join the feature groups at their natural grain. Never build an intermediate feature group of per-entity snapshots or pre-joined features and labels for this: it duplicates data the join already produces correctly and hides the lineage.
+A feature view's training data is point-in-time correct when its root feature group and every joined feature group have an `event_time`: each root row gets, from each joined group, the latest row at or before the root row's event time for its join key, so no feature leaks from after the moment being predicted. Batch inference reads the same view with `get_batch_data`, which filters the root on its event time.
+
+Choose the root by what a batch scoring run needs:
+
+- **A batch system that scores every current entity on a schedule** (churn, credit risk, propensity): root the view at the entity group with one row per entity per scoring time, such as a daily customer snapshot the source provides. Join the other feature groups at their natural grain, and join the labels group on its whole primary key, the entity and the snapshot time, so each row gets the label for exactly that snapshot. Training data keeps the rows whose label has matured; batch inference is `fv.get_batch_data(start_time=today, end_time=tomorrow)`, with no spine.
+- **Scoring at times no feature group has rows for** (future horizons, event-driven times): root the view at the labels group and pass the entities and times to score as `spine_df` (see **hops-batch-inference**).
 
 ```python
-query = labels_fg.select(["customer_id", "churned"]).join(
-    customers_fg.select(["customer_id", "plan", "tenure_months"]), on=["customer_id"]
-).join(usage_fg.select(["customer_id", "calls_30d", "data_mb_30d"]), on=["customer_id"])
+# Labels group: primary_key=["customer_id", "snapshot_date"], event_time="snapshot_date".
+query = (
+    profile_fg.select_all()                                    # one row per customer per snapshot
+    .join(usage_fg.select_features(), on=["customer_id"])      # as of each snapshot
+    .join(labels_fg.select(["churned"]), on=["customer_id", "snapshot_date"])  # exact snapshot
+)
 fv = fs.get_or_create_feature_view("churn_fv", version=1, query=query, labels=["churned"])
+
+# Training data: only rows whose label has matured. A comparison is never true for NULL.
+X_train, X_test, y_train, y_test = fv.train_test_split(
+    test_size=0.15, extra_filter=labels_fg.churned.isin([0, 1])
+)
+
+# Batch inference: every customer in today's snapshot, features as of today.
+batch = fv.get_batch_data(start_time=today, end_time=today + timedelta(days=1))
 ```
+
+Join the labels on the entity alone and the as-of join gives a snapshot whose label has not matured the latest earlier label: a wrong label, not a missing one. The labels group's primary key therefore includes the snapshot time.
+
+Never build an intermediate feature group of pre-joined features and labels, or of snapshots derived from other feature groups, to get point-in-time correctness: the view's join already produces it correctly and the extra group hides the lineage.
 
 Joins: `join_type` is `"left"` (default), `"inner"`, `"right"`, `"full"`, `"cross"`, or `"left_semi_join"`; `left_on`/`right_on` join on differently named keys; `prefix` avoids column-name clashes.
 

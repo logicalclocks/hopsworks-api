@@ -51,10 +51,10 @@ Two approaches for retrieving batch data:
 
 Both Pandas and PySpark are supported. Spine groups require PySpark; `spine_df` does not.
 
-A view rooted at a labels group returns past labelled rows from `get_batch_data()`, not the entities to score today.
-Score it with `spine_df`: today's entities with the time to compute features as of.
+A batch system that scores every current entity roots its view at the entity group with one row per entity per scoring time (see **hops-fv**), and scores with `fv.get_batch_data(start_time=..., end_time=...)` over the run's snapshot.
+A view rooted at a labels group returns past labelled rows from a time range, not the entities to score today; score it with `spine_df`: today's entities with the time to compute features as of.
 The feature view does the point-in-time join, for training data and for batch data alike.
-Never join feature groups as of a time in pipeline code; if `get_batch_data(spine_df=...)` fails, that is a platform bug to report, not a reason to join by hand.
+Never join feature groups as of a time in pipeline code; if `get_batch_data` fails to return the rows, that is a platform bug to report, not a reason to join by hand.
 
 ---
 

@@ -20,9 +20,11 @@ churn-example:
     customers:
       generator:
         story: >-
-          5,000 telco customers with plan, tenure, monthly charges and support calls; about 15%
-          churn within a month, more often on month-to-month plans with rising charges and many
-          support calls
+          5,000 telco customers with plan, tenure, monthly charges and support calls, as a weekly
+          snapshot of every active customer; about 15% churn within a month, more often on
+          month-to-month plans with rising charges and many support calls. The feature view is
+          rooted at the snapshot, so batch scoring reads today's snapshot by time range, and the
+          labels (customer, snapshot, churned within 30 days) join on both keys
     usage_events:
       generator:
         story: >-
