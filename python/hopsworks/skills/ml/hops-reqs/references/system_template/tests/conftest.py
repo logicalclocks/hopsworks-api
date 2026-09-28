@@ -5,7 +5,7 @@ Unit tests use `system` and `load_fixture` and never connect. Integration tests
 use `project` and `test_objects`; an integration run without a connection fails
 rather than skipping, because a skipped suite reads as a passing one.
 
-Every object an integration test creates carries `SUFFIX` in its name, so two
+Every object an integration test creates carries `SUFFIX` (the `suffix` fixture) in its name, so two
 runs cannot collide and a leftover names its owner, and goes into
 `test_objects`, which deletes it after the test, on failure too.
 
@@ -29,7 +29,7 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures"
 RUN_ID = os.environ.get("HOPS_TEST_RUN_ID") or f"local-{int(time.time())}"
 SUFFIX = "_test_" + RUN_ID.replace("-", "_")
 FIXTURES_REGENERATE = (
-    "python -m <slug_pkg>.fixtures --rows 300  # filled in by the data phase"
+    "python -m slug_pkg.fixtures --rows 300  # filled in by the data phase"
 )
 
 
@@ -67,6 +67,12 @@ def project():
         pytest.fail(
             f"integration tests need a Hopsworks connection: {exc}", pytrace=False
         )
+
+
+@pytest.fixture(scope="session")
+def suffix() -> str:
+    """`_test_<run_id>`: append it to the name of everything an integration test creates."""
+    return SUFFIX
 
 
 @pytest.fixture

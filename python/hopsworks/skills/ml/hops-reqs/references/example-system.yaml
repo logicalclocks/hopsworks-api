@@ -107,7 +107,7 @@ features:
       writes: {feature_group: telco_churn_customers, version: 1, online: false, primary_key: [customer_id], event_time: snapshot_date,
                parents: [telco_customers, billing_invoices, usage_events]}
       job: {name: telco-churn-features, type: python,
-            schedule: {cron: "0 0 2 1 * ?", window: {start_offset_s: -2678400, end_offset_s: 0}, catchup: false, max_active_runs: 1},
+            schedule: {cron: "0 0 2 1 * ?", window: previous fire to this fire (server default), catchup: false, max_active_runs: 1},
             backfill: {from: 2025-01-01, to: 2026-09-01, execution: 1042}, alert: ml-oncall}
       benchmark: {file: benchmarks/benchmark_features.py, last_run: {run_id: bench-features-1, commit: 41c0f2e, execution: 1043, kind: full_window,
                   rows_per_s: 9400, full_window_s: 41, fits_before_inference: true}}
@@ -157,7 +157,7 @@ inference:
     reads: {feature_view: telco_churn_fv, window: closed billing month}
     writes: {feature_group: telco_churn_predictions, version: 1}
     job: {name: telco-churn-inference, type: python,
-          schedule: {cron: "0 0 4 1 * ?", window: {start_offset_s: -2678400, end_offset_s: 0}}, alert: ml-oncall}
+          schedule: {cron: "0 0 4 1 * ?", window: previous fire to this fire (server default)}, alert: ml-oncall}
   benchmark:
     file: benchmarks/benchmark_inference.py
     job: telco-churn-benchmark

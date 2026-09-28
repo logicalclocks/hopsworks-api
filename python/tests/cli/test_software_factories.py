@@ -441,6 +441,16 @@ def test_the_validator_rejects_each_broken_rule(path, value, expected):
     assert any(expected in p for p in problems), problems
 
 
+def test_the_validator_rejects_a_phase_that_finishes_before_it_starts():
+    doc = _example()
+    doc["training"]["started"] = "2026-09-22T11:00Z"
+    doc["training"]["finished"] = "2026-09-22T09:30Z"
+    problems = _validate(doc)
+    assert any("training.finished" in p and "date -u" in p for p in problems), problems
+    doc["training"]["finished"] = "2026-09-22T11:40Z"
+    assert not any("training.finished" in p for p in _validate(doc))
+
+
 def test_the_validator_rejects_a_data_source_without_a_route():
     doc = _example()
     doc["requirements"]["data_sources"][0]["kind"] = "magic"

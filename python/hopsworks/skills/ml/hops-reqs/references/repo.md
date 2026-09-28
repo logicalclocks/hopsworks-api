@@ -25,13 +25,17 @@ ssh -o BatchMode=yes -T git@github.com 2>&1 | grep -oE "Hi [A-Za-z0-9-]+"   # "H
 ```
 
 With the CLI login or a token, `gh` works: it creates the repository, opens the pull
-request and requests the Copilot review. An SSH key alone reaches git, not the GitHub
-API, so the build uses `git@github.com:<owner>/<name>.git` remotes and changes three
-things: for a new repository, ask the user to create an empty private one on github.com
-and give its SSH URL, or to add a token; push the branch at every phase as usual; at the
-end, print the compare URL (`https://github.com/<owner>/<name>/compare/<default>...hops/<slug>`)
-instead of opening the pull request, and record `system.repo.pr: manual`, with the review
-rounds skipped and said so.
+request and requests the Copilot review.
+
+**Push-only over SSH.** An SSH key alone reaches git, not the GitHub API: no repository
+can be created, no pull request opened, no reviewer requested. Say so and ask with
+`AskUserQuestion`: add a `gh` login or an Account Settings token (the full path), or push
+to an existing repository the user names (one they create empty on github.com counts). On
+the second answer, record `system.repo.push: ssh`, use the
+`git@github.com:<owner>/<repo>.git` remote, push the branch at every phase as usual, and
+replace the pull request step with its compare link,
+`https://github.com/<owner>/<repo>/compare/<default>...<branch>`, reported for the user to
+open. Never ask the user to paste a token into the session.
 
 None of the three: stop and tell the user any one fixes it: `gh auth login`, a GitHub
 token in Hopsworks Account Settings (Git providers) and a new terminal, or an SSH key
@@ -44,6 +48,7 @@ git rev-parse --show-toplevel        # inside a work tree?
 git remote get-url origin            # on GitHub?
 gh api user --jq .login              # the owner for a new repository (CLI login or token)
 ```
+
 - **Existing or new repository is the user's call**, asked with `AskUserQuestion`.
   Inside a work tree whose `origin` is on GitHub, propose that repository with the
   system under `<repo>/<slug>/`. Otherwise, or when the user declines, offer
@@ -51,9 +56,26 @@ gh api user --jq .login              # the owner for a new repository (CLI login
   visibility from the user. Never create a repository or push without that answer.
 - **A name the owner already uses is never reused.** When `system.repo.url` is `new`
   (the interview's answer, and every example's), check `gh repo view <owner>/<slug>`
-  first; if it exists, the same system was built before in another project, so name
-  the new one `<slug>-<project>`, then `<slug>-<project>-2` and so on. Never push to,
-  or take over, a repository this build did not create.
+  (push-only: `git ls-remote git@github.com:<owner>/<slug>.git`) first; if it exists,
+  the same system was built before in another project, so name the new one
+  `<slug>-<project>`, then `<slug>-<project>-2` and so on. Never push to, or take
+  over, a repository this build did not create, unless the user names it.
+- **A branch another build owns is never reused.** In a repository the user named,
+  `git ls-remote origin 'refs/heads/hops/<slug>*'` first. When `hops/<slug>` exists,
+  read its `system.yaml`: a different `system.target.project` means another project's
+  build (often with its own open pull request), so cut `hops/<slug>-<project>`
+  instead and leave that branch and its pull request untouched.
+- **A home directory as the work tree.** In a Hopsworks terminal the system usually
+  sits in the HopsFS home, which is not a repository and holds dotfiles and secrets.
+  Make it a work tree that tracks only the system, and keep the local scaffold:
+
+```bash
+git init -b <default_branch> . && printf '/*\n!/.gitignore\n!/<slug>/\n' > .git/info/exclude
+git remote add origin <url> && git fetch origin <default_branch>
+git reset origin/<default_branch>    # mixed: the index follows the remote, the files stay
+git checkout -- .gitignore           # restore tracked files the scaffold does not have
+git switch -c hops/<slug>            # or hops/<slug>-<project>, above
+```
 
 ## Branches and commits
 
@@ -82,9 +104,11 @@ reviewed code and the running code cannot silently differ.
 ## The pull request
 
 Opened by the finishing step after the code is pushed and `verify` passed on that head.
+With `system.repo.push: ssh` there is no API: report the compare link and the body
+(written to a file the user can paste), skip Copilot and the review rounds, and say so.
 
 ```bash
-gh pr create --base <default_branch> --head hops/<slug> \
+gh pr create --base <default_branch> --head <system.repo.branch> \
   --title "[<slug>] <system.name>" --body-file /tmp/pr-body.md
 gh pr view --json number,url --jq '.number'          # recorded as system.repo.pr
 ```

@@ -79,6 +79,7 @@ system:
   slug: telco-churn
   target: {cluster: https://hopsworks.acme.internal, project: skillstest, stage: development}   # the autonomous path runs only against stage: development
   repo: {url: https://github.com/acme/ml-systems, host: github.com, default_branch: main, branch: hops/telco-churn, pr: 12}
+  #     push: ssh when gh is logged out and an SSH key pushes: no pr, a compare link instead (repo.md)
   created: 2026-09-22
   versions: {hopsworks: 4.6.0, cli: 4.6.0, skills: 2026-09-22, protocol: hops-train/references/autoresearch.md@1133d9c}
   progress: {phase: train, done: [reqs, data, features], now: "run 4 of 5, execution 1107 at 6m of 10m",
@@ -179,7 +180,7 @@ features:                             # owner: features
       transformations: [tenure bucket, charges ratio, service count]   # MITs only
       writes: {feature_group: telco_churn_customers, version: 1, online: false, primary_key: [customer_id], event_time: snapshot_date,
                parents: [telco_customers, billing_invoices]}   # created with parents=; no snapshot or training group, the feature view joins point in time
-      job: {name: telco-churn-features, type: python, schedule: {cron: "0 0 2 1 * ?", window: {start_offset_s: -2678400, end_offset_s: 0}, catchup: false, max_active_runs: 1},
+      job: {name: telco-churn-features, type: python, schedule: {cron: "0 0 2 1 * ?", window: previous fire to this fire (server default), catchup: false, max_active_runs: 1},
             backfill: {from: 2025-01-01, to: 2026-09-01, execution: 1042}, alert: ml-oncall}
       #     continuous: job: {name: telco-churn-usage-stream, type: pyspark, checkpoint: Resources/telco-churn/checkpoints/usage, trigger: 30s, execution: 1050, alert: ml-oncall}
       benchmark: {file: benchmarks/benchmark_features.py, last_run: {run_id: bench-features-1, commit: 41c0f2e, execution: 1043, kind: full_window,
@@ -230,7 +231,8 @@ inference:                            # owner: infer (the inference agent); budg
   # one of:
   batch:    {reads: {feature_view: telco_churn_fv, window: closed billing month},
              writes: {feature_group: telco_churn_predictions, version: 1},
-             job: {name: telco-churn-inference, type: python, schedule: {cron: "0 0 4 1 * ?", window: {start_offset_s: -2678400, end_offset_s: 0}}, alert: ml-oncall}}
+             job: {name: telco-churn-inference, type: python, schedule: {cron: "0 0 4 1 * ?", window: previous fire to this fire (server default)}, alert: ml-oncall},
+             snapshot: {lookback_days: 35}}   # the program reads the closed month before HOPS_END_TIME; the server moves no window
   realtime: {deployment: telcochurnpredictor, model_version: 1, replicas: 2, batched_lookups: false,
              latency_breakdown: {online_lookup_ms: 5, model_ms: 8, overhead_ms: 4}}
   agent:    {deployment: telcochurnagent, llm: {endpoint: ..., model: ..., api_key_secret: llm_key},
@@ -335,3 +337,7 @@ Estimates, in order of preference:
 - Defaults before anything has run: reqs 10 min; data 5 min per existing feature group and 20 min per new connector, file or synthetic source; features 15 min per pipeline; train the budget's `wall_clock`; infer 3 min per attempt; app 10 min (none when `app.wanted` is false); verify 3 min.
 
 An estimate is always labelled as one and excludes escalations, review rounds and a raised budget.
+
+Every `started`, `finished` and `since` is UTC from `date -u` (`2026-09-22T09:02Z`). A
+terminal may run in a local zone; a local time written as UTC makes a block finish before it
+started, which the validator rejects.

@@ -106,7 +106,9 @@ def _took(block: dict, now: datetime) -> timedelta | None:
     if started is None:
         return None
     finished = parse_time(block.get("finished")) or now
-    return finished - started
+    # A finished before its start is a bad timestamp (a local time taken for UTC);
+    # the validator rejects it, and here it must not make the total negative.
+    return max(timedelta(0), finished - started)
 
 
 def _default_estimate(phase: str, doc: dict) -> timedelta:
@@ -123,10 +125,15 @@ def _default_estimate(phase: str, doc: dict) -> timedelta:
         )
     if phase == "features":
         pipelines = _block(doc, "features").get("pipelines") or []
-        count = len(pipelines) or sum(
-            1
-            for f in req.get("features") or []
-            if f.get("computed_in") in ("feature_pipeline", "streaming")
+        # Before the features phase names its pipelines, one per kind of computation:
+        # a system's batch features share one scheduled program, its streaming ones
+        # one continuous job; counting features instead charges nine pipelines for nine.
+        count = len(pipelines) or len(
+            {
+                f.get("computed_in")
+                for f in req.get("features") or []
+                if f.get("computed_in") in ("feature_pipeline", "streaming")
+            }
         )
         return timedelta(minutes=max(1, count) * minutes["features_pipeline"])
     if phase == "train":

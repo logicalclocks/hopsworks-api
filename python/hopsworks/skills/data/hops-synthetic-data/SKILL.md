@@ -58,7 +58,9 @@ hops job history <slug>-events              # the live writer has a RUNNING exec
   offline store runs on a schedule (default hourly) rather than per insert.
   First a `--mode backfill` run writes the history the training phase needs,
   finalises its multi-part insert, runs the materialization job and waits; the
-  rows count as training data only once `hops sql` counts them offline. Then the
+  rows count as training data only once `hops sql` counts them offline. Query the
+  offline table only after that materialization run has finished: an earlier query
+  can leave Trino's cached metadata failing for up to an hour (**hops-trino-sql**). Then the
   **same program** in `--mode live` is deployed as `<slug>-events` and left
   running: every `tick_s` it writes `rate_per_s x tick_s` events with
   `multi_part_insert`, which starts no materialization job per batch.

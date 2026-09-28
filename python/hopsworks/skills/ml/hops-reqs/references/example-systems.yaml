@@ -11,8 +11,16 @@ churn-example:
     description: which telco customers will churn in the next 30 days
     system_type: batch
     sla:
-      batch: {cadence: daily}
+      batch: {cadence: weekly}
     consumers: ui
+    # The story's volume, confirmed by the example's author so the data phase asks nothing:
+    # 5,000 customers is above the small tier's 2,000 event entities, and 60 days of usage
+    # before the first snapshot plus the snapshots' span is about 3 million events.
+    sizing:
+      tier: small
+      confirmed_above_cap: >-
+        ~5,000 customers x ~21 weekly snapshots (~105k rows); ~3M usage events (~300 MB offline)
+        over ~5,000 entities; live ~0.2 events/s (~110k rows online at a 7-day TTL)
     data_sources:
       - {name: customers, kind: synthetic, shape: batch, status: needs_generation}
       - {name: usage_events, kind: synthetic, shape: events, status: needs_generation}
@@ -21,10 +29,12 @@ churn-example:
       generator:
         story: >-
           5,000 telco customers with plan, tenure, monthly charges and support calls, as a weekly
-          snapshot of every active customer; about 15% churn within a month, more often on
-          month-to-month plans with rising charges and many support calls. The feature view is
-          rooted at the snapshot, so batch scoring reads today's snapshot by time range, and the
-          labels (customer, snapshot, churned within 30 days) join on both keys
+          snapshot of every active customer taken on Mondays at 00:00 UTC; about 15% churn within
+          a month, more often on month-to-month plans with rising charges and many support calls.
+          The feature view is rooted at the snapshot, so the weekly batch scoring reads the newest
+          snapshot by time range, and the labels (customer, snapshot, churned within 30 days) join
+          on both keys. A scheduled snapshot job writes exactly the snapshots on the Monday grid
+          inside its window, so a weekly fire never writes seven
     usage_events:
       generator:
         story: >-

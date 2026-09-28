@@ -55,6 +55,16 @@ job = api.create_job(name="feature-pipeline", config=config)
 job.run(await_termination=True)
 ```
 
+`hops job deploy` sets no memory or cores (a Python job gets the default,
+2048 MB and 1 core). Set them once after the deploy; a later `--overwrite`
+deploy keeps them:
+
+```python
+job = hopsworks.login().get_job_api().get_job("telco-churn-features")
+job.config["resourceConfig"]["memory"] = 4096      # MB; "cores" beside it
+job.save()
+```
+
 Pick the environment for the job's role: `python-feature-pipeline` (feature
 pipelines), `pandas-training-pipeline` (training). Inference environments (e.g.
 `pandas-inference-pipeline`) are deployment-only and cannot run as jobs.
@@ -63,14 +73,18 @@ pipelines), `pandas-training-pipeline` (training). Inference environments (e.g.
 
 A scheduled program processes one data window per fire. The scheduler sets
 `HOPS_START_TIME` and `HOPS_END_TIME` (ISO-8601 with a trailing `Z`) on every
-execution; by default the window is the previous fire to this one. Move it with
-offsets when the window is not the interval, for example a month closed on the
-1st and scored on the 4th:
+execution; the window is the previous fire to this one. Do not move it with
+offsets: current servers refuse a negative `--start-offset-seconds`
+("startTimeOffsetSeconds must be non-negative") and no longer honour
+`--end-offset-seconds`, although the CLI help still describes both. When the
+data a fire needs is not the interval (a month closed on the 1st and scored on
+the 4th, a weekly snapshot scored daily), keep the default window and derive
+the read window in the program from `HOPS_END_TIME`, for example "the newest
+snapshot in the 8 days before the window's end", recorded in `system.yaml`:
 
 ```bash
-hops job schedule telco-churn-inference "0 0 4 1 * ?" \
-  --start-offset-seconds -2678400 --end-offset-seconds 0      # negative looks back from the fire
-hops job schedule-info telco-churn-inference                  # verify cron, offsets, next fire
+hops job schedule telco-churn-inference "0 0 4 1 * ?"         # server default window
+hops job schedule-info telco-churn-inference                  # verify cron, enabled, next fire
 ```
 
 The **same program** serves history: `hops job backfill` runs it once over a past

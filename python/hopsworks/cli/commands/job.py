@@ -640,9 +640,10 @@ def _expand_cron_alias(cron: str) -> str:
     type=int,
     default=None,
     help=(
-        "Per-fire offset for HOPS_START_TIME (data window start). Negative looks "
-        "back from the cron fire (e.g. -3600 = window starts 1h before fire). "
-        "Default (omitted) = previous cron fire (last execution time)."
+        "Per-fire offset for HOPS_START_TIME (data window start). Current servers "
+        "refuse negative values ('must be non-negative'); prefer omitting it and "
+        "deriving a look-back in the program from HOPS_END_TIME. Default "
+        "(omitted) = previous cron fire (last execution time)."
     ),
 )
 @click.option(
@@ -651,8 +652,8 @@ def _expand_cron_alias(cron: str) -> str:
     type=int,
     default=None,
     help=(
-        "Per-fire offset for HOPS_END_TIME (data window end). 0 = cron fire time. "
-        "Default (omitted) = cron fire time."
+        "Per-fire offset for HOPS_END_TIME (data window end). Current servers no "
+        "longer honour it; HOPS_END_TIME is the cron fire time."
     ),
 )
 @click.option(
@@ -693,8 +694,10 @@ def job_schedule(
     """Attach (or update) a Quartz cron schedule to ``name``.
 
     The cron interval is the firing cadence. The data window the job
-    consumes per fire is controlled by ``--start-offset-seconds`` /
-    ``--end-offset-seconds`` (relative to the fire time). ``--catchup``
+    consumes per fire is the previous fire to this one; current servers
+    refuse a negative ``--start-offset-seconds`` and ignore
+    ``--end-offset-seconds``, so a program that needs another window derives
+    it from ``HOPS_END_TIME``. ``--catchup``
     replays missed intervals after an outage; ``--max-catchup-runs``
     caps how many missed intervals are replayed.
 

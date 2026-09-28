@@ -11,7 +11,7 @@ The [system template](system_template/) carries the harness; copy it once per sy
 | File | What it is |
 | --- | --- |
 | `pyproject.toml` | `pythonpath = ["src"]`, `testpaths = ["tests/unit"]`: plain `pytest` runs only the unit tests |
-| `tests/conftest.py` | `system` (the YAML), `load_fixture`, `project` (fails without a connection), `test_objects` (deleted after each test, on failure too), `SUFFIX` (`_test_<run_id>`) |
+| `tests/conftest.py` | `system` (the YAML), `load_fixture`, `project` (fails without a connection), `test_objects` (deleted after each test, on failure too), `suffix` (the fixture returning `SUFFIX`, `_test_<run_id>`; a test module cannot import `conftest`) |
 | `tests/unit/test_system_yaml.py` | the rules of system-yaml.md checked on this system's file; also a CLI for the atomic write |
 | `tests/integration/conftest.py` | an integration run that collects zero tests fails |
 | `tests/integration/test_parity.py` | the training/serving skew check, realtime systems only |

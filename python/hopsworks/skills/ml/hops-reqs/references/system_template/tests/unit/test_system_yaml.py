@@ -242,6 +242,36 @@ def _check_names(problems: list[str], doc: dict) -> None:
         problems.append(f"app {app!r} must be lowercase with hyphens")
 
 
+def _parse_time(value: object):
+    """A `started`/`finished` value as an aware UTC datetime, or None when absent or unreadable."""
+    from datetime import datetime, timezone
+
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        when = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return when if when.tzinfo else when.replace(tzinfo=timezone.utc)
+
+
+def _check_times(problems: list[str], doc: dict) -> None:
+    """Each phase block finishes at or after it started (times are UTC from `date -u`)."""
+    for key in PHASE_STATUS:
+        block = doc.get(key)
+        if not isinstance(block, dict):
+            continue
+        started = _parse_time(block.get("started"))
+        finished = _parse_time(block.get("finished"))
+        if started and finished and finished < started:
+            problems.append(
+                f"{key}.finished {block.get('finished')} is before {key}.started "
+                f"{block.get('started')}; take both from `date -u`, never a local clock"
+            )
+
+
 def validate(doc: object) -> list[str]:
     """Return every rule this document breaks; an empty list means it is valid."""
     if not isinstance(doc, dict):
@@ -308,6 +338,7 @@ def validate(doc: object) -> list[str]:
 
     _check_names(problems, doc)
     _check_secrets(problems, doc)
+    _check_times(problems, doc)
     return problems
 
 
