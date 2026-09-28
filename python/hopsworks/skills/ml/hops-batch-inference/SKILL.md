@@ -29,6 +29,15 @@ hops td list <fv-name>      # confirm a training dataset version exists for batc
 
 A batch inference pipeline is one of the three FTI pipelines (feature, training, inference): a separate program that runs on a schedule, makes non-time-critical predictions, and writes them to an inference store (a feature group, database, or object store) for asynchronous consumers. It defines a batch AI system. Log its inputs and predictions so you can monitor and debug it.
 
+**The model is embedded, never deployed.** A batch inference pipeline is a Python program
+(Pandas, Polars or PySpark) that downloads the model from the Model Registry and scores the whole
+batch in its own process. It does not create or call a model deployment: a deployment is a
+24/7 endpoint for requests that must be answered as they arrive, and a batch job calling one pays
+for a server that sits idle between runs, adds a network round trip per row or micro-batch, and
+couples the job's success to the endpoint's availability. The same holds for anything else that
+consumes a batch system: its app or dashboard reads the prediction feature group, and one that
+must score a what-if case loads the same model in-process.
+
 Batch inference in Hopsworks follows this pattern:
 
 1. Download a trained model from the Model Registry

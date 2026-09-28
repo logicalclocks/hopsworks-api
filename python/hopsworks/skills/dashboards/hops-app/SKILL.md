@@ -137,7 +137,10 @@ three things are app-specific:
 
 - **A just-created feature group is not queryable via Trino/`hops sql` immediately.** The offline table syncs into the Trino catalog with a short lag, so a `SELECT ... FROM <fresh_fg>` right after `insert` can return `TABLE_NOT_FOUND`. Online feature-vector reads are available before the Trino table is, so make the app not-found-safe (warn on an empty online vector) instead of trusting a range from a fresh query.
 - **Embedded model** (predict locally instead of calling a deployment): `model_dir = mr.get_model("fraud_model", version=1).download()`; cache the loaded model and its feature view in `@st.cache_resource` so the download happens once, and read through the feature view so the same MDTs/ODTs the model saw in training are applied (no training/serving skew).
-- **Calling a deployment:** check `deployment.is_running()` before `predict`, and surface a message rather than blocking (see cold start below).
+- **An app over a batch ML system** reads the prediction feature group the batch job writes and
+  never calls a deployment, because a batch system has none; a what-if score uses the embedded
+  model above.
+- **Calling a deployment** (real-time systems only): check `deployment.is_running()` before `predict`, and surface a message rather than blocking (see cold start below).
 
 ### Streamlit caching and cold start
 

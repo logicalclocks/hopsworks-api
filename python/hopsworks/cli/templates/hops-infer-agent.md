@@ -35,7 +35,7 @@ breakdown predicts.
 
 1. **Design the section first.** Realtime: write `inference.realtime.latency_breakdown` (online
    lookup, model, overhead) and check it totals under `p99_ms` before building; the deployment is
-   pinned to `training.model.version` as `realtime.model_version`. Batch: the window and engine
+   pinned to `training.model.version` as `realtime.model_version`. Batch: the job embeds the model (downloaded from the registry and loaded in-process) and never creates or calls a deployment; the window and engine
    follow the declared volume; the job is scheduled on `requirements.operations.inference.cadence`
    with window offsets and a failure alert.
 2. **Build it** in the environment chosen by the reuse rule, reading through the feature view so

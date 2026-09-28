@@ -34,8 +34,11 @@ churn-example:
     kind: query_ui
     name: churn-example-app
     description: >-
-      A churn-risk console: the highest-risk customers ranked with a risk bar, a search by
-      customer id showing the score, the features behind it and its trend, and totals by plan
+      A churn-risk console for the retention team: headline numbers, risk by plan, the highest-risk
+      customers ranked with a risk bar and exportable as CSV, and a search by customer id showing
+      the score and the features behind it with a what-if score for a different tenure. It reads
+      the prediction feature group the batch job writes, and the what-if score loads the same
+      registered model into the app; a batch system has no deployment
     status: pending
 
 recs-example:

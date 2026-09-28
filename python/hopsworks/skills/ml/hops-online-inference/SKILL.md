@@ -6,6 +6,9 @@ description: Use when writing code for model deployment, online inference, predi
 # Hopsworks Online Inference — Python SDK Best Practices
 
 An **online inference pipeline** is one of the three FTI pipelines (Feature, Training, Inference): a separate program that runs 24/7 behind a network endpoint, accepts prediction requests, builds feature vectors (precomputed features from the online store + on-demand + passed features), calls `model.predict`, and logs its inputs and outputs for monitoring and debugging. What you deploy is the pipeline, not the model alone. The model is one step inside it.
+Deploy only for predictions requested one at a time, as they happen. Predictions made on a
+schedule are batch inference: the job embeds the model and needs no deployment (see
+[hops-batch-inference](../hops-batch-inference/SKILL.md)).
 
 ## Contract
 

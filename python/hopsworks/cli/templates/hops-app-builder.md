@@ -40,6 +40,14 @@ its "Apps built by `/hops app`" and "Fix loop" sections and `references/app_skel
 - **delete:** `hops app delete <name> --yes`, remove the source directory, and the environment
   clone when one was created for this app.
 
+## Models
+
+An app over a batch ML system reads the prediction feature group the batch job writes and never
+calls a model deployment: a batch system has none. When the description asks for a fresh or
+what-if score, download the registered model once, cache it, and score in the app's process with
+the same feature view the batch job reads. Only an app over a real-time system calls its
+deployment.
+
 ## Look
 
 The UI is what the user sees of the whole system, so it has to look finished. Start from the

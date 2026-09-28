@@ -207,7 +207,8 @@ user wants an app, proposing what fits: a dashboard over the prediction feature 
 query UI against the deployment for realtime. When `app.wanted` is recorded, never ask: build it,
 with `kind: dashboard` going to the dashboard builder and every other kind to the app builder. On
 yes, take `app.description` when recorded, add what `system.yaml` says it reads (the prediction
-feature group or deployment, the entity, the consumers), and spawn **hops-dashboard-builder** (`action: create`,
+feature group for batch, which has no deployment, so a what-if score embeds the registered model;
+the deployment for realtime; the entity, the consumers), and spawn **hops-dashboard-builder** (`action: create`,
 `program: <slug>/dashboards/<slug>.py`) or **hops-app-builder** (`action: create`, the source under
 `<slug>/app/`) with the prompt `/hops` gives them, so the program or source is committed with the
 system. Record `app`. On no, `app: {wanted: false, status: skipped}`.

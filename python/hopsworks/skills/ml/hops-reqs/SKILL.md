@@ -24,7 +24,7 @@ the same file by hand.
 
 | `system_type` | Inference is | `sla` block | Consumed through |
 | --- | --- | --- | --- |
-| `batch` | a scheduled job scoring one window into a prediction feature group | `{rows_per_run, cadence, window, must_finish_by}` | a dashboard (`/hops dashboard`) or a query |
+| `batch` | a scheduled job that downloads the model from the registry and scores one window in-process into a prediction feature group; no deployment | `{rows_per_run, cadence, window, must_finish_by}` | a dashboard (`/hops dashboard`), an app reading the prediction feature group, or a query |
 | `realtime` | a deployment reading the online store per request | `{p99_ms, throughput_qps, error_rate_max, timeout_ms}` | an API, or a query UI (`/hops app`) |
 | `agent` | a deployed agent with tools and retrieval | `{p99_ms, throughput_qps, eval: {metric, target, eval_set, scorer}}` | a chat UI |
 
