@@ -38,6 +38,7 @@ classifiers = [
 dependencies = [
     "pyhumps==1.6.1",
     "requests",
+    "urllib3>=1.26,<3",
     "furl",
     "boto3",
     "pandas[mysql]<2.4.0",
