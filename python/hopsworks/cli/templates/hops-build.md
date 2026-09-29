@@ -103,6 +103,19 @@ named phase and every later phase it invalidates are rebuilt as for any `/hops-b
 about first); then delete the applied entries from `system.edits` with `set.py` and record the
 phase `met`, or `unmet` with why. Never apply an edit that is not listed, and never revert one.
 
+**Applying cascades.** First mark `stale`, by the transition table in `system-yaml.md`, the edited
+phase and every later phase it invalidates, and commit that. Then rebuild them in order, each
+from the new outputs of the one before, never reading the old versions: an edit to `data`
+(regenerated synthetic data, a new source) writes new feature group versions, reruns every feature
+pipeline into new versions, recreates the feature view and its training data, retrains and
+accepts a model, reruns batch inference or redeploys the deployment or agent, points the app at
+the new versions and restarts it, and runs `verify`. Rewrite each later phase's block in
+`system.yaml` and its code to the new names and versions, rerun its tests, and record it `met`;
+the run ends only when every invalidated phase is `met`, `accepted` or `unmet` with why. Once
+nothing reads them, delete the superseded versions this system created (their descriptions name
+the system) and the jobs of the old pipeline versions, so the old and new builds do not run side
+by side.
+
 ### Before reqs: the repository
 
 The interview created `<slug>/` from the system template and recorded `system.repo.url`: the
