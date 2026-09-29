@@ -41,21 +41,29 @@ hops job history <slug>-events              # the live writer has a RUNNING exec
   dependency plus noise; the target's positive rate follows
   `requirements.targets.prevalence`. No column is a function of the target the
   real world would not have at prediction time.
-- **Polars, in `python-feature-pipeline`.** The columns and the relational steps
-  that shape the story (joins between entities and events, window aggregates)
-  are Polars; the base ships it, so the generator runs there and no environment
-  is cloned.
+- **Polars, in a Python job in `python-feature-pipeline`.** The columns and the
+  relational steps that shape the story (joins between entities and events,
+  window aggregates) are Polars; the base ships it, so the generator runs there
+  and no environment is cloned. Never a Spark job: Polars generates the small
+  tier's history in seconds.
+- **No statistics jobs.** Every feature group the generator writes is created
+  with `statistics_config=False`: from a Python job, Hopsworks computes
+  statistics in a PySpark job after every insert.
 
 ## Sinks
 - **Batch:** one offline feature group per table (the entity table, and an event
-  history when the story has one), named as the real source would be, with
+  history when the story has one), written directly by the Python client with no
+  job behind it, named as the real source would be, with
   `event_time` set and a description saying it is synthetic and which job wrote
   it. One run, `<slug>-data-backfill`, with `--mode backfill --from --to`.
 - **Events:** one **online-enabled** feature group (`online_enabled=True,
   stream=True`), primary key the **event id** (an entity key keeps only the
   latest row per entity online), a `ttl` so the online store forgets old events
   (default seven days), and `offline_backfill_every_hr` so materialization to the
-  offline store runs on a schedule (default hourly) rather than per insert.
+  offline store runs on a schedule (default hourly) rather than per insert: the
+  materialization job is the one Spark job an online feature group needs, so
+  make an event group online only when the system reads it online (a stream the
+  app shows live, a real-time or agent lookup); otherwise it is a batch group.
   First a `--mode backfill` run writes the history the training phase needs,
   finalises its multi-part insert, runs the materialization job and waits; the
   rows count as training data only once `hops sql` counts them offline. Query the

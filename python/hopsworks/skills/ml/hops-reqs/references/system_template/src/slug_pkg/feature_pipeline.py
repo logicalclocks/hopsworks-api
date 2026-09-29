@@ -175,6 +175,7 @@ def main(argv: list[str] | None = None) -> int:
         online_enabled=bool(writes.get("online")),
         description=writes.get("description", ""),
         parents=sources,
+        statistics_config=False,
     )
     problems = validate(features, sink.primary_key)
     if problems:

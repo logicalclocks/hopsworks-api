@@ -216,6 +216,7 @@ def _sink(fs, writes: dict):
             str(writes.get("offline_backfill_every", "1h")).rstrip("h")
         ),
         description=f"Synthetic {SOURCE}, written by this system's synthetic data job",
+        statistics_config=False,
     )
 
 
@@ -274,6 +275,7 @@ def main(argv: list[str] | None = None) -> int:
                 primary_key=["customer_id"],
                 event_time="snapshot_date",
                 description=f"Synthetic entities behind {SOURCE}, written by this system's synthetic data job",
+                statistics_config=False,
             )
             table.insert(ents.to_pandas(), write_options={"wait_for_job": True})
         # The history is sized by the tier's row count, not the live rate: five

@@ -164,6 +164,7 @@ def main(argv: list[str] | None = None) -> int:
         primary_key=[entity, "predicted_at"],
         event_time="predicted_at",
         description=f"Predictions of {model_spec['name']} v{model_spec['version']}",
+        statistics_config=False,
     )
     sink.insert(rows, write_options={"wait_for_job": True})
     _write_result(

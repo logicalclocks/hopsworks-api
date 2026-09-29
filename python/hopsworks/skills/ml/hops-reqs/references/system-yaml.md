@@ -177,7 +177,7 @@ features:                             # owner: features
   pipelines:
     - name: telco_churn_features
       run: scheduled | continuous     # from requirements.operations.features
-      engine: pandas | polars | pyspark | spark_streaming
+      engine: polars | pandas | pyspark | spark_streaming   # polars in a Python job by default; spark only for streaming or a window too large for a Python job
       environment: {name: python-feature-pipeline}     # a base had everything; nothing cloned
       reads: [telco_customers, billing_invoices]
       transformations: [tenure bucket, charges ratio, service count]   # MITs only

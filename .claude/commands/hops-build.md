@@ -193,7 +193,9 @@ Load **hops-features**, **hops-fg**, **hops-transformations**, **hops-job**,
 **hops-environments**. For each `requirements.features` entry `computed_in: feature_pipeline` or
 `streaming`, write a pipeline from `src/<slug_pkg>/feature_pipeline.py` (one per pipeline) that
 runs as `requirements.operations.features` says: scheduled (the window from `HOPS_START_TIME` and
-`HOPS_END_TIME`) or continuous (Structured Streaming). Engine by estimated peak memory. Sink
+`HOPS_END_TIME`) or continuous (Structured Streaming). Polars in a Python job by default (hops-features says
+when Spark instead), and every feature group created with `statistics_config=False`, which from Python
+would run a PySpark job per insert. Sink
 feature groups with a description on every feature, created with `parents=` naming every feature
 group the pipeline reads; validation before write; idempotent over the window. Features are written
 at their natural grain with an `event_time`, and labels in their own group at the prediction time:

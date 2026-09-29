@@ -317,6 +317,7 @@ def run_batch(system: dict, params: dict, run_id: str) -> dict:
         version=1,
         primary_key=["row"],
         description=f"benchmark {run_id}; deleted after the run",
+        statistics_config=False,
     )
     try:
         sink.insert(frame, write_options={"wait_for_job": True})

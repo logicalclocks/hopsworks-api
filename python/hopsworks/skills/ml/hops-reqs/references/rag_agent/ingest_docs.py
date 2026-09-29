@@ -269,6 +269,7 @@ def main() -> None:
         primary_key=["chunk_id"],
         online_enabled=True,
         embedding_index=embedding_index(encoder.get_sentence_embedding_dimension()),
+        statistics_config=False,
     )
     if chunks:
         fg.insert(rows(project, chunks, args.docs, encoder), wait=True)
