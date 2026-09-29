@@ -187,12 +187,14 @@ def mlsystem_remove(ctx: click.Context, system: str) -> None:
     "--assets",
     is_flag=True,
     help="Also delete what the system created: its app, deployments, jobs, models, "
-    "feature view, the feature groups it writes, cloned environments and Resources/<slug>.",
+    "feature view, the feature groups it writes, cloned environments, Resources/<slug> "
+    "and its code directory.",
 )
 @click.option(
     "--repo",
     is_flag=True,
-    help="Also delete its GitHub repository (implies --assets), when the build created it for this system alone.",
+    help="Also delete its GitHub repository (implies --assets), or only its branch when "
+    "the repository holds other builds.",
 )
 @click.option(
     "--path",
@@ -212,10 +214,11 @@ def mlsystem_delete(
     """Delete SYSTEM (an id or a name): its registry entry, and with --assets what it created.
 
     Assets are read from the system's system.yaml and deleted downstream first,
-    skipping any already gone; the run stops at the first failure. The
-    repository and the registry entry are deleted last, so after a failure the
-    system is still listed and the same command can be run again. The code
-    directory is kept.
+    skipping any already gone; the run stops at the first failure. Then the
+    repository (with --repo; only the system's branch when the repository holds
+    other builds), the code directory and the registry entry, so after a failure
+    the system is still listed and the same command can be run again. Without
+    --assets only the registry entry goes and the code is kept.
 
     Args:
         ctx: Click context.
@@ -235,29 +238,42 @@ def mlsystem_delete(
     steps: list = []
     doc: dict = {}
     directory = path or _local_dir(entry)
+    slug = directory.name if directory else str(entry.get("name"))
     if assets:
         spec = directory / "system.yaml" if directory else None
-        if spec is None or not spec.is_file():
+        if directory is not None and not directory.exists():
+            # An earlier run got as far as deleting the code; only the entry is left.
+            output.info(f"{directory} is gone, so its assets were deleted before it")
+        elif spec is None or not spec.is_file():
             raise click.ClickException(
                 f"cannot read the system.yaml of {entry.get('name')}; pass its directory with --path"
             )
-        doc = yaml.safe_load(spec.read_text(encoding="utf-8")) or {}
-        deleter = teardown.Deleter(project)
-        steps = [
-            (str(a), lambda a=a: deleter.delete(a))
-            for a in teardown.inventory(doc, directory.name)
-        ]
-    if repo:
-        found = teardown.repo_of(doc)
-        label = f"repository {found[1]}/{found[2]}" if found else "repository"
-        steps.append(
-            (
-                label,
-                lambda: teardown.delete_repo(
-                    doc, directory.name, getattr(project, "name", "")
-                ),
+        else:
+            doc = yaml.safe_load(spec.read_text(encoding="utf-8")) or {}
+            others = tuple(
+                str(s.get("pathToCode", "")).rstrip("/").rsplit("/", 1)[-1]
+                for s in ml_system_api._list()
+                if s.get("id") != entry.get("id")
             )
-        )
+            deleter = teardown.Deleter(project, other_slugs=others)
+            steps = [
+                (str(a), lambda a=a: deleter.delete(a))
+                for a in teardown.inventory(doc, slug)
+            ]
+            if repo:
+                found = teardown.repo_of(doc)
+                label = f"repository {found[1]}/{found[2]}" if found else "repository"
+                steps.append(
+                    (
+                        label,
+                        lambda: teardown.delete_repo(
+                            doc, slug, getattr(project, "name", ""), directory
+                        ),
+                    )
+                )
+            steps.append(
+                (f"code directory {directory}", lambda: teardown.delete_code(directory))
+            )
     steps.append(
         (
             f"registry entry {entry.get('name')}",
@@ -291,6 +307,9 @@ def mlsystem_delete(
         raise click.ClickException(
             f"stopped at {failed}; {entry.get('name')} is still registered, so run the same delete again once that is fixed"
         )
-    output.success(
-        f"Deleted {entry.get('name')}; its code in {directory or entry.get('pathToCode')} is kept"
+    kept = (
+        ""
+        if assets
+        else f"; its code in {directory or entry.get('pathToCode')} is kept"
     )
+    output.success(f"Deleted {entry.get('name')}{kept}")

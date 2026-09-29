@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 import pytest
@@ -127,14 +128,19 @@ def test_the_inventory_takes_what_the_system_created_downstream_first():
         "deployment churnpredictor",
         "job churn-example-events",
         "job churn-example-features",
+        "job churn-example-*",
         "model churn_model",
         "model churn_research",
         "feature view churn_fv",
         "feature group predictions v1",
+        "feature group predictions (every other version churn-example made)",
         "feature group labels v2",
         "feature group labels v1",
+        "feature group labels (every other version churn-example made)",
         "feature group events v1",
+        "feature group events (every other version churn-example made)",
         "feature group billing v1",
+        "feature group billing (every other version churn-example made)",
         "data source acme_snowflake",
         "environment churn-example-train-env",
         "directory Resources/churn-example",
@@ -198,24 +204,105 @@ def test_metadata_only_needs_no_system_yaml(monkeypatch, logged_in):
 def test_the_repository_goes_only_when_it_is_this_systems_alone(monkeypatch):
     from hopsworks.cli import teardown
 
+    heads = ["main", "hops/churn-example", "hops/churn-example/20260929-fix"]
     calls = []
-    branches = [{"name": "main"}, {"name": "hops/churn-example"}]
 
-    def github(host, method, route):
-        calls.append((method, route))
-        return (200, branches) if method == "GET" else (204, None)
+    def git(directory, *args):
+        calls.append(args)
+        if args[0] == "ls-remote":
+            out = "".join(f"abc\trefs/heads/{h}\n" for h in heads)
+            return SimpleNamespace(returncode=0, stdout=out, stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
 
-    monkeypatch.setattr(teardown, "_github", github)
+    monkeypatch.setattr(teardown, "_git", git)
+    monkeypatch.setattr(teardown, "_github", lambda host, method, route: (204, None))
     assert teardown.delete_repo(SPEC, "churn-example", "churndemo") == "deleted"
-    assert calls[-1] == ("DELETE", "repos/o/churn-example")
+    assert not any(a[0] == "push" for a in calls)
 
-    branches.append({"name": "hops/churn-example-churnfresh"})
-    with pytest.raises(RuntimeError, match="other builds"):
-        teardown.delete_repo(SPEC, "churn-example", "churndemo")
-    shared = {"system": {"repo": {"url": "https://github.com/o/ml-systems"}}}
-    with pytest.raises(RuntimeError, match="not named after"):
-        teardown.delete_repo(shared, "churn-example", "churndemo")
+    # Another build's branch: only this system's branches go, the repository stays.
+    heads.append("hops/churn-example-churnfresh")
+    outcome = teardown.delete_repo(SPEC, "churn-example", "churndemo")
+    assert calls[-1] == (
+        "push",
+        "https://github.com/o/churn-example.git",
+        "--delete",
+        "hops/churn-example",
+        "hops/churn-example/20260929-fix",
+    )
+    assert "kept o/churn-example, which holds other builds" in outcome
+
+    # A repository not named after the system is never deleted either.
+    shared = {
+        "system": {
+            "repo": {"url": "https://github.com/o/ml-systems", "branch": "hops/x"}
+        }
+    }
+    heads[:] = ["main", "hops/x"]
+    assert "is not named after" in teardown.delete_repo(shared, "churn-example", "p")
     assert teardown.delete_repo({}, "churn-example", "churndemo") == "gone"
+
+
+def test_only_the_versions_the_system_made_are_deleted():
+    from hopsworks.cli import teardown
+
+    deleted = []
+
+    def group(version, description):
+        return SimpleNamespace(
+            version=version,
+            description=description,
+            delete=lambda: deleted.append(version),
+        )
+
+    fs = SimpleNamespace(
+        get_feature_groups=lambda name: [
+            group(1, "written by churn-example's synthetic data job"),
+            group(2, "written by churn-example-v2's synthetic data job"),
+            group(3, "shared customers table"),
+        ]
+    )
+    deleter = teardown.Deleter(SimpleNamespace(get_feature_store=lambda: fs))
+    asset = teardown.Asset("feature group", "customers", owned_by="churn-example")
+    assert deleter.delete(asset) == "deleted"
+    assert deleted == [1]
+
+
+def test_prefixed_jobs_leave_a_longer_slug_alone():
+    from hopsworks.cli import teardown
+
+    deleted = []
+    jobs = [
+        SimpleNamespace(
+            name=n, unschedule=lambda: None, delete=lambda n=n: deleted.append(n)
+        )
+        for n in ("churn-example-eda", "churn-example-v2-train", "other-job")
+    ]
+    project = SimpleNamespace(
+        get_job_api=lambda: SimpleNamespace(get_jobs=lambda: jobs)
+    )
+    deleter = teardown.Deleter(project, other_slugs=("churn-example-v2",))
+    assert deleter.delete(teardown.Asset("job", "churn-example-*")) == "deleted"
+    assert deleted == ["churn-example-eda"]
+
+
+def test_delete_removes_the_code_last_and_a_retry_after_it_finishes(
+    monkeypatch, logged_in, system_dir
+):
+    from hopsworks.cli import teardown
+
+    monkeypatch.setattr(teardown.Deleter, "delete", lambda self, asset: "gone")
+    removed = []
+    monkeypatch.setattr(ml_system_api, "_remove", removed.append)
+    args = ["mlsystem", "delete", "7", "--assets", "--yes"]
+    done = CliRunner().invoke(cli, args)
+    assert done.exit_code == 0, done.output
+    assert not system_dir.exists() and removed == [7]
+    assert "is kept" not in done.output
+
+    # The entry could not be removed the first time: the retry skips the assets.
+    again = CliRunner().invoke(cli, args)
+    assert again.exit_code == 0, again.output
+    assert "is gone" in again.output and removed == [7, 7]
 
 
 def test_the_inventory_takes_a_rag_system_from_the_helpdesk_example(tmp_path):

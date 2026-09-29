@@ -10,9 +10,11 @@ Every step treats an asset that is already gone as done, and the steps run
 downstream first (an app before the model it serves, a feature view before the
 feature groups it joins) and stop at the first failure, so a run that fails
 part way can simply be run again.
-The GitHub repository and the registry entry go last, and only after every
-asset step succeeded: while the entry exists, the system stays listed and the
-delete can be retried.
+The GitHub repository (or only the system's branch, when the repository holds
+other builds), the code directory and the registry entry go last, in that
+order, and only after every asset step succeeded: while the entry exists, the
+system stays listed and the delete can be retried, and a retry that finds the
+code already gone goes straight to the entry.
 """
 
 from __future__ import annotations
@@ -29,6 +31,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from pathlib import Path
 
 
 # Parent keys under which a `feature_group` is one the system created.
@@ -39,13 +42,21 @@ _MENTION = re.compile(r"\b([A-Za-z_][\w]*) v(\d+)\b")
 
 @dataclass(frozen=True)
 class Asset:
-    """One thing to delete; `version` None means every version."""
+    """One thing to delete.
+
+    `version` None means every version; with `owned_by`, every version whose
+    description names that system. A job named `<slug>-*` means every job with
+    that prefix.
+    """
 
     kind: str
     name: str
     version: int | None = None
+    owned_by: str | None = None
 
     def __str__(self) -> str:
+        if self.owned_by:
+            return f"{self.kind} {self.name} (every other version {self.owned_by} made)"
         return f"{self.kind} {self.name}" + (
             f" v{self.version}" if self.version is not None else ""
         )
@@ -160,6 +171,12 @@ def inventory(doc: dict, slug: str) -> list[Asset]:
         )
         for version in versions or [None]:
             groups.append(Asset("feature group", group, version))
+        # Earlier rounds' versions the file no longer names; a version counts
+        # as this system's only when its description names the system.
+        if versions:
+            groups.append(Asset("feature group", group, owned_by=slug))
+    # Jobs follow the <slug>-<purpose> naming; some are named only in prose.
+    add(Asset("job", f"{slug}-*"))
     add(Asset("directory", f"Resources/{slug}"))
 
     rank = {kind: i for i, kind in enumerate(ORDER)}
@@ -180,8 +197,10 @@ def _missing(exc: Exception) -> bool:
 class Deleter:
     """Deletes assets of one project; each call returns "deleted" or "gone", or raises."""
 
-    def __init__(self, project: Any) -> None:
+    def __init__(self, project: Any, other_slugs: tuple[str, ...] = ()) -> None:
         self.project = project
+        # Other systems in the project, whose `<slug>-*` jobs are theirs.
+        self.other_slugs = other_slugs
         self._fs = None
 
     @property
@@ -217,6 +236,8 @@ class Deleter:
         return "deleted"
 
     def _job(self, asset: Asset) -> str:
+        if asset.name.endswith("-*"):
+            return self._jobs_named(asset.name[:-1])
         job = self.project.get_job_api().get_job(asset.name)
         if job is None:
             return "gone"
@@ -225,6 +246,24 @@ class Deleter:
             job.unschedule()
         job.delete()
         return "deleted"
+
+    def _jobs_named(self, prefix: str) -> str:
+        jobs = [
+            j
+            for j in self.project.get_job_api().get_jobs() or []
+            if j.name.startswith(prefix)
+            # `churn-example-v2-train` is churn-example-v2's, not churn-example's.
+            and not any(
+                j.name.startswith(f"{o}-")
+                for o in self.other_slugs
+                if o.startswith(prefix)
+            )
+        ]
+        for job in jobs:
+            with contextlib.suppress(Exception):
+                job.unschedule()
+            job.delete()
+        return "deleted" if jobs else "gone"
 
     def _model(self, asset: Asset) -> str:
         return self._each(
@@ -251,7 +290,11 @@ class Deleter:
             if _missing(exc):
                 return "gone"
             raise
-        return self._each([g for g in groups if g is not None])
+        groups = [g for g in groups if g is not None]
+        if asset.owned_by:
+            names = re.compile(rf"(?<![\w-]){re.escape(asset.owned_by)}(?![\w-])")
+            groups = [g for g in groups if names.search(g.description or "")]
+        return self._each(groups)
 
     def _data_source(self, asset: Asset) -> str:
         from hopsworks_common.core import rest
@@ -344,43 +387,66 @@ def _github(host: str, method: str, route: str) -> tuple[int, Any]:
     return response.status_code, response.json() if response.content else None
 
 
-def delete_repo(doc: dict, slug: str, project: str) -> str:
-    """Delete the system's GitHub repository when it is one the build created for it alone.
+def _git(directory: Path | None, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["git", *args],
+        cwd=directory if directory and directory.is_dir() else None,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+        env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+    )
 
-    The build names a repository it creates `<slug>` or `<slug>-<project>[-N]`, and
-    each build works on its own `hops/...` branch, so a repository with another
-    name, or with another build's branch, holds more than this system and is kept.
+
+def delete_repo(
+    doc: dict, slug: str, project: str, directory: Path | None = None
+) -> str:
+    """Delete the system's GitHub repository, or only its branch when the repository holds more.
+
+    The build names a repository it creates `<slug>` or `<slug>-<project>[-N]`,
+    and each build works on its own `hops/...` branch. A repository with another
+    name, or with another build's branch, holds more than this system: its
+    branches (`hops/<branch>` and `hops/<branch>/...`) are deleted and the
+    repository is kept; GitHub closes a pull request whose branch is deleted.
+    Branches are read and deleted with git, which any of the gh login, a token
+    or an SSH key allows; deleting a whole repository needs the GitHub API.
 
     Raises:
-        RuntimeError: the repository is not this system's alone, or GitHub refused.
+        RuntimeError: git or GitHub refused.
     """
     found = repo_of(doc)
     if found is None:
         return "gone"
     host, owner, name = found
-    if not re.fullmatch(rf"{re.escape(slug)}(-{re.escape(project)}(-\d+)?)?", name):
-        raise RuntimeError(
-            f"{owner}/{name} is not named after {slug}, so it may hold more than this system; delete it on GitHub if it should go"
-        )
-    status, branches = _github(
-        host, "GET", f"repos/{owner}/{name}/branches?per_page=100"
-    )
-    if status == 404:
-        return "gone"
-    if status != 200:
-        raise RuntimeError(f"could not read {owner}/{name}: HTTP {status}")
-    own = str(((doc.get("system") or {}).get("repo") or {}).get("branch") or "")
-    others = [
-        b["name"]
-        for b in branches or []
-        if b["name"].startswith("hops/")
-        and b["name"] != own
-        and not b["name"].startswith(f"{own}/")
+    remote = ""
+    if directory is not None:
+        remote = _git(directory, "remote", "get-url", "origin").stdout.strip()
+    remote = remote or f"https://{host}/{owner}/{name}.git"
+    listed = _git(directory, "ls-remote", "--heads", remote)
+    if listed.returncode != 0:
+        if re.search(r"not found|does not exist", listed.stderr, re.IGNORECASE):
+            return "gone"
+        raise RuntimeError(f"could not read {owner}/{name}: {listed.stderr.strip()}")
+    branches = [
+        line.split("refs/heads/", 1)[1]
+        for line in listed.stdout.splitlines()
+        if "refs/heads/" in line
     ]
-    if others:
-        raise RuntimeError(
-            f"{owner}/{name} also holds other builds ({', '.join(sorted(others))}), so it is kept"
-        )
+    own = str(((doc.get("system") or {}).get("repo") or {}).get("branch") or "")
+    mine = [b for b in branches if own and (b == own or b.startswith(f"{own}/"))]
+    others = [b for b in branches if b.startswith("hops/") and b not in mine]
+    alone = re.fullmatch(rf"{re.escape(slug)}(-{re.escape(project)}(-\d+)?)?", name)
+    if others or not alone:
+        if not mine:
+            return "gone"
+        pushed = _git(directory, "push", remote, "--delete", *mine)
+        if pushed.returncode != 0:
+            raise RuntimeError(
+                f"could not delete {', '.join(mine)}: {pushed.stderr.strip()}"
+            )
+        why = "holds other builds" if others else f"is not named after {slug}"
+        return f"deleted {', '.join(mine)}; kept {owner}/{name}, which {why}"
     status, _ = _github(host, "DELETE", f"repos/{owner}/{name}")
     if status == 404:
         return "gone"
@@ -391,6 +457,14 @@ def delete_repo(doc: dict, slug: str, project: str) -> str:
         )
     if status != 204:
         raise RuntimeError(f"GitHub answered HTTP {status} deleting {owner}/{name}")
+    return "deleted"
+
+
+def delete_code(directory: Path | None) -> str:
+    """Delete the system's code directory, its git work tree included."""
+    if directory is None or not directory.exists():
+        return "gone"
+    shutil.rmtree(directory)
     return "deleted"
 
 
