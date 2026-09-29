@@ -313,3 +313,76 @@ def mlsystem_delete(
         else f"; its code in {directory or entry.get('pathToCode')} is kept"
     )
     output.success(f"Deleted {entry.get('name')}{kept}")
+
+
+@mlsystem_group.command("status")
+@click.argument("system")
+@click.option(
+    "--hours",
+    type=click.IntRange(min=1),
+    default=24,
+    show_default=True,
+    help="How far back to read the job runs.",
+)
+@click.option(
+    "--path",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    help="The system's directory, when its code is not in this project's HopsFS.",
+)
+@click.option(
+    "--out",
+    type=click.Path(dir_okay=False, path_type=Path),
+    help="Where to write the HTML report; default: status/report.html in the system directory.",
+)
+@click.option("--no-summary", is_flag=True, help="Skip the summary Claude writes.")
+@click.pass_context
+def mlsystem_status(
+    ctx: click.Context,
+    system: str,
+    hours: int,
+    path: Path | None,
+    out: Path | None,
+    no_summary: bool,
+) -> None:
+    """Report the health of SYSTEM (an id or a name) as an HTML page.
+
+    Reads the jobs, deployments and apps the system's system.yaml records: each
+    job's runs in the last HOURS with the log tail of every failure, and each
+    deployment and app with its state and its pods (readiness, restarts, the last
+    termination reason, CPU and memory against the limits, from kubectl). Claude
+    writes a short summary of what failed and why. Brewer's Status button runs this
+    and shows the page.
+
+    Args:
+        ctx: Click context.
+        system: The id or name of the system.
+        hours: How far back to read job runs.
+        path: The system's directory.
+        out: Where to write the report.
+        no_summary: Skip the Claude summary.
+    """
+    import yaml
+    from hopsworks.cli import health
+
+    project = session.get_project(ctx)
+    entry = _find(system)
+    directory = path or _local_dir(entry)
+    spec = directory / "system.yaml" if directory else None
+    if spec is None or not spec.is_file():
+        raise click.ClickException(
+            f"cannot read the system.yaml of {entry.get('name')}; pass its directory with --path"
+        )
+    doc = yaml.safe_load(spec.read_text(encoding="utf-8")) or {}
+    facts = health.collect(project, doc, directory.name, hours)
+    if output.JSON_MODE:
+        output.print_json(facts)
+        return
+    summary = None if no_summary else health.summarize(facts)
+    target = out or directory / "status" / "report.html"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(health.render(facts, summary), encoding="utf-8")
+    c = facts["counts"]
+    output.success(
+        f"{facts['overall']}: {c['failed_runs']} of {c['runs']} job runs failed in {hours} h, "
+        f"{c['unhealthy_services']} of {c['services']} deployments and apps unhealthy; report in {target}"
+    )
