@@ -114,11 +114,11 @@ compare link instead); stop and say how to fix it only when none works. For `new
 repository with `gh repo create` (owner from `gh api user`, name from the slug, or
 `<slug>-<project>` when the owner already has a repository of that name, private) and record its
 URL; cut `hops/<slug>` from the default branch, or `hops/<slug>-<project>` when `hops/<slug>`
-holds another project's build, and record `system.repo`. A home directory that is not a
-repository becomes a work tree tracking only `<slug>/`, as repo.md shows. `<slug>/AGENTS.md`, from
-the template, tells an agent started there that the system is
-built from `system.yaml` and how to follow a change downstream; it is committed with the rest of
-`<slug>/`. Every phase ends with one commit,
+holds another project's build, and record `system.repo`. A new repository has the system
+directory as its root (`<slug>/` is the work tree, never the HopsFS home), as repo.md shows.
+`<slug>/AGENTS.md`, from the template, tells an agent started there that the system is built from
+`system.yaml` and how to follow a change downstream; it is committed with the rest of the
+system. Every phase ends with one commit,
 `[<slug>] <phase>: <one line>`, pushed. Run `hops mlsystem register <slug>` once at the start: it
 lists the system in the project's ML systems in the Hopsworks UI (from an external client it
 records the repository URL) and is a no-op refresh when the interview already registered it.

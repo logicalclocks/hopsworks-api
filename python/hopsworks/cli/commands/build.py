@@ -621,8 +621,22 @@ def _agent(ctx: click.Context, system: _System, prefetch: _Prefetch) -> None:
     )
 
 
+def _in_hopsworks_home(path: Path) -> bool:
+    home = os.environ.get("HOPSFS_USER_HOME_DIR")
+    if not home:
+        return False
+    resolved, root = path.resolve(), Path(home).resolve()
+    return resolved == root or root in resolved.parents
+
+
 def _repository_choice(cwd: Path) -> str:
-    """The repository URL the code goes to, or "new" for one created at build start."""
+    """The repository URL the code goes to, or "new" for one created at build start.
+
+    A Hopsworks home is never offered, even when an earlier build made it a work
+    tree: each system there is a repository of its own, rooted at its directory.
+    """
+    if _in_hopsworks_home(cwd):
+        return "new"
     origin = subprocess.run(
         ["git", "-C", str(cwd), "remote", "get-url", "origin"],
         capture_output=True,

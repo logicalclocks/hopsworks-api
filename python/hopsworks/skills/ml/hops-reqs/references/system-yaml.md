@@ -1,6 +1,7 @@
 # `system.yaml`: rules, status vocabulary and schema
 
-The spec of record for one ML system, at `<repo>/<slug>/system.yaml`. The
+The spec of record for one ML system, at the root of the system's repository
+(`<repo>/<slug>/system.yaml` in a repository the user named that holds more). The
 orchestrator reads state from this file only; each phase writes its own block.
 A complete worked example, a batch churn system that finished every phase, is
 [example-system.yaml](example-system.yaml); `tests/unit/test_system_yaml.py`

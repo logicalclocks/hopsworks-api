@@ -1,5 +1,5 @@
 # The example ML systems offered by `hops build` and `/hops-ml`.
-# `new_system.py <repo>/<slug> --example <slug>` merges one entry into a new system.yaml.
+# `new_system.py <dir>/<slug> --example <slug>` merges one entry into a new system.yaml.
 # An example runs on synthetic data and always gets a Python app with a JavaScript UI,
 # so neither the data sources nor the app are asked for.
 

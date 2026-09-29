@@ -1,7 +1,7 @@
 # ruff: noqa: INP001
 """Copy the system template into a new ML system directory.
 
-    python <skills>/hops-reqs/references/new_system.py <repo>/<slug> [--example <name>]
+    python <skills>/hops-reqs/references/new_system.py <dir>/<slug> [--example <name>]
 
 Copies system_template/ to the target, renames `src/slug_pkg` to the package
 named after the slug (`telco-churn` gives `telco_churn`), replaces the word

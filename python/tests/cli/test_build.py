@@ -67,6 +67,28 @@ def test_an_example_asks_only_where_the_code_goes(tmp_path, monkeypatch, quiet):
     assert 'claude "/hops-build churn-example"' in done.output
 
 
+def test_a_hopsworks_home_is_never_the_repository(tmp_path, monkeypatch, quiet):
+    """Each system in a home is a repository of its own, even in a home an older build made a work tree."""
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(tmp_path),
+            "remote",
+            "add",
+            "origin",
+            "https://github.com/o/home",
+        ],
+        check=True,
+    )
+    monkeypatch.setenv("HOPSFS_USER_HOME_DIR", str(tmp_path))
+    done = _run(tmp_path, monkeypatch, [], "--example", "churn-example")
+    assert done.exit_code == 0, done.output
+    assert "Where should the code go?" not in done.output
+    assert _doc(tmp_path / "churn-example")["system"]["repo"] == {"url": "new"}
+
+
 def test_the_build_starts_in_the_system_directory(tmp_path, monkeypatch, quiet):
     """Claude Code starts in <slug>/, so it reads the AGENTS.md the template put there."""
     assert (

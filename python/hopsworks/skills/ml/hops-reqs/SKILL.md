@@ -7,7 +7,8 @@ description: Specify and build an ML system on Hopsworks as feature, training an
 
 An ML system is decomposed into separately developed and operated **feature,
 training and inference pipelines**, connected only through the feature store,
-and specified in one YAML file, `<repo>/<slug>/system.yaml`. In Claude Code,
+and specified in one YAML file, `<slug>/system.yaml`, at the root of the
+system's own repository. In Claude Code,
 `/hops-ml` records the requirements interview on a fast model and `/hops-build`
 completes the specification and drives it phase by phase; any agent can follow
 the same file by hand.
@@ -84,7 +85,7 @@ requirements back and ask to proceed; write `status: met` on yes.
 
 ## The system template
 
-`python references/new_system.py <repo>/<slug>` copies
+`python references/new_system.py <dir>/<slug>` copies
 [references/system_template/](references/system_template/) into the system:
 `status.py` (the progress table, runnable from any terminal), `bundle.py` (the
 run bundle), the self-contained entrypoints under `src/<slug_pkg>/` (feature,

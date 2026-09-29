@@ -50,10 +50,10 @@ gh api user --jq .login              # the owner for a new repository (CLI login
 ```
 
 - **Existing or new repository is the user's call**, asked with `AskUserQuestion`.
-  Inside a work tree whose `origin` is on GitHub, propose that repository with the
-  system under `<repo>/<slug>/`. Otherwise, or when the user declines, offer
-  `gh repo create <owner>/<name> --private --source . --push`, with the name and
-  visibility from the user. Never create a repository or push without that answer.
+  Inside a work tree whose `origin` is on GitHub (outside a Hopsworks home), propose
+  that repository with the system under `<repo>/<slug>/`. Otherwise, or when the user
+  declines, a new repository whose root is the system directory, below. Never create
+  a repository or push without that answer.
 - **A name the owner already uses is never reused.** When `system.repo.url` is `new`
   (the interview's answer, and every example's), check `gh repo view <owner>/<slug>`
   (push-only: `git ls-remote git@github.com:<owner>/<slug>.git`) first; if it exists,
@@ -65,17 +65,24 @@ gh api user --jq .login              # the owner for a new repository (CLI login
   read its `system.yaml`: a different `system.target.project` means another project's
   build (often with its own open pull request), so cut `hops/<slug>-<project>`
   instead and leave that branch and its pull request untouched.
-- **A home directory as the work tree.** In a Hopsworks terminal the system usually
-  sits in the HopsFS home, which is not a repository and holds dotfiles and secrets.
-  Make it a work tree that tracks only the system, and keep the local scaffold:
+- **The system directory is the repository root.** A new repository (every example,
+  and every system built in a Hopsworks home) holds the system itself: `system.yaml`,
+  `AGENTS.md` and the code at its root, with `<slug>/` as the work tree. The HopsFS
+  home is never a work tree: it holds dotfiles, secrets and other systems, each its
+  own repository. Create it from the system directory, with the template's
+  `.gitignore` and `AGENTS.md` as the default branch's first commit:
 
 ```bash
-git init -b <default_branch> . && printf '/*\n!/.gitignore\n!/<slug>/\n' > .git/info/exclude
-git remote add origin <url> && git fetch origin <default_branch>
-git reset origin/<default_branch>    # mixed: the index follows the remote, the files stay
-git checkout -- .gitignore           # restore tracked files the scaffold does not have
+cd <slug>
+git init -b main && git add .gitignore AGENTS.md && git commit -m "[<slug>] init"
+gh repo create <owner>/<name> --private --source . --push   # push-only: git remote add origin <url> && git push -u origin main
 git switch -c hops/<slug>            # or hops/<slug>-<project>, above
 ```
+
+  A repository the user names for a system in a Hopsworks home is used the same way,
+  with the system at its root: `git init -b <default_branch>`, `git remote add origin
+  <url>`, `git fetch origin <default_branch>`, `git reset origin/<default_branch>`
+  (mixed: the index follows the remote, the files stay), then the branch.
 
 ## Branches and commits
 
@@ -94,7 +101,7 @@ git switch -c hops/<slug>            # or hops/<slug>-<project>, above
 
 ```bash
 git switch -c hops/<slug> origin/<default_branch>
-git add <slug>/ && git commit -m "[<slug>] features: telco_churn_features backfilled and scheduled"
+git add -A && git commit -m "[<slug>] features: telco_churn_features backfilled and scheduled"   # in <slug>/; in a named repo, git add <slug>/"
 git push -u origin hops/<slug>
 ```
 
