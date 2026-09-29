@@ -42,9 +42,9 @@ hops job deploy feature-pipeline feature_pipeline.py \
   --env python-feature-pipeline --cron @daily --run --wait --overwrite
 ```
 
-Key fact: `hops job create` (and a bare job config) **cannot set the Python
-environment** — a job created without one silently takes the job type's default.
-Set it with `hops job deploy --env`, or, from a program, via the SDK:
+Key fact: a job created without an environment silently takes the job type's
+default. Name it with `--env` on `hops job create` or `hops job deploy`, or,
+from a program, via the SDK:
 
 ```python
 api = project.get_job_api()

@@ -167,6 +167,11 @@ def _job_to_dict(job: Any) -> dict[str, Any]:
 @click.option(
     "--app-path", "app_path", required=True, help="HDFS/HopsFS path to the main file."
 )
+@click.option(
+    "--env",
+    "environment",
+    help="Python environment name (sets environmentName; otherwise the type default).",
+)
 @click.option("--args", "app_args", help="Arguments passed to the program.")
 @click.option("--description", help="Free-form description of the job.")
 @click.pass_context
@@ -175,6 +180,7 @@ def job_create(
     name: str,
     job_type: str,
     app_path: str,
+    environment: str | None,
     app_args: str | None,
     description: str | None,
 ) -> None:
@@ -185,6 +191,7 @@ def job_create(
         name: Job name.
         job_type: One of ``PYTHON``/``PYSPARK``/``SPARK``/``DOCKER``.
         app_path: HopsFS path to the script or JAR.
+        environment: Python environment the job runs in; the type's default when omitted.
         app_args: Optional argument string passed to the job.
         description: Optional free-form description.
     """
@@ -195,6 +202,8 @@ def job_create(
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not load default config: {exc}") from exc
     config["appPath"] = app_path
+    if environment:
+        config["environmentName"] = environment
     if app_args:
         config["defaultArgs"] = app_args
     if description:
