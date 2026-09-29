@@ -15,6 +15,7 @@
 #
 from __future__ import annotations
 
+import asyncio
 import itertools
 import logging
 import warnings
@@ -85,6 +86,36 @@ if TYPE_CHECKING:
 _logger = logging.getLogger(__name__)
 
 
+def _with_entry_values(
+    request_parameters: dict[str, Any] | list[dict[str, Any]] | None,
+    entries: dict[str, Any] | list[dict[str, Any]] | None,
+) -> dict[str, Any] | list[dict[str, Any]] | None:
+    """Request parameters backed by the entry's own values, in new dictionaries.
+
+    The entry's values stand in for the on-demand features a retrieved vector
+    does not carry, which happens when the serving key is not in the online
+    store yet. An explicitly passed parameter always wins.
+
+    The result is request-local. The caller's dictionaries are read and never
+    written, so one request cannot leave its parameters behind in the next, and
+    two concurrent requests through one feature view cannot see each other's.
+    """
+    if not request_parameters or not entries:
+        return request_parameters
+    if isinstance(request_parameters, dict):
+        if isinstance(entries, dict):
+            return {**entries, **request_parameters}
+        if len(entries) == 1:
+            return {**entries[0], **request_parameters}
+        return request_parameters
+    if isinstance(entries, list) and len(entries) == len(request_parameters):
+        return [
+            {**entry, **parameters}
+            for entry, parameters in zip(entries, request_parameters, strict=True)
+        ]
+    return request_parameters
+
+
 def _resume(steps, fetched):
     """Hand a fetch back to a suspended lookup and take its result.
 
@@ -96,6 +127,15 @@ def _resume(steps, fetched):
     except StopIteration as finished:
         return finished.value
     raise RuntimeError("the feature vector body suspended more than once")
+
+
+async def _bounded(awaitable, timeout: float | None):
+    """Await a lookup within `timeout` seconds, raising the `TimeoutError` the blocking path raises."""
+    try:
+        return await asyncio.wait_for(awaitable, timeout)
+    except asyncio.TimeoutError:
+        # Before Python 3.11 asyncio's TimeoutError is not the builtin one.
+        raise TimeoutError(f"Online feature read took longer than {timeout}s") from None
 
 
 class VectorServer:
@@ -478,8 +518,13 @@ class VectorServer:
             return None
         return online_client_choice == self.DEFAULT_REST_CLIENT
 
-    def _get_feature_vector(self, *args: Any, **kwargs: Any) -> Any:
-        """Assemble a single serving vector, looking it up on this thread."""
+    def _get_feature_vector(
+        self, *args: Any, timeout: float | None = None, **kwargs: Any
+    ) -> Any:
+        """Assemble a single serving vector, looking it up on this thread.
+
+        `timeout` bounds the SQL read in seconds, covering the wait for a free connection as well as the query.
+        """
         steps = self._feature_vector_steps(*args, **kwargs)
         rondb_entry, choice, allow_missing, logging_data = next(steps)
         use_rest = self._single_lookup_arguments(rondb_entry, choice)
@@ -500,11 +545,17 @@ class VectorServer:
                 rondb_entry,
                 logging_data=logging_data,
                 feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
+                timeout=timeout,
             )
         return _resume(steps, serving_vector)
 
-    async def _get_feature_vector_async(self, *args: Any, **kwargs: Any) -> Any:
-        """The same vector, with the online lookup awaited on the caller's event loop."""
+    async def _get_feature_vector_async(
+        self, *args: Any, timeout: float | None = None, **kwargs: Any
+    ) -> Any:
+        """The same vector, with the online lookup awaited on the caller's event loop.
+
+        `timeout` bounds the SQL read in seconds, as for [`_get_feature_vector`][].
+        """
         steps = self._feature_vector_steps(*args, **kwargs)
         rondb_entry, choice, allow_missing, logging_data = next(steps)
         use_rest = self._single_lookup_arguments(rondb_entry, choice)
@@ -517,10 +568,13 @@ class VectorServer:
                 return_type=self.rest_client_engine.RETURN_TYPE_FEATURE_VALUE_DICT,
             )
         else:
-            serving_vector = await self.sql_client._get_single_feature_vector_async(
-                rondb_entry,
-                logging_data=logging_data,
-                feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
+            serving_vector = await _bounded(
+                self.sql_client._get_single_feature_vector_async(
+                    rondb_entry,
+                    logging_data=logging_data,
+                    feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
+                ),
+                timeout,
             )
         return _resume(steps, serving_vector)
 
@@ -571,15 +625,15 @@ class VectorServer:
             else None
         )
 
-        # Make a copy of request parameters to be stored in logging meta data since it might be updated below.
+        # What the caller sent, for the log. Only the log reads it, and only a
+        # copy is safe to keep: the log is written after this call returns.
         request_parameters_copy = (
-            request_parameters.copy() if request_parameters else {}
+            request_parameters.copy()
+            if logging_meta_data is not None and request_parameters
+            else {}
         )
 
-        # Adding values in entry to request_parameters if it is not explicitly mentioned so that on-demand feature can be computed using the values in entry if they are not present in retrieved feature vector. This happens when no features can be retrieved from the feature view since the serving key is not yet there.
-        if request_parameters and entry:
-            for key, value in entry.items():
-                request_parameters.setdefault(key, value)
+        request_parameters = _with_entry_values(request_parameters, entry)
 
         rondb_entry = self._validate_entry(
             entry=entry,
@@ -649,8 +703,13 @@ class VectorServer:
             return None
         return online_client_choice == self.DEFAULT_REST_CLIENT
 
-    def _get_feature_vectors(self, *args: Any, **kwargs: Any) -> Any:
-        """Assemble a batch of serving vectors, looking them up on this thread."""
+    def _get_feature_vectors(
+        self, *args: Any, timeout: float | None = None, **kwargs: Any
+    ) -> Any:
+        """Assemble a batch of serving vectors, looking them up on this thread.
+
+        `timeout` bounds the SQL read in seconds, covering the wait for a free connection as well as the queries.
+        """
         steps = self._feature_vectors_steps(*args, **kwargs)
         rondb_entries, choice, allow_missing, logging_data = next(steps)
         use_rest = self._batch_lookup_arguments(rondb_entries, choice)
@@ -671,16 +730,21 @@ class VectorServer:
                 rondb_entries,
                 logging_data=logging_data,
                 feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
+                timeout=timeout,
             )
         return _resume(steps, batch_results)
 
-    async def _get_feature_vectors_async(self, *args: Any, **kwargs: Any) -> Any:
+    async def _get_feature_vectors_async(
+        self, *args: Any, timeout: float | None = None, **kwargs: Any
+    ) -> Any:
         """The same batch, with the online lookup awaited on the caller's event loop.
 
         One body prepares and assembles for both drivers; only the fetch differs. The
         SQL lookup is awaited against a connection pool of this loop's own, so several
         are in flight at once instead of queueing on the client's task thread. A REST
         deployment has no such path, so it keeps the blocking call.
+
+        `timeout` bounds the SQL read in seconds, as for [`_get_feature_vectors`][].
         """
         steps = self._feature_vectors_steps(*args, **kwargs)
         rondb_entries, choice, allow_missing, logging_data = next(steps)
@@ -694,10 +758,13 @@ class VectorServer:
                 return_type=self.rest_client_engine.RETURN_TYPE_FEATURE_VALUE_DICT,
             )
         else:
-            batch_results, _ = await self.sql_client._get_batch_feature_vectors_async(
-                rondb_entries,
-                logging_data=logging_data,
-                feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
+            batch_results, _ = await _bounded(
+                self.sql_client._get_batch_feature_vectors_async(
+                    rondb_entries,
+                    logging_data=logging_data,
+                    feature_vector_with_inference_helpers=self._fetch_inference_helpers_for_transformations,
+                ),
+                timeout,
             )
         return _resume(steps, batch_results)
 
@@ -771,20 +838,14 @@ class VectorServer:
             else None
         )
 
+        # Deep-copied only for the log, which is its only reader and is written
+        # after this call returns. A batch that logs nothing pays nothing.
         request_parameters_copy = (
-            deepcopy(request_parameters) if request_parameters else None
+            deepcopy(request_parameters)
+            if logging_meta_data is not None and request_parameters
+            else None
         )
-        # Adding values in entry to request_parameters if it is not explicitly mentioned so that on-demand feature can be computed using the values in entry if they are not present in retrieved feature vector.
-        if request_parameters and entries:
-            if isinstance(request_parameters, list) and len(entries) == len(
-                request_parameters
-            ):
-                for idx, entry in enumerate(entries):
-                    for key, value in entry.items():
-                        request_parameters[idx].setdefault(key, value)
-            elif isinstance(request_parameters, dict) and len(entries) == 1:
-                for key, value in entries[0].items():
-                    request_parameters.setdefault(key, value)
+        request_parameters = _with_entry_values(request_parameters, entries)
 
         online_client_choice = self._which_client_and_ensure_initialised(
             force_rest_client=force_rest_client, force_sql_client=force_sql_client
@@ -833,9 +894,11 @@ class VectorServer:
 
         if _logger.isEnabledFor(logging.DEBUG):
             _logger.debug("Assembling feature vectors from batch results")
-        next_skipped = (
-            skipped_empty_entries.pop(0) if len(skipped_empty_entries) > 0 else None
-        )
+        # Consumed with iterators: `pop(0)` shifts the whole list on every row,
+        # which makes assembling a batch cost the square of its size.
+        skipped = iter(skipped_empty_entries)
+        results = iter(batch_results)
+        next_skipped = next(skipped, None)
         vectors = []
 
         # If request parameter is a dictionary then copy it to list with the same length as that of entires
@@ -874,14 +937,10 @@ class VectorServer:
             if next_skipped == idx:
                 if _logger.isEnabledFor(logging.DEBUG):
                     _logger.debug("Entry %d was skipped, setting to empty dict.", idx)
-                next_skipped = (
-                    skipped_empty_entries.pop(0)
-                    if len(skipped_empty_entries) > 0
-                    else None
-                )
+                next_skipped = next(skipped, None)
                 result_dict = {}
             else:
-                result_dict = batch_results.pop(0)
+                result_dict = next(results)
 
             vector = self._assemble_feature_vector(
                 result_dict=result_dict,
