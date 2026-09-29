@@ -92,7 +92,7 @@ system:
 requirements:                         # owner: reqs
   description: >                      # two or three sentences a stakeholder would recognise
   problem:
-    task: classification | regression | forecasting   # v1 builds these; ranking | anomaly | rag | agentic are captured and stop at reqs (decision 20)
+    task: classification | regression | forecasting   # v1 builds these and rag (rag-agent.md); ranking | anomaly | agentic are captured and stop at reqs (decision 20)
     target: churn                     # null for agentic systems
     entity: customer_id
     prediction_time: monthly, 1st, after the billing snapshot lands
@@ -238,8 +238,9 @@ inference:                            # owner: infer (the inference agent); budg
              snapshot: {lookback_days: 35}}   # the program reads the closed month before HOPS_END_TIME; the server moves no window
   realtime: {deployment: telcochurnpredictor, model_version: 1, replicas: 2, batched_lookups: false,
              latency_breakdown: {online_lookup_ms: 5, model_ms: 8, overhead_ms: 4}}
-  agent:    {deployment: telcochurnagent, llm: {endpoint: ..., model: ..., api_key_secret: llm_key},
-             rag: [telco_churn_fv], trace_logging: every step}
+  agent:    {deployment: helpdeskagent, framework: langgraph, steps: [events, retrieve, answer],
+             llm: {endpoint_env: LLM_URL, api_key_env: LLM_API_KEY, model_env: LLM_MODEL},   # account env var names, never values
+             request: {user_id: int, query: string, k: 25}, trace_logging: every step}   # a rag system: rag-agent.md
   benchmark:                          # the program that produces `measured`
     file: benchmarks/benchmark_inference.py
     job: telco-churn-benchmark

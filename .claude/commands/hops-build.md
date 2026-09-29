@@ -151,9 +151,14 @@ item, ROC-AUC 0.75 or better, ranked by the probability; the `small` tier, the d
 without asking.
 
 For a new connector the interview recorded as `connected`, the data phase mounts or ingests it. A
-task outside classification, regression and forecasting, or an agent system, is captured in full
-and the command stops after `reqs` saying v1 builds none of it. Print the requirements back and ask
-to proceed; write `requirements.status: met` and `system.status: building` on yes.
+RAG agent system (`system_type: agent`, `task: rag`, the help desk example) is built by
+`hops-reqs/references/rag-agent.md`, which says what every phase below builds for it, from the
+reference code in `rag_agent/`: its `reqs` creates the docs directory without asking and asks the
+user to upload documents, and its `train` and `infer` follow that page instead of spawning the
+training and inference agents. Any other task outside classification, regression and forecasting,
+or another agent system, is captured in full and the command stops after `reqs` saying v1 builds
+none of it. Print the requirements back and ask to proceed; write `requirements.status: met` and
+`system.status: building` on yes.
 
 ### data
 

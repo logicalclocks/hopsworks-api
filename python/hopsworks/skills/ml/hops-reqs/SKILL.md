@@ -30,8 +30,11 @@ the same file by hand.
 | `agent` | a deployed agent with tools and retrieval | `{p99_ms, throughput_qps, eval: {metric, target, eval_set, scorer}}` | a chat UI |
 
 v1 builds `classification`, `regression` and `forecasting` systems of type
-`batch` or `realtime`. `ranking`, `anomaly`, `rag` and `agentic` tasks, and
-agent systems, are captured in full at `reqs` and stop there. The autonomous
+`batch` or `realtime`, and `rag` agent systems as
+[references/rag-agent.md](references/rag-agent.md) says (documents chunked and
+embedded into a vector-indexed feature group, a LangGraph agent, a chat app).
+`ranking`, `anomaly` and `agentic` tasks, and other agent systems, are captured
+in full at `reqs` and stop there. The autonomous
 path runs only against `system.target.stage: development`.
 
 ## Phases and gates

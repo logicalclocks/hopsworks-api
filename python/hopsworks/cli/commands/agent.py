@@ -105,6 +105,13 @@ def agent_info(ctx: click.Context, name: str) -> None:
     help="HopsFS directory under which agent files are placed.",
 )
 @click.option("--description", default=None, help="Agent description.")
+@click.option(
+    "--memory",
+    type=click.IntRange(min=256),
+    default=None,
+    help="Memory limit in MB; the platform default otherwise. An agent that loads "
+    "a model (e.g. torch and an embedder) needs more than the default 1 GB.",
+)
 @click.pass_context
 def agent_create(
     ctx: click.Context,
@@ -114,6 +121,7 @@ def agent_create(
     environment: str | None,
     upload_dir: str,
     description: str | None,
+    memory: int | None,
 ) -> None:
     """Create (or update) an agent from a local script or package.
 
@@ -130,6 +138,7 @@ def agent_create(
         environment: Python environment name.
         upload_dir: HopsFS upload directory.
         description: Description string.
+        memory: Memory limit in MB.
     """
     ms = _get_model_serving(ctx)
     try:
@@ -140,6 +149,7 @@ def agent_create(
             environment=environment,
             upload_dir=upload_dir,
             description=description,
+            resources=_memory_limit(memory),
         )
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Agent create failed: {exc}") from exc
@@ -394,6 +404,15 @@ def agent_delete(ctx: click.Context, name: str, yes: bool, force: bool) -> None:
 def _get_model_serving(ctx: click.Context) -> Any:
     project = session.get_project(ctx)
     return project.get_model_serving()
+
+
+def _memory_limit(memory: int | None) -> Any:
+    """The predictor resources with this memory limit, the rest at their defaults."""
+    if memory is None:
+        return None
+    from hsml.resources import PredictorResources, Resources
+
+    return PredictorResources(limits=Resources(cores=None, memory=memory, gpus=None))
 
 
 def _get_agent(ctx: click.Context, name: str) -> Any:

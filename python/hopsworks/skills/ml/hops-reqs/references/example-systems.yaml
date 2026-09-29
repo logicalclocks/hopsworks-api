@@ -90,37 +90,79 @@ recs-example:
     status: pending
 
 helpdesk-example:
-  label: "Help desk agent: answers support questions from the customer's account and orders (agentic)"
+  label: "Help desk agent: answers support questions from your documents and the customer's recent events (agentic)"
   system:
     name: Help desk agent
   requirements:
-    description: answer customer support questions from the customer's account and orders
+    description: >-
+      answer a customer's support question from the help desk documents the user uploads and the
+      customer's recent purchases and returns, citing the document, page and paragraph
     system_type: agent
+    problem:
+      task: rag
     sla:
-      agent: {p99_ms: 5000, throughput_qps: 2}
+      agent: {p99_ms: 8000, throughput_qps: 2}
     consumers: ui
     data_sources:
-      - {name: customers, kind: synthetic, shape: batch, status: needs_generation}
-      - {name: orders, kind: synthetic, shape: batch, status: needs_generation}
-      - {name: tickets, kind: synthetic, shape: events, status: needs_generation}
+      - {name: docs, kind: file, status: needs_download}
+      - {name: user_events, kind: synthetic, shape: events, status: needs_generation}
   data:
-    customers:
-      generator:
-        story: 1,000 customers with plan and account status
-    orders:
-      generator:
-        story: their orders with status and delivery dates
-    tickets:
+    # Built as hops-reqs/references/rag-agent.md says, from its rag_agent/ files.
+    docs:
+      path: Resources/helpdesk-docs
+      formats: [pdf, txt, md, docx, odt]
+      ask: >-
+        the build creates the directory, then asks the user to upload documents there, or to use the
+        sample documents
+    user_events:
       generator:
         story: >-
-          support tickets with topic, text and resolution; most are late deliveries, refunds and
-          plan changes
+          500 customers, each with a few purchases over the last 90 days (product_name, amount); some
+          purchases are later returned, refunded, delivered late or complained about, each an event with
+          its event_time
+      writes:
+        feature_group: user_events
+        version: 1
+        online: true
+        primary_key: [user_id, event_id]
+        event_time: event_time
+    status: pending
+  features:
+    pipelines:
+      - name: doc_chunks
+        run: scheduled
+        reads: [docs]
+        writes:
+          feature_group: helpdesk_doc_chunks
+          version: 1
+          online: true
+          primary_key: [chunk_id]
+          embedding_index: {feature: embedding, similarity: cosine}
+          columns: [chunk_id, doc_name, path, url, page, offset, text, embedding]
+        job: {name: helpdesk-example-ingest-docs}
+        status: pending
+    status: pending
+  training:
+    required: false
+    embedding_model:
+      repo: sentence-transformers/all-MiniLM-L6-v2
+      name: helpdesk_embedder
+    job: {name: helpdesk-example-register-embedder}
+    status: pending
+  inference:
+    mode: agent
+    agent:
+      deployment: helpdeskagent
+      framework: langgraph
+      request: {user_id: int, query: string, k: 25}
+      steps: [events, retrieve, answer]
     status: pending
   app:
     wanted: true
     kind: chat
     name: helpdesk-example-app
     description: >-
-      A support chat: a customer picker, the conversation, and a side panel with the account and
-      orders the agent looked up for each answer
+      A JavaScript help desk UI: pick a user id from the users with events, write a question and press
+      Send; it shows the agent's answer, the cited passages with a link to each document (page and
+      paragraph), and the user's recent events the agent read
     status: pending

@@ -67,6 +67,39 @@ def test_an_example_asks_only_where_the_code_goes(tmp_path, monkeypatch, quiet):
     assert 'claude "/hops-build churn-example"' in done.output
 
 
+def test_the_helpdesk_example_keeps_its_llm_in_account_env_vars(
+    tmp_path, monkeypatch, quiet
+):
+    """The key goes to the account settings, never to the screen or system.yaml."""
+    from hopsworks_common.core import env_var_api
+
+    saved = {}
+
+    class Api:
+        def get_env_vars(self, include_value=True):
+            return []
+
+        def set_env_var(self, name, value=None, visibility=None, **_):
+            saved[name] = (value, visibility)
+
+    monkeypatch.setattr(env_var_api, "EnvVarsApi", Api)
+    key = "not-a-real-key-0123"
+    answers = ["https://llm.example/v1", "", key, "1"]
+    done = _run(tmp_path, monkeypatch, answers, "--example", "helpdesk-example")
+    assert done.exit_code == 0, done.output
+    assert saved == {
+        "LLM_URL": ("https://llm.example/v1", "PRIVATE"),
+        "LLM_MODEL": ("gpt-4o-mini", "PRIVATE"),
+        "LLM_API_KEY": (key, "PRIVATE"),
+    }
+    assert key not in done.output
+    spec = (tmp_path / "helpdesk-example" / "system.yaml").read_text(encoding="utf-8")
+    assert key not in spec
+    agent = _doc(tmp_path / "helpdesk-example")["inference"]["agent"]
+    assert agent["deployment"] == "helpdeskagent"
+    assert agent["llm"]["api_key_env"] == "LLM_API_KEY"
+
+
 def test_a_hopsworks_home_is_never_the_repository(tmp_path, monkeypatch, quiet):
     """Each system in a home is a repository of its own, even in a home an older build made a work tree."""
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)

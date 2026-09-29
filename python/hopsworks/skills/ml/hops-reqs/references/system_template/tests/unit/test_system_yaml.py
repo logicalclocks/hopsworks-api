@@ -49,8 +49,9 @@ IDENT = re.compile(r"^[a-z][a-z0-9_]*$")
 SLUG = re.compile(r"^[a-z][a-z0-9-]*$")
 ALNUM = re.compile(r"^[a-z0-9]+$")
 SECRET_KEYS = {"password", "api_key", "apikey", "token", "hf_token", "secret"}
+# Anchored at the start of a word: `helpdesk-example-...` holds `sk-` too.
 SECRET_VALUES = re.compile(
-    r"(hf_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{20,})"
+    r"(?<![A-Za-z0-9_-])(hf_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{20,})"
 )
 
 

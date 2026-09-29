@@ -22,21 +22,65 @@ hops agent list          # what agents already exist (confirms auth + serving re
 
 ## Write the entry script
 
-The script exposes a class with `predict` (and optional `init`) — same predictor contract as a model deployment, but no model is loaded. Keep heavy setup (LLM clients, indexes) in `__init__` so it runs once.
+The deployment runs the script with `python`, so **the script is the server**: it
+serves HTTP on port 8080 and keeps running. A script that only defines a class
+exits, and the deployment restarts it forever. Serve three routes:
+
+- `POST /predict`: where the Hopsworks inference endpoint forwards a request;
+- `POST /v1/models/<name>:predict`: KServe's path, which `deployment.predict` and
+  `hops agent query` use from inside the cluster, with the colon percent-encoded
+  (`%3A`), so match `/v1/models/{target}` rather than a literal `:predict`;
+- `GET /`: the readiness probe.
+
+The SDK sends `{"instances": [...]}`; take the first instance, and accept a bare
+body too. Build the LLM clients, indexes and models before the server starts, so
+the deployment turns ready only once it can answer.
 
 **Log every step's inputs and outputs** (the user query, each RAG/tool call with its response, each LLM prompt and reply, and the final response). These traces are what you use later for error analysis, evals, and monitoring of the deployed agent. An agent built without trace logging cannot be debugged or improved.
 
 ```python
 # my_agent.py
-class Predict:
-    def __init__(self):
-        # build the LlamaIndex query engine / LLM client once
-        ...
+from fastapi import FastAPI, HTTPException
+import uvicorn
 
-    def predict(self, inputs):
-        prompt = inputs.get("prompt", "")
-        return {"answer": self._engine.query(prompt).response}
+
+class Agent:
+    def __init__(self):
+        ...  # the LLM client, the index: once
+
+    def predict(self, body: dict) -> dict:
+        request = body.get("instances", [body])[0]
+        return {"answer": ...}
+
+
+def build_app(agent: Agent) -> FastAPI:
+    app = FastAPI()
+
+    @app.get("/")
+    def ready() -> dict:
+        return {"status": "ok"}
+
+    @app.post("/predict")
+    def predict(payload: dict) -> dict:
+        return agent.predict(payload)
+
+    @app.post("/v1/models/{target}")
+    def kserve_predict(target: str, payload: dict) -> dict:
+        if not target.endswith(":predict"):
+            raise HTTPException(status_code=404)
+        return agent.predict(payload)
+
+    return app
+
+
+if __name__ == "__main__":
+    uvicorn.run(build_app(Agent()), host="0.0.0.0", port=8080)
 ```
+
+A model loaded in the agent (torch, an embedder) needs more than the default 1 GB
+of memory: pass `--memory` to `hops agent create`, or it is OOM-killed while it
+loads. The help desk example (`hops-reqs/references/rag_agent/agent.py`) is a
+complete LangGraph agent built this way.
 
 ## Deploy — CLI (preferred)
 
@@ -49,7 +93,7 @@ The same values are on the predictor: `git_current_commit` and `git_resolved_bra
 
 ```bash
 hops agent create my_agent.py --name my_agent \
-  --requirements requirements.txt --environment my_agent
+  --requirements requirements.txt --environment my_agent [--memory 3072]
 hops agent start my_agent                       # waits for RUNNING
 hops agent query my_agent --data '{"prompt": "hello"}'
 hops agent logs my_agent                        # follow startup / errors

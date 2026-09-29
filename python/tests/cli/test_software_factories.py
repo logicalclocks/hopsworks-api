@@ -154,7 +154,7 @@ def test_the_first_question_offers_a_description_or_an_example_system():
     assert labels == {
         "churn-example": "Churn: which customers will cancel next month (batch)",
         "recs-example": "Personalized recommendations: the products each shopper is likely to buy next (real-time)",
-        "helpdesk-example": "Help desk agent: answers support questions from the customer's account and orders (agentic)",
+        "helpdesk-example": "Help desk agent: answers support questions from your documents and the customer's recent events (agentic)",
     }
     for slug in labels:
         assert f"`{slug}`" in text

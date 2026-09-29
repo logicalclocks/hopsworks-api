@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from unittest import mock
 
 import pytest
@@ -215,3 +216,32 @@ def test_the_repository_goes_only_when_it_is_this_systems_alone(monkeypatch):
     with pytest.raises(RuntimeError, match="not named after"):
         teardown.delete_repo(shared, "churn-example", "churndemo")
     assert teardown.delete_repo({}, "churn-example", "churndemo") == "gone"
+
+
+def test_the_inventory_takes_a_rag_system_from_the_helpdesk_example(tmp_path):
+    import yaml
+    from hopsworks.cli import teardown
+
+    reqs = (
+        Path(teardown.__file__).resolve().parents[1]
+        / "skills"
+        / "ml"
+        / "hops-reqs"
+        / "references"
+    )
+    doc = yaml.safe_load((reqs / "example-systems.yaml").read_text())[
+        "helpdesk-example"
+    ]
+    plan = {str(a) for a in teardown.inventory(doc, "helpdesk-example")}
+    assert {
+        "app helpdesk-example-app",
+        "deployment helpdeskagent",
+        "job helpdesk-example-ingest-docs",
+        "job helpdesk-example-register-embedder",
+        "model helpdesk_embedder",
+        "feature group helpdesk_doc_chunks v1",
+        "feature group user_events v1",
+        "directory Resources/helpdesk-example",
+    } <= plan
+    # The user's uploaded documents are theirs, not an asset the build created.
+    assert not any("helpdesk-docs" in p for p in plan)

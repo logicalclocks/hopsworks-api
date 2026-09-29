@@ -112,7 +112,6 @@ class _Prefetch(threading.Thread):
         self.host = cfg.host or ""
         self.project = cfg.project or ""
         self.feature_groups: list[tuple[str, int]] = []
-        self.deployments: list[str] = []
         self.error: str | None = None
 
     def run(self) -> None:
@@ -123,11 +122,6 @@ class _Prefetch(threading.Thread):
             for fs in session.get_accessible_feature_stores(self.ctx):
                 for fg in fs.get_feature_groups():
                     self.feature_groups.append((fg.name, fg.version))
-            try:
-                serving = project.get_model_serving()
-                self.deployments = [d.name for d in serving.get_deployments()]
-            except Exception:  # noqa: BLE001 - serving may be disabled
-                self.deployments = []
         except (Exception, SystemExit) as exc:  # noqa: BLE001 - reported, not fatal
             self.error = str(exc)
 
@@ -592,33 +586,74 @@ def _agent(ctx: click.Context, system: _System, prefetch: _Prefetch) -> None:
             },
         )
         system.put("requirements.sla", {"agent": {"p99_ms": 5000, "throughput_qps": 2}})
-    if system.doc.get("inference", {}).get("agent"):
+    agent = (system.doc.get("inference") or {}).get("agent") or {}
+    if agent.get("llm"):
         return
-    deployments = prefetch.ready().deployments
-    options = [(name, "a deployment in this project") for name in deployments]
-    options.append(
-        ("A provider endpoint", "OpenAI, Anthropic or any OpenAI-compatible URL")
-    )
-    picked = _choose("Which LLM should the agent use?", options)
-    if picked < len(deployments):
-        llm: dict = {"deployment": deployments[picked]}
+    # The account variables are read through the login the prefetch made.
+    prefetch.ready()
+    llm = _llm_env_vars(system.target.name)
+    if agent:
+        system.put("inference.agent.llm", llm)
     else:
-        llm = {
-            "endpoint": click.prompt(
-                "Endpoint URL", default="https://api.openai.com/v1"
-            ),
-            "model": click.prompt("Model name"),
-            "api_key_secret": click.prompt(
-                "Name of the project secret holding the API key (not the key)"
-            ),
-        }
-    system.put(
-        "inference", {"mode": "agent", "agent": {"llm": llm}, "status": "pending"}
-    )
+        system.put(
+            "inference", {"mode": "agent", "agent": {"llm": llm}, "status": "pending"}
+        )
     system.save()
-    output.info(
-        "Agentic systems are recorded in full; this version does not build them yet."
+
+
+LLM_VARS = {"url": "LLM_URL", "api_key": "LLM_API_KEY", "model": "LLM_MODEL"}
+
+
+def _llm_env_vars(slug: str) -> dict:
+    """Ask for the agent's LLM and keep it in the user's account environment variables.
+
+    Hopsworks sets account variables in every job, app and deployment the user
+    starts, so the agent reads the endpoint and key from its environment and the
+    key never enters system.yaml, the repository or a Claude session: it is read
+    here without echo. Returns what system.yaml records, the variables' names.
+    """
+    record = {
+        "endpoint_env": LLM_VARS["url"],
+        "api_key_env": LLM_VARS["api_key"],
+        "model_env": LLM_VARS["model"],
+    }
+    try:
+        from hopsworks_common.core import env_var_api
+
+        api = env_var_api.EnvVarsApi()
+        present = {v.name for v in api.get_env_vars(include_value=False)}
+    except Exception as exc:  # noqa: BLE001 - the build still runs without an LLM
+        output.warn(
+            f"Could not read your account environment variables ({exc}); set "
+            f"{LLM_VARS['url']}, {LLM_VARS['api_key']} and {LLM_VARS['model']} in "
+            "Account settings, Environment variables, before the agent is deployed."
+        )
+        return record
+    if {LLM_VARS["url"], LLM_VARS["api_key"]} <= present and click.confirm(
+        click.style(
+            f"Use the LLM in your account settings ({LLM_VARS['url']}, {LLM_VARS['api_key']})?",
+            bold=True,
+        ),
+        default=True,
+    ):
+        return record
+    click.echo(
+        f"The {slug} agent calls an OpenAI-compatible chat endpoint. The URL, model "
+        "and API key are saved as your account environment variables, visible only to you."
     )
+    url = click.prompt("LLM endpoint URL", default="https://api.openai.com/v1").strip()
+    model = click.prompt("Model", default="gpt-4o-mini").strip()
+    key = click.prompt("API key (not shown)", hide_input=True).strip()
+    for name, value in (
+        (LLM_VARS["url"], url),
+        (LLM_VARS["model"], model),
+        (LLM_VARS["api_key"], key),
+    ):
+        api.set_env_var(name, value, visibility="PRIVATE")
+    output.success(
+        f"Saved {LLM_VARS['url']}, {LLM_VARS['model']} and {LLM_VARS['api_key']} in your account settings."
+    )
+    return {**record, "endpoint": url, "model": model}
 
 
 def _in_hopsworks_home(path: Path) -> bool:

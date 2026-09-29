@@ -130,6 +130,10 @@ def inventory(doc: dict, slug: str) -> list[Asset]:
         model = node.get("model")
         if isinstance(model, dict) and isinstance(model.get("name"), str):
             add(Asset("model", model["name"]))
+        # A RAG system's embedding model, registered from Hugging Face.
+        embedder = node.get("embedding_model")
+        if isinstance(embedder, dict) and isinstance(embedder.get("name"), str):
+            add(Asset("model", embedder["name"]))
         elif isinstance(model, str) and path[:1] == ("training",):
             named = _NAMED_VERSION.match(model)
             if named:

@@ -1,0 +1,11 @@
+# Installed into both <slug>-jobs-env (a clone of torch-training-pipeline, for
+# the ingestion and registration jobs) and <slug>-agent-env (a clone of
+# torch-inference-pipeline, for the agent), so documents and queries are
+# embedded by the same library versions. Both bases ship torch, transformers,
+# langgraph and langchain-core 1.6.3.
+sentence-transformers==6.1.0
+pypdf==6.19.0
+python-docx==1.2.0
+odfpy==1.4.1
+# The one python-agent-pipeline ships, which matches langchain-core 1.6.3.
+langchain-openai==1.6.2
