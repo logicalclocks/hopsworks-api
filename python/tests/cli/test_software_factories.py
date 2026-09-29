@@ -633,7 +633,7 @@ def test_a_new_system_carries_its_agents_md(tmp_path):
     agents = (target / "AGENTS.md").read_text(encoding="utf-8")
     assert "built from system.yaml" in agents.splitlines()[0]
     assert "hops fg lineage" in agents and "Brewer-Edit" in agents
-    assert (target / "CLAUDE.md").read_text(encoding="utf-8") == "@AGENTS.md\n"
+    assert not (target / "CLAUDE.md").exists()
     assert not (tmp_path / "AGENTS.md").exists()
 
 

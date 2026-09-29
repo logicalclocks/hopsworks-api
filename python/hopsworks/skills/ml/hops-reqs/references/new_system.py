@@ -12,8 +12,8 @@ existing system is never overwritten.
 With `--example`, also writes the system.yaml of that entry of
 example-systems.yaml, as a draft whose requirements are still pending.
 
-The copy includes AGENTS.md, with a CLAUDE.md that imports it, so a coding
-agent started in the system's directory knows the system is built from
+The copy includes AGENTS.md, so a coding agent started in the system's
+directory knows the system is built from
 system.yaml and checks what a changed system.yaml means downstream.
 """
 

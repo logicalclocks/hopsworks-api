@@ -116,7 +116,7 @@ repository with `gh repo create` (owner from `gh api user`, name from the slug, 
 URL; cut `hops/<slug>` from the default branch, or `hops/<slug>-<project>` when `hops/<slug>`
 holds another project's build, and record `system.repo`. A home directory that is not a
 repository becomes a work tree tracking only `<slug>/`, as repo.md shows. `<slug>/AGENTS.md`, from
-the template with a `CLAUDE.md` that imports it, tells an agent started there that the system is
+the template, tells an agent started there that the system is
 built from `system.yaml` and how to follow a change downstream; it is committed with the rest of
 `<slug>/`. Every phase ends with one commit,
 `[<slug>] <phase>: <one line>`, pushed. Run `hops mlsystem register <slug>` once at the start: it
