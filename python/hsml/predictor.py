@@ -540,8 +540,11 @@ class Predictor(DeployableComponent):
         kwargs["created_at"] = json_decamelized.pop("created")
         kwargs["creator"] = json_decamelized.pop("creator")
         kwargs["api_protocol"] = json_decamelized.pop("api_protocol")
-        if "environment_dto" in json_decamelized:
-            environment = json_decamelized.pop("environment_dto")
+        # environment_dto is what a backend that predates per-component environments sends.
+        environment = json_decamelized.pop(
+            "predictor_environment", None
+        ) or json_decamelized.pop("environment_dto", None)
+        if environment is not None:
             kwargs["environment"] = environment["name"]
         if "predictor_env_vars" in json_decamelized:
             env_vars = json_decamelized.pop("predictor_env_vars")
@@ -612,6 +615,9 @@ class Predictor(DeployableComponent):
         if self.environment is not None:
             predictor_dict = {
                 **predictor_dict,
+                "predictorEnvironment": {"name": self._environment},
+                # Deprecated, sent alongside so a backend that predates per-component environments
+                # still applies it. A current backend prefers predictorEnvironment and ignores this.
                 "environmentDTO": {"name": self._environment},
             }
         if self._resources is not None:
