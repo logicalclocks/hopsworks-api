@@ -1341,7 +1341,18 @@ class Deployment:
     @public
     @property
     def environment(self):
-        """Name of inference environment."""
+        """Name of the inference environment the predictor runs in.
+
+        Warning: Deprecated
+            Use `deployment.predictor.environment`, or
+            `deployment.transformer.environment` for the transformer's own environment.
+
+        Warning: Changed in 5.2
+            Setting this on a deployment that was read back moves the predictor only. The
+            transformer keeps the environment it was read with, where before 5.2 both
+            components moved together. Set `deployment.transformer.environment` as well to
+            move both.
+        """
         return self._predictor.environment
 
     @environment.setter
