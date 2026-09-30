@@ -88,6 +88,12 @@ def setup_tracing() -> bool:
     return True
 
 
+def _untraced(scope: dict) -> bool:
+    """Everything but the prediction routes: health checks and metric scrapes every few
+    seconds would bury the answers' traces in the deployment's Traces panel."""
+    return not scope.get("path", "").startswith(("/predict", "/query", "/v1/models/"))
+
+
 @contextlib.contextmanager
 def tool_span(name: str, value: Any):
     """A TOOL span for a step that is not a LangChain tool, so the collector counts it.
@@ -284,7 +290,17 @@ def build_app(agent: Agent):
     """The HTTP server around `agent`."""
     from fastapi import FastAPI, HTTPException
 
-    app = FastAPI(title="Help desk agent", docs_url=None, redoc_url=None)
+    options = {"title": "Help desk agent", "docs_url": None, "redoc_url": None}
+    try:
+        # The agent exports its own spans (setup_tracing), so FastAPI adds no exporter
+        # and traces only the prediction routes, without a span per dependency.
+        app = FastAPI(
+            **options,
+            telemetry={"auto_configure": False, "operation_spans": False, "exclude": _untraced},
+        )
+    except TypeError:
+        # A FastAPI older than its built-in telemetry.
+        app = FastAPI(**options)
 
     @app.get("/")
     def ready() -> dict:
