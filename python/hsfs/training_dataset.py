@@ -90,11 +90,13 @@ class TrainingDatasetBase:
         data_source=None,
         missing_mandatory_tags=None,
         tags=None,
+        spine_anchored=False,
         **kwargs,
     ):
         self._name = name
         self._version = version
         self._description = description
+        self._spine_anchored = bool(spine_anchored)
         self._data_format = data_format
         self._validation_size = validation_size
         self._test_size = test_size
@@ -261,6 +263,7 @@ class TrainingDatasetBase:
             "eventStartTime": self._start_time,
             "eventEndTime": self._end_time,
             "extraFilter": self._extra_filter,
+            "spineAnchored": self._spine_anchored,
         }
         if self._data_source:
             td_meta_dict["dataSource"] = self._data_source.to_dict()
@@ -306,6 +309,19 @@ class TrainingDatasetBase:
     @data_format.setter
     def data_format(self, data_format):
         self._data_format = data_format
+
+    @property
+    def spine_anchored(self) -> bool:
+        """Whether the dataset was built from a `spine_df` rather than from the feature view's rows.
+
+        The frame itself is not recorded, only that there was one, so reading or recreating such a
+        version means passing the same `spine_df` again.
+        """
+        return self._spine_anchored
+
+    @spine_anchored.setter
+    def spine_anchored(self, spine_anchored: bool) -> None:
+        self._spine_anchored = bool(spine_anchored)
 
     @property
     def coalesce(self) -> bool:
@@ -591,6 +607,7 @@ class TrainingDataset(TrainingDatasetBase):
         missing_mandatory_tags=None,
         tags=None,
         lookback=None,
+        spine_anchored=False,
         **kwargs,
     ):
         super().__init__(
@@ -621,6 +638,7 @@ class TrainingDataset(TrainingDatasetBase):
             train_split=train_split,
             time_split_size=time_split_size,
             extra_filter=extra_filter,
+            spine_anchored=spine_anchored,
             data_source=data_source,
             missing_mandatory_tags=missing_mandatory_tags,
             tags=tags,
@@ -1001,6 +1019,7 @@ class TrainingDataset(TrainingDatasetBase):
             "eventStartTime": self._start_time,
             "eventEndTime": self._end_time,
             "extraFilter": self._extra_filter,
+            "spineAnchored": self._spine_anchored,
             "type": "trainingDatasetDTO",
         }
         if self._lookback is not None:

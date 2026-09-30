@@ -19,11 +19,12 @@ import sys
 import time
 import urllib.parse
 import webbrowser
+from pathlib import Path
 from typing import Any
 
 import click
 import requests
-from hopsworks.cli import auth, config, output
+from hopsworks.cli import auth, config, output, scaffold
 
 
 TOKEN_FLOW_CREATE = "/token-flow/create"
@@ -268,6 +269,11 @@ def _wait_for_key(
         "the API key and is a MITM target."
     ),
 )
+@click.option(
+    "--no-scaffold",
+    is_flag=True,
+    help=("Skip writing the agent instruction files into the current directory."),
+)
 @click.pass_context
 def setup_cmd(
     ctx: click.Context,
@@ -278,6 +284,7 @@ def setup_cmd(
     timeout: int,
     ca_bundle: str | None,
     insecure: bool,
+    no_scaffold: bool,
 ) -> None:
     """Authenticate with Hopsworks and cache an API key in ``~/.hops.toml``.
 
@@ -295,6 +302,7 @@ def setup_cmd(
         timeout: Seconds to wait for browser completion before erroring out.
         ca_bundle: Path to a CA bundle for TLS verification.
         insecure: When True, skip TLS verification entirely (with warning).
+        no_scaffold: When True, do not write agent instruction files.
     """
     cfg = config.load(flag_host=host_flag)
     if host_flag and not cfg.internal:
@@ -317,10 +325,14 @@ def setup_cmd(
         insecure = True
 
     if cfg.internal:
-        _handle_internal(cfg)
+        _handle_internal(cfg, no_scaffold)
         return None
 
     if not force and cfg.is_authenticated() and _cached_key_works(cfg):
+        # Still scaffold: the cached key short-circuit is the path a returning
+        # user takes, so skipping it would leave a new repository with no
+        # instruction file and would never refresh one after an SDK upgrade.
+        _scaffold_here(internal=False, project=cfg.project, skip=no_scaffold)
         return None
 
     host = _resolve_host(cfg, host_flag)
@@ -356,7 +368,9 @@ def setup_cmd(
         api_key, project = _manual_browser_flow(host, key_name)
         server_key_name = key_name
         # Skip the browser-flow block below by jumping to the verify+save tail.
-        return _finalize_setup(host, api_key, project, server_key_name, cfg)
+        return _finalize_setup(
+            host, api_key, project, server_key_name, cfg, no_scaffold
+        )
     except requests.RequestException as exc:
         raise _failed(host, exc) from exc
 
@@ -388,7 +402,7 @@ def setup_cmd(
     if not api_key:
         raise _failed(host, "the server did not return an API key")
 
-    _finalize_setup(host, api_key, project, server_key_name, cfg)
+    _finalize_setup(host, api_key, project, server_key_name, cfg, no_scaffold)
     return None
 
 
@@ -451,6 +465,7 @@ def _finalize_setup(
     project: str | None,
     server_key_name: str | None,
     cfg: config.HopsConfig,
+    no_scaffold: bool = False,
 ) -> None:
     """Verify the freshly-minted API key, then persist it to ``~/.hops.toml``.
 
@@ -473,9 +488,10 @@ def _finalize_setup(
     config.save(cfg)
 
     output.success("✓ Connected to %s as %s", host, project or "(no project)")
+    _scaffold_here(internal=False, project=project, skip=no_scaffold)
 
 
-def _handle_internal(cfg: config.HopsConfig) -> None:
+def _handle_internal(cfg: config.HopsConfig, no_scaffold: bool = False) -> None:
     """Internal mode: JWT is already mounted, no browser flow needed.
 
     Pass ``internal=True`` so ``auth.login`` invokes ``hopsworks.login()``
@@ -483,7 +499,13 @@ def _handle_internal(cfg: config.HopsConfig) -> None:
     ``$SECRETS_DIR/token.jwt`` from the pod environment itself. Doing the
     same lookup at the CLI layer would be duplicative and would silently
     drift if the SDK ever changes its in-pod auth contract.
+
+    Scaffolding runs before the login it does not depend on.
+    The terminal images call this command at container start purely to lay the
+    files down, and making that wait on a backend round trip would skip it
+    entirely whenever the cluster is briefly unreachable.
     """
+    _scaffold_here(internal=True, project=cfg.project, skip=no_scaffold)
     try:
         project = auth.login(host=cfg.host or "", project=cfg.project, internal=True)
     except Exception as exc:  # noqa: BLE001
@@ -556,3 +578,63 @@ def _cached_key_works(cfg: config.HopsConfig) -> bool:
         getattr(project, "name", cfg.project or "?"),
     )
     return True
+
+
+def _scaffold_here(*, internal: bool, project: str | None, skip: bool) -> None:
+    """Write the agent instruction files into the current directory.
+
+    Never fatal.
+    Authentication has already succeeded and been persisted by the time this
+    runs, so a read-only directory or an unparseable settings file must not
+    turn a working setup into a command that exits non-zero.
+    """
+    if skip:
+        return
+    root = Path.cwd()
+    try:
+        files = scaffold.build_files(internal=internal, project=project)
+        result = scaffold.scaffold(root, files)
+        changed = scaffold.ensure_permission(root / ".claude/settings.local.json")
+    except (OSError, ValueError) as exc:
+        output.warn("Could not write agent instruction files: %s", _reason(exc))
+        return
+
+    for path in result.written:
+        output.success("✓ Wrote %s", path)
+    for path in result.refreshed:
+        output.success("✓ Updated %s", path)
+    for path in result.removed:
+        output.info("- Removed %s (no longer shipped)", path)
+    for path in result.kept + result.orphaned:
+        output.info("= Kept your %s", path)
+    if changed:
+        output.success(
+            "✓ Allowed %s in .claude/settings.local.json", scaffold.HOPS_PERMISSION
+        )
+    if not internal:
+        _suggest_skills_install(root)
+
+
+def _suggest_skills_install(root: Path) -> None:
+    """Point at ``hops skills install`` when this repository has no platform skills yet.
+
+    Outside a cluster nothing has put them anywhere an agent looks, and the
+    step is not guessable from what setup prints on its own. Suppressed once
+    they are there, so a re-run of setup stays quiet.
+    """
+    from hopsworks.cli.commands import skills as skills_cmd
+
+    source = skills_cmd._packaged_skills_dir()
+    if source is None:
+        return
+    shipped = {path.parent.name for path in source.glob("*/*/SKILL.md")}
+    if not shipped:
+        return
+    for target in skills_cmd.AGENT_SKILL_DIRS.values():
+        if any((root / target / name).is_dir() for name in shipped):
+            return
+    output.info(
+        "Run `hops skills install` to add the %d Hopsworks skills to this repository "
+        "(--agent codex|copilot|opencode for other agents).",
+        len(shipped),
+    )

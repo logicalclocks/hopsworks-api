@@ -382,6 +382,64 @@ class VectorDbClient:
             new_map[new_key] = value
         return new_map
 
+    def _read_many(
+        self,
+        fg_id,
+        schema,
+        key_sets: list[dict],
+        index_name=None,
+    ) -> list[list[dict]]:
+        """Read one exact-key result set per entry, in one round trip.
+
+        The searches are the same `match` queries `_read(keys=...)` builds one
+        at a time, sent together and answered in order, so the results line up
+        with `key_sets` by position and nothing about the matching changes. An
+        entry that matched nothing keeps its place as an empty list.
+        """
+        if not key_sets:
+            return []
+        if fg_id not in self._fg_vdb_col_fg_col_map:
+            raise FeatureStoreException("Provided fg does not have embedding.")
+        if not index_name:
+            index_name = self._get_vector_db_index_name(fg_id)
+        opensearch_client = OpenSearchClientSingleton(
+            feature_store_id=self._fg_embedding_map[
+                fg_id
+            ].feature_group.feature_store_id
+        )
+        source = list(self._fg_vdb_col_fg_col_map.get(fg_id).keys())
+        body = []
+        for keys in key_sets:
+            body.append({"index": index_name})
+            body.append(
+                {
+                    "query": {
+                        "bool": {
+                            "must": [
+                                {"match": {key: value}}
+                                for key, value in self._rewrite_result_key(
+                                    keys, self._fg_col_vdb_col_map[fg_id]
+                                ).items()
+                            ]
+                        }
+                    },
+                    "_source": source,
+                }
+            )
+        responses = opensearch_client._multi_search(body=body)["responses"]
+        return [
+            [
+                self._convert_to_pandas_type(
+                    schema,
+                    self._rewrite_result_key(
+                        item["_source"], self._fg_vdb_col_td_col_map[fg_id]
+                    ),
+                )
+                for item in response.get("hits", {}).get("hits", [])
+            ]
+            for response in responses
+        ]
+
     def _read(
         self,
         fg_id,

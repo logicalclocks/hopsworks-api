@@ -25,6 +25,30 @@ from hsfs import (
 
 
 class TestTrainingDataset:
+    def test_spine_anchored_round_trips(self, mocker):
+        # The frame a spine-anchored dataset was built from is not recorded, only the fact, and
+        # the fact has to reach the backend on create and come back on every fetch.
+        mocker.patch("hopsworks_common.client._get_instance")
+        td = training_dataset.TrainingDataset(
+            name="test", version=1, data_format="parquet", featurestore_id=99
+        )
+        assert td.spine_anchored is False
+        assert td.to_dict()["spineAnchored"] is False
+
+        td.spine_anchored = True
+        assert td.to_dict()["spineAnchored"] is True
+
+        fetched = training_dataset.TrainingDataset.from_response_json_single(
+            {
+                "name": "test",
+                "version": 1,
+                "dataFormat": "parquet",
+                "featurestoreId": 99,
+                "spineAnchored": True,
+            }
+        )
+        assert fetched.spine_anchored is True
+
     def test_from_response_json(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hopsworks_common.client._get_instance")

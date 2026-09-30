@@ -14,6 +14,9 @@
 #   limitations under the License.
 #
 import importlib
+import io
+import json
+from datetime import datetime, timezone
 
 import pytest
 from hopsworks_common.client.exceptions import FeatureStoreException
@@ -812,3 +815,40 @@ class TestKafkaEngine:
 
         # Assert
         assert progress_bar.n == 1
+
+    @pytest.mark.parametrize(
+        "value, expected",
+        [
+            (None, None),
+            ("nat", None),
+            ("naive", datetime(2026, 9, 10, 4, 0, 0, 123456, tzinfo=timezone.utc)),
+        ],
+    )
+    def test_encode_row_nullable_timestamp(self, value, expected):
+        pd = pytest.importorskip("pandas")
+        fastavro = pytest.importorskip("fastavro")
+        schema = {
+            "type": "record",
+            "name": "row",
+            "fields": [
+                {
+                    "name": "observed_at",
+                    "type": [
+                        "null",
+                        {"type": "long", "logicalType": "timestamp-micros"},
+                    ],
+                }
+            ],
+        }
+        writer = kafka_engine._get_encoder_func(json.dumps(schema))
+        if value == "nat":
+            value = pd.NaT
+        elif value == "naive":
+            value = pd.Timestamp("2026-09-10T04:00:00.123456")
+
+        encoded = kafka_engine._encode_row({}, writer, {"observed_at": value})
+
+        decoded = fastavro.schemaless_reader(
+            io.BytesIO(encoded), fastavro.parse_schema(schema)
+        )
+        assert decoded["observed_at"] == expected

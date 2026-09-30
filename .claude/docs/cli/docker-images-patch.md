@@ -1,5 +1,9 @@
 # docker-images Dockerfile patch (Phase 4 switchover)
 
+> Historical record: `hops init` no longer scaffolds the CLI bundle; `hops setup`
+> does that. `hops skills install` materializes the skills into a repository;
+> `hops init` is a hidden, deprecated alias of it.
+
 Cross-repo Dockerfile edits were denied by the sandbox, so here is the exact
 diff to apply by hand on the `cli` branch of `docker-images` once the
 `hopsworks` pip package includes the Python CLI (this repo's `cli` branch, Phase 0–4).

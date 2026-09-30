@@ -32,6 +32,7 @@ class FsQuery:
         pit_query: str | None = None,
         pit_query_asof: str | None = None,
         pushdown_query: str | None = None,
+        spine_applied: bool = False,
         hqs_payload: str | None = None,
         hqs_payload_signature: str | None = None,
         href: str | None = None,
@@ -47,6 +48,7 @@ class FsQuery:
         self._pit_query = pit_query
         self._pit_query_asof = pit_query_asof
         self._pushdown_query = pushdown_query
+        self._spine_applied = bool(spine_applied)
 
         self._hqs_payload = hqs_payload
         self._hqs_payload_signature = hqs_payload_signature
@@ -115,6 +117,14 @@ class FsQuery:
         None means the engine reads each feature group separately and joins them locally.
         """
         return self._pushdown_query
+
+    @property
+    def spine_applied(self) -> bool:
+        """Whether the backend rendered this query against the inference spine it was sent.
+
+        False from a backend that does not know the field, whose answer is the ordinary batch query.
+        """
+        return self._spine_applied
 
     @property
     def on_demand_fg_aliases(

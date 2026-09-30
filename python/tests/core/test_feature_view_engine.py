@@ -731,7 +731,9 @@ class TestFeatureViewEngine:
 
         # Act
         fv_engine._create_training_dataset(
-            feature_view_obj=None, training_dataset_obj=None, user_write_options={}
+            feature_view_obj=None,
+            training_dataset_obj=MagicMock(),
+            user_write_options={},
         )
 
         # Assert
@@ -794,7 +796,9 @@ class TestFeatureViewEngine:
         mock_fv_engine_create_training_data_metadata.return_value.splits = {}
 
         # Act
-        fv_engine._get_training_data(feature_view_obj=fv)
+        fv_engine._get_training_data(
+            feature_view_obj=fv, training_dataset_obj=MagicMock()
+        )
 
         # Assert
         assert mock_fv_engine_get_training_dataset_metadata.call_count == 2
@@ -908,7 +912,9 @@ class TestFeatureViewEngine:
         mock_fv_engine_create_training_data_metadata.return_value.splits = {}
 
         # Act
-        fv_engine._get_training_data(feature_view_obj=fv)
+        fv_engine._get_training_data(
+            feature_view_obj=fv, training_dataset_obj=MagicMock()
+        )
 
         expected_schema = [
             TrainingDatasetFeature(name="id", type="bigint", label=False),
@@ -1200,7 +1206,9 @@ class TestFeatureViewEngine:
         mock_fv_engine_create_training_data_metadata.return_value.splits = []
 
         # Act
-        fv_engine._get_training_data(feature_view_obj=fv)
+        fv_engine._get_training_data(
+            feature_view_obj=fv, training_dataset_obj=MagicMock()
+        )
 
         # Assert
         assert mock_fv_engine_get_training_dataset_metadata.call_count == 2
@@ -1258,7 +1266,9 @@ class TestFeatureViewEngine:
         mock_fv_engine_create_training_data_metadata.return_value.splits = splits
 
         # Act
-        fv_engine._get_training_data(feature_view_obj=fv, splits=splits)
+        fv_engine._get_training_data(
+            feature_view_obj=fv, splits=splits, training_dataset_obj=MagicMock()
+        )
 
         # Assert
         assert mock_fv_engine_get_training_dataset_metadata.call_count == 2
@@ -1311,7 +1321,9 @@ class TestFeatureViewEngine:
 
         # Act
         with pytest.raises(ValueError) as e_info:
-            fv_engine._get_training_data(feature_view_obj=fv, splits=[ss])
+            fv_engine._get_training_data(
+                feature_view_obj=fv, splits=[ss], training_dataset_obj=MagicMock()
+            )
 
         # Assert
         assert (
@@ -1372,7 +1384,9 @@ class TestFeatureViewEngine:
 
         # Act
         with pytest.raises(ValueError) as e_info:
-            fv_engine._get_training_data(feature_view_obj=fv)
+            fv_engine._get_training_data(
+                feature_view_obj=fv, training_dataset_obj=MagicMock()
+            )
 
         # Assert
         assert (
@@ -1437,7 +1451,9 @@ class TestFeatureViewEngine:
 
         # Act
         with pytest.raises(ValueError) as e_info:
-            fv_engine._get_training_data(feature_view_obj=fv)
+            fv_engine._get_training_data(
+                feature_view_obj=fv, training_dataset_obj=MagicMock()
+            )
 
         # Assert
         assert (
@@ -2535,7 +2551,7 @@ class TestFeatureViewEngine:
 
         # Act
         _ = fv_engine._create_training_data_metadata(
-            feature_view_obj=fv, training_dataset_obj=None
+            feature_view_obj=fv, training_dataset_obj=MagicMock()
         )
 
         # Assert
@@ -4871,3 +4887,219 @@ class TestFeatureLoggingWithoutEventTime:
         assert event_time[0] == expected_data
         assert event_time[1] == expected_names
         assert event_time[2] == constants.FEATURE_LOGGING.EVENT_TIME
+
+
+class TestReadWithSpine:
+    """The Spark branch of `_read_with_spine` owns the lifetime of the session temporary view."""
+
+    def _engine(self, mocker, read_result=None, read_raises=None):
+        spark_engine = MagicMock()
+        mocker.patch(
+            "hsfs.core.feature_view_engine.engine._get_type", return_value="spark"
+        )
+        mocker.patch(
+            "hsfs.core.feature_view_engine.engine._get_instance",
+            return_value=spark_engine,
+        )
+        batch_query = MagicMock()
+        if read_raises is not None:
+            batch_query.read.side_effect = read_raises
+        else:
+            batch_query.read.return_value = read_result
+        spine = MagicMock()
+        spine.table_name = "__hopsworks_spine_3f9a"
+        fv_engine = feature_view_engine.FeatureViewEngine(feature_store_id=99)
+        return fv_engine, batch_query, spine, spark_engine
+
+    def test_spark_read_drops_the_temporary_view(self, mocker):
+        fv_engine, batch_query, spine, spark_engine = self._engine(
+            mocker, read_result="df"
+        )
+
+        result = fv_engine._read_with_spine(batch_query, spine, {}, "default")
+
+        assert result == "df"
+        spark_engine._drop_spine_temporary_view.assert_called_once_with(
+            "__hopsworks_spine_3f9a"
+        )
+
+    def test_the_temporary_view_is_dropped_when_the_read_fails(self, mocker):
+        fv_engine, batch_query, spine, spark_engine = self._engine(
+            mocker, read_raises=RuntimeError("boom")
+        )
+
+        with pytest.raises(RuntimeError):
+            fv_engine._read_with_spine(batch_query, spine, {}, "default")
+
+        spark_engine._drop_spine_temporary_view.assert_called_once_with(
+            "__hopsworks_spine_3f9a"
+        )
+
+
+class TestTrainingSpine:
+    """`spine_df` re-anchors a training-data call the same way it does a batch read."""
+
+    def _engine(self):
+        return feature_view_engine.FeatureViewEngine(feature_store_id=99)
+
+    def test_no_serving_keys_means_no_spine(self):
+        assert self._engine()._training_spine(MagicMock(), None, None) is None
+
+    def test_spine_and_serving_keys_together_are_refused(self):
+        # They both replace the left side of the query, so one call cannot mean both.
+        with pytest.raises(FeatureStoreException, match="one or the other"):
+            self._engine()._training_spine(
+                MagicMock(), pd.DataFrame([{"a": 1}]), MagicMock()
+            )
+
+    def test_passthrough_is_on_for_training(self, mocker):
+        # A labels frame carries columns the view does not define; refusing them would defeat
+        # the purpose, which is why training differs from get_batch_data here.
+        built = mocker.patch("hsfs.core.feature_view_engine.InferenceSpine")
+        fv = MagicMock()
+        frame = pd.DataFrame([{"a": 1}])
+        self._engine()._training_spine(fv, frame, None)
+        built.assert_called_once_with(fv, frame, allow_passthrough=True)
+
+    def test_materialisation_keeps_the_staged_file(self, mocker):
+        # The Spark job reads the spine after the call returns, so deleting it here would race.
+        mocker.patch(
+            "hsfs.core.feature_view_engine.engine._get_type", return_value="python"
+        )
+        dataset_api = mocker.patch(
+            "hopsworks_common.core.dataset_api.DatasetApi"
+        ).return_value
+        spine = MagicMock()
+        spine.basename = "abc.parquet"
+        with self._engine()._staged_spine(spine, keep_file=True):
+            pass
+        dataset_api.remove.assert_not_called()
+
+    def test_create_training_dataset_forwards_the_spine_and_records_it(self, mocker):
+        # The create helper accepted spine_df and dropped it, so every materialised create built
+        # the historical population while batch inference used the caller's rows.
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine._set_event_time")
+        mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._create_training_data_metadata"
+        )
+        compute = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._compute_training_dataset"
+        )
+        td = MagicMock()
+        frame = pd.DataFrame([{"id": 1}])
+
+        self._engine()._create_training_dataset(MagicMock(), td, {}, spine_df=frame)
+
+        assert compute.call_args.kwargs["spine_df"] is frame
+        assert td.spine_anchored is True
+
+    def test_create_without_a_spine_records_that_too(self, mocker):
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine._set_event_time")
+        mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._create_training_data_metadata"
+        )
+        mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._compute_training_dataset"
+        )
+        td = MagicMock()
+        self._engine()._create_training_dataset(MagicMock(), td, {})
+        assert td.spine_anchored is False
+
+    def test_an_in_memory_training_dataset_records_the_spine_too(self, mocker):
+        # _get_training_data creates its own metadata, so the flag had to be set there as well as
+        # in _create_training_dataset. Without it every training_data(spine_df=...) version was
+        # recorded as not spine-anchored and read back from the feature view's own rows.
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine._set_event_time")
+        created = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._create_training_data_metadata"
+        )
+        created.return_value.splits = []
+        created.return_value.training_dataset_type = "IN_MEMORY_TRAINING_DATASET"
+        created.return_value.IN_MEMORY = "IN_MEMORY_TRAINING_DATASET"
+        mocker.patch("hsfs.engine._get_instance")
+        mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._check_feature_group_accessibility"
+        )
+        mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine._get_batch_query")
+        mocker.patch("hsfs.core.feature_view_engine.FeatureViewEngine._staged_spine")
+        mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._compute_training_dataset_statistics"
+        )
+        mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_training_dataset_schema",
+            return_value=[],
+        )
+        mocker.patch("hsfs.core.feature_view_engine.InferenceSpine")
+        td = MagicMock()
+
+        self._engine()._get_training_data(
+            MagicMock(), training_dataset_obj=td, spine_df=pd.DataFrame([{"id": 1}])
+        )
+
+        assert td.spine_anchored is True
+
+    def test_a_lookback_rides_along_with_a_spine(self, mocker):
+        # A lookback bounds which feature group rows are candidates, not which spine rows come
+        # back, so dropping it changed results (a stale row instead of NULL) and unbounded the scan.
+        mock_fv_api = mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        query_obj = MagicMock()
+        query_obj._left_feature_group = MagicMock()
+        mock_fv_api.return_value._get_batch_query.return_value = query_obj
+        lookback = MagicMock()
+
+        result = self._engine()._get_batch_query(
+            MagicMock(), None, None, lookback=lookback, inference_spine=MagicMock()
+        )
+
+        assert result.lookback is lookback
+
+    def _td(self, anchored, version=3):
+        td = MagicMock()
+        td.spine_anchored = anchored
+        td.version = version
+        return td
+
+    def test_a_spine_anchored_version_cannot_be_read_without_the_spine(self):
+        with pytest.raises(
+            FeatureStoreException, match="version 3 was built from a `spine_df`"
+        ):
+            self._engine()._check_spine_matches(self._td(True), None)
+
+    def test_a_historical_version_cannot_be_recreated_on_a_spine(self):
+        with pytest.raises(FeatureStoreException, match="not from a `spine_df`"):
+            self._engine()._check_spine_matches(self._td(False), MagicMock())
+
+    def test_a_matching_population_passes(self):
+        self._engine()._check_spine_matches(self._td(True), MagicMock())
+        self._engine()._check_spine_matches(self._td(False), None)
+
+    def test_materialisation_of_a_spine_anchored_version_needs_the_spine(self, mocker):
+        # Reached by recreate and by the Spark job; either way the population must be given.
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        batch_query = mocker.patch(
+            "hsfs.core.feature_view_engine.FeatureViewEngine._get_batch_query"
+        )
+        with pytest.raises(
+            FeatureStoreException, match="Pass the same `spine_df` again"
+        ):
+            self._engine()._compute_training_dataset(
+                MagicMock(), {}, training_dataset_obj=self._td(True)
+            )
+        batch_query.assert_not_called()
+
+    def test_a_read_removes_the_staged_file(self, mocker):
+        mocker.patch(
+            "hsfs.core.feature_view_engine.engine._get_type", return_value="python"
+        )
+        dataset_api = mocker.patch(
+            "hopsworks_common.core.dataset_api.DatasetApi"
+        ).return_value
+        spine = MagicMock()
+        spine.basename = "abc.parquet"
+        with self._engine()._staged_spine(spine):
+            pass
+        dataset_api.remove.assert_called_once()

@@ -19,6 +19,7 @@ import statistics
 import sys
 from pathlib import Path
 
+
 SMALL_FILE_BYTES = 32 * 1024 * 1024
 TARGET_FILE_BYTES = 512 * 1024 * 1024
 OVERSIZED_FILE_BYTES = 2 * 1024 * 1024 * 1024
@@ -86,7 +87,9 @@ def column_overlap(stats: dict[str, list[tuple]]) -> dict:
             continue
         try:
             clean.sort(key=lambda r: r[0])
-            overlapping = sum(1 for a, b in zip(clean, clean[1:]) if a[1] > b[0])
+            overlapping = sum(
+                1 for a, b in zip(clean, clean[1:], strict=False) if a[1] > b[0]
+            )
         except TypeError:
             continue
         out[col] = round(overlapping / (len(clean) - 1), 3)
@@ -97,13 +100,17 @@ def analyze_delta(table: Path) -> dict:
     try:
         from deltalake import DeltaTable
     except ImportError:
-        raise SystemExit("deltalake is not installed: uv pip install deltalake pyarrow")
+        raise SystemExit(
+            "deltalake is not installed: uv pip install deltalake pyarrow"
+        ) from None
     # deltalake >= 1.0 returns an arro3 table with no to_pylist; pyarrow
     # accepts it through the Arrow C stream interface either way.
     try:
         import pyarrow
     except ImportError:
-        raise SystemExit("pyarrow is not installed: uv pip install deltalake pyarrow")
+        raise SystemExit(
+            "pyarrow is not installed: uv pip install deltalake pyarrow"
+        ) from None
 
     dt = DeltaTable(str(table))
 
@@ -151,7 +158,9 @@ def analyze_iceberg(table: Path) -> dict:
     try:
         from pyiceberg.table import StaticTable
     except ImportError:
-        raise SystemExit("pyiceberg is not installed: uv pip install pyiceberg")
+        raise SystemExit(
+            "pyiceberg is not installed: uv pip install pyiceberg"
+        ) from None
 
     metadata = sorted((table / "metadata").glob("*.metadata.json"))[-1]
     t = StaticTable.from_metadata(str(metadata))

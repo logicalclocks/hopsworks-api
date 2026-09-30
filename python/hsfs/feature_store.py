@@ -1729,6 +1729,7 @@ class FeatureStore:
         feature_group_object.feature_store = self
         return feature_group_object
 
+    @deprecated("hsfs.feature_view.FeatureView.get_batch_data")
     @public
     @usage._method_logger
     def get_or_create_spine_group(
@@ -1749,6 +1750,13 @@ class FeatureStore:
         ) = None,
     ) -> feature_group.SpineGroup:
         """Create a spine group metadata object.
+
+        Warning: Deprecated
+            Spine groups are superseded by the `spine_df` argument on `get_batch_data` and on
+            every training-data method, which anchors an existing feature view on rows you
+            supply without the view having to be created with a spine group up front. A spine
+            group has to be decided when the view is created and cannot be added later, which
+            is the limitation `spine_df` removes.
 
         Instead of using a feature group to save a label/prediction target, you can use a spine together with a dataframe containing the labels.
         A Spine is essentially a metadata object similar to a feature group, however, the data is not materialized in the feature store.
@@ -2160,6 +2168,7 @@ class FeatureStore:
             list[TransformationFunction | HopsworksUdf] | None
         ) = None,
         logging_enabled: bool | None = False,
+        max_feature_age: timedelta | None = None,
         extra_log_columns: list[feature.Feature] | list[dict[str, str]] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         logging_materialization_interval: str | None = None,
@@ -2249,6 +2258,12 @@ class FeatureStore:
                 Chained transformations are automatically organized into a DAG where independent transformations run in parallel.
                 Use [`FeatureView.visualize_transformations`][hsfs.feature_view.FeatureView.visualize_transformations] to inspect the execution order.
             logging_enabled: If true, enable feature logging for the feature view.
+            max_feature_age: How stale a looked-up row may be, relative to the time it is
+                looked up as of, for reads anchored on a `spine_df`. A feature group whose
+                newest row at or before that time is older than this returns `NULL` instead of
+                a stale value. One `timedelta` for the whole view. Set here rather than per
+                call, so a training set and an inference read cannot be built with different
+                bounds. Unbounded by default.
             extra_log_columns:
                 Extra columns to be logged in addition to the features used in the feature view.
                 It can be a list of Feature objects or list a dictionaries that contains the the name and type of the columns as keys.
@@ -2283,6 +2298,7 @@ class FeatureStore:
             # The backend enables logging on the platform transport while it
             # saves the view; a view that names its transport enables it after.
             logging_enabled=logging_enabled and logging_transport is None,
+            max_feature_age=max_feature_age,
             extra_log_columns=extra_log_columns if logging_transport is None else None,
             tags=normalized_tags,
         )
@@ -2310,6 +2326,7 @@ class FeatureStore:
         training_helper_columns: list[str] | None = None,
         transformation_functions: dict[str, TransformationFunction] | None = None,
         logging_enabled: bool | None = False,
+        max_feature_age: timedelta | None = None,
         extra_log_columns: list[feature.Feature] | list[dict[str, str]] | None = None,
         tags: tag.Tag | dict[str, Any] | list[tag.Tag | dict[str, Any]] | None = None,
         logging_materialization_interval: str | None = None,
@@ -2363,6 +2380,12 @@ class FeatureStore:
                 Chained transformations are automatically organized into a DAG where independent transformations run in parallel.
                 Use [`FeatureView.visualize_transformations`][hsfs.feature_view.FeatureView.visualize_transformations] to inspect the execution order.
             logging_enabled: If true, enable feature logging for the feature view.
+            max_feature_age: How stale a looked-up row may be, relative to the time it is
+                looked up as of, for reads anchored on a `spine_df`. A feature group whose
+                newest row at or before that time is older than this returns `NULL` instead of
+                a stale value. One `timedelta` for the whole view. Set here rather than per
+                call, so a training set and an inference read cannot be built with different
+                bounds. Unbounded by default.
             extra_log_columns:
                 Extra columns to be logged in addition to the features used in the feature view.
                 It can be a list of Feature objects or list a dictionaries that contains the the name and type of the columns as keys.
@@ -2394,6 +2417,7 @@ class FeatureStore:
                 training_helper_columns=training_helper_columns or [],
                 transformation_functions=transformation_functions or [],
                 logging_enabled=logging_enabled,
+                max_feature_age=max_feature_age,
                 extra_log_columns=extra_log_columns,
                 tags=tags,
                 logging_materialization_interval=logging_materialization_interval,

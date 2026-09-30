@@ -298,7 +298,8 @@ X_train, X_test, y_train, y_test = fv.train_test_split(test_size=0.2, dataframe_
 | `coalesce` | `bool` | Write to single file (default: False) |
 | `seed` | `int` | Random seed for reproducible splits |
 | `statistics_config` | `bool` / `dict` | Compute statistics for transformations |
-| `spine` | `DataFrame` | Spine for point-in-time joins (Spark only) |
+| `spine_df` | `DataFrame` | Rows to anchor the query on: serving keys plus an event time per row |
+| `spine` | `DataFrame` | Deprecated, use `spine_df`. Only for a view created with a spine group |
 | `test_size` | `float` | Fraction for test set (0-1) |
 | `validation_size` | `float` | Fraction for validation set (0-1) |
 

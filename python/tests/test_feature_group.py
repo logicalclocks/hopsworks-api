@@ -17,7 +17,9 @@ import warnings
 from unittest import mock
 
 import hsfs
+import pandas as pd
 import pytest
+from hopsworks_common import spark_connect_utils
 from hsfs import (
     engine,
     expectation_suite,
@@ -2730,3 +2732,142 @@ class TestFeatureGroupVisualize:
         # default must produce the clean error, not an AttributeError.
         with pytest.raises(FeatureStoreException, match="No transformation functions"):
             external_fg.visualize_transformations()
+
+
+class TestFeatureGroupReadPrimaryKeys:
+    def test_the_selection_is_the_primary_key(self, mocker):
+        fg = get_test_feature_group()
+        select = mocker.patch.object(fg, "select", wraps=fg.select)
+        mocker.patch(
+            "hsfs.constructor.query.Query.read",
+            return_value=pd.DataFrame({"pk": [1, 1, 2]}),
+        )
+
+        fg.read_primary_keys()
+
+        select.assert_called_once_with(["pk"])
+
+    def test_duplicate_rows_are_dropped_for_pandas(self, mocker):
+        fg = get_test_feature_group()
+        mocker.patch(
+            "hsfs.constructor.query.Query.read",
+            return_value=pd.DataFrame({"pk": [1, 1, 2, 2, 3]}),
+        )
+
+        keys = fg.read_primary_keys()
+
+        assert list(keys["pk"]) == [1, 2, 3]
+        assert list(keys.index) == [0, 1, 2], "the index is reset, not left with gaps"
+
+    def test_read_options_and_online_are_passed_through(self, mocker):
+        fg = get_test_feature_group()
+        read = mocker.patch(
+            "hsfs.constructor.query.Query.read",
+            return_value=pd.DataFrame({"pk": [1]}),
+        )
+
+        fg.read_primary_keys(
+            online=True, dataframe_type="pandas", read_options={"a": 1}
+        )
+
+        assert read.call_args.kwargs == {
+            "online": True,
+            "dataframe_type": "pandas",
+            "read_options": {"a": 1},
+        }
+
+    def test_a_feature_group_with_no_primary_key_is_refused(self):
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=1,
+            featurestore_name="fs",
+            features=[feature.Feature("f1")],
+            # Named, as every other feature group in this file does: the default is DELTA, and
+            # constructing one asks for the delta library, which the Windows job does not have.
+            time_travel_format="HUDI",
+            primary_key=[],
+            partition_key=[],
+            event_time=None,
+        )
+
+        with pytest.raises(FeatureStoreException, match="no primary key"):
+            fg.read_primary_keys()
+
+    def test_duplicate_rows_are_dropped_for_polars(self, mocker):
+        pl = pytest.importorskip("polars")
+
+        fg = get_test_feature_group()
+        mocker.patch(
+            "hsfs.constructor.query.Query.read",
+            return_value=pl.DataFrame({"pk": [2, 2, 1, 3]}),
+        )
+
+        keys = fg.read_primary_keys(dataframe_type="polars")
+
+        # maintain_order, so the frame is not silently reshuffled under the caller.
+        assert keys["pk"].to_list() == [2, 1, 3]
+
+    def test_a_dataframe_type_with_no_distinct_is_refused(self, mocker):
+        # numpy and python come back as arrays and lists, which have no notion of a row.
+        fg = get_test_feature_group()
+        mocker.patch("hsfs.constructor.query.Query.read", return_value=[[1], [1]])
+
+        with pytest.raises(FeatureStoreException, match="Cannot take distinct rows"):
+            fg.read_primary_keys(dataframe_type="python")
+
+    def test_a_spark_dataframe_is_deduplicated_by_spark(self, mocker):
+        # Dispatch is on the frame the engine returned, so a Spark frame dedupes in Spark
+        # rather than being pulled to the driver. A Spark DataFrame also answers to
+        # `drop_duplicates`, so this only holds if Spark is matched by type and matched first:
+        # the pandas branch passes `ignore_index`, which Spark rejects.
+        fg = get_test_feature_group()
+        spark_df = mock.MagicMock(spec=["distinct", "drop_duplicates"])
+        spark_df.__class__.__name__ = "DataFrame"
+        mocker.patch("hsfs.constructor.query.Query.read", return_value=spark_df)
+        mocker.patch(
+            "hopsworks_common.spark_connect_utils._is_spark_dataframe",
+            return_value=True,
+        )
+
+        result = fg.read_primary_keys(dataframe_type="spark")
+
+        spark_df.distinct.assert_called_once_with()
+        spark_df.drop_duplicates.assert_not_called()
+        assert result is spark_df.distinct.return_value
+
+    def test_the_scheduler_window_does_not_narrow_the_entities(self, mocker):
+        # FeatureGroup.read() applies HOPS_START_TIME/HOPS_END_TIME. Going through it would
+        # silently return only the entities in whatever interval a job is processing.
+        fg = get_test_feature_group()
+        fg_read = mocker.patch.object(feature_group.FeatureGroup, "read")
+        mocker.patch(
+            "hsfs.constructor.query.Query.read",
+            return_value=pd.DataFrame({"pk": [1]}),
+        )
+
+        fg.read_primary_keys()
+
+        fg_read.assert_not_called()
+
+
+class TestIsSparkDataFrame:
+    def test_a_pandas_frame_is_not_a_spark_frame(self):
+        assert (
+            spark_connect_utils._is_spark_dataframe(pd.DataFrame({"a": [1]})) is False
+        )
+
+    def test_a_real_spark_frame_is_recognised(self):
+        from hsfs.engine import spark as spark_engine_mod
+
+        session = spark_engine_mod.Engine()._spark_session
+        sdf = session.createDataFrame([(1,)], ["a"])
+        assert spark_connect_utils._is_spark_dataframe(sdf) is True
+
+    def test_a_spark_frame_carries_the_pandas_method_name(self):
+        # The reason dispatch is by type: capability checks cannot tell them apart.
+        from hsfs.engine import spark as spark_engine_mod
+
+        session = spark_engine_mod.Engine()._spark_session
+        sdf = session.createDataFrame([(1,)], ["a"])
+        assert hasattr(sdf, "drop_duplicates") and hasattr(sdf, "distinct")
