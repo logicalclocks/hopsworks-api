@@ -1,6 +1,6 @@
 # An ML system built from system.yaml
 
-This directory is an ML system built on Hopsworks with Claude Code, by `/hops-build <slug>` (Brewer in the Hopsworks UI), where `<slug>` is this directory's name.
+This directory is an ML system built on Hopsworks with Claude Code, by `/hops-build <slug>` (Factory in the Hopsworks UI), where `<slug>` is this directory's name.
 `system.yaml` is the specification: the requirements, the data sources, the feature pipelines, training, inference and the app.
 The code here, its jobs and schedules, and the Hopsworks assets it creates (feature groups, feature views, training datasets, models, deployments, apps) are built from it, and must stay in step with it.
 Paths the hops skills write as `<slug>/<path>` are `<path>` in this directory.

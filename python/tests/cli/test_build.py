@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 import subprocess
 import sys
 import threading
@@ -198,6 +199,116 @@ def test_a_described_batch_system_records_every_answer(tmp_path, monkeypatch, qu
     assert done.output.index("Where should the code go?") < done.output.index(
         "What type of ML system?"
     )
+
+
+def _answers(tmp_path: Path, **answers) -> str:
+    path = tmp_path.parent / f"{tmp_path.name}-answers.json"
+    path.write_text(json.dumps(answers), encoding="utf-8")
+    return str(path)
+
+
+def test_the_uis_answers_leave_nothing_to_ask(tmp_path, monkeypatch, quiet):
+    monkeypatch.setenv("HOPSFS_USER_HOME_DIR", str(tmp_path))
+    path = _answers(
+        tmp_path,
+        slug="late-orders",
+        description="which orders will ship late",
+        system_type="batch",
+        sla={"batch": {"cadence": "daily"}},
+        consumers="ui",
+        data_sources=[
+            {
+                "name": "orders",
+                "kind": "synthetic",
+                "shape": "events",
+                "story": "10k orders",
+            }
+        ],
+        app={"wanted": True, "kind": "dashboard", "description": "ops reads it"},
+        repo="new",
+    )
+    done = _run(tmp_path, monkeypatch, [], "--answers", path)
+    assert done.exit_code == 0, done.output
+    assert "?" not in done.output.replace("Where should the code go?", "")
+    doc = _doc(tmp_path / "late-orders")
+    req = doc["requirements"]
+    assert (req["system_type"], req["sla"]) == (
+        "batch",
+        {"batch": {"cadence": "daily"}},
+    )
+    assert req["data_sources"] == [
+        {
+            "name": "orders",
+            "kind": "synthetic",
+            "shape": "events",
+            "status": "needs_generation",
+        }
+    ]
+    assert doc["data"]["orders"]["generator"]["story"] == "10k orders"
+    assert doc["app"] == {
+        "kind": "dashboard",
+        "description": "ops reads it",
+        "wanted": True,
+        "status": "pending",
+    }
+    assert doc["system"]["repo"] == {"url": "new"}
+    assert quiet == [(tmp_path / "late-orders", "Late orders")]
+
+
+def test_the_uis_answers_override_an_example(tmp_path, monkeypatch, quiet):
+    monkeypatch.setenv("HOPSFS_USER_HOME_DIR", str(tmp_path))
+    path = _answers(
+        tmp_path,
+        slug="my-helpdesk",
+        example="helpdesk-example",
+        description="answers questions about our returns policy",
+        data_sources=[
+            {"name": "docs", "kind": "file"},
+            {
+                "name": "user_events",
+                "kind": "synthetic",
+                "shape": "events",
+                "story": "50 users",
+            },
+        ],
+        llm="account",
+    )
+    done = _run(tmp_path, monkeypatch, [], "--answers", path)
+    assert done.exit_code == 0, done.output
+    assert "API key" not in done.output
+    doc = _doc(tmp_path / "my-helpdesk")
+    assert doc["system"]["example"] == "helpdesk-example"
+    assert doc["requirements"]["description"].startswith("answers questions about")
+    assert doc["inference"]["agent"]["deployment"] == "helpdeskagent"
+    assert doc["inference"]["agent"]["llm"]["api_key_env"] == "LLM_API_KEY"
+    docs, events = doc["requirements"]["data_sources"]
+    assert docs == {"name": "docs", "kind": "file", "status": "needs_download"}
+    assert doc["data"]["user_events"]["generator"]["story"] == "50 users"
+    assert doc["data"]["user_events"]["writes"]["feature_group"] == "user_events"
+    # A second Create resumes the system rather than failing on it.
+    again = _run(tmp_path, monkeypatch, [], "--answers", path)
+    assert again.exit_code == 0 and "resuming" in again.output
+
+
+def test_answers_are_checked(tmp_path, monkeypatch, quiet):
+    bad = _run(
+        tmp_path, monkeypatch, [], "--answers", _answers(tmp_path, slug="Has Space")
+    )
+    assert bad.exit_code != 0 and "lowercase" in bad.output
+    odd = _run(
+        tmp_path, monkeypatch, [], "--answers", _answers(tmp_path, slug="a", x=1)
+    )
+    assert odd.exit_code != 0 and "unknown keys x" in odd.output
+    both = _run(
+        tmp_path,
+        monkeypatch,
+        [],
+        "--example",
+        "churn-example",
+        "--answers",
+        _answers(tmp_path, slug="a"),
+    )
+    assert both.exit_code != 0
 
 
 def test_a_resumed_interview_skips_what_is_answered(tmp_path, monkeypatch, quiet):

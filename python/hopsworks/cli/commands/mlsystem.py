@@ -350,7 +350,7 @@ def mlsystem_status(
     job's runs in the last HOURS with the log tail of every failure, and each
     deployment and app with its state and its pods (readiness, restarts, the last
     termination reason, CPU and memory against the limits, from kubectl). Claude
-    writes a short summary of what failed and why. Brewer's Status button runs this
+    writes a short summary of what failed and why. The Factory Status button runs this
     and shows the page.
 
     Args:

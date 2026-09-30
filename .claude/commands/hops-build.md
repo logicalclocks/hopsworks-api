@@ -33,7 +33,7 @@ template, bundles, tests, the repository contract). Find a skill at `.claude/ski
 repository, else `~/.claude/skills/<name>/` (in a Hopsworks terminal that links to
 `/opt/hops/agent-skills/`).
 
-**Where it runs.** Brewer and `hops build` start Claude Code in the system's directory, `<slug>/`,
+**Where it runs.** Factory and `hops build` start Claude Code in the system's directory, `<slug>/`,
 so it reads the system's `AGENTS.md`. There, every `<slug>/<path>` in this command and in the
 skills is `<path>` in the current directory; started in the directory above, paths are as written.
 
@@ -98,8 +98,8 @@ a question you are about to ask depends on.
 
 ### Edits from the Hopsworks UI
 
-`system.edits` lists changes a user made to `system.yaml` from the Hopsworks UI (the Brewer
-panel's system architecture), not yet applied. Each is one commit, `[<slug>] edit: <box> in
+`system.edits` lists changes a user made to `system.yaml` from the Hopsworks UI (the Factory
+page's system architecture), not yet applied. Each is one commit, `[<slug>] edit: <box> in
 system.yaml` with a `Brewer-Edit: <id>` trailer, and one entry: `{id, paths, box, phase, at, by}`,
 where `paths` are the dotted paths it changed (`features.pipelines[0]`, `data.customers`). The UI
 shows the phase as edited and offers Apply changes, which starts

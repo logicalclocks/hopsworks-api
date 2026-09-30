@@ -7,7 +7,7 @@ with its state and its pods (phase, readiness, restarts, the last termination
 reason, CPU and memory used against the limits, from kubectl in the project
 namespace). `summarize` asks Claude for a short account of what failed and
 why; `render` writes one self-contained HTML page with the facts, the summary
-and a little JavaScript, which Brewer shows next to the architecture.
+and a little JavaScript, which the Factory page shows next to the architecture.
 """
 
 from __future__ import annotations

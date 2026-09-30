@@ -337,6 +337,142 @@ def _problem(prefetch: _Prefetch, cwd: Path) -> _System:
     return system
 
 
+ANSWER_KEYS = {
+    "slug",
+    "example",
+    "name",
+    "description",
+    "system_type",
+    "sla",
+    "consumers",
+    "data_sources",
+    "app",
+    "repo",
+    "llm",
+}
+
+
+def _from_answers(prefetch: _Prefetch, cwd: Path, path: Path) -> _System:
+    """A system from the answers the Hopsworks UI collected, as a JSON file.
+
+    Keys are those of ANSWER_KEYS; `slug` is required, and names the
+    directory and the repository. With `example`, the example is the draft and
+    the answers override it. What the answers leave out is asked as usual.
+    `llm: "account"` records that the agent's LLM is in the user's account
+    environment variables, which the UI has set. An existing system of that slug
+    is resumed and the answers are not applied again.
+    """
+    try:
+        answers = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise click.BadParameter(str(exc), param_hint="--answers") from exc
+    unknown = set(answers) - ANSWER_KEYS
+    if unknown:
+        raise click.BadParameter(
+            f"unknown keys {', '.join(sorted(unknown))}", param_hint="--answers"
+        )
+    slug = _slug(str(answers.get("slug") or ""))
+    if (cwd / slug / "system.yaml").exists():
+        output.info(f"{slug} already exists here; resuming it.")
+        return _System(cwd / slug)
+    example = answers.get("example")
+    if example:
+        examples = _load(REFERENCES / "new_system.py", "new_system").examples()
+        if example not in examples:
+            raise click.BadParameter(
+                f"{example!r} is not one of {', '.join(examples)}",
+                param_hint="--answers",
+            )
+        system = _create(cwd, slug, example=example)
+    else:
+        system = _create(cwd, slug)
+        system.put("schema_version", 1)
+        system.put(
+            "system", {"name": slug.replace("-", " ").capitalize(), "slug": slug}
+        )
+        system.put("system.status", "draft")
+        system.put("requirements.status", "pending")
+    _target(system, prefetch)
+    _apply_answers(system, answers)
+    system.save()
+    return system
+
+
+def _apply_answers(system: _System, answers: dict) -> None:
+    for key, dotted in (
+        ("name", "system.name"),
+        ("description", "requirements.description"),
+        ("sla", "requirements.sla"),
+        ("consumers", "requirements.consumers"),
+    ):
+        if answers.get(key):
+            system.put(dotted, answers[key])
+    kind = answers.get("system_type")
+    if kind:
+        if kind not in SYSTEM_TYPES:
+            raise click.BadParameter(
+                f"system_type {kind!r} is not one of {', '.join(SYSTEM_TYPES)}",
+                param_hint="--answers",
+            )
+        system.put("requirements.system_type", kind)
+    kind = system.requirements.get("system_type")
+    if kind == "agent" and not system.requirements.get("sla"):
+        system.put("requirements.sla", {"agent": {"p99_ms": 5000, "throughput_qps": 2}})
+    if answers.get("data_sources"):
+        # A source the draft already has keeps what the answers do not say, such
+        # as where an example's documents are uploaded or what it writes.
+        drafted = {
+            s.get("name"): s for s in system.requirements.get("data_sources") or []
+        }
+        sources = []
+        for source in answers["data_sources"]:
+            name = _ident(str(source.get("name") or ""))
+            kind = source.get("kind") or "synthetic"
+            entry = {**drafted.get(name, {}), "name": name, "kind": kind}
+            if kind == "feature_group":
+                entry.update(version=int(source.get("version") or 1), status="present")
+            elif kind == "file":
+                entry.setdefault("status", "needs_download")
+            else:
+                entry["kind"] = "synthetic"
+                entry["shape"] = (
+                    "events" if source.get("shape") == "events" else "batch"
+                )
+                entry["status"] = "needs_generation"
+                if source.get("story"):
+                    system.put(f"data.{name}.generator.story", source["story"])
+                system.put("data.status", "pending")
+            sources.append(entry)
+        system.put("requirements.data_sources", sources)
+    app = answers.get("app")
+    if app:
+        wanted = bool(app.get("wanted", True))
+        system.put(
+            "app",
+            {
+                **(system.doc.get("app") or {}),
+                **{k: v for k, v in app.items() if k in ("kind", "description") and v},
+                "wanted": wanted,
+                "status": "pending" if wanted else "skipped",
+            },
+        )
+    if answers.get("repo"):
+        system.put("system.repo", {"url": answers["repo"]})
+    if kind == "agent" and answers.get("llm") == "account":
+        record = {
+            "endpoint_env": LLM_VARS["url"],
+            "api_key_env": LLM_VARS["api_key"],
+            "model_env": LLM_VARS["model"],
+        }
+        if system.doc.get("inference"):
+            system.put("inference.agent.llm", record)
+        else:
+            system.put(
+                "inference",
+                {"mode": "agent", "agent": {"llm": record}, "status": "pending"},
+            )
+
+
 def _slug(value: str) -> str:
     if not SLUG.match(value):
         raise click.BadParameter("lowercase letters, digits and hyphens, e.g. churn")
@@ -746,9 +882,18 @@ def _launch(ctx: click.Context, system: _System, launch: bool) -> None:
     metavar="NAME",
     help="Build this example system (churn-example, recs-example or helpdesk-example) without the menu; resumes it if it already exists here.",
 )
+@click.option(
+    "--answers",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="A JSON file of the interview's answers, as the Hopsworks UI writes it; only what it leaves out is asked.",
+)
 @click.pass_context
 def build_cmd(
-    ctx: click.Context, slug: str | None, no_launch: bool, example: str | None
+    ctx: click.Context,
+    slug: str | None,
+    no_launch: bool,
+    example: str | None,
+    answers: Path | None,
 ) -> None:
     """Interview for a new ML system, then build it with Claude Code.
 
@@ -765,13 +910,14 @@ def build_cmd(
         slug: An existing system in this directory to resume.
         no_launch: Record the interview only.
         example: An example system to build, as the Hopsworks UI starts one.
+        answers: The interview's answers, as the Hopsworks UI collects them.
     """
-    if slug and example:
-        raise click.UsageError("pass either SLUG or --example, not both")
+    if sum(map(bool, (slug, example, answers))) > 1:
+        raise click.UsageError("pass one of SLUG, --example and --answers")
     prefetch = _Prefetch(ctx)
     prefetch.start()
     try:
-        _interview(ctx, prefetch, slug, not no_launch, example)
+        _interview(ctx, prefetch, slug, not no_launch, example, answers)
     finally:
         # A login still importing the SDK at interpreter exit fails noisily.
         prefetch.join(timeout=15)
@@ -783,11 +929,14 @@ def _interview(
     slug: str | None,
     launch: bool,
     example: str | None = None,
+    answers: Path | None = None,
 ) -> None:
     cwd = Path.cwd()
     existing = _systems(cwd)
     system: _System | None = None
-    if example:
+    if answers:
+        system = _from_answers(prefetch, cwd, answers)
+    elif example:
         system = _example(prefetch, cwd, example)
     elif slug:
         if not (cwd / slug / "system.yaml").exists():
