@@ -803,6 +803,25 @@ def test_a_live_tick_writes_its_rate_inside_the_tick():
     assert tick.equals(generator.tick(entities, now, 10, 5, 7))
 
 
+def test_an_offline_source_gets_an_offline_delta_group():
+    pytest.importorskip("polars")
+    generator = _load(GENERATOR, "generator_under_test")
+
+    class FakeStore:
+        def get_or_create_feature_group(self, **kwargs):
+            self.kwargs = kwargs
+
+    fs = FakeStore()
+    generator._sink(fs, {"feature_group": "usage_events", "online": False})
+    assert fs.kwargs["online_enabled"] is False
+    assert fs.kwargs["time_travel_format"] == "DELTA"
+    assert "stream" not in fs.kwargs
+    assert "ttl" not in fs.kwargs
+    generator._sink(fs, {"feature_group": "usage_events"})
+    assert fs.kwargs["online_enabled"] is True
+    assert fs.kwargs["stream"] is True
+
+
 # endregion
 
 # region The dashboard program

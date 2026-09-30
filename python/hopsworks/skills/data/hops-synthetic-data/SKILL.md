@@ -75,6 +75,9 @@ hops job history <slug>-events              # the live writer has a RUNNING exec
   materialization job is the one Spark job an online feature group needs, so
   make an event group online only when the system reads it online (a stream the
   app shows live, a real-time or agent lookup); otherwise it is a batch group.
+  A batch system (weekly churn scoring, say) sets `writes: {online: false,
+  time_travel_format: DELTA}`: the generator then writes an offline-only Delta
+  table in one insert, with no stream, TTL, materialization job or live mode.
   First a `--mode backfill` run writes the history the training phase needs,
   finalises its multi-part insert, runs the materialization job and waits; the
   rows count as training data only once `hops sql` counts them offline. Query the

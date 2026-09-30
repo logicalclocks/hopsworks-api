@@ -196,19 +196,37 @@ def tick(
     )
 
 
+def _online(writes: dict) -> bool:
+    return bool(writes.get("online", True))
+
+
 def _sink(fs, writes: dict):
-    """The events feature group: online, keyed by event, with a TTL and scheduled materialization."""
+    """The events feature group, keyed by event.
+
+    Online (the default): a stream with a TTL and scheduled materialization.
+    `online: false`: an offline-only table in `time_travel_format` (DELTA by default),
+    which a batch system reads without an online store.
+    """
+    common = {
+        "name": writes["feature_group"],
+        "version": writes.get("version", 1),
+        "primary_key": [writes.get("primary_key", "event_id")],
+        "event_time": writes.get("event_time", "ts"),
+        "description": f"Synthetic {SOURCE}, written by this system's synthetic data job",
+        "statistics_config": False,
+    }
+    if not _online(writes):
+        return fs.get_or_create_feature_group(
+            **common,
+            online_enabled=False,
+            time_travel_format=writes.get("time_travel_format", "DELTA"),
+        )
     return fs.get_or_create_feature_group(
-        name=writes["feature_group"],
-        version=writes.get("version", 1),
-        primary_key=[writes.get("primary_key", "event_id")],
-        event_time=writes.get("event_time", "ts"),
+        **common,
         online_enabled=True,
         stream=True,
         ttl=timedelta(days=int(str(writes.get("ttl", "7d")).rstrip("d"))),
         offline_backfill_every_hr=int(str(writes.get("offline_backfill_every", "1h")).rstrip("h")),
-        description=f"Synthetic {SOURCE}, written by this system's synthetic data job",
-        statistics_config=False,
     )
 
 
@@ -271,18 +289,23 @@ def main(argv: list[str] | None = None) -> int:
         rows = int((spec.get("backfill") or {}).get("rows", 100_000))
         rate = rows / (end - start).total_seconds()
         frame = events(ents, start, end, rate, seed)
-        for chunk in frame.iter_slices(50_000):
-            sink.multi_part_insert(chunk)
-        sink.finalize_multi_part_insert()
-        # Rows in the online store are not training data until they are materialized.
-        sink.materialization_job.run(await_termination=True)
-        _ensure_materialization_schedule(sink, writes)
+        if _online(writes):
+            for chunk in frame.iter_slices(50_000):
+                sink.multi_part_insert(chunk)
+            sink.finalize_multi_part_insert()
+            # Rows in the online store are not training data until they are materialized.
+            sink.materialization_job.run(await_termination=True)
+            _ensure_materialization_schedule(sink, writes)
+        else:
+            sink.insert(frame.to_pandas(), write_options={"wait_for_job": True})
         _write_result(
             manifest,
             {"mode": "backfill", "rows": frame.height, "from": start, "to": end},
         )
         return 0
 
+    if not _online(writes):
+        parser.error("--mode live needs an online events group; this source is offline-only")
     tick_s = int(live.get("tick_s", 10))
     rate = float(live.get("rate_per_s", 5))
     done = 0

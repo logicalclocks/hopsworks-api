@@ -20,7 +20,8 @@ churn-example:
       tier: small
       confirmed_above_cap: >-
         ~5,000 customers x ~21 weekly snapshots (~105k rows); ~3M usage events (~300 MB offline)
-        over ~5,000 entities; live ~0.2 events/s (~110k rows online at a 7-day TTL)
+        over ~5,000 entities; no live stream and no online store, since weekly batch scoring reads
+        only the offline store
     data_sources:
       - {name: customers, kind: synthetic, shape: batch, status: needs_generation}
       - {name: usage_events, kind: synthetic, shape: events, status: needs_generation}
@@ -35,11 +36,25 @@ churn-example:
           snapshot by time range, and the labels (customer, snapshot, churned within 30 days) join
           on both keys. A scheduled snapshot job writes exactly the snapshots on the Monday grid
           inside its window, so a weekly fire never writes seven
+      writes:
+        feature_group: customers
+        version: 1
+        online: false
+        time_travel_format: DELTA
+        primary_key: [customer_id, snapshot_date]
+        event_time: snapshot_date
     usage_events:
       generator:
         story: >-
           daily calls, data use and top-ups per customer; churners' usage decays over their last
-          60 days
+          60 days. Backfill only: a batch system has no live stream
+      writes:
+        feature_group: usage_events
+        version: 1
+        online: false
+        time_travel_format: DELTA
+        primary_key: [event_id]
+        event_time: ts
     status: pending
   app:
     wanted: true
