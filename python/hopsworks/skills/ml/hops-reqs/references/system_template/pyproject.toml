@@ -11,8 +11,10 @@ markers = ["integration: needs a Hopsworks connection; run only with pytest test
 # finding, and /hops-build runs `ruff format` and `ruff check --fix` before it
 # tests a phase.
 [tool.ruff]
-# The CLI loads some of these files (set.py, status.py), and supports Python 3.10.
-target-version = "py310"
+target-version = "py313"
+# The hops CLI loads set.py (and through it the system.yaml rules) and runs
+# status.py with its own Python, which may be 3.10 on an external client.
+per-file-target-version = { "**/set.py" = "py310", "**/status.py" = "py310", "**/tests/unit/test_system_yaml.py" = "py310" }
 line-length = 100
 extend-exclude = ["runs", "status", ".venv"]
 

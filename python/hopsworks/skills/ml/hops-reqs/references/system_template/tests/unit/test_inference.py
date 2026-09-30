@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import itertools
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -26,7 +26,7 @@ def test_prediction_rows_write_only_the_allowed_fields():
     rows = inference_pipeline.prediction_rows(
         keys,
         [0.2, 0.9],
-        datetime(2026, 9, 1, tzinfo=timezone.utc),
+        datetime(2026, 9, 1, tzinfo=UTC),
         ["customer_id", "score"],
     )
     assert list(rows.columns) == ["customer_id", "score", "predicted_at"]

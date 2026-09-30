@@ -22,7 +22,7 @@ import argparse
 import importlib
 import signal
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -207,7 +207,7 @@ def _new_training_dataset(fv: Any, system: dict, evaluate: Any) -> int:
     if split["kind"] == "temporal":
         bounds = evaluate.split_boundaries(
             datetime.fromisoformat(str(split["start"])),
-            datetime.now(timezone.utc).replace(tzinfo=None),
+            datetime.now(UTC).replace(tzinfo=None),
             split["validation_fraction"],
             split["test_fraction"],
             evaluate.parse_period(system["requirements"]["problem"]["label_maturity"]),
@@ -356,7 +356,7 @@ def main(argv: list[str] | None = None) -> int:
             y_scored,
         )
         result.update(registered=True, model={"name": name, "version": version})
-    result["finished"] = datetime.now(timezone.utc).isoformat()
+    result["finished"] = datetime.now(UTC).isoformat()
     _write_result(manifest, result)
     print(result)
     return 0

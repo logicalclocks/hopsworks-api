@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import argparse
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -111,7 +111,7 @@ def window(start: str | None = None, end: str | None = None) -> tuple[datetime, 
 
     def parse(text: str) -> datetime:
         parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
-        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
     begin, finish = parse(raw_start), parse(raw_end)
     if finish <= begin:

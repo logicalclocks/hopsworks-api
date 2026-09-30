@@ -7,7 +7,7 @@ the expected output beside them (the feature row of hops-reqs/references/tests.m
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pandas as pd
 import pytest
@@ -19,8 +19,8 @@ def test_window_reads_the_scheduler_variables(monkeypatch):
     monkeypatch.setenv("HOPS_START_TIME", "2026-08-01T00:00:00Z")
     monkeypatch.setenv("HOPS_END_TIME", "2026-09-01T00:00:00Z")
     begin, end = feature_pipeline.window()
-    assert begin == datetime(2026, 8, 1, tzinfo=timezone.utc)
-    assert end == datetime(2026, 9, 1, tzinfo=timezone.utc)
+    assert begin == datetime(2026, 8, 1, tzinfo=UTC)
+    assert end == datetime(2026, 9, 1, tzinfo=UTC)
 
 
 def test_window_refuses_an_empty_interval():

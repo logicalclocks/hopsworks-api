@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import argparse
 import importlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -146,7 +146,7 @@ def main(argv: list[str] | None = None) -> int:
     rows = prediction_rows(
         batch[key_columns].rename(columns={key_columns[0]: entity}),
         scores,
-        datetime.now(timezone.utc),
+        datetime.now(UTC),
         system["requirements"]["data_policy"]["log_fields"],
     )
     writes = system["inference"]["batch"]["writes"]

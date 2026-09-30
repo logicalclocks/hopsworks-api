@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import argparse
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -218,7 +218,7 @@ def _ensure_materialization_schedule(sink, writes: dict) -> None:
     hours = int(str(writes.get("offline_backfill_every", "1h")).rstrip("h"))
     job.schedule(
         cron_expression=f"0 0 */{hours} ? * * *",
-        start_time=datetime.now(timezone.utc) + timedelta(seconds=5),
+        start_time=datetime.now(UTC) + timedelta(seconds=5),
     )
 
 
@@ -243,12 +243,12 @@ def main(argv: list[str] | None = None) -> int:
 
     fs = hopsworks.login().get_feature_store()
     sink = _sink(fs, writes)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     ents = entities(n_entities, seed, prevalence, now)
 
     if args.mode == "backfill":
-        start = datetime.fromisoformat(args.start).replace(tzinfo=timezone.utc)
-        end = datetime.fromisoformat(args.end).replace(tzinfo=timezone.utc)
+        start = datetime.fromisoformat(args.start).replace(tzinfo=UTC)
+        end = datetime.fromisoformat(args.end).replace(tzinfo=UTC)
         entity_writes = spec.get("entities")
         if entity_writes:
             table = fs.get_or_create_feature_group(
@@ -282,7 +282,7 @@ def main(argv: list[str] | None = None) -> int:
     done = 0
     with sink.multi_part_insert() as writer:
         while args.ticks is None or done < args.ticks:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             writer.insert(tick(ents, now, tick_s, rate, seed))
             done += 1
             time.sleep(max(0.0, tick_s - (time.time() % tick_s)))

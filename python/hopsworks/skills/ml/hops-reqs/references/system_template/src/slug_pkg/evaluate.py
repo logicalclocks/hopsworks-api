@@ -17,7 +17,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -388,7 +388,7 @@ def main(argv: list[str] | None = None) -> int:
                 system["requirements"],
                 metrics[system["requirements"]["targets"]["metric"]],
             ),
-            "finished": datetime.now(timezone.utc).isoformat(),
+            "finished": datetime.now(UTC).isoformat(),
         },
     )
     print(metrics)
