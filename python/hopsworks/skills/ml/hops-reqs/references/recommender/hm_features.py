@@ -4,7 +4,7 @@
 Run as the job `<slug>-features` in `<slug>-jobs-env`:
 
     hops job deploy <slug>-features src/<slug_pkg>/hm_features.py --env <slug>-jobs-env \
-        --args "--customers 2000" --run --wait
+        --args "--customers 5000 --synthetic 30" --run --wait
 
 Based on the Decoding AI / Hopsworks H&M course
 (https://github.com/decodingai-magazine/personalized-recommender-course). It reads
@@ -13,7 +13,9 @@ the public H&M files, samples customers, and writes four online feature groups:
 - `customers`: customer_id, club_member_status, age, postal_code, age_group;
 - `articles`: the attributes, a text description and the image URL of every
   article the sampled customers bought, the catalogue the models know;
-- `transactions`: the sampled customers' purchases, with month_sin and month_cos;
+- `transactions`: the sampled customers' purchases, with month_sin and month_cos,
+  and `--synthetic` more per customer in the shape of their own (`synthetic`
+  true), because the real sample is too sparse for the two-tower model;
 - `interactions`: the purchases plus clicks and ignores generated around them
   (interaction_score 2, 1 and 0), which the app appends to as shoppers use it.
 
@@ -185,6 +187,64 @@ def read_purchases(url: str, customer_ids: list[str]) -> pl.DataFrame:
     return pl.read_csv(header + b"".join(kept), try_parse_dates=True)
 
 
+def synthetic_purchases(
+    transactions: pl.DataFrame, articles: pl.DataFrame, per_customer: int, seed: int = SEED
+) -> pl.DataFrame:
+    """`per_customer` more purchases per customer, in the shape of the ones they made.
+
+    Each copies one of the customer's real purchases, drawn uniformly, so a group
+    they buy often is drawn often; swaps its article for one of the same index and
+    garment group, drawn by popularity; and moves it to a random day between the
+    customer's first and last purchase. The sample of real customers is too sparse
+    for a two-tower model to learn tastes from; these rows carry the same tastes,
+    denser. They are marked `synthetic`.
+    """
+    rng = np.random.default_rng([seed, 1])
+    groups = ["index_group_name", "garment_group_name"]
+    bought = transactions.join(articles.select("article_id", *groups), on="article_id")
+    counts = bought.group_by("customer_id").len()
+    picks = pl.Series(rng.random(counts.height * per_customer))
+    sampled = (
+        counts.select(pl.all().repeat_by(per_customer).explode())
+        .with_columns(row=(picks * pl.col("len")).floor().cast(pl.UInt32))
+        .select("customer_id", "row")
+        .join(
+            bought.with_columns(row=pl.int_range(pl.len()).over("customer_id").cast(pl.UInt32)),
+            on=["customer_id", "row"],
+        )
+    )
+    span = bought.group_by("customer_id").agg(
+        first=pl.col("t_dat").min(), last=pl.col("t_dat").max()
+    )
+    popularity = bought.group_by("article_id", *groups).len()
+    parts = []
+    for key, rows in sampled.group_by(groups):
+        pool = popularity.filter((pl.col(groups[0]) == key[0]) & (pl.col(groups[1]) == key[1]))
+        weights = pool["len"].to_numpy() / pool["len"].sum()
+        parts.append(
+            rows.with_columns(
+                article_id=pl.Series(
+                    rng.choice(pool["article_id"].to_numpy(), rows.height, p=weights)
+                )
+            )
+        )
+    days = pl.duration(days=pl.col("offset"))
+    return (
+        pl.concat(parts)
+        .join(span, on="customer_id")
+        .with_columns(u=pl.Series(rng.random(sampled.height)))
+        .with_columns(
+            offset=((pl.col("last") - pl.col("first")).dt.total_days() * pl.col("u")).floor()
+        )
+        .with_columns(t_dat=pl.col("first") + days)
+        .pipe(
+            lambda df: compute_transactions(
+                df.select("t_dat", "customer_id", "article_id", "price", "sales_channel_id")
+            )
+        )
+    )
+
+
 def generate_interactions(
     transactions: pl.DataFrame, articles: pl.Series, seed: int = SEED
 ) -> pl.DataFrame:
@@ -260,7 +320,10 @@ def write(fs, df: pl.DataFrame, name: str, primary_key: list[str], **options):
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Write the H&M feature groups.")
-    parser.add_argument("--customers", type=int, default=2000, help="customers sampled")
+    parser.add_argument("--customers", type=int, default=5000, help="customers sampled")
+    parser.add_argument(
+        "--synthetic", type=int, default=30, help="synthetic purchases added per customer"
+    )
     args = parser.parse_args(argv)
 
     import hopsworks
@@ -275,6 +338,17 @@ def main(argv: list[str] | None = None) -> int:
     customers = customers.filter(pl.col("customer_id").is_in(transactions["customer_id"].implode()))
     articles = compute_articles(pl.read_csv(f"{H_AND_M}/articles.csv", infer_schema_length=0))
     articles = articles.filter(pl.col("article_id").is_in(transactions["article_id"].implode()))
+    real = transactions.with_columns(synthetic=pl.lit(False))
+    if args.synthetic:
+        extra = synthetic_purchases(transactions, articles, args.synthetic)
+        # A drawn purchase that repeats a real one on the same day is the real one.
+        extra = extra.join(real, on=["customer_id", "article_id", "t_dat"], how="anti")
+        transactions = pl.concat([real, extra.with_columns(synthetic=pl.lit(True))])
+        transactions = transactions.unique(
+            ["customer_id", "article_id", "t_dat"], keep="first", maintain_order=True
+        )
+    else:
+        transactions = real
     interactions = generate_interactions(transactions, articles["article_id"])
 
     fs = hopsworks.login().get_feature_store()
@@ -294,7 +368,7 @@ def main(argv: list[str] | None = None) -> int:
         "transactions",
         ["customer_id", "article_id", "t_dat"],
         event_time="t_dat",
-        description="H&M purchases of the sampled customers",
+        description="H&M purchases of the sampled customers; synthetic marks the generated ones",
     )
     write(
         fs,

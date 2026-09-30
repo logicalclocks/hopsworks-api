@@ -875,6 +875,37 @@ def test_the_hm_features_read_only_the_sampled_customers_purchases(tmp_path):
     assert kept["article_id"].to_list() == [663713001, 505221004]
 
 
+def test_synthetic_purchases_follow_each_customers_own_groups():
+    pl = pytest.importorskip("polars")
+    features = _load(RECS / "hm_features.py", "hm_features_under_test")
+    articles = pl.DataFrame(
+        {
+            "article_id": ["1", "2", "3", "4"],
+            "index_group_name": ["Ladies", "Ladies", "Men", "Men"],
+            "garment_group_name": ["Dress", "Dress", "Shoes", "Shoes"],
+        }
+    )
+    transactions = pl.DataFrame(
+        {
+            "t_dat": [datetime(2020, 3, 1), datetime(2020, 3, 11), datetime(2020, 5, 1)],
+            "customer_id": ["c", "c", "d"],
+            "article_id": ["1", "1", "3"],
+            "price": [0.1, 0.1, 0.2],
+            "sales_channel_id": [2, 2, 1],
+        }
+    )
+    extra = features.synthetic_purchases(transactions, articles, 25, 7)
+    per_customer = dict(extra.group_by("customer_id").len().iter_rows())
+    # Draws that land on the same article and day are one purchase: d has one of each.
+    assert per_customer["d"] == 1
+    assert 1 < per_customer["c"] <= 25
+    assert set(extra.filter(pl.col("customer_id") == "c")["article_id"]) <= {"1", "2"}
+    assert set(extra.filter(pl.col("customer_id") == "d")["article_id"]) == {"3"}
+    c_days = extra.filter(pl.col("customer_id") == "c")["t_dat"]
+    assert c_days.min() >= datetime(2020, 3, 1) and c_days.max() <= datetime(2020, 3, 11)
+    assert extra.columns == transactions.columns + ["month_sin", "month_cos"]
+
+
 def test_the_generated_interactions_surround_every_purchase():
     pl = pytest.importorskip("polars")
     features = _load(RECS / "hm_features.py", "hm_features_under_test")
@@ -896,6 +927,17 @@ def test_the_generated_interactions_surround_every_purchase():
     assert interactions.equals(
         features.generate_interactions(transactions, pl.Series(["1", "2", "3", "4"]), 7)
     )
+
+
+def test_retrieval_recall_counts_the_true_article_in_the_top_k_chunk_by_chunk():
+    retrieval = _load(RECS / "train_retrieval.py", "train_retrieval_under_test")
+    rng = np.random.default_rng(0)
+    query, items = rng.normal(size=(300, 4)), rng.normal(size=(50, 4))
+    true_items = rng.integers(-1, 50, 300)
+    top = np.argsort(-(query @ items.T), axis=1)[:, :10]
+    exact = np.mean([t in row for t, row in zip(true_items, top)])
+    assert retrieval.recall_at_k(query, items, true_items, k=10) == pytest.approx(exact)
+    assert retrieval.recall_at_k(query, items, true_items, k=10, chunk=7) == pytest.approx(exact)
 
 
 def test_the_ranker_pairs_label_purchases_and_leave_them_out_of_the_negatives():
@@ -922,7 +964,7 @@ def test_the_deployment_ranks_only_what_the_customer_has_not_bought():
     predictor = _load(RECS / "predictor.py", "recs_predictor_under_test")
 
     class Model:
-        def predict_proba(self, rows):
+        def predict_proba(self, rows, thread_count=-1):
             score = rows["colour_group_name"].map({"red": 0.9, "blue": 0.4}).fillna(0.1)
             return np.column_stack([1 - score, score])
 

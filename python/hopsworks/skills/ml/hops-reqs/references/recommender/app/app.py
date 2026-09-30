@@ -95,15 +95,16 @@ def purchase_row(action: Action, now: datetime) -> dict:
         "sales_channel_id": 2,
         "month_sin": math.sin(angle),
         "month_cos": math.cos(angle),
+        "synthetic": False,
     }
 
 
 def _insert(name: str, rows: list[dict]) -> None:
     import pandas as pd
 
-    # Online now, offline at the group's next materialization: a job per click
-    # would take minutes and a Spark application each.
-    _group(name).insert(pd.DataFrame(rows), write_options={"start_offline_materialization": False})
+    # Online only: the deployment and the history read the online store, and an app
+    # pod has no HopsFS certificates for the client's direct Delta write offline.
+    _group(name).insert(pd.DataFrame(rows), storage="online")
 
 
 @app.get("/health")

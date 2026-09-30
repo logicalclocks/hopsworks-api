@@ -17,6 +17,7 @@ and `features.json` naming its inputs in order.
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 from pathlib import Path
 
@@ -38,6 +39,23 @@ CATEGORICAL = [
 ]
 FEATURES = ["age", *CATEGORICAL]
 NEGATIVES_PER_PURCHASE = 10
+# 1.1 million labelled pairs: what a 2 GB job holds with room for CatBoost.
+MAX_PURCHASES = 100_000
+
+
+def cpu_limit() -> int:
+    """The container's CPU limit, from cgroup v2's cpu.max; the visible cores without one.
+
+    torch and CatBoost start a thread per core of the node, and sixteen threads
+    under a one-CPU limit are throttled to a crawl.
+    """
+    try:
+        quota, period = open("/sys/fs/cgroup/cpu.max").read().split()  # noqa: PTH123, SIM115
+        if quota != "max":
+            return max(1, int(quota) // int(period))
+    except (OSError, ValueError):
+        pass
+    return os.cpu_count() or 1
 
 
 def ranking_pairs(
@@ -45,7 +63,10 @@ def ranking_pairs(
 ) -> pl.DataFrame:
     """Labelled (customer, article) pairs with the ranking features."""
     rng = np.random.default_rng(seed)
-    positives = purchases.select("customer_id", "article_id").unique().with_columns(label=pl.lit(1))
+    positives = purchases.select("customer_id", "article_id").unique(maintain_order=True)
+    if positives.height > MAX_PURCHASES:
+        positives = positives.sample(MAX_PURCHASES, seed=seed)
+    positives = positives.with_columns(label=pl.lit(1))
     n = positives.height * NEGATIVES_PER_PURCHASE
     negatives = (
         pl.DataFrame(
@@ -94,10 +115,15 @@ def train(pairs: pl.DataFrame, seed: int = 27):
     held_out = pl.Series(rng.random(pairs.height) < 0.1)
     train_df, test_df = pairs.filter(~held_out), pairs.filter(held_out)
 
-    def pool(df: pl.DataFrame):
-        return Pool(
-            df.select(FEATURES).to_pandas(), df["label"].to_numpy(), cat_features=CATEGORICAL
+    def features(df: pl.DataFrame):
+        # Categories, not Python strings: a million rows of eleven string columns
+        # as pandas objects is gigabytes.
+        return (
+            df.select(FEATURES).with_columns(pl.col(CATEGORICAL).cast(pl.Categorical)).to_pandas()
         )
+
+    def pool(df: pl.DataFrame):
+        return Pool(features(df), df["label"].to_numpy(), cat_features=CATEGORICAL)
 
     model = CatBoostClassifier(
         learning_rate=0.2,
@@ -109,9 +135,10 @@ def train(pairs: pl.DataFrame, seed: int = 27):
         random_seed=seed,
         verbose=False,
         allow_writing_files=False,
+        thread_count=cpu_limit(),
     )
     model.fit(pool(train_df), eval_set=pool(test_df))
-    scores = model.predict_proba(test_df.select(FEATURES).to_pandas())[:, 1]
+    scores = model.predict_proba(features(test_df))[:, 1]
     return model, evaluate(test_df["label"].to_numpy(), scores)
 
 

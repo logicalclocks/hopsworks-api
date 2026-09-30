@@ -27,10 +27,13 @@ import glob
 import json
 import math
 import os
+import re
 import time
 from datetime import UTC, datetime
 
 RETRIEVED = 100
+# The purchase lookup is SQL built from the id, so only an id of this shape is looked up.
+CUSTOMER_ID = re.compile(r"^[0-9A-Za-z_-]{1,64}$")
 SHOWN = [
     "article_id",
     "prod_name",
@@ -75,7 +78,7 @@ def rank(candidates: list[str], bought: set[str], articles, age: float, model, f
     rows["age"] = age
     categorical = [f for f in features if f != "age"]
     rows[categorical] = rows[categorical].fillna("").astype(str)
-    rows["score"] = model.predict_proba(rows[features])[:, 1]
+    rows["score"] = model.predict_proba(rows[features], thread_count=1)[:, 1]
     top = rows.sort_values("score", ascending=False).head(k)
     shown = [c for c in SHOWN if c in top.columns] + ["score"]
     return top[shown].astype(object).where(top[shown].notna(), None).to_dict("records")
@@ -89,6 +92,8 @@ class Predict:
         import torch
         from catboost import CatBoostClassifier
 
+        # One request is one query vector and a hundred rows: threads only contend.
+        torch.set_num_threads(1)
         project = hopsworks.login()
         self.fs = project.get_feature_store()
         self.ranker = CatBoostClassifier()
@@ -96,7 +101,11 @@ class Predict:
         with open(load_model_file("features.json")) as f:
             self.features = json.load(f)["features"]
 
-        query_dir = project.get_model_registry().get_model("query_model").download()
+        # The latest query tower: each retrieval run registers one and rewrites every
+        # candidate embedding with its item tower, so only the newest matches them.
+        registry = project.get_model_registry()
+        query_model = max(registry.get_models("query_model"), key=lambda m: m.version)
+        query_dir = query_model.download()
         self.query_tower = torch.jit.load(os.path.join(query_dir, "query_tower.pt"))
         self.query_tower.eval()
         with open(os.path.join(query_dir, "customer_vocab.json")) as f:
@@ -108,7 +117,11 @@ class Predict:
         self.articles = self.fs.get_feature_view("articles", version=1)
         self.articles.init_serving(1)
         self.candidates = self.fs.get_feature_group("candidate_embeddings", version=1)
-        self.transactions = self.fs.get_feature_group("transactions", version=1)
+        transactions = self.fs.get_feature_group("transactions", version=1)
+        self.bought_sql = (
+            f"SELECT article_id FROM `{transactions.name}_{transactions.version}` "
+            "WHERE customer_id = '{}'"
+        )
 
     def embed_query(self, customer_id: str, age: float, when: datetime) -> list[float]:
         torch = self.torch
@@ -132,6 +145,8 @@ class Predict:
             timings[stage] = round((now - start) * 1000, 1)
             start = now
 
+        if not CUSTOMER_ID.match(customer_id):
+            return {"customer_id": customer_id, "items": [], "error": "invalid customer id"}
         customer = self.customers.get_feature_vector(
             {"customer_id": customer_id}, return_type="pandas"
         )
@@ -145,8 +160,10 @@ class Predict:
         candidates = [str(values[0]) for _, values in neighbours]
         lap("retrieve")
 
-        bought = self.transactions.filter(self.transactions.customer_id == customer_id).read(
-            online=True, dataframe_type="pandas"
+        # Raw SQL on the pooled online connection: a feature group filter read asks
+        # the backend to build the query first, which is most of 300 ms.
+        bought = self.fs.sql(
+            self.bought_sql.format(customer_id), online=True, dataframe_type="pandas"
         )
         bought_ids = set(bought["article_id"].astype(str)) if len(bought) else set()
         lap("filter")

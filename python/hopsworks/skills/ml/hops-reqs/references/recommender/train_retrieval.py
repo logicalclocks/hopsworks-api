@@ -13,13 +13,15 @@ space, trained with the in-batch softmax loss TFRS's Retrieval task uses. It
 creates the feature views the deployment reads (`retrieval`, `customers`,
 `articles`), registers the query tower as `query_model` with its recall@100 on
 the test split, and writes every article's embedding from the item tower into
-`candidate_embeddings`, whose vector index the deployment searches.
+`candidate_embeddings`, whose vector index the deployment searches. Recall is
+measured on the real purchases of the test split only.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import tempfile
 from pathlib import Path
 
@@ -44,6 +46,21 @@ SERVED_ARTICLE_FEATURES = [
     "garment_group_name",
     "image_url",
 ]
+
+
+def cpu_limit() -> int:
+    """The container's CPU limit, from cgroup v2's cpu.max; the visible cores without one.
+
+    torch and CatBoost start a thread per core of the node, and sixteen threads
+    under a one-CPU limit are throttled to a crawl.
+    """
+    try:
+        quota, period = open("/sys/fs/cgroup/cpu.max").read().split()  # noqa: PTH123, SIM115
+        if quota != "max":
+            return max(1, int(quota) // int(period))
+    except (OSError, ValueError):
+        pass
+    return os.cpu_count() or 1
 
 
 def vocabulary(values: pl.Series) -> dict[str, int]:
@@ -97,18 +114,30 @@ def build_towers(n_customers: int, n_articles: int, n_garments: int, n_indexes: 
     return QueryTower, ItemTower
 
 
-def recall_at_k(query: np.ndarray, items: np.ndarray, true_items: np.ndarray, k: int = 100):
-    """The share of test purchases whose article is among the k best-scoring items."""
-    scores = query @ items.T
-    top = np.argpartition(-scores, kth=min(k, items.shape[0] - 1), axis=1)[:, :k]
-    return float(np.mean([t in row for t, row in zip(true_items, top, strict=True)]))
+def recall_at_k(
+    query: np.ndarray, items: np.ndarray, true_items: np.ndarray, k: int = 100, chunk: int = 1024
+) -> float:
+    """The share of test purchases whose article is among the k best-scoring items.
+
+    A purchase hits when fewer than k items outscore its article. Scored a chunk
+    of queries at a time: all of them against every article is gigabytes.
+    """
+    hits = 0
+    for start in range(0, len(query), chunk):
+        scores = query[start : start + chunk] @ items.T
+        true = true_items[start : start + chunk]
+        known = true >= 0
+        own = scores[np.arange(len(true)), np.where(known, true, 0)]
+        hits += int(np.sum(known & ((scores > own[:, None]).sum(axis=1) < k)))
+    return hits / max(len(query), 1)
 
 
-def train(frames: dict, epochs: int = 10, batch_size: int = 2048, lr: float = 0.01, seed: int = 27):
+def train(frames: dict, epochs: int = 20, batch_size: int = 512, lr: float = 0.01, seed: int = 27):
     """Train the towers on `frames["train"]`; returns them, the vocabularies and test recall."""
     import torch
 
     torch.manual_seed(seed)
+    torch.set_num_threads(cpu_limit())
     train_df, test_df = frames["train"], frames["test"]
     vocabs = {
         "customer_id": vocabulary(train_df["customer_id"]),
@@ -123,16 +152,21 @@ def train(frames: dict, epochs: int = 10, batch_size: int = 2048, lr: float = 0.
 
     def tensors(df: pl.DataFrame):
         return (
-            torch.as_tensor(encode(df["customer_id"], vocabs["customer_id"])),
-            torch.as_tensor(df["age"].to_numpy(), dtype=torch.float32),
-            torch.as_tensor(df["month_sin"].to_numpy(), dtype=torch.float32),
-            torch.as_tensor(df["month_cos"].to_numpy(), dtype=torch.float32),
-            torch.as_tensor(encode(df["article_id"], vocabs["article_id"])),
-            torch.as_tensor(encode(df["garment_group_name"], vocabs["garment_group_name"])),
-            torch.as_tensor(encode(df["index_group_name"], vocabs["index_group_name"])),
+            torch.tensor(encode(df["customer_id"], vocabs["customer_id"])),
+            torch.tensor(df["age"].to_numpy(), dtype=torch.float32),
+            torch.tensor(df["month_sin"].to_numpy(), dtype=torch.float32),
+            torch.tensor(df["month_cos"].to_numpy(), dtype=torch.float32),
+            torch.tensor(encode(df["article_id"], vocabs["article_id"])),
+            torch.tensor(encode(df["garment_group_name"], vocabs["garment_group_name"])),
+            torch.tensor(encode(df["index_group_name"], vocabs["index_group_name"])),
         )
 
     columns = tensors(train_df)
+    # How often each article is a batch's positive: in-batch negatives over-sample
+    # popular articles, and subtracting log(frequency) from the logits corrects it
+    # (Yi et al., "Sampling-bias-corrected neural modeling", 2019).
+    counts = torch.bincount(columns[4], minlength=len(vocabs["article_id"]) + 1).float()
+    log_q = torch.log(counts / counts.sum() + 1e-12)
     params = list(query_tower.parameters()) + list(item_tower.parameters())
     optimizer = torch.optim.AdamW(params, lr=lr, weight_decay=0.001)
     for _ in range(epochs):
@@ -142,7 +176,7 @@ def train(frames: dict, epochs: int = 10, batch_size: int = 2048, lr: float = 0.
             queries = query_tower(*batch[:4])
             items = item_tower(*batch[4:])
             # In-batch softmax: each query's own purchase against the batch's other items.
-            logits = queries @ items.T
+            logits = queries @ items.T - log_q[batch[4]]
             loss = torch.nn.functional.cross_entropy(logits, torch.arange(len(logits)))
             optimizer.zero_grad()
             loss.backward()
@@ -166,9 +200,9 @@ def embed_items(item_tower, articles: pl.DataFrame, vocabs: dict) -> np.ndarray:
 
     with torch.no_grad():
         return item_tower(
-            torch.as_tensor(encode(articles["article_id"], vocabs["article_id"])),
-            torch.as_tensor(encode(articles["garment_group_name"], vocabs["garment_group_name"])),
-            torch.as_tensor(encode(articles["index_group_name"], vocabs["index_group_name"])),
+            torch.tensor(encode(articles["article_id"], vocabs["article_id"])),
+            torch.tensor(encode(articles["garment_group_name"], vocabs["garment_group_name"])),
+            torch.tensor(encode(articles["index_group_name"], vocabs["index_group_name"])),
         ).numpy()
 
 
@@ -183,7 +217,7 @@ def save_query_model(query_tower, vocabs: dict, directory: Path) -> Path:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Train the two-tower retrieval model.")
-    parser.add_argument("--epochs", type=int, default=10)
+    parser.add_argument("--epochs", type=int, default=20)
     args = parser.parse_args(argv)
 
     import hopsworks
@@ -198,7 +232,9 @@ def main(argv: list[str] | None = None) -> int:
     retrieval = fs.get_or_create_feature_view(
         name="retrieval",
         version=1,
-        query=transactions.select(["customer_id", "article_id", "t_dat", "month_sin", "month_cos"])
+        query=transactions.select(
+            ["customer_id", "article_id", "t_dat", "month_sin", "month_cos", "synthetic"]
+        )
         .join(customers.select(["age"]), on="customer_id")
         .join(articles.select(["garment_group_name", "index_group_name"]), on="article_id"),
     )
@@ -208,9 +244,12 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     x_train, _, x_test, _, _, _ = retrieval.train_validation_test_split(
-        validation_size=0.1, test_size=0.1, seed=27, statistics_config=False
+        validation_size=0.1, test_size=0.1, statistics_config=False
     )
-    frames = {"train": pl.from_pandas(x_train), "test": pl.from_pandas(x_test)}
+    # Recall is measured on real purchases: the synthetic ones follow the model's own
+    # assumption about taste, so scoring them would flatter it.
+    test = pl.from_pandas(x_test).filter(~pl.col("synthetic"))
+    frames = {"train": pl.from_pandas(x_train), "test": test}
     query_tower, item_tower, vocabs, recall = train(frames, epochs=args.epochs)
     print(f"recall@100 on the test split: {recall:.3f}")
 
@@ -235,7 +274,9 @@ def main(argv: list[str] | None = None) -> int:
         embeddings=pl.Series(embed_items(item_tower, catalogue, vocabs).tolist())
     )
     index = embedding.EmbeddingIndex()
-    index.add_embedding("embeddings", EMBEDDING_SIZE)
+    # The towers are trained on dot products; the index's default, L2 distance, ranks
+    # the customer's least likely articles first for unnormalised vectors.
+    index.add_embedding("embeddings", EMBEDDING_SIZE, embedding.SimilarityFunctionType.DOT_PRODUCT)
     fg = fs.get_or_create_feature_group(
         name="candidate_embeddings",
         version=1,

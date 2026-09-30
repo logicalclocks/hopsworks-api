@@ -27,9 +27,14 @@ tested as it is.
 Nothing is generated or uploaded: the files are public at
 `https://repo.hops.works/dev/jdowling/h-and-m/` (`customers.csv`,
 `articles.csv`, `transactions_train.csv`, and `images/`). `hm_features.py`
-samples `--customers` customers (2,000 by default), streams the 3.5 GB
-transactions file keeping only their purchases, keeps the articles they bought,
-and generates clicks and ignores around the purchases, as the course does. Each
+samples `--customers` customers (5,000 by default), streams the 3.5 GB
+transactions file keeping only their purchases, and keeps the articles they
+bought. A sample this size is too sparse for the two-tower model to beat
+recommending the most popular articles, so it adds `--synthetic` purchases per
+customer (30 by default), each a copy of one of the customer's own purchases
+with the article swapped for a popular one of the same index and garment group,
+marked `synthetic` in `transactions`. Then it generates clicks and ignores around
+all purchases, as the course does. Each
 data source records `status: present` and `data.<source>.writes` its group
 once the job has run.
 
@@ -49,14 +54,14 @@ The app runs in `python-agent-pipeline`, which ships FastAPI.
 
 ```bash
 hops job deploy <slug>-features src/<slug_pkg>/hm_features.py --env <slug>-jobs-env \
-  --args "--customers 2000" --run --wait
+  --args "--customers 5000 --synthetic 30" --run --wait
 hops job deploy <slug>-train-retrieval src/<slug_pkg>/train_retrieval.py --env <slug>-jobs-env --run --wait
 hops job deploy <slug>-train-ranker src/<slug_pkg>/train_ranker.py --env <slug>-jobs-env --run --wait
 ```
 
 `train_retrieval.py` creates the feature views, trains the two towers with an
 in-batch softmax loss, registers the query tower as `query_model` (TorchScript
-plus the customer vocabulary) with `recall_at_100` on the test split, and writes
+plus the customer vocabulary) with `recall_at_100` on the real purchases of the test split, and writes
 the item tower's embedding of every trained article to `candidate_embeddings`,
 whose vector index retrieval searches. `train_ranker.py` trains CatBoost on the
 purchases and ten random negatives per purchase and registers `ranking_model`
@@ -68,7 +73,7 @@ ROC-AUC target.
 ```bash
 hops deployment create ranking_model --name <alnum slug> --script src/<slug_pkg>/predictor.py \
   --env <slug>-inference-env --no-default-predictor
-hops deployment start <alnum slug> --wait
+hops deployment start <alnum slug>
 hops deployment predict <alnum slug> --data '{"instances": [{"customer_id": "<an id from customers>", "k": 12}]}'
 ```
 
@@ -76,7 +81,8 @@ The request is `{customer_id, k}`; the reply is `{customer_id, items:
 [{article_id, prod_name, product_type_name, colour_group_name,
 index_group_name, garment_group_name, image_url, score}], retrieved,
 already_bought, timings_ms}`, with each stage's time (query, retrieve, filter,
-rank). `measured` gets the p99 of 50 requests over random customers against
+rank). `hops deployment create` on an existing name keeps its script: to deploy a
+changed `predictor.py`, `hops deployment delete <name> --yes` and create it again. `measured` gets the p99 of 50 requests over random customers against
 `requirements.sla.realtime`.
 
 ## app: the storefront
@@ -85,6 +91,8 @@ Copy `recommender/app/` to `<slug>/app/` and deploy it as **hops-app** says, in
 `python-agent-pipeline`. A customer picker (the 200 most active), product cards
 ranked by the deployment, with Click and Buy, and New recommendations, which
 records the cards shown and not touched as ignores. Every action is written to
-`interactions` online (Buy also to `transactions`, so the next request leaves
-the purchase out), and reaches the offline store at the groups' next
-materialization. The history panel reads the customer's interactions back.
+`interactions` in the online store (Buy also to `transactions`, so the next
+request leaves the purchase out), which the deployment and the history panel
+read. An app pod cannot write the offline Delta tables (it has no HopsFS
+certificates for the client's direct write), so the shoppers' actions are not
+training data until a job copies them offline.

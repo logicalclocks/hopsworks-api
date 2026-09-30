@@ -92,8 +92,8 @@ recs-example:
          grain: one row per purchase, entity: customer_id, event_time: t_dat, status: needs_download}
   data:
     # Built as hops-reqs/references/recommender.md says, from its recommender/ files: the
-    # public H&M files, sampled to 2,000 customers, with clicks and ignores generated around
-    # their purchases.
+    # public H&M files, sampled to 5,000 customers, with 30 synthetic purchases per customer in
+    # the shape of their own, and clicks and ignores generated around all purchases.
     customers:
       writes: {feature_group: customers, version: 1, online: true, primary_key: [customer_id]}
     articles:
@@ -112,7 +112,7 @@ recs-example:
         online: true
         primary_key: [customer_id, article_id, t_dat, interaction_score]
         event_time: t_dat
-    job: {name: recs-example-features, args: "--customers 2000"}
+    job: {name: recs-example-features, args: "--customers 5000 --synthetic 30"}
     status: pending
   training:
     models:
