@@ -139,9 +139,9 @@ of the `gh` login, a GitHub token from Hopsworks Account Settings (as `GH_TOKEN`
 key GitHub accepts. With only the SSH key there is no GitHub API: the user picks between adding
 a login or token and pushing to an existing repository they name (push-only: no pull request, a
 compare link instead); stop and say how to fix it only when none works. For `new`, create the
-repository with `gh repo create` (owner from `gh api user`, name from the slug, or
-`<slug>-<project>` when the owner already has a repository of that name, private) and record its
-URL; cut `hops/<slug>` from the default branch, or `hops/<slug>-<project>` when `hops/<slug>`
+repository with `gh repo create` (owner from `gh api user`, name `hops-<slug>`, or
+`hops-<slug>-<project>` when the owner already has a repository of that name, private) and record
+its URL; cut `hops/<slug>` from the default branch, or `hops/<slug>-<project>` when `hops/<slug>`
 holds another project's build, and record `system.repo`. A new repository has the system
 directory as its root (`<slug>/` is the work tree, never the HopsFS home), as repo.md shows.
 `<slug>/AGENTS.md`, from the template, tells an agent started there that the system is built from

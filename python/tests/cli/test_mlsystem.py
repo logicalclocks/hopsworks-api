@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -216,6 +217,10 @@ def test_the_repository_goes_only_when_it_is_this_systems_alone(monkeypatch):
 
     monkeypatch.setattr(teardown, "_git", git)
     monkeypatch.setattr(teardown, "_github", lambda host, method, route: (204, None))
+    # Named hops-<slug> since the prefix; <slug> before it.
+    prefixed = copy.deepcopy(SPEC)
+    prefixed["system"]["repo"]["url"] = "https://github.com/o/hops-churn-example"
+    assert teardown.delete_repo(prefixed, "churn-example", "churndemo") == "deleted"
     assert teardown.delete_repo(SPEC, "churn-example", "churndemo") == "deleted"
     assert not any(a[0] == "push" for a in calls)
 

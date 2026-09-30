@@ -54,11 +54,13 @@ gh api user --jq .login              # the owner for a new repository (CLI login
   that repository with the system under `<repo>/<slug>/`. Otherwise, or when the user
   declines, a new repository whose root is the system directory, below. Never create
   a repository or push without that answer.
+- **A repository the build creates is named `hops-<slug>`**, examples included, so the
+  owner's Hopsworks-built systems sort together and read as such on GitHub.
 - **A name the owner already uses is never reused.** When `system.repo.url` is `new`
-  (the interview's answer, and every example's), check `gh repo view <owner>/<slug>`
-  (push-only: `git ls-remote git@github.com:<owner>/<slug>.git`) first; if it exists,
+  (the interview's answer, and every example's), check `gh repo view <owner>/hops-<slug>`
+  (push-only: `git ls-remote git@github.com:<owner>/hops-<slug>.git`) first; if it exists,
   the same system was built before in another project, so name the new one
-  `<slug>-<project>`, then `<slug>-<project>-2` and so on. Never push to, or take
+  `hops-<slug>-<project>`, then `hops-<slug>-<project>-2` and so on. Never push to, or take
   over, a repository this build did not create, unless the user names it.
 - **A branch another build owns is never reused.** In a repository the user named,
   `git ls-remote origin 'refs/heads/hops/<slug>*'` first. When `hops/<slug>` exists,
@@ -75,7 +77,7 @@ gh api user --jq .login              # the owner for a new repository (CLI login
 ```bash
 cd <slug>
 git init -b main && git add .gitignore AGENTS.md && git commit -m "[<slug>] init"
-gh repo create <owner>/<name> --private --source . --push   # push-only: git remote add origin <url> && git push -u origin main
+gh repo create <owner>/hops-<slug> --private --source . --push   # push-only: git remote add origin <url> && git push -u origin main
 git switch -c hops/<slug>            # or hops/<slug>-<project>, above
 ```
 

@@ -404,7 +404,8 @@ def delete_repo(
 ) -> str:
     """Delete the system's GitHub repository, or only its branch when the repository holds more.
 
-    The build names a repository it creates `<slug>` or `<slug>-<project>[-N]`,
+    The build names a repository it creates `hops-<slug>` or `hops-<slug>-<project>[-N]`
+    (builds before the prefix left off `hops-`),
     and each build works on its own `hops/...` branch. A repository with another
     name, or with another build's branch, holds more than this system: its
     branches (`hops/<branch>` and `hops/<branch>/...`) are deleted and the
@@ -436,7 +437,9 @@ def delete_repo(
     own = str(((doc.get("system") or {}).get("repo") or {}).get("branch") or "")
     mine = [b for b in branches if own and (b == own or b.startswith(f"{own}/"))]
     others = [b for b in branches if b.startswith("hops/") and b not in mine]
-    alone = re.fullmatch(rf"{re.escape(slug)}(-{re.escape(project)}(-\d+)?)?", name)
+    alone = re.fullmatch(
+        rf"(hops-)?{re.escape(slug)}(-{re.escape(project)}(-\d+)?)?", name
+    )
     if others or not alone:
         if not mine:
             return "gone"
