@@ -158,3 +158,135 @@ def test_both_summarizers_are_exported():
 
     assert callable(protocol.openai_summarizer)
     assert callable(protocol.anthropic_summarizer)
+
+
+class TestHopsworksSummarizer:
+    """Resolved once; the gateway's key replaces the SDK's; the model is discovered."""
+
+    def _fake_openai(self, monkeypatch, models=("llama-3.1-8b",)):
+        calls = _fake_openai(monkeypatch)
+        AsyncOpenAI = sys.modules["openai"].AsyncOpenAI
+
+        async def list_models():
+            return types.SimpleNamespace(
+                data=[types.SimpleNamespace(id=m) for m in models]
+            )
+
+        original_init = AsyncOpenAI.__init__
+
+        def init(self, **kwargs):
+            original_init(self, **kwargs)
+            self.models = types.SimpleNamespace(list=list_models)
+
+        monkeypatch.setattr(AsyncOpenAI, "__init__", init)
+        httpx = types.ModuleType("httpx")
+        httpx.AsyncClient = lambda **kw: ("httpx", kw)
+        monkeypatch.setitem(sys.modules, "httpx", httpx)
+        return calls
+
+    def _resolved(self, monkeypatch, verify=False):
+        import hopsworks_agents.protocol.summarizers as mod
+
+        seen = []
+
+        def resolve(deployment):
+            seen.append(deployment)
+            return "https://gw/v1/g1/my-llm/v1", "serving-key", verify
+
+        monkeypatch.setattr(mod, "_resolve_hopsworks_deployment", resolve)
+        return seen
+
+    def test_goes_through_the_gateway_with_its_key_and_the_served_model(
+        self, monkeypatch
+    ):
+        from hopsworks_agents.protocol.summarizers import hopsworks_summarizer
+
+        calls = self._fake_openai(monkeypatch)
+        seen = self._resolved(monkeypatch)
+        summarize = hopsworks_summarizer("my-llm")
+
+        assert asyncio.run(summarize(None, TURNS)) == "folded"
+        assert asyncio.run(summarize("s", TURNS)) == "folded"
+        assert seen == ["my-llm"]  # resolved once
+        assert calls["client"] == {
+            "base_url": "https://gw/v1/g1/my-llm/v1",
+            "api_key": "hopsworks",
+            "default_headers": {"Authorization": "ApiKey serving-key"},
+            "http_client": ("httpx", {"verify": False}),
+        }
+        assert calls["create"]["model"] == "llama-3.1-8b"
+
+    def test_an_explicit_model_skips_discovery(self, monkeypatch):
+        from hopsworks_agents.protocol.summarizers import hopsworks_summarizer
+
+        calls = self._fake_openai(monkeypatch, models=())
+        self._resolved(monkeypatch)
+        asyncio.run(hopsworks_summarizer("my-llm", "mistral-7b")(None, TURNS))
+        assert calls["create"]["model"] == "mistral-7b"
+
+    def test_no_models_listed_is_an_error(self, monkeypatch):
+        from hopsworks_agents.protocol.summarizers import hopsworks_summarizer
+
+        self._fake_openai(monkeypatch, models=())
+        self._resolved(monkeypatch)
+        with pytest.raises(ValueError, match="pass model="):
+            asyncio.run(hopsworks_summarizer("my-llm")(None, TURNS))
+
+    def test_extra_headers_and_client_options_are_kept(self, monkeypatch):
+        from hopsworks_agents.protocol.summarizers import hopsworks_summarizer
+
+        calls = self._fake_openai(monkeypatch)
+        self._resolved(monkeypatch, verify="/certs/ca.pem")
+        summarize = hopsworks_summarizer(
+            "my-llm", default_headers={"X-Team": "ml"}, timeout=30
+        )
+        asyncio.run(summarize(None, TURNS))
+        assert calls["client"]["default_headers"] == {
+            "Authorization": "ApiKey serving-key",
+            "X-Team": "ml",
+        }
+        assert calls["client"]["timeout"] == 30
+        assert calls["client"]["http_client"] == ("httpx", {"verify": "/certs/ca.pem"})
+
+    def test_resolution_reads_the_serving_api_and_the_gateway_client(self, monkeypatch):
+        from hopsworks_agents.protocol.summarizers import (
+            _resolve_hopsworks_deployment,
+        )
+
+        deployment = mock.MagicMock(name="deployment")
+        deployment.name = "my-llm"
+        deployment.get_openai_url.return_value = "https://gw/v1/g1/my-llm/v1"
+        serving = mock.MagicMock()
+        serving.get_deployment.side_effect = lambda n: (
+            deployment if n == "my-llm" else None
+        )
+        hopsworks = types.ModuleType("hopsworks")
+        hopsworks.login = lambda: types.SimpleNamespace(
+            get_model_serving=lambda: serving
+        )
+        monkeypatch.setitem(sys.modules, "hopsworks", hopsworks)
+        from hopsworks_common.client import istio
+
+        gateway = types.SimpleNamespace(
+            _auth=types.SimpleNamespace(_token="serving-key"), _verify=False
+        )
+        monkeypatch.setattr(istio, "_get_instance", lambda: gateway)
+
+        assert _resolve_hopsworks_deployment("my-llm") == (
+            "https://gw/v1/g1/my-llm/v1",
+            "serving-key",
+            False,
+        )
+        # a Deployment object is used as is
+        assert _resolve_hopsworks_deployment(deployment)[0].endswith("/v1")
+        with pytest.raises(ValueError, match="No deployment named"):
+            _resolve_hopsworks_deployment("other")
+        deployment.get_openai_url.return_value = None
+        with pytest.raises(ValueError, match="no OpenAI-compatible endpoint"):
+            _resolve_hopsworks_deployment("my-llm")
+
+
+def test_all_three_summarizers_are_exported():
+    import hopsworks_agents.protocol as protocol
+
+    assert callable(protocol.hopsworks_summarizer)

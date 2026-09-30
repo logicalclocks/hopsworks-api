@@ -166,6 +166,16 @@ summarize=openai_summarizer("llama-3.1-8b", base_url="http://vllm:8000/v1", api_
 Both resolve the key on first use — explicit argument, then the environment
 (`OPENAI_API_KEY` / `ANTHROPIC_API_KEY`), then the Hopsworks secret named by
 `api_key_secret` — so a deployment reuses the secret its agent already holds.
+
+An LLM deployed in Hopsworks needs no key at all. `hopsworks_summarizer` finds
+the deployment by name, goes through the inference gateway with the serving
+key the pod already has, and uses the model the deployment serves:
+
+```python
+summarize=hopsworks_summarizer("my-llm")                    # an LLM deployment in the project
+summarize=hopsworks_summarizer("my-llm", "llama-3.1-8b")    # when it serves several
+```
+
 Anything else is just a function with that shape.
 
 ### Agent-callable memory tools

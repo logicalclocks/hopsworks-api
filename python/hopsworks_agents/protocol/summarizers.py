@@ -6,12 +6,13 @@ A summarizer is any callable::
 
     (previous_summary: str | None, turns: list[Turn]) -> str
 
-sync or async. This module ships two so the common cases are a single line:
-:func:`anthropic_summarizer` for Claude and :func:`openai_summarizer` for
-OpenAI and for anything that speaks its chat-completions API (vLLM, Ollama,
-a LiteLLM proxy, Azure, most hosted models) through ``base_url``. Anything
-else — a rules-based compactor, a provider with its own SDK — is just a
-function with that shape.
+sync or async. This module ships three so the common cases are a single line:
+:func:`anthropic_summarizer` for Claude, :func:`openai_summarizer` for OpenAI
+and for anything that speaks its chat-completions API (vLLM, Ollama, a LiteLLM
+proxy, Azure, most hosted models) through ``base_url``, and
+:func:`hopsworks_summarizer` for an LLM deployed in Hopsworks itself, found by
+name with no key to configure. Anything else — a rules-based compactor, a
+provider with its own SDK — is just a function with that shape.
 """
 
 from __future__ import annotations
@@ -210,15 +211,118 @@ def openai_summarizer(
                 kwargs["api_key"] = key
             client = openai.AsyncOpenAI(**kwargs)
 
-        response = await client.chat.completions.create(
-            model=model,
-            max_tokens=max_tokens,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": _user_message(previous, turns)},
-            ],
+        return await _chat_completion(
+            client, model, max_tokens, system_prompt, previous, turns
         )
-        return (response.choices[0].message.content or "").strip()
+
+    return summarize
+
+
+async def _chat_completion(client, model, max_tokens, system_prompt, previous, turns):
+    response = await client.chat.completions.create(
+        model=model,
+        max_tokens=max_tokens,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": _user_message(previous, turns)},
+        ],
+    )
+    return (response.choices[0].message.content or "").strip()
+
+
+def _resolve_hopsworks_deployment(deployment) -> tuple[str, str, str | bool]:
+    """The OpenAI base URL, gateway key and TLS verify setting of an LLM deployment.
+
+    ``deployment`` is a name or a ``Deployment`` object. Blocking: it logs in (a no-op when already connected, and inside a
+    deployment pod the environment carries everything) and reads the model
+    serving API, so callers run it in a thread.
+    """
+    import hopsworks
+    from hopsworks_common.client import istio
+
+    serving = hopsworks.login().get_model_serving()
+    if isinstance(deployment, str):
+        found = serving.get_deployment(deployment)
+        if found is None:
+            raise ValueError(f"No deployment named {deployment!r} in this project")
+        deployment = found
+    base_url = deployment.get_openai_url()
+    if base_url is None:
+        raise ValueError(
+            f"Deployment {deployment.name!r} has no OpenAI-compatible endpoint: "
+            "hopsworks_summarizer needs an LLM (vLLM) deployment reachable "
+            "through the inference gateway"
+        )
+    gateway = istio._get_instance()
+    return base_url, gateway._auth._token, gateway._verify
+
+
+def hopsworks_summarizer(
+    deployment,
+    model: str | None = None,
+    *,
+    max_tokens: int = 1024,
+    system_prompt: str = SYSTEM_PROMPT,
+    **client_kwargs,
+):
+    """An async summarizer on an LLM deployed in Hopsworks, by name.
+
+        memory = ManagedMemoryService(summarize=hopsworks_summarizer("my-llm"))
+
+    Requires ``pip install openai``. The deployment is an LLM (vLLM)
+    deployment in the same project; pass its name or the ``Deployment``
+    object. Everything else is resolved on first use, so an agent pod needs
+    no key at all: the endpoint comes from the model serving API, the
+    request goes through the inference gateway with the serving API key the
+    pod already holds (or the logged-in user's key outside the cluster), and
+    ``model`` defaults to the one model the deployment lists. Pass ``model``
+    when the deployment serves more than one, or when its ``/models`` route
+    is not reachable.
+
+    Extra keyword arguments go to the ``AsyncOpenAI`` client. Resolution
+    failures surface as a logged, retried summarizer failure like any other:
+    the conversation keeps working, the history just does not fold.
+    """
+    try:
+        import openai  # noqa: F401
+    except ImportError as err:
+        raise ImportError(
+            "hopsworks_summarizer requires the OpenAI SDK: pip install openai"
+        ) from err
+
+    client = None
+    served = model
+
+    async def summarize(previous: str | None, turns) -> str:
+        nonlocal client, served
+        if client is None:
+            import asyncio
+
+            import httpx
+            import openai
+
+            base_url, token, verify = await asyncio.to_thread(
+                _resolve_hopsworks_deployment, deployment
+            )
+            kwargs = dict(client_kwargs)
+            kwargs.setdefault("http_client", httpx.AsyncClient(verify=verify))
+            # the gateway reads "ApiKey", which replaces the SDK's own Bearer header
+            headers = {"Authorization": "ApiKey " + token}
+            headers.update(kwargs.pop("default_headers", None) or {})
+            client = openai.AsyncOpenAI(
+                base_url=base_url,
+                api_key="hopsworks",  # required by the SDK, never sent
+                default_headers=headers,
+                **kwargs,
+            )
+        if served is None:
+            models = (await client.models.list()).data
+            if not models:
+                raise ValueError("The deployment lists no models; pass model=")
+            served = models[0].id
+        return await _chat_completion(
+            client, served, max_tokens, system_prompt, previous, turns
+        )
 
     return summarize
 

@@ -55,6 +55,7 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers only
     )
     from .summarizers import (
         anthropic_summarizer,
+        hopsworks_summarizer,
         openai_summarizer,
         sentence_transformer_embedder,
     )
@@ -84,6 +85,7 @@ _EXPORTS: dict[str, str] = {
     "deployment_mysql_url": "memory",
     "anthropic_summarizer": "summarizers",
     "openai_summarizer": "summarizers",
+    "hopsworks_summarizer": "summarizers",
     "sentence_transformer_embedder": "summarizers",
     "HopsworksVectorStore": "vectorstore",
     "vector_store_for": "vectorstore",
