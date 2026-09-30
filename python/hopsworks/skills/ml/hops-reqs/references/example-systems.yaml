@@ -1,6 +1,6 @@
 # The example ML systems offered by `hops build` and `/hops-ml`.
 # `new_system.py <dir>/<slug> --example <slug>` merges one entry into a new system.yaml.
-# An example runs on synthetic data and always gets a Python app with a JavaScript UI,
+# An example runs on synthetic or public data and always gets a Python app with a JavaScript UI,
 # so neither the data sources nor the app are asked for.
 
 churn-example:
@@ -73,35 +73,69 @@ recs-example:
   system:
     name: Personalized recommendations
   requirements:
-    description: which products a shopper is most likely to buy next, scored per request
+    description: >-
+      which H&M products a shopper is most likely to buy next, retrieved by a two-tower model and
+      ranked by a purchase classifier per request
     system_type: realtime
+    problem:
+      task: ranking
     sla:
-      realtime: {p99_ms: 100, throughput_qps: 100}
+      realtime: {p99_ms: 500, throughput_qps: 10}
     consumers: ui
     data_sources:
-      - {name: users, kind: synthetic, shape: batch, status: needs_generation}
-      - {name: items, kind: synthetic, shape: batch, status: needs_generation}
-      - {name: interactions, kind: synthetic, shape: events, status: needs_generation}
+      - {name: customers, kind: url, location: "https://repo.hops.works/dev/jdowling/h-and-m/customers.csv",
+         grain: one row per customer, entity: customer_id, status: needs_download}
+      - {name: articles, kind: url, location: "https://repo.hops.works/dev/jdowling/h-and-m/articles.csv",
+         grain: one row per article, entity: article_id, status: needs_download}
+      - {name: transactions, kind: url,
+         location: "https://repo.hops.works/dev/jdowling/h-and-m/transactions_train.csv",
+         grain: one row per purchase, entity: customer_id, event_time: t_dat, status: needs_download}
   data:
-    users:
-      generator:
-        story: 2,000 shoppers with age band, country and favourite categories
-    items:
-      generator:
-        story: 500 products with category, price and popularity
+    # Built as hops-reqs/references/recommender.md says, from its recommender/ files: the
+    # public H&M files, sampled to 2,000 customers, with clicks and ignores generated around
+    # their purchases.
+    customers:
+      writes: {feature_group: customers, version: 1, online: true, primary_key: [customer_id]}
+    articles:
+      writes: {feature_group: articles, version: 1, online: true, primary_key: [article_id]}
+    transactions:
+      writes:
+        feature_group: transactions
+        version: 1
+        online: true
+        primary_key: [customer_id, article_id, t_dat]
+        event_time: t_dat
     interactions:
-      generator:
-        story: >-
-          views, add-to-carts and purchases; a shopper mostly buys in their favourite categories
-          and near their usual price
+      writes:
+        feature_group: interactions
+        version: 1
+        online: true
+        primary_key: [customer_id, article_id, t_dat, interaction_score]
+        event_time: t_dat
+    job: {name: recs-example-features, args: "--customers 2000"}
+    status: pending
+  training:
+    models:
+      - {name: query_model, kind: two-tower query tower, metric: recall_at_100,
+         job: recs-example-train-retrieval}
+      - {name: ranking_model, kind: catboost classifier, metric: roc_auc, target: 0.65,
+         job: recs-example-train-ranker}
+    status: pending
+  inference:
+    mode: realtime
+    deployment: recsexample
+    request: {customer_id: string, k: int}
+    steps: [query, retrieve, filter, rank]
     status: pending
   app:
     wanted: true
     kind: query_ui
     name: recs-example-app
     description: >-
-      A storefront: pick a shopper and see their top ten products as product cards ranked by the
-      deployment's purchase probability, with the shopper's recent history beside them
+      A JavaScript storefront: pick a customer and see the products the deployment ranks for
+      them as cards with the H&M picture; Click and Buy write the shopper's interactions (and
+      Buy a purchase, so the next request leaves it out), the cards left untouched are recorded
+      as ignores, and a history panel shows the customer's interactions
     status: pending
 
 helpdesk-example:

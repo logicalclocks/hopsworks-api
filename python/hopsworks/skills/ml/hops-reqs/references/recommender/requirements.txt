@@ -1,0 +1,6 @@
+# Installed into both <slug>-jobs-env (a clone of torch-training-pipeline, for
+# the feature and training jobs) and <slug>-inference-env (a clone of
+# torch-inference-pipeline, for the deployment), so the ranker is trained and
+# served by the same CatBoost. Both bases ship torch, pandas, numpy and the
+# Hopsworks client with polars.
+catboost==1.2.10

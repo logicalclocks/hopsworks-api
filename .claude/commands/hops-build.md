@@ -176,17 +176,18 @@ following "The requirements conversation" in `hops-reqs/SKILL.md`:
 An example system (`system.example` set) asks nothing here: choose every answer yourself from the
 example's story, recorded in `system.yaml`, as a person building a convincing demo would (for
 `churn-example`: classification of `churned` within 30 days per customer, PR-AUC 0.6 or better
-against a 0.15 prevalence baseline; for `recs-example`: classification of a purchase per user and
-item, ROC-AUC 0.75 or better, ranked by the probability; the `small` tier, the default budget,
-`data_policy` fixtures generated). Print the requirements back in a few lines and continue
-without asking.
+against a 0.15 prevalence baseline; the `small` tier, the default budget, `data_policy` fixtures
+generated). Print the requirements back in a few lines and continue without asking.
 
 For a new connector the interview recorded as `connected`, the data phase mounts or ingests it. A
 RAG agent system (`system_type: agent`, `task: rag`, the help desk example) is built by
 `hops-reqs/references/rag-agent.md`, which says what every phase below builds for it, from the
 reference code in `rag_agent/`: its `reqs` creates the docs directory without asking and asks the
 user to upload documents, and its `train` and `infer` follow that page instead of spawning the
-training and inference agents. Any other task outside classification, regression and forecasting,
+training and inference agents. The personalized recommender (`task: ranking`, the `recs-example`)
+is built the same way by `hops-reqs/references/recommender.md`, from the reference code in
+`recommender/`: its `data` phase downloads the public H&M files instead of generating data, and
+its `train` and `infer` follow that page. Any other task outside classification, regression and forecasting,
 or another agent system, is captured in full and the command stops after `reqs` saying v1 builds
 none of it. Print the requirements back and ask to proceed; write `requirements.status: met` and
 `system.status: building` on yes.

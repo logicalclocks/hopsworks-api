@@ -33,9 +33,12 @@ the same file by hand.
 v1 builds `classification`, `regression` and `forecasting` systems of type
 `batch` or `realtime`, and `rag` agent systems as
 [references/rag-agent.md](references/rag-agent.md) says (documents chunked and
-embedded into a vector-indexed feature group, a LangGraph agent, a chat app).
-`ranking`, `anomaly` and `agentic` tasks, and other agent systems, are captured
-in full at `reqs` and stop there. The autonomous
+embedded into a vector-indexed feature group, a LangGraph agent, a chat app),
+and the `ranking` recommender of the `recs-example` as
+[references/recommender.md](references/recommender.md) says (two-tower
+retrieval over a vector index, a CatBoost ranker, one deployment, a storefront
+app). Other `ranking` systems, `anomaly` and `agentic` tasks, and other agent
+systems, are captured in full at `reqs` and stop there. The autonomous
 path runs only against `system.target.stage: development`.
 
 ## Phases and gates

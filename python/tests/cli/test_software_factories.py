@@ -15,10 +15,11 @@ import shutil
 import subprocess
 import sys
 import tarfile
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import click
+import numpy as np
 import pytest
 from click.testing import CliRunner
 from hopsworks.cli import scaffold
@@ -51,6 +52,8 @@ ENTRYPOINTS = [
 def _load(path: Path, name: str | None = None):
     spec = importlib.util.spec_from_file_location(name or path.stem, path)
     module = importlib.util.module_from_spec(spec)
+    # Registered first, so pydantic can resolve a model's postponed annotations.
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -824,6 +827,159 @@ def test_an_offline_source_gets_an_offline_delta_group():
 
 # endregion
 
+# region The recommender
+
+
+RECS = REQS / "recommender"
+
+
+def test_the_hm_features_keep_the_ids_the_pictures_and_the_month_cycle():
+    pl = pytest.importorskip("polars")
+    features = _load(RECS / "hm_features.py", "hm_features_under_test")
+    articles = features.compute_articles(
+        pl.DataFrame(
+            {**{c: ["x"] for c in features.ARTICLE_COLUMNS}, "article_id": ["0108775015"]}
+        ).with_columns(detail_desc=pl.lit(None, pl.Utf8))
+    )
+    assert articles["article_id"][0] == "108775015"
+    assert articles["image_url"][0].endswith("/images/010/0108775015.jpg")
+    transactions = features.compute_transactions(
+        pl.DataFrame(
+            {
+                "t_dat": [date(2020, 3, 1), date(2020, 3, 1), date(2020, 9, 1)],
+                "customer_id": ["c", "c", "c"],
+                "article_id": [108775015, 108775015, 108775016],
+                "price": [0.1, 0.1, 0.2],
+                "sales_channel_id": [2, 2, 1],
+            }
+        )
+    )
+    assert transactions.height == 2
+    assert transactions["article_id"].to_list() == ["108775015", "108775016"]
+    assert transactions["month_sin"][0] == pytest.approx(1.0)
+
+
+def test_the_hm_features_read_only_the_sampled_customers_purchases(tmp_path):
+    pytest.importorskip("polars")
+    features = _load(RECS / "hm_features.py", "hm_features_under_test")
+    a, b = "a" * 64, "b" * 64
+    csv = tmp_path / "transactions_train.csv"
+    csv.write_text(
+        "t_dat,customer_id,article_id,price,sales_channel_id\n"
+        f"2018-09-20,{a},0663713001,0.05,2\n"
+        f"2018-09-20,{b},0541518023,0.03,2\n"
+        f"2018-09-21,{a},0505221004,0.01,1\n"
+    )
+    kept = features.read_purchases(csv.as_uri(), [a])
+    assert kept["customer_id"].to_list() == [a, a]
+    assert kept["article_id"].to_list() == [663713001, 505221004]
+
+
+def test_the_generated_interactions_surround_every_purchase():
+    pl = pytest.importorskip("polars")
+    features = _load(RECS / "hm_features.py", "hm_features_under_test")
+    transactions = pl.DataFrame(
+        {
+            "t_dat": [datetime(2020, 3, d) for d in (1, 5, 9)],
+            "customer_id": ["c", "c", "d"],
+            "article_id": ["1", "2", "3"],
+        }
+    )
+    interactions = features.generate_interactions(transactions, pl.Series(["1", "2", "3", "4"]), 7)
+    purchases = interactions.filter(pl.col("interaction_score") == 2)
+    assert purchases.height == 3
+    per_customer = interactions.group_by("customer_id").len().sort("customer_id")["len"].to_list()
+    assert all(n >= 3 + 40 for n in per_customer[:1])
+    first = interactions.filter(pl.col("customer_id") == "c").sort("t_dat")
+    assert first["prev_article_id"][0] == "START"
+    assert first["prev_article_id"][1:].to_list() == first["article_id"][:-1].to_list()
+    assert interactions.equals(
+        features.generate_interactions(transactions, pl.Series(["1", "2", "3", "4"]), 7)
+    )
+
+
+def test_the_ranker_pairs_label_purchases_and_leave_them_out_of_the_negatives():
+    pl = pytest.importorskip("polars")
+    ranker = _load(RECS / "train_ranker.py", "train_ranker_under_test")
+    purchases = pl.DataFrame({"customer_id": ["c", "d"], "article_id": ["1", "2"]})
+    customers = pl.DataFrame({"customer_id": ["c", "d"], "age": [30.0, 40.0]})
+    articles = pl.DataFrame(
+        {"article_id": ["1", "2", "3"], **{c: ["x", "y", "z"] for c in ranker.CATEGORICAL}}
+    )
+    pairs = ranker.ranking_pairs(purchases, customers, articles)
+    assert pairs.columns == [*ranker.FEATURES, "label"]
+    assert pairs["label"].sum() == 2
+    assert ranker.roc_auc(np.array([0, 0, 1, 1]), np.array([0.1, 0.2, 0.8, 0.9])) == 1.0
+    assert ranker.roc_auc(np.array([0, 1]), np.array([0.5, 0.5])) == 0.5
+    metrics = ranker.evaluate(np.array([0, 1, 1]), np.array([0.2, 0.9, 0.4]))
+    assert metrics["precision"] == 1.0
+    assert metrics["recall"] == 0.5
+    assert all(type(v) is float for v in metrics.values())
+
+
+def test_the_deployment_ranks_only_what_the_customer_has_not_bought():
+    pd = pytest.importorskip("pandas")
+    predictor = _load(RECS / "predictor.py", "recs_predictor_under_test")
+
+    class Model:
+        def predict_proba(self, rows):
+            score = rows["colour_group_name"].map({"red": 0.9, "blue": 0.4}).fillna(0.1)
+            return np.column_stack([1 - score, score])
+
+    articles = pd.DataFrame(
+        {
+            "article_id": ["1", "2", "3", None],
+            "prod_name": ["a", "b", "c", None],
+            "colour_group_name": ["blue", "red", "red", None],
+            "image_url": ["u1", None, "u3", None],
+        }
+    )
+    items = predictor.rank(
+        ["1", "2", "3", "4", "2"], {"3"}, articles, 30.0, Model(), ["age", "colour_group_name"], 5
+    )
+    assert [i["article_id"] for i in items] == ["2", "1"]
+    assert items[0]["image_url"] is None
+    assert items[0]["score"] == pytest.approx(0.9)
+    sin, cos = predictor.month_cycle(datetime(2026, 3, 1, tzinfo=timezone.utc))
+    assert sin == pytest.approx(1.0)
+    assert cos == pytest.approx(0.0, abs=1e-9)
+
+
+def test_the_storefront_records_clicks_purchases_and_ignores(monkeypatch):
+    pytest.importorskip("fastapi")
+    from starlette.testclient import TestClient
+
+    storefront = _load(RECS / "app" / "app.py", "recs_app_under_test")
+    written = []
+    monkeypatch.setattr(storefront, "_insert", lambda name, rows: written.append((name, rows)))
+    client = TestClient(storefront.app)
+    assert client.get("/health").json() == {"status": "ok"}
+    assert "Storefront" in client.get("/").text
+    assert client.get("/static/app.js").status_code == 200
+
+    reply = client.post(
+        "/api/interactions",
+        json={"customer_id": "c", "kind": "ignore", "article_ids": ["1", "2"], "prev_article_id": "9"},
+    )
+    assert reply.json() == {"recorded": 2}
+    name, rows = written.pop()
+    assert name == "interactions"
+    assert [r["interaction_score"] for r in rows] == [0, 0]
+    assert [r["prev_article_id"] for r in rows] == ["9", "1"]
+    assert rows[0]["t_dat"] != rows[1]["t_dat"]
+
+    client.post("/api/interactions", json={"customer_id": "c", "kind": "buy", "article_ids": ["5"]})
+    assert [name for name, _ in written] == ["interactions", "transactions"]
+    purchase = written[1][1][0]
+    assert purchase["article_id"] == "5"
+    assert written[0][1][0]["interaction_score"] == 2
+    assert client.post(
+        "/api/interactions", json={"customer_id": "c", "kind": "stare", "article_ids": ["5"]}
+    ).status_code == 422
+
+
+# endregion
+
 # region The dashboard program
 
 
@@ -1032,6 +1188,9 @@ def test_the_files_a_build_copies_in_pass_the_systems_rules(tmp_path):
         shutil.copy(REQS / "rag_agent" / name, package / name)
     shutil.copytree(REQS / "rag_agent" / "app", target / "app")
     shutil.copytree(APP, target / "app-skeleton")
+    for name in ("hm_features.py", "train_retrieval.py", "train_ranker.py", "predictor.py"):
+        shutil.copy(REQS / "recommender" / name, package / f"recs_{name}")
+    shutil.copytree(REQS / "recommender" / "app", target / "recs-app")
     done = _lint(target)
     assert done.returncode == 0, done.stdout + done.stderr
 
