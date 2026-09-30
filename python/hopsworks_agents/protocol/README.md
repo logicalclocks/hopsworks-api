@@ -212,6 +212,21 @@ ManagedMemoryService(long_term=True, embedder=embedder,
                       vector_store=vector_store_for(embedder))
 ```
 
+The embedder loads its model from the project's model registry, so a pod never
+downloads it from the internet. Register it once, where there is internet (a
+notebook, or the feature pipeline that embeds the data):
+
+```python
+from hopsworks_agents.protocol import register_sentence_transformer, load_sentence_transformer
+
+register_sentence_transformer("all-MiniLM-L6-v2")    # idempotent; force=True for a new version
+embed = load_sentence_transformer("all-MiniLM-L6-v2")  # from the registry, the hub only as fallback
+```
+
+`load_sentence_transformer` is also what to call for a model the agent's own
+tools use. An unregistered model still comes from the hub, with a warning;
+`fallback=False` makes it an error for pods that must stay offline.
+
 ### Telling the traces who a conversation was with
 
 An agent that asks for a customer key learns who it is talking to *during* the

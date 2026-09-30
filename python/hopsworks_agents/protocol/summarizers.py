@@ -328,7 +328,7 @@ def hopsworks_summarizer(
 
 
 def sentence_transformer_embedder(
-    model_name: str = "all-MiniLM-L6-v2", *, normalize: bool = True
+    model_name: str = "all-MiniLM-L6-v2", *, normalize: bool = True, **load_kwargs
 ):
     """The shipped default embedder: a local sentence-transformers model.
 
@@ -341,23 +341,35 @@ def sentence_transformer_embedder(
     embedding every ingested message against a remote service would put a
     network call on the write path of every turn.
 
+    The model comes from the project's model registry when it was registered
+    there with :func:`hopsworks_agents.protocol.embeddings.register_sentence_transformer`,
+    and from the hub otherwise; ``load_kwargs`` go to
+    :func:`~hopsworks_agents.protocol.embeddings.load_sentence_transformer`
+    (``fallback=False`` for a pod that must not reach the internet).
+
     The returned callable carries ``dimension`` and ``model_id``, which
     :func:`hopsworks_agents.protocol.vectorstore.vector_store_for` uses to size
     the feature group and to detect a swapped model later.
     """
     try:
-        from sentence_transformers import SentenceTransformer
+        import sentence_transformers  # noqa: F401
     except ImportError as err:
         raise ImportError(
             "sentence_transformer_embedder requires sentence-transformers: "
             "pip install sentence-transformers"
         ) from err
 
-    model = SentenceTransformer(model_name)
+    from .embeddings import load_sentence_transformer
+
+    model = load_sentence_transformer(model_name, **load_kwargs)
 
     def embed(text: str) -> list[float]:
         return model.encode(text, normalize_embeddings=normalize).tolist()
 
-    embed.dimension = model.get_sentence_embedding_dimension()
+    # renamed in sentence-transformers 5; the old name still answers on older ones
+    dimension_of = getattr(
+        model, "get_embedding_dimension", model.get_sentence_embedding_dimension
+    )
+    embed.dimension = dimension_of()
     embed.model_id = model_name
     return embed

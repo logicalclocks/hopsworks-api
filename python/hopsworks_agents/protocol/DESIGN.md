@@ -24,6 +24,7 @@ app.py       AgentApp (FastAPI subclass): routes, handler decorators, streaming
 memory.py    ChatMemory abstraction + InMemory/Sql backends + MySQL URL resolver
 tools.py     model-callable remember/recall/forget/search + framework wrapping
 summarizers.py  anthropic_summarizer, openai_summarizer (any OpenAI-compatible endpoint), hopsworks_summarizer (an LLM deployment, by name) + the default local embedder
+embeddings.py   register_sentence_transformer / load_sentence_transformer: the embedding model from the model registry, never downloaded in a pod
 vectorstore.py  embedding feature group behind a VectorStore seam
 tracing.py   env-gated OTel setup + per-framework OpenInference instrumentation
 ```

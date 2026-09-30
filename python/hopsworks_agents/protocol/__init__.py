@@ -36,6 +36,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:  # pragma: no cover - for type checkers only
     from .app import AgentApp
     from .context import HandlerContext
+    from .embeddings import load_sentence_transformer, register_sentence_transformer
     from .memory import (
         ChatMemory,
         InMemoryAgentMemory,
@@ -83,6 +84,8 @@ _EXPORTS: dict[str, str] = {
     "InMemoryAgentMemory": "memory",
     "ManagedMemoryService": "memory",
     "deployment_mysql_url": "memory",
+    "load_sentence_transformer": "embeddings",
+    "register_sentence_transformer": "embeddings",
     "anthropic_summarizer": "summarizers",
     "openai_summarizer": "summarizers",
     "hopsworks_summarizer": "summarizers",
