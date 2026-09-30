@@ -429,8 +429,9 @@ class Model:
         Parameters:
             name: Name of the deployment.
             description: Description of the deployment.
-            artifact_version: **Deprecated**. Version number of the model artifact to deploy, `CREATE` to create a new model artifact
-                or `MODEL-ONLY` to reuse the shared artifact containing only the model files.
+            artifact_version: **Deprecated**.
+                Ignored.
+                Deployments are versioned as a whole, see [`Deployment.save`][hsml.deployment.Deployment.save].
             serving_tool: Serving tool used to deploy the model server.
             script_file: Path to a custom predictor script implementing the Predict class, either local or already uploaded to HopsFS.
             config_file: Model server configuration file to be passed to the model deployment, either local or already uploaded to HopsFS.

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import math
 import os
 import re
 import tempfile
@@ -134,7 +135,7 @@ class ServingEngine:
     ):
         if await_status > 0:
             sleep_seconds = 5
-            for _ in range(int(await_status / sleep_seconds)):
+            for _ in range(max(1, math.ceil(await_status / sleep_seconds))):
                 time.sleep(sleep_seconds)
                 state = deployment_instance.get_state()
                 num_instances = self._get_available_instances(state)
@@ -601,7 +602,30 @@ class ServingEngine:
         if deployment_instance.is_stopped():
             print("Before making predictions, start the deployment by using `.start()`")
 
-    def _update(self, deployment_instance, await_update):
+    def _update(self, deployment_instance, await_update, new_version=False):
+        self._apply(
+            deployment_instance,
+            lambda: self._serving_api._put(deployment_instance, new_version),
+            await_update,
+        )
+
+    def _rollback(self, deployment_instance, version, await_update):
+        # Also refuses an unsaved deployment and a backend without versions.
+        versions = self._serving_api._get_versions(deployment_instance)
+        if any(v.active and v.version == version for v in versions):
+            print(f"Version {version} is already the active version, nothing to do.")
+            return
+        # Unlike a save, a rollback is accepted while a version is updating: a version that does not
+        # come up is the main reason to roll back.
+        self._apply(
+            deployment_instance,
+            lambda: self._serving_api._rollback(deployment_instance, version),
+            await_update,
+            allow_updating=True,
+        )
+
+    def _apply(self, deployment_instance, change, await_update, allow_updating=False):
+        """Run a change of the deployment's configuration and wait for the running instances to pick it up."""
         state = deployment_instance.get_state()
         if state is None:
             return
@@ -616,12 +640,16 @@ class ServingEngine:
             state.status == PREDICTOR_STATE.STATUS_RUNNING
             or state.status == PREDICTOR_STATE.STATUS_IDLE
             or state.status == PREDICTOR_STATE.STATUS_FAILED
+            or (allow_updating and state.status == PREDICTOR_STATE.STATUS_UPDATING)
         ):
             # if running, it's fine
-            self._serving_api._put(deployment_instance)
+            change()
             print("Deployment updated, applying changes to running instances...")
             state = self._poll_deployment_status(  # wait for status
-                deployment_instance, PREDICTOR_STATE.STATUS_RUNNING, await_update
+                # save() and rollback() accept None, which skips the wait like 0.
+                deployment_instance,
+                PREDICTOR_STATE.STATUS_RUNNING,
+                await_update or 0,
             )
             if state is not None and state.status == PREDICTOR_STATE.STATUS_RUNNING:
                 print("Running instances updated successfully")
@@ -643,19 +671,30 @@ class ServingEngine:
             or state.status == PREDICTOR_STATE.STATUS_STOPPED
         ):
             # if stopped, it's fine
-            self._serving_api._put(deployment_instance)
+            change()
             print("Deployment updated, explore it at " + deployment_instance.get_url())
             return
 
         raise ValueError("Unknown deployment status: " + state.status)
 
-    def _save(self, deployment_instance, await_update: int):
+    def _save(self, deployment_instance, await_update: int, new_version: bool = False):
         # Local paths on script_file / config_file are auto-uploaded under
         # /Projects/<p>/Deployments/<name>/resources/ and rewritten to
         # HopsFS paths in-memory. On update of a deployment fetched from the
         # backend, these fields hold backend-managed references (e.g. a bare
         # basename), which are left untouched; only newly-assigned local
         # paths are re-uploaded.
+        # Both refusals come before anything is written to HopsFS.
+        if new_version:
+            if deployment_instance.id is None:
+                raise ModelServingException(
+                    "A new deployment starts at version 1; new_version applies to updates only"
+                )
+            # A backend that predates versioning ignores the flag and edits the active version in place.
+            if not self._serving_api._supports_versions(deployment_instance):
+                raise ModelServingException(
+                    "Deployment versioning requires a newer Hopsworks release; nothing was saved."
+                )
         self._upload_local_serving_files(deployment_instance)
         self._upload_default_predictor_stub(deployment_instance)
         self._publish_schema(deployment_instance)
@@ -663,7 +702,7 @@ class ServingEngine:
         if deployment_instance.id is None:
             self._create(deployment_instance)
             return
-        self._update(deployment_instance, await_update)
+        self._update(deployment_instance, await_update, new_version)
 
     def _upload_default_predictor_stub(self, deployment_instance):
         """Give a default-predictor deployment without a script the library stub as its predictor script."""
