@@ -153,8 +153,20 @@ async def chat(request, ctx):
 Summarizing runs *after* the response has streamed and is awaited before the
 route returns, so it costs request duration every Nth turn and never
 time-to-answer. `summarize` is any callable
-`(previous_summary, turns) -> str`, sync or async — `anthropic_summarizer()` is
-a convenience, not a requirement.
+`(previous_summary, turns) -> str`, sync or async. Two are shipped:
+`anthropic_summarizer()` for Claude and `openai_summarizer()` for OpenAI and
+for anything that speaks its chat-completions API through `base_url` — a vLLM
+or Ollama instance in the cluster, a LiteLLM proxy, Azure:
+
+```python
+summarize=openai_summarizer()                                      # OPENAI_API_KEY
+summarize=openai_summarizer("llama-3.1-8b", base_url="http://vllm:8000/v1", api_key="none")
+```
+
+Both resolve the key on first use — explicit argument, then the environment
+(`OPENAI_API_KEY` / `ANTHROPIC_API_KEY`), then the Hopsworks secret named by
+`api_key_secret` — so a deployment reuses the secret its agent already holds.
+Anything else is just a function with that shape.
 
 ### Agent-callable memory tools
 

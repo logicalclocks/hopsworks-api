@@ -53,7 +53,11 @@ if TYPE_CHECKING:  # pragma: no cover - for type checkers only
         ImageContent,
         TextContent,
     )
-    from .summarizers import anthropic_summarizer, sentence_transformer_embedder
+    from .summarizers import (
+        anthropic_summarizer,
+        openai_summarizer,
+        sentence_transformer_embedder,
+    )
     from .tools import (
         forget,
         identify,
@@ -79,6 +83,7 @@ _EXPORTS: dict[str, str] = {
     "ManagedMemoryService": "memory",
     "deployment_mysql_url": "memory",
     "anthropic_summarizer": "summarizers",
+    "openai_summarizer": "summarizers",
     "sentence_transformer_embedder": "summarizers",
     "HopsworksVectorStore": "vectorstore",
     "vector_store_for": "vectorstore",

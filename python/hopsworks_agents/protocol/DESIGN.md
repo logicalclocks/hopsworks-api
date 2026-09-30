@@ -23,7 +23,7 @@ models.py    protocol Pydantic models + AgentResponse/AgentError helpers
 app.py       AgentApp (FastAPI subclass): routes, handler decorators, streaming
 memory.py    ChatMemory abstraction + InMemory/Sql backends + MySQL URL resolver
 tools.py     model-callable remember/recall/forget/search + framework wrapping
-summarizers.py  anthropic_summarizer + the default local embedder
+summarizers.py  anthropic_summarizer, openai_summarizer (any OpenAI-compatible endpoint) + the default local embedder
 vectorstore.py  embedding feature group behind a VectorStore seam
 tracing.py   env-gated OTel setup + per-framework OpenInference instrumentation
 ```
