@@ -305,11 +305,13 @@ _PAGE = """<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="hopsworks-design-tokens" content="1">
 <title>__TITLE__</title>
 <style>
 /* The token names and values of hopsworks-front's src/styles/globals.css, so the
-   page matches the UI when opened on its own. The UI's status view overrides
-   them with the live values (theme, cluster branding) and sets data-theme. */
+   page matches the UI when opened on its own. The hopsworks-design-tokens meta
+   tells the UI's status view it may override them with the live values (theme,
+   cluster branding) and set data-theme. */
 :root {
   --app-font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;

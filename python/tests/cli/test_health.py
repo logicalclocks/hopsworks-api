@@ -115,6 +115,8 @@ def test_the_page_carries_the_facts_and_cannot_be_broken_out_of(tmp_path, monkey
     facts["jobs"][0]["runs"][0]["log_tail"] = "</script><script>alert(1)</script>"
     page = health.render(facts, "<p>One run failed.</p>")
     assert "<title>Churn next month status</title>" in page
+    # The UI styles only a report that declares the token contract.
+    assert '<meta name="hopsworks-design-tokens" content="1">' in page
     assert "</script><script>alert(1)" not in page
     assert '"failed_runs": 1' in page and "One run failed." in page
 
