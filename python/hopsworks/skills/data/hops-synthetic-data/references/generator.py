@@ -15,7 +15,8 @@ The story from `data.<source>.generator.story` is code: `entities` and `events`
 below. Replace the telco example with the system's own story, keeping the
 rules: the same seed gives the same data; the target depends on the signal
 columns with noise; no column is a function of the target that the real world
-would not have at prediction time.
+would not have at prediction time; and every column is built whole, with
+numpy's seeded draws and Polars expressions, never a Python loop over rows.
 """
 
 from __future__ import annotations
@@ -126,9 +127,8 @@ def entities(n: int, seed: int, prevalence: float, as_of: datetime) -> pl.DataFr
             "plan": plan,
             "tenure_months": tenure.astype(np.int64),
             "churn": (logit >= threshold).astype(np.int64),
-            "snapshot_date": [as_of] * n,
         }
-    )
+    ).with_columns(snapshot_date=pl.lit(as_of))
 
 
 def events(
@@ -147,15 +147,17 @@ def events(
     rng = np.random.default_rng(seed)
     seconds = (end - start).total_seconds()
     n = int(rate_per_s * seconds)
-    offsets = np.sort(rng.uniform(0, seconds, n))
+    offsets_us = np.sort(rng.uniform(0, seconds, n) * 1e6).astype(np.int64)
     raw = pl.DataFrame(
         {
-            "event_id": [f"{id_prefix}-{seed}-{i}" for i in range(n)],
             "customer_id": rng.choice(ents["customer_id"].to_numpy(), size=n),
-            "ts": [start + timedelta(seconds=float(o)) for o in offsets],
+            "offset_us": offsets_us,
             "duration_s": rng.exponential(180.0, n).round(1),
             "u": rng.uniform(0, 1, n),
         }
+    ).with_columns(
+        event_id=pl.format(f"{id_prefix}-{seed}-{{}}", pl.int_range(pl.len())),
+        ts=pl.lit(start) + pl.duration(microseconds=pl.col("offset_us")),
     )
     decay_from = end - timedelta(days=60)
     # A churner's event survives with a probability falling from 1 to 0 over the window.
@@ -179,15 +181,19 @@ def tick(
     rng = np.random.default_rng([seed, index])
     n = int(rate_per_s * tick_s)
     begin = now - timedelta(seconds=tick_s)
-    offsets = np.sort(rng.uniform(0, tick_s, n))
+    offsets_us = np.sort(rng.uniform(0, tick_s, n) * 1e6).astype(np.int64)
     return pl.DataFrame(
         {
-            "event_id": [f"l-{seed}-{index}-{i}" for i in range(n)],
             "customer_id": rng.choice(ents["customer_id"].to_numpy(), size=n),
-            "ts": [begin + timedelta(seconds=float(o)) for o in offsets],
+            "offset_us": offsets_us,
             "duration_s": rng.exponential(180.0, n).round(1),
         }
-    ).with_columns(pl.col("ts").dt.replace_time_zone("UTC"))
+    ).select(
+        event_id=pl.format(f"l-{seed}-{index}-{{}}", pl.int_range(pl.len())),
+        customer_id="customer_id",
+        ts=pl.lit(begin) + pl.duration(microseconds=pl.col("offset_us")),
+        duration_s="duration_s",
+    )
 
 
 def _sink(fs, writes: dict):
