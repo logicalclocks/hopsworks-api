@@ -12,6 +12,8 @@ Before anything else in a session, check whether `system.yaml` changed since wha
 - Edits made in the Hopsworks UI are listed under `system.edits`, each with the paths it changed, and each is one commit with a `Brewer-Edit: <id>` trailer: `git log --grep "Brewer-Edit" -p -- system.yaml`.
   Apply them with `/hops-build <slug> <phase> Apply the edits ...`, which rebuilds what they change and removes the entries.
 - Edits made any other way: `git log -p -- system.yaml` since the phase's last commit (`[<slug>] <phase>: ...`).
+- Each applied set of edits is one commit with a `Brewer-Apply: <ids>` trailer whose body lists every asset as `<name>: v<old> -> v<new>` (`git log --grep "Brewer-Apply"`).
+  The previous versions are kept, so reverting that commit and applying again returns the system to them.
 
 For each change, decide which pipelines or assets it touches: a schedule means rescheduling the job, a feature means changing the feature pipeline and usually a new feature group version, a model or split setting means retraining, an SLA or window means the inference job or deployment, and so on.
 Change what is needed, record it in `system.yaml`, and leave the rest untouched.

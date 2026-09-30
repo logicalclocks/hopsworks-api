@@ -111,10 +111,18 @@ pipeline into new versions, recreates the feature view and its training data, re
 accepts a model, reruns batch inference or redeploys the deployment or agent, points the app at
 the new versions and restarts it, and runs `verify`. Rewrite each later phase's block in
 `system.yaml` and its code to the new names and versions, rerun its tests, and record it `met`;
-the run ends only when every invalidated phase is `met`, `accepted` or `unmet` with why. Once
-nothing reads them, delete the superseded versions this system created (their descriptions name
-the system) and the jobs of the old pipeline versions, so the old and new builds do not run side
-by side.
+the run ends only when every invalidated phase is `met`, `accepted` or `unmet` with why.
+
+**One commit per apply, and the old versions kept.** Keep every superseded version (feature
+groups, feature views, training datasets, models): an apply is undone by reverting its commit,
+which only works while what the previous `system.yaml` names still exists. Stop only what would
+run twice: unschedule and stop the old pipelines' jobs, and move the deployment and app to the new
+versions. End the apply with one commit of `system.yaml` and the code,
+`[<slug>] apply: <boxes>`, with a `Brewer-Apply: <edit ids>` trailer and a body listing each asset
+as `<name>: v<old> -> v<new>`, pushed. To go back, `git revert --no-edit <that commit>` restores
+the previous `system.yaml` and code; then apply it like any edit, which re-points the jobs,
+schedules, deployment and app at the previous versions without rebuilding them, and commits that
+as its own apply. Delete removes every version a system made, the superseded ones included.
 
 ### Before reqs: the repository
 
