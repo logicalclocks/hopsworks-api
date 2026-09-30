@@ -16,6 +16,20 @@ from hopsworks.cli.commands import setup as setup_mod
 from hopsworks.cli.main import cli
 
 
+@pytest.fixture(autouse=True)
+def isolated_cwd(tmp_path, monkeypatch):
+    """Keep the scaffold `hops setup` writes out of the checkout.
+
+    A successful setup lays the agent instruction files down in the working
+    directory, and CliRunner does not isolate that, so without this every test
+    here writes them into the repository it is running from.
+    """
+    workdir = tmp_path / "cwd"
+    workdir.mkdir()
+    monkeypatch.chdir(workdir)
+    return workdir
+
+
 @pytest.fixture
 def tmp_home(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
@@ -402,7 +416,12 @@ def test_setup_signs_in_again_when_the_cached_key_is_dead(tmp_home):
     assert config.load().api_key == "NEW.KEY"
 
 
-def test_setup_success_prints_a_single_line(tmp_home):
+def test_setup_success_prints_a_single_line(tmp_home, isolated_cwd):
+    """A re-run with nothing to do stays quiet.
+
+    The scaffold still runs on this path, so the repository is set up first:
+    "quiet" means nothing changed, not that nothing was checked.
+    """
     config.save(
         config.HopsConfig(
             host="https://c.app.hopsworks.ai",
@@ -415,6 +434,10 @@ def test_setup_success_prints_a_single_line(tmp_home):
     verified.name = "demo"
 
     with mock.patch.object(setup_mod.auth, "verify", return_value=verified):
+        assert CliRunner().invoke(cli, ["setup"]).exit_code == 0
+        # Everything the scaffold writes is now present, including the skills
+        # whose absence the `hops skills install` hint reports.
+        CliRunner().invoke(cli, ["init"])
         result = CliRunner().invoke(cli, ["setup"])
 
     lines = [line for line in result.output.splitlines() if line.strip()]
@@ -483,3 +506,36 @@ def test_setup_failure_without_tls_trouble_has_no_hint(tmp_home):
         )
 
     assert "--insecure" not in result.output
+
+
+def test_setup_scaffolds_on_the_cached_key_path(tmp_home, isolated_cwd):
+    """A returning user in a new repository must still get the files.
+
+    The cached-key short-circuit is the common path; returning from it before
+    scaffolding left new repositories bare and never refreshed an existing one
+    after an SDK upgrade.
+    """
+    config.save(
+        config.HopsConfig(
+            host="https://c.app.hopsworks.ai", api_key="AAA.BBB", project="demo"
+        )
+    )
+    with mock.patch.object(setup_mod, "_cached_key_works", return_value=True):
+        result = CliRunner().invoke(cli, ["setup"])
+
+    assert result.exit_code == 0, result.output
+    assert (isolated_cwd / "AGENTS.md").is_file()
+    assert (isolated_cwd / ".claude/skills/hops/SKILL.md").is_file()
+
+
+def test_no_scaffold_is_honoured_on_the_cached_key_path(tmp_home, isolated_cwd):
+    config.save(
+        config.HopsConfig(
+            host="https://c.app.hopsworks.ai", api_key="AAA.BBB", project="demo"
+        )
+    )
+    with mock.patch.object(setup_mod, "_cached_key_works", return_value=True):
+        result = CliRunner().invoke(cli, ["setup", "--no-scaffold"])
+
+    assert result.exit_code == 0, result.output
+    assert not (isolated_cwd / "AGENTS.md").exists()

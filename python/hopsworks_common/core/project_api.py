@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 
 from hopsworks_apigen import also_available_as
-from hopsworks_common import client, constants, project
+from hopsworks_common import client, project
 from hopsworks_common.client.exceptions import RestAPIError
 
 
@@ -142,9 +142,12 @@ class ProjectApi:
         query_params = {"projectName": name}
         headers = {"content-type": "application/json"}
 
+        # No "services" key.
+        # The backend decides which services a project gets.
+        # It adds the ones the cluster runs, such as Trino and Superset.
+        # hopsworks-ee#3299 defaults the set for a request that names none.
         data = {
             "projectName": name,
-            "services": constants.SERVICES.LIST,
             "description": description,
             "featureStoreTopic": feature_store_topic,
         }

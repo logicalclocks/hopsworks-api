@@ -17,33 +17,10 @@
 
 from __future__ import annotations
 
-import importlib.util
-import os
-import pathlib
-from unittest import mock
 from unittest.mock import MagicMock
 
 import pytest
 from hopsworks_common.client.exceptions import FeatureStoreException
-
-
-pytest.importorskip("pyspark")
-
-HSFS_UTILS = (
-    pathlib.Path(__file__).resolve().parents[3] / "utils" / "python" / "hsfs_utils.py"
-)
-
-
-@pytest.fixture(scope="module")
-def hsfs_utils():
-    # The job opens a HopsFS client for the user named in the environment as it is imported,
-    # neither of which exists here.
-    os.environ.setdefault("HADOOP_USER_NAME", "test_user")
-    spec = importlib.util.spec_from_file_location("hsfs_utils_under_test", HSFS_UTILS)
-    module = importlib.util.module_from_spec(spec)
-    with mock.patch("fsspec.implementations.arrow.HadoopFileSystem"):
-        spec.loader.exec_module(module)
-    return module
 
 
 def _spark_reading(frame):

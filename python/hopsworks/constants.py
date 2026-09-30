@@ -36,7 +36,6 @@ from hopsworks_common.constants import (
     PREDICTOR,
     PREDICTOR_STATE,
     RESOURCES,
-    SERVICES,
     SSL_CONFIG,
     Default,
 )
@@ -64,7 +63,6 @@ __all__ = [
     "PREDICTOR",
     "PREDICTOR_STATE",
     "RESOURCES",
-    "SERVICES",
     "SSL_CONFIG",
     "Default",
 ]

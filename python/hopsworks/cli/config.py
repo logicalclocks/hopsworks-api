@@ -31,7 +31,7 @@ import tomli_w
 
 _logger = logging.getLogger(__name__)
 
-DEFAULT_HOST = "https://c.app.hopsworks.ai"
+DEFAULT_HOST = "https://eu-west.cloud.hopsworks.ai"
 CONFIG_PATH = Path.home() / ".hops.toml"
 LEGACY_YAML_PATH = Path.home() / ".hops" / "config"
 
