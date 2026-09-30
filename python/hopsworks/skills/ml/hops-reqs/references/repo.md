@@ -67,6 +67,14 @@ gh api user --jq .login              # the owner for a new repository (CLI login
   read its `system.yaml`: a different `system.target.project` means another project's
   build (often with its own open pull request), so cut `hops/<slug>-<project>`
   instead and leave that branch and its pull request untouched.
+- **An example in a repository of its own works on the default branch.** When
+  the system is an example (`system.example`) and its repository holds nothing
+  else, because the build just created it or `git ls-remote --heads origin`
+  lists only the default branch and that branch has no commit but the init,
+  every phase commits and pushes straight to the default branch: no
+  `hops/<slug>` branch and no pull request. Record `system.repo.branch` as the
+  default branch and no `pr`. A repository with code or branches of its own, and
+  every system that is not an example, keeps the branch and the pull request.
 - **The system directory is the repository root.** A new repository (every example,
   and every system built in a Hopsworks home) holds the system itself: `system.yaml`,
   `AGENTS.md` and the code at its root, with `<slug>/` as the work tree. The HopsFS
@@ -78,7 +86,7 @@ gh api user --jq .login              # the owner for a new repository (CLI login
 cd <slug>
 git init -b main && git add .gitignore AGENTS.md && git commit -m "[<slug>] init"
 gh repo create <owner>/hops-<slug> --private --source . --push   # push-only: git remote add origin <url> && git push -u origin main
-git switch -c hops/<slug>            # or hops/<slug>-<project>, above
+git switch -c hops/<slug>            # or hops/<slug>-<project>, above; an example stays on main
 ```
 
   A repository the user names for a system in a Hopsworks home is used the same way,
@@ -88,7 +96,8 @@ git switch -c hops/<slug>            # or hops/<slug>-<project>, above
 
 ## Branches and commits
 
-- One branch per system, `hops/<slug>`, cut from the default branch. A later
+- One branch per system, `hops/<slug>`, cut from the default branch, but for an
+  example in a repository of its own, which works on the default branch. A later
   `/hops-build <phase> <instruction>` on a system whose branch has merged works on
   `hops/<slug>/<yyyymmdd>-<short-instruction>` and ends with its own pull request.
 - Every phase ends with one commit, `[<slug>] <phase>: <one line>`, covering its
@@ -98,8 +107,9 @@ git switch -c hops/<slug>            # or hops/<slug>-<project>, above
   (`[<slug>] train run <n>: result`). A discarded or crashed run is undone with
   `git revert --no-edit <code commit>`, the hash recorded in the row, never `HEAD`.
 - `verify` is an evidence commit: `[<slug>] verify: <claims> claims, <failed> failed`.
-- Nothing is committed to the default branch, nothing is force-pushed, and the
-  command never merges.
+- Nothing is committed to the default branch, except by an example in a
+  repository of its own (above); nothing is force-pushed, and the command never
+  merges.
 
 ```bash
 git switch -c hops/<slug> origin/<default_branch>
@@ -113,6 +123,8 @@ reviewed code and the running code cannot silently differ.
 ## The pull request
 
 Opened by the finishing step after the code is pushed and `verify` passed on that head.
+An example on its repository's default branch has none: the finishing step
+reports the repository URL and the commit `verify` passed on instead.
 With `system.repo.push: ssh` there is no API: report the compare link and the body
 (written to a file the user can paste), skip Copilot and the review rounds, and say so.
 

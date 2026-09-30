@@ -18,7 +18,8 @@ the same file by hand.
   the predictions are consumed.
 - **Output:** `<slug>/system.yaml` with `requirements` filled and confirmed,
   then, phase by phase, a verified and deployed system whose code sits in a
-  GitHub repository and ends as a pull request.
+  GitHub repository and ends as a pull request, or, for an example in a
+  repository of its own, on the repository's default branch.
 - **Pre-condition:** a Hopsworks project (`hops context`) and GitHub access: `gh auth login`, a GitHub token in Hopsworks Account Settings, or an SSH key GitHub accepts (`references/repo.md`).
 
 ## The system types and their SLA vocabulary

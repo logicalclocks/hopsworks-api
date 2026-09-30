@@ -142,7 +142,10 @@ compare link instead); stop and say how to fix it only when none works. For `new
 repository with `gh repo create` (owner from `gh api user`, name `hops-<slug>`, or
 `hops-<slug>-<project>` when the owner already has a repository of that name, private) and record
 its URL; cut `hops/<slug>` from the default branch, or `hops/<slug>-<project>` when `hops/<slug>`
-holds another project's build, and record `system.repo`. A new repository has the system
+holds another project's build, and record `system.repo`. An example in a repository of its own
+(one the build created, or with no branch but the default and no commit but the init) works on
+the default branch instead: each phase commits and pushes straight to it, with no branch and no
+pull request, as repo.md says. A new repository has the system
 directory as its root (`<slug>/` is the work tree, never the HopsFS home), as repo.md shows.
 `<slug>/AGENTS.md`, from the template, tells an agent started there that the system is built from
 `system.yaml` and how to follow a change downstream; it is committed with the rest of the
@@ -309,7 +312,8 @@ and models in place, record it in `decisions`, and commit.
 
 When `inference` is satisfied and `app` is `met` or `skipped`: commit and push the code, run
 `verify` against that head, set `system.status: deployed` on a clean table, commit the `verify`
-block and push. Then the pull request and its review, as `hops-reqs/references/repo.md` says:
+block and push. An example on its default branch stops here and reports the repository URL and
+that commit. Otherwise, the pull request and its review, as `hops-reqs/references/repo.md` says:
 open it, request Copilot through the GraphQL mutation and the reviewers named in `reqs`, poll up
 to fifteen minutes, fix or answer every thread (a fix to an entrypoint redeploys it and reruns
 its tests and, for inference, the benchmark, then `verify`), at most three rounds. Report the
