@@ -462,6 +462,32 @@ class TestKafkaEngine:
         # Assert
         assert result == "test_topic,0:100"
 
+    def test_kafka_get_offsets_for_times_record_appended_during_lookup(self, mocker):
+        # Arrange - the lookup finds nothing past the timestamp at end offset 10, and a
+        # producer appends offset 10 right after it answers.
+        consumer = self._offsets_for_times_consumer(
+            mocker, partitions={0: (0, 10)}, results={0: (-1, None)}
+        )
+        answer = consumer.offsets_for_times.side_effect
+
+        def offsets_for_times_then_append(lookups, timeout=None):
+            answers = answer(lookups, timeout=timeout)
+            consumer.get_watermark_offsets.side_effect = lambda partition: (0, 11)
+            return answers
+
+        consumer.offsets_for_times.side_effect = offsets_for_times_then_append
+
+        # Act
+        result = kafka_engine._kafka_get_offsets_for_times(
+            topic_name="test_topic",
+            feature_store_id=99,
+            offline_write_options={},
+            timestamp=1789984800000,
+        )
+
+        # Assert - reading starts at the appended record rather than past it
+        assert result == "test_topic,0:10"
+
     def test_kafka_get_offsets_for_times_floors_at_the_low_watermark(self, mocker):
         # Arrange - retention dropped the record the lookup landed on, leaving an offset
         # that is no longer readable.

@@ -56,6 +56,7 @@ import org.apache.hudi.metadata.HoodieTableMetadata;
 import org.apache.hudi.metadata.NativeTableMetadataFactory;
 import org.apache.hudi.storage.StorageConfiguration;
 import org.apache.hudi.storage.hadoop.HoodieHadoopStorage;
+import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
@@ -359,22 +360,27 @@ public class HudiEngine {
    * The offsets to read each partition from so that nothing older than {@code sinceTimestamp} is
    * read, keyed by partition.
    *
-   * <p>A partition whose records all predate the timestamp contributes its end offset, since it
-   * holds nothing worth reading. A partition Kafka could not answer for contributes its beginning
-   * offset, so an unanswered lookup reads too much rather than too little.</p>
+   * <p>A partition whose records all predate the timestamp contributes the end offset it had before
+   * the lookup, since it held nothing worth reading then; a record appended after the lookup lands
+   * at or past that offset and is still read. A partition Kafka could not answer for contributes its
+   * beginning offset, so an unanswered lookup reads too much rather than too little.</p>
    */
-  private Map<org.apache.kafka.common.TopicPartition, Long> offsetsSince(
-      KafkaConsumer<byte[], byte[]> consumer,
+  static Map<org.apache.kafka.common.TopicPartition, Long> offsetsSince(
+      Consumer<byte[], byte[]> consumer,
       List<org.apache.kafka.common.TopicPartition> topicPartitions,
-      Map<org.apache.kafka.common.TopicPartition, Long> beginningOffsets,
       long sinceTimestamp) {
+    // Captured before the lookup: an end offset read after it could already be past a record
+    // appended in between, which the lookup did not see and the read would then skip.
+    Map<org.apache.kafka.common.TopicPartition, Long> endOffsets = consumer.endOffsets(topicPartitions);
     Map<org.apache.kafka.common.TopicPartition, Long> lookups = new HashMap<>();
     for (org.apache.kafka.common.TopicPartition tp : topicPartitions) {
       lookups.put(tp, sinceTimestamp);
     }
     Map<org.apache.kafka.common.TopicPartition, OffsetAndTimestamp> found =
         consumer.offsetsForTimes(lookups);
-    Map<org.apache.kafka.common.TopicPartition, Long> endOffsets = consumer.endOffsets(topicPartitions);
+    // Read after the lookup, since retention can drop the record the lookup landed on.
+    Map<org.apache.kafka.common.TopicPartition, Long> beginningOffsets =
+        consumer.beginningOffsets(topicPartitions);
 
     Map<org.apache.kafka.common.TopicPartition, Long> startOffsets = new HashMap<>();
     for (org.apache.kafka.common.TopicPartition tp : topicPartitions) {
@@ -382,7 +388,6 @@ public class HudiEngine {
       if (atOrAfter == null) {
         startOffsets.put(tp, endOffsets.get(tp));
       } else {
-        // Retention can drop the record the lookup landed on between the two calls.
         startOffsets.put(tp, Math.max(atOrAfter.offset(), beginningOffsets.get(tp)));
       }
     }
@@ -417,11 +422,9 @@ public class HudiEngine {
       List<org.apache.kafka.common.TopicPartition> topicPartitions = partitions.stream()
           .map(p -> new org.apache.kafka.common.TopicPartition(topic, p.partition()))
           .collect(Collectors.toList());
-      Map<org.apache.kafka.common.TopicPartition, Long> beginningOffsets =
-          consumer.beginningOffsets(topicPartitions);
       Map<org.apache.kafka.common.TopicPartition, Long> startOffsets = sinceTimestamp == null
-          ? beginningOffsets
-          : offsetsSince(consumer, topicPartitions, beginningOffsets, sinceTimestamp);
+          ? consumer.beginningOffsets(topicPartitions)
+          : offsetsSince(consumer, topicPartitions, sinceTimestamp);
       StringBuilder sb = new StringBuilder(topic);
       for (org.apache.kafka.common.TopicPartition tp : topicPartitions) {
         sb.append(",").append(tp.partition()).append(":").append(startOffsets.get(tp));

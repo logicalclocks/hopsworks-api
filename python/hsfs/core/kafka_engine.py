@@ -275,8 +275,10 @@ def _kafka_get_offsets_for_times(
     Returns the `topic,partition:offset,...` string
     [`_kafka_get_offsets`][hsfs.core.kafka_engine._kafka_get_offsets] returns, holding for
     each partition the earliest offset whose record is at or after `timestamp`.
-    A partition whose records all predate `timestamp` contributes its high watermark, since
-    it holds nothing worth reading, and a partition Kafka could not answer for contributes
+    A partition whose records all predate `timestamp` contributes the high watermark it had
+    before the lookup, since it held nothing worth reading then; a record appended after the
+    lookup lands at or past that watermark and is still read.
+    A partition Kafka could not answer for contributes
     its low watermark, so an unanswered lookup reads too much rather than too little.
     The empty string is returned when the topic does not exist.
 
@@ -296,15 +298,27 @@ def _kafka_get_offsets_for_times(
         if topic_name not in topics:
             return ""
 
-        lookups = [
-            TopicPartition(
-                topic=topic_name, partition=partition_metadata.id, offset=timestamp
-            )
+        partitions = [
+            partition_metadata.id
             for partition_metadata in topics.get(topic_name).partitions.values()
+        ]
+        # Captured before the lookup: a high watermark read after it could already be past
+        # a record appended in between, which the lookup did not see and the read would
+        # then skip.
+        highs = {
+            partition: consumer.get_watermark_offsets(
+                TopicPartition(topic=topic_name, partition=partition)
+            )[1]
+            for partition in partitions
+        }
+        lookups = [
+            TopicPartition(topic=topic_name, partition=partition, offset=timestamp)
+            for partition in partitions
         ]
         offsets = ""
         for result in consumer.offsets_for_times(lookups, timeout=timeout):
-            low, high = consumer.get_watermark_offsets(
+            # Read after the lookup, since retention can drop the record it landed on.
+            low, _ = consumer.get_watermark_offsets(
                 TopicPartition(topic=topic_name, partition=result.partition)
             )
             if result.error is not None:
@@ -316,9 +330,8 @@ def _kafka_get_offsets_for_times(
                 # Kafka answers a timestamp past the last record with a negative offset:
                 # every record the partition holds is older than the timestamp, so the
                 # reader belongs at the end of it.
-                offset = high
+                offset = highs[result.partition]
             else:
-                # Retention can drop the record the lookup landed on between the two calls.
                 offset = max(result.offset, low)
             offsets += f",{result.partition}:{offset}"
 
