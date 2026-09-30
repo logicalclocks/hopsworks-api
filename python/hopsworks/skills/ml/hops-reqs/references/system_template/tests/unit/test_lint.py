@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 SYSTEM_DIR = Path(__file__).resolve().parents[2]
-# The version the rules were written for; uvx fetches it when ruff is not installed.
+# The version the rules were written for; uv fetches it when ruff is not installed.
 RUFF_VERSION = "0.15.6"
 
 
@@ -25,8 +25,9 @@ def _ruff() -> list[str]:
         return [sys.executable, "-m", "ruff"]
     if shutil.which("ruff"):
         return ["ruff"]
-    if shutil.which("uvx"):
-        return ["uvx", f"ruff@{RUFF_VERSION}"]
+    # A Hopsworks terminal ships uv without uvx.
+    if shutil.which("uv"):
+        return ["uv", "tool", "run", f"ruff@{RUFF_VERSION}"]
     pytest.fail("ruff is not available: pip install ruff, or install uv")
 
 

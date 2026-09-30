@@ -59,7 +59,7 @@ a question you are about to ask depends on.
   deployments, apps as Hopsworks apps. Unit tests are the exception.
 - **Lint before a phase is validated.** Before a phase's tests run, and before it is recorded
   `met`, run in the system directory `ruff format .` then `ruff check --fix .` (with
-  `uvx ruff@0.15.6` when `ruff` is not installed; the rules are in `pyproject.toml`), fix by hand
+  `uv tool run ruff@0.15.6` when `ruff` is not installed; the rules are in `pyproject.toml`), fix by hand
   whatever is left, and run `pytest`, whose `tests/unit/test_lint.py` fails on any finding or
   unformatted file. A phase with a lint failure is not `met`; its `tests.last_run` records
   `lint: pass`. The lint covers every file the system holds, the pipelines, tests, benchmarks and

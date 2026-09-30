@@ -21,7 +21,7 @@ The [system template](system_template/) carries the harness; copy it once per sy
 | `benchmarks/benchmark_inference.py` | the SLA as a program; exit code 0 when it holds |
 
 ```bash
-ruff format . && ruff check --fix .     # before every phase's tests (uvx ruff@0.15.6 without ruff)
+ruff format . && ruff check --fix .     # before every phase's tests (uv tool run ruff@0.15.6 without ruff)
 pytest                                  # unit tests, offline, seconds
 pytest tests/integration                # from a connected terminal; fails, never skips, without one
 python <slug>/bundle.py make tests-features-1 --with-tests
