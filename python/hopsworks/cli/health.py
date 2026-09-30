@@ -307,34 +307,84 @@ _PAGE = """<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>__TITLE__</title>
 <style>
-:root { --accent:#1eb182; --bg:#f5f7f9; --panel:#fff; --text:#1a1f2b; --muted:#5f6b7a; --line:#e3e8ee;
-  --ok:#1eb182; --warn:#e0a100; --bad:#d6455d; --radius:12px; color-scheme: light; }
-@media (prefers-color-scheme: dark) { :root { --bg:#0e1117; --panel:#161b25; --text:#eef1f5; --muted:#9aa5b4; --line:#262d3a; color-scheme: dark; } }
+/* The token names and values of hopsworks-front's src/styles/globals.css, so the
+   page matches the UI when opened on its own. The UI's status view overrides
+   them with the live values (theme, cluster branding) and sets data-theme. */
+:root {
+  --app-font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  --background: oklch(1 0 0); --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0); --card-foreground: oklch(0.145 0 0);
+  --muted: oklch(0.97 0 0); --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.95 0 0); --border: oklch(0.922 0 0); --input: oklch(0.922 0 0);
+  --destructive: oklch(0.577 0.245 27.325); --primary: #1eb182;
+  --surface-recessed: oklch(0.95 0 0); --radius: 0.625rem;
+  --quartz-primary: #21b182; --quartz-label-orange: #f2994a;
+  --quartz-label-blue: #186781; --quartz-gray: #a0a0a0;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --background: oklch(0.145 0 0); --foreground: oklch(0.985 0 0);
+    --card: oklch(0.205 0 0); --card-foreground: oklch(0.985 0 0);
+    --muted: oklch(0.269 0 0); --muted-foreground: oklch(0.708 0 0);
+    --accent: oklch(0.269 0 0); --border: oklch(1 0 0 / 10%); --input: oklch(1 0 0 / 15%);
+    --destructive: oklch(0.704 0.191 22.216); --surface-recessed: oklch(0.24 0 0);
+    --quartz-primary: #229570; --quartz-label-orange: #c0844e;
+    --quartz-label-blue: #2885a4; --quartz-gray: #a6a6a6;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] { color-scheme: dark; }
 * { box-sizing: border-box; }
-body { margin:0; padding:20px; font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--text); }
-h1 { font-size:20px; margin:0; } h2 { font-size:15px; margin:0 0 10px; }
-.head { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-bottom:16px; }
-.muted { color:var(--muted); } .grow { flex:1; }
-.pill { display:inline-block; padding:2px 10px; border-radius:999px; font-weight:600; font-size:12px; color:#fff; }
-.healthy { background:var(--ok); } .degraded { background:var(--warn); } .failing { background:var(--bad); }
-.cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:16px; }
-.card { background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:14px; }
-.stat .v { font-size:24px; font-weight:700; } .stat .l { color:var(--muted); font-size:12px; }
-section.card { margin-bottom:16px; }
-table { width:100%; border-collapse:collapse; } th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
-th { color:var(--muted); font-weight:600; font-size:12px; }
-.dots { display:flex; gap:3px; flex-wrap:wrap; } .dot { width:10px; height:10px; border-radius:2px; background:var(--ok); }
-.dot.FAILED, .dot.KILLED { background:var(--bad); } .dot.running { background:var(--warn); }
-.bar { height:8px; background:var(--line); border-radius:4px; overflow:hidden; min-width:80px; }
-.bar > div { height:100%; background:var(--accent); } .bar.hot > div { background:var(--warn); } .bar.over > div { background:var(--bad); }
-button.link { background:none; border:none; color:var(--accent); cursor:pointer; padding:0; font:inherit; }
-pre { background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:8px; max-height:260px; overflow:auto; font-size:12px; white-space:pre-wrap; }
-.summary p { margin:0 0 8px; } .bad { color:var(--bad); font-weight:600; } .ok { color:var(--ok); font-weight:600; }
-label.filter { font-size:12px; color:var(--muted); cursor:pointer; }
+body { margin: 0; padding: 16px; font: 14px/1.5 var(--app-font-sans); background: var(--background); color: var(--foreground); }
+h1 { font-size: 18px; font-weight: 600; margin: 0; }
+h2 { font-size: 14px; font-weight: 600; margin: 0 0 12px; }
+.page { display: flex; flex-direction: column; gap: 20px; }
+.muted { color: var(--muted-foreground); } .xs { font-size: 12px; } .grow { flex: 1; min-width: 0; }
+.head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+/* Card: rounded-lg border border-border bg-card shadow-sm */
+.card { background: var(--card); color: var(--card-foreground); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); padding: 16px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+.stat .v { font-size: 24px; font-weight: 600; line-height: 1.2; } .stat .l { color: var(--muted-foreground); font-size: 12px; }
+/* Badge: h-5 rounded-4xl px-2 text-xs font-medium, variants success/notice/fail */
+.badge { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 26px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+.badge.success, .badge.healthy { background: color-mix(in oklab, var(--quartz-primary) 10%, transparent); color: var(--quartz-primary); }
+.badge.notice, .badge.degraded { background: color-mix(in oklab, var(--quartz-label-orange) 10%, transparent); color: var(--quartz-label-orange); }
+.badge.fail, .badge.failing { background: color-mix(in oklab, var(--destructive) 10%, transparent); color: var(--destructive); }
+.badge.info { background: color-mix(in oklab, var(--quartz-label-blue) 10%, transparent); color: var(--quartz-label-blue); }
+/* Table: wrapper rounded-md border; head h-9 px-3 text-xs font-bold muted-foreground on bg-muted/50; rows border-b hover:bg-accent */
+.table { width: 100%; overflow: auto; border: 1px solid var(--border); border-radius: calc(var(--radius) - 2px); }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+thead { background: color-mix(in oklab, var(--muted) 50%, transparent); }
+th { height: 36px; padding: 0 12px; text-align: left; font-size: 12px; font-weight: 700; color: var(--muted-foreground); white-space: nowrap; }
+td { padding: 8px 12px; vertical-align: top; }
+tr { border-bottom: 1px solid var(--border); } tbody tr:last-child { border-bottom: 0; }
+tbody tr:hover { background: var(--accent); } tr.detail:hover { background: none; }
+/* Button outline, size sm: h-7 px-2.5 rounded-lg border-border bg-background hover:bg-muted */
+button.outline { height: 28px; padding: 0 10px; border: 1px solid var(--border); border-radius: calc(var(--radius) - 2px); background: var(--background); color: var(--foreground); font: 500 13px var(--app-font-sans); cursor: pointer; white-space: nowrap; }
+button.outline:hover { background: var(--muted); }
+:root[data-theme="dark"] button.outline { border-color: var(--input); background: color-mix(in oklab, var(--input) 30%, transparent); }
+label.filter { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+label.filter input { accent-color: var(--primary); margin: 0; }
+/* One square per run, oldest first */
+.runs { display: flex; gap: 3px; flex-wrap: wrap; max-width: 320px; }
+.run { width: 10px; height: 10px; border-radius: 2px; background: var(--quartz-primary); }
+.run.FAILED, .run.KILLED { background: var(--destructive); } .run.running { background: var(--quartz-label-orange); }
+/* Progress: h-2 rounded-full bg-muted-foreground/20, fill quartz-primary or label-orange */
+.progress { height: 8px; min-width: 96px; border-radius: 999px; overflow: hidden; background: color-mix(in oklab, var(--muted-foreground) 20%, transparent); margin-bottom: 2px; }
+.progress > div { height: 100%; border-radius: 999px; background: var(--quartz-primary); }
+.progress.warning > div { background: var(--quartz-label-orange); } .progress.over > div { background: var(--destructive); }
+/* Recessed surface for the nested log tails */
+pre { margin: 4px 0 8px; padding: 12px; border-radius: var(--radius); background: var(--surface-recessed); max-height: 260px; overflow: auto; font: 12px/1.5 var(--font-mono); white-space: pre-wrap; }
+code { font-family: var(--font-mono); font-size: 12px; }
+.summary p { margin: 0 0 8px; } .summary p:last-child, .summary ul:last-child { margin-bottom: 0; }
+.fail-text { color: var(--destructive); } .service + .service { margin-top: 16px; }
+.service-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
 </style>
 </head>
 <body>
-<div id="root"></div>
+<div id="root" class="page"></div>
 <script>
 const { facts, summary } = __DATA__;
 const el = (tag, attrs = {}, ...kids) => {
@@ -347,51 +397,60 @@ const ago = (iso) => { const s = (Date.now() - new Date(iso)) / 1000;
   return s < 90 ? `${Math.round(s)} s ago` : s < 5400 ? `${Math.round(s / 60)} min ago` : `${Math.round(s / 3600)} h ago`; };
 const dur = (s) => s >= 3600 ? `${(s / 3600).toFixed(1)} h` : s >= 60 ? `${Math.round(s / 60)} min` : `${s} s`;
 const failedRun = (r) => ['FAILED', 'KILLED'].includes(r.final_status);
+const healthyState = (s) => ['RUNNING', 'IDLE'].includes(String(s.state).toUpperCase());
+const badge = (variant, text) => el('span', { class: `badge ${variant}` }, text);
+const table = (heads, rows) => el('div', { class: 'table' }, el('table', {}, el('thead', {}, el('tr', {}, heads.map((h) => el('th', {}, h)))), el('tbody', {}, rows)));
 let onlyProblems = false;
 
 function usage(used, limit, unit) {
   if (used == null) return el('span', { class: 'muted' }, 'no metrics');
   const pct = limit ? Math.min(100, (used / limit) * 100) : 0;
-  const bar = el('div', { class: `bar ${pct > 90 ? 'over' : pct > 70 ? 'hot' : ''}` }, el('div', { style: `width:${pct}%` }));
-  return el('div', {}, bar, el('span', { class: 'muted' }, `${Math.round(used)} ${unit}${limit ? ` of ${Math.round(limit)}` : ''}`));
+  const bar = el('div', { class: `progress ${pct > 90 ? 'over' : pct > 70 ? 'warning' : ''}` }, el('div', { style: `width:${pct}%` }));
+  return el('div', {}, bar, el('span', { class: 'muted xs' }, `${Math.round(used)} ${unit}${limit ? ` of ${Math.round(limit)}` : ''}`));
 }
 
 function jobsSection() {
   const rows = facts.jobs.filter((j) => !onlyProblems || j.runs.some(failedRun) || j.missing || j.error);
-  const body = el('tbody');
+  const body = [];
   for (const j of rows) {
     const failed = j.runs.filter(failedRun);
     const last = j.runs[0];
-    const detail = el('tr', { style: 'display:none' }, el('td', { colspan: 5 },
-      failed.map((r) => el('div', {}, el('div', { class: 'muted' }, `execution ${r.id}, ${r.final_status}, ${ago(r.submitted)}`), el('pre', {}, r.log_tail || '(no log)')))));
-    body.append(el('tr', {},
-      el('td', {}, el('strong', {}, j.name), el('div', { class: 'muted' }, j.missing ? 'missing' : `${j.type ?? ''}${j.scheduled ? ' · scheduled' : ''}`)),
-      el('td', {}, el('div', { class: 'dots' }, j.runs.slice().reverse().map((r) => el('span', { class: `dot ${r.final_status} ${r.final_status === 'UNDEFINED' ? 'running' : ''}`, title: `${r.id} ${r.final_status} ${ago(r.submitted)}` })))),
-      el('td', {}, `${j.runs.length - failed.length}/${j.runs.length}`),
+    const detail = el('tr', { class: 'detail', style: 'display:none' }, el('td', { colspan: 5 },
+      failed.map((r) => el('div', {}, el('div', { class: 'muted xs' }, `Execution ${r.id}, ${r.final_status}, ${ago(r.submitted)}`), el('pre', {}, r.log_tail || '(no log)')))));
+    const toggle = failed.length ? el('button', { class: 'outline', onclick: (e) => {
+      const open = detail.style.display === 'none';
+      detail.style.display = open ? '' : 'none';
+      e.target.textContent = `${open ? 'Hide' : 'Show'} ${failed.length} failed`;
+    } }, `Show ${failed.length} failed`) : null;
+    body.push(el('tr', {},
+      el('td', {}, el('div', { style: 'font-weight:500' }, j.name), el('div', { class: 'muted xs' }, j.missing ? 'missing' : `${j.type ?? ''}${j.scheduled ? ' · scheduled' : ''}`)),
+      el('td', {}, el('div', { class: 'runs' }, j.runs.slice().reverse().map((r) => el('span', { class: `run ${r.final_status} ${r.final_status === 'UNDEFINED' ? 'running' : ''}`, title: `${r.id} ${r.final_status} ${ago(r.submitted)}` })))),
+      el('td', {}, `${j.runs.filter((r) => r.final_status === 'SUCCEEDED').length}/${j.runs.length}`),
       el('td', {}, last ? `${ago(last.submitted)} · ${dur(last.duration_s)}` : el('span', { class: 'muted' }, j.error || 'no runs')),
-      el('td', {}, failed.length ? el('button', { class: 'link', onclick: () => { detail.style.display = detail.style.display ? '' : 'none'; } }, `${failed.length} failed ▸`) : el('span', { class: 'ok' }, '✓'))));
-    body.append(detail);
+      el('td', { style: 'text-align:right' }, toggle || (j.missing || j.error ? badge('fail', 'missing') : j.runs.length ? badge('success', 'healthy') : badge('info', 'idle')))));
+    body.push(detail);
   }
   return el('section', { class: 'card' }, el('h2', {}, `Jobs, last ${facts.hours} hours`),
-    rows.length ? el('table', {}, el('thead', {}, el('tr', {}, ['Job', 'Runs', 'Succeeded', 'Last run', ''].map((h) => el('th', {}, h)))), body)
+    rows.length ? table(['Job', 'Runs', 'Succeeded', 'Last run', ''], body)
       : el('p', { class: 'muted' }, onlyProblems ? 'No job has a failed run.' : 'No jobs.'));
 }
 
 function servicesSection() {
-  const rows = facts.services.filter((s) => !onlyProblems || s.pods.some((p) => p.restarts || p.phase !== 'Running') || !['RUNNING', 'IDLE'].includes(String(s.state).toUpperCase()));
-  if (!rows.length && onlyProblems) return el('section', { class: 'card' }, el('h2', {}, 'Deployments and apps'), el('p', { class: 'muted' }, 'Every deployment and app is healthy.'));
-  if (!facts.services.length) return el('section', { class: 'card' }, el('h2', {}, 'Deployments and apps'), el('p', { class: 'muted' }, 'This system has no deployment or app.'));
-  return el('section', { class: 'card' }, el('h2', {}, 'Deployments and apps'),
-    rows.map((s) => el('div', { style: 'margin-bottom:14px' },
-      el('div', {}, el('strong', {}, s.name), ' ', el('span', { class: 'muted' }, `${s.kind} · `),
-        el('span', { class: ['RUNNING', 'IDLE'].includes(String(s.state).toUpperCase()) ? 'ok' : 'bad' }, s.state)),
-      s.pods.length ? el('table', {}, el('thead', {}, el('tr', {}, ['Pod', 'Ready', 'Restarts', 'CPU (mCPU)', 'Memory (MiB)'].map((h) => el('th', {}, h)))),
-        el('tbody', {}, s.pods.map((p) => el('tr', {},
-          el('td', {}, p.pod, p.last_terminations.map((t) => el('div', { class: 'bad' }, `${t.container}: ${t.reason} (exit ${t.exit_code})`))),
+  const title = el('h2', {}, 'Deployments and apps');
+  if (!facts.services.length) return el('section', { class: 'card' }, title, el('p', { class: 'muted' }, 'This system has no deployment or app.'));
+  const rows = facts.services.filter((s) => !onlyProblems || s.pods.some((p) => p.restarts || p.phase !== 'Running') || !healthyState(s));
+  if (!rows.length) return el('section', { class: 'card' }, title, el('p', { class: 'muted' }, 'Every deployment and app is healthy.'));
+  return el('section', { class: 'card' }, title,
+    rows.map((s) => el('div', { class: 'service' },
+      el('div', { class: 'service-head' }, el('span', { style: 'font-weight:500' }, s.name), el('span', { class: 'muted' }, s.kind),
+        badge(healthyState(s) ? 'success' : 'fail', s.state)),
+      s.pods.length ? table(['Pod', 'Ready', 'Restarts', 'CPU (mCPU)', 'Memory (MiB)'],
+        s.pods.map((p) => el('tr', {},
+          el('td', {}, el('code', {}, p.pod), p.last_terminations.map((t) => el('div', { class: 'fail-text xs' }, `${t.container}: ${t.reason} (exit ${t.exit_code})`))),
           el('td', {}, `${p.phase} ${p.ready}`),
-          el('td', { class: p.restarts ? 'bad' : '' }, String(p.restarts)),
+          el('td', { class: p.restarts ? 'fail-text' : '' }, String(p.restarts)),
           el('td', {}, usage(p.cpu_m, p.cpu_limit_m, 'm')),
-          el('td', {}, usage(p.memory_mib, p.memory_limit_mib, 'MiB'))))))
+          el('td', {}, usage(p.memory_mib, p.memory_limit_mib, 'MiB')))))
         : el('p', { class: 'muted' }, 'No pods running.'))));
 }
 
@@ -399,12 +458,12 @@ function draw() {
   const c = facts.counts;
   document.getElementById('root').replaceChildren(
     el('div', { class: 'head' },
-      el('div', { class: 'grow' }, el('h1', {}, facts.system.name), el('div', { class: 'muted' }, `${facts.system.type ?? ''} system ${facts.system.slug} · report of ${new Date(facts.generated).toLocaleString()}`)),
-      el('label', { class: 'filter' }, el('input', { type: 'checkbox', ...(onlyProblems ? { checked: '' } : {}), onchange: (e) => { onlyProblems = e.target.checked; draw(); } }), ' only problems'),
-      el('span', { class: `pill ${facts.overall}` }, facts.overall)),
+      el('div', { class: 'grow' }, el('h1', {}, facts.system.name), el('div', { class: 'muted xs' }, `${facts.system.type ?? ''} system ${facts.system.slug} · report of ${new Date(facts.generated).toLocaleString()}`)),
+      el('label', { class: 'filter' }, el('input', { type: 'checkbox', ...(onlyProblems ? { checked: '' } : {}), onchange: (e) => { onlyProblems = e.target.checked; draw(); } }), 'Only problems'),
+      badge(facts.overall, facts.overall)),
     el('div', { class: 'cards' },
       [[c.runs, `job runs in ${facts.hours} h`], [c.failed_runs, 'failed runs'], [c.services, 'deployments and apps'], [c.unhealthy_services, 'unhealthy']].map(([v, l], i) =>
-        el('div', { class: 'card stat' }, el('div', { class: `v ${(i === 1 || i === 3) && v ? 'bad' : ''}` }, String(v)), el('div', { class: 'l' }, l)))),
+        el('div', { class: 'card stat' }, el('div', { class: `v ${(i === 1 || i === 3) && v ? 'fail-text' : ''}` }, String(v)), el('div', { class: 'l' }, l)))),
     summary ? (() => { const s = el('section', { class: 'card summary' }, el('h2', {}, 'Summary')); const d = el('div'); d.innerHTML = summary; s.append(d); return s; })() : '',
     jobsSection(), servicesSection());
 }
