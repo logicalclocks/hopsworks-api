@@ -21,7 +21,6 @@ from pathlib import Path
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parent
 
 
@@ -80,9 +79,7 @@ def main(argv: list[str]) -> int:
         for line in problems:
             print(line, file=sys.stderr)
         return 1
-    _write_atomically(
-        path, yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=100)
-    )
+    _write_atomically(path, yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=100))
     return 0
 
 

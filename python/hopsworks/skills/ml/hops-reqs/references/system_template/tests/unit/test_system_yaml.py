@@ -15,7 +15,6 @@ from pathlib import Path
 
 import yaml
 
-
 SCHEMA_VERSION = 1
 SYSTEM_YAML = Path(__file__).resolve().parents[2] / "system.yaml"
 
@@ -62,9 +61,7 @@ def _is_number(value: object) -> bool:
 def _check_status(problems: list[str], where: str, block: dict, allowed: set) -> None:
     status = block.get("status")
     if status not in allowed:
-        problems.append(
-            f"{where}.status is {status!r}; expected one of {sorted(allowed)}"
-        )
+        problems.append(f"{where}.status is {status!r}; expected one of {sorted(allowed)}")
 
 
 def _check_evidence(problems: list[str], where: str, row: object) -> None:
@@ -102,9 +99,7 @@ def _check_requirements(problems: list[str], req: dict) -> None:
     if not (draft and task is None) and task not in TASKS_BUILT | TASKS_CAPTURED:
         problems.append(f"requirements.problem.task {task!r} is not a known task")
     if problem.get("generalises_to") not in (None, "new_periods", "new_entities"):
-        problems.append(
-            "requirements.problem.generalises_to must be new_periods or new_entities"
-        )
+        problems.append("requirements.problem.generalises_to must be new_periods or new_entities")
 
     system_type = req.get("system_type")
     if not (draft and system_type is None) and system_type not in SYSTEM_TYPES:
@@ -114,9 +109,7 @@ def _check_requirements(problems: list[str], req: dict) -> None:
     sla = req.get("sla") or {}
     if sla or not draft:
         if len(sla) != 1:
-            problems.append(
-                f"requirements.sla must hold exactly one block, found {sorted(sla)}"
-            )
+            problems.append(f"requirements.sla must hold exactly one block, found {sorted(sla)}")
         elif system_type in SYSTEM_TYPES and system_type not in sla:
             problems.append(
                 f"requirements.sla holds {sorted(sla)} but system_type is {system_type}"
@@ -155,9 +148,7 @@ def _check_requirements(problems: list[str], req: dict) -> None:
     for name in ("features", "training", "inference"):
         run = (operations.get(name) or {}).get("run")
         if run is not None and run not in RUN_MODES:
-            problems.append(
-                f"requirements.operations.{name}.run must be scheduled or continuous"
-            )
+            problems.append(f"requirements.operations.{name}.run must be scheduled or continuous")
 
     for i, feature in enumerate(req.get("features") or []):
         if feature.get("computed_in") not in (
@@ -166,9 +157,7 @@ def _check_requirements(problems: list[str], req: dict) -> None:
             "streaming",
             "on_demand",
         ):
-            problems.append(
-                f"requirements.features[{i}].computed_in is not a known location"
-            )
+            problems.append(f"requirements.features[{i}].computed_in is not a known location")
 
 
 def _check_training(problems: list[str], training: dict) -> None:
@@ -181,38 +170,26 @@ def _check_training(problems: list[str], training: dict) -> None:
             problems.append(f"{where} needs integer n and attempt")
         state = row.get("state")
         if state not in ROW_STATES:
-            problems.append(
-                f"{where}.state {state!r} is not one of {sorted(ROW_STATES)}"
-            )
+            problems.append(f"{where}.state {state!r} is not one of {sorted(ROW_STATES)}")
         if state == "finished" and row.get("status") not in RUN_VERDICTS:
-            problems.append(
-                f"{where} finished without a keep, discard or crash verdict"
-            )
+            problems.append(f"{where} finished without a keep, discard or crash verdict")
         if state == "finished" and row.get("status") in ("keep", "discard"):
             model = row.get("model") or {}
             name = str(model.get("name", ""))
             if not name.startswith("hf:") and not name.endswith("_research"):
-                problems.append(
-                    f"{where}.model.name {name!r} must be a <ident>_research version"
-                )
+                problems.append(f"{where}.model.name {name!r} must be a <ident>_research version")
             if not name.startswith("hf:") and not isinstance(model.get("version"), int):
-                problems.append(
-                    f"{where}.model.version must be the version registration returned"
-                )
+                problems.append(f"{where}.model.version must be the version registration returned")
     for i, row in enumerate(training.get("acceptance") or []):
         where = f"training.acceptance[{i}]"
         _check_evidence(problems, where, row)
         if isinstance(row, dict) and row.get("state") == "finished" and row.get("met"):
             name = str((row.get("model") or {}).get("name", ""))
             if not name.endswith("_model"):
-                problems.append(
-                    f"{where}.model.name {name!r} must be the <ident>_model name"
-                )
+                problems.append(f"{where}.model.name {name!r} must be the <ident>_model name")
     model = training.get("model") or {}
     if model and not str(model.get("name", "")).endswith("_model"):
-        problems.append(
-            "training.model.name must be the <ident>_model name inference reads"
-        )
+        problems.append("training.model.name must be the <ident>_model name inference reads")
 
 
 def _check_names(problems: list[str], doc: dict) -> None:
@@ -235,9 +212,7 @@ def _check_names(problems: list[str], doc: dict) -> None:
     for mode in ("realtime", "agent"):
         deployment = (inference.get(mode) or {}).get("deployment")
         if deployment and not ALNUM.match(deployment):
-            problems.append(
-                f"deployment {deployment!r} must be lowercase letters and digits"
-            )
+            problems.append(f"deployment {deployment!r} must be lowercase letters and digits")
     app = (doc.get("app") or {}).get("name")
     if app and not SLUG.match(app):
         problems.append(f"app {app!r} must be lowercase with hyphens")
@@ -286,9 +261,7 @@ def validate(doc: object) -> list[str]:
         if not system.get(key):
             problems.append(f"system.{key} is missing")
     if (system.get("target") or {}).get("stage", "development") != "development":
-        problems.append(
-            "system.target.stage must be development; v1 builds nothing else"
-        )
+        problems.append("system.target.stage must be development; v1 builds nothing else")
     if system.get("status") not in SYSTEM_STATUS:
         problems.append(
             f"system.status {system.get('status')!r} is not one of {sorted(SYSTEM_STATUS)}"

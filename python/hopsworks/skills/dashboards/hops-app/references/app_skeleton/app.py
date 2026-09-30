@@ -25,7 +25,6 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-
 STATIC = Path(__file__).resolve().parent / "static"
 PREDICTIONS = {"name": "telco_churn_predictions", "version": 1}
 
@@ -64,9 +63,7 @@ def top(limit: int = 10) -> list[dict]:
     fg = _predictions()
     rows = fg.select_all().show(1000)
     latest = rows.sort_values("predicted_at").groupby("customer_id").tail(1)
-    return latest.nlargest(limit, "score")[["customer_id", "score"]].to_dict(
-        orient="records"
-    )
+    return latest.nlargest(limit, "score")[["customer_id", "score"]].to_dict(orient="records")
 
 
 @app.get("/api/customers/{customer_id}")
@@ -75,9 +72,7 @@ def customer(customer_id: int) -> dict:
     fg = _predictions()
     rows = fg.filter(fg.customer_id == customer_id).read(dataframe_type="pandas")
     if rows.empty:
-        raise HTTPException(
-            status_code=404, detail=f"no predictions for customer {customer_id}"
-        )
+        raise HTTPException(status_code=404, detail=f"no predictions for customer {customer_id}")
     latest = rows.sort_values("predicted_at").iloc[-1]
     return {
         "customer_id": customer_id,

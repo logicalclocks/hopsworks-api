@@ -31,7 +31,6 @@ import logging
 import os
 from typing import Any, TypedDict
 
-
 _logger = logging.getLogger("helpdesk_agent")
 
 CHUNKS = {"name": "helpdesk_doc_chunks", "version": 1}
@@ -129,9 +128,7 @@ class Agent:
     def lookup_events(self, state: State) -> State:
         """The user's most recent events from the online store."""
         fg = self.events
-        rows = fg.filter(fg.user_id == state["user_id"]).read(
-            online=True, dataframe_type="pandas"
-        )
+        rows = fg.filter(fg.user_id == state["user_id"]).read(online=True, dataframe_type="pandas")
         if len(rows):
             rows = rows.sort_values("event_time", ascending=False).head(RECENT_EVENTS)
         events = json.loads(rows.to_json(orient="records", date_format="iso"))
@@ -139,9 +136,7 @@ class Agent:
 
     def retrieve(self, state: State) -> State:
         """The k chunks nearest the query in the vector index."""
-        vector = list(
-            map(float, self.encoder.encode(state["query"], normalize_embeddings=True))
-        )
+        vector = list(map(float, self.encoder.encode(state["query"], normalize_embeddings=True)))
         hits = self.nearest(vector, state["k"])
         sources = []
         for score, values in hits:
@@ -154,9 +149,7 @@ class Agent:
                 state,
                 "retrieve",
                 k=state["k"],
-                hits=[
-                    (s["doc_name"], s["page"], s["offset"], s["score"]) for s in sources
-                ],
+                hits=[(s["doc_name"], s["page"], s["offset"], s["score"]) for s in sources],
             ),
         }
 
@@ -196,18 +189,12 @@ class Agent:
     def predict(self, inputs):
         """Answer one `{user_id, query, k}` request."""
         request = inputs[0] if isinstance(inputs, list) else inputs
-        request = (
-            request.get("instances", [request])[0]
-            if "instances" in request
-            else request
-        )
+        request = request.get("instances", [request])[0] if "instances" in request else request
         user_id, query = request.get("user_id"), (request.get("query") or "").strip()
         if user_id is None or not query:
             return {"error": "send user_id and query"}
         k = int(request.get("k") or DEFAULT_K)
-        state = self.graph.invoke(
-            {"user_id": user_id, "query": query, "k": k, "trace": []}
-        )
+        state = self.graph.invoke({"user_id": user_id, "query": query, "k": k, "trace": []})
         return {
             "answer": state["answer"],
             "sources": [

@@ -25,7 +25,6 @@ from pathlib import Path
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[1]
 MARGIN = 1.5
 
@@ -42,9 +41,7 @@ def cron_gap_s(feature_cron: str, inference_cron: str) -> float | None:
         if len(fields) < 4 or not all(f.isdigit() for f in fields[:3]):
             return None
         day = int(fields[3]) - 1 if fields[3].isdigit() else 0
-        return (
-            day * 86400 + int(fields[2]) * 3600 + int(fields[1]) * 60 + int(fields[0])
-        )
+        return day * 86400 + int(fields[2]) * 3600 + int(fields[1]) * 60 + int(fields[0])
 
     start, end = offset(feature_cron), offset(inference_cron)
     if start is None or end is None or end <= start:
@@ -76,9 +73,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     system = yaml.safe_load((ROOT / "system.yaml").read_text(encoding="utf-8"))
-    pipeline = next(
-        p for p in system["features"]["pipelines"] if p["name"] == args.pipeline
-    )
+    pipeline = next(p for p in system["features"]["pipelines"] if p["name"] == args.pipeline)
     job = pipeline["job"]["name"]
     started = time.monotonic()
     _hops(
@@ -95,15 +90,11 @@ def main(argv: list[str] | None = None) -> int:
     history = json.loads(_hops("job", "history", job, "--json"))
     latest = history[0] if history else {}
     duration_s = (
-        latest.get("DURATION_S")
-        if isinstance(latest.get("DURATION_S"), int)
-        else round(wall_s)
+        latest.get("DURATION_S") if isinstance(latest.get("DURATION_S"), int) else round(wall_s)
     )
     final = latest.get("FINAL") or latest.get("final_status")
 
-    inference_job = ((system.get("inference") or {}).get("batch") or {}).get(
-        "job"
-    ) or {}
+    inference_job = ((system.get("inference") or {}).get("batch") or {}).get("job") or {}
     gap_s = cron_gap_s(
         pipeline["job"]["schedule"]["cron"],
         (inference_job.get("schedule") or {}).get("cron", ""),

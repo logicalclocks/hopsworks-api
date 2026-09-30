@@ -24,7 +24,6 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-
 STATIC = Path(__file__).resolve().parent / "static"
 EVENTS = {"name": "user_events", "version": 1}
 AGENT = "helpdeskagent"
@@ -75,9 +74,7 @@ def ask(question: Question) -> dict:
     """The agent's answer to one question from one user."""
     deployment = _project().get_model_serving().get_deployment(AGENT)
     if deployment is None:
-        raise HTTPException(
-            status_code=503, detail=f"the agent {AGENT} is not deployed"
-        )
+        raise HTTPException(status_code=503, detail=f"the agent {AGENT} is not deployed")
     try:
         # The SDK sends KServe's v1 shape; the agent takes the first instance.
         reply = deployment.predict(data={"instances": [question.model_dump()]})

@@ -28,7 +28,6 @@ from typing import TYPE_CHECKING
 import numpy as np
 import polars as pl
 
-
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -56,17 +55,15 @@ def _load_bundle(bundle: str) -> tuple[Path, dict, dict]:
 
         download_dir = tempfile.mkdtemp(prefix="bundle-download-")
         archive = Path(
-            hopsworks.login()
-            .get_dataset_api()
-            .download(bundle, download_dir, overwrite=True)
+            hopsworks.login().get_dataset_api().download(bundle, download_dir, overwrite=True)
         )
     workdir = Path(tempfile.mkdtemp(prefix="bundle-"))
     with tarfile.open(archive) as tar:
         tar.extractall(workdir, filter="data")
     manifest = json.loads((workdir / "manifest.json").read_text(encoding="utf-8"))
-    present = {
-        p.relative_to(workdir).as_posix() for p in workdir.rglob("*") if p.is_file()
-    } - {"manifest.json"}
+    present = {p.relative_to(workdir).as_posix() for p in workdir.rglob("*") if p.is_file()} - {
+        "manifest.json"
+    }
     if present != set(manifest["files"]):
         raise SystemExit(f"bundle {bundle}: its files differ from its manifest")
     for rel, digest in manifest["files"].items():
@@ -120,12 +117,7 @@ def entities(n: int, seed: int, prevalence: float, as_of: datetime) -> pl.DataFr
     rng = np.random.default_rng(seed)
     tenure = rng.gamma(shape=2.0, scale=12.0, size=n).round().clip(1, 120)
     plan = rng.choice(PLANS, size=n, p=[0.5, 0.3, 0.2])
-    logit = (
-        1.2
-        - 0.05 * tenure
-        + np.where(plan == "basic", 0.8, 0.0)
-        + rng.normal(0, 0.8, n)
-    )
+    logit = 1.2 - 0.05 * tenure + np.where(plan == "basic", 0.8, 0.0) + rng.normal(0, 0.8, n)
     # Shift the intercept so the realised positive rate matches the declared prevalence.
     threshold = np.quantile(logit, 1 - prevalence)
     return pl.DataFrame(
@@ -170,11 +162,7 @@ def events(
     elapsed = (pl.col("ts") - pl.lit(decay_from)).dt.total_seconds() / (60 * 86400.0)
     return (
         raw.join(ents.select("customer_id", "churn"), on="customer_id")
-        .filter(
-            (pl.col("churn") == 0)
-            | (pl.col("ts") < decay_from)
-            | (pl.col("u") > elapsed)
-        )
+        .filter((pl.col("churn") == 0) | (pl.col("ts") < decay_from) | (pl.col("u") > elapsed))
         .sort("ts")
         .select("event_id", "customer_id", "ts", "duration_s")
     )
@@ -212,9 +200,7 @@ def _sink(fs, writes: dict):
         online_enabled=True,
         stream=True,
         ttl=timedelta(days=int(str(writes.get("ttl", "7d")).rstrip("d"))),
-        offline_backfill_every_hr=int(
-            str(writes.get("offline_backfill_every", "1h")).rstrip("h")
-        ),
+        offline_backfill_every_hr=int(str(writes.get("offline_backfill_every", "1h")).rstrip("h")),
         description=f"Synthetic {SOURCE}, written by this system's synthetic data job",
         statistics_config=False,
     )
@@ -238,16 +224,12 @@ def _ensure_materialization_schedule(sink, writes: dict) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     """Write the backfill once, or keep writing live ticks until stopped."""
-    parser = argparse.ArgumentParser(
-        description="Generate synthetic data for one source."
-    )
+    parser = argparse.ArgumentParser(description="Generate synthetic data for one source.")
     parser.add_argument("--bundle", required=True)
     parser.add_argument("--mode", choices=["backfill", "live"], required=True)
     parser.add_argument("--from", dest="start")
     parser.add_argument("--to", dest="end")
-    parser.add_argument(
-        "--ticks", type=int, help="stop after this many live ticks (tests)"
-    )
+    parser.add_argument("--ticks", type=int, help="stop after this many live ticks (tests)")
     args = parser.parse_args(argv)
 
     _, manifest, system = _load_bundle(args.bundle)

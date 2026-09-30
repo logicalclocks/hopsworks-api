@@ -19,9 +19,7 @@ import pytest
 def _parity(system: dict) -> dict:
     parity = ((system.get("inference") or {}).get("tests") or {}).get("parity")
     if not parity or "realtime" not in system["inference"]:
-        pytest.fail(
-            "parity is declared only for a realtime system; remove this file otherwise"
-        )
+        pytest.fail("parity is declared only for a realtime system; remove this file otherwise")
     return parity
 
 
@@ -38,26 +36,18 @@ def test_batch_and_online_paths_agree(project, system):
     fv.init_batch_scoring(training_dataset_version=td_version)
 
     batch = fv.get_batch_data(end_time=parity["at"], primary_key=True, event_time=True)
-    key_column = next(
-        c for c in batch.columns if c == entity or c.endswith("_" + entity)
-    )
+    key_column = next(c for c in batch.columns if c == entity or c.endswith("_" + entity))
     event_times = {
-        s["event_time"]
-        for s in system["requirements"]["data_sources"]
-        if s.get("event_time")
+        s["event_time"] for s in system["requirements"]["data_sources"] if s.get("event_time")
     }
     time_column = next(
-        c
-        for c in batch.columns
-        if any(c == t or c.endswith("_" + t) for t in event_times)
+        c for c in batch.columns if any(c == t or c.endswith("_" + t) for t in event_times)
     )
     latest = batch.sort_values(time_column).groupby(key_column).tail(1)
     sample = latest.sample(min(parity["entities"], len(latest)), random_state=0)
     keys = list(sample[key_column])
 
-    online = fv.get_feature_vectors(
-        entry=[{entity: k} for k in keys], return_type="pandas"
-    )
+    online = fv.get_feature_vectors(entry=[{entity: k} for k in keys], return_type="pandas")
     offline = sample.drop(columns=[key_column, time_column]).reset_index(drop=True)
     columns = [c for c in online.columns if c in offline.columns]
     feature_diff = np.abs(

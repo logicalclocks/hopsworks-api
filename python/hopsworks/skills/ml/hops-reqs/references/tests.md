@@ -1,7 +1,8 @@
 # Tests, benchmarks and the shared harness
 
 A pipeline phase is `met` only when its tests exist, pass, and are recorded in
-its `tests.last_run` with the run id and commit they tested. Anything that needs
+its `tests.last_run` with the run id and commit they tested, and the system
+passes its lint (`tests/unit/test_lint.py`). Anything that needs
 a running system is an integration test, never a unit test behind a skip guard.
 
 ## Layout
@@ -12,6 +13,7 @@ The [system template](system_template/) carries the harness; copy it once per sy
 | --- | --- |
 | `pyproject.toml` | `pythonpath = ["src"]`, `testpaths = ["tests/unit"]`: plain `pytest` runs only the unit tests |
 | `tests/conftest.py` | `system` (the YAML), `load_fixture`, `project` (fails without a connection), `test_objects` (deleted after each test, on failure too), `suffix` (the fixture returning `SUFFIX`, `_test_<run_id>`; a test module cannot import `conftest`) |
+| `tests/unit/test_lint.py` | ruff over every file of the system, with the rules in `pyproject.toml`: a finding or an unformatted file fails it; `/hops-build` runs `ruff format` and `ruff check --fix` first, so only what needs a hand fix remains |
 | `tests/unit/test_system_yaml.py` | the rules of system-yaml.md checked on this system's file; also a CLI for the atomic write |
 | `tests/integration/conftest.py` | an integration run that collects zero tests fails |
 | `tests/integration/test_parity.py` | the training/serving skew check, realtime systems only |
@@ -19,6 +21,7 @@ The [system template](system_template/) carries the harness; copy it once per sy
 | `benchmarks/benchmark_inference.py` | the SLA as a program; exit code 0 when it holds |
 
 ```bash
+ruff format . && ruff check --fix .     # before every phase's tests (uvx ruff@0.15.6 without ruff)
 pytest                                  # unit tests, offline, seconds
 pytest tests/integration                # from a connected terminal; fails, never skips, without one
 python <slug>/bundle.py make tests-features-1 --with-tests

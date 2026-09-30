@@ -11,6 +11,7 @@ import importlib.util
 import io
 import json
 import re
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -972,6 +973,48 @@ def test_the_app_skeleton_uses_only_relative_urls():
     for url in re.findall(r'(?:src|href)="([^"]+)"', page):
         assert not url.startswith(("/", "http")), url
     assert "cdn" not in page.lower() and "https://" not in page
+
+
+# endregion
+
+
+# region Lint
+
+
+def _lint(target):
+    return subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "tests/unit/test_lint.py"],
+        cwd=target,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_a_new_system_passes_its_own_lint_test(tmp_path):
+    pytest.importorskip("ruff")
+    new_system = _load(REQS / "new_system.py")
+    target = new_system.create(tmp_path / "telco-churn")
+    done = _lint(target)
+    assert done.returncode == 0, done.stdout + done.stderr
+
+
+def test_the_files_a_build_copies_in_pass_the_systems_rules(tmp_path):
+    """The generator, the RAG agent and the app skeleton become the system's code."""
+    pytest.importorskip("ruff")
+    new_system = _load(REQS / "new_system.py")
+    target = new_system.create(tmp_path / "helpdesk-example")
+    package = target / "src" / "helpdesk_example"
+    shutil.copy(
+        SKILLS / "data" / "hops-synthetic-data" / "references" / "generator.py",
+        package / "synthetic_data.py",
+    )
+    for name in ("agent.py", "ingest_docs.py", "register_embedder.py"):
+        shutil.copy(REQS / "rag_agent" / name, package / name)
+    shutil.copytree(REQS / "rag_agent" / "app", target / "app")
+    shutil.copytree(APP, target / "app-skeleton")
+    done = _lint(target)
+    assert done.returncode == 0, done.stdout + done.stderr
 
 
 # endregion

@@ -23,7 +23,6 @@ from typing import Any
 
 import numpy as np
 
-
 PARTS = ("train", "validation", "test")
 
 
@@ -50,17 +49,15 @@ def _load_bundle(bundle: str) -> tuple[Path, dict, dict]:
 
         download_dir = tempfile.mkdtemp(prefix="bundle-download-")
         archive = Path(
-            hopsworks.login()
-            .get_dataset_api()
-            .download(bundle, download_dir, overwrite=True)
+            hopsworks.login().get_dataset_api().download(bundle, download_dir, overwrite=True)
         )
     workdir = Path(tempfile.mkdtemp(prefix="bundle-"))
     with tarfile.open(archive) as tar:
         tar.extractall(workdir, filter="data")
     manifest = json.loads((workdir / "manifest.json").read_text(encoding="utf-8"))
-    present = {
-        p.relative_to(workdir).as_posix() for p in workdir.rglob("*") if p.is_file()
-    } - {"manifest.json"}
+    present = {p.relative_to(workdir).as_posix() for p in workdir.rglob("*") if p.is_file()} - {
+        "manifest.json"
+    }
     if present != set(manifest["files"]):
         raise SystemExit(f"bundle {bundle}: its files differ from its manifest")
     for rel, digest in manifest["files"].items():
@@ -306,9 +303,7 @@ def score(metric: str, y_true: Any, y_pred: Any) -> float:
         top = np.argsort(-s, kind="mergesort")[:k]
         return float(y[top].sum() / y.sum()) if y.sum() else 0.0
     if metric not in METRICS:
-        raise ValueError(
-            f"unknown metric {metric!r}; add it here before the harness is frozen"
-        )
+        raise ValueError(f"unknown metric {metric!r}; add it here before the harness is frozen")
     return METRICS[metric](y_true, y_pred)
 
 
@@ -341,9 +336,7 @@ def load_predictor(model_dir: str) -> Any:
 
     model = joblib.load(Path(model_dir) / "model.pkl")
     listed = Path(model_dir) / "features.txt"
-    columns = (
-        listed.read_text(encoding="utf-8").splitlines() if listed.exists() else None
-    )
+    columns = listed.read_text(encoding="utf-8").splitlines() if listed.exists() else None
 
     def predictor(x: Any) -> Any:
         # The model sees exactly its training columns, in training order.
@@ -369,9 +362,7 @@ def main(argv: list[str] | None = None) -> int:
     project = hopsworks.login()
     training = system["training"]
     fv_spec = training["feature_view"]
-    fv = project.get_feature_store().get_feature_view(
-        fv_spec["name"], version=fv_spec["version"]
-    )
+    fv = project.get_feature_store().get_feature_view(fv_spec["name"], version=fv_spec["version"])
     x, y = read_parts(fv, training, system["requirements"])[args.split]
 
     name, version = args.model.rsplit(":", 1)

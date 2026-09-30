@@ -57,6 +57,13 @@ a question you are about to ask depends on.
   Nothing else. Update `system.progress` at each of these events.
 - **Nothing runs on the laptop.** Pipelines, tests and benchmarks run as Hopsworks jobs or
   deployments, apps as Hopsworks apps. Unit tests are the exception.
+- **Lint before a phase is validated.** Before a phase's tests run, and before it is recorded
+  `met`, run in the system directory `ruff format .` then `ruff check --fix .` (with
+  `uvx ruff@0.15.6` when `ruff` is not installed; the rules are in `pyproject.toml`), fix by hand
+  whatever is left, and run `pytest`, whose `tests/unit/test_lint.py` fails on any finding or
+  unformatted file. A phase with a lint failure is not `met`; its `tests.last_run` records
+  `lint: pass`. The lint covers every file the system holds, the pipelines, tests, benchmarks and
+  app included, and code copied from a skill's references is linted like code written here.
 - **No secrets** in arguments, transcripts, `system.yaml` or the repository.
 - **Every time is UTC from `date -u`.** `started`, `finished`, the lock, a backfill's `--to` and
   every window come from `date -u` (the "UTC now" line above), never from the terminal's clock

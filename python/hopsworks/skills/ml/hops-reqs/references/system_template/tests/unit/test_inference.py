@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
+
 from slug_pkg import inference_pipeline
 
 
@@ -73,14 +74,13 @@ def test_batch_budget_runs_from_the_cron_fire_to_the_deadline():
 
 def test_the_predictor_serves_scores_in_the_model_input_order():
     import numpy as np
+
     from slug_pkg.predictor import Predict
 
     class Classifier:
         def predict_proba(self, x):
             assert list(x.columns) == ["tenure_months"]
-            return np.column_stack(
-                [1 - x["tenure_months"] / 100, x["tenure_months"] / 100]
-            )
+            return np.column_stack([1 - x["tenure_months"] / 100, x["tenure_months"] / 100])
 
     predictor = Predict.__new__(Predict)
     predictor.model = Classifier()

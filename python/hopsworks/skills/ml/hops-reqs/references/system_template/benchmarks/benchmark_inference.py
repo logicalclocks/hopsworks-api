@@ -27,7 +27,6 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -55,17 +54,15 @@ def _load_bundle(bundle: str) -> tuple[Path, dict, dict]:
 
         download_dir = tempfile.mkdtemp(prefix="bundle-download-")
         archive = Path(
-            hopsworks.login()
-            .get_dataset_api()
-            .download(bundle, download_dir, overwrite=True)
+            hopsworks.login().get_dataset_api().download(bundle, download_dir, overwrite=True)
         )
     workdir = Path(tempfile.mkdtemp(prefix="bundle-"))
     with tarfile.open(archive) as tar:
         tar.extractall(workdir, filter="data")
     manifest = json.loads((workdir / "manifest.json").read_text(encoding="utf-8"))
-    present = {
-        p.relative_to(workdir).as_posix() for p in workdir.rglob("*") if p.is_file()
-    } - {"manifest.json"}
+    present = {p.relative_to(workdir).as_posix() for p in workdir.rglob("*") if p.is_file()} - {
+        "manifest.json"
+    }
     if present != set(manifest["files"]):
         raise SystemExit(f"bundle {bundle}: its files differ from its manifest")
     for rel, digest in manifest["files"].items():
@@ -188,9 +185,7 @@ def closed_loop(
     return summary
 
 
-def summarize(
-    latencies: list[float], errors: int, measured_s: float, offered_qps: float
-) -> dict:
+def summarize(latencies: list[float], errors: int, measured_s: float, offered_qps: float) -> dict:
     """The figures the SLA is judged on."""
     total = len(latencies)
     return {
@@ -215,9 +210,7 @@ def meets_realtime(summary: dict, sla: dict) -> bool:
     )
 
 
-def batch_budget_s(
-    cron: str, must_finish_by: str, features_s: float = 0.0
-) -> float | None:
+def batch_budget_s(cron: str, must_finish_by: str, features_s: float = 0.0) -> float | None:
     """Seconds a scoring run has between its cron fire and `must_finish_by`.
 
     Reads the hour and minute of a Quartz cron (`sec min hour ...`) and a
@@ -240,9 +233,7 @@ def deployment_config(deployment: Any) -> str:
     config = deployment.to_dict()
     for volatile in ("id", "created", "creator", "revision"):
         config.pop(volatile, None)
-    return hashlib.sha256(
-        json.dumps(config, sort_keys=True, default=str).encode()
-    ).hexdigest()[:12]
+    return hashlib.sha256(json.dumps(config, sort_keys=True, default=str).encode()).hexdigest()[:12]
 
 
 def run_realtime(system: dict, protocol: dict, params: dict) -> dict:
@@ -254,9 +245,7 @@ def run_realtime(system: dict, protocol: dict, params: dict) -> dict:
     deployment = project.get_model_serving().get_deployment(realtime["deployment"])
     entity = system["requirements"]["problem"]["entity"]
     source = next(
-        s
-        for s in system["requirements"]["data_sources"]
-        if s.get("entity", entity) == entity
+        s for s in system["requirements"]["data_sources"] if s.get("entity", entity) == entity
     )
     fg = project.get_feature_store().get_feature_group(
         source["name"], version=source.get("version", 1)
@@ -303,9 +292,7 @@ def run_batch(system: dict, params: dict, run_id: str) -> dict:
     predict = evaluate.load_predictor(model.download())
 
     started = time.monotonic()
-    fv.init_batch_scoring(
-        training_dataset_version=training["harness"]["training_dataset_version"]
-    )
+    fv.init_batch_scoring(training_dataset_version=training["harness"]["training_dataset_version"])
     batch = fv.get_batch_data(start_time=params["start"], end_time=params["end"])
     scores = predict(batch)
     import pandas as pd
@@ -355,12 +342,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Measure the inference SLA.")
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--bundle")
-    source.add_argument(
-        "--system", help="a local system.yaml, for a check that is not recorded"
-    )
-    parser.add_argument(
-        "--duration", type=float, help="override duration_s; never recorded"
-    )
+    source.add_argument("--system", help="a local system.yaml, for a check that is not recorded")
+    parser.add_argument("--duration", type=float, help="override duration_s; never recorded")
     parser.add_argument("--record", action="store_true", help="write result.json")
     args = parser.parse_args(argv)
 

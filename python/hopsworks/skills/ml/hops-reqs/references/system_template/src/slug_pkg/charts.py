@@ -17,7 +17,6 @@ from typing import Any
 
 import numpy as np
 
-
 _logger = logging.getLogger(__name__)
 
 
@@ -60,9 +59,7 @@ def _classification(plt: Any, y: np.ndarray, s: np.ndarray, out: Path) -> None:
 
     fig, ax = plt.subplots(figsize=(5, 5))
     ax.plot(recall, precision)
-    ax.axhline(
-        y.mean(), linestyle="--", color="grey", label=f"base rate {y.mean():.3f}"
-    )
+    ax.axhline(y.mean(), linestyle="--", color="grey", label=f"base rate {y.mean():.3f}")
     ax.set(xlabel="Recall", ylabel="Precision", title="Precision-recall curve")
     ax.legend(loc="upper right")
     fig.savefig(out / "precision_recall_curve.png", dpi=120, bbox_inches="tight")
@@ -108,18 +105,14 @@ def _classification(plt: Any, y: np.ndarray, s: np.ndarray, out: Path) -> None:
         marker="o",
     )
     ax.plot([0, 1], [0, 1], linestyle="--", color="grey")
-    ax.set(
-        xlabel="Mean predicted probability", ylabel="Observed rate", title="Calibration"
-    )
+    ax.set(xlabel="Mean predicted probability", ylabel="Observed rate", title="Calibration")
     fig.savefig(out / "calibration.png", dpi=120, bbox_inches="tight")
     plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(6, 4))
     ax.hist(s[y == 0], bins=40, alpha=0.6, label="0", density=True)
     ax.hist(s[y == 1], bins=40, alpha=0.6, label="1", density=True)
-    ax.set(
-        xlabel="Predicted probability", ylabel="Density", title="Scores by actual class"
-    )
+    ax.set(xlabel="Predicted probability", ylabel="Density", title="Scores by actual class")
     ax.legend()
     fig.savefig(out / "score_distribution.png", dpi=120, bbox_inches="tight")
     plt.close(fig)
@@ -162,9 +155,7 @@ def save_charts(
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
     except ImportError:
-        _logger.warning(
-            "matplotlib is not installed; the model is registered without charts"
-        )
+        _logger.warning("matplotlib is not installed; the model is registered without charts")
         return []
     out = Path(model_dir) / "images"
     out.mkdir(parents=True, exist_ok=True)

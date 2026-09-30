@@ -25,7 +25,6 @@ from pathlib import Path
 
 import pandas as pd
 
-
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 _logger = logging.getLogger("ingest_docs")
 
@@ -207,17 +206,13 @@ def load_model(project, name: str, version: int | None):
 
 def rows(project, chunks: list, docs_dir: str, encoder) -> pd.DataFrame:
     """One row per chunk; `url` is relative to the Hopsworks UI's origin."""
-    vectors = encoder.encode(
-        [c.text for c in chunks], batch_size=32, normalize_embeddings=True
-    )
+    vectors = encoder.encode([c.text for c in chunks], batch_size=32, normalize_embeddings=True)
     folder = f"/p/{project.id}/settings/fb/path/{docs_dir}"
     return pd.DataFrame(
         {
             "chunk_id": [c.chunk_id for c in chunks],
             "doc_name": [c.doc_name for c in chunks],
-            "path": [
-                f"/Projects/{project.name}/{docs_dir}/{c.doc_name}" for c in chunks
-            ],
+            "path": [f"/Projects/{project.name}/{docs_dir}/{c.doc_name}" for c in chunks],
             "url": [folder for _ in chunks],
             "page": [c.page for c in chunks],
             "offset": [c.offset for c in chunks],
@@ -243,9 +238,7 @@ def main() -> None:
     datasets = project.get_dataset_api()
     encoder, model = load_model(project, args.model, args.model_version)
     names = sorted(
-        Path(p).name
-        for p in datasets.list(args.docs)
-        if Path(p).suffix.lower() in SUFFIXES
+        Path(p).name for p in datasets.list(args.docs) if Path(p).suffix.lower() in SUFFIXES
     )
     _logger.info("%d documents in %s", len(names), args.docs)
 

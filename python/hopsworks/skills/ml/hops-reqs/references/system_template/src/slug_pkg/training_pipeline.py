@@ -50,17 +50,15 @@ def _load_bundle(bundle: str) -> tuple[Path, dict, dict]:
 
         download_dir = tempfile.mkdtemp(prefix="bundle-download-")
         archive = Path(
-            hopsworks.login()
-            .get_dataset_api()
-            .download(bundle, download_dir, overwrite=True)
+            hopsworks.login().get_dataset_api().download(bundle, download_dir, overwrite=True)
         )
     workdir = Path(tempfile.mkdtemp(prefix="bundle-"))
     with tarfile.open(archive) as tar:
         tar.extractall(workdir, filter="data")
     manifest = json.loads((workdir / "manifest.json").read_text(encoding="utf-8"))
-    present = {
-        p.relative_to(workdir).as_posix() for p in workdir.rglob("*") if p.is_file()
-    } - {"manifest.json"}
+    present = {p.relative_to(workdir).as_posix() for p in workdir.rglob("*") if p.is_file()} - {
+        "manifest.json"
+    }
     if present != set(manifest["files"]):
         raise SystemExit(f"bundle {bundle}: its files differ from its manifest")
     for rel, digest in manifest["files"].items():
@@ -140,9 +138,7 @@ def should_register(mode: str, met: bool) -> bool:
     return mode == "research" or met
 
 
-def model_features(
-    columns: list[str], system: dict, leakage: list[str] = ()
-) -> list[str]:
+def model_features(columns: list[str], system: dict, leakage: list[str] = ()) -> list[str]:
     """The feature list: never the label, identifiers, event time or a suspicious name."""
     req = system["requirements"]
     excluded = {req["problem"].get("target"), req["problem"].get("entity")}
@@ -175,9 +171,7 @@ def train(x_train: Any, y_train: Any, system: dict, deadline: float) -> Any:
         from sklearn.linear_model import Ridge
 
         model = Ridge()
-    model.fit(
-        x_train, y_train.values.ravel() if hasattr(y_train, "values") else y_train
-    )
+    model.fit(x_train, y_train.values.ravel() if hasattr(y_train, "values") else y_train)
     if time.monotonic() > deadline:
         raise TimeoutError("training exceeded per_run")
     return model
@@ -197,17 +191,13 @@ def short_checks(parts: dict, system: dict, leakage: list[str]) -> list[str]:
     for name, (x, _) in parts.items():
         if len(x) == 0:
             problems.append(f"the {name} part is empty")
-        if expected and sorted(
-            model_features(list(x.columns), system, leakage)
-        ) != sorted(expected):
-            problems.append(
-                f"the {name} part's features differ from the feature view's"
-            )
+        if expected and sorted(model_features(list(x.columns), system, leakage)) != sorted(
+            expected
+        ):
+            problems.append(f"the {name} part's features differ from the feature view's")
         flagged = [c for c in x.columns if any(s in c.lower() for s in leakage)]
         if flagged:
-            problems.append(
-                f"the {name} part has columns eda.md flagged as leaky: {flagged}"
-            )
+            problems.append(f"the {name} part has columns eda.md flagged as leaky: {flagged}")
     return problems
 
 
@@ -259,13 +249,9 @@ def _register(
 
     model_dir = Path(tempfile.mkdtemp(prefix="model-"))
     joblib.dump(model, model_dir / "model.pkl")
-    (model_dir / "features.txt").write_text(
-        "\n".join(x_example.columns), encoding="utf-8"
-    )
+    (model_dir / "features.txt").write_text("\n".join(x_example.columns), encoding="utf-8")
     # Uploaded with the model, under images/, so the registry shows them with it.
-    charts.save_charts(
-        model_dir, task, model, list(x_example.columns), y_eval, y_scored
-    )
+    charts.save_charts(model_dir, task, model, list(x_example.columns), y_eval, y_scored)
     registered = project.get_model_registry().python.create_model(
         name=name,
         metrics=metrics,
@@ -318,9 +304,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.mode == "retrain":
         problems = short_checks(parts, system, leakage)
         if problems:
-            _write_result(
-                manifest, {"mode": args.mode, "registered": False, "checks": problems}
-            )
+            _write_result(manifest, {"mode": args.mode, "registered": False, "checks": problems})
             raise SystemExit("short checks failed: " + "; ".join(problems))
 
     features = model_features(list(parts["train"][0].columns), system, leakage)

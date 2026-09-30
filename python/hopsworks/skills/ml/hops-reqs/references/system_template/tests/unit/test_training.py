@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 
 import numpy as np
 import pytest
+
 from slug_pkg import charts, evaluate, training_pipeline
 
 
@@ -19,12 +20,8 @@ def test_time_split_is_ordered_and_leaves_out_immature_labels():
         datetime(2025, 1, 1), datetime(2026, 1, 1), 0.15, 0.15, timedelta(days=30)
     )
     assert b["train_start"] < b["train_end"] == b["validation_start"]
-    assert (
-        b["validation_start"] < b["validation_end"] == b["test_start"] < b["test_end"]
-    )
-    assert (
-        b["test_end"] == b["label_cutoff"] == datetime(2026, 1, 1) - timedelta(days=30)
-    )
+    assert b["validation_start"] < b["validation_end"] == b["test_start"] < b["test_end"]
+    assert b["test_end"] == b["label_cutoff"] == datetime(2026, 1, 1) - timedelta(days=30)
 
 
 def test_split_refuses_fractions_that_leave_no_train_part():
@@ -37,9 +34,7 @@ def test_split_refuses_fractions_that_leave_no_train_part():
 def test_grouped_split_keeps_every_entity_in_one_part():
     parts = {e: evaluate.grouped_part(e, 0.15, 0.15) for e in range(5000)}
     assert parts == {e: evaluate.grouped_part(e, 0.15, 0.15) for e in range(5000)}
-    shares = {
-        p: sum(1 for v in parts.values() if v == p) / 5000 for p in evaluate.PARTS
-    }
+    shares = {p: sum(1 for v in parts.values() if v == p) / 5000 for p in evaluate.PARTS}
     assert abs(shares["test"] - 0.15) < 0.03
     assert abs(shares["validation"] - 0.15) < 0.03
 
@@ -56,11 +51,7 @@ def test_metrics_match_hand_computed_values():
 def test_meets_follows_the_target_direction(system):
     requirements = system["requirements"]
     target = requirements["targets"]["target"]
-    better = (
-        target + 0.01
-        if requirements["targets"]["direction"] == "max"
-        else target - 0.01
-    )
+    better = target + 0.01 if requirements["targets"]["direction"] == "max" else target - 0.01
     assert evaluate.meets(requirements, better)
 
 

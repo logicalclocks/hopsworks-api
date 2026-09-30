@@ -23,14 +23,12 @@ from pathlib import Path
 import pytest
 import yaml
 
-
 SYSTEM_DIR = Path(__file__).resolve().parents[1]
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 RUN_ID = os.environ.get("HOPS_TEST_RUN_ID") or f"local-{int(time.time())}"
 SUFFIX = "_test_" + RUN_ID.replace("-", "_")
-FIXTURES_REGENERATE = (
-    "python -m slug_pkg.fixtures --rows 300  # filled in by the data phase"
-)
+# The data phase fills in the command that writes the fixtures.
+FIXTURES_REGENERATE = "python -m slug_pkg.fixtures --rows 300"
 
 
 @pytest.fixture(scope="session")
@@ -64,9 +62,7 @@ def project():
 
         return hopsworks.login()
     except Exception as exc:  # noqa: BLE001 - any failure to connect fails the run
-        pytest.fail(
-            f"integration tests need a Hopsworks connection: {exc}", pytrace=False
-        )
+        pytest.fail(f"integration tests need a Hopsworks connection: {exc}", pytrace=False)
 
 
 @pytest.fixture(scope="session")
@@ -87,6 +83,4 @@ def test_objects():
         except Exception as exc:  # noqa: BLE001 - report every leftover, delete the rest
             failures.append(f"{getattr(obj, 'name', obj)}: {exc}")
     if failures:
-        pytest.fail(
-            "could not delete test objects: " + "; ".join(failures), pytrace=False
-        )
+        pytest.fail("could not delete test objects: " + "; ".join(failures), pytrace=False)

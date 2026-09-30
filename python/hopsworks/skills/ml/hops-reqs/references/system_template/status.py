@@ -23,7 +23,6 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-
 try:
     import yaml
 except ImportError:  # pragma: no cover - exercised only without PyYAML
@@ -120,8 +119,7 @@ def _default_estimate(phase: str, doc: dict) -> timedelta:
         existing = sum(1 for s in sources if s.get("kind") == "feature_group")
         new = len(sources) - existing
         return timedelta(
-            minutes=existing * minutes["data_existing_source"]
-            + new * minutes["data_new_source"]
+            minutes=existing * minutes["data_existing_source"] + new * minutes["data_new_source"]
         )
     if phase == "features":
         pipelines = _block(doc, "features").get("pipelines") or []
@@ -149,9 +147,7 @@ def _default_estimate(phase: str, doc: dict) -> timedelta:
     return timedelta(minutes=minutes.get(phase, 5))
 
 
-def _running_estimate(
-    phase: str, block: dict, doc: dict, now: datetime
-) -> tuple[timedelta, str]:
+def _running_estimate(phase: str, block: dict, doc: dict, now: datetime) -> tuple[timedelta, str]:
     """Remaining time for the phase in progress, and what it is based on."""
     elapsed = _took(block, now) or timedelta(0)
     budget = _block(doc, "requirements").get("budget") or {}
@@ -210,12 +206,9 @@ def rows(doc: dict, now: datetime) -> list[dict]:
             row["took"] = None
             if phase == "infer":
                 attempts = (
-                    (_block(doc, "requirements").get("budget") or {}).get("inference")
-                    or {}
+                    (_block(doc, "requirements").get("budget") or {}).get("inference") or {}
                 ).get("max_attempts", 5)
-                row["now"] = (
-                    f"{attempts} attempts x ~{DEFAULT_MINUTES['infer_attempt']}m"
-                )
+                row["now"] = f"{attempts} attempts x ~{DEFAULT_MINUTES['infer_attempt']}m"
         table.append(row)
     return table
 
@@ -223,9 +216,7 @@ def rows(doc: dict, now: datetime) -> list[dict]:
 def render(doc: dict, now: datetime) -> str:
     """Render the phase table and the summary line."""
     table = rows(doc, now)
-    lines = [
-        f"{'phase':<10} {'status':<9} {'started':<8} {'took':<6} {'remaining':<11} now"
-    ]
+    lines = [f"{'phase':<10} {'status':<9} {'started':<8} {'took':<6} {'remaining':<11} now"]
     for row in table:
         started = row["started"].strftime("%H:%M") if row["started"] else ""
         remaining = (

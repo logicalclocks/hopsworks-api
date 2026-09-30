@@ -20,7 +20,6 @@ import os
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
-
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -48,17 +47,15 @@ def _load_bundle(bundle: str) -> tuple[Path, dict, dict]:
 
         download_dir = tempfile.mkdtemp(prefix="bundle-download-")
         archive = Path(
-            hopsworks.login()
-            .get_dataset_api()
-            .download(bundle, download_dir, overwrite=True)
+            hopsworks.login().get_dataset_api().download(bundle, download_dir, overwrite=True)
         )
     workdir = Path(tempfile.mkdtemp(prefix="bundle-"))
     with tarfile.open(archive) as tar:
         tar.extractall(workdir, filter="data")
     manifest = json.loads((workdir / "manifest.json").read_text(encoding="utf-8"))
-    present = {
-        p.relative_to(workdir).as_posix() for p in workdir.rglob("*") if p.is_file()
-    } - {"manifest.json"}
+    present = {p.relative_to(workdir).as_posix() for p in workdir.rglob("*") if p.is_file()} - {
+        "manifest.json"
+    }
     if present != set(manifest["files"]):
         raise SystemExit(f"bundle {bundle}: its files differ from its manifest")
     for rel, digest in manifest["files"].items():
@@ -102,9 +99,7 @@ def _write_result(manifest: dict, result: dict) -> str:
 PIPELINE = "telco_churn_features"  # this pipeline's name in features.pipelines
 
 
-def window(
-    start: str | None = None, end: str | None = None
-) -> tuple[datetime, datetime]:
+def window(start: str | None = None, end: str | None = None) -> tuple[datetime, datetime]:
     """The data window: explicit arguments, else HOPS_START_TIME and HOPS_END_TIME.
 
     The scheduler writes ISO-8601 instants with a trailing Z.
@@ -112,9 +107,7 @@ def window(
     raw_start = start or os.environ.get("HOPS_START_TIME")
     raw_end = end or os.environ.get("HOPS_END_TIME")
     if not raw_start or not raw_end:
-        raise SystemExit(
-            "no window: pass --start/--end or run as a scheduled or backfill job"
-        )
+        raise SystemExit("no window: pass --start/--end or run as a scheduled or backfill job")
 
     def parse(text: str) -> datetime:
         parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))

@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 
 import pandas as pd
 import pytest
+
 from slug_pkg import feature_pipeline
 
 

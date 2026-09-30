@@ -18,7 +18,6 @@ import importlib
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
-
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -46,17 +45,15 @@ def _load_bundle(bundle: str) -> tuple[Path, dict, dict]:
 
         download_dir = tempfile.mkdtemp(prefix="bundle-download-")
         archive = Path(
-            hopsworks.login()
-            .get_dataset_api()
-            .download(bundle, download_dir, overwrite=True)
+            hopsworks.login().get_dataset_api().download(bundle, download_dir, overwrite=True)
         )
     workdir = Path(tempfile.mkdtemp(prefix="bundle-"))
     with tarfile.open(archive) as tar:
         tar.extractall(workdir, filter="data")
     manifest = json.loads((workdir / "manifest.json").read_text(encoding="utf-8"))
-    present = {
-        p.relative_to(workdir).as_posix() for p in workdir.rglob("*") if p.is_file()
-    } - {"manifest.json"}
+    present = {p.relative_to(workdir).as_posix() for p in workdir.rglob("*") if p.is_file()} - {
+        "manifest.json"
+    }
     if present != set(manifest["files"]):
         raise SystemExit(f"bundle {bundle}: its files differ from its manifest")
     for rel, digest in manifest["files"].items():
@@ -98,9 +95,7 @@ def _write_result(manifest: dict, result: dict) -> str:
 # endregion
 
 
-def prediction_rows(
-    keys: Any, scores: Any, predicted_at: datetime, log_fields: list[str]
-) -> Any:
+def prediction_rows(keys: Any, scores: Any, predicted_at: datetime, log_fields: list[str]) -> Any:
     """The rows written to the prediction feature group, restricted to the allowed fields.
 
     `keys` carries the entity columns; `scores` is aligned with it row by row.
@@ -136,9 +131,7 @@ def main(argv: list[str] | None = None) -> int:
     fv = fs.get_feature_view(
         training["feature_view"]["name"], version=training["feature_view"]["version"]
     )
-    fv.init_batch_scoring(
-        training_dataset_version=training["harness"]["training_dataset_version"]
-    )
+    fv.init_batch_scoring(training_dataset_version=training["harness"]["training_dataset_version"])
     batch = fv.get_batch_data(start_time=begin, end_time=finish, primary_key=True)
 
     entity = system["requirements"]["problem"]["entity"]

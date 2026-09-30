@@ -19,7 +19,6 @@ import sys
 import xml.etree.ElementTree as ET
 from typing import TYPE_CHECKING
 
-
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -47,17 +46,15 @@ def _load_bundle(bundle: str) -> tuple[Path, dict, dict]:
 
         download_dir = tempfile.mkdtemp(prefix="bundle-download-")
         archive = Path(
-            hopsworks.login()
-            .get_dataset_api()
-            .download(bundle, download_dir, overwrite=True)
+            hopsworks.login().get_dataset_api().download(bundle, download_dir, overwrite=True)
         )
     workdir = Path(tempfile.mkdtemp(prefix="bundle-"))
     with tarfile.open(archive) as tar:
         tar.extractall(workdir, filter="data")
     manifest = json.loads((workdir / "manifest.json").read_text(encoding="utf-8"))
-    present = {
-        p.relative_to(workdir).as_posix() for p in workdir.rglob("*") if p.is_file()
-    } - {"manifest.json"}
+    present = {p.relative_to(workdir).as_posix() for p in workdir.rglob("*") if p.is_file()} - {
+        "manifest.json"
+    }
     if present != set(manifest["files"]):
         raise SystemExit(f"bundle {bundle}: its files differ from its manifest")
     for rel, digest in manifest["files"].items():
@@ -107,17 +104,13 @@ def counts(junit_xml: Path) -> dict[str, int]:
     for suite in suites:
         for key in total:
             total[key] += int(suite.get(key, 0))
-    total["passed"] = (
-        total["tests"] - total["failures"] - total["errors"] - total["skipped"]
-    )
+    total["passed"] = total["tests"] - total["failures"] - total["errors"] - total["skipped"]
     return total
 
 
 def main(argv: list[str] | None = None) -> int:
     """Run the requested integration tests from the bundle and record the outcome."""
-    parser = argparse.ArgumentParser(
-        description="Run integration tests from a run bundle."
-    )
+    parser = argparse.ArgumentParser(description="Run integration tests from a run bundle.")
     parser.add_argument("--bundle", required=True)
     parser.add_argument("paths", nargs="*", default=["tests/integration"])
     args = parser.parse_args(argv)

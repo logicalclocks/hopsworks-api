@@ -25,7 +25,6 @@ import sys
 import tarfile
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parent
 ALWAYS = ["system.yaml", "pyproject.toml", "src"]
 WITH_TESTS = ["tests", "benchmarks"]
@@ -42,9 +41,7 @@ def _files(root: Path, entries: list[str]) -> list[Path]:
             found.extend(
                 p
                 for p in sorted(path.rglob("*"))
-                if p.is_file()
-                and not SKIP_PARTS.intersection(p.parts)
-                and p.suffix != ".pyc"
+                if p.is_file() and not SKIP_PARTS.intersection(p.parts) and p.suffix != ".pyc"
             )
     return found
 
@@ -87,9 +84,7 @@ def make(
     """
     target = out or root / "runs" / run_id / "bundle.tar.gz"
     if target.exists():
-        raise SystemExit(
-            f"{target} exists; a bundle is never rewritten, use a new run id"
-        )
+        raise SystemExit(f"{target} exists; a bundle is never rewritten, use a new run id")
     entries = ALWAYS + (WITH_TESTS if with_tests else [])
     files = _files(root, entries)
     manifest = {
