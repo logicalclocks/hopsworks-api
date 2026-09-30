@@ -21,11 +21,15 @@ with LLM_API_KEY. The three come from the user's account environment variables,
 which Hopsworks sets in the deployment. Without them the answer says so and the
 retrieved context is still returned.
 
-Every step's inputs and outputs are logged and returned as `trace`.
+Every step's inputs and outputs are logged and returned as `trace`, and sent
+as OpenTelemetry spans to the deployment's trace collector, which fills its
+Metrics and Traces panels: the LLM calls through OpenInference's LangChain
+instrumentation, and the event lookup and the retrieval as TOOL spans.
 """
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -55,6 +59,57 @@ class State(TypedDict, total=False):
     sources: list[dict]
     answer: str
     trace: list[dict]
+
+
+def setup_tracing() -> bool:
+    """Export spans to the collector Hopsworks runs beside the agent, when it has one.
+
+    The pod sets OTEL_EXPORTER_OTLP_TRACES_ENDPOINT when tracing is enabled on the
+    deployment. Returns whether spans are exported; without the endpoint or the
+    libraries the agent runs untraced.
+    """
+    endpoint = os.environ.get("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")
+    if not endpoint:
+        return False
+    try:
+        from openinference.instrumentation.langchain import LangChainInstrumentor
+        from opentelemetry import trace
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+        from opentelemetry.sdk.resources import Resource
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    except ImportError as exc:
+        _logger.warning("Tracing off, a library is missing: %s", exc)
+        return False
+    provider = TracerProvider(resource=Resource.create({"service.name": "helpdesk-agent"}))
+    provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint)))
+    trace.set_tracer_provider(provider)
+    LangChainInstrumentor().instrument(tracer_provider=provider)
+    return True
+
+
+@contextlib.contextmanager
+def tool_span(name: str, value: Any):
+    """A TOOL span for a step that is not a LangChain tool, so the collector counts it.
+
+    Yields a function that records the step's output on the span.
+    """
+    try:
+        from opentelemetry import trace
+    except ImportError:
+        yield lambda output: None
+        return
+    attributes = {
+        "openinference.span.kind": "TOOL",
+        "tool.name": name,
+        "input.value": json.dumps(value, default=str),
+    }
+    with trace.get_tracer("helpdesk_agent").start_as_current_span(
+        name, attributes=attributes
+    ) as span:
+        yield lambda output: span.set_attribute(
+            "output.value", json.dumps(output, default=str)[:8000]
+        )
 
 
 def _trace(state: State, step: str, **fields) -> list[dict]:
@@ -128,21 +183,29 @@ class Agent:
     def lookup_events(self, state: State) -> State:
         """The user's most recent events from the online store."""
         fg = self.events
-        rows = fg.filter(fg.user_id == state["user_id"]).read(online=True, dataframe_type="pandas")
-        if len(rows):
-            rows = rows.sort_values("event_time", ascending=False).head(RECENT_EVENTS)
-        events = json.loads(rows.to_json(orient="records", date_format="iso"))
+        with tool_span("user_events", {"user_id": state["user_id"]}) as record:
+            rows = fg.filter(fg.user_id == state["user_id"]).read(
+                online=True, dataframe_type="pandas"
+            )
+            if len(rows):
+                rows = rows.sort_values("event_time", ascending=False).head(RECENT_EVENTS)
+            events = json.loads(rows.to_json(orient="records", date_format="iso"))
+            record(events)
         return {"events": events, "trace": _trace(state, "events", events=events)}
 
     def retrieve(self, state: State) -> State:
         """The k chunks nearest the query in the vector index."""
-        vector = list(map(float, self.encoder.encode(state["query"], normalize_embeddings=True)))
-        hits = self.nearest(vector, state["k"])
-        sources = []
-        for score, values in hits:
-            row = dict(zip(self.columns, values, strict=True))
-            row.pop("embedding", None)
-            sources.append({**row, "score": float(score)})
+        with tool_span("retrieve", {"query": state["query"], "k": state["k"]}) as record:
+            vector = list(
+                map(float, self.encoder.encode(state["query"], normalize_embeddings=True))
+            )
+            hits = self.nearest(vector, state["k"])
+            sources = []
+            for score, values in hits:
+                row = dict(zip(self.columns, values, strict=True))
+                row.pop("embedding", None)
+                sources.append({**row, "score": float(score)})
+            record([(s["doc_name"], s["page"], s["offset"], s["score"]) for s in sources])
         return {
             "sources": sources,
             "trace": _trace(
@@ -248,4 +311,5 @@ if __name__ == "__main__":
     import uvicorn
 
     logging.basicConfig(level=logging.INFO)
+    setup_tracing()
     uvicorn.run(build_app(Agent()), host="0.0.0.0", port=8080)

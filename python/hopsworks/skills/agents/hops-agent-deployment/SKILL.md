@@ -82,6 +82,36 @@ of memory: pass `--memory` to `hops agent create`, or it is OOM-killed while it
 loads. The help desk example (`hops-reqs/references/rag_agent/agent.py`) is a
 complete LangGraph agent built this way.
 
+### Traces: what fills the deployment's Metrics and Traces panels
+
+Hopsworks runs a trace collector beside the agent and sets
+`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` in the pod; it counts OpenInference spans,
+LLM calls by `openinference.span.kind = LLM` and tools by `TOOL`. An agent that
+exports no spans leaves both panels empty however many requests it answers. Install
+`opentelemetry-sdk`, `opentelemetry-exporter-otlp-proto-http` (pinned to the
+`opentelemetry-api` the base ships) and the OpenInference instrumentor for the
+framework (`openinference-instrumentation-langchain` covers LangChain and LangGraph,
+`openinference-instrumentation-openai` the OpenAI client), export before the server
+starts, and mark each step that is not an instrumented call, a feature lookup or a
+vector search, as a TOOL span:
+
+```python
+provider = TracerProvider(resource=Resource.create({"service.name": "<name>"}))
+provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(
+    endpoint=os.environ["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"])))
+trace.set_tracer_provider(provider)
+LangChainInstrumentor().instrument(tracer_provider=provider)
+
+with trace.get_tracer("<name>").start_as_current_span("retrieve", attributes={
+        "openinference.span.kind": "TOOL", "tool.name": "retrieve",
+        "input.value": json.dumps(query)}) as span:
+    hits = fg.find_neighbors(vector, k=k)
+    span.set_attribute("output.value", json.dumps(hits, default=str))
+```
+
+`setup_tracing` and `tool_span` in the help desk example do this, and run untraced
+when the endpoint or the libraries are absent.
+
 ## Deploy — CLI (preferred)
 
 Use the CLI for local HopsFS sources. Git-backed agents are supported too, but
