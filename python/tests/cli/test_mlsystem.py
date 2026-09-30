@@ -244,6 +244,15 @@ def test_the_repository_goes_only_when_it_is_this_systems_alone(monkeypatch):
     }
     heads[:] = ["main", "hops/x"]
     assert "is not named after" in teardown.delete_repo(shared, "churn-example", "p")
+    # A system on the default branch never deletes that branch.
+    calls.clear()
+    on_main = {
+        "system": {"repo": {"url": "https://github.com/o/ml-systems", "branch": "main"}}
+    }
+    assert "not one the build made" in teardown.delete_repo(
+        on_main, "churn-example", "p"
+    )
+    assert not any(a[0] == "push" for a in calls)
     assert teardown.delete_repo({}, "churn-example", "churndemo") == "gone"
 
 

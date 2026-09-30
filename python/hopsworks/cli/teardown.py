@@ -435,13 +435,23 @@ def delete_repo(
         if "refs/heads/" in line
     ]
     own = str(((doc.get("system") or {}).get("repo") or {}).get("branch") or "")
-    mine = [b for b in branches if own and (b == own or b.startswith(f"{own}/"))]
+    # Only branches the build cut are ever deleted: an example that works on
+    # the default branch deletes its repository or nothing.
+    mine = [
+        b
+        for b in branches
+        if b.startswith("hops/") and own and (b == own or b.startswith(f"{own}/"))
+    ]
     others = [b for b in branches if b.startswith("hops/") and b not in mine]
     alone = re.fullmatch(
         rf"(hops-)?{re.escape(slug)}(-{re.escape(project)}(-\d+)?)?", name
     )
     if others or not alone:
         if not mine:
+            if own in branches:
+                return (
+                    f"kept {owner}/{name}; its {own} branch is not one the build made"
+                )
             return "gone"
         pushed = _git(directory, "push", remote, "--delete", *mine)
         if pushed.returncode != 0:
