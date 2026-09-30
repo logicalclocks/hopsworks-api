@@ -6,10 +6,9 @@ Run as the job `<slug>-train-retrieval` in `<slug>-jobs-env`, after `<slug>-feat
     hops job deploy <slug>-train-retrieval src/<slug_pkg>/train_retrieval.py \
         --env <slug>-jobs-env --run --wait
 
-The course's TensorFlow Recommenders model, in PyTorch: TFRS needs Keras 2 and
-the TensorFlow base ships Keras 3. A query tower (customer id, age, month) and an
-item tower (article id, garment group, index group) map into one 16-dimensional
-space, trained with the in-batch softmax loss TFRS's Retrieval task uses. It
+The course's two-tower model, in PyTorch on the CPU. A query tower (customer id,
+age, month) and an item tower (article id, garment group, index group) map into
+one 16-dimensional space, trained with an in-batch softmax loss. It
 creates the feature views the deployment reads (`retrieval`, `customers`,
 `articles`), registers the query tower as `query_model` with its recall@100 on
 the test split, and writes every article's embedding from the item tower into

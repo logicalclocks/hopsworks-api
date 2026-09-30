@@ -3,8 +3,8 @@
 The real-time example (`recs-example`) recommends H&M products to a shopper per
 request. It follows the Decoding AI / Hopsworks course
 (https://github.com/decodingai-magazine/personalized-recommender-course) on the
-public H&M data, with PyTorch in place of TensorFlow Recommenders and a
-JavaScript storefront in place of the course's Streamlit UI. It is built phase
+public H&M data, with the models in PyTorch and CatBoost and a JavaScript
+storefront in place of the course's Streamlit UI. It is built phase
 by phase like any real-time system, from the reference implementation in
 [recommender/](recommender/):
 
@@ -34,20 +34,29 @@ recommending the most popular articles, so it adds `--synthetic` purchases per
 customer (30 by default), each a copy of one of the customer's own purchases
 with the article swapped for a popular one of the same index and garment group,
 marked `synthetic` in `transactions`. Then it generates clicks and ignores around
-all purchases, as the course does. Each
+all purchases, as the course does. `transactions` and `interactions` get a
+secondary index on `customer_id` (`online_config={"secondary_indexes":
+[["customer_id"]]}`): the deployment and the app read a customer's rows online,
+and the online key leads with the event time, so without it each read scans the
+table. Each
 data source records `status: present` and `data.<source>.writes` its group
 once the job has run.
 
 ## The environments
 
 ```bash
-hops env clone <slug>-jobs-env --from torch-training-pipeline          # the feature and training jobs
+hops env clone <slug>-jobs-env --from python-feature-pipeline          # the feature and training jobs
 hops env install <slug>-jobs-env -f requirements.txt
-hops env clone <slug>-inference-env --from torch-inference-pipeline    # the deployment
+hops env clone <slug>-inference-env --from minimal-inference-pipeline  # the deployment
 hops env install <slug>-inference-env -f requirements.txt
 ```
 
-`requirements.txt` is `recommender/requirements.txt`, copied into the system.
+`requirements.txt` is `recommender/requirements.txt`, copied into the system:
+the CPU build of torch and CatBoost, on bases that already ship pandas, polars
+and the Hopsworks client. Nothing trains or serves on a GPU, so the torch
+bases, whose CUDA wheels are gigabytes, are not used. Clone one environment at
+a time: two `hops` commands logging in at once from the same client race on its
+certificate directory.
 The app runs in `python-agent-pipeline`, which ships FastAPI.
 
 ## The jobs, in order
@@ -83,7 +92,8 @@ index_group_name, garment_group_name, image_url, score}], retrieved,
 already_bought, timings_ms}`, with each stage's time (query, retrieve, filter,
 rank). `hops deployment create` on an existing name keeps its script: to deploy a
 changed `predictor.py`, `hops deployment delete <name> --yes` and create it again. `measured` gets the p99 of 50 requests over random customers against
-`requirements.sla.realtime`.
+`requirements.sla.realtime`: 35 ms in the deployment on the example's data,
+most of it the vector search and the ranking.
 
 ## app: the storefront
 

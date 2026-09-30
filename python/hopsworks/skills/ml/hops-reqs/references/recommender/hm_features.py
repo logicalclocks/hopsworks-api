@@ -36,6 +36,11 @@ import polars as pl
 H_AND_M = "https://repo.hops.works/dev/jdowling/h-and-m"
 SEED = 27
 
+# The deployment and the app read a customer's purchases and interactions online by
+# customer_id alone. The online key leads with the event time, so without an index
+# on customer_id that read scans the table: 220 ms at 250,000 rows.
+BY_CUSTOMER = {"secondary_indexes": [["customer_id"]]}
+
 ARTICLE_COLUMNS = [
     "article_id",
     "product_code",
@@ -369,6 +374,7 @@ def main(argv: list[str] | None = None) -> int:
         ["customer_id", "article_id", "t_dat"],
         event_time="t_dat",
         description="H&M purchases of the sampled customers; synthetic marks the generated ones",
+        online_config=BY_CUSTOMER,
     )
     write(
         fs,
@@ -377,6 +383,7 @@ def main(argv: list[str] | None = None) -> int:
         ["customer_id", "article_id", "t_dat", "interaction_score"],
         event_time="t_dat",
         description="Purchases (2), clicks (1) and ignores (0); the app appends to it",
+        online_config=BY_CUSTOMER,
     )
     print(
         f"customers={customers.height} articles={articles.height} "
