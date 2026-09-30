@@ -201,6 +201,59 @@ class ProjectOpenSearchClient:
         retry_on_exception=_is_timeout,
     )
     @_handle_opensearch_exception
+    def _multi_search_request(self, index=None, body=None, options=None):
+        """Send the batch. Transport failures are the decorated concern; entries are not."""
+        return self._get_opensearch_client().msearch(
+            body=body, index=index, params=OpensearchRequestOption.get_options(options)
+        )
+
+    def _multi_search(self, index=None, body=None, options=None):
+        """Run several searches in one request, answered in the order they were sent.
+
+        Each search is sent verbatim, so a batch means one round trip rather
+        than one per search and nothing about what any of them asks for.
+
+        A search that fails inside a batch is reported the way the same search
+        failing on its own is. OpenSearch answers a multi-search with HTTP 200
+        and puts each failure in its own entry, so a permission error, a shard
+        failure or an overloaded node arrives as a normal response carrying an
+        error, and a caller reading hits out of it would see no results rather
+        than a failure.
+
+        The entries are read outside the transport handler on purpose. One
+        search being refused says nothing about the connection, so it must not
+        drop the client from the cache or be retried as if it were a timeout.
+        """
+        result = self._multi_search_request(index=index, body=body, options=options)
+        for response in result.get("responses", []):
+            self._raise_for_search_error(response)
+        return result
+
+    def _raise_for_search_error(self, response):
+        """Raise for one multi-search entry that did not succeed."""
+        if not isinstance(response, dict):
+            raise VectorDatabaseException(
+                VectorDatabaseException.OTHERS,
+                f"Error in Opensearch request: unreadable response {response!r}",
+                response,
+            )
+        error = response.get("error")
+        if error is None:
+            return
+        reason = error.get("reason") if isinstance(error, dict) else None
+        status = response.get("status")
+        detail = reason or error
+        raise self._create_vector_database_exception(
+            f"Error in Opensearch request{f' (status {status})' if status else ''}: "
+            f"{detail}"
+        )
+
+    @retry(
+        wait_exponential_multiplier=1000,
+        stop_max_attempt_number=5,
+        retry_on_exception=_is_timeout,
+    )
+    @_handle_opensearch_exception
     def _count(self, index, body=None, options=None):
         result = self._get_opensearch_client().count(
             index=index, body=body, params=OpensearchRequestOption.get_options(options)
