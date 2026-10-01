@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import click
-from hopsworks.cli import joinspec, lineage, output, session
+from hopsworks.cli import joinspec, lineage, output, session, versions
 
 
 @click.group("fg")
@@ -268,7 +268,7 @@ def _get_fg(
     last_exc: Exception | None = None
     for fs in stores:
         try:
-            fg = fs.get_feature_group(name, version=version)
+            fg = versions.feature_group(fs, name, version)
         except Exception as exc:  # noqa: BLE001 - not in this store, try the next
             last_exc = exc
             continue
@@ -673,20 +673,24 @@ def fg_derive(
     """
     fs = session.get_feature_store(ctx)
     try:
-        base = fs.get_feature_group(base_fg)
+        base = versions.feature_group(fs, base_fg, None)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Base FG '{base_fg}' not found: {exc}") from exc
+    if base is None:
+        raise click.ClickException(f"Base FG '{base_fg}' not found.")
 
     query = base.select_all()
     parents = [base]
     for raw in joins:
         spec = _parse_join(raw)
         try:
-            other = fs.get_feature_group(spec.fg_name, version=spec.version)
+            other = versions.feature_group(fs, spec.fg_name, spec.version)
         except Exception as exc:  # noqa: BLE001
             raise click.ClickException(
                 f"Joined FG '{spec.fg_name}' not found: {exc}"
             ) from exc
+        if other is None:
+            raise click.ClickException(f"Joined FG '{spec.fg_name}' not found.")
         parents.append(other)
         query = query.join(
             other.select_all(),

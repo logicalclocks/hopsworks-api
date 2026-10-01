@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import click
-from hopsworks.cli import lineage, output, session
+from hopsworks.cli import lineage, output, session, versions
 
 
 @click.group("model")
@@ -60,11 +60,7 @@ def model_info(ctx: click.Context, name: str, version: int | None) -> None:
     project = session.get_project(ctx)
     mr = project.get_model_registry()
     try:
-        if version is not None:
-            model = mr.get_model(name, version=version)
-        else:
-            versions = mr.get_models(name)
-            model = max(versions, key=lambda m: m.version) if versions else None
+        model = versions.model(mr, name, version)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Model '{name}' not found: {exc}") from exc
 
@@ -218,11 +214,13 @@ def model_register(
     if feature_view:
         fs = project.get_feature_store()
         try:
-            fv_obj = fs.get_feature_view(feature_view)
+            fv_obj = versions.feature_view(fs, feature_view, None)
         except Exception as exc:  # noqa: BLE001
             raise click.ClickException(
                 f"Feature view '{feature_view}' not found: {exc}"
             ) from exc
+        if fv_obj is None:
+            raise click.ClickException(f"Feature view '{feature_view}' not found.")
 
     try:
         model = registry_section.create_model(
@@ -334,12 +332,10 @@ def _get_model(ctx: click.Context, name: str, version: int | None) -> Any:
     project = session.get_project(ctx)
     mr = project.get_model_registry()
     try:
-        if version is not None:
-            return mr.get_model(name, version=version)
-        versions = mr.get_models(name)
-        if not versions:
+        model = versions.model(mr, name, version)
+        if model is None:
             raise click.ClickException(f"Model '{name}' not found.")
-        return max(versions, key=lambda m: m.version)
+        return model
     except click.ClickException:
         raise
     except Exception as exc:  # noqa: BLE001

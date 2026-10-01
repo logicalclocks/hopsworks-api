@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import click
-from hopsworks.cli import lineage, output, session
+from hopsworks.cli import lineage, output, session, versions
 
 
 @click.group("deployment")
@@ -334,11 +334,7 @@ def deployment_create(
     project = session.get_project(ctx)
     mr = project.get_model_registry()
     try:
-        if version is not None:
-            model = mr.get_model(model_name, version=version)
-        else:
-            models = mr.get_models(model_name)
-            model = max(models, key=lambda m: m.version) if models else None
+        model = versions.model(mr, model_name, version)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Model '{model_name}' not found: {exc}") from exc
     if model is None:
