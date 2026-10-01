@@ -112,13 +112,18 @@ async function recommend() {
   const button = document.querySelector("#recommend");
   button.disabled = true;
   products.setAttribute("aria-busy", "true");
-  const started = performance.now();
   try {
     const reply = await request("api/recommend", {
       method: "POST",
       body: JSON.stringify({ customer_id: state.customer, k: 12 }),
     });
-    document.querySelector("#latency").textContent = `${Math.round(performance.now() - started)} ms`;
+    // The deployment's own time for this lookup, the sum of its stages; the app's
+    // call to it, which adds the network and the Hopsworks API, is shown beneath.
+    const stages = Object.values(reply.timings_ms || {});
+    const lookup = stages.reduce((sum, ms) => sum + ms, 0);
+    document.querySelector("#latency").textContent = stages.length ? `${Math.round(lookup)} ms` : "–";
+    document.querySelector("#roundtrip").textContent =
+      reply.round_trip_ms == null ? "" : `round trip ${Math.round(reply.round_trip_ms)} ms`;
     state.items = reply.items || [];
     state.acted = new Set();
     state.counts.shown += state.items.length;

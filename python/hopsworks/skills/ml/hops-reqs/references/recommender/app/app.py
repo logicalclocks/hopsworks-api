@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import math
 import os
+import time
 from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
@@ -130,18 +131,34 @@ def customers() -> list[dict]:
     return [{"customer_id": c, "purchases": int(n), "age": ages.get(c)} for c, n in counts.items()]
 
 
-@app.post("/api/recommend")
-def recommend(ask: Ask) -> dict:
-    """The deployment's ranked products for one customer."""
+@lru_cache(maxsize=1)
+def _deployment():
+    # Looked up once: a lookup is a REST call, as slow as the recommendation itself.
+    # A missing deployment raises, which lru_cache does not cache.
     deployment = _project().get_model_serving().get_deployment(DEPLOYMENT)
     if deployment is None:
         raise HTTPException(status_code=503, detail=f"the deployment {DEPLOYMENT} is not deployed")
+    return deployment
+
+
+@app.post("/api/recommend")
+def recommend(ask: Ask) -> dict:
+    """The deployment's ranked products for one customer.
+
+    Adds `round_trip_ms`, the app's call to the deployment end to end, beside the
+    deployment's own `timings_ms`.
+    """
+    started = time.perf_counter()
     try:
-        reply = deployment.predict(data={"instances": [ask.model_dump()]})
+        reply = _deployment().predict(data={"instances": [ask.model_dump()]})
+    except HTTPException:
+        raise
     except Exception as exc:  # noqa: BLE001 - shown to the user as the deployment's error
         raise HTTPException(status_code=502, detail=f"the deployment failed: {exc}") from exc
     predictions = reply.get("predictions", reply) if isinstance(reply, dict) else reply
-    return predictions[0] if isinstance(predictions, list) else predictions
+    result = predictions[0] if isinstance(predictions, list) else predictions
+    result["round_trip_ms"] = round((time.perf_counter() - started) * 1000, 1)
+    return result
 
 
 @app.post("/api/interactions")

@@ -940,17 +940,38 @@ def test_retrieval_recall_counts_the_true_article_in_the_top_k_chunk_by_chunk():
     assert retrieval.recall_at_k(query, items, true_items, k=10, chunk=7) == pytest.approx(exact)
 
 
-def test_the_ranker_pairs_label_purchases_and_leave_them_out_of_the_negatives():
+def test_the_ranker_learns_from_earlier_purchases_and_labels_the_latest():
     pl = pytest.importorskip("polars")
     ranker = _load(RECS / "train_ranker.py", "train_ranker_under_test")
-    purchases = pl.DataFrame({"customer_id": ["c", "d"], "article_id": ["1", "2"]})
-    customers = pl.DataFrame({"customer_id": ["c", "d"], "age": [30.0, 40.0]})
-    articles = pl.DataFrame(
-        {"article_id": ["1", "2", "3"], **{c: ["x", "y", "z"] for c in ranker.CATEGORICAL}}
+    days = [datetime(2020, 1, d) for d in (1, 2, 3, 4, 5)]
+    purchases = pl.DataFrame(
+        {
+            "customer_id": ["c"] * 5 + ["d"],
+            "article_id": ["1", "1", "2", "2", "3", "4"],
+            "t_dat": [*days, days[0]],
+        }
     )
+    history, labels = ranker.split_history(purchases)
+    # d has one purchase and nothing to learn from; c's latest fifth is the label.
+    assert labels["article_id"].to_list() == ["3"]
+    assert history["article_id"].to_list() == ["1", "1", "2", "2"]
+
+    customers = pl.DataFrame({"customer_id": ["c", "d"], "age": [30.0, 40.0]})
+    colours = {"1": "Black", "2": "Red", "3": "Red", "4": "Black"}
+    articles = pl.DataFrame(
+        {
+            "article_id": list(colours),
+            **{c: ["x"] * 4 for c in ranker.CATEGORICAL},
+        }
+    ).with_columns(colour_group_name=pl.Series(list(colours.values())))
     pairs = ranker.ranking_pairs(purchases, customers, articles)
     assert pairs.columns == [*ranker.FEATURES, "label"]
-    assert pairs["label"].sum() == 2
+    positive = pairs.filter(pl.col("label") == 1)
+    assert positive.height == 1
+    # Article 3 is red and half of c's earlier purchases were red; the label never
+    # counts towards its own share.
+    assert positive["colour_group_name_share"][0] == pytest.approx(0.5)
+    assert positive["index_group_name_share"][0] == pytest.approx(1.0)
     assert ranker.roc_auc(np.array([0, 0, 1, 1]), np.array([0.1, 0.2, 0.8, 0.9])) == 1.0
     assert ranker.roc_auc(np.array([0, 1]), np.array([0.5, 0.5])) == 0.5
     metrics = ranker.evaluate(np.array([0, 1, 1]), np.array([0.2, 0.9, 0.4]))
@@ -959,13 +980,13 @@ def test_the_ranker_pairs_label_purchases_and_leave_them_out_of_the_negatives():
     assert all(type(v) is float for v in metrics.values())
 
 
-def test_the_deployment_ranks_only_what_the_customer_has_not_bought():
+def test_the_deployment_ranks_by_taste_what_the_customer_has_not_bought():
     pd = pytest.importorskip("pandas")
     predictor = _load(RECS / "predictor.py", "recs_predictor_under_test")
 
     class Model:
         def predict_proba(self, rows, thread_count=-1):
-            score = rows["colour_group_name"].map({"red": 0.9, "blue": 0.4}).fillna(0.1)
+            score = 0.2 + 0.7 * rows["colour_group_name_share"]
             return np.column_stack([1 - score, score])
 
     articles = pd.DataFrame(
@@ -976,12 +997,21 @@ def test_the_deployment_ranks_only_what_the_customer_has_not_bought():
             "image_url": ["u1", None, "u3", None],
         }
     )
-    items = predictor.rank(
-        ["1", "2", "3", "4", "2"], {"3"}, articles, 30.0, Model(), ["age", "colour_group_name"], 5
+    history = pd.DataFrame(
+        {"article_id": ["3", "9", "8", "7"], "colour_group_name": ["red", "red", "red", "blue"]}
     )
+    spec = {
+        "features": ["age", "colour_group_name", "colour_group_name_share"],
+        "categorical": ["colour_group_name"],
+        "taste": ["colour_group_name"],
+    }
+    items = predictor.rank(["1", "2", "3", "4", "2"], history, articles, 30.0, Model(), spec, 5)
     assert [i["article_id"] for i in items] == ["2", "1"]
+    assert items[0]["score"] == pytest.approx(0.2 + 0.7 * 0.75)
+    assert items[1]["score"] == pytest.approx(0.2 + 0.7 * 0.25)
     assert items[0]["image_url"] is None
-    assert items[0]["score"] == pytest.approx(0.9)
+    no_history = predictor.rank(["1"], history.iloc[0:0], articles, 30.0, Model(), spec, 5)
+    assert no_history[0]["score"] == pytest.approx(0.2)
     sin, cos = predictor.month_cycle(datetime(2026, 3, 1, tzinfo=timezone.utc))
     assert sin == pytest.approx(1.0)
     assert cos == pytest.approx(0.0, abs=1e-9)
@@ -1018,6 +1048,16 @@ def test_the_storefront_records_clicks_purchases_and_ignores(monkeypatch):
     assert client.post(
         "/api/interactions", json={"customer_id": "c", "kind": "stare", "article_ids": ["5"]}
     ).status_code == 422
+
+    class Deployment:
+        def predict(self, data):
+            assert data == {"instances": [{"customer_id": "c", "k": 12}]}
+            return {"predictions": [{"items": [], "timings_ms": {"query": 2.0, "rank": 9.5}}]}
+
+    monkeypatch.setattr(storefront, "_deployment", Deployment)
+    reply = client.post("/api/recommend", json={"customer_id": "c"}).json()
+    assert reply["timings_ms"] == {"query": 2.0, "rank": 9.5}
+    assert reply["round_trip_ms"] >= 0
 
 
 # endregion

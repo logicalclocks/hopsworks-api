@@ -6,10 +6,12 @@ Run as the job `<slug>-train-ranker` in `<slug>-jobs-env`, after `<slug>-feature
     hops job deploy <slug>-train-ranker src/<slug_pkg>/train_ranker.py \
         --env <slug>-jobs-env --run --wait
 
-As in the course: every purchase is a positive pair, ten random (customer,
-article) pairs per purchase are negatives, and each pair carries the customer's
-age and the article's categorical attributes. The classifier's probability of
-a purchase ranks the candidates retrieval returns. It is registered as
+Each customer's latest purchases are positive pairs and ten other articles per
+purchase, drawn by popularity, are negatives. Each pair carries the customer's
+age, the article's categorical attributes, and the customer's taste: the share
+of their earlier purchases with the article's colour, index group, garment
+group, product type and section. The classifier's probability of a purchase
+ranks the candidates retrieval returns. It is registered as
 `ranking_model`, with precision, recall, F1 and ROC-AUC on a held-out tenth,
 and `features.json` naming its inputs in order.
 """
@@ -37,7 +39,17 @@ CATEGORICAL = [
     "section_name",
     "garment_group_name",
 ]
-FEATURES = ["age", *CATEGORICAL]
+# The attributes whose share in the customer's own purchases is a feature: without
+# them the model sees only the article and the customer's age, so it ranks the
+# same popular articles first for everyone.
+TASTE = [
+    "colour_group_name",
+    "index_group_name",
+    "garment_group_name",
+    "product_type_name",
+    "section_name",
+]
+FEATURES = ["age", *CATEGORICAL, *(f"{column}_share" for column in TASTE)]
 NEGATIVES_PER_PURCHASE = 10
 # 1.1 million labelled pairs: what a 2 GB job holds with room for CatBoost.
 MAX_PURCHASES = 100_000
@@ -58,12 +70,61 @@ def cpu_limit() -> int:
     return os.cpu_count() or 1
 
 
+def split_history(purchases: pl.DataFrame, label_share: float = 0.2) -> tuple:
+    """Each customer's earlier purchases as history and the latest `label_share` as labels.
+
+    A customer with a single purchase has no history to learn a taste from and is
+    left out. The split is what keeps the taste features honest: a purchase never
+    counts towards its own pair's shares.
+    """
+    ranked = (
+        purchases.filter(pl.len().over("customer_id") > 1)
+        .sort("t_dat")
+        .with_columns(
+            position=pl.int_range(pl.len()).over("customer_id"),
+            n=pl.len().over("customer_id"),
+        )
+    )
+    in_labels = pl.col("position") >= (pl.col("n") * (1 - label_share)).floor()
+    return ranked.filter(~in_labels), ranked.filter(in_labels)
+
+
+def taste(history: pl.DataFrame, pairs: pl.DataFrame) -> pl.DataFrame:
+    """`pairs` with, per attribute, the share of the customer's history sharing the article's.
+
+    Both frames carry customer_id and the TASTE attributes; a customer without
+    history gets shares of 0.
+    """
+    for column in TASTE:
+        shares = (
+            history.group_by("customer_id", column)
+            .len()
+            .with_columns(
+                (pl.col("len") / pl.col("len").sum().over("customer_id")).alias(f"{column}_share")
+            )
+        )
+        pairs = pairs.join(
+            shares.select("customer_id", column, f"{column}_share"),
+            on=["customer_id", column],
+            how="left",
+        ).with_columns(pl.col(f"{column}_share").fill_null(0.0))
+    return pairs
+
+
 def ranking_pairs(
     purchases: pl.DataFrame, customers: pl.DataFrame, articles: pl.DataFrame, seed: int = 27
 ) -> pl.DataFrame:
-    """Labelled (customer, article) pairs with the ranking features."""
+    """Labelled (customer, article) pairs with the ranking features.
+
+    The positives are each customer's latest purchases and the negatives other
+    articles for the same customers, drawn by popularity, as retrieval's
+    candidates are. Uniform negatives are mostly articles nobody buys, which
+    teaches the model that popular colours sell, and it then ranks black first for
+    every customer.
+    """
     rng = np.random.default_rng(seed)
-    positives = purchases.select("customer_id", "article_id").unique(maintain_order=True)
+    history, labels = split_history(purchases)
+    positives = labels.select("customer_id", "article_id").unique(maintain_order=True)
     if positives.height > MAX_PURCHASES:
         positives = positives.sample(MAX_PURCHASES, seed=seed)
     positives = positives.with_columns(label=pl.lit(1))
@@ -71,19 +132,26 @@ def ranking_pairs(
     negatives = (
         pl.DataFrame(
             {
-                "customer_id": rng.choice(customers["customer_id"].to_numpy(), n),
-                "article_id": rng.choice(articles["article_id"].to_numpy(), n),
+                "customer_id": np.repeat(
+                    positives["customer_id"].to_numpy(), NEGATIVES_PER_PURCHASE
+                ),
+                "article_id": rng.choice(purchases["article_id"].to_numpy(), n),
             }
         )
-        .join(positives, on=["customer_id", "article_id"], how="anti")
+        .join(
+            purchases.select("customer_id", "article_id"),
+            on=["customer_id", "article_id"],
+            how="anti",
+        )
         .with_columns(label=pl.lit(0))
     )
-    return (
+    attributes = articles.select("article_id", *CATEGORICAL)
+    pairs = (
         pl.concat([positives, negatives])
         .join(customers.select("customer_id", "age"), on="customer_id")
-        .join(articles.select("article_id", *CATEGORICAL), on="article_id")
-        .select(*FEATURES, "label")
+        .join(attributes, on="article_id")
     )
+    return taste(history.join(attributes, on="article_id"), pairs).select(*FEATURES, "label")
 
 
 def roc_auc(labels: np.ndarray, scores: np.ndarray) -> float:
@@ -149,7 +217,7 @@ def main() -> int:
     fs = project.get_feature_store()
     purchases = (
         fs.get_feature_group("transactions", version=1)
-        .select(["customer_id", "article_id"])
+        .select(["customer_id", "article_id", "t_dat"])
         .read(dataframe_type="polars")
     )
     customers = (
@@ -169,7 +237,7 @@ def main() -> int:
         directory = Path(tmp)
         model.save_model(str(directory / "ranking_model.cbm"))
         (directory / "features.json").write_text(
-            json.dumps({"features": FEATURES, "categorical": CATEGORICAL})
+            json.dumps({"features": FEATURES, "categorical": CATEGORICAL, "taste": TASTE})
         )
         registered = project.get_model_registry().python.create_model(
             name="ranking_model",

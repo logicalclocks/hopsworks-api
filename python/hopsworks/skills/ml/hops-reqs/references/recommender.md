@@ -72,9 +72,15 @@ hops job deploy <slug>-train-ranker src/<slug_pkg>/train_ranker.py --env <slug>-
 in-batch softmax loss, registers the query tower as `query_model` (TorchScript
 plus the customer vocabulary) with `recall_at_100` on the real purchases of the test split, and writes
 the item tower's embedding of every trained article to `candidate_embeddings`,
-whose vector index retrieval searches. `train_ranker.py` trains CatBoost on the
-purchases and ten random negatives per purchase and registers `ranking_model`
-with precision, recall, F1 and ROC-AUC. `requirements.targets` holds the ranker's
+whose vector index retrieval searches. `train_ranker.py` trains CatBoost on each
+customer's latest fifth of purchases against ten negatives per purchase drawn by
+popularity, with the customer's taste as features: the share of their earlier
+purchases with the article's colour, index group, garment group, product type
+and section. Without the taste features the model sees only the article and the
+customer's age, learns that black sells, and ranks black first for everyone; with
+uniform negatives it learns popularity the same way. It registers
+`ranking_model` with precision, recall, F1 and ROC-AUC, and `features.json`
+naming the features, the categorical ones and the taste attributes. `requirements.targets` holds the ranker's
 ROC-AUC target.
 
 ## infer: the deployment
@@ -92,8 +98,8 @@ index_group_name, garment_group_name, image_url, score}], retrieved,
 already_bought, timings_ms}`, with each stage's time (query, retrieve, filter,
 rank). `hops deployment create` on an existing name keeps its script: to deploy a
 changed `predictor.py`, `hops deployment delete <name> --yes` and create it again. `measured` gets the p99 of 50 requests over random customers against
-`requirements.sla.realtime`: 35 ms in the deployment on the example's data,
-most of it the vector search and the ranking.
+`requirements.sla.realtime`: about 40 ms in the deployment on the example's
+data, most of it the vector search and the ranking.
 
 ## app: the storefront
 
@@ -103,6 +109,8 @@ ranked by the deployment, with Click and Buy, and New recommendations, which
 records the cards shown and not touched as ignores. Every action is written to
 `interactions` in the online store (Buy also to `transactions`, so the next
 request leaves the purchase out), which the deployment and the history panel
-read. An app pod cannot write the offline Delta tables (it has no HopsFS
+read. Last lookup is the deployment's own time for the latest request, the sum
+of its stages, and the round trip under it the app's call to the deployment.
+An app pod cannot write the offline Delta tables (it has no HopsFS
 certificates for the client's direct write), so the shoppers' actions are not
 training data until a job copies them offline.

@@ -15,7 +15,8 @@ A request is `{"customer_id": "...", "k": 12}`. It runs the course's four stages
 3. the articles the customer already bought dropped, read online from
    `transactions`, so a purchase made in the app disappears on the next request;
 4. the rest ranked by the ranking model's purchase probability, with each
-   article's features from the `articles` feature view.
+   article's features from the `articles` feature view and the customer's taste,
+   the shares of their purchases with each candidate's colour, group and type.
 
 The reply is `{"customer_id", "items": [{article_id, score, prod_name, ...,
 image_url}], "retrieved", "timings_ms"}`.
@@ -65,20 +66,26 @@ def month_cycle(when: datetime) -> tuple[float, float]:
     return math.sin(angle), math.cos(angle)
 
 
-def rank(candidates: list[str], bought: set[str], articles, age: float, model, features, k: int):
+def rank(candidates: list[str], history, articles, age: float, model, spec: dict, k: int):
     """The top `k` of the candidates not yet bought, by the model's purchase probability.
 
-    `articles` is a pandas frame of the candidates' features keyed by article_id;
-    a candidate the frame lacks is skipped.
+    `history` is a pandas frame of the customer's purchases, article_id plus the
+    `spec["taste"]` attributes, and `articles` one of the candidates' features keyed
+    by article_id; a candidate `articles` lacks is skipped. `spec` is the model's
+    features.json. The taste shares are computed as train_ranker.py's `taste` does.
     """
+    bought = set(history["article_id"].astype(str))
     fresh = [a for a in dict.fromkeys(candidates) if a not in bought]
     rows = articles[articles["article_id"].isin(fresh)].copy()
     if rows.empty:
         return []
     rows["age"] = age
-    categorical = [f for f in features if f != "age"]
+    categorical = spec["categorical"]
     rows[categorical] = rows[categorical].fillna("").astype(str)
-    rows["score"] = model.predict_proba(rows[features], thread_count=1)[:, 1]
+    for column in spec.get("taste", []):
+        shares = history[column].value_counts(normalize=True) if len(history) else {}
+        rows[f"{column}_share"] = rows[column].map(shares).fillna(0.0).astype(float)
+    rows["score"] = model.predict_proba(rows[spec["features"]], thread_count=1)[:, 1]
     top = rows.sort_values("score", ascending=False).head(k)
     shown = [c for c in SHOWN if c in top.columns] + ["score"]
     return top[shown].astype(object).where(top[shown].notna(), None).to_dict("records")
@@ -99,7 +106,7 @@ class Predict:
         self.ranker = CatBoostClassifier()
         self.ranker.load_model(load_model_file("ranking_model.cbm"))
         with open(load_model_file("features.json")) as f:
-            self.features = json.load(f)["features"]
+            self.spec = json.load(f)
 
         # The latest query tower: each retrieval run registers one and rewrites every
         # candidate embedding with its item tower, so only the newest matches them.
@@ -118,9 +125,15 @@ class Predict:
         self.articles.init_serving(1)
         self.candidates = self.fs.get_feature_group("candidate_embeddings", version=1)
         transactions = self.fs.get_feature_group("transactions", version=1)
+        articles = self.fs.get_feature_group("articles", version=1)
+        # The purchases with the attributes the taste features are shares of, in one
+        # query: transactions is indexed on customer_id and articles keyed by article_id.
+        attributes = ", ".join(f"a.`{c}`" for c in self.spec.get("taste", []))
         self.bought_sql = (
-            f"SELECT article_id FROM `{transactions.name}_{transactions.version}` "
-            "WHERE customer_id = '{}'"
+            f"SELECT t.article_id{', ' + attributes if attributes else ''} "
+            f"FROM `{transactions.name}_{transactions.version}` t "
+            f"JOIN `{articles.name}_{articles.version}` a ON a.article_id = t.article_id "
+            "WHERE t.customer_id = '{}'"
         )
 
     def embed_query(self, customer_id: str, age: float, when: datetime) -> list[float]:
@@ -165,13 +178,13 @@ class Predict:
         bought = self.fs.sql(
             self.bought_sql.format(customer_id), online=True, dataframe_type="pandas"
         )
-        bought_ids = set(bought["article_id"].astype(str)) if len(bought) else set()
+        bought_ids = set(bought["article_id"].astype(str))
         lap("filter")
 
         articles = self.articles.get_feature_vectors(
             [{"article_id": a} for a in candidates], return_type="pandas", allow_missing=True
         )
-        items = rank(candidates, bought_ids, articles, age, self.ranker, self.features, k)
+        items = rank(candidates, bought, articles, age, self.ranker, self.spec, k)
         lap("rank")
         return {
             "customer_id": customer_id,
