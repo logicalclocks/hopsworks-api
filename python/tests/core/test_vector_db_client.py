@@ -13,13 +13,14 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+import copy
 from datetime import datetime
 from unittest import mock
 from unittest.mock import MagicMock
 
 import pytest
 from hopsworks_common.util import _convert_event_time_to_timestamp
-from hsfs.client.exceptions import FeatureStoreException
+from hsfs.client.exceptions import FeatureStoreException, VectorDatabaseException
 from hsfs.core import vector_db_client
 from hsfs.embedding import EmbeddingIndex
 from hsfs.feature import Feature
@@ -59,9 +60,16 @@ class TestVectorDbClient:
                 ]
             }
         }
+        self.mock_os_wrapper._get_field_mapping.return_value = self._field_mapping(
+            "f2", "faiss"
+        )
         mocker.patch(
             "hsfs.core.vector_db_client.OpenSearchClientSingleton",
             return_value=self.mock_os_wrapper,
+        )
+        mocker.patch.object(vector_db_client.VectorDbClient, "_field_knn_engine", {})
+        mocker.patch.object(
+            vector_db_client.VectorDbClient, "_index_result_limit_k", {}
         )
 
         self.query = self.fg.select_all()
@@ -517,6 +525,96 @@ class TestVectorDbClient:
                 ]
             }
         }
+
+    @staticmethod
+    def _field_mapping(col_name, engine, index="2249__embedding_default_embedding"):
+        # The response of GET <index>/_mapping/field/<col_name>
+        mapping = {"type": "knn_vector", "dimension": 3}
+        if engine:
+            mapping["method"] = {"engine": engine, "space_type": "l2", "name": "hnsw"}
+        return {
+            index: {
+                "mappings": {
+                    col_name: {"full_name": col_name, "mapping": {col_name: mapping}}
+                }
+            }
+        }
+
+    @pytest.mark.parametrize("engine", ["nmslib", None])
+    def test_find_neighbors_puts_filters_next_to_knn_on_nmslib(self, engine):
+        # Indices created before 5.1 are on nmslib, or have no method if created by 3.7.
+        self.mock_os_wrapper._get_field_mapping.return_value = self._field_mapping(
+            "f2", engine
+        )
+
+        self.target._find_neighbors(
+            [1.0, 2.0, 3.0], feature=self.f2, k=5, filter=self.f3 > 10
+        )
+
+        body = self.mock_os_wrapper._search.call_args.kwargs["body"]
+        assert body["query"] == {
+            "bool": {
+                "must": [
+                    {"knn": {"f2": {"vector": [1.0, 2.0, 3.0], "k": 5}}},
+                    {"exists": {"field": "f2"}},
+                    {"range": {"f3": {"gt": 10}}},
+                ]
+            }
+        }
+
+    def test_find_neighbors_reads_engine_once_per_field(self):
+        self.target._find_neighbors([1.0, 2.0, 3.0], feature=self.f2, k=5)
+        self.target._find_neighbors([1.0, 2.0, 3.0], feature=self.f2, k=5)
+
+        self.mock_os_wrapper._get_field_mapping.assert_called_once_with(
+            index="2249__embedding_default_embedding", field="f2", options=None
+        )
+
+    def test_supports_knn_filter_per_field_in_same_index(self):
+        # A default project index created before 5.1 gets faiss fields next to its nmslib ones.
+        index = "1__embedding_default_project_embedding_0"
+        self.mock_os_wrapper._get_field_mapping.side_effect = (
+            lambda index, field, options: self._field_mapping(
+                field, {"10_emb": "nmslib", "11_emb": "faiss"}[field], index
+            )
+        )
+
+        assert not self.target._supports_knn_filter(
+            self.mock_os_wrapper, 99, index, "10_emb", None
+        )
+        assert self.target._supports_knn_filter(
+            self.mock_os_wrapper, 99, index, "11_emb", None
+        )
+
+    def test_find_neighbors_retries_with_larger_k_on_nmslib(self, mocker):
+        # On nmslib the filters can drop most of the k nearest in a default project index, so the search is repeated with a larger k.
+        mocker.patch.object(self.embedding_index, "_col_prefix", "1_")
+        self.mock_os_wrapper._get_field_mapping.return_value = self._field_mapping(
+            "1_f2", "nmslib"
+        )
+        target = vector_db_client.VectorDbClient(self.fg.select_all())
+        hits = {"hits": {"hits": [{"_score": 1.0, "_source": {"1_f1": 4}}]}}
+        bodies = []
+
+        def search(body, index, options):
+            bodies.append(copy.deepcopy(body))
+            if len(bodies) == 2:
+                raise VectorDatabaseException(
+                    VectorDatabaseException.REQUESTED_K_TOO_LARGE,
+                    "",
+                    {VectorDatabaseException.REQUESTED_K_TOO_LARGE_INFO_K: 10000},
+                )
+            return hits
+
+        self.mock_os_wrapper._search.side_effect = search
+
+        target._find_neighbors([1.0, 2.0, 3.0], feature=self.f2, k=5)
+
+        assert [b["query"]["bool"]["must"][0]["knn"]["1_f2"]["k"] for b in bodies] == [
+            5,
+            2**31 - 1,
+            15,
+        ]
 
     def test_convert_to_pandas_type_timestamp_keeps_milliseconds(self):
         # OpenSearch stores timestamps as epoch ms; sub-second precision must

@@ -201,6 +201,20 @@ class ProjectOpenSearchClient:
         retry_on_exception=_is_timeout,
     )
     @_handle_opensearch_exception
+    def _get_field_mapping(self, index, field, options=None):
+        # Not GET <index>/_mapping, which the read role of a shared feature group does not allow.
+        return self._get_opensearch_client().indices.get_field_mapping(
+            fields=field,
+            index=index,
+            params=OpensearchRequestOption.get_options(options),
+        )
+
+    @retry(
+        wait_exponential_multiplier=1000,
+        stop_max_attempt_number=5,
+        retry_on_exception=_is_timeout,
+    )
+    @_handle_opensearch_exception
     def _multi_search_request(self, index=None, body=None, options=None):
         """Send the batch. Transport failures are the decorated concern; entries are not."""
         return self._get_opensearch_client().msearch(
