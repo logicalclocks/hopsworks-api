@@ -158,6 +158,7 @@ def test_the_first_question_offers_a_description_or_an_example_system():
     assert labels == {
         "churn-example": "Churn: which customers will cancel next month (batch)",
         "recs-example": "Personalized recommendations: the products each shopper is likely to buy next (real-time)",
+        "gis-example": "GIS military infrastructure finder: outlines aircraft, ships and harbours on a map of Sweden with a pretrained YOLO model (real-time)",
         "helpdesk-example": "Help desk agent: answers support questions from your documents and the customer's recent events (agentic)",
     }
     for slug in labels:
@@ -190,7 +191,7 @@ def test_an_example_system_records_synthetic_data_and_an_app(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "example", ["churn-example", "recs-example", "helpdesk-example"]
+    "example", ["churn-example", "recs-example", "helpdesk-example", "gis-example"]
 )
 def test_every_example_creates_a_valid_system(tmp_path, example):
     new_system = _load(REQS / "new_system.py")
@@ -1260,6 +1261,144 @@ def test_the_storefront_records_clicks_purchases_and_ignores(monkeypatch):
 
 # endregion
 
+# region The GIS building finder
+
+
+GIS = REQS / "gis_detector"
+
+
+def test_windows_cover_the_screen_with_overlap_and_no_window_past_the_edge():
+    pytest.importorskip("fastapi")
+    gis = _load(GIS / "app" / "app.py", "gis_app_under_test")
+    assert gis.windows(500, 400, 1024) == [(0, 0)]
+    corners = gis.windows(2400, 1200, 1024, overlap=128)
+    assert {x for x, _ in corners} == {0, 688, 1376}
+    assert {y for _, y in corners} == {0, 176}
+    # Two windows would overlap by 48 pixels, under the 128 asked for.
+    assert gis.windows(2000, 1024, 1024, overlap=128) == [(0, 0), (488, 0), (976, 0)]
+    assert all(x + 1024 <= 2400 and y + 1024 <= 1200 for x, y in corners)
+
+
+def _obb_output(rows, classes=15):
+    """output0 for the given (cx, cy, w, h, angle, class, score) rows."""
+    output = np.zeros((1, 4 + classes + 1, len(rows)), dtype=np.float32)
+    for i, (cx, cy, w, h, angle, cls, score) in enumerate(rows):
+        output[0, :4, i] = [cx, cy, w, h]
+        output[0, 4 + cls, i] = score
+        output[0, 4 + classes, i] = angle
+    return output
+
+
+def test_detection_decodes_rotated_boxes_and_their_class_and_merges_per_class():
+    pytest.importorskip("fastapi")
+    gis = _load(GIS / "app" / "app.py", "gis_app_under_test")
+    # A plane (class 0) at 90 degrees, a ship (class 1) below the threshold.
+    output = _obb_output(
+        [(100, 100, 40, 20, np.pi / 2, 0, 0.9), (300, 300, 10, 10, 0, 1, 0.1)]
+    )
+    boxes = gis.decode(output, 0.35, 15)
+    assert len(boxes) == 1
+    assert boxes[0].tolist() == pytest.approx([100, 100, 40, 20, np.pi / 2, 0.9, 0])
+    # Turned a quarter, the 40 x 20 box spans 20 across and 40 down.
+    points = gis.corners(boxes)[0]
+    assert points[:, 0].max() - points[:, 0].min() == pytest.approx(20)
+    assert points[:, 1].max() - points[:, 1].min() == pytest.approx(40)
+
+    # Two overlapping planes are one; a ship on top of them is a different object.
+    rows = [
+        (10, 10, 20, 20, 0, 0, 0.9),
+        (11, 11, 20, 20, 0, 0, 0.8),
+        (10, 10, 20, 20, 0, 1, 0.7),
+    ]
+    kept = gis.nms(gis.decode(_obb_output(rows), 0.35, 15), 0.5)
+    assert sorted(kept[:, 6].tolist()) == [0, 1]
+
+    def run(tensor):
+        return _obb_output([(1000, 50, 40, 40, 0, 0, 0.8)])
+
+    # Each window sees a plane at its own x 1000: they are three objects on the screen.
+    found = gis.detect(np.zeros((300, 2000, 3), dtype=np.uint8), run, 1024, 0.35, 15)
+    assert sorted(found[:, 0].tolist()) == [1000, 1488, 1976]
+
+
+def test_the_app_returns_the_objects_of_interest_with_their_corners(monkeypatch):
+    pytest.importorskip("fastapi")
+    image_lib = pytest.importorskip("PIL.Image")
+    import base64
+    import io as stdio
+
+    from starlette.testclient import TestClient
+
+    gis = _load(GIS / "app" / "app.py", "gis_app_under_test")
+    registration = _load(GIS / "register_detector.py", "register_detector_under_test")
+
+    def run(tensor):
+        # A plane, and a tennis court (class 4), which the app does not show.
+        return _obb_output(
+            [(100, 60, 40, 20, 0, 0, 0.9), (200, 100, 30, 30, 0, 4, 0.9)]
+        )
+
+    spec = registration.detector_spec("abc")
+    monkeypatch.setattr(
+        gis, "_detector", lambda: {"run": run, "spec": spec, "version": 3}
+    )
+    client = TestClient(gis.app)
+    assert client.get("/health").json() == {"status": "ok"}
+    assert "Military infrastructure finder" in client.get("/").text
+    assert client.get("/static/vendor/leaflet.js").status_code == 200
+    places = client.get("/api/locations").json()
+    assert places and all(55 < p["lat"] < 69 and 10 < p["lon"] < 25 for p in places)
+
+    buffer = stdio.BytesIO()
+    image_lib.new("RGB", (320, 200), (90, 120, 90)).save(buffer, "JPEG")
+    data = "data:image/jpeg;base64," + base64.b64encode(buffer.getvalue()).decode()
+    reply = client.post("/api/detect", json={"image": data}).json()
+    assert (reply["width"], reply["height"]) == (320, 200)
+    assert [o["label"] for o in reply["objects"]] == ["plane"]
+    plane = reply["objects"][0]
+    assert plane["score"] == 0.9
+    assert sorted(map(tuple, plane["corners"])) == [
+        (80, 50),
+        (80, 70),
+        (120, 50),
+        (120, 70),
+    ]
+    assert reply["model"]["name"] == "infrastructure_detector"
+    assert set(reply["timings_ms"]) == {"decode", "load", "detect"}
+    bad = client.post(
+        "/api/detect", json={"image": "data:image/jpeg;base64," + "A" * 40}
+    )
+    assert bad.status_code == 422
+
+
+def test_the_detector_is_registered_once_per_revision():
+    registration = _load(GIS / "register_detector.py", "register_detector_under_test")
+    spec = registration.detector_spec("abc")
+    assert spec["source"] == f"hf:{registration.REPO}@abc"
+    assert (spec["image_size"], spec["format"], len(spec["classes"])) == (
+        1024,
+        "onnx",
+        15,
+    )
+    assert set(spec["of_interest"]) <= set(spec["classes"])
+    assert "tennis court" not in spec["of_interest"]
+
+    class Registry:
+        def __init__(self, descriptions):
+            self.models = [type("M", (), {"description": d})() for d in descriptions]
+
+        def get_models(self, name):
+            return self.models
+
+    assert registration.already_registered(
+        Registry(["YOLOv8s ... @abc, exported"]), "m", "abc"
+    )
+    assert not registration.already_registered(Registry(["@other"]), "m", "abc")
+    assert not registration.already_registered(Registry([]), "m", "abc")
+
+
+# endregion
+
 # region The dashboard program
 
 
@@ -1476,6 +1615,10 @@ def test_the_files_a_build_copies_in_pass_the_systems_rules(tmp_path):
     ):
         shutil.copy(REQS / "recommender" / name, package / f"recs_{name}")
     shutil.copytree(REQS / "recommender" / "app", target / "recs-app")
+    shutil.copy(
+        REQS / "gis_detector" / "register_detector.py", package / "register_detector.py"
+    )
+    shutil.copytree(REQS / "gis_detector" / "app", target / "gis-app")
     done = _lint(target)
     assert done.returncode == 0, done.stdout + done.stderr
 

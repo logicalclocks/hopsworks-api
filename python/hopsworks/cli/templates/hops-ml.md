@@ -136,8 +136,9 @@ data** (when there is no data yet). Record one `requirements.data_sources+=` ent
 An example is a complete system on synthetic or public data: never ask for data sources and never ask whether
 an app is wanted; it always gets a Python app with a JavaScript UI. The options are the labels in
 `hops-reqs/references/example-systems.yaml`, each with its slug: **Churn** (`churn-example`, batch),
-**Personalized recommendations** (`recs-example`, real-time) and **Help desk agent**
-(`helpdesk-example`, agentic); use each `label` as the option's description. Create it with the
+**Personalized recommendations** (`recs-example`, real-time), **GIS military infrastructure
+finder** (`gis-example`, real-time, a pretrained model with no feature or training pipeline) and **Help desk
+agent** (`helpdesk-example`, agentic); use each `label` as the option's description. Create it with the
 example's own slug, which writes its whole `system.yaml`, then record the target:
 
 ```bash

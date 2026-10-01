@@ -37,7 +37,10 @@ embedded into a vector-indexed feature group, a LangGraph agent, a chat app),
 and the `ranking` recommender of the `recs-example` as
 [references/recommender.md](references/recommender.md) says (two-tower
 retrieval over a vector index, a CatBoost ranker, one deployment, a storefront
-app). Other `ranking` systems, `anomaly` and `agentic` tasks, and other agent
+app), and the `detection` GIS app of the `gis-example` as
+[references/gis-detector.md](references/gis-detector.md) says (a pretrained YOLO26
+aerial detector of military infrastructure, registered from Hugging Face and
+embedded in a JavaScript map app; no data, features, training or deployment). Other `ranking` systems, `anomaly` and `agentic` tasks, and other agent
 systems, are captured in full at `reqs` and stop there. The autonomous
 path runs only against `system.target.stage: development`.
 

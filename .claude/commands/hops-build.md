@@ -193,7 +193,10 @@ user to upload documents, and its `train` and `infer` follow that page instead o
 training and inference agents. The personalized recommender (`task: ranking`, the `recs-example`)
 is built the same way by `hops-reqs/references/recommender.md`, from the reference code in
 `recommender/`: its `data` phase downloads the public H&M files instead of generating data, and
-its `train` and `infer` follow that page. Any other task outside classification, regression and forecasting,
+its `train` and `infer` follow that page. The GIS military infrastructure finder (`task: detection`,
+the `gis-example`) is built by `hops-reqs/references/gis-detector.md` from `gis_detector/`: `data` and
+`features` are `skipped`, `train` registers a pretrained detector, and the model is embedded in
+the app, so `infer` measures the app's detection latency instead of deploying. Any other task outside classification, regression and forecasting,
 or another agent system, is captured in full and the command stops after `reqs` saying v1 builds
 none of it. Print the requirements back and ask to proceed; write `requirements.status: met` and
 `system.status: building` on yes.

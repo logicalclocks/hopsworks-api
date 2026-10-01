@@ -55,7 +55,8 @@ below and passes on that example.
 ## Status vocabulary and transitions
 
 Every phase block has a `status`. Satisfied: `met`; `skipped` (the phase does not apply, such
-as `training` for an agent system without a model, or `app` declined); `accepted` (the user
+as `training` for an agent system without a model, `data` and `features` for a system whose
+pretrained model reads only what a request sends, or `app` declined); `accepted` (the user
 waived the target or SLA; the block records what was accepted and a `decisions` line says so).
 Not satisfied: `pending`, `running`, `unmet`, `stale`. `verify` has `pass | fail`, is rerun by
 every resume, and is never a gate.

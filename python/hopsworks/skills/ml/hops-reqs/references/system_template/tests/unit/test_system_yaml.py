@@ -20,8 +20,9 @@ SYSTEM_YAML = Path(__file__).resolve().parents[2] / "system.yaml"
 
 PHASE_STATUS = {
     "requirements": {"pending", "met", "stale"},
-    "data": {"pending", "running", "met", "unmet", "stale"},
-    "features": {"pending", "running", "met", "unmet", "stale"},
+    # skipped: a system with a pretrained model and data only at request time.
+    "data": {"pending", "running", "met", "unmet", "stale", "skipped"},
+    "features": {"pending", "running", "met", "unmet", "stale", "skipped"},
     "training": {"pending", "running", "met", "unmet", "accepted", "stale", "skipped"},
     "inference": {"pending", "running", "met", "unmet", "accepted", "stale"},
     "app": {"pending", "running", "met", "skipped", "stale"},
@@ -29,7 +30,7 @@ PHASE_STATUS = {
 }
 SYSTEM_STATUS = {"draft", "building", "verified", "deployed"}
 TASKS_BUILT = {"classification", "regression", "forecasting"}
-TASKS_CAPTURED = {"ranking", "anomaly", "rag", "agentic"}
+TASKS_CAPTURED = {"ranking", "anomaly", "rag", "agentic", "detection"}
 SYSTEM_TYPES = {"batch", "realtime", "agent"}
 SOURCE_KINDS = {"feature_group", "datasource", "file", "url", "synthetic"}
 SOURCE_STATUS = {

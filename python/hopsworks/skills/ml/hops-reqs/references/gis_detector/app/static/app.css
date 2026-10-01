@@ -1,0 +1,149 @@
+/* Hopsworks app look: tokens first, then components. Extend, don't restyle. */
+:root {
+  --accent: #1eb182;
+  --accent-soft: rgba(30, 177, 130, 0.14);
+  --bg: #f5f7f9;
+  --panel: #ffffff;
+  --text: #1a1f2b;
+  --muted: #5f6b7a;
+  --line: #e3e8ee;
+  --danger: #d6455d;
+  --warn: #e0a100;
+  --radius: 12px;
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 4px 12px rgba(16, 24, 40, 0.06);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1117;
+    --panel: #161b25;
+    --text: #eef1f5;
+    --muted: #9aa5b4;
+    --line: #262d3a;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+/* Keep the scrollbar's space: content that shrinks while it reloads would
+   otherwise drop the scrollbar and shift the centred page sideways. */
+html { scrollbar-gutter: stable; }
+body {
+  margin: 0;
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+h1, h2, h3 { line-height: 1.25; margin: 0; }
+h2 { font-size: 1.05rem; font-weight: 600; }
+
+.band {
+  display: flex; align-items: center; gap: 0.75rem;
+  padding: 0.9rem 1.5rem;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+.band .mark {
+  width: 2rem; height: 2rem; border-radius: 8px;
+  display: grid; place-items: center;
+  background: var(--accent); color: #fff; font-weight: 700;
+}
+.band h1 { font-size: 1.15rem; }
+.band .sub { color: var(--muted); font-size: 0.85rem; }
+
+main {
+  max-width: 72rem; margin: 1.5rem auto; padding: 0 1.5rem;
+  display: grid; gap: 1.25rem;
+}
+.grid { display: grid; gap: 1.25rem; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); }
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 1.25rem;
+}
+.card > h2 { margin-bottom: 0.75rem; }
+
+.stat .label { color: var(--muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.stat .value { font-size: 1.9rem; font-weight: 700; margin-top: 0.25rem; }
+.stat .value.accent { color: var(--accent); }
+.stat .value.danger { color: var(--danger); }
+
+form { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+label { color: var(--muted); font-size: 0.9rem; }
+input, select, button { font: inherit; border-radius: 8px; padding: 0.5rem 0.75rem; }
+input, select {
+  border: 1px solid var(--line); background: var(--bg); color: var(--text); min-width: 10rem;
+}
+input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+button {
+  border: none; background: var(--accent); color: #fff; font-weight: 600; cursor: pointer;
+}
+button:hover { filter: brightness(1.05); }
+button:disabled { opacity: 0.6; cursor: progress; }
+
+table { width: 100%; border-collapse: collapse; }
+th {
+  text-align: left; color: var(--muted); font-weight: 500; font-size: 0.8rem;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+td, th { padding: 0.6rem 0.5rem; border-bottom: 1px solid var(--line); }
+tbody tr:hover { background: var(--accent-soft); }
+td.num { font-variant-numeric: tabular-nums; }
+
+.bar { display: flex; align-items: center; gap: 0.5rem; }
+.bar .track { flex: 1; height: 0.5rem; border-radius: 999px; background: var(--line); overflow: hidden; }
+.bar .fill { height: 100%; border-radius: 999px; background: var(--accent); }
+.bar .fill.high { background: var(--danger); }
+.bar .fill.mid { background: var(--warn); }
+.bar .num { min-width: 3.5rem; text-align: right; }
+
+.badge {
+  display: inline-block; padding: 0.1rem 0.55rem; border-radius: 999px;
+  font-size: 0.78rem; font-weight: 600; background: var(--accent-soft); color: var(--accent);
+}
+.badge.high { background: rgba(214, 69, 93, 0.14); color: var(--danger); }
+
+.muted { color: var(--muted); }
+.empty, .error { color: var(--muted); padding: 1rem 0; text-align: center; }
+.error { color: var(--danger); }
+.loading {
+  height: 1rem; border-radius: 6px; margin: 0.6rem 0;
+  background: linear-gradient(90deg, var(--line), var(--bg), var(--line));
+  background-size: 200% 100%; animation: shimmer 1.2s infinite;
+}
+@keyframes shimmer { to { background-position: -200% 0; } }
+/* A list being reloaded keeps its rows, dimmed, until the new ones arrive. */
+[aria-busy="true"] { opacity: 0.55; transition: opacity 0.15s; }
+
+@media (max-width: 40rem) {
+  .band { padding: 0.75rem 1rem; }
+  main { padding: 0 1rem; }
+  input, select { min-width: 0; flex: 1; }
+}
+
+
+
+/* Military infrastructure finder: the places, settings and legend beside the map. */
+main.gis { max-width: none; margin: 0; padding: 0; display: grid; grid-template-columns: 20rem 1fr; gap: 0; height: calc(100vh - 4rem); }
+@media (max-width: 800px) { main.gis { grid-template-columns: 1fr; grid-template-rows: auto 70vh; height: auto; } }
+.side { padding: 1rem; display: flex; flex-direction: column; gap: 1rem; overflow-y: auto; border-right: 1px solid var(--line); background: var(--panel); }
+.side h2 { margin-bottom: 0.5rem; }
+.places { display: grid; gap: 0.4rem; }
+.places button { text-align: left; background: var(--bg); color: var(--text); border: 1px solid var(--line); font-weight: 500; }
+.places button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.side label { display: flex; justify-content: space-between; }
+.side input[type="range"] { width: 100%; min-width: 0; padding: 0; }
+.facts { display: grid; grid-template-columns: auto 1fr; gap: 0.3rem 0.75rem; font-size: 0.85rem; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; font-variant-numeric: tabular-nums; }
+#map { width: 100%; height: 100%; min-height: 20rem; }
+.hint { position: absolute; z-index: 500; left: 50%; top: 0.75rem; transform: translateX(-50%); background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 0.3rem 0.9rem; font-size: 0.85rem; box-shadow: var(--shadow); }
+.map-wrap { position: relative; }
+.legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.3rem; font-size: 0.9rem; }
+.legend li { display: flex; align-items: center; gap: 0.5rem; }
+.legend .swatch { width: 0.9rem; height: 0.9rem; border-radius: 3px; border: 2px solid; flex: none; }
+.legend .n { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--muted); }

@@ -1,0 +1,12 @@
+# Installed into <slug>-jobs-env, a clone of python-feature-pipeline, for the
+# registration job, which exports the downloaded weights to ONNX. Ultralytics
+# pulls torch and torchvision; the CPU builds are pinned together, since a
+# torchvision from PyPI against the CPU torch fails to load (operator
+# torchvision::nms does not exist). huggingface_hub downloads the weights,
+# which Ultralytics does not pull in. Nothing here uses a GPU.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.14.1+cpu
+torchvision==0.29.1+cpu
+ultralytics==8.4.170
+onnx==1.23.1
+huggingface_hub==2.0.0

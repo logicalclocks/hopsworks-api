@@ -228,3 +228,53 @@ helpdesk-example:
       Send; it shows the agent's answer, the cited passages with a link to each document (page and
       paragraph), and the user's recent events the agent read
     status: pending
+
+gis-example:
+  label: "GIS military infrastructure finder: outlines aircraft, ships and harbours on a map of Sweden with a pretrained YOLO model (real-time)"
+  system:
+    name: GIS military infrastructure finder
+  requirements:
+    description: >-
+      the military infrastructure visible on a satellite map of Sweden, outlined as the user pans
+      and zooms: aircraft, helicopters, ships, harbours, storage tanks, bridges and large vehicles.
+      The page sends the map on screen to a pretrained YOLO26 aerial object detector from Hugging
+      Face, registered in the Model Registry and embedded in the app, and draws the rotated boxes
+      it returns. Nothing is trained and no data is ingested, so there are no feature or training
+      pipelines
+    system_type: realtime
+    problem:
+      task: detection
+    sla:
+      realtime: {p99_ms: 3000, throughput_qps: 2}
+    consumers: ui
+    data_sources: []
+  data:
+    # Built as hops-reqs/references/gis-detector.md says, from its gis_detector/ files.
+    status: skipped
+  features:
+    status: skipped
+  training:
+    required: false
+    pretrained:
+      repo: openvision/yolo26-s-obb
+      revision: 567278bad4cc58dde7efe31eb58de8c7732c198b
+      name: infrastructure_detector
+      format: onnx
+    job: {name: gis-example-register-detector}
+    status: pending
+  inference:
+    mode: embedded
+    embedded: {app: gis-example-app, model: infrastructure_detector, runtime: onnxruntime}
+    request: {image: "JPEG data URL of the map on screen", threshold: float}
+    status: pending
+  app:
+    wanted: true
+    kind: custom
+    name: gis-example-app
+    description: >-
+      A JavaScript GIS app: a satellite map of Sweden (Leaflet, Esri World Imagery) with air and
+      naval bases and ports to jump to; after each pan or zoom it sends the map on screen to the
+      embedded detector and outlines the aircraft, ships, harbours, storage tanks, bridges and
+      large vehicles it finds, coloured by kind, with each one's confidence, a legend of the counts
+      in view and the model's time for the last detection
+    status: pending
