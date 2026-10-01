@@ -107,29 +107,36 @@ class HistogramBuilder {
   }
 
   /**
+   * Per-value counts of a column's non-null values, as columns {@code _v} and {@code count}.
+   * Shared by the categorical histogram and the exact-uniqueness statistics.
+   */
+  static Dataset<Row> valueCounts(Dataset<Row> df, String columnName) {
+    // Project to a fixed name before grouping. For a feature named "count", grouping on the
+    // column itself leaves two "count" columns: the uniqueness reads cannot resolve, and
+    // Spark resolves the histogram's orderBy against the grouping one rather than failing,
+    // so the bins come out ordered by value and the top-N cut keeps the wrong values.
+    return df.select(functions.col(columnName).alias("_v"))
+        .filter(functions.col("_v").isNotNull())
+        .groupBy(functions.col("_v"))
+        .count();
+  }
+
+  /**
    * Builds histogram bins for a categorical (String or Boolean) column.
    *
-   * @param df source dataframe
-   * @param columnName column to histogram
+   * @param valueCounts the column's {@link #valueCounts}
    * @param histogramBins maximum number of bins (top-N by count)
    * @param totalRows total non-null rows (denominator for ratio)
    * @return list of histogram entry maps with keys: value, count, ratio
    */
-  List<Map<String, Object>> buildCategorical(Dataset<Row> df,
-      String columnName,
+  List<Map<String, Object>> buildCategorical(Dataset<Row> valueCounts,
       int histogramBins,
       long totalRows) {
-    // Project to a fixed name before grouping, as ColumnProfiler's uniqueness pass does. For
-    // a feature named "count", grouping on the column itself leaves two "count" columns, and
-    // Spark resolves the orderBy against the grouping one rather than failing: the bins come
-    // out ordered by value, and the top-N cut keeps the wrong values.
-    Column value = functions.col(columnName).alias("_v");
-    Dataset<Row> grouped = df
-        .select(value)
-        .filter(functions.col("_v").isNotNull())
-        .groupBy(functions.col("_v"))
-        .count()
-        .orderBy(functions.desc("count"))
+    // Ties broken by value: otherwise their order, and which of them survive the top-N cut,
+    // follow the shuffle, and a monitoring comparison sees bins move between two profiles of
+    // the same data.
+    Dataset<Row> grouped = valueCounts
+        .orderBy(functions.desc("count"), functions.asc("_v"))
         .limit(histogramBins);
 
     List<Map<String, Object>> result = new ArrayList<Map<String, Object>>();
