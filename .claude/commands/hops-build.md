@@ -194,9 +194,11 @@ training and inference agents. The personalized recommender (`task: ranking`, th
 is built the same way by `hops-reqs/references/recommender.md`, from the reference code in
 `recommender/`: its `data` phase downloads the public H&M files instead of generating data, and
 its `train` and `infer` follow that page. The GIS military infrastructure finder (`task: detection`,
-the `gis-example`) is built by `hops-reqs/references/gis-detector.md` from `gis_detector/`: `data` and
-`features` are `skipped`, `train` registers a pretrained detector, and the model is embedded in
-the app, so `infer` measures the app's detection latency instead of deploying. Hops Run with Kumo
+the `gis-example`) has no reference code: every file is written from its requirements and
+`hops-reqs/references/gis-detector.md`, which gives each phase's contract, the facts the code
+depends on and the tests to write. `data` and `features` are `skipped`, `train` registers a
+pretrained detector, and the model is embedded in the app, so `infer` measures the app's detection
+latency instead of deploying. Hops Run with Kumo
 Tabular (the `run-example`) is built by `hops-reqs/references/kumo-run.md` from `kumo_run/`: `data`
 and `features` are `skipped`, `train` registers NVIDIA's pretrained in-context classifier, and
 `infer` deploys it and measures the game's decisions. Any other task outside classification, regression and forecasting,

@@ -14,7 +14,6 @@ from __future__ import annotations
 import itertools
 import random
 
-
 LANES = ["left", "centre", "right"]
 KINDS = ["wall", "low", "bar"]
 MOVES = ["left", "hold", "right", "up", "down"]
@@ -59,17 +58,14 @@ def features(lane: str, near: dict[str, str]) -> dict:
     return {"lane": lane, **{f"{name}_lane": near.get(name, "open") for name in LANES}}
 
 
-def split(
-    holdout: float = 0.3, seed: int = 7
-) -> tuple[list[dict], list[tuple[str, dict]]]:
+def split(holdout: float = 0.3, seed: int = 7) -> tuple[list[dict], list[tuple[str, dict]]]:
     """The labelled context rows, and the situations held out of them."""
     rnd = random.Random(seed)
     every = situations()
     rnd.shuffle(every)
     cut = round(len(every) * (1 - holdout))
     context = [
-        {**features(lane, near), TARGET: rule_move(lane, near)}
-        for lane, near in every[:cut]
+        {**features(lane, near), TARGET: rule_move(lane, near)} for lane, near in every[:cut]
     ]
     return context, every[cut:]
 

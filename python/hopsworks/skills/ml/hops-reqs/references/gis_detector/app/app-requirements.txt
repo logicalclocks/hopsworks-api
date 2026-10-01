@@ -1,4 +1,0 @@
-# Installed into <slug>-app-env, a clone of python-agent-pipeline, which ships
-# FastAPI, uvicorn, NumPy 2.4, Pillow 12.3 and the Hopsworks client; onnxruntime
-# runs the exported detector in the app's process.
-onnxruntime==1.30.0

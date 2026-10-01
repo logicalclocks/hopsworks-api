@@ -33,7 +33,6 @@ import torch
 from sdm import Task
 from sdm.models import KumoTabular
 
-
 logger = logging.getLogger("kumo_tabular")
 logging.basicConfig(level=logging.INFO)
 
@@ -96,9 +95,7 @@ class Predict:
 
         features = [c for c in context.columns if c != target]
         query = query.reindex(columns=features)  # a missing column is a missing value
-        stypes = sdm.infer_stypes(
-            context, overrides={target: "categorical"}, unsupported="drop"
-        )
+        stypes = sdm.infer_stypes(context, overrides={target: "categorical"}, unsupported="drop")
         feature_stypes = {k: v for k, v in stypes.items() if k != target}
         # The query's dtypes follow the context's, so the column encoders agree.
         for column in feature_stypes:

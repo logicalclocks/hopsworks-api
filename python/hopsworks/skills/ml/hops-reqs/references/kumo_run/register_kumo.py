@@ -22,7 +22,6 @@ import shutil
 import tempfile
 from pathlib import Path
 
-
 REPO = "nvidia/Kumo-Tabular"
 REVISION = "4f0dca60610d68f933b978e17ff8f66be3ec3b5b"
 SIZE = "medium"
@@ -49,9 +48,7 @@ def download(directory: Path, revision: str) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description="Register the Kumo Tabular classifier."
-    )
+    parser = argparse.ArgumentParser(description="Register the Kumo Tabular classifier.")
     parser.add_argument("--name", default="kumo_tabular")
     parser.add_argument("--revision", default=REVISION)
     args = parser.parse_args(argv)

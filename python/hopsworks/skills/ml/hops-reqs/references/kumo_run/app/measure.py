@@ -40,18 +40,14 @@ def main(argv: list[str] | None = None) -> int:
     import hopsworks
 
     deployment = (
-        hopsworks.login(engine="python")
-        .get_model_serving()
-        .get_deployment(args.deployment)
+        hopsworks.login(engine="python").get_model_serving().get_deployment(args.deployment)
     )
     context, held_out = game_rules.split()
 
     def ask(rows: list[dict]) -> dict:
         return _answers(
             deployment.predict(
-                inputs=[
-                    {"context": context, "query": rows, "target": game_rules.TARGET}
-                ]
+                inputs=[{"context": context, "query": rows, "target": game_rules.TARGET}]
             )
         )[0]
 

@@ -30,14 +30,13 @@ import re
 import threading
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import game_rules
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
-
 
 STATIC = Path(__file__).resolve().parent / "static"
 # The game's version, shown in the HUD and kept with every run: hops-run v1.8.0, whose
@@ -48,9 +47,7 @@ BOARD_SIZE = int(os.environ.get("BOARD_SIZE", "10"))
 DEFAULT_BOARD = Path("/hopsfs/Resources/hops-run/board.json")
 PILOTS = ["kumo"]
 NAME = re.compile(r"^[\w .-]{1,20}$")
-RUN_KEY = re.compile(
-    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I
-)
+RUN_KEY = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
 # The furthest the hops can fly in a run's time: the speed curve, plus a boost gate at most
 # every gate_gap metres, with a margin. Mirrored from game.js (SPEED, BOOST, PAD_GAP).
 PHYSICS = {
@@ -144,7 +141,9 @@ ROBOT = (
     '<svg class="bot" viewBox="0 0 16 16" aria-label="model"><path d="M8 1.5V4M3 4h10v8.5H3z'
     'M6 7.25h.5M9.5 7.25h.5M6 10h4M1.5 7v3M14.5 7v3"/></svg>'
 )
-MAKER = '<a href="https://huggingface.co/nvidia/Kumo-Tabular" target="_blank" rel="noopener">NVIDIA</a>'
+MAKER = (
+    '<a href="https://huggingface.co/nvidia/Kumo-Tabular" target="_blank" rel="noopener">NVIDIA</a>'
+)
 
 
 def _row(r: dict) -> str:
@@ -189,14 +188,10 @@ def _kumo():
             import hopsworks
 
             deployment = (
-                hopsworks.login(engine="python")
-                .get_model_serving()
-                .get_deployment(DEPLOYMENT)
+                hopsworks.login(engine="python").get_model_serving().get_deployment(DEPLOYMENT)
             )
             if deployment is None:
-                raise HTTPException(
-                    status_code=503, detail=f"no deployment named {DEPLOYMENT}"
-                )
+                raise HTTPException(status_code=503, detail=f"no deployment named {DEPLOYMENT}")
             _deployment.update(
                 deployment=deployment,
                 model=f"{deployment.model_name} v{deployment.model_version}",
@@ -235,9 +230,7 @@ def percentile(values: list[float], q: float) -> float | None:
 
 
 def _client(request: Request) -> str:
-    address = request.headers.get(
-        "x-forwarded-for", request.client.host if request.client else ""
-    )
+    address = request.headers.get("x-forwarded-for", request.client.host if request.client else "")
     return hashlib.sha256(address.split(",")[0].strip().encode()).hexdigest()[:16]
 
 
@@ -257,9 +250,7 @@ def health() -> dict:
 @app.get("/", response_class=HTMLResponse)
 def index() -> str:
     page = (STATIC / "page.html").read_text()
-    return page.replace("{{VERSION}}", VERSION).replace(
-        "{{BOARD}}", board_html(board.top())
-    )
+    return page.replace("{{VERSION}}", VERSION).replace("{{BOARD}}", board_html(board.top()))
 
 
 @app.post("/api/decide")
@@ -370,7 +361,7 @@ async def post_run(request: Request) -> JSONResponse:
             "game_version": VERSION,
             "run_key": run_key,
             "client": _client(request),
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
         }
     )
     rows = board.top()
@@ -384,9 +375,7 @@ async def post_run(request: Request) -> JSONResponse:
                 "html": board_html(rows),
             }
         )
-    return JSONResponse(
-        {"rank": board.rank(run), "runs": rows, "html": board_html(rows)}
-    )
+    return JSONResponse({"rank": board.rank(run), "runs": rows, "html": board_html(rows)})
 
 
 if __name__ == "__main__":

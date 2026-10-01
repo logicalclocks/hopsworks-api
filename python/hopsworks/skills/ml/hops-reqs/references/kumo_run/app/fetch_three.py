@@ -19,7 +19,6 @@ import tarfile
 import urllib.request
 from pathlib import Path
 
-
 VERSION = "0.186.1"
 TARBALL = f"https://registry.npmjs.org/three/-/three-{VERSION}.tgz"
 INTEGRITY = "sha512-blFeqb49wRCSGUGj7gtpfnSGHy2lwDk94RhUmS1c/hTby70kvChbWpkJ4Pm1390LqzzvTmzgXKHPEafJwCb8jA=="
@@ -42,9 +41,7 @@ def main() -> int:
     with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as archive:
         for member in archive.getmembers():
             if member.name in FILES:
-                (TARGET / Path(member.name).name).write_bytes(
-                    archive.extractfile(member).read()
-                )
+                (TARGET / Path(member.name).name).write_bytes(archive.extractfile(member).read())
     print(f"three.js {VERSION} in {TARGET}")
     return 0
 
