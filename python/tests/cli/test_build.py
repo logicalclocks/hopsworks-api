@@ -252,6 +252,7 @@ def test_the_uis_answers_leave_nothing_to_ask(tmp_path, monkeypatch, quiet):
         "status": "pending",
     }
     assert doc["system"]["repo"] == {"url": "new"}
+    assert doc["system"]["version"] == "0.1.0"
     assert quiet == [(tmp_path / "late-orders", "Late orders")]
 
 

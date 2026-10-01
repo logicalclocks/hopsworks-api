@@ -184,10 +184,12 @@ whatever is still open is listed for the user.
 ## Releases
 
 Every build that ends with the system verified and deployed is a GitHub release,
-tagged `v<version>` on the commit the system runs. The first is `0.1.0`; each
-later one is the next version of its kind after the last release
-(`next_version` in `tests/unit/test_system_yaml.py`, which also checks
-`system.releases`):
+tagged `v<version>` on the commit the system runs. `system.version` is the
+system's version in that commit: `0.1.0` from the start, and after a release the
+next version of its kind, set in the first commit that changes the system
+(`next_version` in `tests/unit/test_system_yaml.py`, which also checks it
+against `system.releases`), so the tagged `system.yaml` always names its own
+release. A version not yet in `system.releases` is the release still to come:
 
 | Kind | Since the last release | Example |
 | --- | --- | --- |
@@ -203,11 +205,11 @@ changed.
 
 **When.** On the default branch (an example in a repository of its own), release
 the commit `verify` passed on, as soon as it passes. On a system branch, the
-release is the merge commit, after the pull request merges; the command never
-merges, so the finishing step records the planned release as
-`system.release_pending: {version, kind, reason}` and reports it, and the next
-`/hops-build <slug>` (or `/hops-build <slug> release`) finds the pull request
-merged, runs `verify` on the default branch's head and releases that commit.
+version rides in the pull request and the release is the merge commit, after
+the pull request merges; the command never merges, so the finishing step
+reports the version the merge will release, and the next `/hops-build <slug>`
+(or `/hops-build <slug> release`) finds the pull request merged, runs `verify`
+on the default branch's head and releases that commit.
 
 ```bash
 git log --format='- %s (%h)' v<last>..HEAD > /tmp/release-notes.md   # the first release lists every commit
@@ -221,8 +223,8 @@ gh release view v<version> --json url --jq .url      # recorded in system.releas
 With `system.repo.push: ssh` there is no API: push an annotated tag instead
 (`git tag -a v<version> <commit> -m "<system.name> <version>"`, `git push origin
 v<version>`), and report that the release page is created from that tag on
-GitHub. Record each release in `system.releases` and delete `release_pending`,
-one commit `[<slug>] release: v<version>`, pushed; that commit records the
-release and is not released itself. A release is never moved or deleted: a
+GitHub. Record each release in `system.releases`, one commit `[<slug>] release:
+v<version>`, pushed; that commit records the release and leaves `system.version`
+as it is, so it is not released itself. A release is never moved or deleted: a
 mistake is fixed by the next release.
 

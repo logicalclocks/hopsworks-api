@@ -55,7 +55,7 @@ Then create the system, with a slug of two or three words from the problem:
 ```bash
 python <skills>/hops-reqs/references/new_system.py <slug>      # <skills>: .claude/skills, else ~/.claude/skills
 python <slug>/set.py 'schema_version=1' 'system.name=<short title>' 'system.slug=<slug>' \
-  'system.target={cluster: <Host>, project: <Project>, stage: development}' 'system.status=draft' \
+  'system.target={cluster: <Host>, project: <Project>, stage: development}' 'system.version=0.1.0' 'system.status=draft' \
   'requirements.status=pending' 'requirements.description=<the problem in the user words>'
 hops mlsystem register <slug> --name '<short title>'   # lists it in the project's ML systems
 ```

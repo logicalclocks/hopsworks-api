@@ -315,6 +315,21 @@ def render_cluster(doc: dict) -> str:
     return "\n".join(lines)
 
 
+def version_line(doc: dict) -> str:
+    """The system's version and whether it is released; empty for a system without one."""
+    system = doc.get("system") or {}
+    version = system.get("version")
+    if not version:
+        return ""
+    released = {r.get("version"): r for r in system.get("releases") or [] if isinstance(r, dict)}
+    if version in released:
+        url = released[version].get("url")
+        return f"version {version}, released" + (f": {url}" if url else "")
+    last = (system.get("releases") or [{}])[-1].get("version") if released else None
+    since = f" (last release {last})" if last else ""
+    return f"version {version}, not released yet{since}"
+
+
 def main(argv: list[str] | None = None) -> int:
     """Print the table once, or keep redrawing it with --watch."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -336,6 +351,8 @@ def main(argv: list[str] | None = None) -> int:
         doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         now = parse_time(args.now) if args.now else datetime.now(timezone.utc)
         out = render(doc, now)
+        if version_line(doc):
+            out += "\n" + version_line(doc)
         if args.cluster:
             out += "\n" + render_cluster(doc)
         if args.watch:

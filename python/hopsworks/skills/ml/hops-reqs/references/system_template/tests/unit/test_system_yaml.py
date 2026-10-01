@@ -270,7 +270,11 @@ def next_version(last: str | None, kind: str) -> str:
 
 
 def _check_releases(problems: list[str], system: dict) -> None:
-    """Releases are tagged v<version>, start at 0.1.0 and step by their kind."""
+    """Releases are tagged v<version>, start at 0.1.0 and step by their kind.
+
+    `system.version` is the version of the system in this commit: the last release
+    while nothing changed since, else the next release it will be.
+    """
     last = None
     for i, release in enumerate(system.get("releases") or []):
         where = f"system.releases[{i}]"
@@ -297,16 +301,24 @@ def _check_releases(problems: list[str], system: dict) -> None:
                 f"{where} is a {kind} release after {last}, so {next_version(last, kind)}, not {version}"
             )
         last = version
-    pending = system.get("release_pending")
-    if pending:
-        kind = pending.get("kind") if last else "initial"
-        expected = next_version(last, kind) if kind in RELEASE_KINDS | {"initial"} else None
-        if expected is None:
-            problems.append(
-                f"system.release_pending.kind {kind!r} is not one of {sorted(RELEASE_KINDS)}"
-            )
-        elif pending.get("version") != expected:
-            problems.append(f"system.release_pending.version must be {expected}")
+    version = system.get("version")
+    if version is None:
+        # Systems built before versions were recorded; the next build writes one.
+        if last is not None:
+            problems.append(f"system.version is missing; the last release is {last}")
+        return
+    if not isinstance(version, str) or not SEMVER.match(version):
+        problems.append(f"system.version {version!r} is not MAJOR.MINOR.PATCH")
+    elif last is None and version != FIRST_RELEASE:
+        problems.append(f"system.version must be {FIRST_RELEASE} until the first release")
+    elif last is not None and version not in {
+        last,
+        *(next_version(last, kind) for kind in RELEASE_KINDS),
+    }:
+        allowed = ", ".join(next_version(last, kind) for kind in ("patch", "minor", "major"))
+        problems.append(
+            f"system.version {version} must be the last release {last} or the next one: {allowed}"
+        )
 
 
 def validate(doc: object) -> list[str]:

@@ -81,10 +81,11 @@ system:
   target: {cluster: https://hopsworks.acme.internal, project: skillstest, stage: development}   # the autonomous path runs only against stage: development
   repo: {url: https://github.com/acme/ml-systems, host: github.com, default_branch: main, branch: hops/telco-churn, pr: 12}
   #     push: ssh when gh is logged out and an SSH key pushes: no pr, a compare link instead (repo.md)
+  version: 0.2.0                      # this commit's version: 0.1.0 at first; after a release, the next one of its kind (repo.md, Releases)
   releases: [{version: 0.1.0, tag: v0.1.0, kind: initial, commit: 41c0f2e, at: 2026-09-23,
               url: https://github.com/acme/ml-systems/releases/tag/v0.1.0, notes: first release}]
   #     kind: initial (0.1.0) | patch (bug fixes) | minor (new or changed specification) | major (breaking, stable: 1.0.0)
-  release_pending: {version: 0.2.0, kind: minor, reason: "new feature view version; PR 14 open"}   # until the PR merges
+  #     a version not in releases is the release still to come: 0.2.0 here, released when PR 14 merges
   created: 2026-09-22
   edits: [{id: e1a2b3c, paths: ["features.pipelines[0]"], box: telco_churn_features, phase: features,
            at: 2026-09-23T10:02Z, by: meb10000}]   # UI edits not yet applied; /hops-build removes an entry once applied

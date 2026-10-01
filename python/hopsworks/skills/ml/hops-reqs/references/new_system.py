@@ -47,6 +47,7 @@ def example_doc(name: str, slug: str) -> dict:
         **doc.get("system", {}),
         "slug": slug,
         "example": name,
+        "version": "0.1.0",
         "status": "draft",
     }
     doc["requirements"] = {"status": "pending", **doc.get("requirements", {})}

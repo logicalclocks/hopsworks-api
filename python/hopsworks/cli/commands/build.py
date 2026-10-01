@@ -390,6 +390,7 @@ def _from_answers(prefetch: _Prefetch, cwd: Path, path: Path) -> _System:
         system.put(
             "system", {"name": slug.replace("-", " ").capitalize(), "slug": slug}
         )
+        system.put("system.version", "0.1.0")
         system.put("system.status", "draft")
         system.put("requirements.status", "pending")
     _target(system, prefetch)

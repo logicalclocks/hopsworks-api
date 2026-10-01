@@ -463,48 +463,86 @@ def test_releases_start_at_0_1_0_and_step_by_their_kind():
         _release("0.2.0", "minor"),
         _release("1.0.0", "major"),
     ]
-    doc["system"]["release_pending"] = {"version": "1.0.1", "kind": "patch"}
+    # Changed since the last release: the next version, released when it ships.
+    doc["system"]["version"] = "1.0.1"
+    assert _validate(doc) == []
+    # Unchanged since the last release, the version is that release's.
+    doc["system"]["version"] = "1.0.0"
     assert _validate(doc) == []
 
 
 @pytest.mark.parametrize(
-    ("releases", "pending", "expected"),
+    ("releases", "version", "expected"),
     [
-        ([_release("1.0.0", "initial")], None, "first release: version 0.1.0"),
-        ([_release("0.1.0", "initial"), _release("0.3.0", "minor")], None, "so 0.2.0"),
+        ([_release("1.0.0", "initial")], "1.0.0", "first release: version 0.1.0"),
+        (
+            [_release("0.1.0", "initial"), _release("0.3.0", "minor")],
+            "0.3.0",
+            "so 0.2.0",
+        ),
         (
             [_release("0.1.0", "initial"), _release("0.1.1", "bugfix")],
-            None,
+            "0.1.1",
             "kind 'bugfix'",
         ),
         (
             [{**_release("0.1.0", "initial"), "tag": "0.1.0"}],
-            None,
+            "0.1.0",
             "tag must be v0.1.0",
         ),
-        ([{**_release("0.1.0", "initial"), "commit": ""}], None, "has no commit"),
-        ([_release("0.1", "initial")], None, "is not MAJOR.MINOR.PATCH"),
+        ([{**_release("0.1.0", "initial"), "commit": ""}], "0.1.0", "has no commit"),
+        ([_release("0.1", "initial")], "0.1.0", "is not MAJOR.MINOR.PATCH"),
+        ([], "1.0.0", "must be 0.1.0 until the first release"),
         (
-            [],
-            {"version": "1.0.0", "kind": "major"},
-            "release_pending.version must be 0.1.0",
+            [_release("0.1.0", "initial")],
+            "0.3.0",
+            "or the next one: 0.1.1, 0.2.0, 1.0.0",
         ),
         (
             [_release("0.1.0", "initial")],
-            {"version": "0.2.0", "kind": "patch"},
-            "release_pending.version must be 0.1.1",
+            "1.0",
+            "system.version '1.0' is not MAJOR.MINOR.PATCH",
         ),
+        ([_release("0.1.0", "initial")], None, "system.version is missing"),
     ],
 )
 def test_the_validator_rejects_releases_that_break_the_versioning(
-    releases, pending, expected
+    releases, version, expected
 ):
     doc = _example()
     doc["system"]["releases"] = releases
-    if pending:
-        doc["system"]["release_pending"] = pending
+    doc["system"].pop("version", None)
+    if version:
+        doc["system"]["version"] = version
     problems = _validate(doc)
     assert any(expected in problem for problem in problems), problems
+
+
+def test_new_systems_start_at_0_1_0_and_the_status_says_whether_it_is_released(
+    tmp_path,
+):
+    new_system = _load(REQS / "new_system.py")
+    target = new_system.create(tmp_path / "recs-example", "recs-example")
+    doc = yaml.safe_load((target / "system.yaml").read_text(encoding="utf-8"))
+    assert doc["system"]["version"] == "0.1.0"
+    status = _load(TEMPLATE / "status.py", "status_under_test")
+    assert status.version_line(doc) == "version 0.1.0, not released yet"
+    doc["system"]["releases"] = [
+        {
+            **_release("0.1.0", "initial"),
+            "url": "https://github.com/a/b/releases/tag/v0.1.0",
+        }
+    ]
+    assert status.version_line(doc) == (
+        "version 0.1.0, released: https://github.com/a/b/releases/tag/v0.1.0"
+    )
+    doc["system"]["version"] = "0.2.0"
+    assert (
+        status.version_line(doc)
+        == "version 0.2.0, not released yet (last release 0.1.0)"
+    )
+    del doc["system"]["version"]
+    assert status.version_line(doc) == ""
 
 
 def test_the_validator_rejects_a_phase_that_finishes_before_it_starts():

@@ -78,8 +78,9 @@ a question you are about to ask depends on.
 
 ### Starting, resuming and the lock
 
-- **Resume** when `<slug>/system.yaml` exists: take the lock, release a `system.release_pending`
-  whose pull request has merged (repo.md, **Releases**), reconcile work in flight (every
+- **Resume** when `<slug>/system.yaml` exists: take the lock, release a `system.version` not yet
+  in `system.releases` whose pull request has merged (repo.md, **Releases**), reconcile work in
+  flight (every
   `runs` or `measured` row in state `submitted` or `running` is checked with `hops job history`
   and `hops deployment status`; finished work is recorded, overdue work is stopped with
   `hops job stop` and recorded as a crash), delete `*_test_*` objects of this system whose run is
@@ -133,7 +134,8 @@ the previous `system.yaml` and code; then apply it like any edit, which re-point
 schedules, deployment and app at the previous versions without rebuilding them, and commits that
 as its own apply. Delete removes every version a system made, the superseded ones included.
 An apply ends like any build, with `verify` and a release: `minor` for a changed specification,
-`patch` for a revert to a released version's specification (repo.md, **Releases**).
+`patch` for a revert to a released version's specification (repo.md, **Releases**). The first
+change after a release sets `system.version` to that next version in the same commit.
 
 ### Before reqs: the repository
 
@@ -317,14 +319,15 @@ and models in place, record it in `decisions`, and commit.
 
 When `inference` is satisfied and `app` is `met` or `skipped`: commit and push the code, run
 `verify` against that head, set `system.status: deployed` on a clean table, commit the `verify`
-block and push. Then the release, as **Releases** in `hops-reqs/references/repo.md` says: `0.1.0`
-for the first, else the next version of the kind of change since the last release, asked when the
-kind is unclear and always before `1.0.0`. An example on its default branch releases that commit
+block and push. Then the release of `system.version`, as **Releases** in
+`hops-reqs/references/repo.md` says: `0.1.0` for the first, else the next version of the kind of
+change since the last release, asked when the kind is unclear and always before `1.0.0`, and set
+in `system.version` by the first commit that changed the system. An example on its default branch releases that commit
 now and stops, reporting the repository URL, the commit and the release URL. Otherwise, the pull request and its review, as `hops-reqs/references/repo.md` says:
 open it, request Copilot through the GraphQL mutation and the reviewers named in `reqs`, poll up
 to fifteen minutes, fix or answer every thread (a fix to an entrypoint redeploys it and reruns
 its tests and, for inference, the benchmark, then `verify`), at most three rounds. Report the
 phase table, the final decisions, the pull request URL and the open threads, and say plainly
-what now runs without a human and what breaks first if the upstream data stops. Record the
-release the merge will get as `system.release_pending` and report its version: the next
-`/hops-build <slug>` after the merge releases the merge commit.
+what now runs without a human and what breaks first if the upstream data stops. Report
+`system.version` as the release the merge will get: the next `/hops-build <slug>` after the merge
+releases the merge commit.
