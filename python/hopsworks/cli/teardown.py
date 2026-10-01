@@ -55,6 +55,8 @@ class Asset:
     owned_by: str | None = None
 
     def __str__(self) -> str:
+        if self.kind == "job" and self.name.endswith("-*"):
+            return f"jobs {self.name} (any not named above)"
         if self.owned_by:
             return f"{self.kind} {self.name} (every other version {self.owned_by} made)"
         return f"{self.kind} {self.name}" + (
@@ -387,9 +389,24 @@ def _github(host: str, method: str, route: str) -> tuple[int, Any]:
     return response.status_code, response.json() if response.content else None
 
 
-def _git(directory: Path | None, *args: str) -> subprocess.CompletedProcess:
+def _git(
+    directory: Path | None, *args: str, host: str | None = None
+) -> subprocess.CompletedProcess:
+    """Run git; with `host`, a remote operation that may sign in to it through `gh`.
+
+    A terminal keeps `gh`'s login in the HopsFS home, but git's link to it
+    (`gh auth setup-git`) lives in ~/.gitconfig, which a terminal restart
+    resets; reading a private repository then fails for want of a username.
+    `gh auth git-credential` is added after any helper already configured, so
+    a stored token or the gh login answers, whichever is there.
+    """
+    helper = (
+        ["-c", f"credential.https://{host}.helper=!gh auth git-credential"]
+        if host and shutil.which("gh")
+        else []
+    )
     return subprocess.run(
-        ["git", *args],
+        ["git", *helper, *args],
         cwd=directory if directory and directory.is_dir() else None,
         capture_output=True,
         text=True,
@@ -424,7 +441,7 @@ def delete_repo(
     if directory is not None:
         remote = _git(directory, "remote", "get-url", "origin").stdout.strip()
     remote = remote or f"https://{host}/{owner}/{name}.git"
-    listed = _git(directory, "ls-remote", "--heads", remote)
+    listed = _git(directory, "ls-remote", "--heads", remote, host=host)
     if listed.returncode != 0:
         if re.search(r"not found|does not exist", listed.stderr, re.IGNORECASE):
             return "gone"
@@ -453,7 +470,7 @@ def delete_repo(
                     f"kept {owner}/{name}; its {own} branch is not one the build made"
                 )
             return "gone"
-        pushed = _git(directory, "push", remote, "--delete", *mine)
+        pushed = _git(directory, "push", remote, "--delete", *mine, host=host)
         if pushed.returncode != 0:
             raise RuntimeError(
                 f"could not delete {', '.join(mine)}: {pushed.stderr.strip()}"

@@ -129,7 +129,7 @@ def test_the_inventory_takes_what_the_system_created_downstream_first():
         "deployment churnpredictor",
         "job churn-example-events",
         "job churn-example-features",
-        "job churn-example-*",
+        "jobs churn-example-* (any not named above)",
         "model churn_model",
         "model churn_research",
         "feature view churn_fv",
@@ -208,7 +208,8 @@ def test_the_repository_goes_only_when_it_is_this_systems_alone(monkeypatch):
     heads = ["main", "hops/churn-example", "hops/churn-example/20260929-fix"]
     calls = []
 
-    def git(directory, *args):
+    def git(directory, *args, host=None):
+        assert host == "github.com"
         calls.append(args)
         if args[0] == "ls-remote":
             out = "".join(f"abc\trefs/heads/{h}\n" for h in heads)
@@ -254,6 +255,31 @@ def test_the_repository_goes_only_when_it_is_this_systems_alone(monkeypatch):
     )
     assert not any(a[0] == "push" for a in calls)
     assert teardown.delete_repo({}, "churn-example", "churndemo") == "gone"
+
+
+def test_remote_git_signs_in_through_gh_when_it_is_there(monkeypatch):
+    from hopsworks.cli import teardown
+
+    ran = []
+    monkeypatch.setattr(
+        teardown.subprocess,
+        "run",
+        lambda cmd, **kw: ran.append(cmd) or SimpleNamespace(),
+    )
+    monkeypatch.setattr(teardown.shutil, "which", lambda name: "/usr/bin/gh")
+    teardown._git(
+        None, "ls-remote", "--heads", "https://github.com/o/r.git", host="github.com"
+    )
+    teardown._git(None, "status")
+    assert ran[0][:3] == [
+        "git",
+        "-c",
+        "credential.https://github.com.helper=!gh auth git-credential",
+    ]
+    assert ran[1] == ["git", "status"]
+    monkeypatch.setattr(teardown.shutil, "which", lambda name: None)
+    teardown._git(None, "ls-remote", "x", host="github.com")
+    assert ran[2] == ["git", "ls-remote", "x"]
 
 
 def test_only_the_versions_the_system_made_are_deleted():
