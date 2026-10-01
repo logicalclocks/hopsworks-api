@@ -25,7 +25,11 @@ from hsfs.core import vector_db_client
 from hsfs.embedding import EmbeddingIndex
 from hsfs.feature import Feature
 from hsfs.feature_group import FeatureGroup
-from opensearchpy.exceptions import TransportError
+from opensearchpy.exceptions import (
+    AuthorizationException,
+    ConnectionError,
+    NotFoundError,
+)
 
 
 class TestVectorDbClient:
@@ -68,7 +72,7 @@ class TestVectorDbClient:
             "hsfs.core.vector_db_client.OpenSearchClientSingleton",
             return_value=self.mock_os_wrapper,
         )
-        mocker.patch.object(vector_db_client.VectorDbClient, "_field_knn_engine", {})
+        mocker.patch.object(vector_db_client.VectorDbClient, "_field_knn_filter", {})
 
         self.query = self.fg.select_all()
         self.target = vector_db_client.VectorDbClient(self.query)
@@ -561,14 +565,27 @@ class TestVectorDbClient:
         }
 
     @pytest.mark.parametrize(
-        "lookup",
+        "lookup, mapping_reads",
         [
-            {"side_effect": TransportError(403, "security_exception", {})},
-            {"return_value": {"2249__embedding_default_embedding": {"mappings": {}}}},
+            # Refused or missing: remembered, so the mapping is read once.
+            ({"side_effect": AuthorizationException(403, "security_exception", {})}, 1),
+            ({"side_effect": NotFoundError(404, "index_not_found_exception", {})}, 1),
+            # Anything else may be transient, so the next search reads the mapping again.
+            ({"side_effect": ConnectionError("N/A", "connection refused", None)}, 2),
+            (
+                {
+                    "return_value": {
+                        "2249__embedding_default_embedding": {"mappings": {}}
+                    }
+                },
+                2,
+            ),
         ],
-        ids=["mapping_read_fails", "field_not_in_mapping"],
+        ids=["refused", "not_found", "connection_error", "field_not_in_mapping"],
     )
-    def test_find_neighbors_keeps_filter_in_knn_when_engine_unknown(self, lookup):
+    def test_find_neighbors_keeps_filter_in_knn_when_engine_unknown(
+        self, lookup, mapping_reads
+    ):
         self.mock_os_wrapper._get_field_mapping.configure_mock(**lookup)
 
         self.target._find_neighbors([1.0, 2.0, 3.0], feature=self.f2, k=5)
@@ -578,8 +595,7 @@ class TestVectorDbClient:
         assert body["query"]["knn"]["f2"]["filter"] == {
             "bool": {"must": [{"exists": {"field": "f2"}}]}
         }
-        # Nothing is cached, so the next search reads the mapping again.
-        assert self.mock_os_wrapper._get_field_mapping.call_count == 2
+        assert self.mock_os_wrapper._get_field_mapping.call_count == mapping_reads
 
     def test_find_neighbors_reads_engine_once_per_field(self):
         self.target._find_neighbors([1.0, 2.0, 3.0], feature=self.f2, k=5)
