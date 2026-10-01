@@ -324,6 +324,9 @@ class MonitoringWindowConfigEngine:
             List of Descriptive statistics.
         """
         self._init_statistics_engine(entity._feature_store_id, entity.ENTITY_TYPE)
+        feature_names = self._profilable_feature_names(entity, feature_names)
+        if not feature_names:
+            return []
         (
             start_time,
             end_time,
@@ -417,6 +420,25 @@ class MonitoringWindowConfigEngine:
                     row_percentage=monitoring_window_config.row_percentage,
                 )
 
+        # The lookup matches a row that holds any of the requested features, and a row
+        # is shared by every configuration with the same window bounds, so it can lack
+        # features another configuration never asked for. Those are computed and
+        # appended to the same row; the ones already there are reused.
+        reused_statistics = []
+        missing_feature_names = feature_names
+        if (
+            registered_stats is not None
+            and monitoring_window_config.window_config_type
+            != mwc.WindowConfigType.TRAINING_DATASET
+        ):
+            reused_statistics = registered_stats.feature_descriptive_statistics or []
+            reused_names = {fds.feature_name for fds in reused_statistics}
+            missing_feature_names = [
+                name for name in feature_names if name not in reused_names
+            ]
+            if missing_feature_names:
+                registered_stats = None
+
         if registered_stats is None:  # if statistics don't exist
             # TODO: What happens if window is TRAINING_DATASET and the TD statistics were not computed???
 
@@ -432,14 +454,16 @@ class MonitoringWindowConfigEngine:
             ):
                 merged_fds_list = self._resolve_rolling_reference_via_merge(
                     entity=entity,
-                    feature_names=feature_names,
+                    feature_names=missing_feature_names,
                     start_time=start_time,
                     end_time=end_time,
                     histogram_bins=profile_flags.get("histogram_bins") or 20,
                 )
 
             if merged_fds_list is not None:
-                return merged_fds_list
+                return self._select_feature_descriptive_statistics(
+                    reused_statistics + merged_fds_list, feature_names
+                )
 
             # Fetch the actual data for which to compute statistics based on row_percentage and time window.
             # An ALL_TIME window is the latest snapshot on either basis: with an event-time
@@ -453,7 +477,7 @@ class MonitoringWindowConfigEngine:
             )
             entity_feature_df = self._fetch_entity_data_in_monitoring_window(
                 entity=entity,
-                feature_names=feature_names,
+                feature_names=missing_feature_names,
                 start_time=None if all_time_event_window else start_time,
                 end_time=None if all_time_event_window else end_time,
                 row_percentage=monitoring_window_config.row_percentage,
@@ -493,7 +517,7 @@ class MonitoringWindowConfigEngine:
                     if event_time_feature is not None
                     else None,
                     row_percentage=monitoring_window_config.row_percentage,
-                    feature_name=feature_names,
+                    feature_name=missing_feature_names,
                     **extra_profile_flags,
                 )
             )
@@ -502,9 +526,63 @@ class MonitoringWindowConfigEngine:
             "statistics should contain the feature descriptive statistics"
         )
 
-        return self._select_feature_descriptive_statistics(
-            registered_stats.feature_descriptive_statistics, feature_names
+        # The backend answers with the whole row, but an empty window returns only the
+        # features just profiled, unregistered, so the reused ones are added back.
+        by_name = {fds.feature_name: fds for fds in reused_statistics}
+        by_name.update(
+            {
+                fds.feature_name: fds
+                for fds in registered_stats.feature_descriptive_statistics
+            }
         )
+        return self._select_feature_descriptive_statistics(
+            list(by_name.values()), feature_names
+        )
+
+    @staticmethod
+    def _profilable_feature_names(
+        entity: feature_group.FeatureGroupBase | feature_view.FeatureView,
+        feature_names: list[str],
+    ) -> list[str]:
+        """Drop the features whose type the statistics profiler skips.
+
+        The profiler covers integral, fractional, string and boolean columns only, so timestamp, date, binary and complex features never get descriptive statistics.
+        A configuration monitoring all features lists them all the same, and asking for their statistics would fail the run.
+        Features missing from the entity schema are kept, so the run reports them.
+
+        Parameters:
+            entity: The feature group or feature view the window reads from.
+            feature_names: Names of the features to monitor.
+
+        Returns:
+            The names in `feature_names` that the profiler computes statistics for, in their original order.
+        """
+        from hsfs.core.feature_monitoring_config_engine import PHASE2_TYPES
+
+        features = (
+            entity.columns
+            if isinstance(entity, feature_group.FeatureGroupBase)
+            else entity.features
+        )
+        feature_types = {
+            feature.name: (feature.type or "").lower() for feature in features or []
+        }
+        skipped = [
+            name
+            for name in feature_names
+            if feature_types.get(name) in PHASE2_TYPES
+            or any(
+                feature_types.get(name, "").startswith(complex_type.lower())
+                for complex_type in Feature.COMPLEX_TYPES
+            )
+        ]
+        if skipped:
+            logger.info(
+                "Skipping features %s of '%s': statistics are not computed for their types.",
+                skipped,
+                getattr(entity, "name", entity),
+            )
+        return [name for name in feature_names if name not in skipped]
 
     @staticmethod
     def _select_feature_descriptive_statistics(

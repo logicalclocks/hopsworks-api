@@ -686,6 +686,178 @@ class TestMonitoringWindowConfigEngine:
 
         assert [fds.feature_name for fds in result] == ["amount"]
 
+    def test_run_single_window_monitoring_computes_features_missing_from_reused_row(
+        self, mocker
+    ):
+        """A row registered by another configuration on the same window is completed.
+
+        The lookup returns the row as soon as it holds one requested feature, so the
+        features it lacks are profiled and appended instead of failing the run.
+        """
+        fg = _make_hudi_fg("DELTA")
+        engine = mwce.MonitoringWindowConfigEngine()
+        mocker.patch.object(engine, "_init_statistics_engine")
+        fetch_mock = mocker.patch.object(
+            engine, "_fetch_entity_data_in_monitoring_window"
+        )
+        stats_engine_mock = MagicMock()
+        reused_row = MagicMock()
+        reused_row.feature_descriptive_statistics = [
+            FeatureDescriptiveStatistics(feature_name="amount", count=10)
+        ]
+        stats_engine_mock._get_by_time_window.return_value = reused_row
+        completed_row = MagicMock()
+        completed_row.feature_descriptive_statistics = [
+            FeatureDescriptiveStatistics(feature_name="amount", count=10),
+            FeatureDescriptiveStatistics(feature_name="age", count=10),
+        ]
+        stats_engine_mock._compute_and_save_monitoring_statistics.return_value = (
+            completed_row
+        )
+        engine._statistics_engine = stats_engine_mock
+
+        result = engine._run_single_window_monitoring(
+            entity=fg,
+            monitoring_window_config=_make_rolling_window_config(),
+            feature_names=["amount", "age"],
+        )
+
+        assert [fds.feature_name for fds in result] == ["amount", "age"]
+        assert fetch_mock.call_args.kwargs["feature_names"] == ["age"]
+        compute_kwargs = (
+            stats_engine_mock._compute_and_save_monitoring_statistics.call_args.kwargs
+        )
+        assert compute_kwargs["feature_name"] == ["age"]
+
+    def test_run_single_window_monitoring_keeps_reused_features_on_empty_window(
+        self, mocker
+    ):
+        """An empty window returns only the profiled features, so the reused ones are kept."""
+        fg = _make_hudi_fg("DELTA")
+        engine = mwce.MonitoringWindowConfigEngine()
+        mocker.patch.object(engine, "_init_statistics_engine")
+        mocker.patch.object(engine, "_fetch_entity_data_in_monitoring_window")
+        stats_engine_mock = MagicMock()
+        reused_row = MagicMock()
+        reused_row.feature_descriptive_statistics = [
+            FeatureDescriptiveStatistics(feature_name="amount", count=10)
+        ]
+        stats_engine_mock._get_by_time_window.return_value = reused_row
+        empty_row = MagicMock()
+        empty_row.feature_descriptive_statistics = [
+            FeatureDescriptiveStatistics(feature_name="age", count=0)
+        ]
+        stats_engine_mock._compute_and_save_monitoring_statistics.return_value = (
+            empty_row
+        )
+        engine._statistics_engine = stats_engine_mock
+
+        result = engine._run_single_window_monitoring(
+            entity=fg,
+            monitoring_window_config=_make_rolling_window_config(),
+            feature_names=["amount", "age"],
+        )
+
+        assert [(fds.feature_name, fds.count) for fds in result] == [
+            ("amount", 10),
+            ("age", 0),
+        ]
+
+    def test_run_single_window_monitoring_reuses_complete_row_without_profiling(
+        self, mocker
+    ):
+        fg = _make_hudi_fg("DELTA")
+        engine = mwce.MonitoringWindowConfigEngine()
+        mocker.patch.object(engine, "_init_statistics_engine")
+        fetch_mock = mocker.patch.object(
+            engine, "_fetch_entity_data_in_monitoring_window"
+        )
+        stats_engine_mock = MagicMock()
+        reused_row = MagicMock()
+        reused_row.feature_descriptive_statistics = [
+            FeatureDescriptiveStatistics(feature_name="age", count=10),
+            FeatureDescriptiveStatistics(feature_name="amount", count=10),
+        ]
+        stats_engine_mock._get_by_time_window.return_value = reused_row
+        engine._statistics_engine = stats_engine_mock
+
+        result = engine._run_single_window_monitoring(
+            entity=fg,
+            monitoring_window_config=_make_rolling_window_config(),
+            feature_names=["amount"],
+        )
+
+        assert [fds.feature_name for fds in result] == ["amount"]
+        fetch_mock.assert_not_called()
+        stats_engine_mock._compute_and_save_monitoring_statistics.assert_not_called()
+
+    def test_run_single_window_monitoring_skips_features_the_profiler_cannot_profile(
+        self, mocker
+    ):
+        """Timestamp, date, binary and complex features never get statistics."""
+        fg = _make_hudi_fg("DELTA")
+        fg.columns = [
+            Feature("amount", type="double"),
+            Feature("log_time", type="timestamp"),
+            Feature("day", type="date"),
+            Feature("tags", type="array<string>"),
+        ]
+        engine = mwce.MonitoringWindowConfigEngine()
+        mocker.patch.object(engine, "_init_statistics_engine")
+        stats_engine_mock = MagicMock()
+        reused_row = MagicMock()
+        reused_row.feature_descriptive_statistics = [
+            FeatureDescriptiveStatistics(feature_name="amount", count=10)
+        ]
+        stats_engine_mock._get_by_time_window.return_value = reused_row
+        engine._statistics_engine = stats_engine_mock
+
+        result = engine._run_single_window_monitoring(
+            entity=fg,
+            monitoring_window_config=_make_rolling_window_config(),
+            feature_names=["amount", "log_time", "day", "tags"],
+        )
+
+        assert [fds.feature_name for fds in result] == ["amount"]
+        lookup_kwargs = stats_engine_mock._get_by_time_window.call_args.kwargs
+        assert lookup_kwargs["feature_names"] == ["amount"]
+        stats_engine_mock._compute_and_save_monitoring_statistics.assert_not_called()
+
+    def test_run_single_window_monitoring_only_unprofilable_features_returns_empty(
+        self, mocker
+    ):
+        fg = _make_hudi_fg("DELTA")
+        fg.columns = [Feature("log_time", type="timestamp")]
+        engine = mwce.MonitoringWindowConfigEngine()
+        mocker.patch.object(engine, "_init_statistics_engine")
+        stats_engine_mock = MagicMock()
+        engine._statistics_engine = stats_engine_mock
+
+        result = engine._run_single_window_monitoring(
+            entity=fg,
+            monitoring_window_config=_make_rolling_window_config(),
+            feature_names=["log_time"],
+        )
+
+        assert result == []
+        stats_engine_mock._get_by_time_window.assert_not_called()
+
+    def test_profilable_feature_names_keeps_features_missing_from_the_schema(self):
+        """A feature the entity no longer has is kept, so the run reports it."""
+        fv = _make_fv_entity()
+        fv.features = [
+            MagicMock(type="bigint"),
+            MagicMock(type="timestamp"),
+        ]
+        fv.features[0].name = "card_limit"
+        fv.features[1].name = "card_issued_at"
+
+        result = mwce.MonitoringWindowConfigEngine._profilable_feature_names(
+            fv, ["card_issued_at", "card_limit", "dropped"]
+        )
+
+        assert result == ["card_limit", "dropped"]
+
     def test_select_feature_descriptive_statistics_missing_feature_raises(self):
         with pytest.raises(FeatureStoreException, match="missing.*amount"):
             mwce.MonitoringWindowConfigEngine._select_feature_descriptive_statistics(
