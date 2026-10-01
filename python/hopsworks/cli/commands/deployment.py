@@ -338,7 +338,7 @@ def deployment_create(
             model = mr.get_model(model_name, version=version)
         else:
             models = mr.get_models(model_name)
-            model = models[-1] if models else None
+            model = max(models, key=lambda m: m.version) if models else None
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Model '{model_name}' not found: {exc}") from exc
     if model is None:

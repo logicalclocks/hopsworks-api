@@ -117,6 +117,26 @@ def test_deployment_create_via_model_deploy(mock_project):
     model.deploy.assert_called_once()
 
 
+def test_deployment_create_deploys_the_latest_version_whatever_the_order(mock_project):
+    # The registry lists versions newest first, so the last one is version 1.
+    versions = []
+    for number in (3, 1, 2):
+        model = mock.MagicMock()
+        model.version = number
+        model.deploy.return_value = mock.MagicMock()
+        versions.append(model)
+    mr = mock.MagicMock()
+    mr.get_models.return_value = versions
+    mock_project.get_model_registry.return_value = mr
+    result = CliRunner().invoke(
+        cli, ["deployment", "create", "fraud", "--name", "fraud"]
+    )
+    assert result.exit_code == 0, result.output
+    versions[0].deploy.assert_called_once()
+    versions[1].deploy.assert_not_called()
+    versions[2].deploy.assert_not_called()
+
+
 # --- job -------------------------------------------------------------------
 
 

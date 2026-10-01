@@ -64,7 +64,7 @@ def model_info(ctx: click.Context, name: str, version: int | None) -> None:
             model = mr.get_model(name, version=version)
         else:
             versions = mr.get_models(name)
-            model = versions[-1] if versions else None
+            model = max(versions, key=lambda m: m.version) if versions else None
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Model '{name}' not found: {exc}") from exc
 
@@ -339,7 +339,7 @@ def _get_model(ctx: click.Context, name: str, version: int | None) -> Any:
         versions = mr.get_models(name)
         if not versions:
             raise click.ClickException(f"Model '{name}' not found.")
-        return versions[-1]
+        return max(versions, key=lambda m: m.version)
     except click.ClickException:
         raise
     except Exception as exc:  # noqa: BLE001

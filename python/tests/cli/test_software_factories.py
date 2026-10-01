@@ -1123,6 +1123,12 @@ def test_the_session_steers_retrieval_and_ranking_and_leaves_room_to_explore():
     }
     assert len(predictor.select(items()[:3], {}, None, 5, rng)) == 3
 
+    serving = predictor.Predict.__new__(predictor.Predict)
+    vectors = np.array([[1.0, 0.0], [0.9, 0.1], [0.0, 1.0], [-1.0, 0.0]])
+    serving.catalogue_unit = vectors / np.linalg.norm(vectors, axis=1, keepdims=True)
+    serving.catalogue_ids = ["shoe", "boot", "dress", "coat"]
+    assert serving.most_like(np.array([2.0, 0.0]), k=2) == ["shoe", "boot"]
+
 
 def test_the_storefront_records_clicks_purchases_and_ignores(monkeypatch):
     pytest.importorskip("fastapi")

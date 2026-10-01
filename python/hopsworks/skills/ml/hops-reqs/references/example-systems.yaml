@@ -74,8 +74,13 @@ recs-example:
     name: Personalized recommendations
   requirements:
     description: >-
-      which H&M products a shopper is most likely to buy next, retrieved by a two-tower model and
-      ranked by a purchase classifier per request
+      which H&M products a shopper is most likely to buy next, per request: a PyTorch two-tower
+      model retrieves candidates for the customer, steered by the articles they clicked or bought
+      in the last day, and a CatBoost classifier ranks them by purchase probability from the
+      article's attributes and the customer's taste (the share of their purchases with the
+      article's colour, group and type). Half the slots follow the session, half the customer's
+      taste, and a fifth explore lower-ranked articles; the articles a customer bought or the
+      session already showed them are left out. Jobs and the deployment run on CPU
     system_type: realtime
     problem:
       task: ranking
@@ -105,6 +110,8 @@ recs-example:
         online: true
         primary_key: [customer_id, article_id, t_dat]
         event_time: t_dat
+        # synthetic marks the generated purchases; the deployment reads a customer's rows online
+        online_config: {secondary_indexes: [[customer_id]]}
     interactions:
       writes:
         feature_group: interactions
@@ -112,20 +119,24 @@ recs-example:
         online: true
         primary_key: [customer_id, article_id, t_dat, interaction_score]
         event_time: t_dat
+        online_config: {secondary_indexes: [[customer_id]]}
     job: {name: recs-example-features, args: "--customers 5000 --synthetic 30"}
     status: pending
   training:
     models:
-      - {name: query_model, kind: two-tower query tower, metric: recall_at_100,
+      # The query tower, with the item tower and the catalogue's mean embedding for the
+      # session; recall@100 is measured on real purchases only.
+      - {name: query_model, kind: two-tower query and item towers, metric: recall_at_100,
          job: recs-example-train-retrieval}
-      - {name: ranking_model, kind: catboost classifier, metric: roc_auc, target: 0.65,
-         job: recs-example-train-ranker}
+      # Labels are each customer's latest fifth of purchases, negatives drawn by popularity.
+      - {name: ranking_model, kind: catboost classifier with taste features, metric: roc_auc,
+         target: 0.8, job: recs-example-train-ranker}
     status: pending
   inference:
     mode: realtime
     deployment: recsexample
-    request: {customer_id: string, k: int}
-    steps: [query, retrieve, filter, rank]
+    request: {customer_id: string, k: int, recent: "list of article ids, newest first"}
+    steps: [session, query, retrieve, filter, rank, select]
     status: pending
   app:
     wanted: true
@@ -133,9 +144,11 @@ recs-example:
     name: recs-example-app
     description: >-
       A JavaScript storefront: pick a customer and see the products the deployment ranks for
-      them as cards with the H&M picture; Click and Buy write the shopper's interactions (and
-      Buy a purchase, so the next request leaves it out), the cards left untouched are recorded
-      as ignores, and a history panel shows the customer's interactions
+      them as cards with the H&M picture, marked "Like your clicks" or "Discover" when chosen for
+      the session or to explore; Click and Buy write the shopper's interactions (and Buy a
+      purchase) and ask for new recommendations with the page's session, so clicking a shoe shows
+      more shoes; the cards left untouched are recorded as ignores; a history panel shows the
+      customer's interactions, and the last lookup's time is the deployment's own
     status: pending
 
 helpdesk-example:
