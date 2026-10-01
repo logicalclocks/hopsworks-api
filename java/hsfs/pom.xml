@@ -92,33 +92,10 @@
     </dependency>
 
     <!-- https://mvnrepository.com/artifact/org.apache.kafka/kafka-clients
-
-         Deliberately NOT tracking the broker version. This dependency is compile-scoped and
-         goes unrelocated into the jar-with-dependencies published as
-         hsfs-spark-spark4.1-<ver>.jar, which lands in /srv/hops/spark/hopsworks-jars/ - the
-         same directory as the Spark image's own kafka-clients and the Hudi slim bundle's
-         copy, both 3.9.1. hopsworks-ee puts that directory on extraClassPath as a single
-         `hopsworks-jars/*` wildcard, so which copy loads is decided by directory listing
-         order.
-
-         That is harmless while the versions agree on API, and breaks when they do not:
-         kafka-clients 4.x removed KafkaConsumer.poll(long), which Spark 4.1's
-         KafkaOffsetReaderConsumer calls, and committed(TopicPartition), which Hudi's
-         KafkaOffsetGen calls. With 4.3.1 here, whether a Spark streaming job or a Hudi
-         streamer ran depended on file order.
-
-         Nothing here needs a 4.x client. hsfs uses KafkaProducer and ProducerRecord;
-         hsfs-spark, the only module that inherits this dependency (beam and flink exclude
-         it), also uses KafkaConsumer.partitionsFor and beginningOffsets (HudiEngine),
-         ConsumerRecord (DeltaStreamerKafkaSource), and the Serializer/Deserializer,
-         Header and SerializationException types. All of these are available in both 3.9.x
-         and 4.x - recheck this list before bumping. A 3.9.x client also talks to a 4.3.1
-         broker perfectly well, since Kafka's client/broker compatibility runs both ways.
-         3.9.2 rather than the image's 3.9.1 because it carries the CVE fix and is still
-         API-identical.
-
-         Raise this only together with the Spark image's kafka-clients and Hudi's bundled
-         copy, or after kafka-clients stops being shaded into the assembly. -->
+         Pinned to 3.9.x, not the broker version: this goes unrelocated into the hsfs-spark
+         fat jar, which shares a wildcard classpath with the Spark image's own kafka-clients
+         and Hudi's bundled copy, and 4.x drops APIs those use. Move it only together with
+         those two. A 3.9.x client talks to a 4.3.1 broker. -->
     <dependency>
       <groupId>org.apache.kafka</groupId>
       <artifactId>kafka-clients</artifactId>
