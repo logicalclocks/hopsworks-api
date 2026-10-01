@@ -201,12 +201,11 @@ class ProjectOpenSearchClient:
         retry_on_exception=_is_timeout,
     )
     @_handle_opensearch_exception
-    def _get_field_mapping(self, index, field, options=None):
+    def _get_field_mapping(self, index, field):
         # Not GET <index>/_mapping, which the read role of a shared feature group does not allow.
+        # No request options: opensearch-py before 2.3 sends the timeout as a query parameter, which this endpoint rejects.
         return self._get_opensearch_client().indices.get_field_mapping(
-            fields=field,
-            index=index,
-            params=OpensearchRequestOption.get_options(options),
+            fields=field, index=index
         )
 
     @retry(

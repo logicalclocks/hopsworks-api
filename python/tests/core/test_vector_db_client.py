@@ -68,9 +68,6 @@ class TestVectorDbClient:
             return_value=self.mock_os_wrapper,
         )
         mocker.patch.object(vector_db_client.VectorDbClient, "_field_knn_engine", {})
-        mocker.patch.object(
-            vector_db_client.VectorDbClient, "_index_result_limit_k", {}
-        )
 
         self.query = self.fg.select_all()
         self.target = vector_db_client.VectorDbClient(self.query)
@@ -567,28 +564,31 @@ class TestVectorDbClient:
         self.target._find_neighbors([1.0, 2.0, 3.0], feature=self.f2, k=5)
 
         self.mock_os_wrapper._get_field_mapping.assert_called_once_with(
-            index="2249__embedding_default_embedding", field="f2", options=None
+            index="2249__embedding_default_embedding", field="f2"
         )
 
     def test_supports_knn_filter_per_field_in_same_index(self):
         # A default project index created before 5.1 gets faiss fields next to its nmslib ones.
         index = "1__embedding_default_project_embedding_0"
-        self.mock_os_wrapper._get_field_mapping.side_effect = (
-            lambda index, field, options: self._field_mapping(
+        self.mock_os_wrapper._get_field_mapping.side_effect = lambda index, field: (
+            self._field_mapping(
                 field, {"10_emb": "nmslib", "11_emb": "faiss"}[field], index
             )
         )
 
         assert not self.target._supports_knn_filter(
-            self.mock_os_wrapper, 99, index, "10_emb", None
+            self.mock_os_wrapper, 99, index, "10_emb"
         )
         assert self.target._supports_knn_filter(
-            self.mock_os_wrapper, 99, index, "11_emb", None
+            self.mock_os_wrapper, 99, index, "11_emb"
         )
 
     def test_find_neighbors_retries_with_larger_k_on_nmslib(self, mocker):
         # On nmslib the filters can drop most of the k nearest in a default project index, so the search is repeated with a larger k.
         mocker.patch.object(self.embedding_index, "_col_prefix", "1_")
+        mocker.patch.object(
+            vector_db_client.VectorDbClient, "_index_result_limit_k", {}
+        )
         self.mock_os_wrapper._get_field_mapping.return_value = self._field_mapping(
             "1_f2", "nmslib"
         )

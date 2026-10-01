@@ -152,7 +152,6 @@ class VectorDbClient:
             embedding_feature.feature_group.feature_store_id,
             index_name,
             col_name,
-            options,
         ):
             knn["filter"] = {"bool": {"must": filter_clauses}}
             knn_query = {"knn": {col_name: knn}}
@@ -222,7 +221,7 @@ class VectorDbClient:
         ]
 
     def _supports_knn_filter(
-        self, opensearch_client, feature_store_id, index_name, col_name, options
+        self, opensearch_client, feature_store_id, index_name, col_name
     ):
         """Whether the k-NN engine of the field accepts a filter inside the knn clause.
 
@@ -232,7 +231,7 @@ class VectorDbClient:
         key = (feature_store_id, index_name, col_name)
         if key not in VectorDbClient._field_knn_engine:
             response = opensearch_client._get_field_mapping(
-                index=index_name, field=col_name, options=options
+                index=index_name, field=col_name
             )
             engine = None
             for index_mapping in response.values():
