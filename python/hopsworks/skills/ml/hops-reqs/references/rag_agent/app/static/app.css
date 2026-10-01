@@ -135,8 +135,10 @@ form.ask select { width: 100%; }
 .sources { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.6rem; }
 .sources li { border: 1px solid var(--line); border-radius: 8px; padding: 0.6rem 0.75rem; }
 .sources .where { display: flex; gap: 0.5rem; align-items: baseline; flex-wrap: wrap; }
-.sources .where a { color: var(--accent); font-weight: 600; text-decoration: none; }
+.sources .where a { color: var(--accent); font-weight: 600; text-decoration: none; overflow-wrap: anywhere; }
 .sources .where a:hover { text-decoration: underline; }
-.sources p { margin: 0.35rem 0 0; color: var(--muted); font-size: 0.9rem; max-height: 4.5em; overflow: hidden; }
-.split { display: grid; grid-template-columns: 2fr 1fr; gap: 1rem; }
-@media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
+.sources li.muted { border: none; padding: 0; }
+/* Answer, the events it read and its sources, side by side; the answer gets
+   the most room. minmax(0, …) lets a long link or table shrink its column. */
+.split { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1.4fr) minmax(0, 1fr); gap: 1rem; align-items: start; }
+@media (max-width: 1000px) { .split { grid-template-columns: 1fr; } }

@@ -46,6 +46,10 @@ async function loadUsers() {
 
 function showSources(sources) {
   const list = document.querySelector("#sources");
+  if (!sources.length) {
+    list.replaceChildren(el("li", "muted", "No passages matched the question."));
+    return;
+  }
   list.replaceChildren(
     ...sources.map((s) => {
       const item = el("li");
@@ -59,7 +63,7 @@ function showSources(sources) {
         el("span", "muted", `page ${s.page} · paragraph ${s.offset + 1}`),
         el("span", "badge", s.score.toFixed(3)),
       );
-      item.append(where, el("p", "", s.text));
+      item.append(where);
       return item;
     }),
   );
