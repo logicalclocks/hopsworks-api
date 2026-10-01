@@ -104,7 +104,7 @@ public class StatisticsEngine {
       content = buildEmptyStatistics(statisticColumns);
     } else {
       // if no empty, compute statistics
-      content = SparkEngine.getInstance().profile(dataFrame, statisticColumns, histograms, correlations,
+      content = SparkEngine.getInstance().profile(dataFrame, statisticColumns, correlations, histograms,
         exactUniqueness);
     }
 
