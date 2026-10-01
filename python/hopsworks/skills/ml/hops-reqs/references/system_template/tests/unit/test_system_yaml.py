@@ -248,6 +248,67 @@ def _check_times(problems: list[str], doc: dict) -> None:
             )
 
 
+FIRST_RELEASE = "0.1.0"
+RELEASE_KINDS = {"patch", "minor", "major"}
+SEMVER = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
+
+
+def next_version(last: str | None, kind: str) -> str:
+    """The version a release of `kind` after `last` gets; the first release is 0.1.0.
+
+    patch is a bug fix (0.1.0 to 0.1.1), minor new or changed specification (0.1.1
+    to 0.2.0), major a breaking change to an interface declared stable (to 1.0.0).
+    """
+    if last is None:
+        return FIRST_RELEASE
+    major, minor, patch = (int(part) for part in SEMVER.match(last).groups())
+    if kind == "patch":
+        return f"{major}.{minor}.{patch + 1}"
+    if kind == "minor":
+        return f"{major}.{minor + 1}.0"
+    return f"{major + 1}.0.0"
+
+
+def _check_releases(problems: list[str], system: dict) -> None:
+    """Releases are tagged v<version>, start at 0.1.0 and step by their kind."""
+    last = None
+    for i, release in enumerate(system.get("releases") or []):
+        where = f"system.releases[{i}]"
+        if not isinstance(release, dict):
+            problems.append(f"{where} must be a mapping")
+            return
+        version, kind = release.get("version"), release.get("kind")
+        if not isinstance(version, str) or not SEMVER.match(version):
+            problems.append(f"{where}.version {version!r} is not MAJOR.MINOR.PATCH")
+            return
+        if release.get("tag") != f"v{version}":
+            problems.append(f"{where}.tag must be v{version}")
+        if not release.get("commit"):
+            problems.append(f"{where} has no commit")
+        if last is None:
+            if version != FIRST_RELEASE or kind != "initial":
+                problems.append(
+                    f"{where} is the first release: version {FIRST_RELEASE}, kind initial"
+                )
+        elif kind not in RELEASE_KINDS:
+            problems.append(f"{where}.kind {kind!r} is not one of {sorted(RELEASE_KINDS)}")
+        elif version != next_version(last, kind):
+            problems.append(
+                f"{where} is a {kind} release after {last}, so {next_version(last, kind)}, not {version}"
+            )
+        last = version
+    pending = system.get("release_pending")
+    if pending:
+        kind = pending.get("kind") if last else "initial"
+        expected = next_version(last, kind) if kind in RELEASE_KINDS | {"initial"} else None
+        if expected is None:
+            problems.append(
+                f"system.release_pending.kind {kind!r} is not one of {sorted(RELEASE_KINDS)}"
+            )
+        elif pending.get("version") != expected:
+            problems.append(f"system.release_pending.version must be {expected}")
+
+
 def validate(doc: object) -> list[str]:
     """Return every rule this document breaks; an empty list means it is valid."""
     if not isinstance(doc, dict):
@@ -266,6 +327,7 @@ def validate(doc: object) -> list[str]:
         problems.append(
             f"system.status {system.get('status')!r} is not one of {sorted(SYSTEM_STATUS)}"
         )
+    _check_releases(problems, system)
 
     for key, allowed in PHASE_STATUS.items():
         if key in doc:

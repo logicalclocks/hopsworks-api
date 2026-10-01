@@ -180,3 +180,49 @@ A fix that touches an entrypoint redeploys that job or deployment and reruns
 that pipeline's unit and integration tests (and, for inference, the benchmark),
 then `verify`. Re-request review after each round; at most three rounds, and
 whatever is still open is listed for the user.
+
+## Releases
+
+Every build that ends with the system verified and deployed is a GitHub release,
+tagged `v<version>` on the commit the system runs. The first is `0.1.0`; each
+later one is the next version of its kind after the last release
+(`next_version` in `tests/unit/test_system_yaml.py`, which also checks
+`system.releases`):
+
+| Kind | Since the last release | Example |
+| --- | --- | --- |
+| `patch` | bug fixes only: the specification in `system.yaml` and every interface are unchanged | 0.1.0 to 0.1.1 |
+| `minor` | new or changed specification: data, features, models, the deployment, the app, an applied UI edit | 0.1.1 to 0.2.0 |
+| `major` | a breaking change to an interface consumers use (the deployment's request or reply, the app's API, feature view columns read downstream), declared a stable long-term release | 0.2.0 to 1.0.0 |
+
+Choose the kind from what changed since the last release's tag
+(`git diff v<last>..HEAD -- system.yaml` and the commits between them). When the
+kind is unclear, and always before a `major` release, ask with `AskUserQuestion`:
+the three versions as options, the proposed one first, and one line on what
+changed.
+
+**When.** On the default branch (an example in a repository of its own), release
+the commit `verify` passed on, as soon as it passes. On a system branch, the
+release is the merge commit, after the pull request merges; the command never
+merges, so the finishing step records the planned release as
+`system.release_pending: {version, kind, reason}` and reports it, and the next
+`/hops-build <slug>` (or `/hops-build <slug> release`) finds the pull request
+merged, runs `verify` on the default branch's head and releases that commit.
+
+```bash
+git log --format='- %s (%h)' v<last>..HEAD > /tmp/release-notes.md   # the first release lists every commit
+# then add: the phase table (python status.py), the verify table, and each asset's
+# name and version (feature groups, feature views, models, deployment, app)
+gh release create v<version> --target <commit> --title "<system.name> <version>" \
+  --notes-file /tmp/release-notes.md
+gh release view v<version> --json url --jq .url      # recorded in system.releases
+```
+
+With `system.repo.push: ssh` there is no API: push an annotated tag instead
+(`git tag -a v<version> <commit> -m "<system.name> <version>"`, `git push origin
+v<version>`), and report that the release page is created from that tag on
+GitHub. Record each release in `system.releases` and delete `release_pending`,
+one commit `[<slug>] release: v<version>`, pushed; that commit records the
+release and is not released itself. A release is never moved or deleted: a
+mistake is fixed by the next release.
+

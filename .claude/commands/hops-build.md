@@ -1,5 +1,5 @@
 ---
-description: Hopsworks ML system builder. Completes the specification the /hops-ml interview recorded (target, features, budget, data policy), then builds, verifies and deploys the ML system (feature, training and inference pipelines) and ends with a pull request. Phases can be run alone; also verify and stop.
+description: Hopsworks ML system builder. Completes the specification the /hops-ml interview recorded (target, features, budget, data policy), then builds, verifies and deploys the ML system (feature, training and inference pipelines) and ends with a pull request and a GitHub release (0.1.0 first, then semantic versions). Phases can be run alone; also verify and stop.
 argument-hint: "[<slug>] [reqs|data|features|train|infer|app] [--only] [instruction] | verify [integration|benchmark] | stop"
 ---
 
@@ -23,6 +23,7 @@ Already known, no need to look again before the first question:
 | none | with a `system.yaml` above: resume it (with several, ask which), starting with `reqs` while `requirements.status` is `pending`; without one: reply that `hops build` in a shell or `/hops-ml` here runs the interview first, and stop |
 | `reqs`, `data`, `features`, `train`, `infer`, `app` (and the old `f`, `t`, `i`) | that phase, then every later phase that is not met (below) |
 | `verify` | `verify`; `verify integration` or `verify benchmark` also runs those |
+| `release` | release the system as **Releases** in `hops-reqs/references/repo.md` says: the pending release once its pull request has merged, else the next version after asking its kind |
 | `stop` | stop the ML system here |
 
 `/hops-ml` runs the interview on a fast model; `/hops status` prints the phase table; menus, dashboards and apps are `/hops`.
@@ -77,7 +78,8 @@ a question you are about to ask depends on.
 
 ### Starting, resuming and the lock
 
-- **Resume** when `<slug>/system.yaml` exists: take the lock, reconcile work in flight (every
+- **Resume** when `<slug>/system.yaml` exists: take the lock, release a `system.release_pending`
+  whose pull request has merged (repo.md, **Releases**), reconcile work in flight (every
   `runs` or `measured` row in state `submitted` or `running` is checked with `hops job history`
   and `hops deployment status`; finished work is recorded, overdue work is stopped with
   `hops job stop` and recorded as a crash), delete `*_test_*` objects of this system whose run is
@@ -130,6 +132,8 @@ as `<name>: v<old> -> v<new>`, pushed. To go back, `git revert --no-edit <that c
 the previous `system.yaml` and code; then apply it like any edit, which re-points the jobs,
 schedules, deployment and app at the previous versions without rebuilding them, and commits that
 as its own apply. Delete removes every version a system made, the superseded ones included.
+An apply ends like any build, with `verify` and a release: `minor` for a changed specification,
+`patch` for a revert to a released version's specification (repo.md, **Releases**).
 
 ### Before reqs: the repository
 
@@ -313,10 +317,14 @@ and models in place, record it in `decisions`, and commit.
 
 When `inference` is satisfied and `app` is `met` or `skipped`: commit and push the code, run
 `verify` against that head, set `system.status: deployed` on a clean table, commit the `verify`
-block and push. An example on its default branch stops here and reports the repository URL and
-that commit. Otherwise, the pull request and its review, as `hops-reqs/references/repo.md` says:
+block and push. Then the release, as **Releases** in `hops-reqs/references/repo.md` says: `0.1.0`
+for the first, else the next version of the kind of change since the last release, asked when the
+kind is unclear and always before `1.0.0`. An example on its default branch releases that commit
+now and stops, reporting the repository URL, the commit and the release URL. Otherwise, the pull request and its review, as `hops-reqs/references/repo.md` says:
 open it, request Copilot through the GraphQL mutation and the reviewers named in `reqs`, poll up
 to fifteen minutes, fix or answer every thread (a fix to an entrypoint redeploys it and reruns
 its tests and, for inference, the benchmark, then `verify`), at most three rounds. Report the
 phase table, the final decisions, the pull request URL and the open threads, and say plainly
-what now runs without a human and what breaks first if the upstream data stops.
+what now runs without a human and what breaks first if the upstream data stops. Record the
+release the merge will get as `system.release_pending` and report its version: the next
+`/hops-build <slug>` after the merge releases the merge commit.

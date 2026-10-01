@@ -445,6 +445,68 @@ def test_the_validator_rejects_each_broken_rule(path, value, expected):
     assert any(expected in p for p in problems), problems
 
 
+def _release(version, kind, commit="a1b2c3d"):
+    return {"version": version, "tag": f"v{version}", "kind": kind, "commit": commit}
+
+
+def test_releases_start_at_0_1_0_and_step_by_their_kind():
+    validator = _load(TEMPLATE / "tests" / "unit" / "test_system_yaml.py")
+    assert validator.next_version(None, "minor") == "0.1.0"
+    assert validator.next_version("0.1.0", "patch") == "0.1.1"
+    assert validator.next_version("0.1.1", "minor") == "0.2.0"
+    assert validator.next_version("0.2.0", "major") == "1.0.0"
+
+    doc = _example()
+    doc["system"]["releases"] = [
+        _release("0.1.0", "initial"),
+        _release("0.1.1", "patch"),
+        _release("0.2.0", "minor"),
+        _release("1.0.0", "major"),
+    ]
+    doc["system"]["release_pending"] = {"version": "1.0.1", "kind": "patch"}
+    assert _validate(doc) == []
+
+
+@pytest.mark.parametrize(
+    ("releases", "pending", "expected"),
+    [
+        ([_release("1.0.0", "initial")], None, "first release: version 0.1.0"),
+        ([_release("0.1.0", "initial"), _release("0.3.0", "minor")], None, "so 0.2.0"),
+        (
+            [_release("0.1.0", "initial"), _release("0.1.1", "bugfix")],
+            None,
+            "kind 'bugfix'",
+        ),
+        (
+            [{**_release("0.1.0", "initial"), "tag": "0.1.0"}],
+            None,
+            "tag must be v0.1.0",
+        ),
+        ([{**_release("0.1.0", "initial"), "commit": ""}], None, "has no commit"),
+        ([_release("0.1", "initial")], None, "is not MAJOR.MINOR.PATCH"),
+        (
+            [],
+            {"version": "1.0.0", "kind": "major"},
+            "release_pending.version must be 0.1.0",
+        ),
+        (
+            [_release("0.1.0", "initial")],
+            {"version": "0.2.0", "kind": "patch"},
+            "release_pending.version must be 0.1.1",
+        ),
+    ],
+)
+def test_the_validator_rejects_releases_that_break_the_versioning(
+    releases, pending, expected
+):
+    doc = _example()
+    doc["system"]["releases"] = releases
+    if pending:
+        doc["system"]["release_pending"] = pending
+    problems = _validate(doc)
+    assert any(expected in problem for problem in problems), problems
+
+
 def test_the_validator_rejects_a_phase_that_finishes_before_it_starts():
     doc = _example()
     doc["training"]["started"] = "2026-09-22T11:00Z"
