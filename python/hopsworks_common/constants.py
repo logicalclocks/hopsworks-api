@@ -277,6 +277,10 @@ class FEATURE_LOGGING:
     PREFIX_PREDICTIONS = "predicted_"
     EMPTY_REQUEST_PARAMETER_COLUMN_VALUE = "{}"
 
+    # Model identity column of logging feature groups created before FSTORE-1871
+    # combined them and split the column into model_name and model_version.
+    LEGACY_MODEL_COLUMN_NAME = "hsml_model"
+
     LOGGING_METADATA_COLUMNS = [
         LOG_ID_COLUMN_NAME,
         TRAINING_DATASET_VERSION_COLUMN_NAME,
