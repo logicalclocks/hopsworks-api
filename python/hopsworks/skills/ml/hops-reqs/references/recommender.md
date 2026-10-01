@@ -103,25 +103,28 @@ retrieve, filter, rank).
 
 The deployment follows the shopper's session: their clicks and purchases of the
 last day, read from `interactions` and joined with `recent`, since a click
-written a moment ago may not be in the online store yet. The item tower embeds
-them, minus the catalogue's mean embedding, which every item shares and which
-otherwise hides what tells a shoe from a sweater, and the result is blended into
-the query, so clicking a shoe retrieves shoes. The 50 articles most like the
-session are added to the candidates, found exactly over the catalogue, which the
-deployment embeds once at start and keeps in memory with the attributes the
-ranker needs: the vector index's approximate inner-product search returns poor
-neighbours for a centered vector. Articles added to `articles` later are served
-after a restart. Articles the session already
+written a moment ago may not be in the online store yet. Each article has two
+embeddings in `candidate_embeddings`, each with its own index: `embeddings`,
+the item tower's output, searched by dot product with the customer's query; and
+`session_embedding`, the same vector minus the catalogue's mean at unit length,
+searched by cosine. Every item embedding shares one large direction, which hides
+what tells a shoe from a sweater, so the session works on the centered ones: the
+clicked articles' vectors come from the `session_embeddings` feature view, their
+recency-weighted mean is blended into the customer's query, and the 50 articles
+nearest to it in the `session_embedding` index join the candidates. Searching
+the dot-product index with the centered vector instead returns poor neighbours,
+because it lies away from every indexed vector. Articles the session already
 showed and the shopper acted on are left out. Of the slots, half of those not
 left to exploring go to the candidates most like the session (`reason:
 session`), the rest to the highest purchase probability (`taste`), and a fifth
 to candidates drawn at random from the remainder (`explore`). One shoe click
-gives five to seven shoes in twelve. `hops deployment create` on an existing name keeps its script: to deploy a
+gives five to twelve shoes in twelve, mostly five to seven.
+
+`hops deployment create` on an existing name keeps its script: to deploy a
 changed `predictor.py`, `hops deployment delete <name> --yes` and create it again. `measured` gets the p99 of 50 requests over random customers against
-`requirements.sla.realtime`: about 40 ms in the deployment on the example's
-data, p99 44 ms, with or without a session. The deployment's matrix products are
-NumPy einsum, not `@`: OpenBLAS starts a thread per node core under the pod's CPU
-limit and the throttling stalls the request for up to 100 ms.
+`requirements.sla.realtime`: about 250 ms at p50 and 410 ms at p99 on the
+example's data, most of it the two feature group reads by customer (purchases
+and the session), each of which has the backend build its query.
 
 ## app: the storefront
 

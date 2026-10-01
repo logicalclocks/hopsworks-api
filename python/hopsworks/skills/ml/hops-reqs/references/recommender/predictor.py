@@ -8,21 +8,21 @@ registry when the deployment starts:
         --script src/<slug_pkg>/predictor.py --env <slug>-inference-env --no-default-predictor
 
 A request is `{"customer_id": "...", "k": 12, "recent": [article ids]}`, `recent`
-the session's clicks and purchases, newest first, which the caller may send. It runs the course's four stages,
-steered by the shopper's session, their clicks and purchases of the last day:
+being the page's clicks and purchases, newest first. It runs the course's four
+stages, steered by the shopper's session, their clicks and purchases of the last
+day, through the Feature Store's online APIs:
 
 1. the customer's features (age) from the `customers` feature view, and the
    month's cycle from the request time, through the query tower; the session's
-   articles, through the item tower, are blended into that query, so clicking a
-   shoe retrieves shoes;
-2. the 100 nearest articles to the query in `candidate_embeddings`, and the 50
-   most like the session alone, found exactly over the catalogue;
+   vectors, from the `session_embeddings` feature view, are blended into that
+   query, so clicking a shoe retrieves shoes;
+2. the 100 nearest articles to the query in `candidate_embeddings`' `embeddings`
+   index, and the 50 nearest to the session in its `session_embedding` index;
 3. the articles the customer bought, and those the session already showed them
-   and they clicked, bought or passed over, dropped, read online from
-   `transactions` and `interactions`;
+   and they clicked, bought or passed over, dropped, read online from the
+   `transactions` and `interactions` feature groups;
 4. the rest scored by the ranking model's purchase probability, with each
-   article's features and the customer's taste; the article features and
-   embeddings are the catalogue's, read from `articles` once at start;
+   article's features from the `articles` feature view and the customer's taste;
    the slots go to the articles most like the session, then the most probable,
    and a fifth to articles drawn at random from the rest (see `select`).
 
@@ -52,7 +52,6 @@ SESSION_ITEMS = 10
 # quarter of the 100 candidates shoes and keeps a quarter of the customer's own.
 SESSION_WEIGHT = 0.6
 EXPLORE = 0.2
-# The purchase lookup is SQL built from the id, so only an id of this shape is looked up.
 CUSTOMER_ID = re.compile(r"^[0-9A-Za-z_-]{1,64}$")
 ARTICLE_ID = re.compile(r"^[0-9]{1,16}$")
 SHOWN = [
@@ -177,10 +176,10 @@ class Predict:
         import torch
         from catboost import CatBoostClassifier
 
-        # One request is one query vector and a hundred rows: threads only contend.
+        # One request is one query vector: threads only contend.
         torch.set_num_threads(1)
         project = hopsworks.login()
-        self.fs = project.get_feature_store()
+        fs = project.get_feature_store()
         self.ranker = CatBoostClassifier()
         self.ranker.load_model(load_model_file("ranking_model.cbm"))
         with open(load_model_file("features.json")) as f:
@@ -195,56 +194,19 @@ class Predict:
         self.query_tower.eval()
         with open(os.path.join(query_dir, "customer_vocab.json")) as f:
             self.customer_vocab = json.load(f)
-        self.item_tower = torch.jit.load(os.path.join(query_dir, "item_tower.pt"))
-        self.item_tower.eval()
-        with open(os.path.join(query_dir, "item_vocab.json")) as f:
-            self.item_vocab = json.load(f)
-        # Every item embedding shares one large direction; with the catalogue's mean
-        # subtracted, a shoe's vector points at shoes instead of at everything.
-        with open(os.path.join(query_dir, "item_mean.json")) as f:
-            self.item_mean = np.asarray(json.load(f))
         self.torch = torch
         self.rng = np.random.default_rng()
 
-        self.customers = self.fs.get_feature_view("customers", version=1)
-        self.customers.init_serving(1)
-        self.candidates = self.fs.get_feature_group("candidate_embeddings", version=1)
-        transactions = self.fs.get_feature_group("transactions", version=1)
-        articles = self.fs.get_feature_group("articles", version=1)
-        # The purchases with the attributes the taste features are shares of, in one
-        # query: transactions is indexed on customer_id and articles keyed by article_id.
-        attributes = ", ".join(f"a.`{c}`" for c in self.spec.get("taste", []))
-        self.bought_sql = (
-            f"SELECT t.article_id{', ' + attributes if attributes else ''} "
-            f"FROM `{transactions.name}_{transactions.version}` t "
-            f"JOIN `{articles.name}_{articles.version}` a ON a.article_id = t.article_id "
-            "WHERE t.customer_id = '{}'"
-        )
-        # The catalogue in memory: the attributes the ranker and the cards need, and
-        # each article's centered item-tower embedding. Embedding per request costs
-        # 45 ms (TorchScript re-specialises for every new batch size) and a feature
-        # lookup of the candidates 35 ms; articles added later appear after a restart.
-        columns = dict.fromkeys(["article_id", *SHOWN, *self.spec["categorical"], *self.item_vocab])
-        catalogue = self.fs.sql(
-            f"SELECT {', '.join(f'`{c}`' for c in columns)} "
-            f"FROM `{articles.name}_{articles.version}`",
-            online=True,
-            dataframe_type="pandas",
-        )
-        catalogue["article_id"] = catalogue["article_id"].astype(str)
-        self.catalogue = catalogue.set_index("article_id", drop=False)
-        known = catalogue[catalogue["article_id"].isin(list(self.item_vocab["article_id"]))]
-        centered = self.embed_items(known) - self.item_mean
-        self.vectors = dict(zip(known["article_id"], centered, strict=True))
-        self.catalogue_unit = centered / np.linalg.norm(centered, axis=1, keepdims=True)
-        self.catalogue_ids = known["article_id"].tolist()
-        interactions = self.fs.get_feature_group("interactions", version=1)
-        # interactions is indexed on customer_id too.
-        self.session_sql = (
-            "SELECT article_id, interaction_score "
-            f"FROM `{interactions.name}_{interactions.version}` "
-            "WHERE customer_id = '{}' AND t_dat >= '{}' ORDER BY t_dat DESC LIMIT 50"
-        )
+        self.customers = fs.get_feature_view("customers", version=1)
+        self.articles = fs.get_feature_view("articles", version=1)
+        self.session_embeddings = fs.get_feature_view("session_embeddings", version=1)
+        for view in (self.customers, self.articles, self.session_embeddings):
+            view.init_serving(1)
+        self.candidates = fs.get_feature_group("candidate_embeddings", version=1)
+        self.session_column = [f.name for f in self.candidates.features].index("session_embedding")
+        # Both are indexed on customer_id online, so these reads are lookups.
+        self.transactions = fs.get_feature_group("transactions", version=1)
+        self.interactions = fs.get_feature_group("interactions", version=1)
 
     def embed_query(self, customer_id: str, age: float, when: datetime) -> list[float]:
         torch = self.torch
@@ -258,32 +220,39 @@ class Predict:
             )
         return vector[0].tolist()
 
-    def most_like(self, session: np.ndarray, k: int = SESSION_RETRIEVED) -> list[str]:
-        """The `k` catalogue articles with the highest centered cosine to `session`.
+    def article_features(self, article_ids: list[str]):
+        """The `articles` feature view's rows for these articles; unknown ones are dropped."""
+        if not article_ids:
+            return pd.DataFrame(columns=["article_id"])
+        rows = self.articles.get_feature_vectors(
+            [{"article_id": a} for a in article_ids], return_type="pandas", allow_missing=True
+        )
+        return rows.dropna(subset=["article_id"])
 
-        Exact, over the catalogue embedded at start: the vector index's approximate
-        inner-product search returns poor neighbours for a centered vector, which
-        points away from where every article lies.
-        """
-        # einsum, not @: a matrix product goes to OpenBLAS, which starts a thread per
-        # node core under the pod's CPU limit, and the throttling stalls every stage
-        # after it for up to 100 ms. einsum's own loop takes 1 ms here.
-        scores = np.einsum("ij,j->i", self.catalogue_unit, session / np.linalg.norm(session))
-        top = np.argpartition(-scores, min(k, len(scores) - 1))[:k]
-        return [self.catalogue_ids[i] for i in top[np.argsort(-scores[top])]]
-
-    def embed_items(self, rows) -> np.ndarray:
-        """Item-tower embeddings of articles, rows of article_id, garment and index group."""
-        torch = self.torch
-
-        def ids(column: str):
-            vocab = self.item_vocab[column]
-            return torch.tensor([vocab.get(str(v), 0) for v in rows[column]])
-
-        with torch.no_grad():
-            return self.item_tower(
-                ids("article_id"), ids("garment_group_name"), ids("index_group_name")
-            ).numpy()
+    def session(self, customer_id: str, recent: list[str], since: datetime):
+        """The session's article ids, newest first, the ones engaged with, and its vector."""
+        interactions = self.interactions
+        stored = interactions.filter(
+            (interactions.customer_id == customer_id) & (interactions.t_dat >= since)
+        ).read(online=True, dataframe_type="pandas")
+        stored = stored.sort_values("t_dat", ascending=False)
+        clicked = [a for a in dict.fromkeys(recent) if ARTICLE_ID.match(a)][:SESSION_ITEMS]
+        rows = pd.concat(
+            [pd.DataFrame({"article_id": clicked, "interaction_score": 1}), stored],
+            ignore_index=True,
+        )
+        rows["article_id"] = rows["article_id"].astype(str)
+        rows = rows.drop_duplicates("article_id")
+        engaged = rows.loc[rows["interaction_score"] >= 1, "article_id"].head(SESSION_ITEMS)
+        if engaged.empty:
+            return set(rows["article_id"]), 0, None
+        vectors = self.session_embeddings.get_feature_vectors(
+            [{"article_id": a} for a in engaged], return_type="pandas", allow_missing=True
+        ).dropna(subset=["session_embedding"])
+        order = {a: i for i, a in enumerate(engaged)}
+        vectors = vectors.sort_values("article_id", key=lambda ids: ids.map(order))
+        stack = np.array([np.asarray(v, dtype=float) for v in vectors["session_embedding"]])
+        return set(rows["article_id"]), len(engaged), session_vector(stack)
 
     def recommend(self, customer_id: str, k: int = 12, recent: list[str] | None = None) -> dict:
         """Recommendations for one customer; `recent` is the session's clicks, newest first.
@@ -309,52 +278,50 @@ class Predict:
             return {"customer_id": customer_id, "items": [], "error": "unknown customer"}
         age = float(customer["age"].iloc[0])
         now = datetime.now(UTC)
-        since = (now - SESSION).replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S")
-        stored = self.fs.sql(
-            self.session_sql.format(customer_id, since), online=True, dataframe_type="pandas"
+        seen, engaged, session = self.session(
+            customer_id, recent or [], (now - SESSION).replace(tzinfo=None)
         )
-        clicked = [a for a in dict.fromkeys(recent or []) if ARTICLE_ID.match(a)][:SESSION_ITEMS]
-        sent = pd.DataFrame({"article_id": clicked, "interaction_score": 1})
-        stored = pd.concat([sent, stored], ignore_index=True)
-        stored["article_id"] = stored["article_id"].astype(str)
-        stored = stored.drop_duplicates("article_id")
-        seen = set(stored["article_id"])
-        engaged = [
-            self.vectors[a]
-            for a in stored.loc[stored["interaction_score"] >= 1, "article_id"]
-            if a in self.vectors
-        ][:SESSION_ITEMS]
-        session = session_vector(np.array(engaged)) if engaged else None
         query = blend(np.array(self.embed_query(customer_id, age, now)), session, SESSION_WEIGHT)
         lap("query")
 
-        neighbours = self.candidates.find_neighbors(query.tolist(), k=RETRIEVED)
-        candidates = [str(values[0]) for _, values in neighbours]
+        neighbours = self.candidates.find_neighbors(query.tolist(), col="embeddings", k=RETRIEVED)
         if session is not None:
             # The articles most like the session, whatever the customer's own query
             # retrieves, so a customer far from shoes who clicks one still sees shoes.
-            candidates = list(dict.fromkeys(candidates + self.most_like(session)))
+            neighbours += self.candidates.find_neighbors(
+                session.tolist(), col="session_embedding", k=SESSION_RETRIEVED
+            )
+        vectors = {
+            str(values[0]): np.asarray(values[self.session_column], dtype=float)
+            for _, values in neighbours
+        }
+        candidates = list(vectors)
         lap("retrieve")
 
-        # Raw SQL on the pooled online connection: a feature group filter read asks
-        # the backend to build the query first, which is most of 300 ms.
-        bought = self.fs.sql(
-            self.bought_sql.format(customer_id), online=True, dataframe_type="pandas"
+        transactions = self.transactions
+        bought = transactions.filter(transactions.customer_id == customer_id).read(
+            online=True, dataframe_type="pandas"
         )
         bought_ids = set(bought["article_id"].astype(str))
         lap("filter")
 
+        # One row per purchase, as train_ranker.py counts them for the taste shares.
+        history = (
+            bought[["article_id"]]
+            .astype(str)
+            .merge(self.article_features(sorted(bought_ids)), on="article_id")
+        )
         unseen = [a for a in candidates if a not in seen]
-        articles = self.catalogue[self.catalogue.index.isin(unseen)]
-        scored = rank(unseen, bought, articles, age, self.ranker, self.spec, len(unseen))
-        items = select(scored, self.vectors, session, k, self.rng)
+        articles = self.article_features(unseen)
+        scored = rank(unseen, history, articles, age, self.ranker, self.spec, len(unseen))
+        items = select(scored, vectors, session, k, self.rng)
         lap("rank")
         return {
             "customer_id": customer_id,
             "items": items,
             "retrieved": len(candidates),
             "already_bought": len(bought_ids & set(candidates)),
-            "session_items": len(engaged),
+            "session_items": engaged,
             "timings_ms": timings,
         }
 

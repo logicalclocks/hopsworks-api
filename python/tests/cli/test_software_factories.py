@@ -1039,44 +1039,17 @@ def test_the_deployment_ranks_by_taste_what_the_customer_has_not_bought():
     assert cos == pytest.approx(0.0, abs=1e-9)
 
 
-def test_both_towers_script_and_the_deployment_embeds_items_as_training_did(tmp_path):
-    pl = pytest.importorskip("polars")
-    pd = pytest.importorskip("pandas")
-    torch = pytest.importorskip("torch")
+def test_session_embeddings_are_centered_and_unit_length():
     retrieval = _load(RECS / "train_retrieval.py", "train_retrieval_under_test")
-    predictor = _load(RECS / "predictor.py", "recs_predictor_under_test")
-    rng = np.random.default_rng(0)
-    n = 600
-    frame = pl.DataFrame(
-        {
-            "customer_id": rng.choice([f"c{i}" for i in range(20)], n),
-            "article_id": rng.choice([str(i) for i in range(50)], n),
-            "age": rng.uniform(18, 70, n),
-            "month_sin": rng.uniform(-1, 1, n),
-            "month_cos": rng.uniform(-1, 1, n),
-            "garment_group_name": rng.choice(["Shoes", "Knit"], n),
-            "index_group_name": rng.choice(["Ladieswear", "Menswear"], n),
-        }
-    )
-    query_tower, item_tower, vocabs, _ = retrieval.train(
-        {"train": frame, "test": frame.head(50)}, epochs=1
-    )
-    retrieval.save_query_model(query_tower, item_tower, vocabs, tmp_path, np.zeros(16))
-    assert json.loads((tmp_path / "item_mean.json").read_text()) == [0.0] * 16
-    serving = predictor.Predict.__new__(predictor.Predict)
-    serving.torch = torch
-    serving.item_tower = torch.jit.load(str(tmp_path / "item_tower.pt"))
-    serving.item_vocab = json.loads((tmp_path / "item_vocab.json").read_text())
-    rows = pd.DataFrame(
-        {
-            "article_id": ["1", "2", "never-seen"],
-            "garment_group_name": ["Shoes", "Knit", "Shoes"],
-            "index_group_name": ["Ladieswear", "Menswear", "Ladieswear"],
-        }
-    )
-    served = serving.embed_items(rows)
-    trained = retrieval.embed_items(item_tower, pl.from_pandas(rows), vocabs)
-    assert served == pytest.approx(trained, abs=1e-6)
+    # Three articles sharing one large direction, as trained item embeddings do.
+    shared = np.array([30.0, 30.0])
+    vectors = np.stack([shared + [1, 0], shared + [0.9, 0.1], shared + [-1, 0]])
+    raw = vectors / np.linalg.norm(vectors, axis=1, keepdims=True)
+    assert raw[0] @ raw[2] > 0.99
+    session = retrieval.session_embeddings(vectors)
+    assert np.linalg.norm(session, axis=1) == pytest.approx(np.ones(3))
+    assert session[0] @ session[1] > 0.9
+    assert session[0] @ session[2] < -0.9
 
 
 def test_the_session_steers_retrieval_and_ranking_and_leaves_room_to_explore():
@@ -1122,12 +1095,6 @@ def test_the_session_steers_retrieval_and_ranking_and_leaves_room_to_explore():
         i["reason"] for i in predictor.select(items(), embeddings, shoe, 10, rng)
     }
     assert len(predictor.select(items()[:3], {}, None, 5, rng)) == 3
-
-    serving = predictor.Predict.__new__(predictor.Predict)
-    vectors = np.array([[1.0, 0.0], [0.9, 0.1], [0.0, 1.0], [-1.0, 0.0]])
-    serving.catalogue_unit = vectors / np.linalg.norm(vectors, axis=1, keepdims=True)
-    serving.catalogue_ids = ["shoe", "boot", "dress", "coat"]
-    assert serving.most_like(np.array([2.0, 0.0]), k=2) == ["shoe", "boot"]
 
 
 def test_the_storefront_records_clicks_purchases_and_ignores(monkeypatch):

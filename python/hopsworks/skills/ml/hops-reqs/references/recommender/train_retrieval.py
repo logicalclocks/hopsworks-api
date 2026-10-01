@@ -10,10 +10,12 @@ The course's two-tower model, in PyTorch on the CPU. A query tower (customer id,
 age, month) and an item tower (article id, garment group, index group) map into
 one 16-dimensional space, trained with an in-batch softmax loss. It
 creates the feature views the deployment reads (`retrieval`, `customers`,
-`articles`), registers the query tower as `query_model`, with the item tower
-beside it for session-aware queries and its recall@100 on the test split, and writes every article's embedding from the item tower into
-`candidate_embeddings`, whose vector index the deployment searches. Recall is
-measured on the real purchases of the test split only.
+`articles`), registers the query tower as `query_model` with its recall@100 on
+the test split, and writes every article's embedding from the item tower into
+`candidate_embeddings`, whose vector index the deployment searches, with a second,
+centered embedding per article for the session and the `session_embeddings`
+feature view over it. Recall is measured on the real purchases of the test split
+only.
 """
 
 from __future__ import annotations
@@ -203,25 +205,24 @@ def embed_items(item_tower, articles: pl.DataFrame, vocabs: dict) -> np.ndarray:
         ).numpy()
 
 
-def save_query_model(
-    query_tower, item_tower, vocabs: dict, directory: Path, item_mean: np.ndarray
-) -> Path:
-    """Both towers as TorchScript, so the deployment runs them without this file.
+def session_embeddings(vectors: np.ndarray) -> np.ndarray:
+    """The item embeddings with the catalogue's mean taken out, at unit length.
 
-    The item tower is there for the session: the deployment embeds the articles a
-    shopper just clicked into the query's space and steers retrieval with them.
-    `item_mean` is the catalogue's mean embedding, which the deployment subtracts
-    first: every item shares that one large direction, and only what is left
-    tells a shoe from a sweater.
+    Every item embedding shares one large direction (any two have a cosine near
+    1.0), and only what is left tells a shoe from a sweater: a shoe is about 0.5
+    like other shoes and 0.06 like the rest. These are what the deployment
+    compares a shopper's session with, through their own cosine index.
     """
+    centered = vectors - vectors.mean(axis=0)
+    return centered / np.linalg.norm(centered, axis=1, keepdims=True)
+
+
+def save_query_model(query_tower, vocabs: dict, directory: Path) -> Path:
+    """TorchScript, so the deployment runs it without this file's class definitions."""
     import torch
 
     torch.jit.script(query_tower).save(str(directory / "query_tower.pt"))
-    torch.jit.script(item_tower).save(str(directory / "item_tower.pt"))
     (directory / "customer_vocab.json").write_text(json.dumps(vocabs["customer_id"]))
-    item_vocabs = {c: vocabs[c] for c in ITEM_FEATURES}
-    (directory / "item_vocab.json").write_text(json.dumps(item_vocabs))
-    (directory / "item_mean.json").write_text(json.dumps(item_mean.tolist()))
     return directory
 
 
@@ -271,12 +272,13 @@ def main(argv: list[str] | None = None) -> int:
         .filter(pl.col("article_id").is_in(list(vocabs["article_id"])))
     )
     vectors = embed_items(item_tower, catalogue, vocabs)
-    candidates = catalogue.select("article_id").with_columns(embeddings=pl.Series(vectors.tolist()))
+    candidates = catalogue.select("article_id").with_columns(
+        embeddings=pl.Series(vectors.tolist()),
+        session_embedding=pl.Series(session_embeddings(vectors).tolist()),
+    )
 
     with tempfile.TemporaryDirectory() as tmp:
-        directory = save_query_model(
-            query_tower, item_tower, vocabs, Path(tmp), vectors.mean(axis=0)
-        )
+        directory = save_query_model(query_tower, vocabs, Path(tmp))
         model = project.get_model_registry().torch.create_model(
             name="query_model",
             metrics={"recall_at_100": recall},
@@ -289,6 +291,12 @@ def main(argv: list[str] | None = None) -> int:
     # The towers are trained on dot products; the index's default, L2 distance, ranks
     # the customer's least likely articles first for unnormalised vectors.
     index.add_embedding("embeddings", EMBEDDING_SIZE, embedding.SimilarityFunctionType.DOT_PRODUCT)
+    # The session's own index: cosine over the centered vectors, where a centered
+    # query lies among the indexed vectors. Searched with an off-distribution query,
+    # the dot-product index's approximate search returns poor neighbours.
+    index.add_embedding(
+        "session_embedding", EMBEDDING_SIZE, embedding.SimilarityFunctionType.COSINE
+    )
     fg = fs.get_or_create_feature_group(
         name="candidate_embeddings",
         version=1,
@@ -299,6 +307,12 @@ def main(argv: list[str] | None = None) -> int:
         statistics_config=False,
     )
     fg.insert(candidates.to_pandas(), write_options={"wait_for_job": True})
+    # The deployment looks up the session vectors of the articles a shopper clicked.
+    fs.get_or_create_feature_view(
+        name="session_embeddings",
+        version=1,
+        query=fg.select(["article_id", "session_embedding"]),
+    )
     print(f"candidate_embeddings: {candidates.height} articles")
     return 0
 

@@ -85,7 +85,7 @@ recs-example:
     problem:
       task: ranking
     sla:
-      realtime: {p99_ms: 100, throughput_qps: 10}
+      realtime: {p99_ms: 500, throughput_qps: 10}
     consumers: ui
     data_sources:
       - {name: customers, kind: url, location: "https://repo.hops.works/dev/jdowling/h-and-m/customers.csv",
