@@ -838,7 +838,10 @@ def test_the_hm_features_keep_the_ids_the_pictures_and_the_month_cycle():
     features = _load(RECS / "hm_features.py", "hm_features_under_test")
     articles = features.compute_articles(
         pl.DataFrame(
-            {**{c: ["x"] for c in features.ARTICLE_COLUMNS}, "article_id": ["0108775015"]}
+            {
+                **{c: ["x"] for c in features.ARTICLE_COLUMNS},
+                "article_id": ["0108775015"],
+            }
         ).with_columns(detail_desc=pl.lit(None, pl.Utf8))
     )
     assert articles["article_id"][0] == "108775015"
@@ -887,7 +890,11 @@ def test_synthetic_purchases_follow_each_customers_own_groups():
     )
     transactions = pl.DataFrame(
         {
-            "t_dat": [datetime(2020, 3, 1), datetime(2020, 3, 11), datetime(2020, 5, 1)],
+            "t_dat": [
+                datetime(2020, 3, 1),
+                datetime(2020, 3, 11),
+                datetime(2020, 5, 1),
+            ],
             "customer_id": ["c", "c", "d"],
             "article_id": ["1", "1", "3"],
             "price": [0.1, 0.1, 0.2],
@@ -902,7 +909,9 @@ def test_synthetic_purchases_follow_each_customers_own_groups():
     assert set(extra.filter(pl.col("customer_id") == "c")["article_id"]) <= {"1", "2"}
     assert set(extra.filter(pl.col("customer_id") == "d")["article_id"]) == {"3"}
     c_days = extra.filter(pl.col("customer_id") == "c")["t_dat"]
-    assert c_days.min() >= datetime(2020, 3, 1) and c_days.max() <= datetime(2020, 3, 11)
+    assert c_days.min() >= datetime(2020, 3, 1) and c_days.max() <= datetime(
+        2020, 3, 11
+    )
     assert extra.columns == transactions.columns + ["month_sin", "month_cos"]
 
 
@@ -916,10 +925,14 @@ def test_the_generated_interactions_surround_every_purchase():
             "article_id": ["1", "2", "3"],
         }
     )
-    interactions = features.generate_interactions(transactions, pl.Series(["1", "2", "3", "4"]), 7)
+    interactions = features.generate_interactions(
+        transactions, pl.Series(["1", "2", "3", "4"]), 7
+    )
     purchases = interactions.filter(pl.col("interaction_score") == 2)
     assert purchases.height == 3
-    per_customer = interactions.group_by("customer_id").len().sort("customer_id")["len"].to_list()
+    per_customer = (
+        interactions.group_by("customer_id").len().sort("customer_id")["len"].to_list()
+    )
     assert all(n >= 3 + 40 for n in per_customer[:1])
     first = interactions.filter(pl.col("customer_id") == "c").sort("t_dat")
     assert first["prev_article_id"][0] == "START"
@@ -935,9 +948,11 @@ def test_retrieval_recall_counts_the_true_article_in_the_top_k_chunk_by_chunk():
     query, items = rng.normal(size=(300, 4)), rng.normal(size=(50, 4))
     true_items = rng.integers(-1, 50, 300)
     top = np.argsort(-(query @ items.T), axis=1)[:, :10]
-    exact = np.mean([t in row for t, row in zip(true_items, top)])
+    exact = np.mean([t in row for t, row in zip(true_items, top, strict=True)])
     assert retrieval.recall_at_k(query, items, true_items, k=10) == pytest.approx(exact)
-    assert retrieval.recall_at_k(query, items, true_items, k=10, chunk=7) == pytest.approx(exact)
+    assert retrieval.recall_at_k(
+        query, items, true_items, k=10, chunk=7
+    ) == pytest.approx(exact)
 
 
 def test_the_ranker_learns_from_earlier_purchases_and_labels_the_latest():
@@ -998,23 +1013,115 @@ def test_the_deployment_ranks_by_taste_what_the_customer_has_not_bought():
         }
     )
     history = pd.DataFrame(
-        {"article_id": ["3", "9", "8", "7"], "colour_group_name": ["red", "red", "red", "blue"]}
+        {
+            "article_id": ["3", "9", "8", "7"],
+            "colour_group_name": ["red", "red", "red", "blue"],
+        }
     )
     spec = {
         "features": ["age", "colour_group_name", "colour_group_name_share"],
         "categorical": ["colour_group_name"],
         "taste": ["colour_group_name"],
     }
-    items = predictor.rank(["1", "2", "3", "4", "2"], history, articles, 30.0, Model(), spec, 5)
+    items = predictor.rank(
+        ["1", "2", "3", "4", "2"], history, articles, 30.0, Model(), spec, 5
+    )
     assert [i["article_id"] for i in items] == ["2", "1"]
     assert items[0]["score"] == pytest.approx(0.2 + 0.7 * 0.75)
     assert items[1]["score"] == pytest.approx(0.2 + 0.7 * 0.25)
     assert items[0]["image_url"] is None
-    no_history = predictor.rank(["1"], history.iloc[0:0], articles, 30.0, Model(), spec, 5)
+    no_history = predictor.rank(
+        ["1"], history.iloc[0:0], articles, 30.0, Model(), spec, 5
+    )
     assert no_history[0]["score"] == pytest.approx(0.2)
     sin, cos = predictor.month_cycle(datetime(2026, 3, 1, tzinfo=timezone.utc))
     assert sin == pytest.approx(1.0)
     assert cos == pytest.approx(0.0, abs=1e-9)
+
+
+def test_both_towers_script_and_the_deployment_embeds_items_as_training_did(tmp_path):
+    pl = pytest.importorskip("polars")
+    pd = pytest.importorskip("pandas")
+    torch = pytest.importorskip("torch")
+    retrieval = _load(RECS / "train_retrieval.py", "train_retrieval_under_test")
+    predictor = _load(RECS / "predictor.py", "recs_predictor_under_test")
+    rng = np.random.default_rng(0)
+    n = 600
+    frame = pl.DataFrame(
+        {
+            "customer_id": rng.choice([f"c{i}" for i in range(20)], n),
+            "article_id": rng.choice([str(i) for i in range(50)], n),
+            "age": rng.uniform(18, 70, n),
+            "month_sin": rng.uniform(-1, 1, n),
+            "month_cos": rng.uniform(-1, 1, n),
+            "garment_group_name": rng.choice(["Shoes", "Knit"], n),
+            "index_group_name": rng.choice(["Ladieswear", "Menswear"], n),
+        }
+    )
+    query_tower, item_tower, vocabs, _ = retrieval.train(
+        {"train": frame, "test": frame.head(50)}, epochs=1
+    )
+    retrieval.save_query_model(query_tower, item_tower, vocabs, tmp_path, np.zeros(16))
+    assert json.loads((tmp_path / "item_mean.json").read_text()) == [0.0] * 16
+    serving = predictor.Predict.__new__(predictor.Predict)
+    serving.torch = torch
+    serving.item_tower = torch.jit.load(str(tmp_path / "item_tower.pt"))
+    serving.item_vocab = json.loads((tmp_path / "item_vocab.json").read_text())
+    rows = pd.DataFrame(
+        {
+            "article_id": ["1", "2", "never-seen"],
+            "garment_group_name": ["Shoes", "Knit", "Shoes"],
+            "index_group_name": ["Ladieswear", "Menswear", "Ladieswear"],
+        }
+    )
+    served = serving.embed_items(rows)
+    trained = retrieval.embed_items(item_tower, pl.from_pandas(rows), vocabs)
+    assert served == pytest.approx(trained, abs=1e-6)
+
+
+def test_the_session_steers_retrieval_and_ranking_and_leaves_room_to_explore():
+    pytest.importorskip("pandas")
+    predictor = _load(RECS / "predictor.py", "recs_predictor_under_test")
+    assert predictor.session_vector(np.zeros((0, 2))) is None
+    # Newest first, each older article counting 0.7 of the next.
+    newest, older = np.array([1.0, 0.0]), np.array([0.0, 1.0])
+    session = predictor.session_vector(np.stack([newest, older]))
+    assert session == pytest.approx(np.array([1, 0.7]) / 1.7)
+
+    query = np.array([0.0, 3.0])
+    assert predictor.blend(query, None, 0.6) is query
+    shoe = np.array([1.0, 0.0])
+    turned = predictor.blend(query, shoe, 0.6)
+    assert np.linalg.norm(turned) == pytest.approx(3.0)
+    assert turned[0] > 0 and turned[1] > 0
+
+    def items():
+        return [
+            {"article_id": str(i), "score": p}
+            for i, p in enumerate([0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.05])
+        ]
+
+    rng = np.random.default_rng(0)
+    plain = predictor.select(items(), {}, None, 5, rng)
+    assert [i["article_id"] for i in plain[:4]] == ["0", "1", "2", "3"]
+    assert [i["reason"] for i in plain] == ["taste"] * 4 + ["explore"]
+    assert plain[4]["article_id"] in {"4", "5", "6", "7", "8", "9"}
+
+    # Articles 8 and 9 rank last by purchase probability but are the shoes the
+    # session is about: they take half of the slots not left to exploring.
+    embeddings = {str(i): np.array([0.0, 1.0]) for i in range(10)}
+    embeddings |= {"8": shoe, "9": np.array([0.9, 0.1])}
+    steered = predictor.select(items(), embeddings, shoe, 8, rng)
+    reasons = [i["reason"] for i in steered]
+    assert reasons == ["session"] * 3 + ["taste"] * 3 + ["explore"] * 2
+    assert [i["article_id"] for i in steered[:2]] == ["8", "9"]
+    assert steered[0]["session_similarity"] == pytest.approx(1.0)
+    assert len({i["article_id"] for i in steered}) == 8
+    # Nothing is left to explore when every candidate is shown.
+    assert "explore" not in {
+        i["reason"] for i in predictor.select(items(), embeddings, shoe, 10, rng)
+    }
+    assert len(predictor.select(items()[:3], {}, None, 5, rng)) == 3
 
 
 def test_the_storefront_records_clicks_purchases_and_ignores(monkeypatch):
@@ -1023,7 +1130,9 @@ def test_the_storefront_records_clicks_purchases_and_ignores(monkeypatch):
 
     storefront = _load(RECS / "app" / "app.py", "recs_app_under_test")
     written = []
-    monkeypatch.setattr(storefront, "_insert", lambda name, rows: written.append((name, rows)))
+    monkeypatch.setattr(
+        storefront, "_insert", lambda name, rows: written.append((name, rows))
+    )
     client = TestClient(storefront.app)
     assert client.get("/health").json() == {"status": "ok"}
     assert "Storefront" in client.get("/").text
@@ -1031,7 +1140,12 @@ def test_the_storefront_records_clicks_purchases_and_ignores(monkeypatch):
 
     reply = client.post(
         "/api/interactions",
-        json={"customer_id": "c", "kind": "ignore", "article_ids": ["1", "2"], "prev_article_id": "9"},
+        json={
+            "customer_id": "c",
+            "kind": "ignore",
+            "article_ids": ["1", "2"],
+            "prev_article_id": "9",
+        },
     )
     assert reply.json() == {"recorded": 2}
     name, rows = written.pop()
@@ -1040,19 +1154,30 @@ def test_the_storefront_records_clicks_purchases_and_ignores(monkeypatch):
     assert [r["prev_article_id"] for r in rows] == ["9", "1"]
     assert rows[0]["t_dat"] != rows[1]["t_dat"]
 
-    client.post("/api/interactions", json={"customer_id": "c", "kind": "buy", "article_ids": ["5"]})
+    client.post(
+        "/api/interactions",
+        json={"customer_id": "c", "kind": "buy", "article_ids": ["5"]},
+    )
     assert [name for name, _ in written] == ["interactions", "transactions"]
     purchase = written[1][1][0]
     assert purchase["article_id"] == "5"
     assert written[0][1][0]["interaction_score"] == 2
-    assert client.post(
-        "/api/interactions", json={"customer_id": "c", "kind": "stare", "article_ids": ["5"]}
-    ).status_code == 422
+    assert (
+        client.post(
+            "/api/interactions",
+            json={"customer_id": "c", "kind": "stare", "article_ids": ["5"]},
+        ).status_code
+        == 422
+    )
 
     class Deployment:
         def predict(self, data):
-            assert data == {"instances": [{"customer_id": "c", "k": 12}]}
-            return {"predictions": [{"items": [], "timings_ms": {"query": 2.0, "rank": 9.5}}]}
+            assert data == {"instances": [{"customer_id": "c", "k": 12, "recent": []}]}
+            return {
+                "predictions": [
+                    {"items": [], "timings_ms": {"query": 2.0, "rank": 9.5}}
+                ]
+            }
 
     monkeypatch.setattr(storefront, "_deployment", Deployment)
     reply = client.post("/api/recommend", json={"customer_id": "c"}).json()
@@ -1270,7 +1395,12 @@ def test_the_files_a_build_copies_in_pass_the_systems_rules(tmp_path):
         shutil.copy(REQS / "rag_agent" / name, package / name)
     shutil.copytree(REQS / "rag_agent" / "app", target / "app")
     shutil.copytree(APP, target / "app-skeleton")
-    for name in ("hm_features.py", "train_retrieval.py", "train_ranker.py", "predictor.py"):
+    for name in (
+        "hm_features.py",
+        "train_retrieval.py",
+        "train_ranker.py",
+        "predictor.py",
+    ):
         shutil.copy(REQS / "recommender" / name, package / f"recs_{name}")
     shutil.copytree(REQS / "recommender" / "app", target / "recs-app")
     done = _lint(target)

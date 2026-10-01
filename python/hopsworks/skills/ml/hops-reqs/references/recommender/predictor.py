@@ -7,19 +7,26 @@ registry when the deployment starts:
     hops deployment create ranking_model --name <alnum slug> \
         --script src/<slug_pkg>/predictor.py --env <slug>-inference-env --no-default-predictor
 
-A request is `{"customer_id": "...", "k": 12}`. It runs the course's four stages:
+A request is `{"customer_id": "...", "k": 12, "recent": [article ids]}`, `recent`
+the session's clicks and purchases, newest first, which the caller may send. It runs the course's four stages,
+steered by the shopper's session, their clicks and purchases of the last day:
 
 1. the customer's features (age) from the `customers` feature view, and the
-   month's cycle from the request time, through the query tower;
-2. the 100 nearest articles to that embedding in `candidate_embeddings`;
-3. the articles the customer already bought dropped, read online from
-   `transactions`, so a purchase made in the app disappears on the next request;
-4. the rest ranked by the ranking model's purchase probability, with each
-   article's features from the `articles` feature view and the customer's taste,
-   the shares of their purchases with each candidate's colour, group and type.
+   month's cycle from the request time, through the query tower; the session's
+   articles, through the item tower, are blended into that query, so clicking a
+   shoe retrieves shoes;
+2. the 100 nearest articles to the query in `candidate_embeddings`;
+3. the articles the customer bought, and those the session already showed them
+   and they clicked, bought or passed over, dropped, read online from
+   `transactions` and `interactions`;
+4. the rest scored by the ranking model's purchase probability, with each
+   article's features from the `articles` feature view and the customer's taste;
+   the slots go to the articles most like the session, then the most probable,
+   and a fifth to articles drawn at random from the rest (see `select`).
 
-The reply is `{"customer_id", "items": [{article_id, score, prod_name, ...,
-image_url}], "retrieved", "timings_ms"}`.
+The reply is `{"customer_id", "items": [{article_id, score, session_similarity,
+reason, prod_name, ..., image_url}], "retrieved", "already_bought",
+"session_items", "timings_ms"}`, `reason` being session, taste or explore.
 """
 
 from __future__ import annotations
@@ -30,11 +37,21 @@ import math
 import os
 import re
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+
+import numpy as np
+import pandas as pd
 
 RETRIEVED = 100
+SESSION = timedelta(days=1)
+SESSION_ITEMS = 10
+# The share of the query taken by the session: at 0.6 a shoe click makes about a
+# quarter of the 100 candidates shoes and keeps a quarter of the customer's own.
+SESSION_WEIGHT = 0.6
+EXPLORE = 0.2
 # The purchase lookup is SQL built from the id, so only an id of this shape is looked up.
 CUSTOMER_ID = re.compile(r"^[0-9A-Za-z_-]{1,64}$")
+ARTICLE_ID = re.compile(r"^[0-9]{1,16}$")
 SHOWN = [
     "article_id",
     "prod_name",
@@ -91,6 +108,64 @@ def rank(candidates: list[str], history, articles, age: float, model, spec: dict
     return top[shown].astype(object).where(top[shown].notna(), None).to_dict("records")
 
 
+def session_vector(embeddings: np.ndarray) -> np.ndarray | None:
+    """The recency-weighted mean of the session's article embeddings, newest first.
+
+    None for an empty session. Each older article counts 0.7 times the next.
+    """
+    if len(embeddings) == 0:
+        return None
+    weights = 0.7 ** np.arange(len(embeddings))
+    return (embeddings * weights[:, None]).sum(axis=0) / weights.sum()
+
+
+def blend(query: np.ndarray, session: np.ndarray | None, weight: float) -> np.ndarray:
+    """`query` moved `weight` of the way towards the session's direction, at its own length.
+
+    Dot-product retrieval scores grow with the query's length, so the blend keeps
+    it and only turns the direction.
+    """
+    if session is None or not np.linalg.norm(session):
+        return query
+    norm = np.linalg.norm(query)
+    turned = (1 - weight) * query / norm + weight * session / np.linalg.norm(session)
+    return turned / np.linalg.norm(turned) * norm
+
+
+def select(items: list[dict], embeddings: dict, session, k: int, rng) -> list[dict]:
+    """The `k` items to show, each with the `reason` it was chosen.
+
+    With a session, half the slots not left to exploring go to the articles most
+    like it (`session`, by cosine similarity), so a click on a shoe shows shoes
+    whatever the customer usually buys; the rest go to the highest purchase
+    probability (`taste`). A fifth of the slots go to articles drawn at random
+    from the remainder (`explore`), so the list never settles. `score` stays the
+    purchase probability; `session_similarity` is 0 without a session.
+    """
+    for item in items:
+        vector = embeddings.get(item["article_id"])
+        similarity = 0.0
+        if session is not None and vector is not None:
+            norms = np.linalg.norm(vector) * np.linalg.norm(session)
+            similarity = float(vector @ session / norms) if norms else 0.0
+        item["session_similarity"] = similarity
+    explore = min(round(k * EXPLORE), max(len(items) - k, 0))
+    picked: list[dict] = []
+    if session is not None:
+        alike = sorted(items, key=lambda item: item["session_similarity"], reverse=True)
+        picked = [dict(item, reason="session") for item in alike[: (k - explore) // 2]]
+    chosen = {item["article_id"] for item in picked}
+    by_taste = sorted(
+        (item for item in items if item["article_id"] not in chosen),
+        key=lambda item: item["score"],
+        reverse=True,
+    )
+    taste = [dict(item, reason="taste") for item in by_taste[: k - explore - len(picked)]]
+    rest = by_taste[len(taste) :]
+    drawn = sorted(rng.choice(len(rest), explore, replace=False)) if explore else []
+    return picked + taste + [dict(rest[i], reason="explore") for i in drawn]
+
+
 class Predict:
     """Retrieval, filtering and ranking for one customer per request."""
 
@@ -117,7 +192,16 @@ class Predict:
         self.query_tower.eval()
         with open(os.path.join(query_dir, "customer_vocab.json")) as f:
             self.customer_vocab = json.load(f)
+        self.item_tower = torch.jit.load(os.path.join(query_dir, "item_tower.pt"))
+        self.item_tower.eval()
+        with open(os.path.join(query_dir, "item_vocab.json")) as f:
+            self.item_vocab = json.load(f)
+        # Every item embedding shares one large direction; with the catalogue's mean
+        # subtracted, a shoe's vector points at shoes instead of at everything.
+        with open(os.path.join(query_dir, "item_mean.json")) as f:
+            self.item_mean = np.asarray(json.load(f))
         self.torch = torch
+        self.rng = np.random.default_rng()
 
         self.customers = self.fs.get_feature_view("customers", version=1)
         self.customers.init_serving(1)
@@ -135,6 +219,14 @@ class Predict:
             f"JOIN `{articles.name}_{articles.version}` a ON a.article_id = t.article_id "
             "WHERE t.customer_id = '{}'"
         )
+        interactions = self.fs.get_feature_group("interactions", version=1)
+        # interactions is indexed on customer_id too; the attributes are the item tower's.
+        self.session_sql = (
+            "SELECT i.article_id, i.interaction_score, a.garment_group_name, a.index_group_name "
+            f"FROM `{interactions.name}_{interactions.version}` i "
+            f"JOIN `{articles.name}_{articles.version}` a ON a.article_id = i.article_id "
+            "WHERE i.customer_id = '{}' AND i.t_dat >= '{}' ORDER BY i.t_dat DESC LIMIT 50"
+        )
 
     def embed_query(self, customer_id: str, age: float, when: datetime) -> list[float]:
         torch = self.torch
@@ -148,7 +240,25 @@ class Predict:
             )
         return vector[0].tolist()
 
-    def recommend(self, customer_id: str, k: int = 12) -> dict:
+    def embed_items(self, rows) -> np.ndarray:
+        """Item-tower embeddings of articles, rows of article_id, garment and index group."""
+        torch = self.torch
+
+        def ids(column: str):
+            vocab = self.item_vocab[column]
+            return torch.tensor([vocab.get(str(v), 0) for v in rows[column]])
+
+        with torch.no_grad():
+            return self.item_tower(
+                ids("article_id"), ids("garment_group_name"), ids("index_group_name")
+            ).numpy()
+
+    def recommend(self, customer_id: str, k: int = 12, recent: list[str] | None = None) -> dict:
+        """Recommendations for one customer; `recent` is the session's clicks, newest first.
+
+        The caller's `recent` comes first: a click written a moment ago may not be in
+        the online store yet, and the next request is exactly when it matters.
+        """
         timings = {}
         start = time.perf_counter()
 
@@ -166,10 +276,27 @@ class Predict:
         if customer.empty or customer["age"].isna().all():
             return {"customer_id": customer_id, "items": [], "error": "unknown customer"}
         age = float(customer["age"].iloc[0])
-        query = self.embed_query(customer_id, age, datetime.now(UTC))
+        now = datetime.now(UTC)
+        since = (now - SESSION).replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S")
+        stored = self.fs.sql(
+            self.session_sql.format(customer_id, since), online=True, dataframe_type="pandas"
+        )
+        clicked = [a for a in dict.fromkeys(recent or []) if ARTICLE_ID.match(a)][:SESSION_ITEMS]
+        if clicked:
+            sent = self.articles.get_feature_vectors(
+                [{"article_id": a} for a in clicked], return_type="pandas", allow_missing=True
+            ).dropna(subset=["article_id"])
+            stored = pd.concat([sent.assign(interaction_score=1), stored], ignore_index=True)
+        stored = stored.drop_duplicates("article_id")
+        seen = set(stored["article_id"].astype(str))
+        engaged = stored[stored["interaction_score"] >= 1].head(SESSION_ITEMS)
+        session = (
+            session_vector(self.embed_items(engaged) - self.item_mean) if len(engaged) else None
+        )
+        query = blend(np.array(self.embed_query(customer_id, age, now)), session, SESSION_WEIGHT)
         lap("query")
 
-        neighbours = self.candidates.find_neighbors(query, k=RETRIEVED)
+        neighbours = self.candidates.find_neighbors(query.tolist(), k=RETRIEVED)
         candidates = [str(values[0]) for _, values in neighbours]
         lap("retrieve")
 
@@ -184,13 +311,19 @@ class Predict:
         articles = self.articles.get_feature_vectors(
             [{"article_id": a} for a in candidates], return_type="pandas", allow_missing=True
         )
-        items = rank(candidates, bought, articles, age, self.ranker, self.spec, k)
+        known = articles.dropna(subset=["article_id"])
+        centered = self.embed_items(known) - self.item_mean
+        embeddings = dict(zip(known["article_id"], centered, strict=True))
+        unseen = [a for a in candidates if a not in seen]
+        scored = rank(unseen, bought, articles, age, self.ranker, self.spec, len(unseen))
+        items = select(scored, embeddings, session, k, self.rng)
         lap("rank")
         return {
             "customer_id": customer_id,
             "items": items,
             "retrieved": len(candidates),
             "already_bought": len(bought_ids & set(candidates)),
+            "session_items": len(engaged),
             "timings_ms": timings,
         }
 
@@ -201,5 +334,6 @@ class Predict:
         replies = []
         for request in inputs:
             k = max(1, min(int(request.get("k", 12)), 50))
-            replies.append(self.recommend(str(request["customer_id"]), k))
+            recent = [str(a) for a in request.get("recent") or []]
+            replies.append(self.recommend(str(request["customer_id"]), k, recent))
         return {"predictions": replies}

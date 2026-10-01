@@ -3,7 +3,7 @@
 // product pictures, which are the absolute URLs the feature pipeline wrote.
 
 const LABELS = { 0: "Ignored", 1: "Clicked", 2: "Bought" };
-const state = { customer: "", items: [], acted: new Set(), last: "START", counts: { shown: 0, clicked: 0, bought: 0, ignored: 0 } };
+const state = { customer: "", items: [], acted: new Set(), session: [], last: "START", counts: { shown: 0, clicked: 0, bought: 0, ignored: 0 } };
 
 async function request(path, options = {}) {
   const response = await fetch(path, {
@@ -57,16 +57,16 @@ async function act(item, kind, card) {
   try {
     await record(kind, [item.article_id]);
     state.acted.add(item.article_id);
+    state.session = [item.article_id, ...state.session.filter((id) => id !== item.article_id)].slice(0, 20);
     state.last = item.article_id;
     card.classList.add(kind === "buy" ? "bought" : "clicked");
     state.counts[kind === "buy" ? "bought" : "clicked"] += 1;
     showCounts();
-    loadHistory();
+    // The deployment steers by the session, so the click shows at once: more like it.
+    await Promise.all([recommend(), loadHistory()]);
   } catch (error) {
     card.append(el("div", "error", error.message));
-  } finally {
-    // A clicked card can still be bought; a bought one is done.
-    if (kind === "click") card.querySelector(".buy").disabled = false;
+    card.querySelectorAll("button").forEach((b) => (b.disabled = false));
   }
 }
 
@@ -75,6 +75,8 @@ function productCard(item) {
   const frame = el("div", "picture");
   frame.append(picture(item.image_url, item.prod_name));
   const body = el("div", "body");
+  const reason = { session: "Like your clicks", explore: "Discover" }[item.reason];
+  if (reason) body.append(el("span", "badge", reason));
   body.append(
     el("div", "name", item.prod_name || item.article_id),
     el("div", "meta", [item.product_type_name, item.colour_group_name].filter(Boolean).join(" · ")),
@@ -115,7 +117,7 @@ async function recommend() {
   try {
     const reply = await request("api/recommend", {
       method: "POST",
-      body: JSON.stringify({ customer_id: state.customer, k: 12 }),
+      body: JSON.stringify({ customer_id: state.customer, k: 12, recent: state.session }),
     });
     // The deployment's own time for this lookup, the sum of its stages; the app's
     // call to it, which adds the network and the Hopsworks API, is shown beneath.
@@ -129,7 +131,8 @@ async function recommend() {
     state.counts.shown += state.items.length;
     showCounts();
     const timings = Object.entries(reply.timings_ms || {}).map(([stage, ms]) => el("span", "badge", `${stage} ${ms} ms`));
-    const found = el("span", "", `${reply.retrieved ?? 0} retrieved, ${reply.already_bought ?? 0} already bought`);
+    const steered = reply.session_items ? `, steered by ${reply.session_items} recent clicks and buys` : "";
+    const found = el("span", "", `${reply.retrieved ?? 0} retrieved, ${reply.already_bought ?? 0} already bought${steered}`);
     document.querySelector("#timings").replaceChildren(found, ...timings);
     products.replaceChildren(
       ...(state.items.length ? state.items.map(productCard) : [el("p", "empty", reply.error || "No recommendations.")]),
@@ -193,6 +196,7 @@ document.querySelector("#pick").addEventListener("submit", async (event) => {
   if (!chosen) return;
   if (chosen !== state.customer) {
     state.customer = chosen;
+    state.session = [];
     state.last = "START";
     state.items = [];
   }

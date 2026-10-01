@@ -55,6 +55,9 @@ class Ask(BaseModel):
 
     customer_id: str = Field(min_length=1, max_length=64)
     k: int = Field(default=12, ge=1, le=50)
+    # The page's clicks and purchases, newest first: the deployment steers by them
+    # even before they reach the online store.
+    recent: list[str] = Field(default_factory=list, max_length=20)
 
 
 class Action(BaseModel):

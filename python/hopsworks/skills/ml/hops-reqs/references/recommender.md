@@ -70,7 +70,9 @@ hops job deploy <slug>-train-ranker src/<slug_pkg>/train_ranker.py --env <slug>-
 
 `train_retrieval.py` creates the feature views, trains the two towers with an
 in-batch softmax loss, registers the query tower as `query_model` (TorchScript
-plus the customer vocabulary) with `recall_at_100` on the real purchases of the test split, and writes
+plus the customer vocabulary, and the item tower with its vocabularies and the
+catalogue's mean embedding, for the session) with `recall_at_100` on the real
+purchases of the test split, and writes
 the item tower's embedding of every trained article to `candidate_embeddings`,
 whose vector index retrieval searches. `train_ranker.py` trains CatBoost on each
 customer's latest fifth of purchases against ten negatives per purchase drawn by
@@ -92,11 +94,24 @@ hops deployment start <alnum slug>
 hops deployment predict <alnum slug> --data '{"instances": [{"customer_id": "<an id from customers>", "k": 12}]}'
 ```
 
-The request is `{customer_id, k}`; the reply is `{customer_id, items:
-[{article_id, prod_name, product_type_name, colour_group_name,
-index_group_name, garment_group_name, image_url, score}], retrieved,
-already_bought, timings_ms}`, with each stage's time (query, retrieve, filter,
-rank). `hops deployment create` on an existing name keeps its script: to deploy a
+The request is `{customer_id, k, recent}`, `recent` the page's clicks and
+purchases, newest first; the reply is `{customer_id, items: [{article_id,
+prod_name, product_type_name, colour_group_name, index_group_name,
+garment_group_name, image_url, score, session_similarity, reason}], retrieved,
+already_bought, session_items, timings_ms}`, with each stage's time (query,
+retrieve, filter, rank).
+
+The deployment follows the shopper's session: their clicks and purchases of the
+last day, read from `interactions` and joined with `recent`, since a click
+written a moment ago may not be in the online store yet. The item tower embeds
+them, minus the catalogue's mean embedding, which every item shares and which
+otherwise hides what tells a shoe from a sweater, and the result is blended into
+the query, so clicking a shoe retrieves shoes. Articles the session already
+showed and the shopper acted on are left out. Of the slots, half of those not
+left to exploring go to the candidates most like the session (`reason:
+session`), the rest to the highest purchase probability (`taste`), and a fifth
+to candidates drawn at random from the remainder (`explore`). One shoe click
+gives five to seven shoes in twelve. `hops deployment create` on an existing name keeps its script: to deploy a
 changed `predictor.py`, `hops deployment delete <name> --yes` and create it again. `measured` gets the p99 of 50 requests over random customers against
 `requirements.sla.realtime`: about 40 ms in the deployment on the example's
 data, most of it the vector search and the ranking.
@@ -105,8 +120,10 @@ data, most of it the vector search and the ranking.
 
 Copy `recommender/app/` to `<slug>/app/` and deploy it as **hops-app** says, in
 `python-agent-pipeline`. A customer picker (the 200 most active), product cards
-ranked by the deployment, with Click and Buy, and New recommendations, which
-records the cards shown and not touched as ignores. Every action is written to
+ranked by the deployment, with Click and Buy, which record the action and ask
+for new recommendations with the page's session, and New recommendations, which
+records the cards shown and not touched as ignores. Cards chosen for the session
+carry "Like your clicks" and exploration picks "Discover". Every action is written to
 `interactions` in the online store (Buy also to `transactions`, so the next
 request leaves the purchase out), which the deployment and the history panel
 read. Last lookup is the deployment's own time for the latest request, the sum

@@ -153,3 +153,4 @@ button.secondary { background: var(--accent-soft); color: var(--accent); }
 .history .what { font-size: 0.85rem; }
 .history .when { color: var(--muted); font-size: 0.75rem; }
 .timings { display: flex; gap: 0.5rem; flex-wrap: wrap; font-size: 0.8rem; color: var(--muted); }
+.product .body .badge { justify-self: start; }

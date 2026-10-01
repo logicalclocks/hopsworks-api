@@ -10,8 +10,8 @@ The course's two-tower model, in PyTorch on the CPU. A query tower (customer id,
 age, month) and an item tower (article id, garment group, index group) map into
 one 16-dimensional space, trained with an in-batch softmax loss. It
 creates the feature views the deployment reads (`retrieval`, `customers`,
-`articles`), registers the query tower as `query_model` with its recall@100 on
-the test split, and writes every article's embedding from the item tower into
+`articles`), registers the query tower as `query_model`, with the item tower
+beside it for session-aware queries and its recall@100 on the test split, and writes every article's embedding from the item tower into
 `candidate_embeddings`, whose vector index the deployment searches. Recall is
 measured on the real purchases of the test split only.
 """
@@ -104,11 +104,9 @@ def build_towers(n_customers: int, n_articles: int, n_garments: int, n_indexes: 
             )
 
         def forward(self, article, garment, index):
-            onehots = [
-                nn.functional.one_hot(garment, self.n_garments).float(),
-                nn.functional.one_hot(index, self.n_indexes).float(),
-            ]
-            return self.fnn(torch.cat([self.article(article), *onehots], dim=1))
+            garments = nn.functional.one_hot(garment, self.n_garments).float()
+            indexes = nn.functional.one_hot(index, self.n_indexes).float()
+            return self.fnn(torch.cat([self.article(article), garments, indexes], dim=1))
 
     return QueryTower, ItemTower
 
@@ -205,12 +203,25 @@ def embed_items(item_tower, articles: pl.DataFrame, vocabs: dict) -> np.ndarray:
         ).numpy()
 
 
-def save_query_model(query_tower, vocabs: dict, directory: Path) -> Path:
-    """TorchScript, so the deployment runs it without this file's class definitions."""
+def save_query_model(
+    query_tower, item_tower, vocabs: dict, directory: Path, item_mean: np.ndarray
+) -> Path:
+    """Both towers as TorchScript, so the deployment runs them without this file.
+
+    The item tower is there for the session: the deployment embeds the articles a
+    shopper just clicked into the query's space and steers retrieval with them.
+    `item_mean` is the catalogue's mean embedding, which the deployment subtracts
+    first: every item shares that one large direction, and only what is left
+    tells a shoe from a sweater.
+    """
     import torch
 
     torch.jit.script(query_tower).save(str(directory / "query_tower.pt"))
+    torch.jit.script(item_tower).save(str(directory / "item_tower.pt"))
     (directory / "customer_vocab.json").write_text(json.dumps(vocabs["customer_id"]))
+    item_vocabs = {c: vocabs[c] for c in ITEM_FEATURES}
+    (directory / "item_vocab.json").write_text(json.dumps(item_vocabs))
+    (directory / "item_mean.json").write_text(json.dumps(item_mean.tolist()))
     return directory
 
 
@@ -252,8 +263,20 @@ def main(argv: list[str] | None = None) -> int:
     query_tower, item_tower, vocabs, recall = train(frames, epochs=args.epochs)
     print(f"recall@100 on the test split: {recall:.3f}")
 
+    # The item tower embeds only the articles it was trained on; any other would
+    # share the unknown-id embedding and crowd every customer's neighbours.
+    catalogue = (
+        articles.select(ITEM_FEATURES)
+        .read(dataframe_type="polars")
+        .filter(pl.col("article_id").is_in(list(vocabs["article_id"])))
+    )
+    vectors = embed_items(item_tower, catalogue, vocabs)
+    candidates = catalogue.select("article_id").with_columns(embeddings=pl.Series(vectors.tolist()))
+
     with tempfile.TemporaryDirectory() as tmp:
-        directory = save_query_model(query_tower, vocabs, Path(tmp))
+        directory = save_query_model(
+            query_tower, item_tower, vocabs, Path(tmp), vectors.mean(axis=0)
+        )
         model = project.get_model_registry().torch.create_model(
             name="query_model",
             metrics={"recall_at_100": recall},
@@ -262,16 +285,6 @@ def main(argv: list[str] | None = None) -> int:
         )
         model.save(str(directory))
 
-    # The item tower embeds only the articles it was trained on; any other would
-    # share the unknown-id embedding and crowd every customer's neighbours.
-    catalogue = (
-        articles.select(ITEM_FEATURES)
-        .read(dataframe_type="polars")
-        .filter(pl.col("article_id").is_in(list(vocabs["article_id"])))
-    )
-    candidates = catalogue.select("article_id").with_columns(
-        embeddings=pl.Series(embed_items(item_tower, catalogue, vocabs).tolist())
-    )
     index = embedding.EmbeddingIndex()
     # The towers are trained on dot products; the index's default, L2 distance, ranks
     # the customer's least likely articles first for unnormalised vectors.
