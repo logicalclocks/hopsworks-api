@@ -25,6 +25,7 @@ from hsfs.core import vector_db_client
 from hsfs.embedding import EmbeddingIndex
 from hsfs.feature import Feature
 from hsfs.feature_group import FeatureGroup
+from opensearchpy.exceptions import TransportError
 
 
 class TestVectorDbClient:
@@ -551,13 +552,34 @@ class TestVectorDbClient:
         body = self.mock_os_wrapper._search.call_args.kwargs["body"]
         assert body["query"] == {
             "bool": {
-                "must": [
-                    {"knn": {"f2": {"vector": [1.0, 2.0, 3.0], "k": 5}}},
+                "must": [{"knn": {"f2": {"vector": [1.0, 2.0, 3.0], "k": 5}}}],
+                "filter": [
                     {"exists": {"field": "f2"}},
                     {"range": {"f3": {"gt": 10}}},
-                ]
+                ],
             }
         }
+
+    @pytest.mark.parametrize(
+        "lookup",
+        [
+            {"side_effect": TransportError(403, "security_exception", {})},
+            {"return_value": {"2249__embedding_default_embedding": {"mappings": {}}}},
+        ],
+        ids=["mapping_read_fails", "field_not_in_mapping"],
+    )
+    def test_find_neighbors_keeps_filter_in_knn_when_engine_unknown(self, lookup):
+        self.mock_os_wrapper._get_field_mapping.configure_mock(**lookup)
+
+        self.target._find_neighbors([1.0, 2.0, 3.0], feature=self.f2, k=5)
+        self.target._find_neighbors([1.0, 2.0, 3.0], feature=self.f2, k=5)
+
+        body = self.mock_os_wrapper._search.call_args.kwargs["body"]
+        assert body["query"]["knn"]["f2"]["filter"] == {
+            "bool": {"must": [{"exists": {"field": "f2"}}]}
+        }
+        # Nothing is cached, so the next search reads the mapping again.
+        assert self.mock_os_wrapper._get_field_mapping.call_count == 2
 
     def test_find_neighbors_reads_engine_once_per_field(self):
         self.target._find_neighbors([1.0, 2.0, 3.0], feature=self.f2, k=5)

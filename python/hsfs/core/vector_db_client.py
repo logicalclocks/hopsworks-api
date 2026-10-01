@@ -18,6 +18,7 @@ from __future__ import annotations
 import base64
 import contextlib
 import json
+import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
@@ -29,11 +30,14 @@ from hopsworks_common.util import _convert_event_time_to_timestamp
 from hsfs.constructor.filter import Filter, Logic
 from hsfs.constructor.join import Join
 from hsfs.core.opensearch import OpenSearchClientSingleton
+from opensearchpy.exceptions import TransportError
 
 
 if TYPE_CHECKING:
     import hsfs
     from hsfs.feature import Feature
+
+_logger = logging.getLogger(__name__)
 
 
 class VectorDbClient:
@@ -157,7 +161,10 @@ class VectorDbClient:
             knn_query = {"knn": {col_name: knn}}
         else:
             # The filters apply to the k nearest, so fewer than k can match.
-            knn_query = {"bool": {"must": [{"knn": {col_name: knn}}] + filter_clauses}}
+            # In filter context they do not add to the score, which the returned distance is computed from.
+            knn_query = {
+                "bool": {"must": [{"knn": {col_name: knn}}], "filter": filter_clauses}
+            }
         query = {
             "size": k,
             "query": knn_query,
@@ -227,23 +234,32 @@ class VectorDbClient:
 
         Decided per field, not per index: a default project index created before Hopsworks 5.1 keeps its nmslib fields and gets faiss fields from feature groups created since.
         A field without `method` was created by Hopsworks 3.7 and is on nmslib too.
+        When the mapping cannot be read or does not show the field, the filter stays inside the knn clause, as for every field created since 5.1, and nothing is cached.
         """
         key = (feature_store_id, index_name, col_name)
         if key not in VectorDbClient._field_knn_engine:
-            response = opensearch_client._get_field_mapping(
-                index=index_name, field=col_name
-            )
-            engine = None
-            for index_mapping in response.values():
-                engine = (
-                    index_mapping.get("mappings", {})
-                    .get(col_name, {})
-                    .get("mapping", {})
-                    .get(col_name, {})
-                    .get("method", {})
-                    .get("engine")
+            try:
+                response = opensearch_client._get_field_mapping(
+                    index=index_name, field=col_name
                 )
-            VectorDbClient._field_knn_engine[key] = engine
+            except (FeatureStoreException, VectorDatabaseException, TransportError):
+                _logger.debug(
+                    "Could not read the mapping of %s in %s", col_name, index_name
+                )
+                return True
+            mapping = next(
+                (
+                    index_mapping["mappings"][col_name]["mapping"][col_name]
+                    for index_mapping in response.values()
+                    if col_name in index_mapping.get("mappings", {})
+                ),
+                None,
+            )
+            if mapping is None:
+                return True
+            VectorDbClient._field_knn_engine[key] = mapping.get("method", {}).get(
+                "engine"
+            )
         return VectorDbClient._field_knn_engine[key] in self._knn_filter_engines
 
     def _convert_to_pandas_type(self, schema, result):
