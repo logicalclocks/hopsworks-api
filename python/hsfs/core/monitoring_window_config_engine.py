@@ -324,9 +324,11 @@ class MonitoringWindowConfigEngine:
             List of Descriptive statistics.
         """
         self._init_statistics_engine(entity._feature_store_id, entity.ENTITY_TYPE)
-        feature_names = self._profilable_feature_names(entity, feature_names)
-        if not feature_names:
-            return []
+        # No names means all features: the profiler then skips unprofilable ones itself.
+        if feature_names:
+            feature_names = self._profilable_feature_names(entity, feature_names)
+            if not feature_names:
+                return []
         (
             start_time,
             end_time,
