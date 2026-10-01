@@ -591,6 +591,40 @@ class TestFeatureView:
 
         assert get_vector.call_args.kwargs["n_processes"] == 2
 
+    def test_the_async_single_call_initialises_the_rest_client_it_asks_for(
+        self, mocker
+    ):
+        """As the blocking call does: asking for REST first must not set up SQL alone."""
+        import asyncio
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg1.select_features(),
+            featurestore_id=99,
+            featurestore_name="test_fs",
+        )
+        fv._vector_server._serving_initialized = False
+        fv._vector_db_client = None
+        init_serving = mocker.patch.object(fv, "init_serving")
+
+        async def answered(**_kwargs):
+            return [1]
+
+        mocker.patch.object(
+            fv._vector_server, "_get_feature_vector_async", side_effect=answered
+        )
+
+        asyncio.run(
+            fv.get_feature_vector_async(
+                entry={"primary_key": 1}, force_rest_client=True
+            )
+        )
+
+        assert init_serving.call_args.kwargs["init_rest_client"] is True
+
     def test_from_response_json_basic_info_deprecated(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hsfs.engine._get_type")

@@ -66,6 +66,40 @@ class TestPredictor:
         assert isinstance(pred, list)
         assert len(pred) == 0
 
+    def test_from_response_json_legacy_environment_field(
+        self, mocker, backend_fixtures
+    ):
+        # A backend that predates per-component environments sends only environment_dto.
+        # The SDK must still resolve the predictor's environment from it.
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        json = copy.deepcopy(
+            backend_fixtures["predictor"]["get_deployments_singleton"]["response"]
+        )
+        environment = json["items"][0].pop("predictor_environment")
+        json["items"][0]["environment_dto"] = environment
+
+        pred = predictor.Predictor.from_response_json(json)
+
+        assert pred[0].environment == environment["name"]
+
+    def test_to_dict_sends_both_environment_fields(self, mocker):
+        # predictorEnvironment for a current backend, environmentDTO so an older one
+        # still applies it.
+        self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
+        p = predictor.Predictor(
+            name="my_model",
+            model_server=PREDICTOR.MODEL_SERVER_PYTHON,
+            model_name="my_model",
+            model_version=1,
+            model_framework=MODEL.FRAMEWORK_SKLEARN,
+            environment="my-inference-pipeline",
+        )
+
+        d = p.to_dict()
+
+        assert d["predictorEnvironment"] == {"name": "my-inference-pipeline"}
+        assert d["environmentDTO"] == {"name": "my-inference-pipeline"}
+
     def test_from_response_json_singleton(self, mocker, backend_fixtures):
         # Arrange
         self._mock_serving_variables(mocker, SERVING_NUM_INSTANCES_NO_LIMIT)
@@ -95,7 +129,7 @@ class TestPredictor:
         assert p.model_server == p_json["model_server"]
         assert p.serving_tool == p_json["serving_tool"]
         assert p.api_protocol == p_json["api_protocol"]
-        assert p.environment == p_json["environment_dto"]["name"]
+        assert p.environment == p_json["predictor_environment"]["name"]
         assert p.script_file == p_json["predictor"]
         assert p.config_file == p_json["config_file"]
         assert isinstance(p.resources, resources.PredictorResources)
@@ -146,7 +180,7 @@ class TestPredictor:
             assert p.model_server == p_json["model_server"]
             assert p.serving_tool == p_json["serving_tool"]
             assert p.api_protocol == p_json["api_protocol"]
-            assert p.environment == p_json["environment_dto"]["name"]
+            assert p.environment == p_json["predictor_environment"]["name"]
             assert p.script_file == p_json["predictor"]
             assert p.config_file == p_json["config_file"]
             assert isinstance(p.resources, resources.PredictorResources)
@@ -190,7 +224,7 @@ class TestPredictor:
         assert p.model_server == p_json["model_server"]
         assert p.serving_tool == p_json["serving_tool"]
         assert p.api_protocol == p_json["api_protocol"]
-        assert p.environment == p_json["environment_dto"]["name"]
+        assert p.environment == p_json["predictor_environment"]["name"]
         assert p.script_file == p_json["predictor"]
         assert p.config_file == p_json["config_file"]
         assert isinstance(p.resources, resources.PredictorResources)
@@ -248,7 +282,7 @@ class TestPredictor:
             model_server=p_json["model_server"],
             serving_tool=p_json["serving_tool"],
             api_protocol=p_json["api_protocol"],
-            environment=p_json["environment_dto"]["name"],
+            environment=p_json["predictor_environment"]["name"],
             script_file=p_json["predictor"],
             config_file=p_json["config_file"],
             resources=p_json["predictor_resources"],
@@ -281,7 +315,7 @@ class TestPredictor:
         assert p.model_server == p_json["model_server"]
         assert p.serving_tool == p_json["serving_tool"]
         assert p.api_protocol == p_json["api_protocol"]
-        assert p.environment == p_json["environment_dto"]["name"]
+        assert p.environment == p_json["predictor_environment"]["name"]
         assert p.script_file == p_json["predictor"]
         assert p.config_file == p_json["config_file"]
         assert isinstance(p.resources, resources.PredictorResources)
@@ -726,7 +760,7 @@ class TestPredictor:
             p_json["batching_configuration"]["batching_enabled"]
         )
         assert kwargs["api_protocol"] == p_json["api_protocol"]
-        assert kwargs["environment"] == p_json["environment_dto"]["name"]
+        assert kwargs["environment"] == p_json["predictor_environment"]["name"]
         assert isinstance(kwargs["transformer"], transformer.Transformer)
         assert kwargs["transformer"].script_file == p_json["transformer"]
         assert isinstance(
