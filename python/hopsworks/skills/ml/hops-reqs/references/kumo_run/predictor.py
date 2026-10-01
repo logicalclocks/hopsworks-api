@@ -16,8 +16,8 @@ Response, per instance: `classes`, `probabilities` (one row per query row, in th
 of `classes`), `labels` (the most probable class of each row) and `seconds`, the
 model's own time.
 
-Settings (env): TORCH_NUM_THREADS, the pod's cores: PyTorch otherwise starts one thread
-per node core and oversubscribes the pod's CPU limit.
+PyTorch runs as many threads as the pod's CPU limit allows (TORCH_NUM_THREADS overrides
+it): by default it starts one per node core, which oversubscribes the limit.
 """
 
 import contextlib
@@ -25,6 +25,7 @@ import glob
 import logging
 import os
 import time
+from pathlib import Path
 
 import pandas as pd
 import sdm
@@ -37,6 +38,15 @@ logger = logging.getLogger("kumo_tabular")
 logging.basicConfig(level=logging.INFO)
 
 SIZE = "medium"  # register_kumo.py registers medium/classifier.pt
+
+
+def cpu_limit() -> int:
+    """The pod's CPU limit in whole cores (cgroup v2 cpu.max), at least one; one when unlimited."""
+    with contextlib.suppress(OSError, ValueError):
+        quota, period = Path("/sys/fs/cgroup/cpu.max").read_text().split()
+        if quota != "max":
+            return max(1, int(int(quota) / int(period)))
+    return 1
 
 
 def checkpoint():
@@ -52,7 +62,7 @@ def checkpoint():
 
 class Predict:
     def __init__(self):
-        torch.set_num_threads(int(os.environ.get("TORCH_NUM_THREADS", "1")))
+        torch.set_num_threads(int(os.environ.get("TORCH_NUM_THREADS", cpu_limit())))
         torch.set_grad_enabled(False)
         started = time.perf_counter()
         # The module is built on the meta device and the checkpoint's tensors assigned to
@@ -65,7 +75,10 @@ class Predict:
         self.model.models[Task.classification].load_state_dict(state, assign=True)
         self.model.eval()
         logger.info(
-            "Kumo Tabular %s ready in %.1fs", SIZE, time.perf_counter() - started
+            "Kumo Tabular %s ready in %.1fs, %d threads",
+            SIZE,
+            time.perf_counter() - started,
+            torch.get_num_threads(),
         )
 
     def _classify(self, instance):

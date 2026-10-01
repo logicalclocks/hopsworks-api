@@ -64,24 +64,24 @@ license: say so in the report.
 
 ```bash
 hops deployment create kumo_tabular --name runexample --script src/<slug_pkg>/predictor.py \
-  --env <slug>-inference-env --no-default-predictor
+  --env <slug>-inference-env --no-default-predictor --cores 2
 hops deployment start runexample
 ```
 
 The predictor loads the checkpoint from the model's files and answers
 `{"instances": [{context, query, target}]}` with each query row's class
-probabilities, its most probable class and the model's own time. It runs on the
-deployment's default resources, one core. The app builds the context from the
+probabilities, its most probable class and the model's own time. It runs on two
+cores, with as many PyTorch threads as the pod's CPU limit allows. The app builds the context from the
 game's rules: every situation (the hops' lane and what each lane holds in the
 next row) labelled with the move the rules call for, 30% of them held out so
 the model must decide rows it has never seen.
 
 From the app directory, `python measure.py` reports the share of held-out
 situations the model gets right and the round trip of single-state decisions;
-`measured` gets the p99 against `requirements.sla.realtime`. On one core the
-medium model takes about half a second per decision (a p99 near one second for
-the round trip) and gets 30 to 32 of the 33 held-out situations right; its
-answers vary a little from run to run. The context is one row per situation
+`measured` gets the p99 against `requirements.sla.realtime`. On two cores the
+medium model takes about a third of a second per decision (a p99 near 450 ms for
+the round trip; on one core, 0.6 s and one second) and gets 30 to 32 of the 33
+held-out situations right; its answers vary a little from run to run. The context is one row per situation
 without the distance to the row: the rules ignore distance, and as a column it
 cost both time and accuracy.
 

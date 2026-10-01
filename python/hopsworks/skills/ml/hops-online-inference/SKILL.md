@@ -28,7 +28,8 @@ The whole deploy→serve→smoke loop runs from the CLI — this is what the ter
 kickoff flow uses. The model must already be registered (`hops model list`):
 
 ```bash
-hops deployment create <model_name> --name <name> --version 1 --env pandas-inference-pipeline
+hops deployment create <model_name> --name <name> --version 1 --env pandas-inference-pipeline \
+  [--cores 2] [--memory 2048]                                  # limits per instance; default 1 core, 1024 MB
 hops deployment start <name>
 hops deployment status <name>                                   # poll until READY
 hops deployment predict <name> --data '{"instances": [{ <one known-good row> }]}'

@@ -297,7 +297,7 @@ run-example:
       task: classification
       target: move
     sla:
-      realtime: {p99_ms: 1500, throughput_qps: 2}
+      realtime: {p99_ms: 1000, throughput_qps: 2}
     consumers: ui
     data_sources: []
   data:

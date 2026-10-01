@@ -117,6 +117,26 @@ def test_deployment_create_via_model_deploy(mock_project):
     model.deploy.assert_called_once()
 
 
+def test_deployment_create_sets_the_cores_and_memory_it_is_given(mock_project):
+    mr = mock.MagicMock()
+    model = mock.MagicMock()
+    model.version = 1
+    model.deploy.return_value = mock.MagicMock()
+    mr.get_models.return_value = [model]
+    mock_project.get_model_registry.return_value = mr
+    result = CliRunner().invoke(cli, ["deployment", "create", "fraud", "--cores", "2"])
+    assert result.exit_code == 0, result.output
+    resources = model.deploy.call_args.kwargs["resources"]
+    assert (resources.limits.cores, resources.limits.memory) == (2, 1024)
+    assert (resources.requests.cores, resources.requests.memory) == (1, 1024)
+    assert resources.num_instances == 1
+
+    model.deploy.reset_mock()
+    result = CliRunner().invoke(cli, ["deployment", "create", "fraud"])
+    assert result.exit_code == 0, result.output
+    assert model.deploy.call_args.kwargs["resources"] is None
+
+
 def test_deployment_create_deploys_the_latest_version_whatever_the_order(mock_project):
     # The registry lists versions newest first, so the last one is version 1.
     versions = []
