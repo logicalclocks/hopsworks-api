@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import uuid
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -160,6 +161,7 @@ def test_the_first_question_offers_a_description_or_an_example_system():
         "recs-example": "Personalized recommendations: the products each shopper is likely to buy next (real-time)",
         "gis-example": "GIS military infrastructure finder: outlines aircraft, ships and harbours on a map of Sweden with a pretrained YOLO model (real-time)",
         "helpdesk-example": "Help desk agent: answers support questions from your documents and the customer's recent events (agentic)",
+        "run-example": "Hops Run with Kumo Tabular: a racing game flown by NVIDIA's pretrained in-context classifier, served as a deployment (real-time)",
     }
     for slug in labels:
         assert f"`{slug}`" in text
@@ -191,7 +193,8 @@ def test_an_example_system_records_synthetic_data_and_an_app(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "example", ["churn-example", "recs-example", "helpdesk-example", "gis-example"]
+    "example",
+    ["churn-example", "recs-example", "helpdesk-example", "gis-example", "run-example"],
 )
 def test_every_example_creates_a_valid_system(tmp_path, example):
     new_system = _load(REQS / "new_system.py")
@@ -1621,6 +1624,168 @@ def test_the_files_a_build_copies_in_pass_the_systems_rules(tmp_path):
     shutil.copytree(REQS / "gis_detector" / "app", target / "gis-app")
     done = _lint(target)
     assert done.returncode == 0, done.stdout + done.stderr
+
+
+# endregion
+
+
+# region Hops Run with Kumo Tabular
+
+
+KUMO = REQS / "kumo_run"
+
+
+def _kumo_rules(monkeypatch):
+    monkeypatch.syspath_prepend(str(KUMO / "app"))
+    return _load(KUMO / "app" / "game_rules.py", "game_rules")
+
+
+def test_the_rules_label_every_situation_with_a_move_the_hops_can_make(monkeypatch):
+    rules = _kumo_rules(monkeypatch)
+    every = rules.situations()
+    # Three lanes, each with an empty row or one or two of the three obstacle kinds.
+    assert len(every) == 3 * (1 + 3 * 3 + 3 * 9)
+    for lane, near in every:
+        move = rules.rule_move(lane, near)
+        assert not (move == "left" and lane == "left")
+        assert not (move == "right" and lane == "right")
+    assert rules.rule_move("centre", {"centre": "wall", "left": "wall"}) == "right"
+    assert rules.rule_move("left", {"left": "low"}) == "up"
+    assert rules.rule_move("right", {"right": "bar"}) == "down"
+    assert rules.rule_move("centre", {"left": "wall"}) == "hold"
+
+    context, held_out = rules.split()
+    assert len(context) + len(held_out) == len(every)
+    assert len(held_out) == round(len(every) * 0.3)
+    seen = {tuple(sorted(r.items())) for r in context}
+    for lane, near in held_out:
+        assert (
+            tuple(
+                sorted(
+                    {
+                        **rules.features(lane, near),
+                        "move": rules.rule_move(lane, near),
+                    }.items()
+                )
+            )
+            not in seen
+        )
+    assert set(context[0]) == {"lane", "left_lane", "centre_lane", "right_lane", "move"}
+
+    row, allowed = rules.query(
+        {
+            "lane": "left",
+            "airborne": True,
+            "ahead": [{"distance": 30, "lanes": {"left": "wall"}}],
+        }
+    )
+    assert row == {
+        "lane": "left",
+        "left_lane": "wall",
+        "centre_lane": "open",
+        "right_lane": "open",
+    }
+    assert allowed == ["hold", "right", "down"]
+    with pytest.raises(ValueError):
+        rules.query({"lane": "up"})
+
+
+def test_the_game_asks_kumo_and_keeps_one_board(monkeypatch, tmp_path):
+    from starlette.testclient import TestClient
+
+    _kumo_rules(monkeypatch)
+    monkeypatch.setenv("BOARD_FILE", str(tmp_path / "board.json"))
+    game = _load(KUMO / "app" / "app.py", "kumo_app_under_test")
+    asked = []
+
+    def classify(rows):
+        asked.append(rows)
+        return [
+            {"probabilities": {"left": 0.5, "right": 0.2, "hold": 0.3}, "seconds": 0.4}
+        ]
+
+    monkeypatch.setattr(game, "classify", classify)
+    monkeypatch.setattr(game, "_kumo", lambda: {"model": "kumo_tabular v1"})
+    client = TestClient(game.app)
+    page = client.get("/").text
+    assert "No runs yet" in page and "{{" not in page and "static/pilot.js" in page
+
+    # In the left lane the hops cannot go left: that probability is masked and the rest renormalised.
+    decision = client.post(
+        "/api/decide", json={"lane": "left", "airborne": False, "ahead": []}
+    ).json()
+    assert asked == [
+        [
+            {
+                "lane": "left",
+                "left_lane": "open",
+                "centre_lane": "open",
+                "right_lane": "open",
+            }
+        ]
+    ]
+    assert decision["moves"] == ["hold", "right", "up", "down"]
+    assert decision["probabilities"] == pytest.approx([0.6, 0.4, 0.0, 0.0])
+    assert decision["pilot"] == "kumo" and "kumo_tabular v1" in decision["model"]
+
+    # A player's run needs a takeoff key and the time to have flown it.
+    key = client.post("/api/runs/start").json()["runKey"]
+    too_far = client.post(
+        "/api/runs",
+        json={"name": "jim", "distance": 5000, "durationMs": 1000, "runKey": key},
+    )
+    assert too_far.status_code == 400
+    unknown = client.post(
+        "/api/runs",
+        json={
+            "name": "jim",
+            "distance": 10,
+            "durationMs": 500,
+            "runKey": "00000000-0000-0000-0000-000000000000",
+        },
+    )
+    assert unknown.status_code == 400
+    monkeypatch.setitem(game.started_runs, key, game.started_runs[key] - 10)
+    assert (
+        client.post(
+            "/api/runs",
+            json={"name": "jim", "distance": 300, "durationMs": 5000, "runKey": key},
+        ).json()["rank"]
+        == 1
+    )
+
+    pilot = client.post(
+        "/api/runs",
+        json={
+            "name": "Kumo Tabular",
+            "pilot": "kumo",
+            "distance": 200,
+            "durationMs": 4000,
+            "runKey": str(uuid.uuid4()),
+        },
+    ).json()
+    assert (pilot["number"], pilot["best"]) == (1, 200)
+    assert [r["pilot"] for r in pilot["runs"]] == ["player", "kumo"]
+    # The board is kept: a new process reads it back.
+    assert len(game.Board(tmp_path / "board.json").runs) == 2
+
+
+def test_kumo_is_registered_once_per_revision():
+    registration = _load(KUMO / "register_kumo.py", "register_kumo_under_test")
+    assert registration.FILES[0] == "medium/classifier.pt"
+
+    class Registry:
+        def __init__(self, descriptions):
+            self.models = [type("M", (), {"description": d})() for d in descriptions]
+
+        def get_models(self, name):
+            return self.models
+
+    revision = registration.REVISION
+    assert registration.already_registered(
+        Registry([f"... nvidia/Kumo-Tabular@{revision}"]), "m", revision
+    )
+    assert not registration.already_registered(Registry(["@other"]), "m", revision)
 
 
 # endregion

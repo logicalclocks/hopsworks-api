@@ -278,3 +278,53 @@ gis-example:
       large vehicles it finds, coloured by kind, with each one's confidence, a legend of the counts
       in view and the model's time for the last detection
     status: pending
+
+run-example:
+  label: "Hops Run with Kumo Tabular: a racing game flown by NVIDIA's pretrained in-context classifier, served as a deployment (real-time)"
+  system:
+    name: Hops Run with Kumo Tabular
+  requirements:
+    description: >-
+      Hops Run, a low-poly racing game: the hops flies a generated track through rows of walls,
+      low blocks and bars, and a player changes lane, jumps and ducks, or hands the game to NVIDIA
+      Kumo Tabular, which decides every move. Kumo Tabular is a pretrained in-context tabular
+      classifier from Hugging Face, registered in the Model Registry and served as a deployment;
+      each request carries the game state and a context of situations labelled by the game's rules.
+      Nothing is trained and no data is ingested, so there are no feature or training pipelines.
+      Players and the model share a leaderboard
+    system_type: realtime
+    problem:
+      task: classification
+      target: move
+    sla:
+      realtime: {p99_ms: 1500, throughput_qps: 2}
+    consumers: ui
+    data_sources: []
+  data:
+    # Built as hops-reqs/references/kumo-run.md says, from its kumo_run/ files.
+    status: skipped
+  features:
+    status: skipped
+  training:
+    required: false
+    pretrained:
+      repo: nvidia/Kumo-Tabular
+      revision: 4f0dca60610d68f933b978e17ff8f66be3ec3b5b
+      name: kumo_tabular
+      file: medium/classifier.pt
+    job: {name: run-example-register-kumo}
+    status: pending
+  inference:
+    mode: realtime
+    deployment: runexample
+    request: {context: "situations labelled with their move", query: "the game state as a row", target: move}
+    status: pending
+  app:
+    wanted: true
+    kind: custom
+    name: run-example-app
+    description: >-
+      Hops Run, a three.js racing game: a player flies it with the arrow keys, or hands it to Kumo
+      Tabular, which the page asks for every move through the app; the page shows the model's move
+      probabilities and its time per decision, and players and the model share a leaderboard
+    status: pending

@@ -40,7 +40,10 @@ retrieval over a vector index, a CatBoost ranker, one deployment, a storefront
 app), and the `detection` GIS app of the `gis-example` as
 [references/gis-detector.md](references/gis-detector.md) says (a pretrained YOLO26
 aerial detector of military infrastructure, registered from Hugging Face and
-embedded in a JavaScript map app; no data, features, training or deployment). Other `ranking` systems, `anomaly` and `agentic` tasks, and other agent
+embedded in a JavaScript map app; no data, features, training or deployment), and Hops Run with
+Kumo Tabular, the `run-example`, as [references/kumo-run.md](references/kumo-run.md) says (a
+racing game flown by NVIDIA's pretrained in-context tabular classifier, registered from Hugging
+Face and served as a deployment; no data, features or training). Other `ranking` systems, `anomaly` and `agentic` tasks, and other agent
 systems, are captured in full at `reqs` and stop there. The autonomous
 path runs only against `system.target.stage: development`.
 

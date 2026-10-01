@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hops Run</title>
+<meta name="description" content="Fly the hops through turns, loops and corkscrews, or watch NVIDIA Kumo Tabular, served on Hopsworks, fly it.">
+<meta name="theme-color" content="#F1EFEA">
+<link rel="icon" href="static/favicon.svg" type="image/svg+xml">
+<link rel="preload" href="static/fonts/GeistMono.ttf" as="font" type="font/ttf" crossorigin>
+<style>
+@font-face { font-family: Geist; src: url(static/fonts/Geist.ttf); font-weight: 100 900; }
+@font-face { font-family: 'Geist Mono'; src: url(static/fonts/GeistMono.ttf); font-weight: 100 900; }
+:root { --bg: #F1EFEA; --fg: #151513; --dim: #8A867D; --green: #0E8F65; --error: #DC4F24; --rule: #D9D5CC; --paper: #FCFBF8; --m: clamp(16px, 3.2vw, 40px); }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--fg); font-family: Geist, system-ui, sans-serif; }
+canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+.grain { position: fixed; inset: -200px; pointer-events: none; opacity: 0.12; mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+.flash { position: fixed; inset: 0; pointer-events: none; background: var(--error); opacity: 0; mix-blend-mode: multiply; }
+.hud { position: fixed; inset: 0; padding: var(--m); pointer-events: none; display: grid; grid-template-rows: auto 1fr auto; }
+.row { display: flex; justify-content: space-between; align-items: center; gap: 24px; }
+.row.bottom { align-items: flex-end; }
+.label { font-family: 'Geist Mono', monospace; font-size: 13px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); }
+.label b { color: var(--fg); font-weight: 500; }
+.mark { height: 32px; display: block; }
+.metric { font-family: 'Geist Mono', monospace; font-size: clamp(36px, 6vw, 60px); letter-spacing: -0.04em; line-height: 1; text-transform: uppercase; }
+.metric small { font-size: 0.4em; letter-spacing: 0.02em; color: var(--dim); margin-left: 6px; }
+.stack { display: grid; gap: 10px; }
+.right { text-align: right; justify-items: end; }
+/* Cockpit: corner brackets and edge ticks frame the view, a reticle banks with the hops during a
+   run, speed and jump read as graduated gauges. */
+.brackets { --c: var(--fg); --l: 28px; --w: 1.5px; background-repeat: no-repeat;
+  background-image: linear-gradient(var(--c), var(--c)), linear-gradient(var(--c), var(--c)), linear-gradient(var(--c), var(--c)), linear-gradient(var(--c), var(--c)),
+    linear-gradient(var(--c), var(--c)), linear-gradient(var(--c), var(--c)), linear-gradient(var(--c), var(--c)), linear-gradient(var(--c), var(--c));
+  background-position: 0 0, 0 0, 100% 0, 100% 0, 0 100%, 0 100%, 100% 100%, 100% 100%;
+  background-size: var(--l) var(--w), var(--w) var(--l), var(--l) var(--w), var(--w) var(--l), var(--l) var(--w), var(--w) var(--l), var(--l) var(--w), var(--w) var(--l); }
+.canopy { position: fixed; inset: calc(var(--m) * 0.45); pointer-events: none; opacity: 0.45; }
+.canopy::after { content: ''; position: absolute; inset: 0; --t: 10px; --w: 1.5px; background-repeat: no-repeat;
+  background-image: linear-gradient(var(--fg), var(--fg)), linear-gradient(var(--fg), var(--fg)), linear-gradient(var(--fg), var(--fg)), linear-gradient(var(--fg), var(--fg));
+  background-position: 50% 0, 50% 100%, 0 50%, 100% 50%;
+  background-size: var(--w) var(--t), var(--w) var(--t), var(--t) var(--w), var(--t) var(--w); }
+.reticle { position: fixed; left: 50%; top: 46%; width: 160px; transform: translate(-50%, -50%) rotate(var(--bank, 0deg)); pointer-events: none;
+  fill: none; stroke: var(--fg); stroke-width: 1.5; stroke-linecap: round; opacity: 0; transition: opacity 0.3s; }
+body.flying .reticle { opacity: 0.5; }
+.jump { display: grid; grid-template-columns: 56px 140px auto; align-items: center; gap: 10px; }
+.gauge { width: 140px; height: 2px; background: var(--rule); position: relative; }
+.gauge.ticks::after { content: ''; position: absolute; left: 0; right: 0; bottom: 3px; height: 5px; opacity: 0.6;
+  background: repeating-linear-gradient(90deg, var(--dim) 0 1px, transparent 1px 14px); }
+.gauge i { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--fg); }
+.gauge i.full { background: var(--green); }
+.mind { width: min(320px, 44vw); display: grid; gap: 8px; }
+.mind[hidden], #pilot[hidden] { display: none; }
+.move { display: grid; grid-template-columns: 56px 1fr 52px; align-items: center; gap: 10px; font-family: 'Geist Mono', monospace; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); }
+.move .bar { height: 2px; background: var(--rule); position: relative; }
+.move .bar i { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--dim); }
+.move .p { text-align: right; }
+.move.pick { color: var(--fg); }
+.move.pick .bar i { background: var(--green); }
+.move.off { opacity: 0.3; }
+#status.crash { color: var(--error); }
+#status.flying { color: var(--fg); }
+.center { position: fixed; inset: 0; display: grid; place-items: start center; pointer-events: none; padding: max(4vh, 28px) var(--m) var(--m); }
+.prompt { text-align: center; display: grid; gap: 18px; justify-items: center; }
+.prompt h1 { font-size: clamp(36px, 6vw, 72px); font-weight: 600; letter-spacing: -0.055em; margin: 0; line-height: 0.95; }
+.prompt[hidden] { display: none; }
+.keys { display: flex; gap: 24px; justify-content: center; flex-wrap: wrap; }
+.keys[hidden] { display: none; }
+.board { width: min(420px, 100%); margin: 6px 0 0; padding: 0; list-style: none; font-family: 'Geist Mono', monospace; font-size: 14px; text-align: left; background: color-mix(in srgb, var(--paper) 80%, transparent); border: 1px solid var(--rule); }
+.board li { display: grid; grid-template-columns: 34px 1fr auto; gap: 10px; padding: 7px 12px; border-top: 1px solid var(--rule); }
+.board li:first-child { border-top: 0; }
+.board li.you { background: color-mix(in srgb, var(--green) 12%, transparent); }
+.board li.empty { display: block; color: var(--dim); text-align: center; }
+.board li.gap { display: block; color: var(--dim); text-align: center; padding: 0 12px; line-height: 1.2; }
+.board .pilot a { color: inherit; pointer-events: auto; }
+.board .rank { color: var(--dim); }
+.board .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.board .bot { width: 14px; height: 14px; margin-right: 6px; vertical-align: -2px; fill: none; stroke: var(--green); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.board .pilot {color: var(--green); font-style: normal; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; }
+.board .dist { text-align: right; }
+.board .ver { color: var(--dim); font-style: normal; font-size: 11px; margin-left: 6px; }
+form.sign { display: flex; gap: 8px; pointer-events: auto; }
+form.sign[hidden] { display: none; }
+form.sign input { font: 500 15px 'Geist Mono', monospace; padding: 9px 12px; width: 220px; border: 1px solid var(--fg); background: var(--paper); color: var(--fg); }
+form.sign button { font: 500 13px 'Geist Mono', monospace; letter-spacing: 0.08em; text-transform: uppercase; padding: 9px 14px; border: 1px solid var(--fg); background: var(--fg); color: var(--paper); cursor: pointer; }
+.err { color: var(--error); }
+/* Switches between flying and watching the model fly; pilot.js turns it round in pilot mode. */
+.switch { pointer-events: auto; color: var(--green); text-decoration: none; }
+.switch:hover { text-decoration: underline; }
+.in-world .board, .in-world .board-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (max-width: 640px) { .mind { width: 100%; } .row.bottom { flex-direction: column-reverse; align-items: stretch; } .right { text-align: left; justify-items: start; } form.sign input { width: 160px; } }
+</style>
+<script type="importmap">{ "imports": { "three": "./static/vendor/three/three.module.js" } }</script>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<div class="grain"></div>
+<div class="flash"></div>
+<div class="canopy brackets"></div>
+<svg class="reticle" id="reticle" viewBox="-80 -14 160 28" aria-hidden="true"><path d="M-76 0h34M42 0h34M-12 8l12-7 12 7M-42 0v5M42 0v5"/></svg>
+<div class="hud">
+  <div class="row">
+    <img class="mark" src="static/hw.svg" alt="Hopsworks">
+    <a class="label switch" id="switch" href="?pilot=kumo">Let Kumo Tabular fly</a>
+    <div class="label">Hops Run <b>v{{VERSION}}</b></div>
+  </div>
+  <div></div>
+  <div class="row bottom">
+    <div class="stack">
+      <div class="metric" id="distance">0<small>m</small></div>
+      <div class="label jump"><span>Speed</span><span class="gauge ticks"><i id="speedbar"></i></span><span><b id="speed">0</b> m/s</span></div>
+      <div class="label jump"><span>Jump</span><span class="gauge ticks"><i id="charge"></i></span></div>
+    </div>
+    <div class="stack right">
+      <div class="mind" id="mind" hidden>
+        <div class="move" data-move="left"><span>left</span><span class="bar"><i></i></span><span class="p">-</span></div><div class="move" data-move="hold"><span>hold</span><span class="bar"><i></i></span><span class="p">-</span></div><div class="move" data-move="right"><span>right</span><span class="bar"><i></i></span><span class="p">-</span></div><div class="move" data-move="up"><span>up</span><span class="bar"><i></i></span><span class="p">-</span></div><div class="move" data-move="down"><span>down</span><span class="bar"><i></i></span><span class="p">-</span></div>
+      </div>
+      <div class="label" id="pilot" hidden></div>
+      <div class="label" id="status">Ready</div>
+    </div>
+  </div>
+</div>
+<div class="center">
+  <div class="prompt" id="prompt">
+    <h1>Hops Run</h1>
+    <div class="label" id="result" hidden></div>
+    <form class="sign" id="sign" hidden autocomplete="off">
+      <input id="name" name="name" maxlength="20" placeholder="Your name" aria-label="Your name" required>
+      <button type="submit">Add to board</button>
+    </form>
+    <div class="label" id="seat" hidden></div>
+    <div class="keys label"><span><b>Space</b> Fly</span><span>Steer ← → · Jump ↑ · Duck ↓</span></div>
+    <div class="label board-label">Leaderboard</div>
+    <ol class="board" id="board">{{BOARD}}</ol>
+  </div>
+</div>
+<!-- Before game.js, which enters pilot mode when pilot.js has defined the pilot. -->
+<script src="static/pilot.js"></script>
+<script type="module" src="static/game.js"></script>
+</body>
+</html>
