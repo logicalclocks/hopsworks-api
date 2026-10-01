@@ -823,6 +823,38 @@ class TestMonitoringWindowConfigEngine:
         assert lookup_kwargs["feature_names"] == ["amount"]
         stats_engine_mock._compute_and_save_monitoring_statistics.assert_not_called()
 
+    def test_run_single_window_monitoring_no_feature_names_profiles_all_features(
+        self, mocker
+    ):
+        """The built-in ingestion configuration lists no features, which means all of them."""
+        fg = _make_hudi_fg("DELTA")
+        fg.columns = [
+            Feature("amount", type="double"),
+            Feature("log_time", type="timestamp"),
+        ]
+        engine = mwce.MonitoringWindowConfigEngine()
+        mocker.patch.object(engine, "_init_statistics_engine")
+        mocker.patch.object(engine, "_fetch_entity_data_in_monitoring_window")
+        stats_engine_mock = MagicMock()
+        stats_engine_mock._get_by_time_window.return_value = None
+        computed_row = MagicMock()
+        computed_row.feature_descriptive_statistics = [
+            FeatureDescriptiveStatistics(feature_name="amount", count=10)
+        ]
+        stats_engine_mock._compute_and_save_monitoring_statistics.return_value = (
+            computed_row
+        )
+        engine._statistics_engine = stats_engine_mock
+
+        result = engine._run_single_window_monitoring(
+            entity=fg,
+            monitoring_window_config=_make_rolling_window_config(),
+            feature_names=[],
+        )
+
+        assert [fds.feature_name for fds in result] == ["amount"]
+        stats_engine_mock._compute_and_save_monitoring_statistics.assert_called_once()
+
     def test_run_single_window_monitoring_only_unprofilable_features_returns_empty(
         self, mocker
     ):
