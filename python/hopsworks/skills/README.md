@@ -35,6 +35,7 @@ into bucket folders:
 
 ## dashboards/ — apps and BI
 - [hops-app](dashboards/hops-app/SKILL.md) — Python app deployments (Streamlit + custom apps).
+- [hops-app-db](dashboards/hops-app-db/SKILL.md) — app / agent access to the project database (Python, SQL, Node.js).
 - [hops-superset](dashboards/hops-superset/SKILL.md) — Superset datasets / charts / dashboards.
 
 ## platform/ — cross-cutting platform knowledge and compute

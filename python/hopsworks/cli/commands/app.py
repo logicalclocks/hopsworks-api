@@ -7,6 +7,8 @@ Streamlit apps use ``--path``; git-backed Streamlit apps use ``--git-url`` and
 ``--entrypoint-script``; custom apps use ``--entrypoint-command``. Use
 ``--app-base-path`` to mount the app at ``/`` or a subpath like ``/myapp``,
 and ``--readiness-probe-path`` to override the readiness probe when needed.
+Apps get the project's online feature store database by default (created on
+demand at start, ``MYSQL_*`` env vars injected); pass ``--no-db-access`` to opt out.
 App metadata can also carry monitoring config (``enabled`` plus optional
 ``routes`` with ``path`` and ``matchType``), and ``hops app info`` prints the
 monitoring state and route list when it is present. Legacy apps that still
@@ -95,6 +97,7 @@ def app_info(ctx: click.Context, name: str) -> None:
         ["Entrypoint", getattr(a, "entrypoint_command", None) or "-"],
         ["App base path", getattr(a, "app_base_path", None) or "-"],
         ["Readiness", getattr(a, "readiness_probe_path", None) or "Default"],
+        ["Database access", "Yes" if getattr(a, "db_access", True) else "No"],
         ["Monitoring", _monitoring_state_text(a)],
         ["Monitoring routes", _monitoring_routes_text(a)],
         ["Description", getattr(a, "description", None) or "-"],
@@ -296,6 +299,15 @@ def _report_running(name: str, a: Any) -> None:
     help="Optional readiness probe path override.",
 )
 @click.option(
+    "--db-access/--no-db-access",
+    default=True,
+    show_default=True,
+    help=(
+        "Give the app access to the project's online feature store database: "
+        "create it on demand at start and inject the MYSQL_* env vars."
+    ),
+)
+@click.option(
     "--description",
     default=None,
     help="Optional app description.",
@@ -330,6 +342,7 @@ def app_create(
     entrypoint_script: str | None,
     app_base_path: str | None,
     readiness_probe_path: str | None,
+    db_access: bool,
     description: str | None,
     environment: str,
     memory: int,
@@ -355,6 +368,7 @@ def app_create(
         entrypoint_script: Relative entrypoint script for Streamlit git apps.
         app_base_path: Public mount path for the app.
         readiness_probe_path: Optional readiness probe path override.
+        db_access: Whether the app gets the project's online feature store database.
         description: Optional app description.
         environment: Python environment name.
         memory: Memory in MB.
@@ -423,6 +437,8 @@ def app_create(
         create_kwargs["app_base_path"] = app_base_path
     if readiness_probe_path is not None:
         create_kwargs["readiness_probe_path"] = readiness_probe_path
+    if not db_access:
+        create_kwargs["db_access"] = False
     create_kwargs = _accepted_kwargs(apps.create_app, create_kwargs)
     try:
         a = apps.create_app(**create_kwargs)
@@ -690,6 +706,7 @@ def _app_to_dict(a: Any) -> dict[str, Any]:
         "entrypoint_script": getattr(a, "entrypoint_script", None),
         "app_base_path": getattr(a, "app_base_path", None),
         "readiness_probe_path": getattr(a, "readiness_probe_path", None),
+        "db_access": bool(getattr(a, "db_access", True)),
         "entrypoint_command": getattr(a, "entrypoint_command", None),
         "monitoring": _monitoring_state_text(a),
         "monitoring_config": {

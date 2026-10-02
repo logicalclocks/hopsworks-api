@@ -109,6 +109,7 @@ class AppApi:
         entrypoint_script: str | None = None,
         app_base_path: str | None = None,
         readiness_probe_path: str | None = None,
+        db_access: bool = True,
     ) -> app.App:
         """Create a new Python app.
 
@@ -153,6 +154,14 @@ class AppApi:
                 ``/myapp``.
             readiness_probe_path: Optional readiness probe path to use instead of
                 the platform default.
+
+            db_access: Give the app access to the project's online feature store
+                database. Defaults to True: starting the app creates the database
+                if the project does not have one yet and injects the `MYSQL_USER`,
+                `MYSQL_PASSWORD_SECRET_NAME`, `MYSQL_DB`, `MYSQL_HOST` and `MYSQL_PORT`
+                environment variables into the app container, the same way agent
+                deployments get them. Set to False for apps that do not need a
+                database.
 
         Returns:
             The created App object.
@@ -243,6 +252,7 @@ class AppApi:
             config["appBasePath"] = app_base_path
         if readiness_probe_path is not None:
             config["readinessProbePath"] = readiness_probe_path
+        config["dbAccess"] = bool(db_access)
 
         path_params = ["project", _client._project_id, "jobs", name]
         headers = {"content-type": "application/json"}
