@@ -4372,7 +4372,8 @@ class FeatureGroup(FeatureGroupBase):
                 - key `run_validation` boolean value, set to `False` to skip validation temporarily on ingestion.
                 - key `save_report` boolean value, set to `False` to skip upload of the validation report to Hopsworks.
                 - key `ge_validate_kwargs` a dictionary containing kwargs for the validate method of Great Expectations.
-                - key `schema_validation` boolean value, set to `True` to validate the schema.
+                - key `schema_validation` boolean value, set to `False` to skip the schema validation of the DataFrame, or to `True` to run it.
+                  By default it runs, except for a Spark DataFrame written to a feature group that is not online enabled: that DataFrame is not validated, and a null primary key fails the write instead.
 
             wait:
                 Wait for job and online ingestion to finish before returning.
@@ -4471,7 +4472,7 @@ class FeatureGroup(FeatureGroupBase):
             self,
             feature_dataframe,
             write_options,
-            validation_options or {},
+            validation_options=validation_options or {},
             n_processes=n_processes,
         )
 
@@ -4616,7 +4617,8 @@ class FeatureGroup(FeatureGroupBase):
                 - key `save_report` boolean value, set to `False` to skip upload of the validation report to Hopsworks.
                 - key `ge_validate_kwargs` a dictionary containing kwargs for the validate method of Great Expectations.
                 - key `fetch_expectation_suite` a boolean value, by default `True`, to control whether the expectation suite of the feature group should be fetched before every insert.
-                - key `schema_validation` boolean value, set to `True` to validate the schema.
+                - key `schema_validation` boolean value, set to `False` to skip the schema validation of the DataFrame, or to `True` to run it.
+                  By default it runs, except for a Spark DataFrame written without `overwrite` to a feature group that is not online enabled: that DataFrame is not validated, and a null primary key fails the write instead.
 
             wait:
                 Wait for job and online ingestion to finish before returning.
