@@ -150,7 +150,9 @@ class DeltaEngine:
         self._feature_group_api = feature_group_api.FeatureGroupApi()
         self._variable_api = variable_api.VariableApi()
         self._project_api = project_api.ProjectApi()
-        self._setup_delta_rs()
+        # Spark reaches HopsFS through its own Hadoop configuration; delta-rs only runs without a Spark session.
+        if self._spark_session is None:
+            self._setup_delta_rs()
 
     def _save_delta_fg(
         self,
@@ -717,6 +719,14 @@ class DeltaEngine:
                 datanode_ip = self._variable_api._get_loadbalancer_external_domain(
                     "datanode"
                 )
+                if not datanode_ip:
+                    raise FeatureStoreException(
+                        "Client could not get datanode service hostname from "
+                        "loadbalancer_external_domain_datanode. "
+                        "The variable is either not set or empty in Hopsworks cluster configuration. "
+                        "The datanode and namenode load balancers may not be enabled on this cluster; "
+                        "contact your system administrator."
+                    )
                 _logger.debug(
                     f"Setting HOPSFS_CLOUD_DATANODE_HOSTNAME_OVERRIDE to {datanode_ip}"
                 )
@@ -750,7 +760,18 @@ class DeltaEngine:
         if _client._is_external():
             parsed_url = urlparse(location)
             try:
-                deltars_loc = f"hdfs://{self._variable_api._get_loadbalancer_external_domain('namenode')}:{parsed_url.port}{parsed_url.path}"
+                namenode = self._variable_api._get_loadbalancer_external_domain(
+                    "namenode"
+                )
+                if not namenode:
+                    raise FeatureStoreException(
+                        "Client could not get namenode service hostname from "
+                        "loadbalancer_external_domain_namenode. "
+                        "The variable is either not set or empty in Hopsworks cluster configuration. "
+                        "The datanode and namenode load balancers may not be enabled on this cluster; "
+                        "contact your system administrator."
+                    )
+                deltars_loc = f"hdfs://{namenode}:{parsed_url.port}{parsed_url.path}"
                 _logger.debug(
                     f"External client, using namenode url + delta-rs location: {deltars_loc}"
                 )
