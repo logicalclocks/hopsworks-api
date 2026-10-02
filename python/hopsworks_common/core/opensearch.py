@@ -60,7 +60,11 @@ def _handle_opensearch_exception(func):
                 client_wrapper._refresh_opensearch_connection()
             return func(*args, **kw)
         except RequestError as e:
-            caused_by = e.info.get("error") and e.info["error"].get("caused_by")
+            error = e.info.get("error") or {}
+            caused_by = error.get("caused_by")
+            # A knn query with the filter inside reports k out of range at the top level, without caused_by.
+            if not caused_by and error.get("type") == "illegal_argument_exception":
+                caused_by = error
             if caused_by and caused_by["type"] == "illegal_argument_exception":
                 client_wrapper = args[0] if args else None
                 if client_wrapper and isinstance(
@@ -193,6 +197,19 @@ class ProjectOpenSearchClient:
     def _search(self, index=None, body=None, options=None):
         return self._get_opensearch_client().search(
             body=body, index=index, params=OpensearchRequestOption.get_options(options)
+        )
+
+    @retry(
+        wait_exponential_multiplier=1000,
+        stop_max_attempt_number=5,
+        retry_on_exception=_is_timeout,
+    )
+    @_handle_opensearch_exception
+    def _get_field_mapping(self, index: str, field: str) -> dict:
+        # Not GET <index>/_mapping, which the read role of a shared feature group does not allow.
+        # No request options: opensearch-py before 2.3 sends the timeout as a query parameter, which this endpoint rejects.
+        return self._get_opensearch_client().indices.get_field_mapping(
+            fields=field, index=index
         )
 
     @retry(
