@@ -8,6 +8,9 @@ description: Use when writing Python or PySpark code for batch inference with Ho
 ## Contract
 - **Input:** a feature view + a registered model from the Model Registry.
 - **Output:** predictions, either logged (monitoring) or persisted (downstream consumption).
+  Inside a `/hops-build` system the output is also the `inference` block of `system.yaml`
+  (`mode: batch`): write that block and preserve every other line
+  ([hops-reqs/references/system-yaml.md](../hops-reqs/references/system-yaml.md)).
 - **Pre-condition:** the model is trained and registered; the feature view is materialized offline.
 
 ## Smoke-test (cheap pre/post-flight)
@@ -26,6 +29,15 @@ hops td list <fv-name>      # confirm a training dataset version exists for batc
 
 A batch inference pipeline is one of the three FTI pipelines (feature, training, inference): a separate program that runs on a schedule, makes non-time-critical predictions, and writes them to an inference store (a feature group, database, or object store) for asynchronous consumers. It defines a batch AI system. Log its inputs and predictions so you can monitor and debug it.
 
+**The model is embedded, never deployed.** A batch inference pipeline is a Python program
+(Pandas, Polars or PySpark) that downloads the model from the Model Registry and scores the whole
+batch in its own process. It does not create or call a model deployment: a deployment is a
+24/7 endpoint for requests that must be answered as they arrive, and a batch job calling one pays
+for a server that sits idle between runs, adds a network round trip per row or micro-batch, and
+couples the job's success to the endpoint's availability. The same holds for anything else that
+consumes a batch system: its app or dashboard reads the prediction feature group, and one that
+must score a what-if case loads the same model in-process.
+
 Batch inference in Hopsworks follows this pattern:
 
 1. Download a trained model from the Model Registry
@@ -38,6 +50,11 @@ Two approaches for retrieving batch data:
 - **Spine groups** — the older form, only for a view created with one as its left side
 
 Both Pandas and PySpark are supported. Spine groups require PySpark; `spine_df` does not.
+
+A batch system that scores every current entity roots its view at the entity group with one row per entity per scoring time (see **hops-fv**), and scores with `fv.get_batch_data(start_time=..., end_time=...)` over the run's snapshot.
+A view rooted at a labels group returns past labelled rows from a time range, not the entities to score today; score it with `spine_df`: today's entities with the time to compute features as of.
+The feature view does the point-in-time join, for training data and for batch data alike.
+Never join feature groups as of a time in pipeline code; if `get_batch_data` fails to return the rows, that is a platform bug to report, not a reason to join by hand.
 
 ---
 
@@ -505,6 +522,23 @@ preds_fg.insert(predictions_df)   # predictions_df = keys + event_time + predict
 ```
 
 ---
+
+## Tests
+
+The inference row of [hops-reqs/references/tests.md](../hops-reqs/references/tests.md) for batch.
+Unit, offline: the scoring window follows the cadence, the model's columns are
+assembled in training order, and only `data_policy.log_fields` are written
+(the template's `prediction_rows`). Integration: a small window scored into
+`<ident>_predictions_test_<run_id>` has the expected count, schema and value
+range, and is deleted.
+
+The SLA is measured by `benchmarks/benchmark_inference.py` from the hops-reqs
+template, never estimated: a `full_window` run over the declared window, timed
+end to end (read, score, write), passes when it fits between the inference cron
+fire and `sla.batch.must_finish_by` less the measured feature job. A scaled
+`sample` run is a screening estimate and never the basis of `met`. Batch
+inference runs in the training environment when it can, which removes
+training/serving skew in the model and transformation libraries by construction.
 
 ## Next Steps
 

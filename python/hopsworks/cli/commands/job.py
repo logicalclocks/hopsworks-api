@@ -167,6 +167,11 @@ def _job_to_dict(job: Any) -> dict[str, Any]:
 @click.option(
     "--app-path", "app_path", required=True, help="HDFS/HopsFS path to the main file."
 )
+@click.option(
+    "--env",
+    "environment",
+    help="Python environment name (sets environmentName; otherwise the type default).",
+)
 @click.option("--args", "app_args", help="Arguments passed to the program.")
 @click.option("--description", help="Free-form description of the job.")
 @click.pass_context
@@ -175,6 +180,7 @@ def job_create(
     name: str,
     job_type: str,
     app_path: str,
+    environment: str | None,
     app_args: str | None,
     description: str | None,
 ) -> None:
@@ -185,6 +191,7 @@ def job_create(
         name: Job name.
         job_type: One of ``PYTHON``/``PYSPARK``/``SPARK``/``DOCKER``.
         app_path: HopsFS path to the script or JAR.
+        environment: Python environment the job runs in; the type's default when omitted.
         app_args: Optional argument string passed to the job.
         description: Optional free-form description.
     """
@@ -195,6 +202,8 @@ def job_create(
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not load default config: {exc}") from exc
     config["appPath"] = app_path
+    if environment:
+        config["environmentName"] = environment
     if app_args:
         config["defaultArgs"] = app_args
     if description:
@@ -237,7 +246,10 @@ def job_create(
     help="HopsFS dir to upload a local script to (default: Resources/jobs/<name>).",
 )
 @click.option(
-    "--overwrite", is_flag=True, help="Overwrite the uploaded script if it exists."
+    "--overwrite/--no-overwrite",
+    default=True,
+    show_default=True,
+    help="Overwrite the uploaded script if it exists: a redeploy runs the new script.",
 )
 @click.pass_context
 def job_deploy(
@@ -576,7 +588,7 @@ def job_logs(
 @click.argument("name")
 @click.pass_context
 def job_history(ctx: click.Context, name: str) -> None:
-    """List past executions of a job (newest first).
+    """List past executions of a job (newest first), with how long each ran.
 
     Args:
         ctx: Click context.
@@ -589,10 +601,17 @@ def job_history(ctx: click.Context, name: str) -> None:
             getattr(e, "state", "?"),
             getattr(e, "final_status", "-"),
             getattr(e, "submission_time", "-"),
+            _duration_s(e),
         ]
         for e in executions
     ]
-    output.print_table(["ID", "STATE", "FINAL", "SUBMITTED"], rows)
+    output.print_table(["ID", "STATE", "FINAL", "SUBMITTED", "DURATION_S"], rows)
+
+
+def _duration_s(execution: Any) -> int | str:
+    """Seconds the execution ran, from the millisecond duration the backend reports."""
+    duration = getattr(execution, "duration", None)
+    return round(duration / 1000) if isinstance(duration, (int, float)) else "-"
 
 
 # Quartz cron (sec min hour day-of-month month day-of-week) for the common
@@ -633,9 +652,10 @@ def _expand_cron_alias(cron: str) -> str:
     type=int,
     default=None,
     help=(
-        "Per-fire offset for HOPS_START_TIME (data window start). Negative looks "
-        "back from the cron fire (e.g. -3600 = window starts 1h before fire). "
-        "Default (omitted) = previous cron fire (last execution time)."
+        "Per-fire offset for HOPS_START_TIME (data window start). Current servers "
+        "refuse negative values ('must be non-negative'); prefer omitting it and "
+        "deriving a look-back in the program from HOPS_END_TIME. Default "
+        "(omitted) = previous cron fire (last execution time)."
     ),
 )
 @click.option(
@@ -644,8 +664,8 @@ def _expand_cron_alias(cron: str) -> str:
     type=int,
     default=None,
     help=(
-        "Per-fire offset for HOPS_END_TIME (data window end). 0 = cron fire time. "
-        "Default (omitted) = cron fire time."
+        "Per-fire offset for HOPS_END_TIME (data window end). Current servers no "
+        "longer honour it; HOPS_END_TIME is the cron fire time."
     ),
 )
 @click.option(
@@ -686,8 +706,10 @@ def job_schedule(
     """Attach (or update) a Quartz cron schedule to ``name``.
 
     The cron interval is the firing cadence. The data window the job
-    consumes per fire is controlled by ``--start-offset-seconds`` /
-    ``--end-offset-seconds`` (relative to the fire time). ``--catchup``
+    consumes per fire is the previous fire to this one; current servers
+    refuse a negative ``--start-offset-seconds`` and ignore
+    ``--end-offset-seconds``, so a program that needs another window derives
+    it from ``HOPS_END_TIME``. ``--catchup``
     replays missed intervals after an outage; ``--max-catchup-runs``
     caps how many missed intervals are replayed.
 
@@ -909,6 +931,7 @@ def _execution_to_dict(execution: Any) -> dict[str, Any]:
         "state": getattr(execution, "state", None),
         "final_status": getattr(execution, "final_status", None),
         "submission_time": getattr(execution, "submission_time", None),
+        "duration_s": _duration_s(execution),
     }
 
 

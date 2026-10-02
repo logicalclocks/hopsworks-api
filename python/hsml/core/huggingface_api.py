@@ -52,6 +52,7 @@ class HuggingFaceApi:
         selected_formats: list[str] | None = None,
         selected_variants: list[str] | None = None,
         selected_filenames: list[str] | None = None,
+        revision: str | None = None,
     ) -> dict:
         """Kick off an asynchronous HuggingFace import.
 
@@ -68,6 +69,7 @@ class HuggingFaceApi:
             selected_formats: optional list of model formats to import
             selected_variants: optional list of variants to import
             selected_filenames: optional list of explicit filenames to import; when set, the other ``selected_*`` args are ignored
+            revision: optional Hub branch, tag or commit sha; the default branch when omitted
 
         Returns:
             backend response with the ``jobId`` of the started import
@@ -81,6 +83,8 @@ class HuggingFaceApi:
             body["selectedVariants"] = list(selected_variants)
         if selected_filenames:
             body["selectedFilenames"] = list(selected_filenames)
+        if revision:
+            body["revision"] = revision
 
         _client = client._get_instance()
         return _client._send_request(

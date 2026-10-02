@@ -94,6 +94,7 @@ def app_info(ctx: click.Context, name: str) -> None:
         ["Entrypoint script", getattr(a, "entrypoint_script", None) or "-"],
         ["Entrypoint", getattr(a, "entrypoint_command", None) or "-"],
         ["App base path", getattr(a, "app_base_path", None) or "-"],
+        ["Routing", _routing_text(a)],
         ["Readiness", getattr(a, "readiness_probe_path", None) or "Default"],
         ["Monitoring", _monitoring_state_text(a)],
         ["Monitoring routes", _monitoring_routes_text(a)],
@@ -699,6 +700,15 @@ def _app_to_dict(a: Any) -> dict[str, Any]:
         "description": getattr(a, "description", None),
         "app_url": getattr(a, "app_url", None),
     }
+
+
+def _routing_text(app: Any) -> str:
+    mode = getattr(app, "proxy_path_mode", None)
+    if mode == "ROOT":
+        return "root (the app serves at its base path)"
+    if mode == "PREFIX":
+        return "compatibility prefix (the app receives /hopsworks-api/pythonapp/...)"
+    return "-"
 
 
 def _auto_redeploy_text(a: Any) -> str:

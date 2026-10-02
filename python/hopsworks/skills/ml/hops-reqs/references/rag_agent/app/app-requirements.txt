@@ -1,0 +1,2 @@
+# The app runs in python-agent-pipeline, which ships fastapi, uvicorn and the
+# Hopsworks client; nothing else is needed.

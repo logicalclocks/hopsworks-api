@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import click
-from hopsworks.cli import joinspec, lineage, output, session
+from hopsworks.cli import joinspec, lineage, output, session, versions
 
 
 @click.group("fg")
@@ -132,20 +132,25 @@ def fg_preview(
         featurestore: Pin lookup to this feature store by name.
         columns: Optional comma-separated column projection.
     """
-    fg = _get_fg(ctx, name, version, featurestore)
-    try:
-        df = fg.read(online=online, dataframe_type="pandas").head(n)
-    except Exception as exc:  # noqa: BLE001 - SDK raises a bag of types
-        raise click.ClickException(f"Could not read feature group: {exc}") from exc
+    import pandas as pd  # noqa: PLC0415 - pandas import cost is high
 
+    fg = _get_fg(ctx, name, version, featurestore)
+    query = fg.select_all()
     if columns:
         wanted = [c.strip() for c in columns.split(",") if c.strip()]
-        missing = [c for c in wanted if c not in df.columns]
+        known = {f.name for f in fg.features}
+        missing = [c for c in wanted if c not in known]
         if missing:
             raise click.BadParameter(
                 f"Unknown column(s): {', '.join(missing)}", param_hint="--columns"
             )
-        df = df[wanted]
+        query = fg.select(wanted)
+    try:
+        # show() pushes the limit into the query, so a ten-row preview of a
+        # large table reads ten rows rather than the whole group.
+        df = pd.DataFrame(query.show(n, online=online))
+    except Exception as exc:  # noqa: BLE001 - SDK raises a bag of types
+        raise click.ClickException(f"Could not read feature group: {exc}") from exc
 
     if output.JSON_MODE:
         output.print_json(df.to_dict(orient="records"))
@@ -263,7 +268,7 @@ def _get_fg(
     last_exc: Exception | None = None
     for fs in stores:
         try:
-            fg = fs.get_feature_group(name, version=version)
+            fg = versions.feature_group(fs, name, version)
         except Exception as exc:  # noqa: BLE001 - not in this store, try the next
             last_exc = exc
             continue
@@ -668,20 +673,24 @@ def fg_derive(
     """
     fs = session.get_feature_store(ctx)
     try:
-        base = fs.get_feature_group(base_fg)
+        base = versions.feature_group(fs, base_fg, None)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Base FG '{base_fg}' not found: {exc}") from exc
+    if base is None:
+        raise click.ClickException(f"Base FG '{base_fg}' not found.")
 
     query = base.select_all()
     parents = [base]
     for raw in joins:
         spec = _parse_join(raw)
         try:
-            other = fs.get_feature_group(spec.fg_name, version=spec.version)
+            other = versions.feature_group(fs, spec.fg_name, spec.version)
         except Exception as exc:  # noqa: BLE001
             raise click.ClickException(
                 f"Joined FG '{spec.fg_name}' not found: {exc}"
             ) from exc
+        if other is None:
+            raise click.ClickException(f"Joined FG '{spec.fg_name}' not found.")
         parents.append(other)
         query = query.join(
             other.select_all(),

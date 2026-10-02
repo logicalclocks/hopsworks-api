@@ -8,19 +8,21 @@ Skills are routed by their **directory name** (e.g. `hops-fg`). They are grouped
 into bucket folders:
 
 ## data/ — discovery, sources, SQL, Spark, table maintenance
+- [hops-airflow](data/hops-airflow/SKILL.md) — orchestrate Hopsworks jobs with Airflow DAGs.
 - [hops-data-discovery](data/hops-data-discovery/SKILL.md) — find FGs, data sources, search, files.
 - [hops-data-sources](data/hops-data-sources/SKILL.md) — mount external tables / DLTHub ingestion.
+- [hops-delta](data/hops-delta/SKILL.md) — maintain Delta feature groups: optimize, vacuum, write modes and layout.
 - [hops-dbt](data/hops-dbt/SKILL.md) — dbt models over feature groups in Trino, with tests and an execution graph.
 - [hops-spark](data/hops-spark/SKILL.md) — PySpark on Hopsworks (Spark Connect + Delta).
+- [hops-synthetic-data](data/hops-synthetic-data/SKILL.md) — seeded synthetic batch tables or event streams into feature groups.
 - [hops-table-maintenance](data/hops-table-maintenance/SKILL.md) — Table layout maintenance for offline feature groups.
 - [hops-trino-sql](data/hops-trino-sql/SKILL.md) — Trino SQL via the `hops` CLI.
 - [hops-unstructured-data](data/hops-unstructured-data/SKILL.md) — parse files into a feature group.
 
 ## ml/ — FTI pipeline architecture: feature store, training, inference
-- [hops-reqs](ml/hops-reqs/SKILL.md) — specify an ML system into `reqs/`.
+- [hops-reqs](ml/hops-reqs/SKILL.md) — specify and build an ML system recorded in one `system.yaml` (what `/hops-build` loads).
 - [hops-features](ml/hops-features/SKILL.md) — specify a feature pipeline.
-- [hops-eda](ml/hops-eda/SKILL.md) — EDA before training.
-- [hops-eda-checklist](ml/hops-eda-checklist/SKILL.md) — reference: EDA dimensions (profiling, target, leakage).
+- [hops-eda](ml/hops-eda/SKILL.md) — EDA before training: profiler, leakage first, the full checklist.
 - [hops-fg](ml/hops-fg/SKILL.md) — feature groups.
 - [hops-fv](ml/hops-fv/SKILL.md) — feature views, training data, online vectors.
 - [hops-transformations](ml/hops-transformations/SKILL.md) — built-in/custom/on-demand transforms + transformation store.

@@ -83,6 +83,7 @@ class App:
         latest_branch=None,
         entrypoint_script=None,
         app_base_path=None,
+        proxy_path_mode=None,
         readiness_probe_path=None,
         public_access=None,
         public_token=None,
@@ -117,6 +118,7 @@ class App:
         self._latest_branch = latest_branch
         self._entrypoint_script = entrypoint_script
         self._app_base_path = app_base_path
+        self._proxy_path_mode = proxy_path_mode
         self._readiness_probe_path = readiness_probe_path
         self._public_access = public_access or False
         self._public_token = public_token
@@ -265,6 +267,11 @@ class App:
     def app_base_path(self) -> str | None:
         """Configured app base path."""
         return self._app_base_path
+
+    @property
+    def proxy_path_mode(self) -> str | None:
+        """ROOT when the proxy strips the browser mount before the app sees a request, PREFIX when it forwards it."""
+        return self._proxy_path_mode
 
     @public
     @property

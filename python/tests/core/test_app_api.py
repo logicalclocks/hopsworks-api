@@ -181,6 +181,7 @@ class TestAppApiCreate:
         assert body["description"] == "FastAPI demo"
         assert body["appBasePath"] == "/myapp"
         assert body["readinessProbePath"] == "/health"
+        assert body["proxyPathMode"] == "ROOT"
 
     def test_create_custom_app_without_path_omits_app_path(self, mock_client, api):
         api.create_app(

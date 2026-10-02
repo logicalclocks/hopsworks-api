@@ -112,12 +112,26 @@ def test_fg_preview(mock_project):
 
     fs = mock_project.get_feature_store.return_value
     fg = _feature_group("transactions", features=[_feature("id", "bigint")])
-    fg.read.return_value = pd.DataFrame({"id": [1, 2, 3, 4, 5]})
+    fg.select_all.return_value.show.return_value = pd.DataFrame({"id": [1, 2, 3]})
     fs.get_feature_group.return_value = fg
     result = CliRunner().invoke(cli, ["fg", "preview", "transactions", "--n", "3"])
     assert result.exit_code == 0, result.output
-    fg.read.assert_called_with(online=False, dataframe_type="pandas")
+    # A bounded read: the limit goes to the query, never a whole-table read.
+    fg.select_all.return_value.show.assert_called_with(3, online=False)
+    fg.read.assert_not_called()
     assert "id" in result.output
+
+
+def test_fg_preview_online(mock_project):
+    import pandas as pd
+
+    fs = mock_project.get_feature_store.return_value
+    fg = _feature_group("transactions", features=[_feature("id", "bigint")])
+    fg.select_all.return_value.show.return_value = pd.DataFrame({"id": [1]})
+    fs.get_feature_group.return_value = fg
+    result = CliRunner().invoke(cli, ["fg", "preview", "transactions", "--online"])
+    assert result.exit_code == 0, result.output
+    fg.select_all.return_value.show.assert_called_with(10, online=True)
 
 
 def test_fg_preview_truncates_wide_columns(mock_project):
@@ -125,7 +139,9 @@ def test_fg_preview_truncates_wide_columns(mock_project):
 
     fs = mock_project.get_feature_store.return_value
     fg = _feature_group("transactions", features=[_feature("id", "bigint")])
-    fg.read.return_value = pd.DataFrame({"id": [1], "emb": [[0.1] * 1536]})
+    fg.select_all.return_value.show.return_value = pd.DataFrame(
+        {"id": [1], "emb": [[0.1] * 1536]}
+    )
     fs.get_feature_group.return_value = fg
     result = CliRunner().invoke(cli, ["fg", "preview", "transactions"])
     assert result.exit_code == 0, result.output
@@ -137,29 +153,31 @@ def test_fg_preview_columns_projection(mock_project):
     import pandas as pd
 
     fs = mock_project.get_feature_store.return_value
-    fg = _feature_group("transactions", features=[_feature("id", "bigint")])
-    fg.read.return_value = pd.DataFrame({"id": [1, 2], "emb": [[0.1] * 4, [0.2] * 4]})
+    fg = _feature_group(
+        "transactions",
+        features=[_feature("id", "bigint"), _feature("emb", "array<double>")],
+    )
+    fg.select.return_value.show.return_value = pd.DataFrame({"id": [1, 2]})
     fs.get_feature_group.return_value = fg
     result = CliRunner().invoke(
         cli, ["fg", "preview", "transactions", "--columns", "id"]
     )
     assert result.exit_code == 0, result.output
+    fg.select.assert_called_with(["id"])
     assert "id" in result.output
     assert "emb" not in result.output  # projected out
 
 
 def test_fg_preview_bad_column_errors(mock_project):
-    import pandas as pd
-
     fs = mock_project.get_feature_store.return_value
     fg = _feature_group("transactions", features=[_feature("id", "bigint")])
-    fg.read.return_value = pd.DataFrame({"id": [1, 2]})
     fs.get_feature_group.return_value = fg
     result = CliRunner().invoke(
         cli, ["fg", "preview", "transactions", "--columns", "nope"]
     )
     assert result.exit_code != 0
     assert "nope" in result.output
+    fg.select.assert_not_called()
 
 
 # --- fv --------------------------------------------------------------------

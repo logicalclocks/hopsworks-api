@@ -10,6 +10,7 @@ list is `hops skills list --bucket data`.
 - [hops-delta](hops-delta/SKILL.md) — Maintain Delta feature groups: optimize, vacuum, checkpoint, and choosing a write mode and layout.
 - [hops-dbt](hops-dbt/SKILL.md) — Run dbt models over feature groups in Trino, validate with data tests, produce an execution graph.
 - [hops-spark](hops-spark/SKILL.md) — PySpark on Hopsworks (Spark Connect + Delta config).
+- [hops-synthetic-data](hops-synthetic-data/SKILL.md) — Generate seeded synthetic batch tables or live event streams into feature groups with Polars.
 - [hops-table-maintenance](hops-table-maintenance/SKILL.md) — Diagnose and fix table layout in offline feature groups (compaction, clustering, snapshot cleanup).
 - [hops-trino-sql](hops-trino-sql/SKILL.md) — Query feature store tables via Trino SQL with the `hops` CLI.
 - [hops-unstructured-data](hops-unstructured-data/SKILL.md) — Parse unstructured files into a feature group.

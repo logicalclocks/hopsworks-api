@@ -1,6 +1,6 @@
 ---
 name: hops-features
-description: Create and schedule/run a feature pipeline program from additional user input. Build on the ML system requirements.
+description: Design, build, backfill and schedule a feature pipeline program (batch or streaming) that writes model-independent features to feature groups. Auto-invoke when the user wants a feature pipeline or new features computed from a data source; inside /hops-build it builds the features phase from system.yaml.
 ---
 
 # Feature Pipeline
@@ -11,8 +11,16 @@ A feature pipeline reads from data sources, applies model-independent transforma
 
 ## Contract
 - **Input:** the ML-system requirements (inputs, new features to compute, freshness/SLAs, framework preferences, dependencies).
-- **Output:** a feature-pipeline specification written as a local markdown file in `reqs/` (`reqs/feature-pipeline.md`, `reqs/training-pipeline.md`, or `reqs/inference-pipeline.md`).
+- **Output:** a feature pipeline program, its sink feature group(s), and its job (scheduled or continuous). Inside a `/hops-build` system the output is also one entry of `features.pipelines` in `system.yaml`: write that entry and preserve every other line ([hops-reqs/references/system-yaml.md](../hops-reqs/references/system-yaml.md)).
 - **Pre-condition:** the ML-system requirements exist (see hops-reqs); data sources and feature groups are known.
+
+## Where a feature is computed
+
+`requirements.features[].computed_in` is one of:
+
+- `feature_pipeline`: a reusable, model-independent feature, computed here in a scheduled batch job.
+- `streaming`: the same, but freshness demands a continuous job (PySpark Structured Streaming).
+- `on_demand`: needs a request-time parameter; not built here. It is attached to the feature view in training and executed at inference.
 
 ## Ask the user
 
@@ -20,7 +28,7 @@ Use AskUserQuestion (step 3) about every aspect of the plan until you reach a sh
 
 ## Steps
 
-1. The ML system requirements step should provide the inputs, and the new features that will be computed as outputs, and feature freshness requirements, SLAs (uptime in number of nines), preferred processing frameworks (for batch: DuckDB, Polars, Pandas, Spark; for streaming: Spark Streaming), and any ideas for solutions. Check if the feature pipeline has dependencies on the outputs of other feature pipelines that should run before it and write down the dependencies.
+1. The ML system requirements step should provide the inputs, and the new features that will be computed as outputs, and feature freshness requirements, SLAs (uptime in number of nines), preferred processing frameworks (for batch: Polars, Pandas, Spark; for streaming: Spark Streaming), and any ideas for solutions. Check if the feature pipeline has dependencies on the outputs of other feature pipelines that should run before it and write down the dependencies.
 
 2. Understand any existing source code in the repo and the available data sources and feature groups.
 
@@ -28,11 +36,9 @@ Use AskUserQuestion (step 3) about every aspect of the plan until you reach a sh
 
 4. Sketch out the data sources, frameworks that will be used, and transformations that will be performed to build or modify to complete the implementation. Actively look for opportunities to extract deep modules that can be tested in isolation. A deep module (as opposed to a shallow module) is one which encapsulates a lot of functionality in a simple, testable interface which rarely changes. Check with the user that these modules match their expectations. Check with the user which modules they want tests written for.
 
-5. Once you have a complete understanding of the problem and solution, use the template below to write the specification. The reqs (pipeline requirements) should be written as a local markdown file at reqs/feature-pipeline.md, reqs/training-pipeline.md or reqs/inference-pipeline.md. Create the reqs/ directory if it doesn't exist. Do NOT call any external service.
+5. Once you have a complete understanding of the problem and solution, write the pipeline (inside a system, from `src/<slug_pkg>/feature_pipeline.py` in the hops-reqs template: one program for backfill and increments, the window from `HOPS_START_TIME` and `HOPS_END_TIME`), run the backfill as a job, verify what landed from outside the program with bounded reads (`hops sql` for a count and the newest event time, `hops fg preview` for a sample), attach the schedule (the server's default window, previous fire to this fire; no offsets, see **hops-job**) and failure alert, and record the pipeline. A feature pipeline is a Python job with **Polars** in `python-feature-pipeline`: it starts in seconds and is much faster than Spark at the sizes a system is built at. PySpark in `spark-feature-pipeline` only for a continuous pipeline (Structured Streaming), or when the window's estimated peak memory (rows x columns x bytes per value x 3, the **hops-fg** sizing rule) does not fit a Python job's memory even when the window is split into chunks; say which in the `decisions` line. Both bases already hold what a pipeline needs, so a feature pipeline never clones an environment. Create every feature group the pipeline writes with `statistics_config=False`: from a Python job, Hopsworks computes feature group statistics in a PySpark job (`<fg>_<version>_compute_stats`) after every insert, which costs a Spark driver and executor for each write. Compute a summary the system needs (row counts, null rates, ranges) in Polars in the pipeline instead.
 
-## Specification template
-
-The `reqs/` file covers these sections.
+## What the pipeline design covers
 
 ### Data
 
@@ -47,12 +53,15 @@ Will it be a simple job execution or a scheduled job (optionally with incrementa
 ### Sink
 One or more feature groups should be the sink of the feature pipelines. Use the **hops-fg** skill to create and write them (online vs offline, schema, provenance). For external/source data, use **hops-data-sources**; for PySpark processing, **hops-spark**. Set a `description=` on each sink feature group and on every `Feature(...)`: undescribed features land as empty envelopes in the UI and are not discoverable.
 
+- **Lineage.** A feature group computed from other feature groups is created with `parents=[fg1, fg2, ...]`, every group the pipeline reads, so its provenance in Hopsworks reaches back to the data it came from. Record them as `writes.parents` in the pipeline's `system.yaml` entry.
+- **No feature groups for point-in-time correctness.** Write each feature at its natural grain with an `event_time` for when the value became true: one row per entity per change or per window. Do not materialize per-prediction-time snapshots of every entity, or a pre-joined table of features and labels, to make training data point-in-time correct. The feature view does that: when the root and every joined feature group have an `event_time`, training data is a point-in-time join, taking for each root row the latest value of each joined feature at or before that row's event time (see **hops-fv**). The labels go in their own feature group, one row per entity per prediction time with the label as of the horizon, and its primary key is the entity plus the prediction time, so the view can join each label to exactly its snapshot. An entity snapshot the source provides (one row per customer per day) is natural data, not a derived snapshot, and is the root of a batch system's view.
+
 ### Data processing framework
 Which framework was chosen based on expected workload size, feature freshness requirements, and user preferences.
 
-### Testing decisions
+### Tests
 
-Can you save some sample input data that can be used to implement an integration test that reads the sample data, transforms it, writes it to a test feature group created when needed, read the data written, and then delete test feature group. Add unit test for transformations that should be contracts for downstream consumers of the engineered features.
+The feature row of [hops-reqs/references/tests.md](../hops-reqs/references/tests.md). Unit tests, offline, in `tests/unit/test_features.py`: each transformation on fixture rows gives the expected output, nulls included; applying it twice equals once where it should; the output columns and types match the sink's declared features (a contract for downstream consumers); validation rejects a crafted bad row. An integration test, `tests/integration/test_feature_pipeline.py`, runs the pipeline on the fixture sample or a bounded window into `<ident>_test_<run_id>`, asserts the row count, unique keys and no nulls in non-nullable features, runs it again to show no duplicates, and deletes the test group. The pipeline is `met` only when both pass and `tests.last_run` records the run id and commit.
 
 ## Next Steps
 

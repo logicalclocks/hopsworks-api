@@ -9,9 +9,10 @@ commands and ``hops login``.
 
 from __future__ import annotations
 
-import contextlib
 import io
 import logging
+import sys
+import threading
 import urllib.parse
 from typing import TYPE_CHECKING, Any
 
@@ -129,15 +130,46 @@ def login(
     return _quiet_login(hopsworks, kwargs)
 
 
+class _ThreadSilencedStdout(io.TextIOBase):
+    """Stdout that discards writes from threads that asked for silence.
+
+    ``contextlib.redirect_stdout`` swaps ``sys.stdout`` for the whole process, so
+    a login in a background thread (``hops build`` logs in while the user answers
+    its first question) would swallow the main thread's prompts.
+    """
+
+    _silenced = threading.local()
+
+    def __init__(self, real: Any) -> None:
+        self.real = real
+
+    def write(self, text: str) -> int:
+        if getattr(self._silenced, "on", False):
+            return len(text)
+        return self.real.write(text)
+
+    def flush(self) -> None:
+        self.real.flush()
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.real, name)
+
+
 def _quiet_login(hopsworks: Any, kwargs: dict[str, Any]) -> Project:
     """``hopsworks.login`` without its ``print`` banner.
 
     The SDK prints "Logged in to project, explore it here <url>" to stdout on
     every login. A CLI reports through ``output.*`` and its stdout carries the
-    command payload (``--json``, pipelines), so the banner is discarded.
+    command payload (``--json``, pipelines), so the banner is discarded, for
+    the calling thread only.
     """
-    with contextlib.redirect_stdout(io.StringIO()):
+    if not isinstance(sys.stdout, _ThreadSilencedStdout):
+        sys.stdout = _ThreadSilencedStdout(sys.stdout)
+    _ThreadSilencedStdout._silenced.on = True
+    try:
         return hopsworks.login(**kwargs)
+    finally:
+        _ThreadSilencedStdout._silenced.on = False
 
 
 def verify(

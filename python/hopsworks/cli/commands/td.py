@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import click
-from hopsworks.cli import lineage, output, session
+from hopsworks.cli import lineage, output, session, versions
 
 
 @click.group("td")
@@ -49,11 +49,13 @@ def td_list(
     version = fv_version if fv_version is not None else version_opt
     fs = session.get_feature_store(ctx)
     try:
-        fv = fs.get_feature_view(feature_view, version=version)
+        fv = versions.feature_view(fs, feature_view, version)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(
             f"Feature view '{feature_view}' not found: {exc}"
         ) from exc
+    if fv is None:
+        raise click.ClickException(f"Feature view '{feature_view}' not found.")
 
     try:
         tds = fv.get_training_datasets()
@@ -414,9 +416,12 @@ def td_remove_keyword(
 def _get_fv(ctx: click.Context, name: str, version: int | None) -> Any:
     fs = session.get_feature_store(ctx)
     try:
-        return fs.get_feature_view(name, version=version)
+        fv = versions.feature_view(fs, name, version)
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Feature view '{name}' not found: {exc}") from exc
+    if fv is None:
+        raise click.ClickException(f"Feature view '{name}' not found.")
+    return fv
 
 
 def _format_splits(td: Any) -> str:

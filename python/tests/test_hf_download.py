@@ -90,6 +90,43 @@ def test_hf_download_passes_selection_args_through(monkeypatch):
     assert kwargs["selected_variants"] == ["UD-Q4_K_XL"]
 
 
+def test_hf_download_passes_revision_and_reports_the_resolved_one(monkeypatch, capsys):
+    mr = _make_registry()
+    mr._huggingface_api._start_import.return_value = {"jobId": "job-r"}
+    mr._huggingface_api._get_status.return_value = {
+        "status": "COMPLETED",
+        "revision": "8f3a1c9e0b2d4f6a8c0e2a4b6d8f0a2c4e6b8d0f",
+    }
+    mr._model_api._get_models.return_value = [MagicMock(version=1)]
+    monkeypatch.setattr("time.sleep", lambda _: None)
+
+    mr.hf_download("Qwen/Qwen2.5-0.5B", revision="v1.0", poll_interval=0)
+
+    assert mr._huggingface_api._start_import.call_args.kwargs["revision"] == "v1.0"
+    assert "at revision 8f3a1c9e0b2d" in capsys.readouterr().out
+
+
+def test_start_import_sends_revision_only_when_given(monkeypatch):
+    import json
+
+    from hsml.core import huggingface_api
+
+    sent = []
+    fake_client = MagicMock()
+    fake_client._project_id = 1
+    fake_client._send_request.side_effect = lambda *a, **kw: sent.append(
+        json.loads(kw["data"])
+    )
+    monkeypatch.setattr(huggingface_api.client, "_get_instance", lambda: fake_client)
+    api = huggingface_api.HuggingFaceApi()
+
+    api._start_import(119, "Qwen/Qwen2.5-0.5B")
+    api._start_import(119, "Qwen/Qwen2.5-0.5B", revision="main")
+
+    assert "revision" not in sent[0]
+    assert sent[1]["revision"] == "main"
+
+
 def test_hf_download_resolves_sanitised_model_name(monkeypatch):
     """Sanitised model name lookup after a successful import.
 

@@ -1,0 +1,4 @@
+# Only what the environment lacks. python-agent-pipeline already ships fastapi
+# and uvicorn; a clone of python-app-pipeline needs both pinned here.
+fastapi==0.141.1
+uvicorn==0.52.4
