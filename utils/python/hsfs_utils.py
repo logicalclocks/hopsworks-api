@@ -7,7 +7,7 @@ import json
 import os
 import sys
 import traceback
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import fsspec.implementations.arrow as pfs
@@ -367,6 +367,13 @@ def offline_fg_materialization(
     )
     low_offsets = _build_offsets(low_offsets_string)
 
+    if not starting_offset_string:
+        # Nothing said where this run should start, so the low watermark would be the whole
+        # retained topic. Bound it by when the feature group came into existence instead.
+        low_offsets = _offsets_since_creation(
+            entity, low_offsets, write_options_of(job_conf)
+        )
+
     # validate and reconcile saved offsets against current topic state
     starting_offset_string = json.dumps(
         _reconcile_offsets(
@@ -592,6 +599,74 @@ def _pending_offsets(
     if not _path_exists(spark, pending_location):
         return None
     return spark.read.json(pending_location).toJSON().first()
+
+
+def _timestamp_ms(date_string: str) -> int:
+    """Milliseconds since the epoch for a date the backend serialized.
+
+    Parsed here rather than through `hsfs.util`, deliberately. This file ships in the
+    spark-feature-pipeline image beside whatever SDK that image happens to carry, so a
+    parser reached through the SDK is a second thing that has to be current for the floor
+    below to work at all — and when it is not, the floor does not fail loudly, it quietly
+    falls back to reading the whole topic.
+
+    `fromisoformat` also accepts the whole of the backend's `yyyy-MM-dd'T'HH:mm:ss.SSSXXX`
+    format, including the `+02:00` rendering of that trailing `XXX`, which the SDK's
+    pattern list does not.
+    """
+    parsed = datetime.fromisoformat(date_string.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        # The backend always sends an offset; anything that does not is read as UTC
+        # rather than as the job container's local time.
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return int(parsed.timestamp() * 1000)
+
+
+def _offsets_since_creation(entity, low_offsets: dict, write_options: dict) -> dict:
+    """Offsets a first materialization run should start from, floored at the feature group's creation.
+
+    A run gets told where to start by `-initialCheckPointString`, which only the Python
+    client passes, or by the offsets file a previous run saved. With neither, the start
+    falls back to the topic's low watermark, and the topic is by default
+    `<project>_onlinefs`, shared by every online-enabled feature group in the project: the
+    run reads the whole retained history of all of them just to drop nearly all of it in
+    the featureGroupId filter.
+
+    No record of a feature group can predate the feature group, so its creation time is a
+    sound floor. Kafka stamps a record with the producing client's clock by default, so a
+    client whose clock lags the backend's could stamp one just before that time;
+    `initial_offset_margin_hours` (1 by default) is how far back the floor is moved to
+    absorb the skew, and raising it costs only a longer read.
+
+    The low watermark offsets are returned unchanged whenever the floor cannot be
+    established, so a failed lookup reads too much rather than too little.
+    """
+    if not low_offsets or not entity.created:
+        return low_offsets
+
+    # Everything the floor is derived from is under the guard: an unparseable margin or
+    # creation time is as much a reason to fall back as a broker that will not answer,
+    # and none of the three may take the materialization job down with it.
+    try:
+        margin_hours = float(write_options.get("initial_offset_margin_hours", 1))
+        timestamp = _timestamp_ms(entity.created) - int(margin_hours * 60 * 60 * 1000)
+        offsets = _build_offsets(
+            kafka_engine._kafka_get_offsets_for_times(
+                topic_name=entity._online_topic_name,
+                feature_store_id=entity.feature_store_id,
+                offline_write_options={},
+                timestamp=timestamp,
+            )
+        )
+    except Exception as e:
+        print(f"Failed to look offsets up by creation time: {e}")
+        return low_offsets
+
+    if not offsets:
+        return low_offsets
+
+    print(f"No saved offsets, starting from the feature group's creation: {offsets}")
+    return offsets
 
 
 def _build_offsets(initial_check_point_string: str):
