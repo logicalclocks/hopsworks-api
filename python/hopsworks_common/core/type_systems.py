@@ -22,13 +22,13 @@ import decimal
 from typing import TYPE_CHECKING, Literal, NewType
 
 import pytz
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core.constants import (
     HAS_PANDAS,
     HAS_POLARS,
     HAS_PYARROW,
 )
 from hopsworks_common.decorators import _uses_polars
-from hsfs.client.exceptions import FeatureStoreException
 
 
 if TYPE_CHECKING:

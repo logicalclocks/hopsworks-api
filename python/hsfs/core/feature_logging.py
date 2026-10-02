@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 import humps
 from hopsworks_apigen import public
+from hopsworks_common import constants
 from hsfs import feature_group, util
 from hsfs.feature import Feature
 
@@ -104,6 +105,46 @@ class FeatureLogging:
     @property
     def extra_logging_columns(self) -> list[Feature] | None:
         return self._extra_logging_columns
+
+    @property
+    def _is_legacy(self) -> bool:
+        """Whether this logging row predates FSTORE-1871, i.e. still carries a separate transformed feature group."""
+        return self._transformed_features is not None
+
+    @staticmethod
+    def _uses_legacy_model_column(feature_names: set[str] | list[str]) -> bool:
+        """Whether a logging feature group stores the model identity in the pre-FSTORE-1871 hsml_model column.
+
+        A feature group that carries both hsml_model and model_name classifies as current schema, so
+        corrupted combined feature groups are never written to as if they were legacy.
+        """
+        return (
+            constants.FEATURE_LOGGING.LEGACY_MODEL_COLUMN_NAME in feature_names
+            and constants.FEATURE_LOGGING.MODEL_COLUMN_NAME not in feature_names
+        )
+
+    @staticmethod
+    def _prediction_column_names(
+        prediction_feature_names: list[str],
+        logging_feature_group_feature_names: list[str],
+    ) -> dict[str, str]:
+        """Map each label column to the column name it takes in the logging feature group.
+
+        Current logging feature groups store predictions under predicted_<label>; legacy
+        (pre-FSTORE-1871) ones store them under the bare label name. Mixed schemas resolve
+        to the prefixed name so corrupted feature groups are treated as current schema.
+        """
+        mapping = {}
+        for feature_name in prediction_feature_names:
+            prefixed_name = constants.FEATURE_LOGGING.PREFIX_PREDICTIONS + feature_name
+            if (
+                prefixed_name not in logging_feature_group_feature_names
+                and feature_name in logging_feature_group_feature_names
+            ):
+                mapping[feature_name] = feature_name
+            else:
+                mapping[feature_name] = prefixed_name
+        return mapping
 
     @public
     def get_feature_group(
