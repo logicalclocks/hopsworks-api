@@ -451,6 +451,7 @@ def _break(path: list, value):
         (["inference", "measured", 0, "execution"], None, "no execution"),
         (["decisions", 0, "by"], "robot", "user or claude"),
         (["verify", "status"], "ok", "verify.status"),
+        (["training", "estimate"], "soon", "training.estimate"),
     ],
 )
 def test_the_validator_rejects_each_broken_rule(path, value, expected):
@@ -715,6 +716,20 @@ def test_status_estimates_from_measurements_before_defaults():
     }
     assert rows["train"]["basis"] == "budget wall_clock"
     assert status.fmt_duration(rows["train"]["remaining"]) == "40m"
+    # The build's own estimate for a phase wins over every default.
+    doc = _example()
+    doc["inference"] = {"status": "pending", "estimate": "12m"}
+    rows = {r["phase"]: r for r in status.rows(doc, now)}
+    assert status.fmt_duration(rows["infer"]["remaining"]) == "12m"
+    # In progress with no finished run: the estimate less the time spent.
+    doc = _in_progress()
+    doc["training"]["runs"] = []
+    doc["training"]["estimate"] = "30m"
+    rows = {
+        r["phase"]: r for r in status.rows(doc, status.parse_time("2026-09-22T09:53Z"))
+    }
+    assert rows["train"]["basis"] == "estimate"
+    assert status.fmt_duration(rows["train"]["remaining"]) == "10m"
     # A pretrained model is only downloaded and registered: 5 minutes, not the budget.
     doc = _example()
     doc["training"] = {"required": False, "status": "pending"}

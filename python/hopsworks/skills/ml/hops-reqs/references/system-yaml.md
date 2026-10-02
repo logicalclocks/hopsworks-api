@@ -340,11 +340,18 @@ verify     pending                   ~3m
 3 of 7 phases done; about 50m left of ~1h59m; ends about 11:01 unless something escalates
 ```
 
+Every phase block may carry `estimate`, the build's own expectation for that phase (`5m`,
+`1h30m`): written for every phase when the requirements are met, from what they say (a
+pretrained model is only downloaded; a training budget is its wall clock), and corrected
+when the phase starts if the build knows better by then. The Factory page and `status.py`
+show it in place of the defaults below.
+
 Estimates, in order of preference:
 
 - A phase that ran before (a rerun or a resume) is estimated from its own `started` and `finished`.
 - A training round in progress: remaining runs (`max_runs` less the finished and failed rows) times the average run so far, capped by what is left of `wall_clock`.
 - An inference round in progress: remaining attempts times the average attempt so far.
+- The phase's own `estimate`, less the time spent since it started.
 - Defaults before anything has run: reqs 10 min; data 5 min per existing feature group and 20 min per new connector, file or synthetic source; features 15 min per pipeline; train the budget's `wall_clock`, or 5 min for a pretrained model (`training.required: false`), which is only downloaded and registered; infer 3 min per attempt; app 10 min (none when `app.wanted` is false); verify 3 min.
 
 An estimate is always labelled as one and excludes escalations, review rounds and a raised budget.

@@ -18,6 +18,8 @@ import yaml
 SCHEMA_VERSION = 1
 SYSTEM_YAML = Path(__file__).resolve().parents[2] / "system.yaml"
 
+# A phase's estimate: 90s, 20m, 8h or 1h30m, or a bare number of minutes.
+ESTIMATE = re.compile(r"\d+(\.\d+)?|(?=\d)(\d+h)?(\d+m)?(\d+s)?")
 PHASE_STATUS = {
     "requirements": {"pending", "met", "stale"},
     # skipped: a system with a pretrained model and data only at request time.
@@ -349,6 +351,11 @@ def validate(doc: object) -> list[str]:
                 problems.append(f"{key} must be a mapping")
                 continue
             _check_status(problems, key, block, allowed)
+            estimate = block.get("estimate")
+            if estimate is not None and not ESTIMATE.fullmatch(str(estimate)):
+                problems.append(
+                    f"{key}.estimate {estimate!r} is not a duration such as 5m or 1h30m"
+                )
     if "requirements" not in doc:
         problems.append("requirements is missing")
     else:

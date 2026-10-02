@@ -113,6 +113,10 @@ def _took(block: dict, now: datetime) -> timedelta | None:
 
 
 def _default_estimate(phase: str, doc: dict) -> timedelta:
+    # The build's own estimate for the phase, written when it knows better than a default.
+    own = parse_duration(_block(doc, dict(PHASES)[phase]).get("estimate"))
+    if own is not None:
+        return own
     req = _block(doc, "requirements")
     budget = req.get("budget") or {}
     minutes = DEFAULT_MINUTES
@@ -162,6 +166,9 @@ def _running_estimate(phase: str, block: dict, doc: dict, now: datetime) -> tupl
         wall = parse_duration(train_budget.get("wall_clock")) or timedelta(minutes=60)
         left_by_wall = max(timedelta(0), wall - elapsed)
         if not done:
+            own = parse_duration(block.get("estimate"))
+            if own is not None:
+                return min(max(timedelta(0), own - elapsed), left_by_wall), "estimate"
             return left_by_wall, "budget wall_clock"
         per_run = elapsed / len(done)
         left_runs = max(0, int(train_budget.get("max_runs", 5)) - len(done))
@@ -170,6 +177,9 @@ def _running_estimate(phase: str, block: dict, doc: dict, now: datetime) -> tupl
         measured = block.get("measured") or []
         attempts = int((budget.get("inference") or {}).get("max_attempts", 5))
         if not measured:
+            own = parse_duration(block.get("estimate"))
+            if own is not None:
+                return max(timedelta(0), own - elapsed), "estimate"
             return (
                 timedelta(minutes=attempts * DEFAULT_MINUTES["infer_attempt"]),
                 "default",

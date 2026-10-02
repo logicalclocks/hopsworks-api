@@ -185,6 +185,12 @@ example's story, recorded in `system.yaml`, as a person building a convincing de
 against a 0.15 prevalence baseline; the `small` tier, the default budget, `data_policy` fixtures
 generated). Print the requirements back in a few lines and continue without asking.
 
+When the requirements are met, write each phase's `estimate` (a duration such as `5m` or `1h30m`,
+`python <slug>/set.py 'training.estimate=5m'`) from what the requirements say: a pretrained model
+that is only downloaded takes minutes, a training round its budget's wall clock, a phase that is
+`skipped` nothing. When a phase starts, correct its `estimate` if you know better by then. The
+Factory page shows these estimates as the build runs.
+
 When `requirements.reference_code` is set, the system is based on that sample code: read it before
 writing any. A path is read where it is (the examples' reference code is under
 `/opt/hopsworks-api/python/hopsworks/skills/ml/hops-reqs/references/` in the terminal); a URL is
