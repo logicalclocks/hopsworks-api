@@ -402,7 +402,7 @@ class TestDeployment:
         d.save()
 
         # Assert
-        mock_serving_engine_save.assert_called_once_with(d, 600)
+        mock_serving_engine_save.assert_called_once_with(d, 600, False)
 
     def test_save(self, mocker, backend_fixtures):
         # Arrange
@@ -417,7 +417,63 @@ class TestDeployment:
         d.save(await_update=await_update)
 
         # Assert
-        mock_serving_engine_save.assert_called_once_with(d, await_update)
+        mock_serving_engine_save.assert_called_once_with(d, await_update, False)
+
+    def test_save_new_version(self, mocker, backend_fixtures):
+        # Arrange
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mock_serving_engine_save = mocker.patch(
+            "hsml.engine.serving_engine.ServingEngine._save"
+        )
+
+        # Act
+        d.save(new_version=True)
+
+        # Assert
+        mock_serving_engine_save.assert_called_once_with(d, 600, True)
+
+    # versions
+
+    def test_get_versions(self, mocker, backend_fixtures):
+        # Arrange
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mock_get_versions = mocker.patch(
+            "hsml.core.serving_api.ServingApi._get_versions", return_value=[]
+        )
+
+        # Act
+        versions = d.get_versions()
+
+        # Assert
+        assert versions == []
+        mock_get_versions.assert_called_once_with(d)
+
+    def test_rollback(self, mocker, backend_fixtures):
+        # Arrange
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mock_rollback = mocker.patch(
+            "hsml.engine.serving_engine.ServingEngine._rollback"
+        )
+
+        # Act
+        d.rollback(2, await_update=5)
+
+        # Assert
+        mock_rollback.assert_called_once_with(d, 2, 5)
+
+    def test_rollback_accepts_a_deployment_version(self, mocker, backend_fixtures):
+        p = self._get_dummy_predictor(mocker, backend_fixtures)
+        d = deployment.Deployment(predictor=p)
+        mock_rollback = mocker.patch(
+            "hsml.engine.serving_engine.ServingEngine._rollback"
+        )
+
+        d.rollback(mocker.Mock(version=3), await_update=5)
+
+        mock_rollback.assert_called_once_with(d, 3, 5)
 
     # start
 
