@@ -10,11 +10,13 @@ from __future__ import annotations
 import importlib.util
 import io
 import json
+import os
 import re
 import shutil
 import subprocess
 import sys
 import tarfile
+import textwrap
 import uuid
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -39,6 +41,7 @@ DASHBOARD = (
     SKILLS / "dashboards" / "hops-superset" / "references" / "dashboard_program.py"
 )
 APP = SKILLS / "dashboards" / "hops-app" / "references" / "app_skeleton"
+TRINO_JS = SKILLS / "dashboards" / "hops-app" / "references" / "trino_js"
 ENTRYPOINTS = [
     TEMPLATE / "src" / "slug_pkg" / "evaluate.py",
     TEMPLATE / "src" / "slug_pkg" / "feature_pipeline.py",
@@ -314,6 +317,7 @@ def test_skills_install_delivers_the_protocol_and_the_template_to_every_agent(tm
         assert (base / "hops-reqs/references/system_template/gitignore").is_file()
         assert (base / "hops-reqs/references/example-system.yaml").is_file()
         assert (base / "hops-app/references/app_skeleton/static/app.js").is_file()
+        assert (base / "hops-app/references/trino_js/package.json").is_file()
         assert (base / "hops-synthetic-data/SKILL.md").is_file()
         assert not (base / "hops-eda-checklist").exists()
 
@@ -1461,6 +1465,78 @@ def test_the_app_skeleton_uses_only_relative_urls():
     for url in re.findall(r'(?:src|href)="([^"]+)"', page):
         assert not url.startswith(("/", "http")), url
     assert "cdn" not in page.lower() and "https://" not in page
+
+
+def test_trino_env_exports_the_connection_for_eval(tmp_path, monkeypatch):
+    ca = tmp_path / "ca_chain.pem"
+    ca.write_text("CA", encoding="utf-8")
+    script = (TRINO_JS / "trino_env.py").read_text(encoding="utf-8")
+    (tmp_path / "trino_env.py").write_text(
+        script.replace("/tmp/ca_chain.pem", str(ca)), encoding="utf-8"
+    )
+    # The login banner must not reach stdout, which the entrypoint evals.
+    (tmp_path / "hopsworks.py").write_text(
+        textwrap.dedent(
+            """
+            class _Trino:
+                def get_basic_auth(self):
+                    return "Demo__meb10000", "p'w $(x) \\\\"
+                def get_host(self):
+                    return "coordinator.trino.service.consul"
+                def get_port(self):
+                    return 8443
+
+            class _Project:
+                name = "Demo"
+                def get_trino_api(self):
+                    return _Trino()
+
+            def login():
+                print("Logged in to project Demo")
+                return _Project()
+            """
+        ),
+        encoding="utf-8",
+    )
+    exports = subprocess.run(
+        [sys.executable, "trino_env.py"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=True,
+        env={**os.environ, "PYTHONPATH": str(tmp_path)},
+    ).stdout
+    shown = subprocess.run(
+        [
+            "bash",
+            "-c",
+            'eval "$1"; printf "%s\\n" "$TRINO_SERVER" "$TRINO_USER" "$TRINO_PASSWORD" "$TRINO_CA" "$TRINO_SCHEMA"',
+            "_",
+            exports,
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.splitlines()
+    assert shown == [
+        "https://coordinator.trino.service.consul:8443",
+        "Demo__meb10000",
+        "p'w $(x) \\",
+        str(ca),
+        "demo_featurestore",
+    ]
+
+
+def test_the_trino_js_app_queries_on_the_server_and_uses_relative_urls():
+    server = (TRINO_JS / "server.js").read_text(encoding="utf-8")
+    script = (TRINO_JS / "static" / "app.js").read_text(encoding="utf-8")
+    page = (TRINO_JS / "static" / "index.html").read_text(encoding="utf-8")
+    assert '"/health"' in server and "ssl: { ca:" in server
+    assert "trino-client" not in script and "service.consul" not in script
+    for url in re.findall(r"fetch\(\s*[`\"']([^`\"']+)", script):
+        assert not url.startswith(("/", "http")), url
+    for url in re.findall(r'(?:src|href)="([^"]+)"', page):
+        assert not url.startswith(("/", "http")), url
 
 
 # endregion

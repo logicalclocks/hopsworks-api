@@ -179,6 +179,7 @@ include = [
     "skills/**/*.txt",
     "skills/**/*.html",
     "skills/**/*.js",
+    "skills/**/*.json",
     "skills/**/*.css",
     "skills/**/*.svg",
     "skills/**/*.png",

@@ -142,6 +142,58 @@ three things are app-specific:
   model above.
 - **Calling a deployment** (real-time systems only): check `deployment.is_running()` before `predict`, and surface a message rather than blocking (see cold start below).
 
+### Reading Trino from a JavaScript app
+
+The browser cannot query Trino itself: `trino.service.consul` resolves only
+inside the cluster, Trino takes passwords only over HTTPS (port 8080 answers
+`403 Authentication over HTTP is not enabled`), and the password must not reach
+the page. A Node server in the app holds the connection and answers the UI's
+relative `fetch("api/...")` calls with fixed queries, so the browser sends
+parameters, never SQL. `python-agent-pipeline` ships Node.
+
+The connection comes from the SDK: `trino_env.py` logs in, which writes the
+cluster CA to `/tmp/ca_chain.pem`, and prints the coordinator URL, the user
+`<project>__<username>`, its password from the secrets store and the schema
+`<project>_featurestore` as shell exports. A feature group is the table
+`<name>_<version>` in catalog `delta` (or `hudi`/`iceberg`, per its format).
+
+```javascript
+import { readFileSync } from "node:fs";
+import pkg from "trino-client";
+const { Trino, BasicAuth } = pkg;
+
+const trino = Trino.create({
+  server: process.env.TRINO_SERVER, // https://coordinator.trino.service.consul:8443
+  catalog: "delta",
+  schema: process.env.TRINO_SCHEMA, // <project>_featurestore
+  auth: new BasicAuth(process.env.TRINO_USER, process.env.TRINO_PASSWORD),
+  ssl: { ca: readFileSync(process.env.TRINO_CA) }, // the cluster CA, not in Node's trust store
+});
+
+const query = await trino.query("SELECT * FROM customers_1 LIMIT 100");
+for await (const result of query) {
+  if (result.error) throw new Error(result.error.message);
+  console.log(result.columns?.map((c) => c.name), result.data); // rows arrive in pages
+}
+```
+
+The whole app (server with `/health`, `/api/rows` and the static UI) is
+[references/trino_js/](references/trino_js/). Install `trino-client` into the
+app directory before the upload, so the app starts without the network, and
+copy `app.css` from the skeleton (`<skills>` is
+`/opt/hopsworks-api/python/hopsworks/skills` in a Hopsworks terminal):
+
+```bash
+cp -r <skills>/dashboards/hops-app/references/trino_js apps/customers
+cp <skills>/dashboards/hops-app/references/app_skeleton/static/app.css apps/customers/static/
+(cd apps/customers && npm install --no-audit --no-fund)
+hops files upload apps/customers Users/<user>/apps/ --overwrite
+hops app create customers --path /Projects/<project>/Users/<user>/apps/customers/server.js \
+  --app-kind custom --app-port 8080 --readiness-probe-path /health \
+  --environment python-agent-pipeline --start \
+  --entrypoint-command "bash -lc 'eval \"\$(python trino_env.py)\" && APP_TABLE=customers_1 exec node server.js'"
+```
+
 ### Streamlit caching and cold start
 
 Heavy work at the top of the script (`login()`, `init_serving()`, a call to an
