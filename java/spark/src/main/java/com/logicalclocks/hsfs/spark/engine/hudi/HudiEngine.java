@@ -277,6 +277,34 @@ public class HudiEngine {
         new ByteArrayInputStream(commitsToReturn), () -> false, HoodieCommitMetadata.class);
   }
   
+  /**
+   * Whether any instant completed after {@code lastBefore} wrote, updated or deleted a record.
+   * Fails open: when the timeline cannot be read, the run is treated as having written, so a data
+   * commit is never left unregistered.
+   */
+  private boolean wroteRecordsSince(SparkSession sparkSession, String basePath, Option<HoodieInstant> lastBefore) {
+    try {
+      HoodieTimeline timeline = getHoodieTimeline(sparkSession, basePath);
+      List<HoodieInstant> newInstants = lastBefore.isPresent()
+          ? timeline.findInstantsAfter(lastBefore.get().requestedTime()).getInstants()
+          : timeline.getInstants();
+      for (HoodieInstant instant : newInstants) {
+        if (recordsWritten(getCommitMetadata(timeline, instant)) > 0) {
+          return true;
+        }
+      }
+      return false;
+    } catch (Exception e) {
+      LOGGER.log(Level.WARNING, "Could not tell whether this run wrote records, registering its commit", e);
+      return true;
+    }
+  }
+
+  static long recordsWritten(HoodieCommitMetadata commitMetadata) {
+    return commitMetadata.fetchTotalInsertRecordsWritten() + commitMetadata.fetchTotalUpdateRecordsWritten()
+        + commitMetadata.getTotalRecordsDeleted();
+  }
+
   private FeatureGroupCommit getLastCommitMetadata(SparkSession sparkSession, String basePath)
       throws IOException, FeatureStoreException, ParseException {
     HoodieTimeline commitTimeline = getHoodieTimeline(sparkSession, basePath);
@@ -682,6 +710,12 @@ public class HudiEngine {
     hudiWriteOpts.put("hoodie.streamer.source.kafka.append.offsets", "true");
 
     deltaStreamerConfig.streamToHoodieTable(hudiWriteOpts, sparkSession);
+    // Hudi commits an empty instant whenever the Kafka checkpoint moves, even if every record was for
+    // OnlineFS alone or another feature group; such a run must not add a commit (FSTORE-1660).
+    if (!wroteRecordsSince(sparkSession, streamFeatureGroup.getLocation(), commitTimeline.lastInstant())) {
+      LOGGER.info("No records for the offline table in this range, not registering a commit");
+      return;
+    }
     FeatureGroupCommit fgCommit = getLastCommitMetadata(sparkSession, streamFeatureGroup.getLocation());
     if (fgCommit != null) {
       featureGroupApi.featureGroupCommit(streamFeatureGroup, fgCommit);

@@ -45,6 +45,7 @@ class FeatureStoreActivityType(Enum):
     VALIDATIONS = "VALIDATIONS"
     EXPECTATIONS = "EXPECTATIONS"
     COMMIT = "COMMIT"
+    ONLINE_INGESTION = "ONLINE_INGESTION"
 
 
 @dataclass(init=False, repr=False)
@@ -60,6 +61,7 @@ class FeatureStoreActivity:
     expectation_suite: es_mod.ExpectationSuite | ExpectationSuite | None = None
     commit: dict[str, str | int | float] | None = None
     statistics: dict[str, str | int | float] | None = None
+    online_ingestion: dict[str, Any] | None = None
     execution: execution_mod.Execution | None = None
     execution_last_event_time: int | None = None
     # internal fields
@@ -76,6 +78,7 @@ class FeatureStoreActivity:
         validation_report: dict[str, Any] | None = None,
         commit: dict[str, str | int | float] | None = None,
         statistics: dict[str, str | int | float] | None = None,
+        online_ingestion: dict[str, Any] | None = None,
         execution: dict[str, Any] | None = None,
         execution_last_event_time: int | None = None,
         **kwargs,
@@ -90,6 +93,7 @@ class FeatureStoreActivity:
         self.metadata = metadata
         self.commit = commit
         self.statistics = statistics
+        self.online_ingestion = online_ingestion
         self.execution = (
             execution_mod.Execution.from_response_json(execution) if execution else None
         )
@@ -144,6 +148,8 @@ class FeatureStoreActivity:
             activity_dict["commit"] = self.commit
         if self.statistics:
             activity_dict["statistics"] = self.statistics
+        if self.online_ingestion:
+            activity_dict["online_ingestion"] = self.online_ingestion
         if self.execution:
             activity_dict["execution"] = humps.decamelize(
                 json.loads(self.execution.json())
