@@ -181,6 +181,7 @@ include = [
     "skills/**/*.js",
     "skills/**/*.css",
     "skills/**/*.svg",
+    "skills/**/*.png",
     "skills/**/*.ttf",
     "skills/**/gitignore",
 ]
