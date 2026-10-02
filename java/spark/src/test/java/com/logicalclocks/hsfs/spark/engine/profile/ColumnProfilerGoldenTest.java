@@ -122,8 +122,9 @@ public class ColumnProfilerGoldenTest {
   void statisticsSplitAcrossAggregationsMatchPerColumnStatistics() throws Exception {
     SparkSession spark = SparkEngine.getInstance().getSparkSession();
     spark.conf().set("spark.sql.ansi.enabled", "false");
-    // 12 numeric columns against a limit of 25 expressions: the scalar pass spans 12
-    // aggregations and the 66 correlation pairs span 3.
+    // 12 numeric columns against a limit of 25 expressions: each column contributes 12
+    // scalar expressions with KLL off, so the scalar pass spans 6 aggregations of two
+    // columns, and the 66 correlation pairs span 3.
     int width = 12;
     StructType schema = new StructType();
     for (int c = 0; c < width; c++) {
