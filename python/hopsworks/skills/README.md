@@ -29,8 +29,9 @@ into bucket folders:
 - [hops-online-inference](ml/hops-online-inference/SKILL.md) — KServe model deployment.
 - [hops-monitoring](ml/hops-monitoring/SKILL.md) — statistics, drift monitoring, validation, alerts.
 
-## agents/ — served agents and scheduled agent tasks
-- [hops-agent-deployment](agents/hops-agent-deployment/SKILL.md) — served interactive agent.
+## agents/ — served agents, their evaluation, and scheduled agent tasks
+- [hops-agent-deployment](agents/hops-agent-deployment/SKILL.md) — served, chat-ready interactive agent (`AgentApp`); talk to it from Python.
+- [hops-agent-evals](agents/hops-agent-evals/SKILL.md) — suites, LLM judges, traces and feedback, failure analysis into regression tests.
 - [hops-agent-task](agents/hops-agent-task/SKILL.md) — scheduled coding-agent task (claude-code / codex job).
 
 ## dashboards/ — apps and BI

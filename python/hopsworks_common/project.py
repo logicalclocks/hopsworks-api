@@ -39,6 +39,7 @@ from hopsworks_common.core import (
 
 
 if TYPE_CHECKING:
+    from hopsworks_agents.eval.sdk import AgentServing
     from hsfs.feature_store import FeatureStore
     from hsml.model_registry import ModelRegistry
     from hsml.model_serving import ModelServing
@@ -299,6 +300,42 @@ class Project:
             The Datasets Api handle.
         """
         return self._dataset_api
+
+    @public
+    def get_agent_serving(self) -> AgentServing:
+        """Connect to the project's Agent Serving API.
+
+        The agents deployed in the project: send them messages, read their
+        traces and feedback, run evaluation suites against them, and review
+        what the failure analysis found.
+
+        Example: Example for getting the Agent Serving API of a project
+            ```python
+            import hopsworks
+
+            project = hopsworks.login()
+
+            agents = project.get_agent_serving()
+            agent = agents.get_agent("support")
+            print(agent.chat("hello").text)
+            ```
+
+        Returns:
+            The Agent Serving API.
+        """
+        from hopsworks_agents.eval.sdk import AgentServing
+        from hopsworks_agents.eval.sdk._transport import (
+            HopsworksClientSession,
+            Transport,
+        )
+
+        instance = client._get_instance()
+        base_url = getattr(instance, "_base_url", "") or ""
+        host = (
+            base_url.split("/hopsworks-api", 1)[0] if base_url else "https://hopsworks"
+        )
+        transport = Transport(host, self.id, session=HopsworksClientSession(instance))
+        return AgentServing(host, self.id, transport=transport)
 
     @public
     def get_environment_api(self) -> environment_api.EnvironmentApi:
