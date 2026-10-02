@@ -142,6 +142,7 @@ requirements:                         # owner: reqs
     secondary: [recall_at_500]
   sla:                                # the inference agent's goal, keyed by system_type
     batch:    {rows_per_run: 5200, cadence: monthly, window: closed billing month, must_finish_by: 06:00 UTC}
+    #   at: when an hourly, daily or weekly run fires (`:15`, `02:00`, `Mon 02:00`); the batch job's schedule uses it
     realtime: {p99_ms: 50, throughput_qps: 100, error_rate_max: 0.001, timeout_ms: 500}
     agent:    {p99_ms: 3000, throughput_qps: 5, eval: {metric: answer_accuracy, target: 0.85,
                eval_set: evals/telco_agent_evals.parquet, scorer: evals/score.py}}   # captured; agent systems do not build in v1
