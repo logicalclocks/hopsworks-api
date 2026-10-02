@@ -345,7 +345,7 @@ Estimates, in order of preference:
 - A phase that ran before (a rerun or a resume) is estimated from its own `started` and `finished`.
 - A training round in progress: remaining runs (`max_runs` less the finished and failed rows) times the average run so far, capped by what is left of `wall_clock`.
 - An inference round in progress: remaining attempts times the average attempt so far.
-- Defaults before anything has run: reqs 10 min; data 5 min per existing feature group and 20 min per new connector, file or synthetic source; features 15 min per pipeline; train the budget's `wall_clock`; infer 3 min per attempt; app 10 min (none when `app.wanted` is false); verify 3 min.
+- Defaults before anything has run: reqs 10 min; data 5 min per existing feature group and 20 min per new connector, file or synthetic source; features 15 min per pipeline; train the budget's `wall_clock`, or 5 min for a pretrained model (`training.required: false`), which is only downloaded and registered; infer 3 min per attempt; app 10 min (none when `app.wanted` is false); verify 3 min.
 
 An estimate is always labelled as one and excludes escalations, review rounds and a raised budget.
 

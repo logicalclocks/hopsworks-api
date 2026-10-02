@@ -715,6 +715,11 @@ def test_status_estimates_from_measurements_before_defaults():
     }
     assert rows["train"]["basis"] == "budget wall_clock"
     assert status.fmt_duration(rows["train"]["remaining"]) == "40m"
+    # A pretrained model is only downloaded and registered: 5 minutes, not the budget.
+    doc = _example()
+    doc["training"] = {"required": False, "status": "pending"}
+    rows = {r["phase"]: r for r in status.rows(doc, now)}
+    assert status.fmt_duration(rows["train"]["remaining"]) == "5m"
 
 
 def test_status_runs_as_a_script_without_a_session(tmp_path):

@@ -48,6 +48,8 @@ DEFAULT_MINUTES = {
     "data_new_source": 20,
     "features_pipeline": 15,
     "infer_attempt": 3,
+    # Downloading and registering a pretrained model: nothing is trained.
+    "train_pretrained": 5,
 }
 
 
@@ -135,6 +137,8 @@ def _default_estimate(phase: str, doc: dict) -> timedelta:
         )
         return timedelta(minutes=max(1, count) * minutes["features_pipeline"])
     if phase == "train":
+        if _block(doc, "training").get("required") is False:
+            return timedelta(minutes=minutes["train_pretrained"])
         wall = parse_duration((budget.get("training") or {}).get("wall_clock"))
         return wall or timedelta(minutes=60)
     if phase == "infer":
@@ -151,7 +155,7 @@ def _running_estimate(phase: str, block: dict, doc: dict, now: datetime) -> tupl
     """Remaining time for the phase in progress, and what it is based on."""
     elapsed = _took(block, now) or timedelta(0)
     budget = _block(doc, "requirements").get("budget") or {}
-    if phase == "train":
+    if phase == "train" and _block(doc, "training").get("required") is not False:
         train_budget = budget.get("training") or {}
         runs = block.get("runs") or []
         done = [r for r in runs if r.get("state") in ("finished", "failed")]
