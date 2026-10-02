@@ -491,8 +491,9 @@ def offline_fg_materialization(
     deduped_df = deduped_df.select("value.*")
 
     # get offsets (do it before inserting to avoid skipping records if data was deleted during the job execution)
+    filtered_count = filtered_df.count()
     df_offsets = (
-        (df if limit > filtered_df.count() else filtered_df)
+        (df if limit > filtered_count else filtered_df)
         .groupBy("partition")
         .agg(max("offset").alias("offset"))
         .collect()
@@ -516,14 +517,17 @@ def offline_fg_materialization(
         write_options["txnVersion"] = str(
             sum(int(v) for v in offset_dict[f"{entity._online_topic_name}"].values())
         )
-    entity.insert(
-        deduped_df,
-        storage="offline",
-        operation=write_options.get("operation", "upsert"),
-        transform=False,
-        write_options=write_options,
-        validation_options={"schema_validation": False},
-    )
+    if filtered_count == 0:
+        print("No records for the offline table in this range, skipping the insert")
+    else:
+        entity.insert(
+            deduped_df,
+            storage="offline",
+            operation=write_options.get("operation", "upsert"),
+            transform=False,
+            write_options=write_options,
+            validation_options={"schema_validation": False},
+        )
 
     # save offsets
     offset_df = spark.createDataFrame([offset_dict])
