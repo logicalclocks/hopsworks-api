@@ -1,181 +1,140 @@
-## Online Feature Store Benchmark Suite
+# Online Feature Store Benchmark
 
-This directory provides the tools to quickly bootstrap the process of benchmarking the Hopsworks Online Feature Store.
+Load tests for online feature vector retrieval through the Hopsworks Python SDK, driven by [locust](https://locust.io/).
+They run from a local Docker host or as Kubernetes Jobs inside the cluster, and can compare SDK builds, for example a change against `main`.
 
-The benchmark suite is built around [locust](https://locust.io/) which allows you to quickly start so-called user classes to perform requests against a system.
+Each locust user reads through two feature views:
 
-In the feature store context, a user class represents a serving application performing requests against the online feature store, looking up feature vectors.
+- `locust_fv` over one feature group, `locust_fg` (`ip` primary key and 10 features);
+- `locust_join_fv`, which joins `locust_fg` with `locust_ip_meta_fg` (`region`, `risk_score`) on `ip`.
 
-Locust takes care of the hard part of collecting the results and aggregating them.
+It runs six call shapes as locust tasks: single and batch reads on both views, and single and batch reads on the join view through the async API.
+Locust picks a task per iteration, so the shapes share the run time.
+Tasks are named `<client>:<shape>`, for example `rest:join_batch`.
+A response whose rows do not match the requested keys counts as a failure.
 
-### Quickstart: Single process locust
+## Layout
 
-By default, each user class gets spawned in its own Python thread, which means, when you run locust in a single Python process, all user classes will share the same core. This is due to the Python Global Interpreter lock.
+| Path | Purpose |
+| --- | --- |
+| `locustfile.py`, `common.py`, `setup_data.py` | Test code, shared by both targets. |
+| `Dockerfile`, `sdk.env`, `build_images.sh` | Image `locust-hsfs:<name>`: locust plus one SDK build per entry in `sdk.env`. |
+| `local/` | Runs on a local Docker host: `locust.conf`, `hopsworks_config.json`, `docker-compose.yml`, `run.sh`, `run_single.sh`. |
+| `k8s/` | Runs inside the cluster: `locust.conf`, `hopsworks_config.json`, `cluster.env`, `locust-job.yaml`, `push_images.sh`, `run.sh`. |
+| `results/` | HTML reports (created by the runs, git-ignored). |
+| `logs/` | Run logs and node CPU samples from Kubernetes runs (git-ignored). |
+| `Jenkinsfile`, `build-manifest.json`, `KUBE_IMAGE_VERSION` | CI build of `hopsworks/locust-hsfs` from the `Dockerfile` defaults (upstream `main`). |
 
-This section illustrates how to quickly run locust in a single process, see the next section on how to scale locust with a master and multiple worker processes.
+## Configuration
 
-#### Prerequisites
+| File | Holds |
+| --- | --- |
+| `sdk.env` | SDK builds: `SDKS`, and `<name>_REPO` / `<name>_REF` for each. The default is the upstream `main` branch. |
+| `<target>/hopsworks_config.json` | `host`, `port`, `project`, `verify_certs`; optionally `rdrs_host` / `rdrs_port` to pin the REST client to a RonDB REST server address. |
+| `<target>/locust.conf` | Locust options, plus the test's own: `rows`, `batch-size`, `clients` (`rest`, `sql`), `skip-setup`. |
+| `k8s/cluster.env` | Namespace, image registry, optional pull secret and preferred node, pod CPU and memory. |
 
-1. Hopsworks cluster
-   1. You can follow the documentation on how to setup a cluster on [managed.hopsworks.ai](https://docs.hopsworks.ai/3.1/setup_installation/aws/cluster_creation/)
-   2. Ideally you create an extra node in the same VPC as the Hopsworks cluster, which you can use to run the benchmark suite from. The easiest way to do this is by using a dedicated [API node](https://docs.hopsworks.ai/3.1/setup_installation/common/rondb/#api-nodes).
-   3. Once the cluster is created you need the following information:
-      - Hopsworks domain name: **[UUID].cloud.hopsworks.ai** which you can find in the *Details* tab of your managed.hopsworks.ai control plane
-      - A project and its name on the hopsworks cluster. For that log into your cluster and create a project.
-      - An API key for authentication. Head to your project and [create an API key for your account](https://docs.hopsworks.ai/3.1/user_guides/projects/api_key/create_api_key/).
-2. Python environment
-   In order to run the benchmark suite, you need a Python environment.
-   For that we will SSH into the created API node. Make sure that [SSH is enabled](https://docs.hopsworks.ai/3.1/setup_installation/common/services/) on your cluster.
+Values in `<angle brackets>` are placeholders; the run scripts refuse to start until they are replaced.
 
-   1. On AWS all nodes have public IPs, so you can head to your cloud console to find the IP of the API node and SSH directly:
-      `ssh ubuntu@[ip-of-api-node] -i your-ssh-key.pem`
-      On Azure, you will have to proxy through the Hopsworks head node, you can either use the public IP or the Hopsworks domain name as noted above.
-      On GCP, we don't attach SSH keys, but you can use the GCP CLI to create an ssh session.
+The API key is read from `locust_benchmark/.api_key` (git-ignored); `API_KEY_FILE` points elsewhere.
 
-   2. API nodes come with Anaconda pre-installed, which we can use to create a python environment and install our dependencies:
+`setup_data.py` creates the feature groups and views, with statistics disabled, and upserts `rows` rows.
+Locust runs it at startup unless `skip-setup = true`.
+With `skip-setup`, `rows` must not exceed what was loaded, or reads of missing keys count as failures.
+It also runs on its own: `python setup_data.py <rows>`.
 
-      ```bash
-      conda init bash
-      ```
-
-      After this you need to create a new SSH session.
-
-      ```bash
-      conda create -n locust-benchmark python=3.10
-      conda activate locust-benchmark
-      ```
-
-      Clone the feature-store-api repository to retrieve the benchmark suite and install the requirements.
-      Make sure to checkout the release branch matching the Hopsworks version of your cluster.
-
-      ```bash
-      git clone https://github.com/logicalclocks/feature-store-api.git
-      cd feature-store-api
-      git checkout master
-      cd locust_benchmark
-      pip install -r requirements.txt
-      ```
-
-#### Creating feature group for lookups
-
-01. Save the previously created API key in a file named `.api_key`
-
-    ```bash
-    echo "[YOUR KEY]" > .api_key
-    ```
-
-02. Now we need to configure the test, for that modify the `hopsworks_config.json` template:
-
-    ```json
-    {
-        "host": "[UUID].cloud.hopsworks.ai",
-        "port": 443,
-        "project": "test",
-        "external": false,
-        "rows": 100000,
-        "schema_repetitions": 1,
-        "recreate_feature_group": true,
-        "batch_size": 100
-    }
-    ```
-
-    - `host`: Domain name of your Hopsworks cluster.
-    - `port`: optional, for managed.hopsworks.ai it should be `443`.
-    - `project`: the project to run the benchmark in.
-    - `external`: if you are not running the benchmark suite from the same VPC as Hopsworks, set this to `true`.
-    - `rows`: Number of rows/unique primary key values in the feature group used for lookup benchmarking.
-    - `schema_repetitions`: This controls the number of features for the lookup. One schema repetition will result in 10 features plus primary key. Five repetitions will result in 50 features plus primary key.
-    - `recreate_feature_group`: This controls if the previous feature group should be dropped and recreated. Set this to true when rerunning the benchmark with different size of rows or schema repetitions.
-    - `batch_size`: This is relevant for the actual benchmark and controls how many feature vectors are looked up in the batch benchmark.
-    - `tablespace`: (Optional) If set creates a feature group using on-disk data.
-
-03. Create the feature group
-
-    ```bash
-    python create_feature_group.py
-    ```
-
-    Note, the `recreate_feature_group` only matters if you rerun the `create_feature_group.py` script.
-
-#### Run one process locust benchmark
-
-You are now ready to run the load test:
+## Build the images
 
 ```bash
-locust -f locustfile.py --headless -u 4 -r 1 -t 30 -s 1 --html=result.html
+./build_images.sh          # every SDK in sdk.env
+./build_images.sh main     # one
 ```
 
-Options:
-
-- `u`: number of users sharing the python process
-- `r`: spawn rate of the users in seconds, it will launch one user every `r` seconds until there are `u` users
-- `t`: total time to run the test for
-- `s`: shutdown timeout, no need to be changed
-- `html`: path for the output file
-
-You can also run only single feature vector or batch lookups by running only the respective user class:
+To compare a change against `main`, add it to `sdk.env` and build both:
 
 ```bash
-locust -f locustfile.py MySQLFeatureVectorLookup --headless -u 4 -r 1 -t 30 -s 1 --html=result.html
-
-locust -f locustfile.py RESTFeatureVectorLookup --headless -u 4 -r 1 -t 30 -s 1 --html=result.html --host http://feature.vector.server:4406
-
-locust -f locustfile.py MySQLFeatureVectorBatchLookup --headless -u 4 -r 1 -t 30 -s 1 --html=result.html
+SDKS="main change"
+change_REPO=https://github.com/<fork>/hopsworks-api.git
+change_REF=<commit>
 ```
 
-### Distributed Locust Benchmark using Docker Compose
+Pin commits for comparisons; a branch ref is resolved at build time.
 
-As you will see already with 4 users, the single core tends to be saturated and locust will print a warning.
+## Run locally
 
-```plaintext
-[2023-03-09 12:02:11,304] ip-10-0-0-187/WARNING/root: CPU usage above 90%! This may constrain your throughput and may even give inconsistent response time measurements! See https://docs.locust.io/en/stable/running-distributed.html for how to distribute the load over multiple CPU cores or machines
-```
-
-First we need to install docker, for which we will use [the provided convenience script](https://docs.docker.com/engine/install/ubuntu/#install-using-the-convenience-script), however, you can use any other method too:
+Set `host` and `project` in `local/hopsworks_config.json`, then:
 
 ```bash
-curl -fsSL https://get.docker.com -o get-docker.sh
-sudo sh get-docker.sh
+SDK=main local/run.sh
+SDK=change local/run.sh
+MASTER_ARGS="--run-time 30" local/run.sh
 ```
 
-#### Build the docker image
+`local/run.sh` starts one locust master and one worker container per `users` in `local/locust.conf`, one user per worker.
+The report goes to `results/report_local_<sdk>_u<users>.html`.
+
+From outside the cluster every read crosses the network, so latency mostly measures the network rather than the client.
+Use the Kubernetes target to compare client performance.
+
+`local/run_single.sh` runs one locust process; keep `users = 1` with it (see Limitations).
+
+## Run on Kubernetes
+
+Needs `kubectl` with `KUBECONFIG` exported for the cluster, and an image registry the cluster can pull from.
+Set `REGISTRY` (and `PULL_SECRET`, `PREFERRED_NODE` if needed) in `k8s/cluster.env` and `project` in `k8s/hopsworks_config.json`.
+The Hopsworks and RonDB REST server addresses in `k8s/hopsworks_config.json` are the in-cluster service names of a standard Hopsworks installation.
 
 ```bash
-docker build . -t locust-hsfs:master
+k8s/push_images.sh                                    # every SDK in sdk.env
+SDK=main USERS=2 DURATION=60 LABEL=smoke k8s/run.sh   # first run loads the data
+SDK=main USERS=8 DURATION=300 LABEL=load k8s/run.sh
 ```
 
-#### Create feature group and configure test
+Set `skip-setup = true` in `k8s/locust.conf` after the first run, so later runs do not reload the rows.
 
-See the above section to setup the `hopsworks_config.json` and create the feature group to perform lookups against.
+Each run creates, in `NAMESPACE`:
 
-#### Run multiple locust processes using docker compose
+- a master Job and its Service;
+- a worker Job with one pod per user (one locust worker, one user, `WORKER_CPU`), preferring `PREFERRED_NODE`;
+- the ConfigMap `locust-files` (code and settings) and the Secret `locust-api-key`, updated on every run.
 
-Using docker compose we can now start multiple containers, one dedicated master process, which is responsible for collecting metrics and orchestrating the benchmark, and a variable number of worker processes.
+The Jobs and the Service are deleted when the run ends; the ConfigMap and the Secret stay for the next run.
+
+Output:
+
+- `results/report_k8s_<label>_<sdk>_u<users>_<duration>s.html`
+- `logs/report_k8s_<...>_master.log`, `_workers.log`, and `_nodes.txt` (node CPU and worker placement mid-run)
+
+Clean up:
 
 ```bash
-sudo docker compose up
+kubectl -n <namespace> delete configmap locust-files
+kubectl -n <namespace> delete secret locust-api-key
 ```
 
-Similarly to the configuration of a single locust process, you have the possibility to configure the test using docker compose in the `docker-compose.yml` file.
+Place the workers away from the nodes that run the RonDB REST server and ingress where possible, so the load generator does not compete with the system under test; `_nodes.txt` shows where they ran.
 
-Locust command: modify the locust command in the same way as the parameters are described above.
+## Limitations
 
-```yml
-   command: -f /home/locust/locustfile.py --master --headless --expect-workers 4 -u 16 -r 1 -t 30 -s 1 --html=/home/locust/result.html
-```
+### One user per locust worker
 
-- `--expect-workers`: this is the only option that's new with this setup and let's you control for how many worker containers locust will wait to be up and running before starting the load test
-- `u`: the number of users, is the total number of users which will be distributed evenly among the worker processes. So with 4 workers and 16 users, each worker will run 4 users.
+Locust users are gevent greenlets on one OS thread, and asyncio allows one running event loop per thread.
+When two users in one process call the async API at the same time, the second fails with `RuntimeError: Cannot run the event loop while another loop is running`.
+`local/run.sh` and `k8s/run.sh` therefore give each user its own worker process.
+Scale with `users` (local) or `USERS` (Kubernetes), not with more users per worker.
+`local/run_single.sh` puts every user in one process; keep `users = 1` with it.
 
-By default, docker compose will launch 4 worker instances, however, you can scale number of workers with
+### The MySQL client does not run under locust
 
-```bash
-sudo docker compose up --scale worker=6
-```
+Leave `clients = rest` until this is resolved.
+The SDK's SQL client runs its queries on an `AsyncTaskThread` with its own event loop.
+Under locust, gevent's monkey-patching turns that thread into a greenlet on the same OS thread as everything else.
+The first SQL-initialised feature view's loop occupies the thread, and the task thread of every further one fails at startup with `Cannot run the event loop while another loop is running`; nearly every SQL read then fails, even with one user.
+`nest_asyncio`, which earlier versions of this benchmark applied, does not help on Python 3.12: `asyncio.wait_for` there is built on `asyncio.timeout`, which needs a current task, and reads fail with `Timeout should be used inside a task`.
+Load testing the SQL client needs a driver without gevent, for example plain threads or processes.
 
-However, note that the number of workes shouldn't be lower than the `expect-workers` parameter.
-As a rule of thumb, you should be running one worker per core of your host.
+### Other notes
 
-#### Collect the results
-
-By default, the directory with the test configuration will be mounted in the containers, and locust will create the `result.html` in the mounted directory, so you will be able to access it after the containers are shut down and the test concluded.
+- `verify_certs` is off in the Kubernetes configuration because the client does not have the cluster CA; turn it off locally too if the RonDB REST server certificate does not cover the address used.
+- Locust rounds response time percentiles to whole milliseconds; in-cluster reads take a few milliseconds, so compare requests per second as well.
+- Each configuration is one run; repeat runs, alternating the SDKs, before drawing conclusions from small differences.

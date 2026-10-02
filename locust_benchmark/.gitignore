@@ -1,0 +1,4 @@
+.api_key
+results/
+logs/
+__pycache__/
