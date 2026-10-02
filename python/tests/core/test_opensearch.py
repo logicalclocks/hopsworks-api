@@ -19,6 +19,7 @@ import pytest
 from hopsworks_common.core.opensearch import ProjectOpenSearchClient
 from hsfs.client.exceptions import VectorDatabaseException
 from hsfs.core.opensearch import OpenSearchClientSingleton, OpensearchRequestOption
+from opensearchpy.exceptions import RequestError
 
 
 class TestOpenSearchClientSingleton:
@@ -82,6 +83,43 @@ class TestOpenSearchClientSingleton:
         assert isinstance(exception, VectorDatabaseException)
         assert exception.reason == expected_reason
         assert exception.info == expected_info
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            # A knn query with the filter inside, OpenSearch 2.x
+            {
+                "type": "illegal_argument_exception",
+                "reason": "[knn] requires k to be in the range (0, 10000]",
+            },
+            # A knn query inside a bool query
+            {
+                "type": "x_content_parse_exception",
+                "reason": "[1:83] [bool] failed to parse field [must]",
+                "caused_by": {
+                    "type": "illegal_argument_exception",
+                    "reason": "[knn] requires k to be in the range (0, 10000]",
+                },
+            },
+        ],
+        ids=["top_level", "caused_by"],
+    )
+    def test_search_reports_k_too_large(self, error):
+        opensearch_client = MagicMock()
+        opensearch_client.search.side_effect = RequestError(
+            400, error["type"], {"error": error, "status": 400}
+        )
+        target = ProjectOpenSearchClient(
+            opensearch_client=opensearch_client, is_cluster_client=False
+        )
+
+        with pytest.raises(VectorDatabaseException) as e:
+            target._search(index="index", body={})
+
+        assert e.value.reason == VectorDatabaseException.REQUESTED_K_TOO_LARGE
+        assert e.value.info == {
+            VectorDatabaseException.REQUESTED_K_TOO_LARGE_INFO_K: 10000
+        }
 
     @pytest.fixture(autouse=True)
     def reset_singleton(self):
