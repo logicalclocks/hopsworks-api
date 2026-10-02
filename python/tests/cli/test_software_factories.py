@@ -201,6 +201,15 @@ def test_every_example_creates_a_valid_system(tmp_path, example):
     target = new_system.create(tmp_path / example, example)
     done = _set(target, "system.target={cluster: c, project: p, stage: development}")
     assert done.returncode == 0, done.stderr
+    # An example built on reference code names a directory the skills ship.
+    reference = yaml.safe_load((target / "system.yaml").read_text())[
+        "requirements"
+    ].get("reference_code")
+    if reference:
+        prefix = "/opt/hopsworks-api/python/hopsworks/skills/ml/hops-reqs/references/"
+        assert (
+            reference.startswith(prefix) and (REQS / reference[len(prefix) :]).is_dir()
+        )
     doc = yaml.safe_load((target / "system.yaml").read_text(encoding="utf-8"))
     assert doc["system"]["example"] == example
     assert doc["app"]["wanted"] is True
@@ -1633,7 +1642,7 @@ def test_the_game_asks_kumo_and_keeps_one_board(monkeypatch, tmp_path):
 
 def test_kumo_is_registered_once_per_revision():
     registration = _load(KUMO / "register_kumo.py", "register_kumo_under_test")
-    assert registration.FILES[0] == "medium/classifier.pt"
+    assert registration.FILES[0] == "small/classifier.pt"
 
     class Registry:
         def __init__(self, descriptions):
@@ -1644,9 +1653,19 @@ def test_kumo_is_registered_once_per_revision():
 
     revision = registration.REVISION
     assert registration.already_registered(
-        Registry([f"... nvidia/Kumo-Tabular@{revision}"]), "m", revision
+        Registry([f"NVIDIA Kumo Tabular (small) ..., nvidia/Kumo-Tabular@{revision}"]),
+        "m",
+        revision,
     )
-    assert not registration.already_registered(Registry(["@other"]), "m", revision)
+    # The medium checkpoint at the same revision is another model.
+    assert not registration.already_registered(
+        Registry([f"NVIDIA Kumo Tabular (medium) ..., nvidia/Kumo-Tabular@{revision}"]),
+        "m",
+        revision,
+    )
+    assert not registration.already_registered(
+        Registry(["(small) @other"]), "m", revision
+    )
 
 
 # endregion

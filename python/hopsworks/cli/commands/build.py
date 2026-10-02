@@ -349,6 +349,7 @@ ANSWER_KEYS = {
     "app",
     "repo",
     "llm",
+    "reference_code",
 }
 
 
@@ -359,7 +360,8 @@ def _from_answers(prefetch: _Prefetch, cwd: Path, path: Path) -> _System:
     directory and the repository. With `example`, the example is the draft and
     the answers override it. What the answers leave out is asked as usual.
     `llm: "account"` records that the agent's LLM is in the user's account
-    environment variables, which the UI has set. An existing system of that slug
+    environment variables, which the UI has set.
+    `reference_code` is a path or URL of sample code the system is based on. An existing system of that slug
     is resumed and the answers are not applied again.
     """
     try:
@@ -405,6 +407,7 @@ def _apply_answers(system: _System, answers: dict) -> None:
         ("description", "requirements.description"),
         ("sla", "requirements.sla"),
         ("consumers", "requirements.consumers"),
+        ("reference_code", "requirements.reference_code"),
     ):
         if answers.get(key):
             system.put(dotted, answers[key])

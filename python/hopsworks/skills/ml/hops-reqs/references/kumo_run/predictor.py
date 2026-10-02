@@ -36,8 +36,6 @@ from sdm.models import KumoTabular
 logger = logging.getLogger("kumo_tabular")
 logging.basicConfig(level=logging.INFO)
 
-SIZE = "medium"  # register_kumo.py registers medium/classifier.pt
-
 
 def cpu_limit() -> int:
     """The pod's CPU limit in whole cores (cgroup v2 cpu.max), at least one; one when unlimited."""
@@ -49,7 +47,7 @@ def cpu_limit() -> int:
 
 
 def checkpoint():
-    """The registered classifier.pt; the model's files mount under MODEL_FILES_PATH."""
+    """The registered `<size>/classifier.pt`; the model's files mount under MODEL_FILES_PATH."""
     hits = glob.glob(
         f"{os.environ.get('MODEL_FILES_PATH', '/mnt/models')}/**/classifier.pt",
         recursive=True,
@@ -64,18 +62,22 @@ class Predict:
         torch.set_num_threads(int(os.environ.get("TORCH_NUM_THREADS", cpu_limit())))
         torch.set_grad_enabled(False)
         started = time.perf_counter()
+        path = checkpoint()
+        # The checkpoint's directory is its size (small, medium or large), as in
+        # nvidia/Kumo-Tabular; the module must be built at that size to take it.
+        size = Path(path).parent.name
         # The module is built on the meta device and the checkpoint's tensors assigned to
         # it: one copy of the weights in memory, and no download from Hugging Face, which
         # KumoTabular's own pretrained loader would do.
         self.model = KumoTabular(
-            task=Task.classification, size=SIZE, pretrained=False, device="meta"
+            task=Task.classification, size=size, pretrained=False, device="meta"
         )
-        state = torch.load(checkpoint(), map_location="cpu", weights_only=True)
+        state = torch.load(path, map_location="cpu", weights_only=True)
         self.model.models[Task.classification].load_state_dict(state, assign=True)
         self.model.eval()
         logger.info(
             "Kumo Tabular %s ready in %.1fs, %d threads",
-            SIZE,
+            size,
             time.perf_counter() - started,
             torch.get_num_threads(),
         )

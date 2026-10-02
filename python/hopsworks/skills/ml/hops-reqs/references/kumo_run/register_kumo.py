@@ -8,7 +8,7 @@ Run as the job `<slug>-register-kumo` in `<slug>-jobs-env`:
 
 Nothing is trained. Kumo Tabular is an in-context learner: each request carries a
 small labelled table, the context, with the rows to classify, so one checkpoint
-serves any table. This job downloads the medium classifier, `medium/classifier.pt`
+serves any table. This job downloads the small classifier, `small/classifier.pt`
 of `nvidia/Kumo-Tabular`, with the repository's README and LICENSE at a pinned
 revision, and registers `kumo_tabular` with them; the deployment's predictor loads
 the checkpoint from the model's files. A second run finds the revision registered
@@ -24,17 +24,20 @@ from pathlib import Path
 
 REPO = "nvidia/Kumo-Tabular"
 REVISION = "4f0dca60610d68f933b978e17ff8f66be3ec3b5b"
-SIZE = "medium"
+SIZE = "small"
 FILES = [f"{SIZE}/classifier.pt", "README.md", "LICENSE"]
 
 
-def already_registered(registry, name: str, revision: str) -> bool:
-    """Whether a version of `name` was registered from `revision`; its description says so."""
+def already_registered(registry, name: str, revision: str, size: str = SIZE) -> bool:
+    """Whether a version of `name` holds the `size` checkpoint at `revision`; its description says so."""
     try:
         models = registry.get_models(name) or []
     except Exception:  # noqa: BLE001 - no such model yet
         return False
-    return any(revision in (model.description or "") for model in models)
+    return any(
+        revision in (model.description or "") and f"({size})" in (model.description or "")
+        for model in models
+    )
 
 
 def download(directory: Path, revision: str) -> None:

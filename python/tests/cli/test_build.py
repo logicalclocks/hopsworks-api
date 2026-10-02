@@ -226,12 +226,14 @@ def test_the_uis_answers_leave_nothing_to_ask(tmp_path, monkeypatch, quiet):
         ],
         app={"wanted": True, "kind": "dashboard", "description": "ops reads it"},
         repo="new",
+        reference_code="https://github.com/acme/late-orders-demo",
     )
     done = _run(tmp_path, monkeypatch, [], "--answers", path)
     assert done.exit_code == 0, done.output
     assert "?" not in done.output.replace("Where should the code go?", "")
     doc = _doc(tmp_path / "late-orders")
     req = doc["requirements"]
+    assert req["reference_code"] == "https://github.com/acme/late-orders-demo"
     assert (req["system_type"], req["sla"]) == (
         "batch",
         {"batch": {"cadence": "daily"}},

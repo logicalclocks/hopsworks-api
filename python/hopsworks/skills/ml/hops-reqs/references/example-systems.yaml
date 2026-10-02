@@ -80,8 +80,8 @@ recs-example:
       article's attributes and the customer's taste (the share of their purchases with the
       article's colour, group and type). Half the slots follow the session, half the customer's
       taste, and a fifth explore lower-ranked articles; the articles a customer bought or the
-      session already showed them are left out. Jobs and the deployment run on CPU. The example
-      is based on the reference code in hops-reqs/references/recommender/
+      session already showed them are left out. Jobs and the deployment run on CPU
+    reference_code: /opt/hopsworks-api/python/hopsworks/skills/ml/hops-reqs/references/recommender
     system_type: realtime
     problem:
       task: ranking
@@ -159,8 +159,8 @@ helpdesk-example:
   requirements:
     description: >-
       answer a customer's support question from the help desk documents the user uploads and the
-      customer's recent purchases and returns, citing the document, page and paragraph. The
-      example is based on the reference code in hops-reqs/references/rag_agent/
+      customer's recent purchases and returns, citing the document, page and paragraph
+    reference_code: /opt/hopsworks-api/python/hopsworks/skills/ml/hops-reqs/references/rag_agent
     system_type: agent
     problem:
       task: rag
@@ -242,8 +242,7 @@ gis-example:
       The page sends the map on screen to a pretrained YOLO26 aerial object detector from Hugging
       Face, registered in the Model Registry and embedded in the app, and draws the rotated boxes
       it returns. Nothing is trained and no data is ingested, so there are no feature or training
-      pipelines. The example has no reference code: every file is generated from these
-      requirements and hops-reqs/references/gis-detector.md
+      pipelines
     system_type: realtime
     problem:
       task: detection
@@ -294,8 +293,8 @@ run-example:
       classifier from Hugging Face, registered in the Model Registry and served as a deployment;
       each request carries the game state and a context of situations labelled by the game's rules.
       Nothing is trained and no data is ingested, so there are no feature or training pipelines.
-      Players and the model share a leaderboard. The example is based on the reference code in
-      hops-reqs/references/kumo_run/
+      Players and the model share a leaderboard
+    reference_code: /opt/hopsworks-api/python/hopsworks/skills/ml/hops-reqs/references/kumo_run
     system_type: realtime
     problem:
       task: classification
@@ -315,7 +314,7 @@ run-example:
       repo: nvidia/Kumo-Tabular
       revision: 4f0dca60610d68f933b978e17ff8f66be3ec3b5b
       name: kumo_tabular
-      file: medium/classifier.pt
+      file: small/classifier.pt
     job: {name: run-example-register-kumo}
     status: pending
   inference:

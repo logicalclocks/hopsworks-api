@@ -421,12 +421,13 @@ def delete_repo(
 ) -> str:
     """Delete the system's GitHub repository, or only its branch when the repository holds more.
 
-    The build names a repository it creates `hops-<slug>` or `hops-<slug>-<project>[-N]`
-    (builds before the prefix left off `hops-`),
-    and each build works on its own `hops/...` branch. A repository with another
-    name, or with another build's branch, holds more than this system: its
-    branches (`hops/<branch>` and `hops/<branch>/...`) are deleted and the
-    repository is kept; GitHub closes a pull request whose branch is deleted.
+    The build names a repository it creates `hops-<slug>` or `hops-<slug>-<project>[-N]`,
+    and each build works on its own `hops/...` branch. Only a repository named so,
+    with no other build's branch, is deleted: one with another name (including a
+    `<slug>` repository from before the prefix), or with another build's branch,
+    holds more than this system, so its branches (`hops/<branch>` and
+    `hops/<branch>/...`) are deleted and the repository is kept; GitHub closes a
+    pull request whose branch is deleted.
     Branches are read and deleted with git, which any of the gh login, a token
     or an SSH key allows; deleting a whole repository needs the GitHub API.
 
@@ -461,7 +462,7 @@ def delete_repo(
     ]
     others = [b for b in branches if b.startswith("hops/") and b not in mine]
     alone = re.fullmatch(
-        rf"(hops-)?{re.escape(slug)}(-{re.escape(project)}(-\d+)?)?", name
+        rf"hops-{re.escape(slug)}(-{re.escape(project)}(-\d+)?)?", name
     )
     if others or not alone:
         if not mine:
@@ -475,7 +476,7 @@ def delete_repo(
             raise RuntimeError(
                 f"could not delete {', '.join(mine)}: {pushed.stderr.strip()}"
             )
-        why = "holds other builds" if others else f"is not named after {slug}"
+        why = "holds other builds" if others else f"is not named hops-{slug}"
         return f"deleted {', '.join(mine)}; kept {owner}/{name}, which {why}"
     status, _ = _github(host, "DELETE", f"repos/{owner}/{name}")
     if status == 404:

@@ -153,6 +153,7 @@ requirements:                         # owner: reqs
     ordering: cadence | dag           # cadence gaps sized from measured durations, or one Airflow DAG per system
     alerts: {receiver: ml-oncall, on: [job_failed, freshness_missed, retrain_rejected]}
   consumers: ui | api | both
+  reference_code: /opt/hopsworks-api/python/hopsworks/skills/ml/hops-reqs/references/recommender   # optional: a path or URL of sample code the system is based on; the build reads it first
   monitoring: predictions and inputs logged to the prediction feature group; drift on the FV
   open_questions: []                  # non-empty blocks the data phase
   started: 2026-09-22T09:02Z          # every phase block records started and finished; /hops status derives durations and estimates

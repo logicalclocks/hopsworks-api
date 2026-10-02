@@ -218,24 +218,27 @@ def test_the_repository_goes_only_when_it_is_this_systems_alone(monkeypatch):
 
     monkeypatch.setattr(teardown, "_git", git)
     monkeypatch.setattr(teardown, "_github", lambda host, method, route: (204, None))
-    # Named hops-<slug> since the prefix; <slug> before it.
+    # Only a repository named hops-<slug> is deleted whole.
     prefixed = copy.deepcopy(SPEC)
     prefixed["system"]["repo"]["url"] = "https://github.com/o/hops-churn-example"
     assert teardown.delete_repo(prefixed, "churn-example", "churndemo") == "deleted"
-    assert teardown.delete_repo(SPEC, "churn-example", "churndemo") == "deleted"
     assert not any(a[0] == "push" for a in calls)
+    # A <slug> repository from before the prefix keeps everything but the build's branches.
+    assert "kept o/churn-example, which is not named hops-churn-example" in (
+        teardown.delete_repo(SPEC, "churn-example", "churndemo")
+    )
 
     # Another build's branch: only this system's branches go, the repository stays.
     heads.append("hops/churn-example-churnfresh")
-    outcome = teardown.delete_repo(SPEC, "churn-example", "churndemo")
+    outcome = teardown.delete_repo(prefixed, "churn-example", "churndemo")
     assert calls[-1] == (
         "push",
-        "https://github.com/o/churn-example.git",
+        "https://github.com/o/hops-churn-example.git",
         "--delete",
         "hops/churn-example",
         "hops/churn-example/20260929-fix",
     )
-    assert "kept o/churn-example, which holds other builds" in outcome
+    assert "kept o/hops-churn-example, which holds other builds" in outcome
 
     # A repository not named after the system is never deleted either.
     shared = {
@@ -244,7 +247,9 @@ def test_the_repository_goes_only_when_it_is_this_systems_alone(monkeypatch):
         }
     }
     heads[:] = ["main", "hops/x"]
-    assert "is not named after" in teardown.delete_repo(shared, "churn-example", "p")
+    assert "is not named hops-churn-example" in teardown.delete_repo(
+        shared, "churn-example", "p"
+    )
     # A system on the default branch never deletes that branch.
     calls.clear()
     on_main = {

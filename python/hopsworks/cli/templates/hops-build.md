@@ -185,6 +185,12 @@ example's story, recorded in `system.yaml`, as a person building a convincing de
 against a 0.15 prevalence baseline; the `small` tier, the default budget, `data_policy` fixtures
 generated). Print the requirements back in a few lines and continue without asking.
 
+When `requirements.reference_code` is set, the system is based on that sample code: read it before
+writing any. A path is read where it is (the examples' reference code is under
+`/opt/hopsworks-api/python/hopsworks/skills/ml/hops-reqs/references/` in the terminal); a URL is
+cloned or downloaded into a scratch directory outside the system's repository. Take what fits the
+requirements, adapt the names, and record in `decisions` what came from it and what was changed.
+
 For a new connector the interview recorded as `connected`, the data phase mounts or ingests it. A
 RAG agent system (`system_type: agent`, `task: rag`, the help desk example) is built by
 `hops-reqs/references/rag-agent.md`, which says what every phase below builds for it, from the

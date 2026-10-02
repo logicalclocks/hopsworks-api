@@ -246,7 +246,10 @@ def job_create(
     help="HopsFS dir to upload a local script to (default: Resources/jobs/<name>).",
 )
 @click.option(
-    "--overwrite", is_flag=True, help="Overwrite the uploaded script if it exists."
+    "--overwrite/--no-overwrite",
+    default=True,
+    show_default=True,
+    help="Overwrite the uploaded script if it exists: a redeploy runs the new script.",
 )
 @click.pass_context
 def job_deploy(
