@@ -1330,6 +1330,40 @@ class TestIcebergCatalogWrites:
         # path-based machinery must not be touched in catalog mode
         fg.prepare_spark_location.assert_not_called()
 
+    @pytest.mark.parametrize("exists", [True, False])
+    def test_table_exists_path_based(self, mocker, exists):
+        # Arrange
+        spark = mocker.MagicMock()
+        fg = _make_fg()
+        iceberg_engine = _make_engine(mocker, fg=fg, spark_session=spark)
+        probe = mocker.patch.object(
+            iceberg_engine, "_is_iceberg_table_at", return_value=exists
+        )
+
+        # Act & Assert
+        assert iceberg_engine._table_exists({"mode": "append"}) is exists
+        probe.assert_called_once_with(fg.location)
+        spark.catalog.tableExists.assert_not_called()
+
+    @pytest.mark.parametrize("exists", [True, False])
+    def test_table_exists_through_catalog(self, mocker, exists):
+        # Arrange
+        spark = mocker.MagicMock()
+        spark.catalog.tableExists.return_value = exists
+        fg = _make_fg()
+        iceberg_engine = _make_engine(mocker, fg=fg, spark_session=spark)
+
+        # Act
+        result = iceberg_engine._table_exists(
+            {"iceberg.catalog": "hadoop_prod", "iceberg.catalog.type": "hadoop"}
+        )
+
+        # Assert
+        assert result is exists
+        spark.conf.set.assert_any_call("spark.sql.catalog.hadoop_prod.type", "hadoop")
+        spark.catalog.tableExists.assert_called_once_with("hadoop_prod.fs.fg_1")
+        fg.prepare_spark_location.assert_not_called()
+
     def test_write_iceberg_dataset_catalog_spark_create(self, mocker):
         # Arrange
         spark = mocker.MagicMock()

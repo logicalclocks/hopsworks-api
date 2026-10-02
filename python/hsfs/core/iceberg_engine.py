@@ -641,6 +641,33 @@ class IcebergEngine:
         for prop, value in properties.items():
             spark.conf.set(f"{base_key}.{prop}", value)
 
+    def _table_exists(self, write_options: dict[str, Any] | None = None) -> bool:
+        """Whether a write with these options goes to an existing table rather than creating one.
+
+        The table is resolved as the Spark write resolves it: through the catalog the options name, or the feature group's Glue catalog, and otherwise at the feature group's location.
+        """
+        catalog_name, catalog_properties, identifier = self._get_catalog_write_config(
+            self._glue_catalog_write_options(write_options)
+        )
+        if not catalog_name:
+            return self._is_iceberg_table_at(
+                self._feature_group.prepare_spark_location()
+            )
+        return self._spark_session.catalog.tableExists(
+            self._open_catalog(catalog_name, catalog_properties, identifier)
+        )
+
+    def _open_catalog(
+        self, catalog_name: str, catalog_properties: dict[str, str], identifier: str
+    ) -> str:
+        """Configure the session for the catalog and return the table's qualified name."""
+        glue = self._glue_catalog()
+        if glue is not None:
+            # The Glue metadata client authenticates via the JVM SDK chain.
+            glue._set_jvm_credentials(self._spark_context)
+        self._configure_spark_catalog(catalog_name, catalog_properties)
+        return f"{catalog_name}.{identifier}"
+
     def _write_iceberg_dataset_catalog(
         self,
         dataset,
@@ -658,13 +685,7 @@ class IcebergEngine:
         SQL extensions on the session.
         """
         spark = self._spark_session
-        glue = self._glue_catalog()
-        if glue is not None:
-            # The Glue metadata client authenticates via the JVM SDK chain.
-            glue._set_jvm_credentials(self._spark_context)
-        self._configure_spark_catalog(catalog_name, catalog_properties)
-
-        qualified = f"{catalog_name}.{identifier}"
+        qualified = self._open_catalog(catalog_name, catalog_properties, identifier)
         _logger.debug(f"Writing Iceberg dataset through catalog table {qualified}")
         if not spark.catalog.tableExists(qualified):
             self._create_iceberg_table_catalog(dataset, qualified)

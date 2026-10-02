@@ -72,16 +72,20 @@ def test_a_job_without_write_options_upserts(hsfs_utils, entity, job_conf):
     assert entity.insert.call_args.kwargs["write_options"] == {}
 
 
-@pytest.mark.parametrize("operation", ["upsert", "insert"])
-def test_a_range_with_nothing_for_the_offline_table_commits_nothing(
-    hsfs_utils, entity, operation, monkeypatch
-):
-    spark = _spark(empty=True)
+def _table(hsfs_utils, monkeypatch, exists):
     checked = []
     monkeypatch.setattr(
-        hsfs_utils, "_path_exists", lambda _, path: checked.append(path) or True
+        hsfs_utils, "_path_exists", lambda _, path: checked.append(path) or exists
     )
+    iceberg = MagicMock()
+    iceberg.return_value._table_exists.side_effect = lambda write_options: (
+        checked.append(("iceberg", write_options)) or exists
+    )
+    monkeypatch.setattr(hsfs_utils.iceberg_engine, "IcebergEngine", iceberg)
+    return checked
 
+
+def _run(hsfs_utils, spark, operation):
     hsfs_utils.offline_fg_materialization(
         spark,
         {
@@ -93,30 +97,61 @@ def test_a_range_with_nothing_for_the_offline_table_commits_nothing(
         None,
     )
 
-    assert checked == ["hdfs:///fg/_delta_log"]
+
+@pytest.mark.parametrize(
+    "time_travel_format, check",
+    [("DELTA", "hdfs:///fg/_delta_log"), ("ICEBERG", "iceberg")],
+)
+@pytest.mark.parametrize("operation", ["upsert", "insert"])
+def test_a_range_with_nothing_for_the_offline_table_commits_nothing(
+    hsfs_utils, entity, operation, time_travel_format, check, monkeypatch
+):
+    entity.time_travel_format = time_travel_format
+    spark = _spark(empty=True)
+    checked = _table(hsfs_utils, monkeypatch, exists=True)
+
+    _run(hsfs_utils, spark, operation)
+
+    assert [c if isinstance(c, str) else c[0] for c in checked] == [check]
     entity.insert.assert_not_called()
     spark.createDataFrame.return_value.coalesce.return_value.write.mode.return_value.json.assert_any_call(
         "hdfs:///fg/kafka_offsets"
     )
 
 
-@pytest.mark.parametrize("time_travel_format", ["DELTA", "HUDI"])
+@pytest.mark.parametrize("time_travel_format", ["DELTA", "ICEBERG"])
 def test_an_empty_range_still_inserts_while_the_table_does_not_exist(
     hsfs_utils, entity, time_travel_format, monkeypatch
 ):
     entity.time_travel_format = time_travel_format
     spark = _spark(empty=True)
-    monkeypatch.setattr(hsfs_utils, "_path_exists", lambda *_: False)
+    _table(hsfs_utils, monkeypatch, exists=False)
 
-    hsfs_utils.offline_fg_materialization(
-        spark,
-        {
-            "feature_store": "fs",
-            "name": "fg",
-            "version": 1,
-            "write_options": {"operation": "insert"},
-        },
-        None,
-    )
+    _run(hsfs_utils, spark, "insert")
 
+    entity.insert.assert_called_once()
+
+
+def test_the_iceberg_check_sees_the_write_options_of_the_insert(
+    hsfs_utils, entity, monkeypatch
+):
+    entity.time_travel_format = "ICEBERG"
+    spark = _spark(empty=True)
+    checked = _table(hsfs_utils, monkeypatch, exists=True)
+
+    _run(hsfs_utils, spark, "upsert")
+
+    assert checked == [("iceberg", {"operation": "upsert"})]
+
+
+def test_an_empty_range_of_another_format_always_inserts(
+    hsfs_utils, entity, monkeypatch
+):
+    entity.time_travel_format = "HUDI"
+    spark = _spark(empty=True)
+    checked = _table(hsfs_utils, monkeypatch, exists=True)
+
+    _run(hsfs_utils, spark, "upsert")
+
+    assert checked == []
     entity.insert.assert_called_once()
