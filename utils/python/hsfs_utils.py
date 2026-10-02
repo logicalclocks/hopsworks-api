@@ -517,7 +517,7 @@ def offline_fg_materialization(
         write_options["txnVersion"] = str(
             sum(int(v) for v in offset_dict[f"{entity._online_topic_name}"].values())
         )
-    if filtered_count == 0:
+    if filtered_count == 0 and _offline_table_exists(spark, entity, location):
         print("No records for the offline table in this range, skipping the insert")
     else:
         entity.insert(
@@ -557,6 +557,16 @@ def _path_exists(spark, location: str) -> bool:
     jvm = spark._jvm
     path = jvm.org.apache.hadoop.fs.Path(location)
     return path.getFileSystem(spark._jsc.hadoopConfiguration()).exists(path)
+
+
+def _offline_table_exists(spark, entity, location: str) -> bool:
+    """Whether the offline table exists; until it does, the insert creates it."""
+    marker = {"DELTA": "_delta_log", "HUDI": ".hoodie"}.get(
+        (entity.time_travel_format or "").upper()
+    )
+    return marker is not None and _path_exists(
+        spark, f"{location.rstrip('/')}/{marker}"
+    )
 
 
 def _remove_path(spark, location: str) -> None:
