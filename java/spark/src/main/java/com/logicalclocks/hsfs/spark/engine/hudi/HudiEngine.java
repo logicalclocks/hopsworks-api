@@ -378,7 +378,7 @@ public class HudiEngine {
     }
     Map<org.apache.kafka.common.TopicPartition, OffsetAndTimestamp> found =
         consumer.offsetsForTimes(lookups);
-    // Read after the lookup, since retention can drop the record the lookup landed on.
+    // Read after the lookup, since retention can drop the record any offset below points at.
     Map<org.apache.kafka.common.TopicPartition, Long> beginningOffsets =
         consumer.beginningOffsets(topicPartitions);
 
@@ -386,7 +386,7 @@ public class HudiEngine {
     for (org.apache.kafka.common.TopicPartition tp : topicPartitions) {
       OffsetAndTimestamp atOrAfter = found.get(tp);
       if (atOrAfter == null) {
-        startOffsets.put(tp, endOffsets.get(tp));
+        startOffsets.put(tp, Math.max(endOffsets.get(tp), beginningOffsets.get(tp)));
       } else {
         startOffsets.put(tp, Math.max(atOrAfter.offset(), beginningOffsets.get(tp)));
       }

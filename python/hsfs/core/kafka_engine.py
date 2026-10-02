@@ -317,7 +317,8 @@ def _kafka_get_offsets_for_times(
         ]
         offsets = ""
         for result in consumer.offsets_for_times(lookups, timeout=timeout):
-            # Read after the lookup, since retention can drop the record it landed on.
+            # Read after the lookup, since retention can drop the record any offset below
+            # points at.
             low, _ = consumer.get_watermark_offsets(
                 TopicPartition(topic=topic_name, partition=result.partition)
             )
@@ -330,7 +331,7 @@ def _kafka_get_offsets_for_times(
                 # Kafka answers a timestamp past the last record with a negative offset:
                 # every record the partition holds is older than the timestamp, so the
                 # reader belongs at the end of it.
-                offset = highs[result.partition]
+                offset = max(highs[result.partition], low)
             else:
                 offset = max(result.offset, low)
             offsets += f",{result.partition}:{offset}"

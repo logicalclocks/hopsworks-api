@@ -61,6 +61,25 @@ public class TestHudiEngineOffsetsSince {
 
   @Test
   @SuppressWarnings("unchecked")
+  void testNoRecordSinceFloorsAtBeginningOffset() {
+    // Arrange - the lookup finds nothing past the floor at end offset 10, and by the time the
+    // beginning offsets are read retention has dropped everything below 15.
+    TopicPartition tp = new TopicPartition("topic", 0);
+    List<TopicPartition> partitions = Collections.singletonList(tp);
+    Consumer<byte[], byte[]> consumer = Mockito.mock(Consumer.class);
+    Mockito.when(consumer.endOffsets(partitions)).thenReturn(Collections.singletonMap(tp, 10L));
+    Mockito.when(consumer.offsetsForTimes(Mockito.anyMap())).thenReturn(Collections.singletonMap(tp, null));
+    Mockito.when(consumer.beginningOffsets(partitions)).thenReturn(Collections.singletonMap(tp, 15L));
+
+    // Act
+    Map<TopicPartition, Long> offsets = HudiEngine.offsetsSince(consumer, partitions, SINCE);
+
+    // Assert - reading starts at the first offset still readable
+    Assertions.assertEquals(15L, offsets.get(tp));
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
   void testOffsetsSince() {
     // Arrange - partition 0 has a record past the floor, partition 1 lost the record the
     // lookup landed on to retention before the beginning offsets were read.

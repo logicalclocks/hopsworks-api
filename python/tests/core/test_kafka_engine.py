@@ -506,6 +506,34 @@ class TestKafkaEngine:
         # Assert
         assert result == "test_topic,0:40"
 
+    def test_kafka_get_offsets_for_times_past_the_last_record_floors_at_the_low_watermark(
+        self, mocker
+    ):
+        # Arrange - the lookup finds nothing past the timestamp at end offset 10, and by
+        # the time the low watermark is read retention has dropped everything below 15.
+        consumer = self._offsets_for_times_consumer(
+            mocker, partitions={0: (0, 10)}, results={0: (-1, None)}
+        )
+        answer = consumer.offsets_for_times.side_effect
+
+        def offsets_for_times_then_retain(lookups, timeout=None):
+            answers = answer(lookups, timeout=timeout)
+            consumer.get_watermark_offsets.side_effect = lambda partition: (15, 20)
+            return answers
+
+        consumer.offsets_for_times.side_effect = offsets_for_times_then_retain
+
+        # Act
+        result = kafka_engine._kafka_get_offsets_for_times(
+            topic_name="test_topic",
+            feature_store_id=99,
+            offline_write_options={},
+            timestamp=1789984800000,
+        )
+
+        # Assert - reading starts at the first offset still readable
+        assert result == "test_topic,0:15"
+
     def test_kafka_get_offsets_for_times_falls_back_on_partition_error(self, mocker):
         # Arrange - one partition could not be answered for. Reading it from the start is
         # wasteful, which is what this lookup exists to avoid, but re-reading records is
