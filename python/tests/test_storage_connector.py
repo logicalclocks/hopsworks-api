@@ -2742,3 +2742,239 @@ class TestStorageConnectorSave:
 
         mock_update.assert_called_once_with(sc)
         assert result.bucket == "new-bucket"
+
+
+class TestElasticsearchConnector:
+    @staticmethod
+    def _connector(**kwargs):
+        defaults = {
+            "id": 1,
+            "name": "es",
+            "featurestore_id": 67,
+            "host": "es.example.com",
+        }
+        defaults.update(kwargs)
+        return storage_connector.ElasticsearchConnector(**defaults)
+
+    def test_from_response_json(self, backend_fixtures):
+        json = backend_fixtures["storage_connector"]["get_elasticsearch"]["response"]
+
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        assert isinstance(sc, storage_connector.ElasticsearchConnector)
+        assert sc.host == "es.example.com"
+        assert sc.port == 9243
+        assert sc.scheme == "https"
+        assert sc.verify is True
+        assert sc.auth_type == "BASIC"
+        assert sc.username == "elastic"
+        assert sc.password == "test_password"
+        assert sc.default_index == "events"
+        assert sc.arguments == {
+            "page_size": "500",
+            "es.read.field.as.array.include": "tags",
+        }
+
+    def test_from_response_json_basic_info(self, backend_fixtures):
+        json = backend_fixtures["storage_connector"]["get_elasticsearch_basic_info"][
+            "response"
+        ]
+
+        sc = storage_connector.StorageConnector.from_response_json(json)
+
+        assert sc.host is None
+        assert sc.api_key is None
+        assert sc.arguments == {}
+
+    def test_to_dict_uses_the_backend_dto_name(self):
+        payload = self._connector(
+            auth_type="API_KEY", api_key="k==", arguments={"page_size": "10"}
+        ).to_dict()
+
+        assert payload["type"] == "featurestoreElasticsearchConnectorDTO"
+        assert payload["storageConnectorType"] == "ELASTICSEARCH"
+        assert payload["apiKey"] == "k=="
+        assert payload["arguments"] == [{"name": "page_size", "value": "10"}]
+
+    def test_opensearch_dto_name_matches_the_backend(self):
+        # The backend registers the subtype as featurestoreOpensearchConnectorDTO; any other spelling
+        # deserialises as the base DTO and the create call fails.
+        payload = storage_connector.OpenSearchConnector(
+            id=None, name="os", featurestore_id=1
+        ).to_dict()
+
+        assert payload["type"] == "featurestoreOpensearchConnectorDTO"
+
+    def test_connector_options_basic_auth(self, mocker):
+        sc = self._connector(port=9243, username="u", password="p")
+
+        assert sc.connector_options() == {
+            "hosts": ["https://es.example.com:9243"],
+            "basic_auth": ("u", "p"),
+        }
+
+    def test_connector_options_api_key_without_verification(self):
+        sc = self._connector(
+            scheme="https", auth_type="API_KEY", api_key="k==", verify=False
+        )
+
+        assert sc.connector_options() == {
+            "hosts": ["https://es.example.com:9200"],
+            "api_key": "k==",
+            "verify_certs": False,
+            "ssl_show_warn": False,
+        }
+
+    def test_connector_options_brackets_ipv6(self):
+        sc = self._connector(host="::1", scheme="http")
+
+        assert sc.connector_options() == {"hosts": ["http://[::1]:9200"]}
+
+    def test_spark_options(self):
+        sc = self._connector(
+            auth_type="API_KEY",
+            api_key="k==",
+            verify=False,
+            arguments={"es.read.field.as.array.include": "tags", "page_size": "10"},
+        )
+
+        assert sc.spark_options() == {
+            "es.nodes": "es.example.com",
+            "es.port": "9200",
+            "es.nodes.wan.only": "true",
+            "es.net.ssl": "true",
+            "es.net.http.header.Authorization": "ApiKey k==",
+            "es.net.ssl.cert.allow.self.signed": "true",
+            "es.read.field.as.array.include": "tags",
+        }
+
+    def test_read_needs_the_spark_engine(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        with pytest.raises(NotImplementedError, match="external feature group"):
+            self._connector().read("events")
+
+    def test_read_query_document_targets_the_default_index(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        mock_engine = mocker.Mock()
+        mocker.patch("hsfs.engine._get_instance", return_value=mock_engine)
+        mocker.patch.object(
+            storage_connector.ElasticsearchConnector,
+            "_flatten_columns",
+            side_effect=lambda df: df,
+        )
+
+        self._connector(default_index="events").read('{"term": {"status": "ok"}}')
+
+        options = mock_engine._read.call_args.args[2]
+        assert options["es.resource"] == "events"
+        assert options["es.query"] == '{"query": {"term": {"status": "ok"}}}'
+
+    def test_read_without_an_index_is_refused(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+
+        with pytest.raises(ValueError, match="needs an index"):
+            self._connector().read()
+
+    @pytest.mark.parametrize(
+        "path,name",
+        [
+            ("user.name", "user_name"),
+            ("@timestamp", "timestamp"),
+            ("userId", "userid"),
+            ("9lives", "f_9lives"),
+        ],
+    )
+    def test_feature_names_match_the_query_service(self, path, name):
+        assert storage_connector.ElasticsearchConnector._to_feature_name(path) == name
+
+    def test_get_tables_needs_no_database(self, mocker):
+        sc = self._connector()
+        mock_get_tables = mocker.patch.object(
+            sc._data_source_api, "_get_tables", return_value=[]
+        )
+
+        sc.get_tables()
+
+        mock_get_tables.assert_called_once_with(sc, None)
+
+    def test_arguments_cannot_override_the_secret_backed_auth(self):
+        sc = self._connector(
+            username="u",
+            password="p",
+            arguments={"es.net.http.auth.pass": "plaintext", "es.port": "1"},
+        )
+
+        options = sc.spark_options()
+
+        assert options["es.net.http.auth.pass"] == "p"
+        assert options["es.port"] == "9200"
+
+    def test_an_api_key_alone_means_api_key_auth(self):
+        sc = self._connector(api_key="k==")
+
+        assert sc.connector_options()["api_key"] == "k=="
+
+    def test_spark_flattening_refuses_colliding_feature_names(self):
+        pytest.importorskip("pyspark")
+        from pyspark.sql.types import LongType, StructField, StructType
+
+        schema = StructType(
+            [
+                StructField("user_name", LongType()),
+                StructField("user", StructType([StructField("name", LongType())])),
+            ]
+        )
+        dataframe = spark.Engine()._spark_session.createDataFrame([], schema)
+
+        with pytest.raises(ValueError, match="both map to feature name 'user_name'"):
+            storage_connector.ElasticsearchConnector._flatten_columns(dataframe)
+
+    def test_a_basic_info_connector_is_refetched_keeping_the_chosen_index(self, mocker):
+        sc = self._connector(host=None, default_index="events")
+
+        def refetch(connector):
+            connector.__init__(
+                id=1,
+                name="es",
+                featurestore_id=67,
+                host="es.example.com",
+                username="u",
+                password="p",
+            )
+
+        mocker.patch.object(sc._storage_connector_api, "_refetch", side_effect=refetch)
+
+        assert sc.connector_options()["hosts"] == ["https://es.example.com:9200"]
+        assert sc.default_index == "events"
+
+    def test_spark_flattening_names_leaves_and_serialises_nested_arrays(self):
+        pytest.importorskip("pyspark")
+        from pyspark.sql.types import (
+            ArrayType,
+            LongType,
+            StringType,
+            StructField,
+            StructType,
+        )
+
+        session = spark.Engine()._spark_session
+        schema = StructType(
+            [
+                StructField("@timestamp", StringType()),
+                StructField("user", StructType([StructField("id", LongType())])),
+                StructField(
+                    "items", ArrayType(StructType([StructField("sku", StringType())]))
+                ),
+            ]
+        )
+        dataframe = session.createDataFrame(
+            [("2026-01-01", (7,), [("a",), ("b",)])], schema
+        )
+
+        flat = storage_connector.ElasticsearchConnector._flatten_columns(dataframe)
+
+        assert flat.columns == ["timestamp", "user_id", "items"]
+        row = flat.collect()[0]
+        assert row["user_id"] == 7
+        assert row["items"] == '[{"sku":"a"},{"sku":"b"}]'

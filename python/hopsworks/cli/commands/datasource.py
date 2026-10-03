@@ -563,6 +563,26 @@ def _check_mongodb(v: dict[str, Any]) -> str | None:
     return _needs(v, "--password", "--user") if _given(v, "--password") else None
 
 
+def _check_elasticsearch(v: dict[str, Any]) -> str | None:
+    auth = (v.get(_dest("--auth-type")) or "").upper()
+    if not auth:
+        if _given(v, "--user"):
+            auth = "BASIC"
+        elif _given(v, "--api-key"):
+            auth = "API_KEY"
+        else:
+            auth = "NONE"
+    if auth == "BASIC":
+        return _needs(v, "basic authentication", "--user", "--password") or _refuses(
+            v, "basic authentication", "--api-key"
+        )
+    if auth == "API_KEY":
+        return _needs(v, "--auth-type API_KEY", "--api-key") or _refuses(
+            v, "--auth-type API_KEY", "--user", "--password"
+        )
+    return _refuses(v, "--auth-type NONE", "--user", "--password", "--api-key")
+
+
 def _check_bigquery(v: dict[str, Any]) -> str | None:
     if (
         _given(v, "--project-id")
@@ -815,6 +835,69 @@ _SPECS: dict[str, _Spec] = {
             ),
             _ARGS,
         ),
+    ),
+    "elasticsearch": _Spec(
+        "featurestoreElasticsearchConnectorDTO",
+        "ELASTICSEARCH",
+        "Register an Elasticsearch connector.",
+        (
+            _Opt(
+                "--host",
+                "host",
+                "Elasticsearch host, without scheme or port.",
+                required=True,
+            ),
+            _Opt("--port", "port", "HTTP port; 9200 when unset.", kind="int"),
+            _Opt(
+                "--scheme",
+                "scheme",
+                "http or https; https when unset.",
+                choices=("http", "https"),
+            ),
+            _Opt(
+                "--auth-type",
+                "authType",
+                "NONE, BASIC or API_KEY; when unset, BASIC with --user, API_KEY with only --api-key, else NONE.",
+                choices=("NONE", "BASIC", "API_KEY"),
+            ),
+            _Opt("--user", "username", "User name for BASIC authentication."),
+            _Opt(
+                "--password",
+                "password",
+                "Password for BASIC authentication.",
+                secret=True,
+            ),
+            _Opt(
+                "--api-key",
+                "apiKey",
+                "Encoded API key for API_KEY authentication.",
+                secret=True,
+            ),
+            _Opt(
+                "--default-index",
+                "defaultIndex",
+                "Index, alias, data stream or pattern read when none is given.",
+            ),
+            _Opt(
+                "--truststore-path",
+                "trustStorePath",
+                "JKS truststore with the cluster's CA, as a full HopsFS path.",
+            ),
+            _Opt(
+                "--truststore-password",
+                "trustStorePassword",
+                "Truststore password.",
+                secret=True,
+            ),
+            _Opt(
+                "--tls-verify/--no-tls-verify",
+                "verify",
+                "Verify the server certificate and hostname; verified when unset.",
+                kind="bool",
+            ),
+            _ARGS,
+        ),
+        check=_check_elasticsearch,
     ),
     "sql": _Spec(
         "featurestoreSqlConnectorDTO",

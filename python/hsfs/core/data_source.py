@@ -741,3 +741,5 @@ class DataSource:
                 storage_connector._database = self.database
             if self.table:
                 storage_connector._collection = self.table
+        if storage_connector.type == sc.StorageConnector.ELASTICSEARCH and self.table:
+            storage_connector._default_index = self.table
