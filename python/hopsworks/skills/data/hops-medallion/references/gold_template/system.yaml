@@ -1,0 +1,28 @@
+# A gold medallion layer: its specification, its data marts, and what runs.
+# Written by `hops medallion gold` and `hops medallion mart-add` from the Factory's answers, then by /hops-gold.
+# The `layer` block marks this system.yaml as a medallion layer, not an ML system.
+layer:
+  kind: gold
+  name: ""            # title shown in the Factory
+  slug: ""            # this directory's name
+  description: ""     # what the gold layer serves
+  queries: ""         # the queries analysts will run on it, in their words
+  modeling: star      # star | snowflake (Kimball)
+  lifecycle: dev      # dev | staging | prod, mirrored in each table's medallion_table tag
+  status: draft       # draft | building | built | failed
+  repo: {}            # {url}: the GitHub repository, hops-<slug>, every mart's code in it
+sources: []           # silver feature groups the marts read: {name, version}
+standards:            # every mart follows these; the Factory proposes them, the user may edit them
+  naming: ""
+  modeling: ""
+  documentation: ""
+  quality: ""
+marts: []             # data marts, each built and deleted on its own:
+                      # {slug, name, description, status, cadence, freshness_hours, requirements,
+                      #  phases, tables: [{name, version, kind: fact|dimension, grain, shared}],
+                      #  jobs: [{name, cadence, cron, tables}], applied}
+outputs:
+  applied_spec: {}    # the layer-level spec the marts were last built from
+progress:
+  now: ""
+decisions: []         # append-only: {at, by, what, why, mart}

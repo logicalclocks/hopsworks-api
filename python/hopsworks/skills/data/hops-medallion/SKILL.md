@@ -1,13 +1,14 @@
 ---
 name: hops-medallion
-description: Use when building a medallion layer on Hopsworks (bronze, silver, gold tables), tagging tables with the medallion_table tag, or building a silver layer from bronze feature groups with the Factory's "New Medallion Layer" or `hops medallion silver`. Auto-invoke on "silver layer", "bronze table", "medallion", "cleanse raw data", or `/hops-silver`. Input bronze feature groups and the silver tasks to perform; output materialized silver feature groups refreshed incrementally by a scheduled job.
+description: Use when building a medallion layer on Hopsworks (bronze, silver, gold tables), tagging tables with the medallion_table tag, building a silver layer from bronze feature groups (`hops medallion silver`, `/hops-silver`), or a gold layer of Kimball data marts from silver tables (`hops medallion gold`, `/hops-gold`), with the Factory's "New Medallion Layer". Auto-invoke on "silver layer", "gold layer", "data mart", "star schema", "bronze table", "medallion", "cleanse raw data". Input bronze (for silver) or silver (for gold) feature groups; output materialized feature groups refreshed incrementally by scheduled jobs.
 ---
 
 # Medallion layers on Hopsworks
 
 Bronze tables hold raw data exactly as it arrived; silver tables hold it cleansed, conformed and normalized to third normal form (deduplicated, typed, standardized, validated, PII protected); gold tables hold consumption-ready models, denormalized (star schemas, aggregates, wide feature tables) for their consumers.
 On Hopsworks every layer is a set of offline feature groups, and every silver and gold table is materialized: a feature group written by a job, never a view.
-A silver layer is built by the Factory (**New Medallion Layer**) or `hops medallion silver`, which records the request in `<slug>/system.yaml` and starts Claude Code on `/hops-silver <slug>`.
+A silver or gold layer is built by the Factory (**New Medallion Layer**) or `hops medallion silver|gold`, which records the request in `<slug>/system.yaml` and starts Claude Code on `/hops-silver <slug>` or `/hops-gold <slug>`.
+Each layer is its own Factory entry, directory and GitHub repository (`hops-<slug>`, recorded as `layer.repo.url`); a gold layer is built as data marts (Gold layers and data marts, below).
 
 ## Contract
 
@@ -124,7 +125,8 @@ The Factory form asks for these, with these defaults, and `system.yaml` records 
 - **Partitioning.** Decided per silver table at design with **hops-partitioning**, from the bronze table's files on the terminal's mount (`/hopsfs/featurestore/<project>_featurestore.db/<fg>_<version>`): none for small tables, else by hour, day or week, and recorded in `system.yaml` `partitioning` with the evidence.
 - **Schedule.** Each job: `hops job schedule <slug>-silver-<cadence> "<schedule.cadences.<cadence>.cron>" --catchup --max-catchup-runs <its max_catchup_runs>`, so windows missed while the scheduler was down are replayed, one execution each, instead of skipped.
 - **Status.** `hops medallion status <layer>` writes `status/report.html` in the layer's directory: the job's runs, and for every silver and rejects table its rows, last write against the freshness target, rejected share against the gate, and file layout (the hops-table-maintenance scanner), with Claude's summary. The layer's page shows it with **Status**.
-- **Delete.** `hops medallion delete <layer> --assets [--layer silver|gold]` deletes the silver layer, the gold layer, or both (the default), with their jobs and tables, and the directory and Factory entry once nothing built is left. Bronze tables are the source of truth: a source, or a table tagged `layer: bronze`, is never deleted, and the delete stops before deleting anything when one is listed.
+- **Delete.** `hops medallion delete <layer> --assets` deletes a layer with its jobs, tables and directory, then its Factory entry; without `--assets` only the entry. `hops medallion job-delete <layer> <job> [--tables]` deletes one job, and with `--tables` the tables only it writes; in silver the job's cadence and its sources leave the spec with it. A layer never deletes what it reads: a source, or a table tagged as a lower layer (bronze, and silver from gold), stops the delete before anything is deleted.
+- **Adding tables.** `hops medallion add-tables <silver layer> --answers FILE` adds bronze sources (each with its cadence) and a description of the tables wanted, recorded under `additions`, and starts `/hops-silver <slug> apply` to build them.
 - **Backfill.** `hops medallion backfill <layer>` runs each job, slowest cadence first, over a window from the epoch to now, reprocessing every bronze row; once the job is scheduled, a plain `hops job run` gets the last cron interval as its window instead. The layer's page has **Backfill**.
 
 ## Changing a layer: system.yaml drives recomputation
@@ -146,6 +148,14 @@ A spec that differs from `outputs.applied_spec` is a pending change, which the F
 
 Superseded versions are kept and named in `decisions`, never deleted by an apply, so a consumer can move to the new version when it is ready, and reverting the apply commit returns the job to them.
 An apply ends with `outputs.applied_spec` set to the spec it applied, in one commit `[<slug>] apply: <what changed>`.
+
+## Gold layers and data marts
+
+A gold layer serves analysts with a Kimball dimensional model, star or snowflake schema as `layer.modeling` says, built from silver tables.
+It is a set of data marts, each the unit that is added (`hops medallion mart-add`), changed (`hops medallion mart-update`) and deleted (`hops medallion mart-delete [--tables]`), with its own requirements, fact and dimension tables, and jobs at its own cadence, `<slug>-<mart>-<cadence>`.
+A conformed dimension is built once and marked `shared` in every other mart that reads it; deleting a mart never deletes a table another mart lists.
+Gold feature groups are tagged `{"layer": "gold"}` with their silver tables as `parents`.
+The requirement questions every mart answers, the modeling rules and the standards are in [references/gold-marts.md](references/gold-marts.md); `/hops-gold <slug> <mart>` builds a mart or applies its changed requirements (`marts[].requirements` against `marts[].applied`).
 
 ## Building a silver layer
 

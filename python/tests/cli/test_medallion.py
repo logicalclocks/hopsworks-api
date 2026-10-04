@@ -402,7 +402,8 @@ def _layer_dir(tmp_path, doc):
     return target
 
 
-def _delete(monkeypatch, target, tags, args):
+def _run(monkeypatch, target, tags, argv):
+    """Run `hops medallion <argv>` on the layer at `target`, recording what is deleted."""
     from hopsworks_common.core import ml_system_api
 
     events = []
@@ -414,12 +415,15 @@ def _delete(monkeypatch, target, tags, args):
             delete=lambda: events.append(f"fg {name}"),
         )
     )
-    job = SimpleNamespace(delete=lambda: events.append("job"))
     monkeypatch.setattr(
         session,
         "get_project",
         lambda ctx: SimpleNamespace(
-            get_job_api=lambda: SimpleNamespace(get_job=lambda name: job),
+            get_job_api=lambda: SimpleNamespace(
+                get_job=lambda name: SimpleNamespace(
+                    delete=lambda: events.append(f"job {name}")
+                )
+            ),
             get_feature_store=lambda: fs,
         ),
     )
@@ -428,65 +432,363 @@ def _delete(monkeypatch, target, tags, args):
     )
     monkeypatch.setattr(ml_system_api, "_remove", lambda i: events.append("entry"))
     monkeypatch.setattr(mlsystem, "_local_dir", lambda e: target)
-    done = CliRunner().invoke(cli, ["medallion", "delete", "L", *args, "--yes"])
+    done = CliRunner().invoke(cli, ["medallion", *argv])
     return done, events
 
 
-LAYERED = {
-    "sources": [{"name": "crm", "version": 1}],
-    "phases": {"profile": {"status": "done"}},
-    "layer": {"status": "built"},
+def _delete(monkeypatch, target, tags, args):
+    return _run(monkeypatch, target, tags, ["delete", "L", *args, "--yes"])
+
+
+def _doc(target):
+    return yaml.safe_load((target / "system.yaml").read_text(encoding="utf-8"))
+
+
+SILVER = {
+    "layer": {"kind": "silver"},
+    "sources": [
+        {"name": "crm", "version": 1, "cadence": "daily"},
+        {"name": "clicks", "version": 1, "cadence": "hourly"},
+    ],
+    "schedule": {
+        "cadence": "daily",
+        "cadences": {
+            "daily": {"cron": "0 0 1 * * ?", "max_catchup_runs": 14},
+            "hourly": {"cron": "0 0 * * * ?", "max_catchup_runs": 48},
+        },
+    },
+    "freshness": {"max_age_hours": {"daily": 26, "hourly": 2}},
     "outputs": {
-        "tables": [{"name": "customers"}],
-        "job": {"name": "silver-job"},
-        "gold": {"tables": [{"name": "customer_360"}], "job": {"name": "gold-job"}},
+        "tables": [
+            {"name": "customers", "cadence": "daily"},
+            {"name": "sessions", "cadence": "hourly"},
+        ],
+        "rejects": [{"name": "sessions_rejects"}],
+        "jobs": [
+            {"name": "l-silver-daily", "cadence": "daily", "tables": ["customers"]},
+            {"name": "l-silver-hourly", "cadence": "hourly", "tables": ["sessions"]},
+        ],
+        "applied_spec": {
+            "sources": [
+                {"name": "crm", "version": 1, "cadence": "daily"},
+                {"name": "clicks", "version": 1, "cadence": "hourly"},
+            ]
+        },
     },
 }
 
+GOLD = {
+    "layer": {"kind": "gold", "slug": "sales-gold"},
+    "sources": [{"name": "customers", "version": 1}],
+    "marts": [
+        {
+            "slug": "sales",
+            "tables": [
+                {"name": "fct_orders", "kind": "fact"},
+                {"name": "dim_customer", "kind": "dimension"},
+            ],
+            "jobs": [
+                {"name": "g-sales-daily", "tables": ["fct_orders", "dim_customer"]}
+            ],
+        },
+        {
+            "slug": "churn",
+            "tables": [
+                {"name": "fct_churn", "kind": "fact"},
+                {"name": "dim_customer", "kind": "dimension", "shared": True},
+            ],
+            "jobs": [
+                {"name": "g-churn-weekly", "tables": ["fct_churn"]},
+                {"name": "g-churn-hourly", "tables": ["fct_churn"]},
+            ],
+        },
+    ],
+}
 
-def test_delete_silver_only_keeps_gold_the_entry_and_the_directory(
-    tmp_path, monkeypatch
-):
-    target = _layer_dir(tmp_path, LAYERED)
-    done, events = _delete(monkeypatch, target, {}, ["--assets", "--layer", "silver"])
-    assert done.exit_code == 0, done.output
-    assert events == ["job", "fg customers"]
-    doc = yaml.safe_load((target / "system.yaml").read_text(encoding="utf-8"))
-    assert doc["outputs"]["tables"] == [] and doc["outputs"]["job"] == {}
-    assert doc["outputs"]["gold"]["tables"] == [{"name": "customer_360"}]
-    assert doc["phases"]["profile"] == {"status": "pending"}
 
-
-def test_delete_gold_and_silver_removes_the_entry_last(tmp_path, monkeypatch):
-    target = _layer_dir(tmp_path, LAYERED)
+def test_delete_silver_with_assets_removes_the_entry_last(tmp_path, monkeypatch):
+    target = _layer_dir(tmp_path, SILVER)
     done, events = _delete(monkeypatch, target, {}, ["--assets"])
     assert done.exit_code == 0, done.output
-    assert events == ["job", "fg customers", "job", "fg customer_360", "entry"]
+    assert events == [
+        "job l-silver-daily",
+        "job l-silver-hourly",
+        "fg customers",
+        "fg sessions",
+        "fg sessions_rejects",
+        "entry",
+    ]
     assert not target.exists()
 
 
+def test_delete_gold_deletes_every_mart_and_a_shared_dimension_once(
+    tmp_path, monkeypatch
+):
+    target = _layer_dir(tmp_path, GOLD)
+    done, events = _delete(monkeypatch, target, {}, ["--assets"])
+    assert done.exit_code == 0, done.output
+    assert sorted(e for e in events if e.startswith("fg")) == [
+        "fg dim_customer",
+        "fg fct_churn",
+        "fg fct_orders",
+    ]
+    assert events[-1] == "entry"
+
+
+def test_delete_without_assets_only_forgets_the_entry(tmp_path, monkeypatch):
+    target = _layer_dir(tmp_path, GOLD)
+    done, events = _delete(monkeypatch, target, {}, [])
+    assert done.exit_code == 0, done.output
+    assert events == ["entry"] and target.exists()
+
+
 @pytest.mark.parametrize(
-    ("doc", "tags"),
+    ("doc", "tags", "why"),
     [
         # A source listed among the outputs by mistake.
-        ({**LAYERED, "outputs": {"tables": [{"name": "crm"}]}}, {}),
-        # A table tagged bronze.
-        (LAYERED, {"customers": {"medallion_table": '{"layer": "bronze"}'}}),
+        (
+            {**SILVER, "outputs": {"tables": [{"name": "crm"}]}},
+            {},
+            "a source of this layer",
+        ),
+        (SILVER, {"customers": {"medallion_table": '{"layer": "bronze"}'}}, "bronze"),
+        # Gold never deletes silver.
+        (GOLD, {"fct_orders": {"medallion_table": '{"layer": "silver"}'}}, "silver"),
     ],
 )
-def test_delete_never_deletes_bronze(tmp_path, monkeypatch, doc, tags):
+def test_delete_never_deletes_a_lower_layer(tmp_path, monkeypatch, doc, tags, why):
     target = _layer_dir(tmp_path, doc)
-    done, events = _delete(monkeypatch, target, tags, ["--assets", "--layer", "silver"])
-    assert done.exit_code != 0 and "source of truth" in done.output
+    done, events = _delete(monkeypatch, target, tags, ["--assets"])
+    assert done.exit_code != 0 and why in done.output
     # Refused before anything was deleted.
     assert events == [] and target.exists()
 
 
-def test_layer_needs_assets(tmp_path, monkeypatch):
-    target = _layer_dir(tmp_path, LAYERED)
-    done, events = _delete(monkeypatch, target, {}, ["--layer", "gold"])
-    assert done.exit_code != 0 and "pass --assets too" in done.output
+def test_mart_delete_keeps_tables_another_mart_lists(tmp_path, monkeypatch):
+    target = _layer_dir(tmp_path, GOLD)
+    done, events = _run(
+        monkeypatch,
+        target,
+        {},
+        ["mart-delete", "L", "churn", "--tables", "--yes"],
+    )
+    assert done.exit_code == 0, done.output
+    assert events == ["job g-churn-weekly", "job g-churn-hourly", "fg fct_churn"]
+    doc = _doc(target)
+    assert [m["slug"] for m in doc["marts"]] == ["sales"]
+    assert "dim_customer are kept" in doc["decisions"][-1]["what"]
+
+
+def test_mart_delete_without_tables_deletes_only_the_jobs(tmp_path, monkeypatch):
+    target = _layer_dir(tmp_path, GOLD)
+    done, events = _run(monkeypatch, target, {}, ["mart-delete", "L", "sales", "--yes"])
+    assert done.exit_code == 0, done.output
+    assert events == ["job g-sales-daily"]
+
+
+def test_job_delete_in_gold_keeps_tables_another_job_writes(tmp_path, monkeypatch):
+    target = _layer_dir(tmp_path, GOLD)
+    done, events = _run(
+        monkeypatch,
+        target,
+        {},
+        ["job-delete", "L", "g-churn-hourly", "--tables", "--yes"],
+    )
+    assert done.exit_code == 0, done.output
+    assert events == ["job g-churn-hourly"]
+    churn = _doc(target)["marts"][1]
+    assert [j["name"] for j in churn["jobs"]] == ["g-churn-weekly"]
+    assert len(churn["tables"]) == 2
+
+
+def test_job_delete_in_silver_drops_the_cadence(tmp_path, monkeypatch):
+    target = _layer_dir(tmp_path, SILVER)
+    done, events = _run(
+        monkeypatch,
+        target,
+        {},
+        ["job-delete", "L", "l-silver-hourly", "--tables", "--yes"],
+    )
+    assert done.exit_code == 0, done.output
+    assert events == ["job l-silver-hourly", "fg sessions", "fg sessions_rejects"]
+    doc = _doc(target)
+    assert [s["name"] for s in doc["sources"]] == ["crm"]
+    # Nothing pending, so applying the spec does not rebuild the job.
+    assert doc["outputs"]["applied_spec"]["sources"] == [
+        {"name": "crm", "version": 1, "cadence": "daily"}
+    ]
+    assert list(doc["schedule"]["cadences"]) == ["daily"]
+    assert doc["freshness"]["max_age_hours"] == {"daily": 26}
+    assert [t["name"] for t in doc["outputs"]["tables"]] == ["customers"]
+    assert doc["outputs"]["rejects"] == []
+
+
+def test_job_delete_refuses_an_unknown_job(tmp_path, monkeypatch):
+    target = _layer_dir(tmp_path, SILVER)
+    done, events = _run(monkeypatch, target, {}, ["job-delete", "L", "nope", "--yes"])
+    assert done.exit_code != 0 and "No job 'nope'" in done.output
     assert events == []
+
+
+def _answers_file(tmp_path, answers):
+    path = tmp_path / "answers.json"
+    path.write_text(json.dumps(answers), encoding="utf-8")
+    return str(path)
+
+
+MART = {
+    "slug": "returns",
+    "name": "Returns",
+    "cadence": "weekly",
+    "requirements": {
+        "analysts": "merchandising",
+        "grain": {"represents": "one returned article", "type": "transaction"},
+        "on_check_failure": "quarantine",
+    },
+}
+
+
+def test_mart_add_appends_a_draft_mart(tmp_path, monkeypatch):
+    target = _layer_dir(tmp_path, GOLD)
+    done, _ = _run(
+        monkeypatch,
+        target,
+        {},
+        ["mart-add", "L", "--answers", _answers_file(tmp_path, MART), "--no-launch"],
+    )
+    assert done.exit_code == 0, done.output
+    mart = _doc(target)["marts"][-1]
+    assert mart["slug"] == "returns" and mart["status"] == "draft"
+    assert mart["freshness_hours"] == 170 and mart["applied"] == {}
+    assert mart["phases"]["requirements"] == {"status": "pending"}
+    assert '"/hops-gold customers-silver returns"' in done.output
+
+
+@pytest.mark.parametrize(
+    ("change", "problem"),
+    [
+        ({"slug": "sales"}, "already has a data mart 'sales'"),
+        ({"cadence": "monthly"}, "cadence must be one of"),
+        ({"requirements": {"grain": {"type": "daily"}}}, "grain.type must be one of"),
+        ({"requirements": {"on_check_failure": "ignore"}}, "on_check_failure must be"),
+        ({"requirements": {"vibes": 1}}, "unknown requirement 'vibes'"),
+    ],
+)
+def test_mart_add_refuses_bad_answers(tmp_path, monkeypatch, change, problem):
+    target = _layer_dir(tmp_path, GOLD)
+    path = _answers_file(tmp_path, {**MART, **change})
+    done, _ = _run(monkeypatch, target, {}, ["mart-add", "L", "--answers", path])
+    assert done.exit_code != 0 and problem in done.output
+
+
+def test_mart_update_keeps_tables_and_jobs(tmp_path, monkeypatch):
+    target = _layer_dir(tmp_path, GOLD)
+    path = _answers_file(tmp_path, {**MART, "slug": "ignored", "cadence": "hourly"})
+    done, _ = _run(
+        monkeypatch,
+        target,
+        {},
+        ["mart-update", "L", "sales", "--answers", path, "--no-launch"],
+    )
+    assert done.exit_code == 0, done.output
+    sales = _doc(target)["marts"][0]
+    assert sales["slug"] == "sales" and sales["cadence"] == "hourly"
+    assert sales["requirements"]["analysts"] == "merchandising"
+    assert [j["name"] for j in sales["jobs"]] == ["g-sales-daily"]
+
+
+def test_marts_are_only_in_gold(tmp_path, monkeypatch):
+    target = _layer_dir(tmp_path, SILVER)
+    path = _answers_file(tmp_path, MART)
+    done, _ = _run(monkeypatch, target, {}, ["mart-add", "L", "--answers", path])
+    assert done.exit_code != 0 and "is a silver layer" in done.output
+
+
+def test_add_tables_adds_sources_and_a_job_cadence(tmp_path, monkeypatch):
+    target = _layer_dir(tmp_path, SILVER)
+    answers = {
+        "description": "weekly article catalogue",
+        "sources": [{"name": "articles", "cadence": "weekly"}],
+    }
+    path = _answers_file(tmp_path, answers)
+    done, _ = _run(
+        monkeypatch, target, {}, ["add-tables", "L", "--answers", path, "--no-launch"]
+    )
+    assert done.exit_code == 0, done.output
+    doc = _doc(target)
+    assert doc["sources"][-1]["name"] == "articles"
+    assert doc["schedule"]["cadences"]["weekly"]["max_catchup_runs"] == 4
+    assert doc["freshness"]["max_age_hours"] == {
+        "hourly": 2,
+        "daily": 26,
+        "weekly": 170,
+    }
+    assert doc["additions"][-1]["status"] == "pending"
+    assert '"/hops-silver customers-silver apply"' in done.output
+
+
+def test_add_tables_refuses_a_known_source(tmp_path, monkeypatch):
+    target = _layer_dir(tmp_path, SILVER)
+    path = _answers_file(tmp_path, {"sources": [{"name": "crm"}]})
+    done, _ = _run(monkeypatch, target, {}, ["add-tables", "L", "--answers", path])
+    assert done.exit_code != 0 and "crm v1 is already a source" in done.output
+
+
+GOLD_ANSWERS = {
+    "slug": "sales-gold",
+    "name": "Sales gold",
+    "queries": "revenue by week and region",
+    "modeling": "snowflake",
+    "sources": [{"name": "customers"}, {"name": "orders", "version": 2}],
+    "standards": {"naming": "our naming"},
+    "mart": MART,
+}
+
+
+def test_gold_records_the_layer_and_its_first_mart(tmp_path, monkeypatch):
+    registered = []
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        mlsystem,
+        "register",
+        lambda ctx, target, name=None: registered.append((target, name)) or {},
+    )
+    path = _answers_file(tmp_path, GOLD_ANSWERS)
+    done = CliRunner().invoke(
+        cli, ["medallion", "gold", "--answers", path, "--no-launch"]
+    )
+    assert done.exit_code == 0, done.output
+    target = tmp_path / "sales-gold"
+    doc = _doc(target)
+    assert doc["layer"]["kind"] == "gold" and doc["layer"]["modeling"] == "snowflake"
+    assert doc["sources"] == [
+        {"name": "customers", "version": 1},
+        {"name": "orders", "version": 2},
+    ]
+    # The user's standard is kept, the rest proposed.
+    assert doc["standards"]["naming"] == "our naming"
+    assert doc["standards"]["quality"] == medallion.DEFAULT_STANDARDS["quality"]
+    assert [m["slug"] for m in doc["marts"]] == ["returns"]
+    assert "Data marts" in (target / "AGENTS.md").read_text(encoding="utf-8")
+    assert registered == [(target, "Sales gold")]
+    assert 'claude "/hops-gold sales-gold"' in done.output
+
+
+@pytest.mark.parametrize(
+    ("change", "problem"),
+    [
+        ({"sources": []}, "at least one silver feature group"),
+        ({"modeling": "galaxy"}, "modeling must be one of"),
+        ({"mart": None}, "needs a data mart"),
+        ({"standards": {"style": "x"}}, "standards takes"),
+    ],
+)
+def test_gold_refuses_bad_answers(tmp_path, monkeypatch, change, problem):
+    monkeypatch.chdir(tmp_path)
+    path = _answers_file(tmp_path, {**GOLD_ANSWERS, **change})
+    done = CliRunner().invoke(cli, ["medallion", "gold", "--answers", path])
+    assert done.exit_code != 0 and problem in done.output
+    assert not (tmp_path / "sales-gold").exists()
 
 
 def test_silver_refuses_an_unknown_source_cadence(tmp_path, monkeypatch):
@@ -574,3 +876,20 @@ def test_status_reads_every_job_and_each_tables_cadence_target(tmp_path, monkeyp
     # Five hours old: stale for an hourly table, fresh for a daily one.
     assert clicks["max_age_hours"] == 2 and clicks["problems"]
     assert products["max_age_hours"] == 26 and not products["problems"]
+
+
+def test_status_reads_gold_tables_with_their_marts_freshness():
+    from hopsworks.cli import silver_status
+
+    doc = {**GOLD, "marts": [{**GOLD["marts"][0], "freshness_hours": 30}]}
+    tables = medallion.layer_tables(doc)
+    assert [(t["name"], t["kind"], t["mart"]) for t in tables] == [
+        ("fct_orders", "gold", "sales"),
+        ("dim_customer", "gold", "sales"),
+    ]
+    assert silver_status._freshness(doc, tables[0]) == 30
+    assert [j["mart"] for j in medallion.layer_jobs(GOLD)] == [
+        "sales",
+        "churn",
+        "churn",
+    ]

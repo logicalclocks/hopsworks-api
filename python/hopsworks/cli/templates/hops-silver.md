@@ -36,6 +36,7 @@ Find a skill at `.claude/skills/<name>/` in the repository, else `~/.claude/skil
 - **Third normal form.** Every silver table is in 3NF; a design that is not, or a change that would break it, is redesigned rather than built.
 - **Bronze is read-only.** Never insert into, update, delete or retag a bronze feature group.
 - **Commit each phase** in the layer's git work tree: `[<slug>] <phase>: <what>`, `system.yaml` with the code.
+- **The GitHub repository.** The layer's code lives in a private GitHub repository `hops-<slug>`: with no `layer.repo.url` and `gh auth status` logged in, create it at the first commit (`gh repo create hops-<slug> --private --source . --remote origin --push`) and record its URL (`gh repo view --json url -q .url`) as `layer.repo.url`; push after every commit. Without a GitHub login, say once that `github-login` connects one, and keep committing locally.
 - **Logs stay out of the directory**, as `AGENTS.md` says.
 - **No secrets** in arguments, `system.yaml` or the code: a salt or key is a Hopsworks secret read at run time.
 - **Never delete** what this build did not create.
@@ -88,6 +89,7 @@ Set `outputs.applied_spec` to the spec just built (`sources` names and versions,
 ### apply
 
 Compare the spec with `outputs.applied_spec`, and read `git log -p -- system.yaml` since the last build or apply commit for why it changed.
+Each `additions` entry with `status: pending` asks for new tables from its sources, described in the user's words: profile those sources, design the tables in 3NF with the rest, and build them as a source added; set the entry's `status: applied` when they are verified.
 Show what changed and what each change recomputes (hops-medallion, Changing a layer) as a short table, and ask only when a change is ambiguous.
 Set `layer.status: building` and the affected phases back to `pending`, then run them: a lifecycle change retags every silver and rejects feature group; a schedule change reschedules the job; a changed task, extra task, engine or source changes and tests the code, creates the next version of each silver table whose content changes, backfills it over the whole bronze history, switches the job to it, and verifies one window.
 Record each new version in `outputs`, and each superseded one in `decisions`; never delete one.

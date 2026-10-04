@@ -9,12 +9,14 @@ The skill **hops-medallion** describes how a silver layer is built.
 Every change you make to this layer updates `system.yaml` in the same commit, whatever it is for: a fix, maintenance, a new silver table or column, a changed task, schedule, engine or source.
 Record why in `decisions`.
 `system.yaml` must always reflect what runs: before you finish, check that every table, version, job and schedule it names is the one that exists, and correct it where it is not.
+Push every commit to the layer's GitHub repository (`layer.repo.url`, `hops-<slug>`).
 
 ## When system.yaml has changed
 
 Before anything else in a session, compare the spec in `system.yaml` (`sources`, `tasks`, `extra_tasks`, `engine`, `schedule`, `layer.lifecycle`) with `outputs.applied_spec`, the spec the tables were last built from, and read `git log -p -- system.yaml` since the last `[<slug>] apply` or build commit.
 A difference is a change to apply, with `/hops-silver <slug> apply`: retag for a lifecycle, reschedule for a schedule, and for a changed task, engine or source a new version of each silver table whose content changes, backfilled and switched to by the job (hops-medallion, Changing a layer).
 Keep the superseded versions, and end by setting `outputs.applied_spec` to the spec applied.
+An `additions` entry with `status: pending` is a request for new tables from its sources, in the user's words: design and build them like the first tables, and set it to `applied`.
 
 ## Silver tables are materialized and in third normal form
 

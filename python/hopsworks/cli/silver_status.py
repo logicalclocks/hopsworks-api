@@ -1,9 +1,9 @@
-"""The health of a silver medallion layer, for ``hops medallion status``.
+"""The health of a silver or gold medallion layer, for ``hops medallion status``.
 
-`collect` gathers the facts: the layer job's runs, and for each silver and
-rejects feature group its rows, when it was last written against the layer's
-freshness target, its share of rejected rows against the quality gate, and its
-file layout, read from the table's files under the terminal's HopsFS mount by
+`collect` gathers the facts: the layer's job runs, and for each feature group
+it built (silver and rejects, or each data mart's gold tables) its rows, when
+it was last written against its freshness target, in silver its share of
+rejected rows against the quality gate, and its file layout, read from the table's files under the terminal's HopsFS mount by
 the hops-table-maintenance scanner. The page is the ML system status page
 (`health.render`), which draws the tables section when the facts have one.
 """
@@ -91,12 +91,27 @@ def _rows(conn: Any, name: str, version: int) -> int | None:
         return None
 
 
-def _table(
-    project: Any, conn: Any, table: dict, kind: str, doc: dict, now: datetime
-) -> dict:
-    name, version = table["name"], int(table.get("version", 1))
+def _freshness(doc: dict, table: dict) -> float | None:
+    """How stale a table may be: its data mart's target in gold, its cadence's job's in silver."""
+    if table.get("mart"):
+        for mart in doc.get("marts") or []:
+            if mart.get("slug") == table["mart"]:
+                return mart.get("freshness_hours")
+        return None
+    target = (doc.get("freshness") or {}).get("max_age_hours")
+    if isinstance(target, dict):
+        target = target.get(table.get("cadence") or "") or max(
+            target.values(), default=None
+        )
+    return target
+
+
+def _table(project: Any, conn: Any, table: dict, doc: dict, now: datetime) -> dict:
+    name, version, kind = table["name"], int(table.get("version", 1)), table["kind"]
     path = _table_dir(getattr(project, "name", ""), name, version)
     fact: dict[str, Any] = {"name": name, "version": version, "kind": kind}
+    if table.get("mart"):
+        fact["mart"] = table["mart"]
     if not path.is_dir():
         fact["problems"] = ["missing: no table in the feature store"]
         return fact
@@ -105,13 +120,8 @@ def _table(
     fact["last_write"] = written.isoformat() if written else None
     fact["layout"] = _layout(path)
     problems = []
-    target = (doc.get("freshness") or {}).get("max_age_hours")
-    # Per cadence, the target of the job that writes the table.
-    if isinstance(target, dict):
-        target = target.get(table.get("cadence") or "") or max(
-            target.values(), default=None
-        )
-    if kind == "silver" and written and target:
+    target = _freshness(doc, table)
+    if kind in ("silver", "gold") and written and target:
         age = (now - written) / timedelta(hours=1)
         fact["age_hours"] = round(age, 1)
         fact["max_age_hours"] = target
@@ -147,14 +157,13 @@ def _reject_shares(tables: list[dict], doc: dict) -> None:
 
 
 def collect(project: Any, doc: dict, slug: str, hours: int = 24) -> dict:
-    """The facts of a silver layer's status report."""
+    """The facts of a silver or gold layer's status report."""
     now = datetime.now(timezone.utc)
     since = now - timedelta(hours=hours)
-    outputs = doc.get("outputs") or {}
-    from hopsworks.cli.commands.medallion import silver_jobs
+    from hopsworks.cli.commands.medallion import layer_jobs, layer_tables
 
     jobs = []
-    for spec in silver_jobs(outputs):
+    for spec in layer_jobs(doc):
         try:
             jobs.append(health._job_runs(project, spec["name"], since))
         except Exception as exc:  # noqa: BLE001
@@ -166,12 +175,7 @@ def collect(project: Any, doc: dict, slug: str, hours: int = 24) -> dict:
         )
     except Exception:  # noqa: BLE001 - row counts are left out without Trino
         conn = None
-    tables = [
-        _table(project, conn, t, kind, doc, now)
-        for kind, key in (("silver", "tables"), ("rejects", "rejects"))
-        for t in outputs.get(key) or []
-        if t.get("name")
-    ]
+    tables = [_table(project, conn, t, doc, now) for t in layer_tables(doc)]
     if conn:
         conn.close()
     _reject_shares(tables, doc)

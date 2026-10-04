@@ -8,6 +8,7 @@ layer:
   description: ""     # what the silver tables are for
   lifecycle: dev      # dev | staging | prod, mirrored in each table's medallion_table tag
   status: draft       # draft | building | built | failed
+  repo: {}            # {url}: the GitHub repository, hops-<slug>, the layer's code in it
 sources: []           # bronze feature groups: {name, version, cadence, arrival_column}
 tasks: []             # deduplicate, cast_types, standardize, handle_nulls, validate,
                       # mask_pii, conform_entities, surrogate_keys, referential_checks
@@ -39,9 +40,10 @@ outputs:
   tables: []          # silver feature groups: {name, version, cadence, sources, primary_key, event_time, tasks}
   rejects: []         # rejects feature groups, if validate is a task
   jobs: []            # one per cadence: {name, cadence, cron, environment, tables}
-  gold: {}            # the gold layer, when built: {tables, job}
   applied_spec: {}    # the spec the tables were last built from: sources, tasks,
                       # extra_tasks, engine, schedule, lifecycle; a difference is a pending change
+additions: []         # tables asked for after the build, by `hops medallion add-tables`:
+                      # {at, description, sources, status: pending | applied}
 progress:
   now: ""             # what the build is doing, one line
 decisions: []         # append-only: {at, by, what, why}
