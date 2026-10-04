@@ -92,6 +92,10 @@ def _problems(answers: dict) -> list[str]:
     for source in sources:
         if not isinstance(source, dict) or not source.get("name"):
             problems.append(f"source {source!r} needs a name")
+        elif source.get("cadence", "daily") not in CADENCES:
+            problems.append(
+                f"source {source['name']}: cadence must be one of {', '.join(CADENCES)}"
+            )
     problems += [
         f"unknown task {t!r}" for t in answers.get("tasks") or [] if t not in TASKS
     ]
@@ -113,8 +117,9 @@ def _problems(answers: dict) -> list[str]:
     if not isinstance(pct, (int, float)) or not 0 <= pct <= 100:
         problems.append("max_reject_pct must be a number from 0 to 100")
     hours = answers.get("freshness_hours", 1)
-    if not isinstance(hours, (int, float)) or hours <= 0:
-        problems.append("freshness_hours must be a positive number")
+    targets = hours.values() if isinstance(hours, dict) else [hours]
+    if any(not isinstance(h, (int, float)) or h <= 0 for h in targets):
+        problems.append("freshness_hours must be a positive number of hours")
     return problems
 
 
@@ -141,18 +146,23 @@ def _create(cwd: Path, answers: dict) -> Path:
         {
             "name": s["name"],
             "version": s.get("version", 1),
+            "cadence": s.get("cadence", cadence),
             "arrival_column": s.get("arrival_column"),
         }
         for s in answers["sources"]
     ]
+    used = [c for c in CADENCES if any(s["cadence"] == c for s in doc["sources"])]
     doc["tasks"] = list(answers.get("tasks") or [])
     doc["extra_tasks"] = answers.get("extra_tasks", "")
     doc["engine"] = answers.get("engine", "dbt_trino")
+    # One job per cadence the sources use, each with its own cron and catch-up.
     doc["schedule"] = {
         "cadence": cadence,
-        "cron": CADENCES[cadence],
         "catchup": True,
-        "max_catchup_runs": MAX_CATCHUP_RUNS[cadence],
+        "cadences": {
+            c: {"cron": CADENCES[c], "max_catchup_runs": MAX_CATCHUP_RUNS[c]}
+            for c in used
+        },
     }
     doc["history"] = answers.get("history", "latest")
     doc["deletes"] = answers.get("deletes", "ignore")
@@ -162,8 +172,13 @@ def _create(cwd: Path, answers: dict) -> Path:
         "max_reject_pct": answers.get("max_reject_pct", 5),
         "alert_on_failure": bool(answers.get("alert_on_failure", True)),
     }
+    hours = answers.get("freshness_hours")
     doc["freshness"] = {
-        "max_age_hours": answers.get("freshness_hours", FRESHNESS_HOURS[cadence])
+        "max_age_hours": {
+            c: (hours.get(c) if isinstance(hours, dict) else hours)
+            or FRESHNESS_HOURS[c]
+            for c in used
+        }
     }
     (target / "system.yaml").write_text(
         yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=100),
@@ -253,16 +268,25 @@ def _entry(ctx: click.Context, name_or_id: str) -> dict:
 LAYERS = ("silver", "gold")
 
 
-def _layer_assets(doc: dict, layer: str) -> tuple[str | None, list[dict]]:
-    """The job and tables a layer built: silver's under outputs, gold's under outputs.gold."""
+def silver_jobs(outputs: dict) -> list[dict]:
+    """The silver layer's jobs, one per cadence; a layer built before that has one `job`."""
+    jobs = [j for j in outputs.get("jobs") or [] if j.get("name")]
+    if not jobs and (outputs.get("job") or {}).get("name"):
+        jobs = [outputs["job"]]
+    return jobs
+
+
+def _layer_assets(doc: dict, layer: str) -> tuple[list[str], list[dict]]:
+    """The jobs and tables a layer built: silver's under outputs, gold's under outputs.gold."""
     outputs = doc.get("outputs") or {}
     if layer == "silver":
-        return (outputs.get("job") or {}).get("name"), [
+        return [j["name"] for j in silver_jobs(outputs)], [
             *(outputs.get("tables") or []),
             *(outputs.get("rejects") or []),
         ]
     gold = outputs.get("gold") or {}
-    return (gold.get("job") or {}).get("name"), list(gold.get("tables") or [])
+    jobs = [j for j in gold.get("jobs") or [gold.get("job") or {}] if j.get("name")]
+    return [j["name"] for j in jobs], list(gold.get("tables") or [])
 
 
 def _is_bronze(fg: Any, sources: set[tuple[str, int]]) -> bool:
@@ -285,7 +309,7 @@ def _is_bronze(fg: Any, sources: set[tuple[str, int]]) -> bool:
 def _delete_layer(ctx: click.Context, doc: dict, layer: str) -> None:
     """Delete one layer's job, then its feature groups; what is gone is skipped, bronze is refused."""
     project = session.get_project(ctx)
-    job_name, tables = _layer_assets(doc, layer)
+    job_names, tables = _layer_assets(doc, layer)
     sources = {
         (s.get("name"), int(s.get("version", 1))) for s in doc.get("sources") or []
     }
@@ -308,7 +332,7 @@ def _delete_layer(ctx: click.Context, doc: dict, layer: str) -> None:
                 f"{name} v{version} is a bronze table, the source of truth; hops medallion delete never deletes bronze"
             )
         found.append(fg)
-    if job_name:
+    for job_name in job_names:
         job = project.get_job_api().get_job(job_name)
         if job is None:
             output.info(f"job {job_name}: gone")
@@ -329,6 +353,7 @@ def _forget_layer(doc: dict, layer: str) -> None:
     for key in ("tables", "rejects"):
         outputs[key] = []
     outputs["job"] = {}
+    outputs["jobs"] = []
     outputs["applied_spec"] = {}
     for phase in (doc.get("phases") or {}).values():
         if isinstance(phase, dict):
@@ -410,7 +435,7 @@ def medallion_delete(
     left = [
         layer
         for layer in LAYERS
-        if layer not in chosen and any(_layer_assets(doc, layer))
+        if layer not in chosen and any(any(part) for part in _layer_assets(doc, layer))
     ]
     if left:
         for layer in chosen:
@@ -503,7 +528,7 @@ def medallion_status(
 def medallion_backfill(ctx: click.Context, name_or_id: str, wait: bool) -> None:
     """Reprocess every bronze row into the layer's silver tables.
 
-    Runs the layer's job once over a window from the epoch to now, so it reads
+    Runs each of the layer's jobs (one per cadence) once over a window from the epoch to now, so it reads
     the whole history of every bronze table; the job's upsert on the primary
     key and event time makes rows already in silver unchanged. A plain run of
     a scheduled job would get the last cron interval instead, which is why
@@ -518,21 +543,30 @@ def medallion_backfill(ctx: click.Context, name_or_id: str, wait: bool) -> None:
 
     project = session.get_project(ctx)
     entry, _directory, doc = _layer(ctx, name_or_id)
-    job_name = ((doc.get("outputs") or {}).get("job") or {}).get("name")
-    job = project.get_job_api().get_job(job_name) if job_name else None
-    if job is None:
+    jobs = silver_jobs(doc.get("outputs") or {})
+    if not jobs:
         raise click.ClickException(
             f"{entry.get('name')} has no job yet; build it with /hops-silver first."
         )
     start = datetime(1970, 1, 1, tzinfo=timezone.utc)
     end = datetime.now(timezone.utc).replace(microsecond=0)
-    execution = job.run(await_termination=wait, start_time=start, end_time=end)
-    state = getattr(execution, "final_status", None) or getattr(execution, "state", "?")
-    output.success(
-        f"Backfill of {entry.get('name')}: job {job_name}, execution #{getattr(execution, 'id', '?')}, "
-        f"window {start.date()} to {end.isoformat()} ({state})"
-    )
-    if wait and state in ("FAILED", "KILLED"):
-        raise click.ClickException(
-            f"the backfill failed; read its log with hops job logs {job_name} --stdout --tail 200"
+    # One job per cadence, slowest first: entity and lookup tables, usually
+    # refreshed less often, are in place before the tables that reference them.
+    order = {c: i for i, c in enumerate(reversed(CADENCES))}
+    for spec in sorted(jobs, key=lambda j: order.get(j.get("cadence"), 0)):
+        job_name = spec["name"]
+        job = project.get_job_api().get_job(job_name)
+        if job is None:
+            raise click.ClickException(f"job {job_name} does not exist")
+        execution = job.run(await_termination=wait, start_time=start, end_time=end)
+        state = getattr(execution, "final_status", None) or getattr(
+            execution, "state", "?"
         )
+        output.success(
+            f"Backfill of {entry.get('name')}: job {job_name}, execution #{getattr(execution, 'id', '?')}, "
+            f"window {start.date()} to {end.isoformat()} ({state})"
+        )
+        if wait and state in ("FAILED", "KILLED"):
+            raise click.ClickException(
+                f"the backfill failed; read its log with hops job logs {job_name} --stdout --tail 200"
+            )

@@ -53,15 +53,16 @@ Record the profile in `system.yaml` under each source (`rows`, `key_candidates`,
 Design the silver tables from the sources, the `tasks` and `extra_tasks`, in third normal form (hops-medallion, Silver is in third normal form): find the entities and events in the bronze tables and the functional dependencies between their columns from the profile, split repeating groups into child tables, move each attribute to the table of the key it depends on, and make lookups their own tables.
 One table per entity or event, named after it, lowercase with underscores (`customers`, `order_lines`), each with its sources, business key (the feature group's primary key, a surrogate key when `surrogate_keys` is a task), foreign keys (`references`), `event_time`, columns, the tasks applied to each, and the dependencies that justify the split.
 No aggregates, derived totals or denormalized copies of another table's attributes: those are gold.
+No silver table takes the name of an existing feature group (check `hops fg list`): `get_or_create_feature_group` would return that group, a bronze one included, and the job would write into it; prefix the names with the domain or the layer when they would collide.
 With `validate`, a `<table>_rejects` feature group per table.
 Decide each table's partitioning with **hops-partitioning**: run its `partition_advisor.py` on the bronze tables' files under `/hopsfs/featurestore/<project>_featurestore.db/<fg>_<version>` with the arrival column, and record the decision, column and evidence in `partitioning` (per table when they differ).
 Record each bronze table's schema (column names and types) under its source, for the schema-change check.
-Choose the job's name (`<slug>-silver`), environment (`dbt-pipeline`, or a PySpark job), and cron from `schedule`.
+Give each silver table the cadence of its most frequently updated source (`sources[].cadence`; hourly before daily before weekly), and group the tables into one job per cadence: `<slug>-silver-<cadence>`, environment `dbt-pipeline` (or a PySpark job), cron and catch-up limit from `schedule.cadences.<cadence>`; record `outputs.tables[].cadence` and `outputs.jobs` (`{name, cadence, cron, tables}`). Ask when a table's sources span cadences and the user may want it slower.
 Write it all to `outputs` (versions 1) before any code, and show the design as a short table; ask only what is unclear.
 
 ### code
 
-Write the code in the layer's directory: for `dbt_trino`, a dbt project in `dbt/` (ephemeral models, `sources.yml` over the bronze tables, mapping models, data tests for `validate`) and a runner `run_silver.py` that passes `HOPS_START_TIME`/`HOPS_END_TIME` as dbt vars when set, runs `dbt build`, executes each compiled model on Trino and inserts the rows into its silver feature group (hops-dbt, Landing the model output); for `pyspark`, `silver.py` reading each source with `fg.read()` and inserting each table.
+Write one program that every job runs, taking `--cadence <cadence>` to build only that cadence's tables from their sources. For `dbt_trino`, a dbt project in `dbt/` (ephemeral models, `sources.yml` over the bronze tables, mapping models, data tests for `validate`) and a runner `run_silver.py` that passes `HOPS_START_TIME`/`HOPS_END_TIME` as dbt vars when set, runs `dbt build`, executes each compiled model on Trino and inserts the rows into its silver feature group (hops-dbt, Landing the model output); for `pyspark`, `silver.py` reading each source with `fg.read()` and inserting each table.
 Create every silver feature group with `get_or_create_feature_group` (Delta, offline, primary key as designed, `event_time` only with `history: full`, `partition_key` as decided, `parents=` the bronze feature groups it reads, a description, a description per feature) in the program, so the first run creates it.
 Implement the settings (hops-medallion, The layer's settings): the read window starts `late_data.lookback` before `HOPS_START_TIME`; the bronze schemas are checked against the recorded ones first (`schema_changes`); rejected rows are counted and the run fails above `quality.max_reject_pct` before silver is written; deletes are propagated when `deletes: propagate`.
 The program logs its window, the rows read, written and rejected per table, and each check's result.
@@ -69,18 +70,18 @@ Write unit tests in `tests/` (DuckDB over sample rows for the dbt SQL, pandas or
 
 ### backfill
 
-Deploy the job (`hops job deploy <slug>-silver run_silver.py --env dbt-pipeline`, uploading the dbt project with `hops files upload --overwrite`), run it once without a window (`hops job run <slug>-silver --wait`; before it is scheduled the run gets no window), and check each silver table: row count against its sources, no duplicate primary key (and `event_time` with `history: full`), no nulls in key columns, the rejects counted, and its parents (`hops fg lineage <name>`).
+Deploy one job per cadence (`hops job deploy <slug>-silver-<cadence> run_silver.py --env dbt-pipeline --args "--cadence <cadence>"`, uploading the dbt project with `hops files upload --overwrite`), run each once without a window, slowest cadence first (`hops job run <slug>-silver-<cadence> --wait`; before it is scheduled the run gets no window), and check each silver table: row count against its sources, no duplicate primary key (and `event_time` with `history: full`), no nulls in key columns, the rejects counted, and its parents (`hops fg lineage <name>`).
 Fix and rerun until the checks pass; record the counts in `outputs`.
 
 ### schedule
 
-Schedule the job with catch-up (`hops job schedule <slug>-silver "<cron>" --start-time <end of the backfill> --catchup --max-catchup-runs <schedule.max_catchup_runs>`), so the windows continue from the backfill and missed ones are replayed.
-With `quality.alert_on_failure`, create the job-failure alert (`hops alert job create <slug>-silver --receiver <receiver> --status failed --severity critical`; `hops alert receiver list` for the receiver, asking which one when there are several, and recording it).
+Schedule each job with catch-up (`hops job schedule <slug>-silver-<cadence> "<schedule.cadences.<cadence>.cron>" --start-time <end of the backfill> --catchup --max-catchup-runs <its max_catchup_runs>`), so the windows continue from the backfill and missed ones are replayed.
+With `quality.alert_on_failure`, create a failure alert on each job (`hops alert job create <slug>-silver-<cadence> --receiver <receiver> --status failed --severity critical`; `hops alert receiver list` for the receiver, asking which one when there are several, and recording it).
 Tag every silver and rejects feature group `medallion_table` with `{"layer": "silver", "lifecycle": "<layer.lifecycle>"}` (`hops fg add-tag <name> medallion_table --value '...'`).
 
 ### verify
 
-Run one window (`hops job run <slug>-silver --start-time <t0> --end-time <t1> --wait`) over a stretch of bronze arrivals, check that only that window's rows were read (the job's log states its window and row counts), that a second run of the same window leaves every silver table unchanged, and that the tags are set.
+For each job, run one window of its cadence (`hops job run <slug>-silver-<cadence> --start-time <t0> --end-time <t1> --wait`) over a stretch of bronze arrivals, check that only that window's rows were read (the job's log states its window and row counts), that a second run of the same window leaves every silver table unchanged, and that the tags are set.
 Run `hops medallion status <slug>` and fix anything it flags.
 Set `outputs.applied_spec` to the spec just built (`sources` names and versions, `tasks`, `extra_tasks`, `engine`, `schedule`, `layer.lifecycle`, `history`, `deletes`, `schema_changes`, `late_data`, `quality`, `freshness`), set `layer.status: built`, and report the silver tables, the job, its schedule and the checks, in a few lines.
 

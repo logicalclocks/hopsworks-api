@@ -17,7 +17,10 @@ ANSWERS = {
     "slug": "customers-silver",
     "name": "Customers silver",
     "description": "Clean customers and orders",
-    "sources": [{"name": "crm_customers", "version": 1}, {"name": "shop_orders"}],
+    "sources": [
+        {"name": "crm_customers", "version": 1},
+        {"name": "shop_orders", "cadence": "daily"},
+    ],
     "tasks": ["deduplicate", "cast_types", "mask_pii"],
     "extra_tasks": "anonymize the email column of crm_customers",
     "engine": "dbt_trino",
@@ -51,17 +54,31 @@ def test_silver_records_the_layer_from_the_answers_and_registers_it(
     assert (
         doc["layer"]["kind"] == "silver" and doc["layer"]["name"] == "Customers silver"
     )
+    # A source without a cadence takes the layer's default.
     assert doc["sources"] == [
-        {"name": "crm_customers", "version": 1, "arrival_column": None},
-        {"name": "shop_orders", "version": 1, "arrival_column": None},
+        {
+            "name": "crm_customers",
+            "version": 1,
+            "cadence": "hourly",
+            "arrival_column": None,
+        },
+        {
+            "name": "shop_orders",
+            "version": 1,
+            "cadence": "daily",
+            "arrival_column": None,
+        },
     ]
     assert doc["tasks"] == ["deduplicate", "cast_types", "mask_pii"]
     assert doc["extra_tasks"].startswith("anonymize")
+    # One job per cadence the sources use, each with its own cron and catch-up.
     assert doc["schedule"] == {
         "cadence": "hourly",
-        "cron": "0 0 * * * ?",
         "catchup": True,
-        "max_catchup_runs": 48,
+        "cadences": {
+            "hourly": {"cron": "0 0 * * * ?", "max_catchup_runs": 48},
+            "daily": {"cron": "0 0 1 * * ?", "max_catchup_runs": 14},
+        },
     }
     assert doc["phases"]["profile"] == {"status": "pending"}
     # Nothing built yet, so the whole spec is a change to apply.
@@ -179,10 +196,9 @@ def test_silver_records_the_settings_with_their_defaults(tmp_path, monkeypatch):
     assert doc["schema_changes"] == "fail"
     assert doc["late_data"] == {"lookback": "7d"}
     assert doc["quality"] == {"max_reject_pct": 2, "alert_on_failure": True}
-    # Hourly: stale after two hours, two days of missed windows replayed.
-    assert doc["freshness"] == {"max_age_hours": 2}
+    # Stale after a missed run plus slack, per cadence.
+    assert doc["freshness"] == {"max_age_hours": {"hourly": 2, "daily": 26}}
     assert doc["schedule"]["catchup"] is True
-    assert doc["schedule"]["max_catchup_runs"] == 48
 
 
 @pytest.mark.parametrize(
@@ -471,3 +487,83 @@ def test_layer_needs_assets(tmp_path, monkeypatch):
     done, events = _delete(monkeypatch, target, {}, ["--layer", "gold"])
     assert done.exit_code != 0 and "pass --assets too" in done.output
     assert events == []
+
+
+def test_silver_refuses_an_unknown_source_cadence(tmp_path, monkeypatch):
+    answers = {**ANSWERS, "sources": [{"name": "crm", "cadence": "monthly"}]}
+    done = _silver(tmp_path, monkeypatch, answers, [])
+    assert done.exit_code != 0 and "source crm: cadence must be one of" in done.output
+
+
+def test_backfill_runs_every_job_slowest_first(tmp_path, monkeypatch):
+    target = tmp_path / "customers-silver"
+    target.mkdir()
+    jobs = [
+        {"name": "l-silver-hourly", "cadence": "hourly"},
+        {"name": "l-silver-weekly", "cadence": "weekly"},
+        {"name": "l-silver-daily", "cadence": "daily"},
+    ]
+    (target / "system.yaml").write_text(
+        yaml.safe_dump({"outputs": {"jobs": jobs}}), encoding="utf-8"
+    )
+    ran = []
+
+    def get_job(name):
+        return SimpleNamespace(
+            run=lambda **kw: (
+                ran.append(name) or SimpleNamespace(id=1, final_status="SUCCEEDED")
+            )
+        )
+
+    monkeypatch.setattr(
+        session,
+        "get_project",
+        lambda ctx: SimpleNamespace(
+            get_job_api=lambda: SimpleNamespace(get_job=get_job)
+        ),
+    )
+    from hopsworks_common.core import ml_system_api
+
+    monkeypatch.setattr(
+        ml_system_api, "_list", lambda: [{"id": 7, "name": "L", "pathToCode": "x"}]
+    )
+    monkeypatch.setattr(mlsystem, "_local_dir", lambda e: target)
+    done = CliRunner().invoke(cli, ["medallion", "backfill", "L"])
+    assert done.exit_code == 0, done.output
+    assert ran == ["l-silver-weekly", "l-silver-daily", "l-silver-hourly"]
+
+
+def test_status_reads_every_job_and_each_tables_cadence_target(tmp_path, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+
+    from hopsworks.cli import silver_status
+
+    db = tmp_path / "featurestore" / "demo_featurestore.db"
+    old = int((datetime.now(timezone.utc) - timedelta(hours=5)).timestamp() * 1000)
+    _delta_table(db / "clicks_1", 10, 1, old)
+    _delta_table(db / "products_1", 10, 1, old)
+    monkeypatch.setenv("HOPSFS_MOUNT", str(tmp_path))
+    project = SimpleNamespace(
+        name="Demo",
+        get_trino_api=lambda: (_ for _ in ()).throw(RuntimeError("no trino")),
+        get_job_api=lambda: SimpleNamespace(get_job=lambda name: None),
+    )
+    doc = {
+        "freshness": {"max_age_hours": {"hourly": 2, "daily": 26}},
+        "outputs": {
+            "tables": [
+                {"name": "clicks", "cadence": "hourly"},
+                {"name": "products", "cadence": "daily"},
+            ],
+            "jobs": [
+                {"name": "l-silver-hourly", "cadence": "hourly"},
+                {"name": "l-silver-daily", "cadence": "daily"},
+            ],
+        },
+    }
+    facts = silver_status.collect(project, doc, "l")
+    assert [j["name"] for j in facts["jobs"]] == ["l-silver-hourly", "l-silver-daily"]
+    clicks, products = facts["tables"]
+    # Five hours old: stale for an hourly table, fresh for a daily one.
+    assert clicks["max_age_hours"] == 2 and clicks["problems"]
+    assert products["max_age_hours"] == 26 and not products["problems"]

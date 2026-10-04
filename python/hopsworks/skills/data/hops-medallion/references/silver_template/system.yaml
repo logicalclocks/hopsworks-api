@@ -8,16 +8,15 @@ layer:
   description: ""     # what the silver tables are for
   lifecycle: dev      # dev | staging | prod, mirrored in each table's medallion_table tag
   status: draft       # draft | building | built | failed
-sources: []           # bronze feature groups: {name, version, arrival_column}
+sources: []           # bronze feature groups: {name, version, cadence, arrival_column}
 tasks: []             # deduplicate, cast_types, standardize, handle_nulls, validate,
                       # mask_pii, conform_entities, surrogate_keys, referential_checks
 extra_tasks: ""       # the user's own tasks, in their words
 engine: dbt_trino     # dbt_trino | pyspark
 schedule:
-  cadence: daily      # hourly | daily | weekly
-  cron: ""            # Quartz cron the job is scheduled with
+  cadence: daily      # the default for a source that names none
   catchup: true       # replay the windows missed while the scheduler was down
-  max_catchup_runs: 14
+  cadences: {}        # one job per cadence the sources use: {hourly: {cron, max_catchup_runs}, ...}
 history: latest       # latest: one row per business key | full: every version, by event_time
 deletes: ignore       # ignore | propagate: rows deleted or soft-deleted in bronze leave silver
 schema_changes: fail  # fail: stop the run on a bronze schema change | evolve: add new columns
@@ -27,7 +26,7 @@ quality:
   max_reject_pct: 5   # a run with more rejected rows than this fails
   alert_on_failure: true
 freshness:
-  max_age_hours: 26   # a silver table not written for longer is stale
+  max_age_hours: {}   # per cadence; a silver table not written for longer is stale
 partitioning: {}      # decided by the build: {decision, column, granularity, why}
 phases:               # each {status: pending | running | done | failed, started, finished, note}
   profile: {status: pending}
@@ -37,9 +36,9 @@ phases:               # each {status: pending | running | done | failed, started
   schedule: {status: pending}
   verify: {status: pending}
 outputs:
-  tables: []          # silver feature groups: {name, version, sources, primary_key, event_time, tasks}
+  tables: []          # silver feature groups: {name, version, cadence, sources, primary_key, event_time, tasks}
   rejects: []         # rejects feature groups, if validate is a task
-  job: {}             # {name, environment, cron}
+  jobs: []            # one per cadence: {name, cadence, cron, environment, tables}
   gold: {}            # the gold layer, when built: {tables, job}
   applied_spec: {}    # the spec the tables were last built from: sources, tasks,
                       # extra_tasks, engine, schedule, lifecycle; a difference is a pending change

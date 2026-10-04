@@ -33,7 +33,7 @@ A replayed window must leave the silver tables unchanged.
 ## Lineage, schedule, status and backfill
 
 Every silver feature group is created with the bronze feature groups it reads as `parents`.
-The job is scheduled with `--catchup`, so missed windows are replayed.
+There is one job per refresh cadence (`<slug>-silver-<cadence>`), each writing the silver tables of that cadence and scheduled with `--catchup`, so missed windows are replayed.
 `hops medallion status <slug>` writes the layer's health report to `status/report.html`; `hops medallion backfill <slug>` reprocesses the whole bronze history (a plain run of the scheduled job gets only the last cron interval).
 
 ## Logs stay out of the repository

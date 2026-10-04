@@ -79,9 +79,18 @@ Additional tasks the user writes in free text (for example "anonymize the email 
 - **PySpark** when a task needs code SQL cannot express well: fuzzy entity matching, a Python library (address parsing, language detection), a model, or bronze volumes Trino cannot process in one window.
   The job reads the bronze feature groups with `fg.read()` (the window applies itself, below) and inserts into the silver feature group (**hops-spark**).
 
+## Refresh frequencies: one job per cadence
+
+Bronze tables are not all updated at the same rate, so each source has its own `cadence` (hourly, daily or weekly) in `sources`, chosen per table in the Factory form and defaulting to the layer's `schedule.cadence`.
+A silver table refreshes as often as its most frequently updated source: a table built only from daily sources is daily, one that joins an hourly source is hourly.
+The build groups the silver tables by cadence and deploys one job per cadence, `<slug>-silver-<cadence>`, each writing only its tables from only their sources, with its own cron and catch-up limit from `schedule.cadences` and its own freshness target from `freshness.max_age_hours`.
+One program serves every job: the runner takes `--cadence <cadence>` as the job's argument and builds that cadence's tables.
+`outputs.tables[].cadence` and `outputs.jobs` (`{name, cadence, cron, tables}`) record the split.
+A table that references one of a slower cadence (an hourly fact keyed on a daily entity) can see keys the entity has not loaded yet; `referential_checks` flags them as orphans until the slower job runs, never drops them.
+
 ## Incremental processing
 
-The silver job is a Hopsworks job with a cron schedule.
+Each silver job is a Hopsworks job with a cron schedule.
 Every scheduled run gets `HOPS_START_TIME` and `HOPS_END_TIME` (ISO-8601 UTC) in its environment: one cron interval, consecutive runs tiling with no gap or overlap, and a re-run of an execution gets the same window.
 The job processes only the bronze rows whose arrival column falls in `[HOPS_START_TIME, HOPS_END_TIME)`:
 
@@ -107,16 +116,16 @@ The Factory form asks for these, with these defaults, and `system.yaml` records 
 | `late_data.lookback` | `0` (default), `1d`, `7d` | Each run also re-reads that much before its window: the read starts at `HOPS_START_TIME` minus the lookback. The upsert makes the overlap harmless. The schedule's window is never moved with offsets; the program derives the read window. |
 | `quality.max_reject_pct` | 0 to 100, default 5 | A run whose rejected share of rows exceeds it fails after writing the rejects table and before writing silver, so bad data never reaches silver silently. |
 | `quality.alert_on_failure` | `true` (default) | A Hopsworks alert on the job's failure: `hops alert job create <job> --receiver <receiver> --status failed --severity critical`. |
-| `freshness.max_age_hours` | default by cadence: 2 h hourly, 26 h daily, 170 h weekly | A silver table not written for longer is stale; the layer's status report flags it. |
+| `freshness.max_age_hours` | per cadence: 2 h hourly, 26 h daily, 170 h weekly | A silver table not written for longer than its cadence's target is stale; the layer's status report flags it. |
 
 ## Lineage, partitioning, schedule and status
 
 - **Lineage.** Every silver feature group is created with `parents=[<bronze feature groups it reads>]`, and every rejects feature group with its silver table's sources, so Hopsworks' lineage shows bronze to silver (`hops fg lineage <silver>`).
 - **Partitioning.** Decided per silver table at design with **hops-partitioning**, from the bronze table's files on the terminal's mount (`/hopsfs/featurestore/<project>_featurestore.db/<fg>_<version>`): none for small tables, else by hour, day or week, and recorded in `system.yaml` `partitioning` with the evidence.
-- **Schedule.** `hops job schedule <job> "<cron>" --catchup --max-catchup-runs <schedule.max_catchup_runs>`, so windows missed while the scheduler was down are replayed, one execution each, instead of skipped.
+- **Schedule.** Each job: `hops job schedule <slug>-silver-<cadence> "<schedule.cadences.<cadence>.cron>" --catchup --max-catchup-runs <its max_catchup_runs>`, so windows missed while the scheduler was down are replayed, one execution each, instead of skipped.
 - **Status.** `hops medallion status <layer>` writes `status/report.html` in the layer's directory: the job's runs, and for every silver and rejects table its rows, last write against the freshness target, rejected share against the gate, and file layout (the hops-table-maintenance scanner), with Claude's summary. The layer's page shows it with **Status**.
 - **Delete.** `hops medallion delete <layer> --assets [--layer silver|gold]` deletes the silver layer, the gold layer, or both (the default), with their jobs and tables, and the directory and Factory entry once nothing built is left. Bronze tables are the source of truth: a source, or a table tagged `layer: bronze`, is never deleted, and the delete stops before deleting anything when one is listed.
-- **Backfill.** `hops medallion backfill <layer>` runs the job over a window from the epoch to now, reprocessing every bronze row; once the job is scheduled, a plain `hops job run` gets the last cron interval as its window instead. The layer's page has **Backfill**.
+- **Backfill.** `hops medallion backfill <layer>` runs each job, slowest cadence first, over a window from the epoch to now, reprocessing every bronze row; once the job is scheduled, a plain `hops job run` gets the last cron interval as its window instead. The layer's page has **Backfill**.
 
 ## Changing a layer: system.yaml drives recomputation
 
@@ -128,6 +137,7 @@ A spec that differs from `outputs.applied_spec` is a pending change, which the F
 | --- | --- |
 | `layer.lifecycle` | nothing: every silver and rejects feature group is retagged, and the tag history records the promotion |
 | `schedule` | nothing: the job is rescheduled with the new cron, continuing from the last window |
+| a source's `cadence` | the tables it feeds move to that cadence's job, deployed and scheduled when the cadence is new, and a job left with no tables is deleted; no table gets a new version |
 | `late_data`, `quality`, `freshness` | nothing: the job's settings and alert are changed and redeployed |
 | `history`, `deletes` or `schema_changes` | the code, and for `history` each silver table, which gets a new version (the merge key changes), backfilled as below |
 | `tasks`, `extra_tasks` or `engine` | the silver tables whose content changes: the code is changed and tested, each such table gets a new feature group version backfilled over the whole bronze history, and the job is switched to write the new versions |
@@ -152,6 +162,7 @@ An apply ends with `outputs.applied_spec` set to the spec it applied, in one com
 
 - Silver tables are materialized feature groups, never views or external feature groups over bronze.
 - Silver tables are in third normal form; no star schema, wide table or aggregate in silver.
+- A silver table never takes the name of an existing feature group, bronze above all: `get_or_create_feature_group` would return that group and the job would write into it. Prefix the names with the domain or the layer (`shop_orders`) when they would collide, and check `hops fg list` at design.
 - Bronze is never modified: no updates, deletes or masking in place; the silver layer reads it.
 - The silver tables' names, keys and columns are recorded in `system.yaml` before any code is written, and `system.yaml` always reflects what runs.
 - A silver feature group has a description, and each of its features a description of what was done to it.

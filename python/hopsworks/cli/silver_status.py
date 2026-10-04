@@ -106,6 +106,11 @@ def _table(
     fact["layout"] = _layout(path)
     problems = []
     target = (doc.get("freshness") or {}).get("max_age_hours")
+    # Per cadence, the target of the job that writes the table.
+    if isinstance(target, dict):
+        target = target.get(table.get("cadence") or "") or max(
+            target.values(), default=None
+        )
     if kind == "silver" and written and target:
         age = (now - written) / timedelta(hours=1)
         fact["age_hours"] = round(age, 1)
@@ -146,13 +151,14 @@ def collect(project: Any, doc: dict, slug: str, hours: int = 24) -> dict:
     now = datetime.now(timezone.utc)
     since = now - timedelta(hours=hours)
     outputs = doc.get("outputs") or {}
-    job_name = (outputs.get("job") or {}).get("name")
+    from hopsworks.cli.commands.medallion import silver_jobs
+
     jobs = []
-    if job_name:
+    for spec in silver_jobs(outputs):
         try:
-            jobs.append(health._job_runs(project, job_name, since))
+            jobs.append(health._job_runs(project, spec["name"], since))
         except Exception as exc:  # noqa: BLE001
-            jobs.append({"name": job_name, "error": str(exc), "runs": []})
+            jobs.append({"name": spec["name"], "error": str(exc), "runs": []})
     try:
         conn = project.get_trino_api().connect(
             catalog="delta",
