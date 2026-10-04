@@ -146,6 +146,10 @@ def test_the_build_starts_in_the_system_directory(tmp_path, monkeypatch, quiet):
     agents = (tmp_path / "churn-example" / "AGENTS.md").read_text(encoding="utf-8")
     # Every change, a fix or maintenance included, keeps system.yaml current.
     assert "must always reflect the current state of the ML system" in agents
+    # Logs stay out of the system's repository.
+    assert "Logs/factory/<slug>/" in agents
+    ignored = (tmp_path / "churn-example" / ".gitignore").read_text(encoding="utf-8")
+    assert "logs-*/" in ignored.splitlines() and "*.log" in ignored.splitlines()
 
 
 def test_the_ui_starts_an_example_by_name_and_resumes_it(tmp_path, monkeypatch, quiet):

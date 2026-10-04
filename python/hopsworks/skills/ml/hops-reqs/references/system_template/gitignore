@@ -8,4 +8,7 @@ __pycache__/
 evaluation/
 .system.yaml.*
 status/
+# Logs never belong in the repository; see AGENTS.md.
+logs-*/
+*.log
 .ruff_cache/

@@ -46,3 +46,28 @@ def test_create_runs_the_job_in_the_named_environment(monkeypatch):
     # Without --env the type's default stays.
     assert CliRunner().invoke(cli, args).exit_code == 0
     assert created[1][1]["environmentName"] == "default-env"
+
+
+def test_logs_download_into_the_given_dir_not_the_working_directory(
+    monkeypatch, tmp_path
+):
+    calls = []
+    execution = SimpleNamespace(
+        id=7,
+        download_logs=lambda path=None: (
+            calls.append(path) or (f"{path}/stdout.log", f"{path}/stderr.log")
+        ),
+    )
+    job = SimpleNamespace(get_executions=lambda: [execution])
+    monkeypatch.setattr(
+        session,
+        "get_project",
+        lambda ctx: SimpleNamespace(
+            get_job_api=lambda: SimpleNamespace(get_job=lambda name: job)
+        ),
+    )
+    logs = tmp_path / "Logs" / "factory" / "churn"
+    done = CliRunner().invoke(cli, ["job", "logs", "churn-train", "--dir", str(logs)])
+    assert done.exit_code == 0, done.output
+    assert calls == [str(logs)] and logs.is_dir()
+    assert "working directory" not in done.output

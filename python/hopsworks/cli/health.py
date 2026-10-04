@@ -17,6 +17,7 @@ import json
 import re
 import shutil
 import subprocess
+import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -93,8 +94,11 @@ def _job_runs(project: Any, name: str, since: datetime) -> dict:
             "INITIALIZATION_FAILED",
         ):
             try:
-                stdout, stderr = execution.download_logs()
-                run["log_tail"] = _tail(_read(stderr)) or _tail(_read(stdout))
+                # A temporary directory, since the report runs in the system's
+                # git work tree, where downloaded logs do not belong.
+                with tempfile.TemporaryDirectory(prefix="hops-status-logs-") as tmp:
+                    stdout, stderr = execution.download_logs(path=tmp)
+                    run["log_tail"] = _tail(_read(stderr)) or _tail(_read(stdout))
             except Exception as exc:  # noqa: BLE001 - a missing log is reported, not fatal
                 run["log_tail"] = f"(logs unavailable: {exc})"
         runs.append(run)

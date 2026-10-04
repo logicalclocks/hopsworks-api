@@ -72,9 +72,24 @@ def test_deployment_logs_download_calls_download_logs(mock_project):
     mock_project.get_model_serving.return_value = ms
     result = CliRunner().invoke(cli, ["deployment", "logs", "fraud", "--download"])
     assert result.exit_code == 0, result.output
-    deployment.download_logs.assert_called_once_with()
+    deployment.download_logs.assert_called_once_with(path=None)
     deployment.read_logs.assert_not_called()
     assert "/tmp/a.log" in result.output
+
+
+def test_deployment_logs_download_goes_to_the_given_dir(mock_project, tmp_path):
+    ms = mock.MagicMock()
+    deployment = mock.MagicMock()
+    deployment.download_logs.return_value = []
+    ms.get_deployment.return_value = deployment
+    mock_project.get_model_serving.return_value = ms
+    logs = tmp_path / "Logs" / "factory" / "churn"
+    result = CliRunner().invoke(
+        cli, ["deployment", "logs", "fraud", "--download", "--dir", str(logs)]
+    )
+    assert result.exit_code == 0, result.output
+    deployment.download_logs.assert_called_once_with(path=str(logs))
+    assert logs.is_dir()
 
 
 def test_deployment_logs_download_conflicts_with_follow_and_source(mock_project):

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -590,6 +591,15 @@ def deployment_predict(
         "stopped or deleted. Cannot be combined with --follow or --source."
     ),
 )
+@click.option(
+    "--dir",
+    "log_dir",
+    type=click.Path(file_okay=False),
+    help="With --download, the directory to download into, created if missing; "
+    "the working directory by default. Keep logs out of a git work tree, such "
+    "as an ML system's directory: in the factory, "
+    "${HOPSFS_USER_HOME_DIR:-$HOME}/Logs/factory/<slug>.",
+)
 @click.pass_context
 def deployment_logs(
     ctx: click.Context,
@@ -602,6 +612,7 @@ def deployment_logs(
     follow: bool,
     interval: float,
     download: bool,
+    log_dir: str | None,
 ) -> None:
     """Read or follow logs from a deployment component.
 
@@ -622,6 +633,7 @@ def deployment_logs(
         follow: Stream new lines instead of returning a one-shot tail.
         interval: Seconds between polls when following.
         download: Download the HopsFS log archives instead of reading pods.
+        log_dir: With ``--download``, the directory to download into.
     """
     deployment = _get_deployment(ctx, name)
 
@@ -634,7 +646,11 @@ def deployment_logs(
                 "--download cannot be combined with --follow or --source."
             )
         try:
-            local_paths = deployment.download_logs()
+            path = None
+            if log_dir is not None:
+                path = os.path.expanduser(log_dir)
+                os.makedirs(path, exist_ok=True)
+            local_paths = deployment.download_logs(path=path)
         except Exception as exc:  # noqa: BLE001
             raise click.ClickException(f"Log download failed: {exc}") from exc
         if output.JSON_MODE:

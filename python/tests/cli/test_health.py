@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
@@ -18,6 +19,9 @@ SPEC = {
 }
 
 
+downloads: list = []
+
+
 def _project(tmp_path):
     now = datetime.now(timezone.utc)
     log = tmp_path / "stderr.log"
@@ -30,7 +34,7 @@ def _project(tmp_path):
             final_status=status,
             submission_time=(now - timedelta(hours=hours_ago)).isoformat(),
             duration=90_000,
-            download_logs=lambda: (None, str(log)),
+            download_logs=lambda path=None: downloads.append(path) or (None, str(log)),
         )
 
     job = SimpleNamespace(
@@ -89,7 +93,13 @@ def test_the_facts_hold_the_last_day_of_runs_and_the_pods(tmp_path, monkeypatch)
         return "churnpredictor-predictor-00001-abc kserve-container 250m 900Mi\n"
 
     monkeypatch.setattr(health, "_kubectl", kubectl)
+    downloads.clear()
     facts = health.collect(_project(tmp_path), SPEC, "churn-example", hours=24)
+    # The report runs in the system's git work tree, so the failed run's logs
+    # are read through a temporary directory that is gone afterwards.
+    assert downloads and all(
+        p and p != os.getcwd() and not os.path.exists(p) for p in downloads
+    )
     [job] = facts["jobs"]
     assert [r["id"] for r in job["runs"]] == [3, 2]
     assert job["runs"][0]["log_tail"].endswith("MemoryError")

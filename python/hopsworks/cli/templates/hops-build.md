@@ -65,6 +65,15 @@ a question you are about to ask depends on.
   unformatted file. A phase with a lint failure is not `met`; its `tests.last_run` records
   `lint: pass`. The lint covers every file the system holds, the pipelines, tests, benchmarks and
   app included, and code copied from a skill's references is linted like code written here.
+- **Logs stay out of the repository.** Jobs and deployments log to stdout and stderr, which
+  Hopsworks archives in the project's `Logs` dataset; never redirect them into a file in the
+  system directory. A program run in the terminal (a unit test run, a `nohup` or `tee` of a long
+  command) logs to `${HOPSFS_USER_HOME_DIR:-$HOME}/Logs/factory/<slug>/` (`mkdir -p` it first).
+  Read job logs with `hops job logs <job> --stdout --tail 200`, or download them with
+  `--dir ${HOPSFS_USER_HOME_DIR:-$HOME}/Logs/factory/<slug>`, never into the working directory,
+  which is the system's git work tree; Python's `download_logs()` takes `path=` for the same
+  reason. A `logs-*` directory or `*.log` file in the system directory is moved there, never
+  committed.
 - **No secrets** in arguments, transcripts, `system.yaml` or the repository.
 - **Every time is UTC from `date -u`.** `started`, `finished`, the lock, a backfill's `--to` and
   every window come from `date -u` (the "UTC now" line above), never from the terminal's clock

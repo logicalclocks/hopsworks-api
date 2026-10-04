@@ -501,6 +501,14 @@ def job_stop(ctx: click.Context, name: str) -> None:
     output.success("✓ Stopped execution %s of %s", getattr(latest, "id", "?"), name)
 
 
+def _log_dir(path: str | None) -> str | None:
+    if path is None:
+        return None
+    path = os.path.expanduser(path)
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
 @job_group.command("logs")
 @click.argument("name")
 @click.option(
@@ -517,6 +525,14 @@ def job_stop(ctx: click.Context, name: str) -> None:
     "directories into the working directory.",
 )
 @click.option(
+    "--dir",
+    "log_dir",
+    type=click.Path(file_okay=False),
+    help="Directory to download into, created if missing; the working directory "
+    "by default. Keep logs out of a git work tree, such as an ML system's "
+    "directory: in the factory, ${HOPSFS_USER_HOME_DIR:-$HOME}/Logs/factory/<slug>.",
+)
+@click.option(
     "--tail",
     type=int,
     help="With --stdout, print only the last N lines of each stream.",
@@ -527,13 +543,14 @@ def job_logs(
     name: str,
     execution_id: int | None,
     to_stdout: bool,
+    log_dir: str | None,
     tail: int | None,
 ) -> None:
     """Read stdout/stderr logs for a job execution.
 
     By default this downloads ``stdout.log`` / ``stderr.log`` into a
-    ``logs-job-<name>-exec-<id>_*`` directory in the working directory and
-    prints the paths. Pass ``--stdout`` to print the content to the terminal
+    ``logs-job-<name>-exec-<id>_*`` directory in the working directory, or in
+    ``--dir``, and prints the paths. Pass ``--stdout`` to print the content to the terminal
     instead, leaving no files behind.
 
     Args:
@@ -541,6 +558,7 @@ def job_logs(
         name: Job name.
         execution_id: Specific execution; latest if omitted.
         to_stdout: Print content to the terminal instead of downloading files.
+        log_dir: Directory to download into instead of the working directory.
         tail: With ``--stdout``, keep only the last N lines of each stream.
     """
     executions = _executions(_get_job(ctx, name))
@@ -572,7 +590,7 @@ def job_logs(
         return
 
     try:
-        stdout_path, stderr_path = target.download_logs()
+        stdout_path, stderr_path = target.download_logs(path=_log_dir(log_dir))
     except Exception as exc:  # noqa: BLE001
         raise click.ClickException(f"Could not download logs: {exc}") from exc
 
@@ -581,7 +599,10 @@ def job_logs(
         return
     output.info("stdout: %s", stdout_path or "<none>")
     output.info("stderr: %s", stderr_path or "<none>")
-    output.info("(downloaded to the working directory; use --stdout to print instead)")
+    if log_dir is None:
+        output.info(
+            "(downloaded to the working directory; use --stdout to print instead)"
+        )
 
 
 @job_group.command("history")

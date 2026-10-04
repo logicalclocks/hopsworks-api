@@ -113,6 +113,10 @@ integration conftest, the parity test, `run_integration.py`) and
 - Tests and benchmarks: [references/tests.md](references/tests.md).
 - The GitHub repository, commits, the pull request and its review: [references/repo.md](references/repo.md).
 
+Logs never go into a system's directory, which is a git work tree.
+Jobs and deployments log to stdout and stderr, archived in the project's `Logs` dataset; a program the user runs in the terminal as part of the factory logs to `${HOPSFS_USER_HOME_DIR:-$HOME}/Logs/factory/<slug>/`.
+Read job logs with `hops job logs <job> --stdout`, or download them with `--dir` into that directory; the template's `.gitignore` drops `logs-*/` and `*.log` as a safety net, and its `AGENTS.md` carries the rule.
+
 ## Environments
 
 Every program runs in Hopsworks in a named environment. Reuse before creating:

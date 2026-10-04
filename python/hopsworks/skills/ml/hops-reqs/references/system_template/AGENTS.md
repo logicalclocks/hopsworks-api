@@ -12,6 +12,16 @@ Record it in the block of the phase it belongs to (names, versions, settings, st
 A change made outside the build, such as a fix you were asked for in a session or one suggested from the Factory's status page, is no exception.
 `system.yaml` must always reflect the current state of the ML system: before you finish, check that every asset, version and setting it names is the one that runs, and correct it where it is not.
 
+## Logs stay out of the repository
+
+Never write a log file or a directory of logs into this directory or any other git work tree: logs are not checked in.
+
+- Jobs and deployments the factory runs log to stdout and stderr, which Hopsworks archives in the project's `Logs` dataset (`/Projects/<project>/Logs`); never redirect them into a file here.
+- Programs you run in the terminal as part of the factory (a local test or benchmark, a `nohup` or `tee` of a long command) write their logs to `${HOPSFS_USER_HOME_DIR:-$HOME}/Logs/factory/<slug>/`; create it with `mkdir -p` first.
+- Read a job's logs with `hops job logs <job> --stdout --tail 200`, which leaves no files, or download them with `--dir ${HOPSFS_USER_HOME_DIR:-$HOME}/Logs/factory/<slug>`, never into the working directory; `hops deployment logs <name> --download` and `hops agent logs <name> --download` take the same `--dir`.
+- `execution.download_logs()` and `deployment.download_logs()` in Python write to the working directory unless given `path=`, so pass that directory or a temporary one.
+- A `logs-job-*`, `logs-deployment-*` or `*.log` entry in this directory is a mistake: move it to `Logs/factory/<slug>/` and keep it out of commits.
+
 ## When system.yaml has changed
 
 Before anything else in a session, check whether `system.yaml` changed since what is built was last recorded, and what that means for the system.

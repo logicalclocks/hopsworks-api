@@ -180,3 +180,4 @@ with DAG(
 - What goes in the script: **hops-features** (feature pipeline), **hops-train** (training), **hops-batch-inference** (scoring).
 - Custom libraries for the job: [hops-environments](../hops-environments/SKILL.md) — clone a base env and install requirements.
 - Inspect runs: `hops job list`, `hops job info <name>`, `hops job logs <name>`, `hops job history <name>`.
+  `hops job logs` downloads `logs-job-<name>-exec-<id>_*` into the working directory unless given `--stdout` (print, no files) or `--dir <dir>`; never download logs into a git work tree such as an ML system's directory (factory logs go to `${HOPSFS_USER_HOME_DIR:-$HOME}/Logs/factory/<slug>/`).

@@ -150,7 +150,7 @@ def test_agent_logs_download_calls_download_logs(mock_project):
 
     result = CliRunner().invoke(cli, ["agent", "logs", "my-agent", "--download"])
     assert result.exit_code == 0, result.output
-    agent.download_logs.assert_called_once_with()
+    agent.download_logs.assert_called_once_with(path=None)
     agent.read_logs.assert_not_called()
     assert "/tmp/a.log" in result.output
     assert "/tmp/b.log" in result.output
