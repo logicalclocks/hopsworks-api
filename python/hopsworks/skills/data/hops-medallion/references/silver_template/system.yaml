@@ -40,6 +40,7 @@ outputs:
   tables: []          # silver feature groups: {name, version, sources, primary_key, event_time, tasks}
   rejects: []         # rejects feature groups, if validate is a task
   job: {}             # {name, environment, cron}
+  gold: {}            # the gold layer, when built: {tables, job}
   applied_spec: {}    # the spec the tables were last built from: sources, tasks,
                       # extra_tasks, engine, schedule, lifecycle; a difference is a pending change
 progress:

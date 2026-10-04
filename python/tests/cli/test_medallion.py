@@ -125,7 +125,10 @@ def test_delete_with_assets_removes_the_job_tables_directory_then_the_entry(
     job = SimpleNamespace(delete=lambda: events.append("job"))
     fs = SimpleNamespace(
         get_feature_group=lambda name, version: SimpleNamespace(
-            delete=lambda: events.append(f"fg {name} v{version}")
+            name=name,
+            version=version,
+            get_tags=lambda: {"medallion_table": {"layer": "silver"}},
+            delete=lambda: events.append(f"fg {name} v{version}"),
         )
     )
     project = SimpleNamespace(
@@ -374,3 +377,97 @@ def _load_advisor():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _layer_dir(tmp_path, doc):
+    target = tmp_path / "customers-silver"
+    target.mkdir()
+    (target / "system.yaml").write_text(yaml.safe_dump(doc), encoding="utf-8")
+    return target
+
+
+def _delete(monkeypatch, target, tags, args):
+    from hopsworks_common.core import ml_system_api
+
+    events = []
+    fs = SimpleNamespace(
+        get_feature_group=lambda name, version: SimpleNamespace(
+            name=name,
+            version=version,
+            get_tags=lambda: tags.get(name, {}),
+            delete=lambda: events.append(f"fg {name}"),
+        )
+    )
+    job = SimpleNamespace(delete=lambda: events.append("job"))
+    monkeypatch.setattr(
+        session,
+        "get_project",
+        lambda ctx: SimpleNamespace(
+            get_job_api=lambda: SimpleNamespace(get_job=lambda name: job),
+            get_feature_store=lambda: fs,
+        ),
+    )
+    monkeypatch.setattr(
+        ml_system_api, "_list", lambda: [{"id": 7, "name": "L", "pathToCode": "x"}]
+    )
+    monkeypatch.setattr(ml_system_api, "_remove", lambda i: events.append("entry"))
+    monkeypatch.setattr(mlsystem, "_local_dir", lambda e: target)
+    done = CliRunner().invoke(cli, ["medallion", "delete", "L", *args, "--yes"])
+    return done, events
+
+
+LAYERED = {
+    "sources": [{"name": "crm", "version": 1}],
+    "phases": {"profile": {"status": "done"}},
+    "layer": {"status": "built"},
+    "outputs": {
+        "tables": [{"name": "customers"}],
+        "job": {"name": "silver-job"},
+        "gold": {"tables": [{"name": "customer_360"}], "job": {"name": "gold-job"}},
+    },
+}
+
+
+def test_delete_silver_only_keeps_gold_the_entry_and_the_directory(
+    tmp_path, monkeypatch
+):
+    target = _layer_dir(tmp_path, LAYERED)
+    done, events = _delete(monkeypatch, target, {}, ["--assets", "--layer", "silver"])
+    assert done.exit_code == 0, done.output
+    assert events == ["job", "fg customers"]
+    doc = yaml.safe_load((target / "system.yaml").read_text(encoding="utf-8"))
+    assert doc["outputs"]["tables"] == [] and doc["outputs"]["job"] == {}
+    assert doc["outputs"]["gold"]["tables"] == [{"name": "customer_360"}]
+    assert doc["phases"]["profile"] == {"status": "pending"}
+
+
+def test_delete_gold_and_silver_removes_the_entry_last(tmp_path, monkeypatch):
+    target = _layer_dir(tmp_path, LAYERED)
+    done, events = _delete(monkeypatch, target, {}, ["--assets"])
+    assert done.exit_code == 0, done.output
+    assert events == ["job", "fg customers", "job", "fg customer_360", "entry"]
+    assert not target.exists()
+
+
+@pytest.mark.parametrize(
+    ("doc", "tags"),
+    [
+        # A source listed among the outputs by mistake.
+        ({**LAYERED, "outputs": {"tables": [{"name": "crm"}]}}, {}),
+        # A table tagged bronze.
+        (LAYERED, {"customers": {"medallion_table": '{"layer": "bronze"}'}}),
+    ],
+)
+def test_delete_never_deletes_bronze(tmp_path, monkeypatch, doc, tags):
+    target = _layer_dir(tmp_path, doc)
+    done, events = _delete(monkeypatch, target, tags, ["--assets", "--layer", "silver"])
+    assert done.exit_code != 0 and "source of truth" in done.output
+    # Refused before anything was deleted.
+    assert events == [] and target.exists()
+
+
+def test_layer_needs_assets(tmp_path, monkeypatch):
+    target = _layer_dir(tmp_path, LAYERED)
+    done, events = _delete(monkeypatch, target, {}, ["--layer", "gold"])
+    assert done.exit_code != 0 and "pass --assets too" in done.output
+    assert events == []

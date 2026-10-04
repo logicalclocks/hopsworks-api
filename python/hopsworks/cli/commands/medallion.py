@@ -250,21 +250,51 @@ def _entry(ctx: click.Context, name_or_id: str) -> dict:
     raise click.ClickException(f"No layer {name_or_id!r} in the project's Factory.")
 
 
-def _delete_assets(ctx: click.Context, doc: dict) -> None:
-    """Delete the layer's job, then its silver and rejects feature groups; what is gone is skipped."""
-    project = session.get_project(ctx)
+LAYERS = ("silver", "gold")
+
+
+def _layer_assets(doc: dict, layer: str) -> tuple[str | None, list[dict]]:
+    """The job and tables a layer built: silver's under outputs, gold's under outputs.gold."""
     outputs = doc.get("outputs") or {}
-    job_name = (outputs.get("job") or {}).get("name")
-    if job_name:
-        job = project.get_job_api().get_job(job_name)
-        if job is None:
-            output.info(f"job {job_name}: gone")
-        else:
-            job.delete()
-            output.success(f"✓ Deleted job {job_name}")
+    if layer == "silver":
+        return (outputs.get("job") or {}).get("name"), [
+            *(outputs.get("tables") or []),
+            *(outputs.get("rejects") or []),
+        ]
+    gold = outputs.get("gold") or {}
+    return (gold.get("job") or {}).get("name"), list(gold.get("tables") or [])
+
+
+def _is_bronze(fg: Any, sources: set[tuple[str, int]]) -> bool:
+    if (fg.name, int(fg.version)) in sources:
+        return True
+    try:
+        tags = fg.get_tags() or {}
+    except Exception:  # noqa: BLE001 - a table whose tags cannot be read is judged by the sources alone
+        return False
+    tag = tags.get("medallion_table")
+    value = getattr(tag, "value", tag)
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            return False
+    return isinstance(value, dict) and value.get("layer") == "bronze"
+
+
+def _delete_layer(ctx: click.Context, doc: dict, layer: str) -> None:
+    """Delete one layer's job, then its feature groups; what is gone is skipped, bronze is refused."""
+    project = session.get_project(ctx)
+    job_name, tables = _layer_assets(doc, layer)
+    sources = {
+        (s.get("name"), int(s.get("version", 1))) for s in doc.get("sources") or []
+    }
     fs = project.get_feature_store()
-    for table in [*(outputs.get("tables") or []), *(outputs.get("rejects") or [])]:
-        name, version = table.get("name"), table.get("version", 1)
+    # Every table is checked before anything is deleted, so a bronze table
+    # listed by mistake stops the delete with nothing gone.
+    found = []
+    for table in tables:
+        name, version = table.get("name"), int(table.get("version", 1))
         if not name:
             continue
         # None means it does not exist; any other failure raises and stops the
@@ -273,8 +303,38 @@ def _delete_assets(ctx: click.Context, doc: dict) -> None:
         if fg is None:
             output.info(f"feature group {name} v{version}: gone")
             continue
+        if _is_bronze(fg, sources):
+            raise click.ClickException(
+                f"{name} v{version} is a bronze table, the source of truth; hops medallion delete never deletes bronze"
+            )
+        found.append(fg)
+    if job_name:
+        job = project.get_job_api().get_job(job_name)
+        if job is None:
+            output.info(f"job {job_name}: gone")
+        else:
+            job.delete()
+            output.success(f"✓ Deleted job {job_name}")
+    for fg in found:
         fg.delete()
-        output.success(f"✓ Deleted feature group {name} v{version}")
+        output.success(f"✓ Deleted {layer} feature group {fg.name} v{fg.version}")
+
+
+def _forget_layer(doc: dict, layer: str) -> None:
+    """Drop a deleted layer's outputs from system.yaml, so its phases build again."""
+    outputs = doc.setdefault("outputs", {})
+    if layer == "gold":
+        outputs.pop("gold", None)
+        return
+    for key in ("tables", "rejects"):
+        outputs[key] = []
+    outputs["job"] = {}
+    outputs["applied_spec"] = {}
+    for phase in (doc.get("phases") or {}).values():
+        if isinstance(phase, dict):
+            phase.clear()
+            phase["status"] = "pending"
+    doc.setdefault("layer", {})["status"] = "draft"
 
 
 @medallion_group.command("delete")
@@ -282,46 +342,89 @@ def _delete_assets(ctx: click.Context, doc: dict) -> None:
 @click.option(
     "--assets",
     is_flag=True,
-    help="Also delete the layer's job, its silver feature groups and its directory.",
+    help="Also delete the layers' jobs and feature groups; with every built layer deleted, the directory too.",
+)
+@click.option(
+    "--layer",
+    "layers",
+    multiple=True,
+    type=click.Choice(LAYERS),
+    help="With --assets, the layer to delete: silver, gold, or both when repeated or omitted. Bronze is never deleted.",
 )
 @click.option("--yes", is_flag=True, help="Do not ask for confirmation.")
 @click.pass_context
 def medallion_delete(
-    ctx: click.Context, name_or_id: str, assets: bool, yes: bool
+    ctx: click.Context, name_or_id: str, assets: bool, layers: tuple, yes: bool
 ) -> None:
-    """Remove a layer from the Factory, and with --assets what it created.
+    """Remove a medallion entry from the Factory, and with --assets its silver or gold layer.
 
-    Bronze feature groups are never deleted. The registry entry goes last, so
-    a delete that stops part way leaves the layer listed to be deleted again.
+    Bronze tables are the source of truth: a table that is one of the layer's
+    sources or is tagged layer bronze is never deleted, and the delete stops
+    before deleting anything when one is listed. With every layer it built
+    deleted, the directory and the registry entry go too, the entry last, so a
+    delete that stops part way leaves it listed to be deleted again; with one
+    layer left, system.yaml forgets the deleted one, and its phases build
+    again.
 
     Args:
         ctx: Click context.
         name_or_id: The layer's name or registry id.
-        assets: Also delete its job, silver feature groups and directory.
+        assets: Also delete the chosen layers' jobs and feature groups.
+        layers: The layers to delete; both when omitted.
         yes: Skip the confirmation.
     """
     import yaml
     from hopsworks.cli.commands import mlsystem
     from hopsworks_common.core import ml_system_api
 
+    if layers and not assets:
+        raise click.UsageError(
+            "--layer chooses what --assets deletes; pass --assets too"
+        )
+    chosen = list(dict.fromkeys(layers or LAYERS))
     entry = _entry(ctx, name_or_id)
     if not yes:
         click.confirm(
-            f"Delete layer {entry.get('name')}"
-            + (" with its job, silver tables and directory" if assets else "")
+            f"Delete {entry.get('name')}"
+            + (
+                f" with its {' and '.join(chosen)} tables and jobs"
+                if assets
+                else " from the Factory"
+            )
             + "?",
             abort=True,
         )
-    if assets:
-        directory = mlsystem._local_dir(entry)
-        spec = directory / "system.yaml" if directory else None
-        if spec is None or not spec.exists():
-            raise click.ClickException(
-                f"Cannot read the layer's system.yaml at {spec}; delete without --assets."
-            )
-        _delete_assets(ctx, yaml.safe_load(spec.read_text(encoding="utf-8")) or {})
-        shutil.rmtree(directory, ignore_errors=True)
-        output.success(f"✓ Deleted {directory}")
+    if not assets:
+        ml_system_api._remove(entry["id"])
+        output.success(f"✓ Removed {entry.get('name')} from the Factory")
+        return
+    directory = mlsystem._local_dir(entry)
+    spec = directory / "system.yaml" if directory else None
+    if spec is None or not spec.exists():
+        raise click.ClickException(
+            f"Cannot read the system.yaml at {spec}; delete without --assets."
+        )
+    doc = yaml.safe_load(spec.read_text(encoding="utf-8")) or {}
+    for layer in chosen:
+        _delete_layer(ctx, doc, layer)
+    left = [
+        layer
+        for layer in LAYERS
+        if layer not in chosen and any(_layer_assets(doc, layer))
+    ]
+    if left:
+        for layer in chosen:
+            _forget_layer(doc, layer)
+        spec.write_text(
+            yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=100),
+            encoding="utf-8",
+        )
+        output.success(
+            f"✓ Deleted the {' and '.join(chosen)} layer of {entry.get('name')}; its {' and '.join(left)} layer is kept"
+        )
+        return
+    shutil.rmtree(directory, ignore_errors=True)
+    output.success(f"✓ Deleted {directory}")
     ml_system_api._remove(entry["id"])
     output.success(f"✓ Removed {entry.get('name')} from the Factory")
 
