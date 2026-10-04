@@ -93,6 +93,7 @@ A table that references one of a slower cadence (an hourly fact keyed on a daily
 
 Each silver job is a Hopsworks job with a cron schedule.
 Every scheduled run gets `HOPS_START_TIME` and `HOPS_END_TIME` (ISO-8601 UTC) in its environment: one cron interval, consecutive runs tiling with no gap or overlap, and a re-run of an execution gets the same window.
+A run started by hand on a scheduled job can get the window as program arguments, `-start_time <ts> -end_time <ts>`, instead: the program reads the two variables, else those arguments, and parses its arguments with `parse_known_args`, so an argument it does not know never fails the run.
 The job processes only the bronze rows whose arrival column falls in `[HOPS_START_TIME, HOPS_END_TIME)`:
 
 - The arrival column is the bronze feature group's `event_time`, or a load timestamp the ingestion writes; the build records it per source in `system.yaml` `sources[].arrival_column`.
