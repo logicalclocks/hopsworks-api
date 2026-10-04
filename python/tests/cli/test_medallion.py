@@ -642,6 +642,7 @@ MART = {
     "cadence": "weekly",
     "requirements": {
         "analysts": "merchandising",
+        "example_queries": "returns in March 2024 are about 4% of orders",
         "grain": {"represents": "one returned article", "type": "transaction"},
         "on_check_failure": "quarantine",
     },
@@ -672,6 +673,7 @@ def test_mart_add_appends_a_draft_mart(tmp_path, monkeypatch):
         ({"requirements": {"grain": {"type": "daily"}}}, "grain.type must be one of"),
         ({"requirements": {"on_check_failure": "ignore"}}, "on_check_failure must be"),
         ({"requirements": {"vibes": 1}}, "unknown requirement 'vibes'"),
+        ({"requirements": {}}, "needs example_queries"),
     ],
 )
 def test_mart_add_refuses_bad_answers(tmp_path, monkeypatch, change, problem):

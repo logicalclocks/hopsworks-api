@@ -117,6 +117,7 @@ REQUIREMENT_KEYS = {
     "late_data",
     "restate",
     "reconcile",
+    "refresh_checks",
     "invariants",
     "on_check_failure",
     "access",
@@ -303,6 +304,10 @@ def _mart_problems(mart: Any, taken: set[str] = frozenset()) -> list[str]:
         f"unknown requirement {k!r}"
         for k in sorted(set(requirements) - REQUIREMENT_KEYS)
     ]
+    if not str(requirements.get("example_queries") or "").strip():
+        problems.append(
+            "a data mart needs example_queries: questions with the answers you expect, which verify it"
+        )
     grain = requirements.get("grain") or {}
     if grain.get("type") and grain["type"] not in GRAIN_TYPES:
         problems.append(f"grain.type must be one of {', '.join(GRAIN_TYPES)}")

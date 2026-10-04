@@ -12,7 +12,6 @@ The Factory's form asks these questions and `system.yaml` records the answers un
 | --- | --- |
 | `analysts` | Who are the analysts this mart serves? |
 | `decisions` | What decisions and reports will it support? |
-| `example_queries` | Example queries, with the results they expect. |
 | `approver` | Who approves the business definitions (metrics, grain, filters)? |
 | `existing_tables` | Do suitable facts or dimensions already exist? The build lists the gold tables of every mart in the project and suggests reusing or extending them before creating new ones from silver. |
 | `grain.represents` | What exactly does one row represent? |
@@ -22,11 +21,20 @@ The Factory's form asks these questions and `system.yaml` records the answers un
 | `cadence`, `freshness_hours` | How often the mart is refreshed, and how stale it may be. |
 | `late_data` | How late arrivals, updates and deletes from silver are processed. |
 | `restate` | Whether a correction restates results already published, or only changes results from now on. |
-| `reconcile` | Which totals must reconcile with existing reports or source systems. |
 | `invariants` | The invariants and edge cases the tests must cover. |
 | `on_check_failure` | `fail` the run and publish nothing, `quarantine` the failing rows, or `warn` and publish. |
 | `access` | Who may read which rows and columns. |
 | `share` | Whether the mart is shared with other projects, and which. |
+
+### Verification: how the user knows the mart is right
+
+These three are the mart's acceptance tests, and the mart is not `built` until each one passes on the cluster.
+
+| Key | Question |
+| --- | --- |
+| `example_queries` | Example questions with the answers the user expects, in plain English ("revenue in Europe in the first week of 2024 is about 1.2M EUR"). The build turns each into SQL over the mart and checks the answer. |
+| `reconcile` | Totals that must reconcile, and with what. Suggestions: the fact's row count equals the silver rows at its grain for the same window; each additive measure's total equals the silver total it is computed from; distinct dimension keys equal the distinct silver entities; a monthly total is within a stated tolerance of an existing report or source system. |
+| `refresh_checks` | Proof that refreshes and reruns behave. Suggestions: rerunning a window leaves every table unchanged; a refresh writes only the new window's rows; a late-arriving silver row updates the period it belongs to (or not, as `restate` says); a backfill over the whole history equals the sum of incremental runs. |
 
 ## Modeling
 

@@ -71,7 +71,9 @@ Unit-test the models on sample rows (DuckDB) and run the tests.
 ### backfill
 
 Deploy the mart's jobs (`hops job deploy <slug>-<mart>-<cadence> marts/<mart>/run_mart.py --env dbt-pipeline --args "--mart <mart> --cadence <cadence>"`, uploading the dbt project with `hops files upload --overwrite`) and run each once without a window (`hops job run <job> --wait`), dimensions before facts.
-Check each table: row count, no duplicate key at the grain, no null foreign key, the `reconcile` totals against their reference, every `example_queries` query against its expected result (`hops trino query`), and its parents (`hops fg lineage <name>`).
+Check each table: row count, no duplicate key at the grain, no null foreign key, and its parents (`hops fg lineage <name>`).
+Then the mart's verification (references/gold-marts.md, Verification): turn each `example_queries` question into SQL over the mart, run it (`hops trino query`), and compare the answer with the expected one in plain English; run each `reconcile` check against its reference.
+Record each check, its SQL and its result under the mart's `verification` in `system.yaml`; ask the user when an expected answer is ambiguous or a mismatch may be a wrong expectation rather than a wrong mart.
 Fix and rerun until the checks pass; record the counts and the reconciliation in the mart.
 
 ### schedule
@@ -82,7 +84,9 @@ Apply `access` and `share`: share the feature groups with the projects named (`h
 
 ### verify
 
-Run one window of each job (`hops job run <job> --start-time <t0> --end-time <t1> --wait`), check that only that window was read and that a second run leaves the tables unchanged, and run `hops medallion status <slug>`, fixing what it flags.
+Run one window of each job (`hops job run <job> --start-time <t0> --end-time <t1> --wait`), and prove each `refresh_checks` check with evidence from the runs: row counts and table versions before and after a rerun of the same window, the rows a refresh wrote against the window, a late row's effect on its period.
+Rerun the `example_queries` and `reconcile` checks after the refresh, record every result under `verification`, and run `hops medallion status <slug>`, fixing what it flags.
+A mart with a failing check is not `built`: fix it, or ask the user.
 Set the mart's `applied` to its spec (`name`, `description`, `cadence`, `freshness_hours`, `requirements`), its `status: built`, and report its tables, jobs, schedule and checks in a few lines.
 
 ## Changing a mart
