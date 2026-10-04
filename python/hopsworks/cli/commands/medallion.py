@@ -2,7 +2,7 @@
 
 ``hops medallion silver --answers FILE`` records a silver layer's request, as
 the Hopsworks UI's New Medallion Layer page collects it, in
-``<slug>/layer.yaml``, registers the layer with the project's ML systems
+``<slug>/system.yaml``, registers the layer with the project's ML systems
 registry so the Factory lists it, and starts Claude Code with
 ``/hops-silver <slug>`` to build it.
 """
@@ -90,17 +90,17 @@ def _problems(answers: dict) -> list[str]:
 
 
 def _create(cwd: Path, answers: dict) -> Path:
-    """Copy the template into ``cwd/<slug>`` and write the answers into its layer.yaml."""
+    """Copy the template into ``cwd/<slug>`` and write the answers into its system.yaml."""
     import yaml
 
     target = cwd / answers["slug"]
-    if (target / "layer.yaml").exists():
-        raise click.ClickException(f"{target} already holds a layer")
+    if (target / "system.yaml").exists():
+        raise click.ClickException(f"{target} already holds a system.yaml")
     target.mkdir(parents=True, exist_ok=True)
     for item in TEMPLATE.iterdir():
         name = ".gitignore" if item.name == "gitignore" else item.name
         shutil.copy(item, target / name)
-    doc = yaml.safe_load((target / "layer.yaml").read_text(encoding="utf-8"))
+    doc = yaml.safe_load((target / "system.yaml").read_text(encoding="utf-8"))
     cadence = answers.get("cadence", "daily")
     doc["layer"].update(
         name=answers.get("name") or answers["slug"],
@@ -120,7 +120,7 @@ def _create(cwd: Path, answers: dict) -> Path:
     doc["extra_tasks"] = answers.get("extra_tasks", "")
     doc["engine"] = answers.get("engine", "dbt_trino")
     doc["schedule"] = {"cadence": cadence, "cron": CADENCES[cadence]}
-    (target / "layer.yaml").write_text(
+    (target / "system.yaml").write_text(
         yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=100),
         encoding="utf-8",
     )
@@ -167,7 +167,7 @@ def medallion_group() -> None:
 )
 @click.pass_context
 def medallion_silver(ctx: click.Context, answers: Path, no_launch: bool) -> None:
-    """Record a silver layer in ./<slug>/layer.yaml, register it, and build it with Claude Code.
+    """Record a silver layer in ./<slug>/system.yaml, register it, and build it with Claude Code.
 
     The answers name the bronze feature groups (sources), the silver tasks,
     any extra tasks in the user's words, the engine (dbt_trino or pyspark),
@@ -185,7 +185,7 @@ def medallion_silver(ctx: click.Context, answers: Path, no_launch: bool) -> None
     if problems:
         raise click.ClickException("invalid answers:\n  " + "\n  ".join(problems))
     target = _create(Path.cwd(), data)
-    output.success(f"Silver layer recorded in {target / 'layer.yaml'}")
+    output.success(f"Silver layer recorded in {target / 'system.yaml'}")
     try:
         mlsystem.register(ctx, target, data.get("name") or data["slug"])
     except Exception as exc:  # noqa: BLE001 - the layer is recorded either way
@@ -266,10 +266,10 @@ def medallion_delete(
         )
     if assets:
         directory = mlsystem._local_dir(entry)
-        spec = directory / "layer.yaml" if directory else None
+        spec = directory / "system.yaml" if directory else None
         if spec is None or not spec.exists():
             raise click.ClickException(
-                f"Cannot read the layer's layer.yaml at {spec}; delete without --assets."
+                f"Cannot read the layer's system.yaml at {spec}; delete without --assets."
             )
         _delete_assets(ctx, yaml.safe_load(spec.read_text(encoding="utf-8")) or {})
         shutil.rmtree(directory, ignore_errors=True)

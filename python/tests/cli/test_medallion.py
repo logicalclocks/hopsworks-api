@@ -47,7 +47,7 @@ def test_silver_records_the_layer_from_the_answers_and_registers_it(
     done = _silver(tmp_path, monkeypatch, ANSWERS, registered)
     assert done.exit_code == 0, done.output
     target = tmp_path / "customers-silver"
-    doc = yaml.safe_load((target / "layer.yaml").read_text(encoding="utf-8"))
+    doc = yaml.safe_load((target / "system.yaml").read_text(encoding="utf-8"))
     assert (
         doc["layer"]["kind"] == "silver" and doc["layer"]["name"] == "Customers silver"
     )
@@ -59,6 +59,8 @@ def test_silver_records_the_layer_from_the_answers_and_registers_it(
     assert doc["extra_tasks"].startswith("anonymize")
     assert doc["schedule"] == {"cadence": "hourly", "cron": "0 0 * * * ?"}
     assert doc["phases"]["profile"] == {"status": "pending"}
+    # Nothing built yet, so the whole spec is a change to apply.
+    assert doc["outputs"]["applied_spec"] == {}
     assert "Logs/factory/<slug>/" in (target / "AGENTS.md").read_text(encoding="utf-8")
     assert "logs-*/" in (target / ".gitignore").read_text(encoding="utf-8").splitlines()
     assert registered == [(target, "Customers silver")]
@@ -79,13 +81,22 @@ def test_silver_records_the_layer_from_the_answers_and_registers_it(
 def test_silver_refuses_answers_it_cannot_build(tmp_path, monkeypatch, change, problem):
     done = _silver(tmp_path, monkeypatch, {**ANSWERS, **change}, [])
     assert done.exit_code != 0 and problem in done.output
-    assert not (tmp_path / ANSWERS["slug"] / "layer.yaml").exists()
+    assert not (tmp_path / ANSWERS["slug"] / "system.yaml").exists()
 
 
 def test_silver_does_not_overwrite_an_existing_layer(tmp_path, monkeypatch):
     assert _silver(tmp_path, monkeypatch, ANSWERS, []).exit_code == 0
     again = _silver(tmp_path, monkeypatch, ANSWERS, [])
-    assert again.exit_code != 0 and "already holds a layer" in again.output
+    assert again.exit_code != 0 and "already holds a system.yaml" in again.output
+
+
+def test_a_layer_is_not_listed_as_an_ml_system_by_hops_build(tmp_path, monkeypatch):
+    from hopsworks.cli.commands import build
+
+    assert _silver(tmp_path, monkeypatch, ANSWERS, []).exit_code == 0
+    (tmp_path / "churn").mkdir()
+    (tmp_path / "churn" / "system.yaml").write_text("system: {name: churn}\n")
+    assert build._systems(tmp_path) == [tmp_path / "churn"]
 
 
 def test_delete_with_assets_removes_the_job_tables_directory_then_the_entry(
@@ -93,7 +104,7 @@ def test_delete_with_assets_removes_the_job_tables_directory_then_the_entry(
 ):
     target = tmp_path / "customers-silver"
     target.mkdir()
-    (target / "layer.yaml").write_text(
+    (target / "system.yaml").write_text(
         yaml.safe_dump(
             {
                 "outputs": {

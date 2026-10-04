@@ -103,7 +103,7 @@ dbt data tests (`unique`, `not_null`, `accepted_values`, `relationships`) on the
 ```
 
 Drop the raw PII columns from the silver select list.
-The salt is a secret (`hopsworks.get_secrets_api().create_secret("pii_salt", ...)`, or Account settings, Secrets), read by the runner with `get_secret("pii_salt").value` and passed to dbt as the `PII_SALT` environment variable, never written in the code or `layer.yaml`.
+The salt is a secret (`hopsworks.get_secrets_api().create_secret("pii_salt", ...)`, or Account settings, Secrets), read by the runner with `get_secret("pii_salt").value` and passed to dbt as the `PII_SALT` environment variable, never written in the code or `system.yaml`.
 A hash keeps the column joinable across tables; a mask keeps it readable for support; a column nobody needs is dropped.
 
 ## conform_entities
@@ -118,7 +118,7 @@ A hash keeps the column joinable across tables; a mask keeps it readable for sup
   )
 ```
 
-Match on a deterministic key where one exists; fuzzy matching (names, addresses) needs PySpark and a library, and its threshold is a decision recorded in `layer.yaml`.
+Match on a deterministic key where one exists; fuzzy matching (names, addresses) needs PySpark and a library, and its threshold is a decision recorded in `system.yaml`.
 
 ## surrogate_keys
 

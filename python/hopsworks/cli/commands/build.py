@@ -235,7 +235,10 @@ def _read(target: Path) -> dict:
 
 
 def _systems(cwd: Path) -> list[Path]:
-    return sorted(p.parent for p in cwd.glob("*/system.yaml"))
+    # A medallion layer's system.yaml has a `layer` block; it is not an ML system.
+    return sorted(
+        p.parent for p in cwd.glob("*/system.yaml") if "layer" not in _read(p.parent)
+    )
 
 
 def _create(cwd: Path, slug: str, example: str | None = None) -> _System:

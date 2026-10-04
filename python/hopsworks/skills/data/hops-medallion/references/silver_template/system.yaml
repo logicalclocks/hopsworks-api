@@ -1,5 +1,6 @@
-# A silver medallion layer: what it is asked to do, and what runs.
+# A silver medallion layer: its specification, and what runs.
 # Written by `hops medallion silver` from the Factory's answers, then by /hops-silver.
+# The `layer` block marks this system.yaml as a medallion layer, not an ML system.
 layer:
   kind: silver
   name: ""            # title shown in the Factory
@@ -26,6 +27,8 @@ outputs:
   tables: []          # silver feature groups: {name, version, sources, primary_key, event_time, tasks}
   rejects: []         # rejects feature groups, if validate is a task
   job: {}             # {name, environment, cron}
+  applied_spec: {}    # the spec the tables were last built from: sources, tasks,
+                      # extra_tasks, engine, schedule, lifecycle; a difference is a pending change
 progress:
   now: ""             # what the build is doing, one line
 decisions: []         # append-only: {at, by, what, why}
