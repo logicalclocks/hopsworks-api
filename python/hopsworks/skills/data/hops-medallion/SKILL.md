@@ -5,7 +5,7 @@ description: Use when building a medallion layer on Hopsworks (bronze, silver, g
 
 # Medallion layers on Hopsworks
 
-Bronze tables hold raw data exactly as it arrived; silver tables hold it cleansed and conformed (deduplicated, typed, standardized, validated, PII protected); gold tables hold consumption-ready models.
+Bronze tables hold raw data exactly as it arrived; silver tables hold it cleansed, conformed and normalized to third normal form (deduplicated, typed, standardized, validated, PII protected); gold tables hold consumption-ready models, denormalized (star schemas, aggregates, wide feature tables) for their consumers.
 On Hopsworks every layer is a set of offline feature groups, and every silver and gold table is materialized: a feature group written by a job, never a view.
 A silver layer is built by the Factory (**New Medallion Layer**) or `hops medallion silver`, which records the request in `<slug>/system.yaml` and starts Claude Code on `/hops-silver <slug>`.
 
@@ -39,6 +39,20 @@ fg.add_tag("medallion_table", {"layer": "silver", "lifecycle": "dev"})
 
 A table's layer never changes; its lifecycle moves from `dev` to `staging` to `prod` as it is promoted, and the history records when.
 A cluster installed before the tag existed gets it from a platform admin: `POST /hopsworks-api/api/tags?name=medallion_table&archive=true` with the schema above as the body.
+
+## Silver is in third normal form
+
+Every silver layer is normalized to third normal form (3NF); denormalizing for a consumer is the gold layer's job.
+
+- **One table per entity or event**, keyed by its business key (or a surrogate key): customers, products, orders, order lines, payments.
+- **First normal form:** every column holds one atomic value; a repeating group or a list in a column (`item_1, item_2`, a JSON array of lines) becomes rows of a child table keyed by the parent's key plus its own.
+- **Second normal form:** every non-key column depends on the whole key; in a table with a composite key, a column that depends on part of it (a product's name in an order line) moves to the table that part identifies.
+- **Third normal form:** no non-key column depends on another non-key column; a descriptive attribute of a referenced entity (a customer's city in an order, a country's name next to its code) lives only in that entity's table, and the referencing table keeps just the foreign key.
+- **Lookups are tables:** a set of codes with attributes (countries, currencies, channels, product types) is its own silver table, referenced by code.
+- **No derived or aggregated columns:** totals, counts, rates and flags computed from other rows belong in gold; silver keeps the facts they are computed from.
+- A bronze table that mixes entities (an order export with customer and product columns on every line) is split into one silver table per entity, each deduplicated on its own key.
+
+The design records each table's key, its foreign keys (`references: {column: <table>.<key>}`) and the functional dependencies that justified the split, so a reviewer can check the normal form from `system.yaml`.
 
 ## Silver tasks
 
@@ -104,7 +118,7 @@ An apply ends with `outputs.applied_spec` set to the spec it applied, in one com
 `/hops-silver <slug>` builds what `system.yaml` asks for, phase by phase, recording each in `system.yaml`:
 
 1. **profile**: for each bronze source, its schema, row count, key candidates and duplicate rate on them, null rates, distinct values of low-cardinality strings, and its arrival column (`hops fg info`, `hops fg preview`, `hops trino query`).
-2. **design**: the silver tables (one per entity or business event, named `<entity>` or `fct_<event>`/`dim_<entity>`, lowercase), each with its sources, business key, `event_time`, columns and the tasks applied to it; the engine; the cron.
+2. **design**: the silver tables in third normal form (one per entity or event, named after it in lowercase, `customers`, `order_lines`), each with its sources, business key, foreign keys, `event_time`, columns and the tasks applied to it; the engine; the cron.
 3. **code**: the dbt project and runner, or the PySpark program, in the layer's directory, with unit tests of the transformations (DuckDB over sample rows for dbt SQL, pandas or local Spark for PySpark) and dbt data tests for `validate`.
 4. **backfill**: deploy the job, run it once over the whole bronze history, and check the silver tables: row counts against bronze, no duplicate keys, no nulls in required columns, rejects counted.
 5. **schedule**: schedule the job; tag every silver feature group `medallion_table` `{"layer": "silver", "lifecycle": <system.yaml lifecycle>}`.
@@ -113,6 +127,7 @@ An apply ends with `outputs.applied_spec` set to the spec it applied, in one com
 ## Rules
 
 - Silver tables are materialized feature groups, never views or external feature groups over bronze.
+- Silver tables are in third normal form; no star schema, wide table or aggregate in silver.
 - Bronze is never modified: no updates, deletes or masking in place; the silver layer reads it.
 - The silver tables' names, keys and columns are recorded in `system.yaml` before any code is written, and `system.yaml` always reflects what runs.
 - A silver feature group has a description, and each of its features a description of what was done to it.

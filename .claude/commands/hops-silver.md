@@ -33,6 +33,7 @@ Find a skill at `.claude/skills/<name>/` in the repository, else `~/.claude/skil
 - **Ask, never guess.** When the arrival column of a source, the business key of a table, a match rule between sources, or the meaning of an extra task is unclear, ask with `AskUserQuestion`: one call, up to four questions, two to four concrete options each with the recommended one first. Record every answer and every choice you make yourself in `decisions` (`at`, `by: user` or `by: claude`, `what`, `why`).
 - **The engine.** Keep `dbt_trino` unless a task needs code SQL cannot express well (hops-medallion, The engine); then say why, record it in `decisions`, and switch `engine` to `pyspark`.
 - **Materialized, incremental, idempotent.** Silver tables are feature groups the job writes; the job reads only `[HOPS_START_TIME, HOPS_END_TIME)` of each source's arrival column when the variables are set, and the whole history when they are not; replaying a window changes nothing.
+- **Third normal form.** Every silver table is in 3NF; a design that is not, or a change that would break it, is redesigned rather than built.
 - **Bronze is read-only.** Never insert into, update, delete or retag a bronze feature group.
 - **Commit each phase** in the layer's git work tree: `[<slug>] <phase>: <what>`, `system.yaml` with the code.
 - **Logs stay out of the directory**, as `AGENTS.md` says.
@@ -49,7 +50,9 @@ Record the profile in `system.yaml` under each source (`rows`, `key_candidates`,
 
 ### design
 
-Design the silver tables from the sources, the `tasks` and `extra_tasks`: one table per entity or business event, named `<entity>` (or `dim_<entity>`/`fct_<event>`), lowercase with underscores, each with its sources, business key (the feature group's primary key, a surrogate key when `surrogate_keys` is a task), `event_time`, columns and the tasks applied to each.
+Design the silver tables from the sources, the `tasks` and `extra_tasks`, in third normal form (hops-medallion, Silver is in third normal form): find the entities and events in the bronze tables and the functional dependencies between their columns from the profile, split repeating groups into child tables, move each attribute to the table of the key it depends on, and make lookups their own tables.
+One table per entity or event, named after it, lowercase with underscores (`customers`, `order_lines`), each with its sources, business key (the feature group's primary key, a surrogate key when `surrogate_keys` is a task), foreign keys (`references`), `event_time`, columns, the tasks applied to each, and the dependencies that justify the split.
+No aggregates, derived totals or denormalized copies of another table's attributes: those are gold.
 With `validate`, a `<table>_rejects` feature group per table.
 Choose the job's name (`<slug>-silver`), environment (`dbt-pipeline`, or a PySpark job), and cron from `schedule`.
 Write it all to `outputs` (versions 1) before any code, and show the design as a short table; ask only what is unclear.

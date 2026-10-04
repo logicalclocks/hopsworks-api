@@ -20,6 +20,30 @@ with bronze as (
 bronze = fs.get_feature_group("crm_customers", version=1).read()  # HOPS_START_TIME/HOPS_END_TIME applied
 ```
 
+## Third normal form (every layer)
+
+A bronze export that repeats a customer's and a product's attributes on every order line is split into one table per entity, each keyed by what its columns depend on:
+
+```sql
+-- customers: customer_id -> name, city, country_code
+select customer_id, max_by(name, _loaded_at) as name, max_by(city, _loaded_at) as city,
+       max_by(country_code, _loaded_at) as country_code, max(_loaded_at) as updated_at
+from bronze group by customer_id
+
+-- products: product_id -> product_name, product_type_code
+select distinct product_id, product_name, product_type_code from bronze
+
+-- orders: order_id -> customer_id, ordered_at
+select distinct order_id, customer_id, ordered_at from bronze
+
+-- order_lines: (order_id, line_no) -> product_id, quantity, unit_price
+select order_id, line_no, product_id, quantity, unit_price from bronze
+```
+
+`country_code -> country_name` and `product_type_code -> product_type_name` are lookups of their own (`countries`, `product_types`), so `customers` and `products` keep only the codes.
+An order's total is not stored: it is computed from `order_lines` in gold.
+Each table is still deduplicated, typed and validated with the tasks below, on its own key.
+
 ## deduplicate
 
 ```sql

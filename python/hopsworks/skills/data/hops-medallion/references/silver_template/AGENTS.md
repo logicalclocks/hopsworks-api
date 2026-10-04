@@ -16,9 +16,11 @@ Before anything else in a session, compare the spec in `system.yaml` (`sources`,
 A difference is a change to apply, with `/hops-silver <slug> apply`: retag for a lifecycle, reschedule for a schedule, and for a changed task, engine or source a new version of each silver table whose content changes, backfilled and switched to by the job (hops-medallion, Changing a layer).
 Keep the superseded versions, and end by setting `outputs.applied_spec` to the spec applied.
 
-## Silver tables are materialized
+## Silver tables are materialized and in third normal form
 
 Every silver table is a feature group written by this layer's job, never a view or an external feature group over bronze.
+The silver tables are in third normal form: one table per entity or event, atomic columns, every non-key column depending on the whole key and nothing but the key, lookups in their own tables, no aggregates or denormalized copies, which belong in gold.
+A change that would break the normal form is redesigned, not built.
 Bronze feature groups are never modified.
 Every silver feature group carries the `medallion_table` tag with `layer: silver` and the lifecycle in `system.yaml`.
 
