@@ -172,6 +172,15 @@ class MyTransformer(HopsIngestionTransformer):
 
 `from dlt.destinations...` resolves only in that server environment. Importing it in the interactive venv raises `ModuleNotFoundError`, which is why the transform is referenced by path, never imported into your session.
 
+### Tag the ingested table as bronze
+
+A table ingested raw is a bronze table of a medallion layer; tag it so the Factory offers it as a source for a silver layer (**hops-medallion**).
+The UI's ingestion review has a "Tag as a bronze table" checkbox, off by default; from code, tag each feature group after it is created:
+
+```python
+fg.add_tag("medallion_table", {"layer": "bronze", "lifecycle": "dev"})
+```
+
 ## Ingest many tables with one job
 
 **This is the default whenever more than one table is ingested from the same connector.** The per-feature-group `sink_job` above creates one ingestion job per feature group — use it only for a single table. To copy several source tables under a **single** job — one worker pod per table, at most `table_parallelism` at a time — create the ingestion job first and pass it in as each feature group is created. Only fall back to a loop of per-FG sink jobs when the tables come from different connectors or genuinely need independent schedules.
