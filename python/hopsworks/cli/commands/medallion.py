@@ -260,7 +260,9 @@ def _entry(ctx: click.Context, name_or_id: str) -> dict:
 
     session.get_project(ctx)
     for entry in ml_system_api._list():
-        if str(entry.get("id")) == name_or_id or entry.get("name") == name_or_id:
+        # By id, name, or the directory's name (the slug).
+        slug = str(entry.get("pathToCode") or "").rstrip("/").rsplit("/", 1)[-1]
+        if name_or_id in (str(entry.get("id")), entry.get("name"), slug):
             return entry
     raise click.ClickException(f"No layer {name_or_id!r} in the project's Factory.")
 

@@ -531,6 +531,13 @@ def test_backfill_runs_every_job_slowest_first(tmp_path, monkeypatch):
     done = CliRunner().invoke(cli, ["medallion", "backfill", "L"])
     assert done.exit_code == 0, done.output
     assert ran == ["l-silver-weekly", "l-silver-daily", "l-silver-hourly"]
+    # The directory's name finds the layer too.
+    monkeypatch.setattr(
+        ml_system_api,
+        "_list",
+        lambda: [{"id": 7, "name": "L", "pathToCode": "/Projects/p/Users/u/l-silver"}],
+    )
+    assert CliRunner().invoke(cli, ["medallion", "backfill", "l-silver"]).exit_code == 0
 
 
 def test_status_reads_every_job_and_each_tables_cadence_target(tmp_path, monkeypatch):
