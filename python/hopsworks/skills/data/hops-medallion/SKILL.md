@@ -172,6 +172,7 @@ The requirement questions every mart answers, the modeling rules and the standar
 ## Rules
 
 - Silver tables are materialized feature groups, never views or external feature groups over bronze.
+- Every silver and gold feature group is created with `statistics_config=False`: from a Python job, Hopsworks otherwise starts a Spark statistics job (`<fg>_<version>_compute_stats`) after every insert; the layer's checks and status report measure what it needs.
 - Silver tables are in third normal form; no star schema, wide table or aggregate in silver.
 - A silver table never takes the name of an existing feature group, bronze above all: `get_or_create_feature_group` would return that group and the job would write into it. Prefix the names with the domain or the layer (`shop_orders`) when they would collide, and check `hops fg list` at design.
 - Bronze is never modified: no updates, deletes or masking in place; the silver layer reads it.
