@@ -5,6 +5,13 @@ This directory is an ML system built on Hopsworks with Claude Code, by `/hops-bu
 The code here, its jobs and schedules, and the Hopsworks assets it creates (feature groups, feature views, training datasets, models, deployments, apps) are built from it, and must stay in step with it.
 Paths the hops skills write as `<slug>/<path>` are `<path>` in this directory.
 
+## system.yaml always describes the system as it is
+
+Every change you make to this ML system updates `system.yaml` in the same commit, whatever it is for: a fix, maintenance, a retrain, a new version of an asset, a changed schedule, memory, cores or replicas, a pinned library, a job or asset added or removed.
+Record it in the block of the phase it belongs to (names, versions, settings, status), and say why in `decisions`.
+A change made outside the build, such as a fix you were asked for in a session or one suggested from the Factory's status page, is no exception.
+`system.yaml` must always reflect the current state of the ML system: before you finish, check that every asset, version and setting it names is the one that runs, and correct it where it is not.
+
 ## When system.yaml has changed
 
 Before anything else in a session, check whether `system.yaml` changed since what is built was last recorded, and what that means for the system.

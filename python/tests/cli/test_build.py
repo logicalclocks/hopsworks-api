@@ -143,7 +143,9 @@ def test_the_build_starts_in_the_system_directory(tmp_path, monkeypatch, quiet):
     assert done.exit_code == 0, done.output
     [window] = windows
     assert window[window.index("-c") + 1] == str(tmp_path / "churn-example")
-    assert (tmp_path / "churn-example" / "AGENTS.md").is_file()
+    agents = (tmp_path / "churn-example" / "AGENTS.md").read_text(encoding="utf-8")
+    # Every change, a fix or maintenance included, keeps system.yaml current.
+    assert "must always reflect the current state of the ML system" in agents
 
 
 def test_the_ui_starts_an_example_by_name_and_resumes_it(tmp_path, monkeypatch, quiet):
