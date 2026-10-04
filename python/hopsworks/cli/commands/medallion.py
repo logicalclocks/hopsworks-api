@@ -50,6 +50,14 @@ CADENCES = {
     "daily": "0 0 1 * * ?",
     "weekly": "0 0 1 ? * MON",
 }
+HISTORY = ("latest", "full")
+DELETES = ("ignore", "propagate")
+SCHEMA_CHANGES = ("fail", "evolve")
+LOOKBACKS = ("0", "1d", "7d")
+# Stale after a missed run plus slack; replayed windows after an outage are
+# capped at about two weeks of runs.
+FRESHNESS_HOURS = {"hourly": 2, "daily": 26, "weekly": 170}
+MAX_CATCHUP_RUNS = {"hourly": 48, "daily": 14, "weekly": 4}
 ANSWER_KEYS = {
     "slug",
     "name",
@@ -60,6 +68,13 @@ ANSWER_KEYS = {
     "engine",
     "cadence",
     "lifecycle",
+    "history",
+    "deletes",
+    "schema_changes",
+    "lookback",
+    "max_reject_pct",
+    "alert_on_failure",
+    "freshness_hours",
 }
 
 
@@ -86,6 +101,20 @@ def _problems(answers: dict) -> list[str]:
         problems.append(f"cadence must be one of {', '.join(CADENCES)}")
     if answers.get("lifecycle", "dev") not in LIFECYCLES:
         problems.append(f"lifecycle must be one of {', '.join(LIFECYCLES)}")
+    for key, allowed in (
+        ("history", HISTORY),
+        ("deletes", DELETES),
+        ("schema_changes", SCHEMA_CHANGES),
+        ("lookback", LOOKBACKS),
+    ):
+        if key in answers and answers[key] not in allowed:
+            problems.append(f"{key} must be one of {', '.join(allowed)}")
+    pct = answers.get("max_reject_pct", 5)
+    if not isinstance(pct, (int, float)) or not 0 <= pct <= 100:
+        problems.append("max_reject_pct must be a number from 0 to 100")
+    hours = answers.get("freshness_hours", 1)
+    if not isinstance(hours, (int, float)) or hours <= 0:
+        problems.append("freshness_hours must be a positive number")
     return problems
 
 
@@ -119,7 +148,23 @@ def _create(cwd: Path, answers: dict) -> Path:
     doc["tasks"] = list(answers.get("tasks") or [])
     doc["extra_tasks"] = answers.get("extra_tasks", "")
     doc["engine"] = answers.get("engine", "dbt_trino")
-    doc["schedule"] = {"cadence": cadence, "cron": CADENCES[cadence]}
+    doc["schedule"] = {
+        "cadence": cadence,
+        "cron": CADENCES[cadence],
+        "catchup": True,
+        "max_catchup_runs": MAX_CATCHUP_RUNS[cadence],
+    }
+    doc["history"] = answers.get("history", "latest")
+    doc["deletes"] = answers.get("deletes", "ignore")
+    doc["schema_changes"] = answers.get("schema_changes", "fail")
+    doc["late_data"] = {"lookback": answers.get("lookback", "0")}
+    doc["quality"] = {
+        "max_reject_pct": answers.get("max_reject_pct", 5),
+        "alert_on_failure": bool(answers.get("alert_on_failure", True)),
+    }
+    doc["freshness"] = {
+        "max_age_hours": answers.get("freshness_hours", FRESHNESS_HOURS[cadence])
+    }
     (target / "system.yaml").write_text(
         yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=100),
         encoding="utf-8",
@@ -222,11 +267,14 @@ def _delete_assets(ctx: click.Context, doc: dict) -> None:
         name, version = table.get("name"), table.get("version", 1)
         if not name:
             continue
-        try:
-            fs.get_feature_group(name, version=version).delete()
-            output.success(f"✓ Deleted feature group {name} v{version}")
-        except Exception as exc:  # noqa: BLE001 - a missing table is not an error here
-            output.info(f"feature group {name} v{version}: {exc}")
+        # None means it does not exist; any other failure raises and stops the
+        # delete, which leaves the layer listed to be deleted again.
+        fg = fs.get_feature_group(name, version=version)
+        if fg is None:
+            output.info(f"feature group {name} v{version}: gone")
+            continue
+        fg.delete()
+        output.success(f"✓ Deleted feature group {name} v{version}")
 
 
 @medallion_group.command("delete")
@@ -276,3 +324,112 @@ def medallion_delete(
         output.success(f"✓ Deleted {directory}")
     ml_system_api._remove(entry["id"])
     output.success(f"✓ Removed {entry.get('name')} from the Factory")
+
+
+def _layer(ctx: click.Context, name_or_id: str) -> tuple[dict, Path, dict]:
+    """The layer's registry entry, its directory under the terminal's mount, and its system.yaml."""
+    import yaml
+    from hopsworks.cli.commands import mlsystem
+
+    entry = _entry(ctx, name_or_id)
+    directory = mlsystem._local_dir(entry)
+    spec = directory / "system.yaml" if directory else None
+    if spec is None or not spec.is_file():
+        raise click.ClickException(
+            f"Cannot read the system.yaml of {entry.get('name')}; run this in a Hopsworks terminal."
+        )
+    return entry, directory, yaml.safe_load(spec.read_text(encoding="utf-8")) or {}
+
+
+@medallion_group.command("status")
+@click.argument("name_or_id")
+@click.option(
+    "--hours",
+    type=click.IntRange(min=1),
+    default=24,
+    show_default=True,
+    help="How far back to read the job runs.",
+)
+@click.option("--no-summary", is_flag=True, help="Skip the summary Claude writes.")
+@click.pass_context
+def medallion_status(
+    ctx: click.Context, name_or_id: str, hours: int, no_summary: bool
+) -> None:
+    """Report the health of a layer as an HTML page, status/report.html in its directory.
+
+    For the layer's job, its runs in the last HOURS with the log tail of each
+    failure; for each silver and rejects table, its rows, when it was last
+    written against the freshness target, its share of rejected rows against
+    the quality gate, and its file layout from the table's files, as
+    hops-table-maintenance reads them. The Factory's Status button runs this.
+
+    Args:
+        ctx: Click context.
+        name_or_id: The layer's name or registry id.
+        hours: How far back to read job runs.
+        no_summary: Skip the Claude summary.
+    """
+    from hopsworks.cli import health, silver_status
+
+    project = session.get_project(ctx)
+    _, directory, doc = _layer(ctx, name_or_id)
+    facts = silver_status.collect(project, doc, directory.name, hours)
+    if output.JSON_MODE:
+        output.print_json(facts)
+        return
+    summary = None if no_summary else health.summarize(facts)
+    target = directory / "status" / "report.html"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(health.render(facts, summary), encoding="utf-8")
+    c = facts["counts"]
+    output.success(
+        f"{facts['overall']}: {c['failed_runs']} of {c['runs']} job runs failed in {hours} h, "
+        f"{c['table_problems']} of {c['tables']} tables with problems; report in {target}"
+    )
+
+
+@medallion_group.command("backfill")
+@click.argument("name_or_id")
+@click.option(
+    "--wait/--no-wait",
+    default=True,
+    show_default=True,
+    help="Block until the backfill execution ends.",
+)
+@click.pass_context
+def medallion_backfill(ctx: click.Context, name_or_id: str, wait: bool) -> None:
+    """Reprocess every bronze row into the layer's silver tables.
+
+    Runs the layer's job once over a window from the epoch to now, so it reads
+    the whole history of every bronze table; the job's upsert on the primary
+    key and event time makes rows already in silver unchanged. A plain run of
+    a scheduled job would get the last cron interval instead, which is why
+    this is a backfill.
+
+    Args:
+        ctx: Click context.
+        name_or_id: The layer's name or registry id.
+        wait: Block until the execution ends.
+    """
+    from datetime import datetime, timezone
+
+    project = session.get_project(ctx)
+    entry, _directory, doc = _layer(ctx, name_or_id)
+    job_name = ((doc.get("outputs") or {}).get("job") or {}).get("name")
+    job = project.get_job_api().get_job(job_name) if job_name else None
+    if job is None:
+        raise click.ClickException(
+            f"{entry.get('name')} has no job yet; build it with /hops-silver first."
+        )
+    start = datetime(1970, 1, 1, tzinfo=timezone.utc)
+    end = datetime.now(timezone.utc).replace(microsecond=0)
+    execution = job.run(await_termination=wait, start_time=start, end_time=end)
+    state = getattr(execution, "final_status", None) or getattr(execution, "state", "?")
+    output.success(
+        f"Backfill of {entry.get('name')}: job {job_name}, execution #{getattr(execution, 'id', '?')}, "
+        f"window {start.date()} to {end.isoformat()} ({state})"
+    )
+    if wait and state in ("FAILED", "KILLED"):
+        raise click.ClickException(
+            f"the backfill failed; read its log with hops job logs {job_name} --stdout --tail 200"
+        )

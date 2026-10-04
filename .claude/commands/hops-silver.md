@@ -21,7 +21,7 @@ Already known, no need to look again before the first question:
 
 When every phase is `done` and the spec differs from `outputs.applied_spec`, a bare `/hops-silver <slug>` also runs `apply`.
 
-Load **hops-medallion** first: its `SKILL.md` (the tag, the tasks, the engine, incremental processing, the phases) and `references/silver-tasks.md` are what this builder runs on.
+Load **hops-medallion** first: its `SKILL.md` (the tag, the tasks, the settings, the engine, incremental processing, lineage, partitioning, schedule, the phases) and `references/silver-tasks.md` are what this builder runs on, and **hops-partitioning** for the design.
 Load **hops-dbt** for a `dbt_trino` engine and **hops-spark** for `pyspark`, and **hops-job** and **hops-fg** before deploying the job or creating a feature group.
 Find a skill at `.claude/skills/<name>/` in the repository, else `~/.claude/skills/<name>/` (in a Hopsworks terminal that links to `/opt/hops/agent-skills/`).
 
@@ -54,29 +54,35 @@ Design the silver tables from the sources, the `tasks` and `extra_tasks`, in thi
 One table per entity or event, named after it, lowercase with underscores (`customers`, `order_lines`), each with its sources, business key (the feature group's primary key, a surrogate key when `surrogate_keys` is a task), foreign keys (`references`), `event_time`, columns, the tasks applied to each, and the dependencies that justify the split.
 No aggregates, derived totals or denormalized copies of another table's attributes: those are gold.
 With `validate`, a `<table>_rejects` feature group per table.
+Decide each table's partitioning with **hops-partitioning**: run its `partition_advisor.py` on the bronze tables' files under `/hopsfs/featurestore/<project>_featurestore.db/<fg>_<version>` with the arrival column, and record the decision, column and evidence in `partitioning` (per table when they differ).
+Record each bronze table's schema (column names and types) under its source, for the schema-change check.
 Choose the job's name (`<slug>-silver`), environment (`dbt-pipeline`, or a PySpark job), and cron from `schedule`.
 Write it all to `outputs` (versions 1) before any code, and show the design as a short table; ask only what is unclear.
 
 ### code
 
 Write the code in the layer's directory: for `dbt_trino`, a dbt project in `dbt/` (ephemeral models, `sources.yml` over the bronze tables, mapping models, data tests for `validate`) and a runner `run_silver.py` that passes `HOPS_START_TIME`/`HOPS_END_TIME` as dbt vars when set, runs `dbt build`, executes each compiled model on Trino and inserts the rows into its silver feature group (hops-dbt, Landing the model output); for `pyspark`, `silver.py` reading each source with `fg.read()` and inserting each table.
-Create every silver feature group with `get_or_create_feature_group` (Delta, offline, primary key and `event_time` as designed, a description, a description per feature) in the program, so the first run creates it.
+Create every silver feature group with `get_or_create_feature_group` (Delta, offline, primary key as designed, `event_time` only with `history: full`, `partition_key` as decided, `parents=` the bronze feature groups it reads, a description, a description per feature) in the program, so the first run creates it.
+Implement the settings (hops-medallion, The layer's settings): the read window starts `late_data.lookback` before `HOPS_START_TIME`; the bronze schemas are checked against the recorded ones first (`schema_changes`); rejected rows are counted and the run fails above `quality.max_reject_pct` before silver is written; deletes are propagated when `deletes: propagate`.
+The program logs its window, the rows read, written and rejected per table, and each check's result.
 Write unit tests in `tests/` (DuckDB over sample rows for the dbt SQL, pandas or local Spark for PySpark) for every task, and run them.
 
 ### backfill
 
-Deploy the job (`hops job deploy <slug>-silver run_silver.py --env dbt-pipeline`, uploading the dbt project with `hops files upload --overwrite`), run it once without a window (`hops job run <slug>-silver --wait`), and check each silver table: row count against its sources, no duplicate primary key and `event_time`, no nulls in key columns, and the rejects counted.
+Deploy the job (`hops job deploy <slug>-silver run_silver.py --env dbt-pipeline`, uploading the dbt project with `hops files upload --overwrite`), run it once without a window (`hops job run <slug>-silver --wait`; before it is scheduled the run gets no window), and check each silver table: row count against its sources, no duplicate primary key (and `event_time` with `history: full`), no nulls in key columns, the rejects counted, and its parents (`hops fg lineage <name>`).
 Fix and rerun until the checks pass; record the counts in `outputs`.
 
 ### schedule
 
-Schedule the job with `schedule.cron` (`hops job schedule <slug>-silver "<cron>"`), starting at the end of the backfill so the windows continue from it.
+Schedule the job with catch-up (`hops job schedule <slug>-silver "<cron>" --start-time <end of the backfill> --catchup --max-catchup-runs <schedule.max_catchup_runs>`), so the windows continue from the backfill and missed ones are replayed.
+With `quality.alert_on_failure`, create the job-failure alert (`hops alert job create <slug>-silver --receiver <receiver> --status failed --severity critical`; `hops alert receiver list` for the receiver, asking which one when there are several, and recording it).
 Tag every silver and rejects feature group `medallion_table` with `{"layer": "silver", "lifecycle": "<layer.lifecycle>"}` (`hops fg add-tag <name> medallion_table --value '...'`).
 
 ### verify
 
 Run one window (`hops job run <slug>-silver --start-time <t0> --end-time <t1> --wait`) over a stretch of bronze arrivals, check that only that window's rows were read (the job's log states its window and row counts), that a second run of the same window leaves every silver table unchanged, and that the tags are set.
-Set `outputs.applied_spec` to the spec just built (`sources` names and versions, `tasks`, `extra_tasks`, `engine`, `schedule`, `layer.lifecycle`), set `layer.status: built`, and report the silver tables, the job, its schedule and the checks, in a few lines.
+Run `hops medallion status <slug>` and fix anything it flags.
+Set `outputs.applied_spec` to the spec just built (`sources` names and versions, `tasks`, `extra_tasks`, `engine`, `schedule`, `layer.lifecycle`, `history`, `deletes`, `schema_changes`, `late_data`, `quality`, `freshness`), set `layer.status: built`, and report the silver tables, the job, its schedule and the checks, in a few lines.
 
 ### apply
 

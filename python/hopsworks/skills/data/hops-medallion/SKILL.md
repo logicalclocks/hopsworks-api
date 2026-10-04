@@ -90,22 +90,45 @@ The job processes only the bronze rows whose arrival column falls in `[HOPS_STAR
 - **PySpark:** `fg.read()` on a feature group with an `event_time` defaults its `start_time` and `end_time` to the two variables, so the read is already the window.
 - **dbt:** the model filters on the variables, which the runner passes as dbt vars:
   `where {{ arrival }} >= from_iso8601_timestamp('{{ var("start_time") }}') and {{ arrival }} < from_iso8601_timestamp('{{ var("end_time") }}')`.
-  Without the variables (the first run) the filter is left out and the whole bronze history is processed.
-- The silver feature group's primary key is the business key, and its `event_time` the record's own time, so a Delta merge on the primary key plus `event_time` makes a replayed window idempotent.
-- Deduplication within a window keeps the latest row per key and time; a key seen again in a later window adds its new version, which a feature view's point-in-time join reads correctly.
+  Without the variables (the build's first run, before the job is scheduled) the filter is left out and the whole bronze history is processed; after that, `hops medallion backfill` reprocesses it.
+- The silver feature group's primary key is the business key; with `history: full` its `event_time` is the record's own time, and the merge is on both; with `history: latest` it has none, and the merge is on the key. Either way a replayed window is idempotent.
 
 Order: deploy the job, run it once without a window to backfill the whole bronze history, then schedule it (`hops job schedule <job> "<cron>"`) with a start time at the end of that backfill, so the first scheduled window starts where the backfill ended.
+
+## The layer's settings
+
+The Factory form asks for these, with these defaults, and `system.yaml` records them; the build implements each in the job.
+
+| Setting | Values | What the job does |
+| --- | --- | --- |
+| `history` | `latest` (default), `full` | `latest`: one row per business key, the newest; the silver feature group has no `event_time`, so the merge is on the key alone and a newer row replaces the older. `full`: every version, `event_time` the record's time, merged on key plus time, which a feature view's point-in-time join reads. |
+| `deletes` | `ignore` (default), `propagate` | `propagate`: a row deleted from bronze, or flagged deleted (a soft-delete column the profile finds), is deleted from silver with `fg.commit_delete_record(df)` for its keys; a source reprocessed in full deletes the keys no longer in it. |
+| `schema_changes` | `fail` (default), `evolve` | The job compares each bronze table's schema with the one `system.yaml` recorded at design. `fail`: it stops before writing, naming the change, for an apply to redesign. `evolve`: a new nullable column is added to the silver table it belongs to (`fg.append_features`) and recorded; a removed or retyped column still fails. |
+| `late_data.lookback` | `0` (default), `1d`, `7d` | Each run also re-reads that much before its window: the read starts at `HOPS_START_TIME` minus the lookback. The upsert makes the overlap harmless. The schedule's window is never moved with offsets; the program derives the read window. |
+| `quality.max_reject_pct` | 0 to 100, default 5 | A run whose rejected share of rows exceeds it fails after writing the rejects table and before writing silver, so bad data never reaches silver silently. |
+| `quality.alert_on_failure` | `true` (default) | A Hopsworks alert on the job's failure: `hops alert job create <job> --receiver <receiver> --status failed --severity critical`. |
+| `freshness.max_age_hours` | default by cadence: 2 h hourly, 26 h daily, 170 h weekly | A silver table not written for longer is stale; the layer's status report flags it. |
+
+## Lineage, partitioning, schedule and status
+
+- **Lineage.** Every silver feature group is created with `parents=[<bronze feature groups it reads>]`, and every rejects feature group with its silver table's sources, so Hopsworks' lineage shows bronze to silver (`hops fg lineage <silver>`).
+- **Partitioning.** Decided per silver table at design with **hops-partitioning**, from the bronze table's files on the terminal's mount (`/hopsfs/featurestore/<project>_featurestore.db/<fg>_<version>`): none for small tables, else by hour, day or week, and recorded in `system.yaml` `partitioning` with the evidence.
+- **Schedule.** `hops job schedule <job> "<cron>" --catchup --max-catchup-runs <schedule.max_catchup_runs>`, so windows missed while the scheduler was down are replayed, one execution each, instead of skipped.
+- **Status.** `hops medallion status <layer>` writes `status/report.html` in the layer's directory: the job's runs, and for every silver and rejects table its rows, last write against the freshness target, rejected share against the gate, and file layout (the hops-table-maintenance scanner), with Claude's summary. The layer's page shows it with **Status**.
+- **Backfill.** `hops medallion backfill <layer>` runs the job over a window from the epoch to now, reprocessing every bronze row; once the job is scheduled, a plain `hops job run` gets the last cron interval as its window instead. The layer's page has **Backfill**.
 
 ## Changing a layer: system.yaml drives recomputation
 
 `system.yaml` is the layer's specification, as an ML system's is.
-The spec is `sources`, `tasks`, `extra_tasks`, `engine`, `schedule` and `layer.lifecycle`; after every build or apply, `outputs.applied_spec` records the spec the tables were built from.
+The spec is `sources`, `tasks`, `extra_tasks`, `engine`, `schedule`, `layer.lifecycle` and the settings above; after every build or apply, `outputs.applied_spec` records the spec the tables were built from.
 A spec that differs from `outputs.applied_spec` is a pending change, which the Factory shows on the layer's page with **Apply changes**, and `/hops-silver <slug> apply` applies:
 
 | Change | What it recomputes |
 | --- | --- |
 | `layer.lifecycle` | nothing: every silver and rejects feature group is retagged, and the tag history records the promotion |
 | `schedule` | nothing: the job is rescheduled with the new cron, continuing from the last window |
+| `late_data`, `quality`, `freshness` | nothing: the job's settings and alert are changed and redeployed |
+| `history`, `deletes` or `schema_changes` | the code, and for `history` each silver table, which gets a new version (the merge key changes), backfilled as below |
 | `tasks`, `extra_tasks` or `engine` | the silver tables whose content changes: the code is changed and tested, each such table gets a new feature group version backfilled over the whole bronze history, and the job is switched to write the new versions |
 | a source added | the tables that read it: profiled and designed like a new source, then built as above |
 | a source removed | the tables that read only it stop being written; those that also read others are rebuilt as above |
@@ -132,6 +155,7 @@ An apply ends with `outputs.applied_spec` set to the spec it applied, in one com
 - The silver tables' names, keys and columns are recorded in `system.yaml` before any code is written, and `system.yaml` always reflects what runs.
 - A silver feature group has a description, and each of its features a description of what was done to it.
 - Logs never go into the layer's directory; see its `AGENTS.md`.
+- Every silver feature group records its bronze parents, and its partitioning is decided from the data, never by default.
 
 ## Next Steps
 

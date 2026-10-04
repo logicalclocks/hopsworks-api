@@ -16,6 +16,19 @@ engine: dbt_trino     # dbt_trino | pyspark
 schedule:
   cadence: daily      # hourly | daily | weekly
   cron: ""            # Quartz cron the job is scheduled with
+  catchup: true       # replay the windows missed while the scheduler was down
+  max_catchup_runs: 14
+history: latest       # latest: one row per business key | full: every version, by event_time
+deletes: ignore       # ignore | propagate: rows deleted or soft-deleted in bronze leave silver
+schema_changes: fail  # fail: stop the run on a bronze schema change | evolve: add new columns
+late_data:
+  lookback: "0"       # also re-read this much before each window: 0, 1d, 7d
+quality:
+  max_reject_pct: 5   # a run with more rejected rows than this fails
+  alert_on_failure: true
+freshness:
+  max_age_hours: 26   # a silver table not written for longer is stale
+partitioning: {}      # decided by the build: {decision, column, granularity, why}
 phases:               # each {status: pending | running | done | failed, started, finished, note}
   profile: {status: pending}
   design: {status: pending}

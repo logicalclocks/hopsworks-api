@@ -30,6 +30,12 @@ The job runs on a schedule and processes only the bronze rows whose arrival colu
 A run without the variables processes the whole bronze history; that is how the first backfill runs.
 A replayed window must leave the silver tables unchanged.
 
+## Lineage, schedule, status and backfill
+
+Every silver feature group is created with the bronze feature groups it reads as `parents`.
+The job is scheduled with `--catchup`, so missed windows are replayed.
+`hops medallion status <slug>` writes the layer's health report to `status/report.html`; `hops medallion backfill <slug>` reprocesses the whole bronze history (a plain run of the scheduled job gets only the last cron interval).
+
 ## Logs stay out of the repository
 
 Never write a log file or a directory of logs into this directory: logs are not checked in.

@@ -262,10 +262,11 @@ def summarize(facts: dict, timeout: int = 180) -> str | None:
     if not shutil.which("claude"):
         return None
     prompt = (
-        "You are writing the summary section of a health report for an ML system on Hopsworks. "
+        "You are writing the summary section of a health report for an ML system or a medallion layer on Hopsworks. "
         "From the JSON facts below, write at most 150 words as an HTML fragment using only <p>, <ul>, "
         "<li>, <strong> and <code>: first one sentence on the overall health, then, for each failed "
-        "job run or unhealthy deployment or app, what failed and the likely cause from its log tail "
+        "job run, unhealthy deployment or app, or table with problems (stale, rejects over the gate, small files), "
+        "what failed and the likely cause from its log tail "
         "or pod state (OOMKilled means raise the memory), and what to do. Say plainly when everything "
         "is healthy. No headings, no markdown, no preamble.\n\n"
         + json.dumps(facts, default=str)
@@ -460,6 +461,23 @@ function servicesSection() {
         : el('p', { class: 'muted' }, 'No pods running.'))));
 }
 
+function tablesSection() {
+  const all = facts.tables || [];
+  const rows = all.filter((t) => !onlyProblems || (t.problems || []).length);
+  const mb = (b) => b == null ? '' : b >= 1 << 30 ? `${(b / (1 << 30)).toFixed(1)} GB` : `${Math.round(b / (1 << 20))} MB`;
+  return el('section', { class: 'card' }, el('h2', {}, 'Tables'),
+    rows.length ? table(['Table', 'Rows', 'Last write', 'Files', ''],
+      rows.map((t) => { const l = t.layout || {}; const p = t.problems || [];
+        return el('tr', {},
+          el('td', {}, el('div', { style: 'font-weight:500' }, `${t.name} v${t.version}`), el('div', { class: 'muted xs' }, t.kind + (t.reject_pct != null ? ` · ${t.reject_pct}% rejected` : '')),
+            p.map((m) => el('div', { class: 'fail-text xs' }, m))),
+          el('td', {}, t.rows == null ? el('span', { class: 'muted' }, 'n/a') : t.rows.toLocaleString()),
+          el('td', {}, t.last_write ? `${ago(t.last_write)}${t.max_age_hours ? ` · target ${t.max_age_hours} h` : ''}` : el('span', { class: 'muted' }, 'never')),
+          el('td', {}, l.active_files != null ? `${l.active_files} files, ${mb(l.total_bytes)}${l.partitions ? `, ${l.partitions} partitions` : ''}` : el('span', { class: 'muted' }, 'n/a')),
+          el('td', { style: 'text-align:right' }, p.length ? badge('fail', 'problem') : badge('success', 'healthy'))); }))
+      : el('p', { class: 'muted' }, onlyProblems ? 'No table has a problem.' : 'No tables yet.'));
+}
+
 function draw() {
   const c = facts.counts;
   document.getElementById('root').replaceChildren(
@@ -468,10 +486,11 @@ function draw() {
       el('label', { class: 'filter' }, el('input', { type: 'checkbox', ...(onlyProblems ? { checked: '' } : {}), onchange: (e) => { onlyProblems = e.target.checked; draw(); } }), 'Only problems'),
       badge(facts.overall, facts.overall)),
     el('div', { class: 'cards' },
-      [[c.runs, `job runs in ${facts.hours} h`], [c.failed_runs, 'failed runs'], [c.services, 'deployments and apps'], [c.unhealthy_services, 'unhealthy']].map(([v, l], i) =>
+      (facts.tables ? [[c.runs, `job runs in ${facts.hours} h`], [c.failed_runs, 'failed runs'], [c.tables, 'tables'], [c.table_problems, 'tables with problems']]
+        : [[c.runs, `job runs in ${facts.hours} h`], [c.failed_runs, 'failed runs'], [c.services, 'deployments and apps'], [c.unhealthy_services, 'unhealthy']]).map(([v, l], i) =>
         el('div', { class: 'card stat' }, el('div', { class: `v ${(i === 1 || i === 3) && v ? 'fail-text' : ''}` }, String(v)), el('div', { class: 'l' }, l)))),
     summary ? (() => { const s = el('section', { class: 'card summary' }, el('h2', {}, 'Summary')); const d = el('div'); d.innerHTML = summary; s.append(d); return s; })() : '',
-    jobsSection(), servicesSection());
+    jobsSection(), facts.tables ? tablesSection() : servicesSection());
 }
 draw();
 </script>
