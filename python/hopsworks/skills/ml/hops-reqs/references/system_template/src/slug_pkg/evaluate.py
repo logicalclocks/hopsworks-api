@@ -354,7 +354,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--bundle", required=True)
     parser.add_argument("--model", required=True, help="<name>:<version>")
     parser.add_argument("--split", choices=["validation", "test"], required=True)
-    args = parser.parse_args(argv)
+    args, _ = parser.parse_known_args(argv)
 
     _, manifest, system = _load_bundle(args.bundle)
     import hopsworks

@@ -270,7 +270,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--mode", choices=MODES, required=True)
     parser.add_argument("--bundle", required=True)
     parser.add_argument("--description", default="")
-    args = parser.parse_args(argv)
+    args, _ = parser.parse_known_args(argv)
 
     _, manifest, system = _load_bundle(args.bundle)
     evaluate = importlib.import_module(f"{ident(system)}.evaluate")

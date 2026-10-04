@@ -113,9 +113,10 @@ def main(argv: list[str] | None = None) -> int:
     """Score one window and write the predictions."""
     parser = argparse.ArgumentParser(description="Score one window.")
     parser.add_argument("--bundle", required=True)
-    parser.add_argument("--start")
-    parser.add_argument("--end")
-    args = parser.parse_args(argv)
+    # The scheduler can also pass the window as -start_time/-end_time.
+    parser.add_argument("--start", "-start_time", dest="start")
+    parser.add_argument("--end", "-end_time", dest="end")
+    args, _ = parser.parse_known_args(argv)
 
     _, manifest, system = _load_bundle(args.bundle)
     pkg = system["system"]["slug"].replace("-", "_")

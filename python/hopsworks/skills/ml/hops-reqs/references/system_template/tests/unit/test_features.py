@@ -23,6 +23,20 @@ def test_window_reads_the_scheduler_variables(monkeypatch):
     assert end == datetime(2026, 9, 1, tzinfo=UTC)
 
 
+def test_main_takes_the_window_as_scheduler_arguments(monkeypatch):
+    seen = {}
+
+    def stop(bundle):
+        seen["bundle"] = bundle
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(feature_pipeline, "_load_bundle", stop)
+    argv = ["--bundle", "b.zip", "-start_time", "2026-08-01T00:00:00Z"]
+    with pytest.raises(KeyboardInterrupt):
+        feature_pipeline.main([*argv, "-end_time", "2026-09-01T00:00:00Z", "-x", "1"])
+    assert seen == {"bundle": "b.zip"}
+
+
 def test_window_refuses_an_empty_interval():
     with pytest.raises(SystemExit):
         feature_pipeline.window("2026-09-01T00:00:00Z", "2026-09-01T00:00:00Z")
