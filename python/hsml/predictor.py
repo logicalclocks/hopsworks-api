@@ -680,7 +680,7 @@ class Predictor(DeployableComponent):
     @public
     @property
     def version(self):
-        """Version of the predictor."""
+        """Number of the active configuration version of the deployment."""
         return self._version
 
     @public
@@ -764,10 +764,8 @@ class Predictor(DeployableComponent):
     @public
     @property
     def artifact_path(self):
-        """Path of the model artifact deployed by the predictor. Resolves to /Projects/{project_name}/Models/{name}/{version}/Artifacts/{artifact_version}/{name}_{version}_{artifact_version}.zip."""
-        # TODO: Deprecated
-        artifact_name = f"{self._model_name}_{str(self._model_version)}_{str(self._artifact_version)}.zip"
-        return f"{self._model_path}/{str(self._model_version)}/Artifacts/{str(self._artifact_version)}/{artifact_name}"
+        """Path of the artifact files deployed by the predictor, the same as `artifact_files_path`."""
+        return self.artifact_files_path
 
     @public
     @property
