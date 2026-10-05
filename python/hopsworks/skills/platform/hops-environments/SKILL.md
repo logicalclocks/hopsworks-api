@@ -75,7 +75,7 @@ hops env install my_env -f requirements.txt            # uploads the local file,
 ```
 
 ## Base environments (pick by workload)
-One per workload; all Python 3.12. Each base matches an FTI pipeline stage
+One per workload; all Python 3.13. Each base matches an FTI pipeline stage
 (feature / training / inference) or a serving workload. Clone the one matching
 the workload, then add libs.
 | Workload | Base environment |

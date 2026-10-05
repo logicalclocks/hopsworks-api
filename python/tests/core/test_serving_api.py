@@ -417,3 +417,41 @@ class TestServingApi:
         assert args[0] == "GET"
         assert args[1] == ["project", 1, "serving", "vllmImageTags"]
         assert response == _VLLM_IMAGE_TAGS_RESPONSE
+
+
+class TestGrpcChannelLockIsPerDeployment:
+    def test_a_slow_first_channel_does_not_hold_up_another_deployment(self, mocker):
+        import threading
+
+        from hsml.core import serving_api as serving_api_module
+
+        api = serving_api_module.ServingApi()
+        slow_started = threading.Event()
+        release = threading.Event()
+
+        def create(deployment):
+            if deployment.name == "slow":
+                slow_started.set()
+                release.wait(5)
+            return f"channel-{deployment.name}"
+
+        mocker.patch.object(api, "_create_grpc_channel", side_effect=create)
+
+        def deployment(name):
+            d = mocker.Mock()
+            d.name = name
+            d._grpc_channel = None
+            d._grpc_channel_lock = threading.Lock()
+            return d
+
+        slow, fast = deployment("slow"), deployment("fast")
+        worker = threading.Thread(target=api._grpc_channel, args=(slow,))
+        worker.start()
+        try:
+            assert slow_started.wait(5)
+            # Returns while the slow deployment is still creating its channel.
+            assert api._grpc_channel(fast) == "channel-fast"
+        finally:
+            release.set()
+            worker.join(5)
+        assert slow._grpc_channel == "channel-slow"

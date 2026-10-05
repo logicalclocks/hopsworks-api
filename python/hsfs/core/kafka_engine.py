@@ -263,6 +263,84 @@ def _kafka_get_offsets(
     return ""
 
 
+@_uses_confluent_kafka
+def _kafka_get_offsets_for_times(
+    topic_name: str,
+    feature_store_id: int,
+    offline_write_options: dict[str, Any],
+    timestamp: int,
+) -> str:
+    """Look up the offsets a topic has to be read from to skip everything older than a timestamp.
+
+    Returns the `topic,partition:offset,...` string
+    [`_kafka_get_offsets`][hsfs.core.kafka_engine._kafka_get_offsets] returns, holding for
+    each partition the earliest offset whose record is at or after `timestamp`.
+    A partition whose records all predate `timestamp` contributes the high watermark it had
+    before the lookup, since it held nothing worth reading then; a record appended after the
+    lookup lands at or past that watermark and is still read.
+    A partition Kafka could not answer for contributes
+    its low watermark, so an unanswered lookup reads too much rather than too little.
+    The empty string is returned when the topic does not exist.
+
+    Parameters:
+        topic_name: Name of the topic to look the offsets up in.
+        feature_store_id: Id of the feature store the topic belongs to.
+        offline_write_options: Options the consumer is built from, honouring `kafka_timeout`.
+        timestamp: Unix timestamp in milliseconds to look the offsets up at.
+
+    Returns:
+        The offsets, in the same format as `_kafka_get_offsets`.
+    """
+    consumer = _init_kafka_consumer(feature_store_id, offline_write_options)
+    try:
+        timeout = offline_write_options.get("kafka_timeout", 6)
+        topics = consumer.list_topics(timeout=timeout).topics
+        if topic_name not in topics:
+            return ""
+
+        partitions = [
+            partition_metadata.id
+            for partition_metadata in topics.get(topic_name).partitions.values()
+        ]
+        # Captured before the lookup: a high watermark read after it could already be past
+        # a record appended in between, which the lookup did not see and the read would
+        # then skip.
+        highs = {
+            partition: consumer.get_watermark_offsets(
+                TopicPartition(topic=topic_name, partition=partition)
+            )[1]
+            for partition in partitions
+        }
+        lookups = [
+            TopicPartition(topic=topic_name, partition=partition, offset=timestamp)
+            for partition in partitions
+        ]
+        offsets = ""
+        for result in consumer.offsets_for_times(lookups, timeout=timeout):
+            # Read after the lookup, since retention can drop the record any offset below
+            # points at.
+            low, _ = consumer.get_watermark_offsets(
+                TopicPartition(topic=topic_name, partition=result.partition)
+            )
+            if result.error is not None:
+                # Reading from the low watermark is what this function is meant to avoid,
+                # but a partition Kafka would not answer for has no offset to trust, and
+                # re-reading records is recoverable where skipping them is not.
+                offset = low
+            elif result.offset < 0:
+                # Kafka answers a timestamp past the last record with a negative offset:
+                # every record the partition holds is older than the timestamp, so the
+                # reader belongs at the end of it.
+                offset = max(highs[result.partition], low)
+            else:
+                offset = max(result.offset, low)
+            offsets += f",{result.partition}:{offset}"
+
+        return f"{topic_name + offsets}"
+    finally:
+        consumer.close()
+
+
 def _kafka_produce(
     producer: Producer,
     key: str,

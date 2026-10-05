@@ -591,6 +591,40 @@ class TestFeatureView:
 
         assert get_vector.call_args.kwargs["n_processes"] == 2
 
+    def test_the_async_single_call_initialises_the_rest_client_it_asks_for(
+        self, mocker
+    ):
+        """As the blocking call does: asking for REST first must not set up SQL alone."""
+        import asyncio
+
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg1.select_features(),
+            featurestore_id=99,
+            featurestore_name="test_fs",
+        )
+        fv._vector_server._serving_initialized = False
+        fv._vector_db_client = None
+        init_serving = mocker.patch.object(fv, "init_serving")
+
+        async def answered(**_kwargs):
+            return [1]
+
+        mocker.patch.object(
+            fv._vector_server, "_get_feature_vector_async", side_effect=answered
+        )
+
+        asyncio.run(
+            fv.get_feature_vector_async(
+                entry={"primary_key": 1}, force_rest_client=True
+            )
+        )
+
+        assert init_serving.call_args.kwargs["init_rest_client"] is True
+
     def test_from_response_json_basic_info_deprecated(self, mocker, backend_fixtures):
         # Arrange
         mocker.patch("hsfs.engine._get_type")
@@ -1037,6 +1071,26 @@ class TestFeatureView:
 
         # Assert
         assert root_feature_group_event_time == "event_time"
+
+    def test_event_time_valid_features_adds_unselected_root_event_time(self, mocker):
+        # The left FG's event time can be named as a monitoring basis even
+        # when the view does not select it, matching what event_time=None resolves to.
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            query=fg1.select(["fg1_feature"]).join(fg2.select(["fg2_feature"])),
+            featurestore_id=99,
+            featurestore_name="test_fs",
+        )
+        selected = {"fg1_feature": "float", "fg2_feature": "float"}
+
+        valid = fv._event_time_valid_features(selected)
+
+        assert valid["event_time"] == "timestamp"
+        assert set(selected) < set(valid)
+        assert "event_time" not in selected  # the selectable map is left untouched
 
     def test_delete_feature_view_force(self, mocker, backend_fixtures):
         # Arrange
