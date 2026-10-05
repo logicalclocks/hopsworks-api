@@ -17,6 +17,7 @@
 import pytest
 from hopsworks_common.constants import PREDICTOR, SCALING_CONFIG
 from hsml.scaling_config import (
+    Autoscaler,
     LogPersistence,
     PredictorScalingConfig,
     ScaleMetric,
@@ -30,7 +31,133 @@ class TestScalingConfig:
         assert ScaleMetric._has_value("RPS")
         assert ScaleMetric._has_value("CPU")
         assert ScaleMetric._has_value("MEMORY")
+        assert ScaleMetric._has_value("QUEUE_DEPTH")
+        assert ScaleMetric._has_value("KV_CACHE_USAGE")
         assert not ScaleMetric._has_value("BOGUS")
+
+    def test_engine_metrics_and_autoscaler_round_trip(self):
+        """KServe standard-mode LLM deployments scale on the vLLM engine metrics through KEDA (HWORKS-3106)."""
+        sc = PredictorScalingConfig(
+            min_instances=1,
+            max_instances=4,
+            scale_metric="queue_depth",
+            target=8,
+            autoscaler="keda",
+        )
+        assert sc.scale_metric is ScaleMetric.QUEUE_DEPTH
+        assert sc.autoscaler is Autoscaler.KEDA
+        assert sc.to_json()["scale_metric"] == "QUEUE_DEPTH"
+        assert sc.to_json()["autoscaler"] == "KEDA"
+
+        read_back = PredictorScalingConfig.from_response_json(
+            {
+                "predictor_scaling_config": {
+                    "min_instances": 1,
+                    "max_instances": 4,
+                    "scale_metric": "KV_CACHE_USAGE",
+                    "target": 80,
+                    "autoscaler": "KEDA",
+                }
+            }
+        )
+        assert read_back.scale_metric is ScaleMetric.KV_CACHE_USAGE
+        assert read_back.autoscaler is Autoscaler.KEDA
+
+    def test_keda_windows_and_additional_metrics_round_trip(self):
+        sc = PredictorScalingConfig(
+            min_instances=1,
+            max_instances=4,
+            scale_metric="queue_depth",
+            autoscaler="keda",
+            scale_down_stabilization_window_seconds=600,
+            scale_up_stabilization_window_seconds=0,
+            additional_scale_metrics=[("kv_cache_usage", 80), {"scale_metric": "cpu"}],
+        )
+        json = sc.to_json()
+        assert json["scale_down_stabilization_window_seconds"] == 600
+        assert json["scale_up_stabilization_window_seconds"] == 0
+        assert json["additional_scale_metrics"] == [
+            {"scale_metric": "KV_CACHE_USAGE", "target": 80},
+            {"scale_metric": "CPU", "target": None},
+        ]
+        # The REST payload camelizes nested keys too.
+        payload = sc.to_dict()["predictorScalingConfig"]
+        assert payload["additionalScaleMetrics"][0]["scaleMetric"] == "KV_CACHE_USAGE"
+
+        read_back = PredictorScalingConfig.from_response_json(
+            {
+                "predictor_scaling_config": {
+                    "min_instances": 1,
+                    "max_instances": 4,
+                    "scale_metric": "QUEUE_DEPTH",
+                    "autoscaler": "KEDA",
+                    "scale_down_stabilization_window_seconds": 600,
+                    "additional_scale_metrics": [
+                        {"scale_metric": "KV_CACHE_USAGE", "target": 80},
+                    ],
+                }
+            }
+        )
+        assert read_back.scale_down_stabilization_window_seconds == 600
+        assert read_back.scale_up_stabilization_window_seconds is None
+        assert read_back.additional_scale_metrics == [
+            {"scale_metric": ScaleMetric.KV_CACHE_USAGE, "target": 80}
+        ]
+
+    def test_additional_scale_metric_without_metric_rejected(self):
+        with pytest.raises(ValueError, match="must name a scale_metric"):
+            PredictorScalingConfig(
+                min_instances=1, additional_scale_metrics=[{"target": 5}]
+            )
+
+    def test_unknown_additional_scale_metric_from_backend_is_ignored_with_warning(self):
+        with pytest.warns(
+            UserWarning, match="Ignoring unknown additional scale metric"
+        ):
+            sc = PredictorScalingConfig.from_response_json(
+                {
+                    "predictor_scaling_config": {
+                        "min_instances": 1,
+                        "additional_scale_metrics": [
+                            {"scale_metric": "FUTURE", "target": 1}
+                        ],
+                    }
+                }
+            )
+        assert sc.additional_scale_metrics is None
+
+    def test_autoscaler_unset_is_omitted_and_hpa_accepted(self):
+        unset = PredictorScalingConfig(min_instances=1, scale_metric="cpu")
+        assert unset.autoscaler is None
+        assert "autoscaler" not in unset.to_json()
+
+        hpa = PredictorScalingConfig(
+            min_instances=1, scale_metric="cpu", autoscaler=Autoscaler.HPA
+        )
+        assert hpa.to_json()["autoscaler"] == "HPA"
+        hpa.autoscaler = "keda"
+        assert hpa.autoscaler is Autoscaler.KEDA
+
+    def test_invalid_autoscaler_rejected(self):
+        with pytest.raises(ValueError) as exc_info:
+            PredictorScalingConfig(min_instances=1, autoscaler="bogus")
+        assert "Invalid autoscaler" in str(exc_info.value)
+
+        with pytest.raises(ValueError) as exc_info:
+            PredictorScalingConfig(min_instances=1, autoscaler=123)
+        assert "autoscaler must be a string or Autoscaler" in str(exc_info.value)
+
+    def test_unknown_autoscaler_from_backend_is_ignored_with_warning(self):
+        with pytest.warns(UserWarning, match="Ignoring unknown autoscaler"):
+            sc = PredictorScalingConfig.from_response_json(
+                {
+                    "predictor_scaling_config": {
+                        "min_instances": 1,
+                        "autoscaler": "FUTURE",
+                    }
+                }
+            )
+        assert sc.autoscaler is None
 
     def test_the_horizontal_pod_autoscalers_metrics_read_back(self):
         """KServe standard mode scales on CPU or MEMORY, and defaults to CPU."""

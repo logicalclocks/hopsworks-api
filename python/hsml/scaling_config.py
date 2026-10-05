@@ -36,7 +36,11 @@ class ScaleMetric(Enum):
     """Scaling metric for a predictor or transformer.
 
     `CONCURRENCY` and `RPS` are Knative-only metrics, valid for KServe Knative deployments.
-    `CPU` and `MEMORY` drive CPU/memory-based autoscaling, valid for KServe Standard and non-KServe deployments.
+    `CPU` and `MEMORY` drive CPU/memory-based autoscaling, valid for KServe Standard and non-KServe deployments,
+    under either autoscaler (see `Autoscaler`).
+    `QUEUE_DEPTH` and `KV_CACHE_USAGE` are vLLM engine metrics for LLM deployments in KServe Standard mode: the
+    requests waiting in the engine queue per replica, and the KV-cache utilization in percent. They are read from
+    Prometheus by KEDA, so they need the `KEDA` autoscaler and a cluster with KEDA installed.
     In KServe Standard mode a deployment with `min_instances == max_instances` runs a fixed replica count and ignores the metric.
     """
 
@@ -44,6 +48,8 @@ class ScaleMetric(Enum):
     RPS = "RPS"
     CPU = "CPU"
     MEMORY = "MEMORY"
+    QUEUE_DEPTH = "QUEUE_DEPTH"
+    KV_CACHE_USAGE = "KV_CACHE_USAGE"
 
     @classmethod
     def _has_value(cls, value):
@@ -51,6 +57,82 @@ class ScaleMetric(Enum):
 
     def __str__(self):
         return self.value
+
+
+@public
+class Autoscaler(Enum):
+    """Which autoscaler runs the scale metric of a KServe Standard-mode component.
+
+    `HPA` is KServe's own HorizontalPodAutoscaler on `CPU` or `MEMORY`, the default today and slated for
+    retirement in favour of KEDA.
+    `KEDA` scales on `CPU`, `MEMORY`, or the vLLM engine metrics (`QUEUE_DEPTH`, `KV_CACHE_USAGE`) through a
+    KEDA ScaledObject; it needs KEDA installed in the cluster.
+    Knative deployments always use the Knative autoscaler and reject this setting.
+    """
+
+    HPA = "HPA"
+    KEDA = "KEDA"
+
+    @classmethod
+    def _has_value(cls, value):
+        return any(member.value == value for member in cls)
+
+    def __str__(self):
+        return self.value
+
+
+def _coerce_scale_metric(scale_metric: ScaleMetric | str) -> ScaleMetric:
+    if isinstance(scale_metric, ScaleMetric):
+        return scale_metric
+    if isinstance(scale_metric, str):
+        if not ScaleMetric._has_value(scale_metric.upper()):
+            raise ValueError(
+                f"Invalid scale_metric: {scale_metric}. Must be one of {[e.value for e in ScaleMetric]}"
+            )
+        return ScaleMetric(scale_metric.upper())
+    raise ValueError(
+        f"scale_metric must be a string or ScaleMetric, got {type(scale_metric)}"
+    )
+
+
+def _coerce_additional_scale_metrics(
+    items: list[dict | tuple | ScaleMetric | str] | None,
+) -> list[dict] | None:
+    """Coerce the additional scale metrics into `{"scale_metric", "target"}` dicts.
+
+    Each item is such a dict, a `(scale_metric, target)` tuple, or a bare metric
+    (target left to the backend default).
+    """
+    if items is None:
+        return None
+    coerced = []
+    for item in items:
+        if isinstance(item, dict):
+            metric, target = item.get("scale_metric"), item.get("target")
+        elif isinstance(item, (tuple, list)) and len(item) == 2:
+            metric, target = item
+        else:
+            metric, target = item, None
+        if metric is None:
+            raise ValueError("every additional scale metric must name a scale_metric")
+        coerced.append({"scale_metric": _coerce_scale_metric(metric), "target": target})
+    return coerced
+
+
+def _coerce_autoscaler(autoscaler: Autoscaler | str | None) -> Autoscaler | None:
+    if autoscaler is None:
+        return None
+    if isinstance(autoscaler, Autoscaler):
+        return autoscaler
+    if isinstance(autoscaler, str):
+        if not Autoscaler._has_value(autoscaler.upper()):
+            raise ValueError(
+                f"Invalid autoscaler: {autoscaler}. Must be one of {[e.value for e in Autoscaler]}"
+            )
+        return Autoscaler(autoscaler.upper())
+    raise ValueError(
+        f"autoscaler must be a string or Autoscaler, got {type(autoscaler)}"
+    )
 
 
 @public
@@ -110,6 +192,10 @@ class ComponentScalingConfig(ABC):
         stable_window_seconds: int | None = None,
         scale_to_zero_retention_seconds: int | None = None,
         log_persistence: LogPersistence | str | Default | None = None,
+        autoscaler: Autoscaler | str | None = None,
+        scale_down_stabilization_window_seconds: int | None = None,
+        scale_up_stabilization_window_seconds: int | None = None,
+        additional_scale_metrics: list[dict | tuple | ScaleMetric | str] | None = None,
         **kwargs,
     ):
         """Initialize a ComponentScalingConfig instance.
@@ -119,6 +205,15 @@ class ComponentScalingConfig(ABC):
             max_instances: Maximum number of instances to scale to.
             scale_metric: Metric to use for scaling.
             target: Target value for the selected scaling metric.
+            autoscaler: Which autoscaler runs the metric in KServe Standard mode, `HPA` (KServe) or `KEDA`.
+                Unset means the backend default: `KEDA` for an engine metric, `HPA` otherwise.
+            scale_down_stabilization_window_seconds: KEDA only. How long (0-3600 s) the metric must stay below
+                target before instances are removed. Unset means the cluster default (300 s).
+            scale_up_stabilization_window_seconds: KEDA only. How long (0-3600 s) the metric must stay above
+                target before instances are added. Unset means the cluster default (0 s).
+            additional_scale_metrics: KEDA only. Further metrics to scale on next to `scale_metric`, each a
+                `{"scale_metric": ..., "target": ...}` dict or a `(scale_metric, target)` tuple; the most demanding
+                metric decides the instance count. A missing target takes the metric's default.
             panic_window_percentage: Percentage of the stable window to use as the panic window.
             panic_threshold_percentage: Percentage of the scale metric threshold to trigger scaling.
             stable_window_seconds: Interval in seconds for calculating the average metric.
@@ -152,6 +247,16 @@ class ComponentScalingConfig(ABC):
         self._stable_window_seconds = stable_window_seconds
         self._scale_to_zero_retention_seconds = scale_to_zero_retention_seconds
         self._log_persistence = _coerce_log_persistence(log_persistence)
+        self._autoscaler = _coerce_autoscaler(autoscaler)
+        self._scale_down_stabilization_window_seconds = (
+            scale_down_stabilization_window_seconds
+        )
+        self._scale_up_stabilization_window_seconds = (
+            scale_up_stabilization_window_seconds
+        )
+        self._additional_scale_metrics = _coerce_additional_scale_metrics(
+            additional_scale_metrics
+        )
 
     @public
     def describe(self):
@@ -278,6 +383,45 @@ class ComponentScalingConfig(ABC):
         )
         if log_persistence:
             kwargs["log_persistence"] = LogPersistence(log_persistence)
+        autoscaler = util._extract_field_from_json(json_decamelized, "autoscaler")
+        if autoscaler:
+            # Same tolerance as scale_metric: a runtime container must survive a value its bundled client predates.
+            if Autoscaler._has_value(autoscaler):
+                kwargs["autoscaler"] = Autoscaler(autoscaler)
+            else:
+                warnings.warn(
+                    f"Ignoring unknown autoscaler '{autoscaler}' returned by the backend; upgrade the hopsworks client to manage it.",
+                    stacklevel=2,
+                )
+        kwargs["scale_down_stabilization_window_seconds"] = (
+            util._extract_field_from_json(
+                json_decamelized, "scale_down_stabilization_window_seconds"
+            )
+        )
+        kwargs["scale_up_stabilization_window_seconds"] = util._extract_field_from_json(
+            json_decamelized, "scale_up_stabilization_window_seconds"
+        )
+        additional = util._extract_field_from_json(
+            json_decamelized, "additional_scale_metrics"
+        )
+        if additional:
+            # Entries whose metric this client predates are dropped with a warning, like scale_metric.
+            known = []
+            for item in additional:
+                metric = item.get("scale_metric") if isinstance(item, dict) else None
+                if metric and ScaleMetric._has_value(metric):
+                    known.append(
+                        {
+                            "scale_metric": ScaleMetric(metric),
+                            "target": item.get("target"),
+                        }
+                    )
+                else:
+                    warnings.warn(
+                        f"Ignoring unknown additional scale metric '{metric}' returned by the backend; upgrade the hopsworks client to manage it.",
+                        stacklevel=2,
+                    )
+            kwargs["additional_scale_metrics"] = known or None
         if kwargs["min_instances"] is None:
             expected_location = (
                 f"'{scaling_key}' or 'scaling_configuration'"
@@ -321,6 +465,21 @@ class ComponentScalingConfig(ABC):
             )
         if self._log_persistence is not None:
             json["log_persistence"] = str(self._log_persistence)
+        if self._autoscaler is not None:
+            json["autoscaler"] = str(self._autoscaler)
+        if self._scale_down_stabilization_window_seconds is not None:
+            json["scale_down_stabilization_window_seconds"] = (
+                self._scale_down_stabilization_window_seconds
+            )
+        if self._scale_up_stabilization_window_seconds is not None:
+            json["scale_up_stabilization_window_seconds"] = (
+                self._scale_up_stabilization_window_seconds
+            )
+        if self._additional_scale_metrics:
+            json["additional_scale_metrics"] = [
+                {"scale_metric": str(m["scale_metric"]), "target": m["target"]}
+                for m in self._additional_scale_metrics
+            ]
         return json
 
     @classmethod
@@ -334,8 +493,9 @@ class ComponentScalingConfig(ABC):
         """The metric to use for scaling.
 
         `CONCURRENCY` and `RPS` are Knative-only metrics for KServe Knative deployments.
-        `CPU` and `MEMORY` drive CPU/memory-based autoscaling in KServe Standard mode.
-        Standard deployments default to `CPU` when `min_instances < max_instances`; with `min_instances == max_instances` no autoscaler is configured and the metric is cleared.
+        `CPU` and `MEMORY` drive CPU/memory-based autoscaling in KServe Standard mode, under KServe's HPA or KEDA.
+        `QUEUE_DEPTH` and `KV_CACHE_USAGE` are vLLM engine metrics for LLM deployments in KServe Standard mode, scaled by KEDA.
+        Standard deployments default to `CPU` when `min_instances < max_instances` (to `QUEUE_DEPTH` for a vLLM predictor on a cluster with KEDA); with `min_instances == max_instances` no autoscaler is configured and the metric is cleared.
         """
         return self._scale_metric
 
@@ -356,12 +516,73 @@ class ComponentScalingConfig(ABC):
 
     @public
     @property
+    def autoscaler(self):
+        """Which autoscaler runs the scale metric of a KServe Standard-mode component.
+
+        `HPA` is KServe's own HorizontalPodAutoscaler, `KEDA` a KEDA ScaledObject (needs KEDA installed in the cluster).
+        `CPU` and `MEMORY` run under either; `QUEUE_DEPTH` and `KV_CACHE_USAGE` only under `KEDA`.
+        Unset means the backend default: `KEDA` for an engine metric, `HPA` otherwise. Cleared with the metric when
+        `min_instances == max_instances`, and rejected for Knative deployments.
+        """
+        return self._autoscaler
+
+    @autoscaler.setter
+    def autoscaler(self, autoscaler: Autoscaler | str | None):
+        self._autoscaler = _coerce_autoscaler(autoscaler)
+
+    @public
+    @property
+    def scale_down_stabilization_window_seconds(self):
+        """KEDA only: seconds (0-3600) the metric must stay below target before instances are removed.
+
+        Unset means the cluster default (300 s). GPU-bound LLM replicas are slow to bring back, so a long
+        window avoids churn; rejected with KServe's HPA, which ignores it.
+        """
+        return self._scale_down_stabilization_window_seconds
+
+    @scale_down_stabilization_window_seconds.setter
+    def scale_down_stabilization_window_seconds(self, seconds: int | None):
+        self._scale_down_stabilization_window_seconds = seconds
+
+    @public
+    @property
+    def scale_up_stabilization_window_seconds(self):
+        """KEDA only: seconds (0-3600) the metric must stay above target before instances are added.
+
+        Unset means the cluster default (0 s, react at once). Rejected with KServe's HPA, which ignores it.
+        """
+        return self._scale_up_stabilization_window_seconds
+
+    @scale_up_stabilization_window_seconds.setter
+    def scale_up_stabilization_window_seconds(self, seconds: int | None):
+        self._scale_up_stabilization_window_seconds = seconds
+
+    @public
+    @property
+    def additional_scale_metrics(self):
+        """KEDA only: further metrics scaled on next to `scale_metric`, as `{"scale_metric", "target"}` dicts.
+
+        KEDA sizes the deployment by whichever metric asks for the most instances, e.g. queue depth or
+        KV-cache usage, whichever fires first. Metrics must be distinct; engine metrics need a vLLM predictor.
+        """
+        return self._additional_scale_metrics
+
+    @additional_scale_metrics.setter
+    def additional_scale_metrics(
+        self, items: list[dict | tuple | ScaleMetric | str] | None
+    ):
+        self._additional_scale_metrics = _coerce_additional_scale_metrics(items)
+
+    @public
+    @property
     def target(self):
         """Target value for the selected scaling metric that the autoscaler should try to maintain.
 
         For `RPS`, this is requests per second.
         For `CONCURRENCY`, this is the number of concurrent requests.
         For `CPU` and `MEMORY`, this is the utilization percentage.
+        For `QUEUE_DEPTH`, this is the number of requests waiting in the vLLM engine queue per replica (default 5).
+        For `KV_CACHE_USAGE`, this is the KV-cache utilization percentage per replica (default 80).
         """
         return self._target
 
@@ -454,7 +675,7 @@ class ComponentScalingConfig(ABC):
         self._log_persistence = _coerce_log_persistence(log_persistence)
 
     def __repr__(self):
-        return f"ComponentScalingConfig(min_instances: {self._min_instances!r}, max_instances: {self._max_instances!r}, scale_metric: {self._scale_metric!r}, target: {self._target!r}, panic_window_percentage: {self._panic_window_percentage!r}, panic_threshold_percentage: {self._panic_threshold_percentage!r}, stable_window_seconds: {self._stable_window_seconds!r}, scale_to_zero_retention_seconds: {self._scale_to_zero_retention_seconds!r}, log_persistence: {self._log_persistence!r})"
+        return f"ComponentScalingConfig(min_instances: {self._min_instances!r}, max_instances: {self._max_instances!r}, scale_metric: {self._scale_metric!r}, target: {self._target!r}, panic_window_percentage: {self._panic_window_percentage!r}, panic_threshold_percentage: {self._panic_threshold_percentage!r}, stable_window_seconds: {self._stable_window_seconds!r}, scale_to_zero_retention_seconds: {self._scale_to_zero_retention_seconds!r}, log_persistence: {self._log_persistence!r}, autoscaler: {self._autoscaler!r}, scale_down_stabilization_window_seconds: {self._scale_down_stabilization_window_seconds!r}, scale_up_stabilization_window_seconds: {self._scale_up_stabilization_window_seconds!r}, additional_scale_metrics: {self._additional_scale_metrics!r})"
 
 
 @public
@@ -476,6 +697,10 @@ class PredictorScalingConfig(ComponentScalingConfig):
             stable_window_seconds (int | None, optional): Interval in seconds for calculating the average metric.
             scale_to_zero_retention_seconds (int | None, optional): Time in seconds to retain the last instance before scaling to zero.
             log_persistence (LogPersistence | str | Default | None, optional): Whether instances upload their logs to the Logs dataset when they stop.
+            autoscaler (Autoscaler | str | None, optional): Which autoscaler runs the metric in KServe Standard mode, `HPA` (KServe) or `KEDA`.
+            scale_down_stabilization_window_seconds (int | None, optional): KEDA only. Seconds the metric must stay below target before scaling in.
+            scale_up_stabilization_window_seconds (int | None, optional): KEDA only. Seconds the metric must stay above target before scaling out.
+            additional_scale_metrics (list | None, optional): KEDA only. Further `{"scale_metric", "target"}` metrics; the most demanding one wins.
 
         Raises:
             ValueError: If `min_instances` is not provided.
@@ -518,6 +743,10 @@ class TransformerScalingConfig(ComponentScalingConfig):
             stable_window_seconds (int | None, optional): Interval in seconds for calculating the average metric.
             scale_to_zero_retention_seconds (int | None, optional): Time in seconds to retain the last instance before scaling to zero.
             log_persistence (LogPersistence | str | Default | None, optional): Whether instances upload their logs to the Logs dataset when they stop.
+            autoscaler (Autoscaler | str | None, optional): Which autoscaler runs the metric in KServe Standard mode, `HPA` (KServe) or `KEDA`.
+            scale_down_stabilization_window_seconds (int | None, optional): KEDA only. Seconds the metric must stay below target before scaling in.
+            scale_up_stabilization_window_seconds (int | None, optional): KEDA only. Seconds the metric must stay above target before scaling out.
+            additional_scale_metrics (list | None, optional): KEDA only. Further `{"scale_metric", "target"}` metrics; the most demanding one wins.
 
         Raises:
             ValueError: If `min_instances` is not provided.
