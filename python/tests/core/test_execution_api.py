@@ -49,9 +49,9 @@ class TestExecutionApiStart:
     def test_start_sets_text_plain_content_type(
         self, mock_client, mock_from_response, job
     ):
-        # The 5.0 backend has two @POST handlers on /executions (text/plain and
-        # application/json); without an explicit Content-Type Jersey can't
-        # dispatch and returns 415. Lock in that the args body sends text/plain.
+        # Since 5.0 the backend has two POST handlers on /executions, for text/plain and application/json.
+        # Without a Content-Type Jersey may route to the JSON one, which rejects the plain args body with 415.
+        # Lock in that the args body is sent as text/plain.
         ExecutionApi()._start(job, args="--flag value")
 
         mock_client._send_request.assert_called_once_with(
@@ -89,9 +89,8 @@ class TestJobApiLaunch:
         return client_mock
 
     def test_launch_sets_text_plain_content_type(self, mock_client):
-        # Same dual-@POST dispatch issue as ExecutionApi._start: without an
-        # explicit Content-Type Jersey can't pick between the text/plain and
-        # application/json handlers and returns 415.
+        # Same routing issue as ExecutionApi._start.
+        # Without a Content-Type Jersey may route to the JSON handler, which rejects the plain args body with 415.
         JobApi().launch("my_job", args="--flag value")
 
         mock_client._send_request.assert_called_once_with(

@@ -24,9 +24,8 @@ class ExecutionApi:
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "jobs", job.name, "executions"]
 
-        # The 5.0 backend has two @POST handlers on this path (text/plain for legacy
-        # args and application/json for logical-time params); without an explicit
-        # Content-Type Jersey can't dispatch and returns 415.
+        # Since 5.0 the backend has two POST handlers on this path, one for text/plain args and one for application/json.
+        # Without a Content-Type both match, Jersey may pick the JSON one, and it rejects the plain args body with 415.
         headers = {"content-type": "text/plain"}
         return execution.Execution.from_response_json(
             _client._send_request("POST", path_params, headers=headers, data=args),
