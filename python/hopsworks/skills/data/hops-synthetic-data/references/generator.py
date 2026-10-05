@@ -254,6 +254,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--from", dest="start")
     parser.add_argument("--to", dest="end")
     parser.add_argument("--ticks", type=int, help="stop after this many live ticks (tests)")
+    # A scheduled run appends -start_time <fire instant> (and may append -end_time):
+    # the instant the schedule fired, which ends the window rather than starting it.
+    # They are accepted and ignored; a scheduled run's window is HOPS_START_TIME/HOPS_END_TIME.
+    parser.add_argument("-start_time", dest="_fired_at", help=argparse.SUPPRESS)
+    parser.add_argument("-end_time", dest="_fired_end", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
 
     _, manifest, system = _load_bundle(args.bundle)

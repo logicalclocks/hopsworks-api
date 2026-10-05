@@ -31,7 +31,6 @@ import json
 import sys
 from urllib.parse import urlparse
 
-
 TITLE = "Customers Overview"
 FEATURE_GROUPS = [{"name": "customers", "version": 1, "format": "delta"}]
 
@@ -93,9 +92,9 @@ def list_all(api, resource: str) -> list[dict]:
     """Every object of a kind; the public list_* methods return only the first page."""
     items, page = [], 0
     while True:
-        batch = api._request(
-            "GET", f"/api/v1/{resource}/?q=(page:{page},page_size:100)"
-        ).get("result", [])
+        batch = api._request("GET", f"/api/v1/{resource}/?q=(page:{page},page_size:100)").get(
+            "result", []
+        )
         items.extend(batch)
         if len(batch) < 100:
             return items
@@ -122,19 +121,15 @@ def ensure_dataset(api, database_id: int, schema: str, fg: dict) -> int:
         if ds.get("table_name") == name and ds.get("schema") == schema:
             return ds["id"]
     sql = f"SELECT * FROM {fg.get('format', 'delta')}.{schema}.{name}"
-    return api.create_dataset(
-        database_id=database_id, table_name=name, schema=schema, sql=sql
-    )["id"]
+    return api.create_dataset(database_id=database_id, table_name=name, schema=schema, sql=sql)[
+        "id"
+    ]
 
 
 def find_dashboard(api) -> int | None:
     """This program's dashboard, found by its title."""
     return next(
-        (
-            d["id"]
-            for d in list_all(api, "dashboard")
-            if d.get("dashboard_title") == TITLE
-        ),
+        (d["id"] for d in list_all(api, "dashboard") if d.get("dashboard_title") == TITLE),
         None,
     )
 
@@ -147,10 +142,7 @@ def owned_charts(api, dashboard_id: int | None) -> list[int]:
     names = {chart["slice_name"] for chart in CHARTS}
     owned = []
     for chart in list_all(api, "chart"):
-        linked = {
-            d.get("id")
-            for d in api.get_chart(chart["id"])["result"].get("dashboards") or []
-        }
+        linked = {d.get("id") for d in api.get_chart(chart["id"])["result"].get("dashboards") or []}
         if (dashboard_id is not None and dashboard_id in linked) or (
             not linked and chart.get("slice_name") in names
         ):
@@ -244,17 +236,12 @@ def build(api, project_name: str) -> int:
     """Create or update the datasets, charts and dashboard; return the dashboard id."""
     schema = f"{project_name.lower()}_featurestore"
     database_id = find_trino_db_id(api)
-    datasets = {
-        fg["name"]: ensure_dataset(api, database_id, schema, fg)
-        for fg in FEATURE_GROUPS
-    }
+    datasets = {fg["name"]: ensure_dataset(api, database_id, schema, fg) for fg in FEATURE_GROUPS}
     existing = find_dashboard(api)
     # Replace every chart this dashboard had, so a chart dropped from CHARTS goes too.
     for chart_id in owned_charts(api, existing):
         api.delete_chart(chart_id)
-    chart_ids = [
-        create_chart(api, chart, datasets[chart["dataset"]]) for chart in CHARTS
-    ]
+    chart_ids = [create_chart(api, chart, datasets[chart["dataset"]]) for chart in CHARTS]
     return ensure_dashboard(api, existing, chart_ids)
 
 
@@ -273,11 +260,7 @@ def delete(api, project_name: str) -> dict[str, list]:
     ours = {dataset_name(fg) for fg in FEATURE_GROUPS}
     in_use = {c.get("datasource_id") for c in list_all(api, "chart")}
     for ds in list_all(api, "dataset"):
-        if (
-            ds.get("table_name") in ours
-            and ds.get("schema") == schema
-            and ds["id"] not in in_use
-        ):
+        if ds.get("table_name") in ours and ds.get("schema") == schema and ds["id"] not in in_use:
             api.delete_dataset(ds["id"])
             removed["datasets"].append(ds["id"])
     return removed
@@ -287,12 +270,13 @@ def main(argv: list[str] | None = None) -> int:
     """Build the dashboard and print its URL, delete it, or list the project's dashboards."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     mode = parser.add_mutually_exclusive_group()
-    mode.add_argument(
-        "--delete", action="store_true", help="remove what this program created"
-    )
-    mode.add_argument(
-        "--list", action="store_true", help="print every dashboard as JSON"
-    )
+    mode.add_argument("--delete", action="store_true", help="remove what this program created")
+    mode.add_argument("--list", action="store_true", help="print every dashboard as JSON")
+    # A scheduled run appends -start_time <fire instant> (and may append -end_time):
+    # the instant the schedule fired, which ends the window rather than starting it.
+    # They are accepted and ignored; a scheduled run's window is HOPS_START_TIME/HOPS_END_TIME.
+    parser.add_argument("-start_time", dest="_fired_at", help=argparse.SUPPRESS)
+    parser.add_argument("-end_time", dest="_fired_end", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
 
     import hopsworks
@@ -301,11 +285,7 @@ def main(argv: list[str] | None = None) -> int:
     api = project.get_superset_api()
     if args.list:
         dashboards = list_all(api, "dashboard")
-        print(
-            json.dumps(
-                [{"id": d["id"], "title": d.get("dashboard_title")} for d in dashboards]
-            )
-        )
+        print(json.dumps([{"id": d["id"], "title": d.get("dashboard_title")} for d in dashboards]))
         return 0
     if args.delete:
         print(json.dumps(delete(api, project.name)))

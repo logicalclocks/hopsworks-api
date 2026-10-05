@@ -230,6 +230,11 @@ def main() -> None:
     parser.add_argument("--fg-version", type=int, default=1)
     parser.add_argument("--model", default="helpdesk_embedder")
     parser.add_argument("--model-version", type=int, default=None)
+    # A scheduled run appends -start_time <fire instant> (and may append -end_time):
+    # the instant the schedule fired, which ends the window rather than starting it.
+    # They are accepted and ignored; a scheduled run's window is HOPS_START_TIME/HOPS_END_TIME.
+    parser.add_argument("-start_time", dest="_fired_at", help=argparse.SUPPRESS)
+    parser.add_argument("-end_time", dest="_fired_end", help=argparse.SUPPRESS)
     args = parser.parse_args()
 
     import hopsworks

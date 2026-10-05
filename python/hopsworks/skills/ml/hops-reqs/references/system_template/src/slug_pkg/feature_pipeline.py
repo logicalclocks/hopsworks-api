@@ -138,10 +138,14 @@ def main(argv: list[str] | None = None) -> int:
     """Run the pipeline over one window and record what landed."""
     parser = argparse.ArgumentParser(description="Compute features over one window.")
     parser.add_argument("--bundle", required=True)
-    # The scheduler can also pass the window as -start_time/-end_time.
-    parser.add_argument("--start", "-start_time", dest="start")
-    parser.add_argument("--end", "-end_time", dest="end")
-    args, _ = parser.parse_known_args(argv)
+    parser.add_argument("--start")
+    parser.add_argument("--end")
+    # A scheduled run appends -start_time <fire instant> (and may append -end_time):
+    # the instant the schedule fired, which ends the window rather than starting it.
+    # They are accepted and ignored; a scheduled run's window is HOPS_START_TIME/HOPS_END_TIME.
+    parser.add_argument("-start_time", dest="_fired_at", help=argparse.SUPPRESS)
+    parser.add_argument("-end_time", dest="_fired_end", help=argparse.SUPPRESS)
+    args = parser.parse_args(argv)
 
     _, manifest, system = _load_bundle(args.bundle)
     spec = next(p for p in system["features"]["pipelines"] if p["name"] == PIPELINE)

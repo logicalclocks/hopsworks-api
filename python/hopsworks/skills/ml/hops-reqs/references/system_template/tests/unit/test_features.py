@@ -23,18 +23,28 @@ def test_window_reads_the_scheduler_variables(monkeypatch):
     assert end == datetime(2026, 9, 1, tzinfo=UTC)
 
 
-def test_main_takes_the_window_as_scheduler_arguments(monkeypatch):
-    seen = {}
+def test_a_scheduled_run_ignores_the_fire_instant_and_reads_the_window(monkeypatch):
+    # The scheduler appends -start_time with the instant it fired, which ends the window.
+    monkeypatch.setenv("HOPS_START_TIME", "2026-09-28T01:00:00Z")
+    monkeypatch.setenv("HOPS_END_TIME", "2026-10-05T01:00:00Z")
+    system = {"features": {"pipelines": [{"name": feature_pipeline.PIPELINE}]}}
+    monkeypatch.setattr(feature_pipeline, "_load_bundle", lambda b: (None, {}, system))
+    seen = []
 
-    def stop(bundle):
-        seen["bundle"] = bundle
+    def window(start=None, end=None):
+        seen.append(feature_pipeline.__dict__["_window"](start, end))
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(feature_pipeline, "_load_bundle", stop)
-    argv = ["--bundle", "b.zip", "-start_time", "2026-08-01T00:00:00Z"]
+    monkeypatch.setitem(feature_pipeline.__dict__, "_window", feature_pipeline.window)
+    monkeypatch.setattr(feature_pipeline, "window", window)
     with pytest.raises(KeyboardInterrupt):
-        feature_pipeline.main([*argv, "-end_time", "2026-09-01T00:00:00Z", "-x", "1"])
-    assert seen == {"bundle": "b.zip"}
+        feature_pipeline.main(["--bundle", "b.zip", "-start_time", "2026-10-05T01:00:00Z"])
+    assert seen == [(datetime(2026, 9, 28, 1, tzinfo=UTC), datetime(2026, 10, 5, 1, tzinfo=UTC))]
+
+
+def test_a_mistyped_option_still_fails():
+    with pytest.raises(SystemExit):
+        feature_pipeline.main(["--bundle", "b.zip", "--strat", "2026-10-05"])
 
 
 def test_window_refuses_an_empty_interval():

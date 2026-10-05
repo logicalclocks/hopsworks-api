@@ -73,7 +73,17 @@ pipelines), `pandas-training-pipeline` (training). Inference environments (e.g.
 
 A scheduled program processes one data window per fire. The scheduler sets
 `HOPS_START_TIME` and `HOPS_END_TIME` (ISO-8601 with a trailing `Z`) on every
-execution; the window is the previous fire to this one. Do not move it with
+execution; the window is the previous fire to this one. A scheduled run also
+gets `-start_time <fire instant>` (and may get `-end_time`) appended to its
+arguments: that is the instant the schedule fired, the end of the window, not
+its start. A program that parses its arguments strictly must accept those two
+and ignore them, or argparse exits with "unrecognized arguments" before any
+code runs: `parser.add_argument("-start_time", dest="_fired_at",
+help=argparse.SUPPRESS)` and the same for `-end_time`. Never read the window
+from them; and name them rather than switching to `parse_known_args`, so a
+mistyped option still fails. Every scheduled program gets a unit test that
+calls `main([..., "-start_time", "<fire>"])` with the two variables set and
+checks the window comes from the variables. Do not move it with
 offsets: current servers refuse a negative `--start-offset-seconds`
 ("startTimeOffsetSeconds must be non-negative") and no longer honour
 `--end-offset-seconds`, although the CLI help still describes both. When the
