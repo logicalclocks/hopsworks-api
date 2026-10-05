@@ -187,6 +187,8 @@ following "The requirements conversation" in `hops-reqs/SKILL.md`:
   `timeout_ms` for real-time);
 - `operations` (scheduled with cadence and window, or continuous; the alert receiver), the sizing
   tier (`small` proposed), `budget`, `data_policy`, `models`, and the reviewers for the pull request.
+- for batch and realtime, `monitoring` when the UI did not record it: whether predictions log their features (`feature_logging`, proposed true) and what to monitor and alert on (`watch`, in the user's words).
+  Never ask it for an example system, which records it only when the user asked.
 
 An example system (`system.example` set) asks nothing here: choose every answer yourself from the
 example's story, recorded in `system.yaml`, as a person building a convincing demo would (for
@@ -314,6 +316,7 @@ instruction: <the phase instruction, or "none">
 
 On `unmet`, ask with the measured table: change the SLA, change the design (realtime to batch),
 or accept as is (`inference.status: accepted` and a `decisions` line).
+When the agent's `recommendation.detail` reports monitoring it could not build (no alert receiver, feature monitoring off on the cluster), print it with what `inference.monitoring.unavailable` records and ask once whether to create the receiver (`hops alert receiver create`) and finish it.
 
 ### app
 

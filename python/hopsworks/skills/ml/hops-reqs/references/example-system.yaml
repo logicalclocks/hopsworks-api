@@ -70,7 +70,7 @@ requirements:
     ordering: cadence
     alerts: {receiver: ml-oncall, on: [job_failed, freshness_missed, retrain_rejected]}
   consumers: ui
-  monitoring: predictions and inputs logged to the prediction feature group; drift on the FV
+  monitoring: {feature_logging: true, watch: drift in monthly_charges against the training data; a failed or late job}
   open_questions: []
   started: 2026-09-22T09:02Z
   finished: 2026-09-22T09:13Z

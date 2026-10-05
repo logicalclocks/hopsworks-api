@@ -233,6 +233,7 @@ def test_the_uis_answers_leave_nothing_to_ask(tmp_path, monkeypatch, quiet):
         app={"wanted": True, "kind": "dashboard", "description": "ops reads it"},
         repo="new",
         reference_code="https://github.com/acme/late-orders-demo",
+        monitoring={"feature_logging": True, "watch": " drift in order value "},
     )
     done = _run(tmp_path, monkeypatch, [], "--answers", path)
     assert done.exit_code == 0, done.output
@@ -240,6 +241,10 @@ def test_the_uis_answers_leave_nothing_to_ask(tmp_path, monkeypatch, quiet):
     doc = _doc(tmp_path / "late-orders")
     req = doc["requirements"]
     assert req["reference_code"] == "https://github.com/acme/late-orders-demo"
+    assert req["monitoring"] == {
+        "feature_logging": True,
+        "watch": "drift in order value",
+    }
     assert (req["system_type"], req["sla"]) == (
         "batch",
         {"batch": {"cadence": "daily"}},
@@ -318,6 +323,19 @@ def test_answers_are_checked(tmp_path, monkeypatch, quiet):
         _answers(tmp_path, slug="a"),
     )
     assert both.exit_code != 0
+    agent = _run(
+        tmp_path,
+        monkeypatch,
+        [],
+        "--answers",
+        _answers(
+            tmp_path,
+            slug="helper",
+            system_type="agent",
+            monitoring={"feature_logging": True},
+        ),
+    )
+    assert agent.exit_code != 0 and "batch or realtime" in agent.output
 
 
 def test_a_resumed_interview_skips_what_is_answered(tmp_path, monkeypatch, quiet):

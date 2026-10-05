@@ -40,7 +40,7 @@ breakdown predicts.
    with window offsets and a failure alert.
 2. **Build it** in the environment chosen by the reuse rule, reading through the feature view so
    training and serving transformations match. Log inputs and predictions as
-   `requirements.monitoring` and `requirements.data_policy.log_fields` say.
+   `requirements.monitoring.feature_logging` and `requirements.data_policy.log_fields` say (see Monitoring).
 3. **Exercise it once** with real entity keys, then **measure with the benchmark**: write or
    update `benchmarks/benchmark_inference.py` on the first attempt, record its `protocol`, commit,
    build and upload a bundle, and run it with `--record` on every attempt (as the
@@ -50,13 +50,33 @@ breakdown predicts.
 4. **SLA holds:** write or update `tests/unit/test_inference.py` and the integration tests
    (for realtime, `tests/integration/test_parity.py` and a short-duration benchmark call), run
    them, record `inference.tests.last_run`. Leave the job scheduled or the deployment running,
-   verify with `hops job schedule-info` or `hops deployment status`, set `status: met`, commit.
+   verify with `hops job schedule-info` or `hops deployment status`, build what
+   `requirements.monitoring` asks (see Monitoring), set `status: met`, commit.
 5. **SLA misses and attempts remain:** change one thing and go to 3. The levers, roughly in
    order: replicas and per-replica concurrency; batched lookups above 50 qps; moving on-demand
    work into the feature pipeline; resources.
 6. **Attempts spent:** `status: unmet`, with the measurements and what would have to change,
    split into what you could not do (resources, a different model) and what the user would have
    to change (the SLA, the system type).
+
+## Monitoring
+
+`requirements.monitoring` is set for batch and realtime systems only, and absent means nothing was asked.
+Build it after the SLA holds, record it in `inference.monitoring` (`hops-reqs/references/system-yaml.md`), and load **hops-monitoring** for the API.
+
+- **`feature_logging: true`.** The feature view the model reads has `logging_enabled=True`; a view created without it is enabled in place, never recreated.
+  Realtime: the default predictor logs every request through the view; a custom predictor calls `fv.log(...)` with the untransformed and transformed features and the prediction.
+  Batch: the scoring job calls `fv.log(features_df, predictions=..., model=...)` after it writes the predictions, then `fv.materialize_log()`.
+  Prove it once: score or send a request, then read the log back (`fv.read_log(...)`) and record the log feature group and its row count.
+- **`watch`** is the user's words.
+  Turn each thing it names into one concrete check, and quote the words it serves in the check's `from`.
+  Feature or prediction drift is a feature monitoring configuration on the feature view, compared with the training dataset the model was trained on (`with_reference_training_dataset`), on a cron no more often than the inference cadence.
+  A range on a feature or on predictions is the same with a reference value.
+  A failed job is a job alert with `--status failed`, and a slow or stuck one a job alert with `--status long_running` (`hops-job`, Alerts).
+  Something the platform cannot check, say so in `unavailable` with the reason rather than approximating it.
+- **Alerts.** Every job the system owns gets a failure alert, and every check an alert on `feature_monitor_shift_detected`, whatever `watch` says.
+  The receiver is `requirements.operations.alerts.receiver` when set, else the one receiver `hops alert receiver list` shows; with none or several to choose from, record it in `unavailable` and say so in `recommendation.detail`, never invent one.
+- **The cluster.** Feature monitoring needs the cluster service: a 270234 error ("Feature monitoring is not enabled") goes in `unavailable`, and logging and alerts are still built.
 
 ## Return
 

@@ -353,6 +353,7 @@ ANSWER_KEYS = {
     "repo",
     "llm",
     "reference_code",
+    "monitoring",
 }
 
 
@@ -364,8 +365,9 @@ def _from_answers(prefetch: _Prefetch, cwd: Path, path: Path) -> _System:
     the answers override it. What the answers leave out is asked as usual.
     `llm: "account"` records that the agent's LLM is in the user's account
     environment variables, which the UI has set.
-    `reference_code` is a path or URL of sample code the system is based on. An existing system of that slug
-    is resumed and the answers are not applied again.
+    `reference_code` is a path or URL of sample code the system is based on.
+    `monitoring` is `{"feature_logging": bool, "watch": str}`, for batch and realtime systems: whether predictions log their features, and what to monitor and alert on.
+    An existing system of that slug is resumed and the answers are not applied again.
     """
     try:
         answers = json.loads(path.read_text(encoding="utf-8"))
@@ -463,6 +465,18 @@ def _apply_answers(system: _System, answers: dict) -> None:
                 "status": "pending" if wanted else "skipped",
             },
         )
+    monitoring = answers.get("monitoring")
+    if monitoring:
+        if not isinstance(monitoring, dict) or kind not in ("batch", "realtime"):
+            raise click.BadParameter(
+                "monitoring is an object, for a batch or realtime system",
+                param_hint="--answers",
+            )
+        record = {"feature_logging": bool(monitoring.get("feature_logging"))}
+        watch = str(monitoring.get("watch") or "").strip()
+        if watch:
+            record["watch"] = watch
+        system.put("requirements.monitoring", record)
     if answers.get("repo"):
         system.put("system.repo", {"url": answers["repo"]})
     if kind == "agent" and answers.get("llm") == "account":
