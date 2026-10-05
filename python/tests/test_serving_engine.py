@@ -20,6 +20,8 @@ import threading
 import time
 
 import pytest
+from hopsworks_common.client.exceptions import ModelServingException
+from hsml.constants import PREDICTOR_STATE
 from hsml.engine import serving_engine
 
 
@@ -256,8 +258,168 @@ class TestSave:
         eng._save(deployment, await_update=0)
 
         mock_upload.assert_called_once_with(deployment)
-        eng._update.assert_called_once_with(deployment, 0)
+        eng._update.assert_called_once_with(deployment, 0, False)
         eng._create.assert_not_called()
+
+    def test_new_version_is_passed_to_update(self, mocker):
+        eng = self._engine(mocker)
+        mocker.patch.object(eng, "_upload_local_serving_files")
+
+        deployment = _FakeDeployment(
+            _FakePredictor(script_file="./p.py"), name="dep", id=7
+        )
+
+        eng._save(deployment, await_update=0, new_version=True)
+
+        eng._update.assert_called_once_with(deployment, 0, True)
+
+    def test_new_version_rejected_on_create(self, mocker):
+        eng = self._engine(mocker)
+        mock_upload = mocker.patch.object(eng, "_upload_local_serving_files")
+        mock_publish = mocker.patch.object(eng, "_publish_schema")
+
+        deployment = _FakeDeployment(
+            _FakePredictor(script_file="./p.py"), name="dep", id=None
+        )
+
+        with pytest.raises(ModelServingException):
+            eng._save(deployment, await_update=0, new_version=True)
+        # Rejected before anything is written to HopsFS.
+        mock_upload.assert_not_called()
+        mock_publish.assert_not_called()
+        eng._create.assert_not_called()
+
+
+class TestVersionedSave:
+    """A new version is only asked of a backend that keeps versions, and the refusal comes before any write."""
+
+    def _engine(self, mocker, supports):
+        eng = serving_engine.ServingEngine.__new__(serving_engine.ServingEngine)
+        eng._serving_api = mocker.Mock()
+        eng._serving_api._supports_versions.return_value = supports
+        eng._update = mocker.Mock()
+        eng._create = mocker.Mock()
+        return eng
+
+    def _deployment(self):
+        return _FakeDeployment(_FakePredictor(script_file="./p.py"), name="dep", id=7)
+
+    def test_old_backend_is_rejected_before_any_write(self, mocker):
+        eng = self._engine(mocker, supports=False)
+        mock_upload = mocker.patch.object(eng, "_upload_local_serving_files")
+        mock_publish = mocker.patch.object(eng, "_publish_schema")
+
+        with pytest.raises(ModelServingException, match="nothing was saved"):
+            eng._save(self._deployment(), await_update=0, new_version=True)
+        mock_upload.assert_not_called()
+        mock_publish.assert_not_called()
+        eng._update.assert_not_called()
+
+    def test_in_place_save_does_not_probe(self, mocker):
+        eng = self._engine(mocker, supports=False)
+        mocker.patch.object(eng, "_upload_local_serving_files")
+        mocker.patch.object(eng, "_publish_schema")
+        deployment = self._deployment()
+
+        eng._save(deployment, await_update=0)
+
+        eng._serving_api._supports_versions.assert_not_called()
+        eng._update.assert_called_once_with(deployment, 0, False)
+
+
+class TestRollback:
+    """Rollback goes through the update state gate, except that it is accepted while updating."""
+
+    def _engine(self, mocker, status):
+        eng = serving_engine.ServingEngine.__new__(serving_engine.ServingEngine)
+        eng._serving_api = mocker.Mock()
+        eng._serving_api._get_versions.return_value = []
+        eng._poll_deployment_status = mocker.Mock(return_value=None)
+        deployment = mocker.Mock()
+        deployment.get_state.return_value = mocker.Mock(status=status)
+        deployment.get_url.return_value = "http://x"
+        return eng, deployment
+
+    @pytest.mark.parametrize(
+        "status", [PREDICTOR_STATE.STATUS_RUNNING, PREDICTOR_STATE.STATUS_UPDATING]
+    )
+    def test_running_or_updating_deployment_is_rolled_and_awaited(self, mocker, status):
+        eng, deployment = self._engine(mocker, status)
+
+        eng._rollback(deployment, 2, 9)
+
+        eng._serving_api._rollback.assert_called_once_with(deployment, 2)
+        eng._poll_deployment_status.assert_called_once_with(
+            deployment, PREDICTOR_STATE.STATUS_RUNNING, 9
+        )
+
+    def test_rollback_to_the_active_version_does_nothing(self, mocker, capsys):
+        eng, deployment = self._engine(mocker, PREDICTOR_STATE.STATUS_RUNNING)
+        eng._serving_api._get_versions.return_value = [
+            mocker.Mock(version=2, active=True),
+            mocker.Mock(version=1, active=False),
+        ]
+
+        eng._rollback(deployment, 2, 9)
+
+        eng._serving_api._rollback.assert_not_called()
+        assert "Deployment updated" not in capsys.readouterr().out
+
+    def test_await_none_does_not_wait(self, mocker):
+        eng, deployment = self._engine(mocker, PREDICTOR_STATE.STATUS_RUNNING)
+
+        eng._rollback(deployment, 2, None)
+
+        eng._poll_deployment_status.assert_called_once_with(
+            deployment, PREDICTOR_STATE.STATUS_RUNNING, 0
+        )
+
+    def test_stopped_deployment_only_moves_the_pointer(self, mocker):
+        eng, deployment = self._engine(mocker, PREDICTOR_STATE.STATUS_STOPPED)
+
+        eng._rollback(deployment, 2, 9)
+
+        eng._serving_api._rollback.assert_called_once_with(deployment, 2)
+        eng._poll_deployment_status.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "status",
+        [
+            PREDICTOR_STATE.STATUS_STARTING,
+            PREDICTOR_STATE.STATUS_STOPPING,
+        ],
+    )
+    def test_busy_deployment_is_rejected(self, mocker, status):
+        eng, deployment = self._engine(mocker, status)
+
+        with pytest.raises(ModelServingException):
+            eng._rollback(deployment, 2, 9)
+        eng._serving_api._rollback.assert_not_called()
+
+    def test_save_is_still_rejected_while_updating(self, mocker):
+        eng, deployment = self._engine(mocker, PREDICTOR_STATE.STATUS_UPDATING)
+
+        with pytest.raises(ModelServingException):
+            eng._update(deployment, 9)
+        eng._serving_api._put.assert_not_called()
+
+
+class TestPollDeploymentStatus:
+    @pytest.mark.parametrize("await_status", [1, 4])
+    def test_short_await_polls_once_then_raises(self, mocker, await_status):
+        eng = serving_engine.ServingEngine.__new__(serving_engine.ServingEngine)
+        mocker.patch("time.sleep")
+        eng._get_available_instances = mocker.Mock(return_value=0)
+        deployment = mocker.Mock()
+        deployment.get_state.return_value = mocker.Mock(
+            status=PREDICTOR_STATE.STATUS_UPDATING
+        )
+
+        with pytest.raises(ModelServingException):
+            eng._poll_deployment_status(
+                deployment, PREDICTOR_STATE.STATUS_RUNNING, await_status
+            )
+        assert deployment.get_state.call_count == 1
 
 
 class TestSchemaPublishing:

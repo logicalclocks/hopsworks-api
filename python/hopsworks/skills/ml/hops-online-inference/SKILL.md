@@ -155,7 +155,15 @@ deployment.get_endpoint_url()                          # base URL
 deployment.get_inference_url()                         # with :predict suffix
 deployment.stop(await_stopped=120)
 deployment.delete()
+
+deployment.save()                                      # edit the active version in place
+deployment.save(new_version=True)                      # store the edit as a new version and activate it
+deployment.get_versions()                              # every version, newest first, `.active` on the live one
+deployment.rollback(1)                                 # reactivate version 1; running pods restart
 ```
+
+A version holds the predictor, transformer and model artifact settings.
+API protocol, request batching, inference logging, scheduling and Knative mode are not versioned and are kept by a rollback.
 
 ## Robustness and latency
 
