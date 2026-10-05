@@ -721,6 +721,7 @@ class VectorServer:
             transformation_context=transformation_context,
             logging_meta_data=logging_meta_data,
             n_processes=n_processes,
+            entry=rondb_entry,
         )
         if logging_meta_data is not None:
             logging_meta_data.serving_keys.append(entry)
@@ -974,6 +975,7 @@ class VectorServer:
         # which makes assembling a batch cost the square of its size.
         skipped = iter(skipped_empty_entries)
         results = iter(batch_results)
+        looked_up_entries = iter(rondb_entries)
         next_skipped = next(skipped, None)
         vectors = []
 
@@ -1031,6 +1033,7 @@ class VectorServer:
             elif projected:
                 # Read by position, so the row already is the caller's vector.
                 result_dict = {}
+                next(looked_up_entries)
                 vector = next(results)
             else:
                 result_dict = next(results)
@@ -1046,6 +1049,7 @@ class VectorServer:
                     transformation_context=transformation_context,
                     logging_meta_data=logging_meta_data,
                     n_processes=n_processes,
+                    entry=next(looked_up_entries),
                 )
 
             if logging_meta_data is not None:
@@ -1162,6 +1166,7 @@ class VectorServer:
         transformation_context: dict[str, Any] = None,
         logging_meta_data: LoggingMetaData = None,
         n_processes: int | None = None,
+        entry: dict[str, Any] | None = None,
     ) -> list[Any] | None:
         """Assemble a single serving vector from fetched and passed feature values.
 
@@ -1177,6 +1182,7 @@ class VectorServer:
             transformation_context: Contextual objects passed to transformation functions.
             logging_meta_data: Metadata object for logging, if logging is enabled.
             n_processes: Number of processes for parallel transformation execution.
+            entry: Serving key values the lookup was made with; a key the lookup did not return is filled from it.
 
         Returns:
             The assembled feature vector as a list, or None if the result was null.
@@ -1207,6 +1213,7 @@ class VectorServer:
         ):
             return None
 
+        self._echo_entry_keys(result_dict, entry)
         if not allow_missing:
             # Only this branch reads it, and the names it is built from are fixed by the schema.
             # Building the set per row cost a batch two set constructions for every vector it assembled.
@@ -1256,6 +1263,22 @@ class VectorServer:
             result_dict.get(fname)
             for fname in self._untransformed_feature_vector_col_name
         ]
+
+    def _echo_entry_keys(
+        self, result_dict: dict[str, Any], entry: dict[str, Any] | None
+    ) -> None:
+        """Fill the vector slot of each serving key the caller supplied and the lookup did not return.
+
+        The row that carries a key can be missing while the caller still asked about that key's value.
+        A fetched or passed value is never overwritten, and a null key value is not echoed.
+        """
+        for key, value in (entry or {}).items():
+            if (
+                value is not None
+                and result_dict.get(key) is None
+                and key in self._required_feature_names
+            ):
+                result_dict[key] = value
 
     def _validate_input_features(
         self,

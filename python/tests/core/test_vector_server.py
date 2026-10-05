@@ -190,6 +190,108 @@ class TestVectorServer:
 
         assert server._handle_timestamp_based_on_dtype(timestamp_value) == expected
 
+    def _echo_server(self, mocker):
+        server = VectorServer.__new__(VectorServer)
+        server._on_demand_feature_names = []
+        server._untransformed_feature_vector_col_name = ["tid", "cc_num", "amount"]
+        mocker.patch.object(
+            VectorServer,
+            "_required_feature_names",
+            new_callable=PropertyMock,
+            return_value={"tid", "cc_num", "amount"},
+        )
+        mocker.patch.object(
+            VectorServer,
+            "return_feature_value_handlers",
+            new_callable=PropertyMock,
+            return_value={},
+        )
+        mocker.patch.object(
+            VectorServer,
+            "model_dependent_transformation_functions",
+            new_callable=PropertyMock,
+            return_value=[],
+        )
+        mocker.patch.object(
+            VectorServer,
+            "on_demand_transformation_functions",
+            new_callable=PropertyMock,
+            return_value=[],
+        )
+        mocker.patch.object(
+            VectorServer,
+            "_all_features_on_demand",
+            new_callable=PropertyMock,
+            return_value=False,
+        )
+        mocker.patch.object(
+            VectorServer,
+            "required_serving_keys",
+            new_callable=PropertyMock,
+            return_value=["tid", "cc_num"],
+        )
+        return server
+
+    def _assemble(self, server, result_dict, entry, allow_missing, passed_values=None):
+        return server._assemble_feature_vector(
+            result_dict=result_dict,
+            passed_values=passed_values,
+            vector_db_result=None,
+            allow_missing=allow_missing,
+            client="sql",
+            transform=False,
+            on_demand_features=False,
+            entry=entry,
+        )
+
+    def test_assemble_echoes_entry_key_missing_from_lookup(self, mocker):
+        server = self._echo_server(mocker)
+
+        vector = self._assemble(
+            server,
+            {"amount": 5.0},
+            {"tid": None, "cc_num": 4},
+            allow_missing=True,
+        )
+
+        assert vector == [None, 4, 5.0]
+
+    def test_assemble_echoed_key_satisfies_missing_feature_check(self, mocker):
+        server = self._echo_server(mocker)
+
+        vector = self._assemble(
+            server,
+            {"tid": 1, "amount": 5.0},
+            {"tid": 1, "cc_num": 4},
+            allow_missing=False,
+        )
+
+        assert vector == [1, 4, 5.0]
+
+    def test_assemble_does_not_overwrite_fetched_or_passed_value(self, mocker):
+        server = self._echo_server(mocker)
+
+        vector = self._assemble(
+            server,
+            {"tid": 1, "cc_num": 4, "amount": 5.0},
+            {"tid": 2, "cc_num": 9},
+            allow_missing=False,
+            passed_values={"cc_num": 7},
+        )
+
+        assert vector == [1, 7, 5.0]
+
+    def test_assemble_empty_lookup_is_still_dropped_when_not_allowing_missing(
+        self, mocker
+    ):
+        server = self._echo_server(mocker)
+
+        vector = self._assemble(
+            server, {}, {"tid": 1, "cc_num": 4}, allow_missing=False
+        )
+
+        assert vector is None
+
 
 class TestRequestParametersAreRequestLocal:
     """A caller's dictionaries are read, never written.
