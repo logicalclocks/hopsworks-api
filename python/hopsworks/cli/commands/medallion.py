@@ -33,6 +33,9 @@ REFERENCES = (
 TEMPLATE = REFERENCES / "silver_template"
 GOLD_TEMPLATE = REFERENCES / "gold_template"
 SLUG = re.compile(r"^[a-z][a-z0-9-]*$")
+# A layer's medallion repository is hops-<its slug without -silver or -gold>.
+LAYER_SUFFIX = re.compile(r"-(silver|gold)$")
+REPO = re.compile(r"^hops-[a-z0-9][a-z0-9-]*$")
 TASKS = (
     "deduplicate",
     "cast_types",
@@ -77,6 +80,7 @@ ANSWER_KEYS = {
     "max_reject_pct",
     "alert_on_failure",
     "freshness_hours",
+    "repo",
 }
 MODELINGS = ("star", "snowflake")
 GRAIN_TYPES = (
@@ -96,6 +100,7 @@ GOLD_KEYS = {
     "sources",
     "standards",
     "mart",
+    "repo",
 }
 MART_KEYS = {
     "slug",
@@ -147,8 +152,16 @@ def _source_problems(sources: Any, lower: str) -> list[str]:
     return problems
 
 
+def _repo_problems(answers: dict) -> list[str]:
+    repo = answers.get("repo")
+    if repo and not REPO.match(str(repo)):
+        return ["repo must be hops- followed by lowercase letters, digits and hyphens"]
+    return []
+
+
 def _problems(answers: dict) -> list[str]:
     problems = [f"unknown answer {k!r}" for k in sorted(set(answers) - ANSWER_KEYS)]
+    problems += _repo_problems(answers)
     if not SLUG.match(str(answers.get("slug", ""))):
         problems.append(
             "slug must be lowercase letters, digits and hyphens, starting with a letter"
@@ -181,14 +194,62 @@ def _problems(answers: dict) -> list[str]:
     return problems
 
 
-def _copy_template(cwd: Path, slug: str, template: Path) -> tuple[Path, dict]:
-    """Copy a layer template into ``cwd/<slug>``; returns the directory and its system.yaml."""
+def _repo_prefix(slug: str) -> str:
+    """The medallion a layer belongs to: its slug without a -silver or -gold suffix."""
+    return LAYER_SUFFIX.sub("", slug) or slug
+
+
+def _layer_dirs(cwd: Path):
+    """Every layer directory under cwd: in a medallion repository, or on its own as before."""
+    for spec in [*cwd.glob("hops-*/*/system.yaml"), *cwd.glob("*/system.yaml")]:
+        yield spec.parent
+
+
+def _silver_repo(cwd: Path, sources: list[dict]) -> Path | None:
+    """The medallion repository of the silver layer that builds any of these tables, if it has one."""
     import yaml
 
-    target = cwd / slug
+    wanted = {s.get("name") for s in sources}
+    for directory in _layer_dirs(cwd):
+        if not REPO.match(directory.parent.name) or directory.parent == cwd:
+            continue
+        doc = (
+            yaml.safe_load((directory / "system.yaml").read_text(encoding="utf-8"))
+            or {}
+        )
+        built = {t.get("name") for t in (doc.get("outputs") or {}).get("tables") or []}
+        if _kind(doc) == "silver" and built & wanted:
+            return directory.parent
+    return None
+
+
+def _repo_dir(cwd: Path, answers: dict, kind: str) -> Path:
+    """The medallion repository a new layer goes in, one git work tree for its silver and gold layers.
+
+    The answers' `repo`, else for gold the repository of the silver layer
+    that builds its sources, else `hops-<prefix>` from the layer's slug,
+    reused when it exists.
+    """
+    if answers.get("repo"):
+        return cwd / answers["repo"]
+    if kind == "gold":
+        found = _silver_repo(cwd, answers.get("sources") or [])
+        if found:
+            return found
+    return cwd / f"hops-{_repo_prefix(answers['slug'])}"
+
+
+def _copy_template(repo: Path, slug: str, template: Path) -> tuple[Path, dict]:
+    """Copy a layer template into ``repo/<slug>``, a git work tree; returns the directory and its system.yaml."""
+    import yaml
+
+    target = repo / slug
     if (target / "system.yaml").exists():
         raise click.ClickException(f"{target} already holds a system.yaml")
     target.mkdir(parents=True, exist_ok=True)
+    # One work tree for the medallion's layers, pushed as one GitHub repository.
+    if shutil.which("git") and not (repo / ".git").exists():
+        subprocess.run(["git", "init", "-q", str(repo)], check=False)
     for item in template.iterdir():
         name = ".gitignore" if item.name == "gitignore" else item.name
         shutil.copy(item, target / name)
@@ -205,14 +266,14 @@ def _write(directory: Path, doc: dict, message: str | None = None) -> None:
     )
     if not shutil.which("git"):
         return
-    if not (directory / ".git").exists():
-        # Its own git work tree, so every change to the layer is a commit.
-        subprocess.run(["git", "init", "-q", str(directory)], check=False)
     if message:
+        # Only this layer's directory: the work tree holds the other layers too.
         git = ["git", "-C", str(directory)]
-        subprocess.run([*git, "add", "-A"], check=False)
+        subprocess.run([*git, "add", "-A", "--", "."], check=False)
         subprocess.run(
-            [*git, "commit", "-q", "-m", message], check=False, capture_output=True
+            [*git, "commit", "-q", "-m", message, "--", "."],
+            check=False,
+            capture_output=True,
         )
 
 
@@ -246,7 +307,9 @@ def _sync_cadences(doc: dict, hours: Any = None) -> None:
 
 def _create(cwd: Path, answers: dict) -> Path:
     """Copy the silver template into ``cwd/<slug>`` and write the answers into its system.yaml."""
-    target, doc = _copy_template(cwd, answers["slug"], TEMPLATE)
+    repo = _repo_dir(cwd, answers, "silver")
+    target, doc = _copy_template(repo, answers["slug"], TEMPLATE)
+    doc["layer"]["repo"] = {"name": repo.name}
     cadence = answers.get("cadence", "daily")
     doc["layer"].update(
         name=answers.get("name") or answers["slug"],
@@ -321,6 +384,7 @@ def _mart_problems(mart: Any, taken: set[str] = frozenset()) -> list[str]:
 
 def _gold_problems(answers: dict) -> list[str]:
     problems = [f"unknown answer {k!r}" for k in sorted(set(answers) - GOLD_KEYS)]
+    problems += _repo_problems(answers)
     if not SLUG.match(str(answers.get("slug", ""))):
         problems.append(
             "slug must be lowercase letters, digits and hyphens, starting with a letter"
@@ -356,7 +420,9 @@ def _mart(answers: dict) -> dict:
 
 def _create_gold(cwd: Path, answers: dict) -> Path:
     """Copy the gold template into ``cwd/<slug>`` and write the answers, with the first data mart, into its system.yaml."""
-    target, doc = _copy_template(cwd, answers["slug"], GOLD_TEMPLATE)
+    repo = _repo_dir(cwd, answers, "gold")
+    target, doc = _copy_template(repo, answers["slug"], GOLD_TEMPLATE)
+    doc["layer"]["repo"] = {"name": repo.name}
     doc["layer"].update(
         name=answers.get("name") or answers["slug"],
         slug=answers["slug"],
@@ -482,6 +548,21 @@ def medallion_gold(ctx: click.Context, answers: Path, no_launch: bool) -> None:
     output.success(f"Gold layer recorded in {target / 'system.yaml'}")
     _register(ctx, target, data.get("name") or data["slug"])
     _launch(target, not no_launch, f"/hops-gold {target.name}")
+
+
+@medallion_group.command("dir")
+@click.argument("slug")
+def medallion_dir(slug: str) -> None:
+    """Print the directory of the layer SLUG under the current directory, in its medallion repository or on its own.
+
+    Args:
+        slug: The layer's slug.
+    """
+    for directory in _layer_dirs(Path.cwd()):
+        if directory.name == slug:
+            click.echo(directory)
+            return
+    raise click.ClickException(f"No layer {slug!r} under {Path.cwd()}")
 
 
 def _entry(ctx: click.Context, name_or_id: str) -> dict:
@@ -706,6 +787,24 @@ def medallion_delete(
         )
         shutil.rmtree(directory, ignore_errors=True)
         output.success(f"✓ Deleted {directory}")
+        repo = directory.parent
+        # In a medallion repository the other layers stay; record that this one went.
+        if (repo / ".git").exists() and shutil.which("git"):
+            git = ["git", "-C", str(repo)]
+            subprocess.run([*git, "add", "-A", "--", directory.name], check=False)
+            subprocess.run(
+                [
+                    *git,
+                    "commit",
+                    "-q",
+                    "-m",
+                    f"[{directory.name}] delete layer",
+                    "--",
+                    directory.name,
+                ],
+                check=False,
+                capture_output=True,
+            )
     ml_system_api._remove(entry["id"])
     output.success(f"✓ Removed {entry.get('name')} from the Factory")
 

@@ -49,7 +49,7 @@ def test_silver_records_the_layer_from_the_answers_and_registers_it(
     registered = []
     done = _silver(tmp_path, monkeypatch, ANSWERS, registered)
     assert done.exit_code == 0, done.output
-    target = tmp_path / "customers-silver"
+    target = tmp_path / "hops-customers" / "customers-silver"
     doc = yaml.safe_load((target / "system.yaml").read_text(encoding="utf-8"))
     assert (
         doc["layer"]["kind"] == "silver" and doc["layer"]["name"] == "Customers silver"
@@ -190,7 +190,9 @@ def test_silver_records_the_settings_with_their_defaults(tmp_path, monkeypatch):
     }
     assert _silver(tmp_path, monkeypatch, answers, []).exit_code == 0
     doc = yaml.safe_load(
-        (tmp_path / "customers-silver" / "system.yaml").read_text(encoding="utf-8")
+        (tmp_path / "hops-customers" / "customers-silver" / "system.yaml").read_text(
+            encoding="utf-8"
+        )
     )
     assert doc["history"] == "full" and doc["deletes"] == "propagate"
     assert doc["schema_changes"] == "fail"
@@ -760,7 +762,7 @@ def test_gold_records_the_layer_and_its_first_mart(tmp_path, monkeypatch):
         cli, ["medallion", "gold", "--answers", path, "--no-launch"]
     )
     assert done.exit_code == 0, done.output
-    target = tmp_path / "sales-gold"
+    target = tmp_path / "hops-sales" / "sales-gold"
     doc = _doc(target)
     assert doc["layer"]["kind"] == "gold" and doc["layer"]["modeling"] == "snowflake"
     assert doc["sources"] == [
@@ -790,7 +792,7 @@ def test_gold_refuses_bad_answers(tmp_path, monkeypatch, change, problem):
     path = _answers_file(tmp_path, {**GOLD_ANSWERS, **change})
     done = CliRunner().invoke(cli, ["medallion", "gold", "--answers", path])
     assert done.exit_code != 0 and problem in done.output
-    assert not (tmp_path / "sales-gold").exists()
+    assert not (tmp_path / "hops-sales" / "sales-gold").exists()
 
 
 def test_silver_refuses_an_unknown_source_cadence(tmp_path, monkeypatch):
@@ -895,3 +897,53 @@ def test_status_reads_gold_tables_with_their_marts_freshness():
         "churn",
         "churn",
     ]
+
+
+def _created(tmp_path, monkeypatch, kind, answers):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(mlsystem, "register", lambda ctx, target, name=None: {})
+    done = CliRunner().invoke(
+        cli,
+        [
+            "medallion",
+            kind,
+            "--answers",
+            _answers_file(tmp_path, answers),
+            "--no-launch",
+        ],
+    )
+    assert done.exit_code == 0, done.output
+    return done
+
+
+def test_silver_and_gold_share_one_medallion_repository(tmp_path, monkeypatch):
+    _created(tmp_path, monkeypatch, "silver", {**ANSWERS, "slug": "shop-silver"})
+    repo = tmp_path / "hops-shop"
+    silver = _doc(repo / "shop-silver")
+    assert silver["layer"]["repo"] == {"name": "hops-shop"}
+    # The silver layer builds orders, which the gold layer reads.
+    silver["outputs"]["tables"] = [{"name": "orders", "version": 1}]
+    (repo / "shop-silver" / "system.yaml").write_text(
+        yaml.safe_dump(silver), encoding="utf-8"
+    )
+    gold = {
+        **GOLD_ANSWERS,
+        "slug": "sales-gold",
+        "sources": [{"name": "orders"}],
+    }
+    _created(tmp_path, monkeypatch, "gold", gold)
+    # Its slug names another medallion, but it joins the silver layer's.
+    assert (repo / "sales-gold" / "system.yaml").is_file()
+    assert _doc(repo / "sales-gold")["layer"]["repo"] == {"name": "hops-shop"}
+    assert not (tmp_path / "hops-sales").exists()
+    assert (repo / ".git").is_dir() and not (repo / "sales-gold" / ".git").exists()
+    found = CliRunner().invoke(cli, ["medallion", "dir", "sales-gold"])
+    assert found.exit_code == 0 and found.output.strip() == str(repo / "sales-gold")
+
+
+def test_a_layer_can_name_its_repository(tmp_path, monkeypatch):
+    _created(tmp_path, monkeypatch, "gold", {**GOLD_ANSWERS, "repo": "hops-retail"})
+    assert (tmp_path / "hops-retail" / "sales-gold" / "system.yaml").is_file()
+    bad = _answers_file(tmp_path, {**GOLD_ANSWERS, "repo": "../escape"})
+    done = CliRunner().invoke(cli, ["medallion", "gold", "--answers", bad])
+    assert done.exit_code != 0 and "repo must be hops-" in done.output

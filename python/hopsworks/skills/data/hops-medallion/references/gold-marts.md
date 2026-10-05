@@ -2,7 +2,7 @@
 
 A gold layer serves analysts: consumption-ready tables in a Kimball dimensional model, star or snowflake schema, built from silver tables.
 It is organised as data marts, each serving one business process for one group of analysts, and each added, changed and deleted on its own, with its own jobs at its own cadence.
-One gold layer is one directory and one GitHub repository, `hops-<slug>`; every mart's code lives in it.
+One gold layer is one directory, in the GitHub repository it shares with the silver layer it reads (`layer.repo`); every mart's code lives in its directory.
 
 ## The data mart's requirements
 

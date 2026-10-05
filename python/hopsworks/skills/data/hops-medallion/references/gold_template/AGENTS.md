@@ -9,7 +9,7 @@ The skill **hops-medallion** (and its `references/gold-marts.md`) describes how 
 Every change you make to this layer updates `system.yaml` in the same commit, whatever it is for: a fix, maintenance, a new mart, table or metric, a changed requirement or schedule.
 Record why in `decisions`, naming the mart.
 `system.yaml` must always reflect what runs: before you finish, check that every mart, table, version, job and schedule it names is the one that exists, and correct it where it is not.
-Commit each change and push it to the layer's GitHub repository (`layer.repo.url`).
+Commit each change to this directory only (`git add -A -- .`, `git commit -- .`) and push it to the medallion's GitHub repository (`layer.repo`), which the silver layer shares.
 
 ## Data marts
 

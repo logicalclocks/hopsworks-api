@@ -8,7 +8,7 @@ description: Use when building a medallion layer on Hopsworks (bronze, silver, g
 Bronze tables hold raw data exactly as it arrived; silver tables hold it cleansed, conformed and normalized to third normal form (deduplicated, typed, standardized, validated, PII protected); gold tables hold consumption-ready models, denormalized (star schemas, aggregates, wide feature tables) for their consumers.
 On Hopsworks every layer is a set of offline feature groups, and every silver and gold table is materialized: a feature group written by a job, never a view.
 A silver or gold layer is built by the Factory (**New Medallion Layer**) or `hops medallion silver|gold`, which records the request in `<slug>/system.yaml` and starts Claude Code on `/hops-silver <slug>` or `/hops-gold <slug>`.
-Each layer is its own Factory entry, directory and GitHub repository (`hops-<slug>`, recorded as `layer.repo.url`); a gold layer is built as data marts (Gold layers and data marts, below).
+Each layer is its own Factory entry and directory; a medallion's silver and gold layers share one git work tree and one GitHub repository, `hops-<prefix>` (the layers' slug without `-silver` or `-gold`; a gold layer joins the repository of the silver layer that builds its sources), recorded as `layer.repo`; a gold layer is built as data marts (Gold layers and data marts, below).
 
 ## Contract
 

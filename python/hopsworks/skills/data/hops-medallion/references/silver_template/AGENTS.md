@@ -9,7 +9,7 @@ The skill **hops-medallion** describes how a silver layer is built.
 Every change you make to this layer updates `system.yaml` in the same commit, whatever it is for: a fix, maintenance, a new silver table or column, a changed task, schedule, engine or source.
 Record why in `decisions`.
 `system.yaml` must always reflect what runs: before you finish, check that every table, version, job and schedule it names is the one that exists, and correct it where it is not.
-Push every commit to the layer's GitHub repository (`layer.repo.url`, `hops-<slug>`).
+Commit to this directory only (`git add -A -- .`, `git commit -- .`) and push every commit to the medallion's GitHub repository (`layer.repo`), which its gold layers share.
 
 ## When system.yaml has changed
 
