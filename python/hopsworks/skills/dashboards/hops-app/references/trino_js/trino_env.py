@@ -1,30 +1,31 @@
 # ruff: noqa: INP001
-"""Print the Trino connection for this app as shell exports, for `eval`.
+"""Write this app's Trino connection to a file only its user can read.
 
-hopsworks.login() inside the cluster writes the cluster CA to /tmp/ca_chain.pem.
+The Node server reads the file (TRINO_CONNECTION, default /tmp/trino.json), so
+the password is never printed, kept in shell history, or exported to every
+process the app starts. hopsworks.login() inside the cluster writes the
+cluster CA to /tmp/ca_chain.pem.
 """
 
-import contextlib
+import json
 import os
-import shlex
-import sys
 
 import hopsworks
 
-
-# stdout is eval'd, so the login banner goes to stderr.
-with contextlib.redirect_stdout(sys.stderr):
-    project = hopsworks.login()
+project = hopsworks.login()
 trino = project.get_trino_api()
 user, password = trino.get_basic_auth()
-env = {
-    "TRINO_SERVER": f"https://{trino.get_host()}:{trino.get_port()}",
-    "TRINO_USER": user,
-    "TRINO_PASSWORD": password,
-    "TRINO_CA": "/tmp/ca_chain.pem",
-    "TRINO_SCHEMA": f"{project.name.lower()}_featurestore",
+connection = {
+    "server": f"https://{trino.get_host()}:{trino.get_port()}",
+    "user": user,
+    "password": password,
+    "ca": "/tmp/ca_chain.pem",
+    "schema": f"{project.name.lower()}_featurestore",
 }
-if not os.path.exists(env["TRINO_CA"]):
+if not os.path.exists(connection["ca"]):
     raise SystemExit("trino_env.py: no cluster CA at /tmp/ca_chain.pem")
-for name, value in env.items():
-    print(f"export {name}={shlex.quote(value)}")
+path = os.environ.get("TRINO_CONNECTION", "/tmp/trino.json")
+fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+with os.fdopen(fd, "w", encoding="utf-8") as f:
+    json.dump(connection, f)
+print(f"trino_env.py: connection for {user} written to {path}")

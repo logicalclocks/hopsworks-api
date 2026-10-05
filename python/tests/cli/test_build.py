@@ -438,3 +438,21 @@ def test_a_finished_interview_is_offered_as_ready_to_build(
     assert done.exit_code == 0, done.output
     assert "Build churn-example" in done.output
     assert 'claude "/hops-build churn-example"' in done.output
+
+
+def test_an_agent_with_data_sources_keeps_its_account_llm(tmp_path, monkeypatch, quiet):
+    path = _answers(
+        tmp_path,
+        slug="faq-agent",
+        system_type="agent",
+        description="answers questions about our products",
+        data_sources=[{"name": "products", "kind": "feature_group", "version": 2}],
+        llm="account",
+    )
+    done = _run(tmp_path, monkeypatch, [], "--answers", path)
+    assert done.exit_code == 0, done.output
+    doc = _doc(tmp_path / "faq-agent")
+    # The answers chose the account LLM, so the CLI never asks for one.
+    assert "account environment variables" not in done.output
+    assert doc["inference"]["agent"]["llm"]["model_env"] == "LLM_MODEL"
+    assert doc["requirements"]["data_sources"][0]["kind"] == "feature_group"

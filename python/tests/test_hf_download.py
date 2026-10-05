@@ -313,3 +313,14 @@ def _ticking_clock(start: float, step: float):
         return v
 
     return _now
+
+
+def test_positional_timeout_and_poll_interval_keep_their_meaning():
+    import inspect
+
+    from hsml.model_registry import ModelRegistry
+
+    params = list(inspect.signature(ModelRegistry.hf_download).parameters)
+    # Callers passing (..., selected_filenames, timeout, poll_interval) by position.
+    assert params.index("timeout") == params.index("selected_filenames") + 1
+    assert params[-1] == "revision"

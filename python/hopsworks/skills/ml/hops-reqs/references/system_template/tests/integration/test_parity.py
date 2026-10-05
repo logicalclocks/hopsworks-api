@@ -50,6 +50,11 @@ def test_batch_and_online_paths_agree(project, system):
     online = fv.get_feature_vectors(entry=[{entity: k} for k in keys], return_type="pandas")
     offline = sample.drop(columns=[key_column, time_column]).reset_index(drop=True)
     columns = [c for c in online.columns if c in offline.columns]
+    # With no shared column or no entity, the comparison below would pass vacuously.
+    assert keys and columns, (
+        f"nothing to compare: {len(keys)} entities, online columns {list(online.columns)}, "
+        f"offline columns {list(offline.columns)}"
+    )
     feature_diff = np.abs(
         offline[columns].to_numpy(dtype=float) - online[columns].to_numpy(dtype=float)
     )

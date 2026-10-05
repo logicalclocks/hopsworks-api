@@ -148,7 +148,16 @@ def fg_preview(
     try:
         # show() pushes the limit into the query, so a ten-row preview of a
         # large table reads ten rows rather than the whole group.
-        df = pd.DataFrame(query.show(n, online=online))
+        shown = query.show(n, online=online)
+        # The Python engine returns a DataFrame; the online vector-index path
+        # returns plain rows, which take the selected features' names.
+        df = (
+            shown
+            if isinstance(shown, pd.DataFrame)
+            else pd.DataFrame(
+                shown, columns=[f.name for f in query._left_features] or None
+            )
+        )
     except Exception as exc:  # noqa: BLE001 - SDK raises a bag of types
         raise click.ClickException(f"Could not read feature group: {exc}") from exc
 

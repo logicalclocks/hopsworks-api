@@ -1467,14 +1467,13 @@ def test_the_app_skeleton_uses_only_relative_urls():
     assert "cdn" not in page.lower() and "https://" not in page
 
 
-def test_trino_env_exports_the_connection_for_eval(tmp_path, monkeypatch):
+def test_trino_env_writes_the_connection_to_a_private_file(tmp_path):
     ca = tmp_path / "ca_chain.pem"
     ca.write_text("CA", encoding="utf-8")
     script = (TRINO_JS / "trino_env.py").read_text(encoding="utf-8")
     (tmp_path / "trino_env.py").write_text(
         script.replace("/tmp/ca_chain.pem", str(ca)), encoding="utf-8"
     )
-    # The login banner must not reach stdout, which the entrypoint evals.
     (tmp_path / "hopsworks.py").write_text(
         textwrap.dedent(
             """
@@ -1492,39 +1491,64 @@ def test_trino_env_exports_the_connection_for_eval(tmp_path, monkeypatch):
                     return _Trino()
 
             def login():
-                print("Logged in to project Demo")
                 return _Project()
             """
         ),
         encoding="utf-8",
     )
-    exports = subprocess.run(
+    target = tmp_path / "trino.json"
+    done = subprocess.run(
         [sys.executable, "trino_env.py"],
         cwd=tmp_path,
         capture_output=True,
         text=True,
         check=True,
-        env={**os.environ, "PYTHONPATH": str(tmp_path)},
-    ).stdout
-    shown = subprocess.run(
-        [
-            "bash",
-            "-c",
-            'eval "$1"; printf "%s\\n" "$TRINO_SERVER" "$TRINO_USER" "$TRINO_PASSWORD" "$TRINO_CA" "$TRINO_SCHEMA"',
-            "_",
-            exports,
-        ],
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.splitlines()
-    assert shown == [
-        "https://coordinator.trino.service.consul:8443",
-        "Demo__meb10000",
-        "p'w $(x) \\",
-        str(ca),
-        "demo_featurestore",
-    ]
+        env={
+            **os.environ,
+            "PYTHONPATH": str(tmp_path),
+            "TRINO_CONNECTION": str(target),
+        },
+    )
+    # The password is never printed, so it reaches no log.
+    assert "p'w" not in done.stdout + done.stderr
+    assert target.stat().st_mode & 0o777 == 0o600
+    assert json.loads(target.read_text(encoding="utf-8")) == {
+        "server": "https://coordinator.trino.service.consul:8443",
+        "user": "Demo__meb10000",
+        "password": "p'w $(x) \\",
+        "ca": str(ca),
+        "schema": "demo_featurestore",
+    }
+
+
+def test_the_app_skeleton_ranks_every_customer_by_their_latest_score(monkeypatch):
+    pytest.importorskip("fastapi")
+    import pandas as pd
+    from starlette.testclient import TestClient
+
+    app = _load(APP / "app.py", "app_skeleton_top")
+    rows = pd.DataFrame(
+        {
+            "customer_id": [1, 1, 2, 3],
+            "score": [0.9, 0.1, 0.5, 0.7],
+            "predicted_at": pd.to_datetime(
+                ["2026-01-01", "2026-02-01", "2026-02-01", "2026-02-01"]
+            ),
+        }
+    )
+
+    class _Query:
+        def read(self, dataframe_type):
+            return rows
+
+    class _Group:
+        def select(self, columns):
+            return _Query()
+
+    monkeypatch.setattr(app, "_predictions", lambda: _Group())
+    top = TestClient(app.app).get("/api/top?limit=2").json()
+    # Customer 1's latest score is 0.1, so its older 0.9 does not rank it first.
+    assert top == [{"customer_id": 3, "score": 0.7}, {"customer_id": 2, "score": 0.5}]
 
 
 def test_the_trino_js_app_queries_on_the_server_and_uses_relative_urls():

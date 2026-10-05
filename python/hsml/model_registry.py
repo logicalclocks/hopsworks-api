@@ -207,9 +207,9 @@ class ModelRegistry:
         selected_formats: list[str] | None = None,
         selected_variants: list[str] | None = None,
         selected_filenames: list[str] | None = None,
-        revision: str | None = None,
         timeout: int = 36000,
         poll_interval: int = 5,
+        revision: str | None = None,
     ) -> model.Model:
         """Import a model from HuggingFace into this Model Registry.
 
@@ -249,10 +249,10 @@ class ModelRegistry:
             selected_filenames: Explicit per-file allowlist. When non-empty this
                 overrides ``selected_formats`` / ``selected_variants`` and the backend
                 downloads exactly these paths.
-            revision: Hub branch, tag or commit sha to import; the default branch when omitted.
-                Every file is downloaded from the commit this resolves to, and that commit sha is recorded in the registered model's description.
             timeout: Maximum seconds to wait for the import to reach a terminal state.
             poll_interval: Seconds between status polls.
+            revision: Hub branch, tag or commit sha to import; the default branch when omitted.
+                Every file is downloaded from the commit this resolves to, and that commit sha is recorded in the registered model's description.
 
         Returns:
             The newly registered model entity; its description names the Hub commit its files came from.

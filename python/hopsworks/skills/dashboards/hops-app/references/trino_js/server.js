@@ -5,9 +5,10 @@ The browser never talks to Trino: trino.service.consul only resolves inside
 the cluster, Trino takes passwords only over HTTPS, and the password must not
 reach the page. This Node server holds the connection and answers the UI's
 fetch("api/...") calls with fixed queries; the browser sends parameters,
-never SQL. Start it with the connection exported by trino_env.py:
+never SQL. Start it after trino_env.py writes the connection to a file only
+this user can read:
 
-  bash -lc 'eval "$(python trino_env.py)" && exec node server.js'
+  bash -lc 'python trino_env.py && exec node server.js'
 */
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -16,13 +17,17 @@ import pkg from "trino-client";
 
 const { Trino, BasicAuth } = pkg;
 
+// Written by trino_env.py; the password stays out of the environment and logs.
+const conn = JSON.parse(
+  readFileSync(process.env.TRINO_CONNECTION || "/tmp/trino.json", "utf8"),
+);
 const trino = Trino.create({
-  server: process.env.TRINO_SERVER, // https://coordinator.trino.service.consul:8443
+  server: conn.server, // https://coordinator.trino.service.consul:8443
   catalog: "delta",
-  schema: process.env.TRINO_SCHEMA, // <project>_featurestore
-  auth: new BasicAuth(process.env.TRINO_USER, process.env.TRINO_PASSWORD),
+  schema: conn.schema, // <project>_featurestore
+  auth: new BasicAuth(conn.user, conn.password),
   // The cluster CA signs Trino's certificate and is not in Node's trust store.
-  ssl: { ca: readFileSync(process.env.TRINO_CA) },
+  ssl: { ca: readFileSync(conn.ca) },
 });
 
 // A feature group is the table <name>_<version>; set APP_TABLE to read another.

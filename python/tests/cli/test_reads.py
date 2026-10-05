@@ -134,6 +134,21 @@ def test_fg_preview_online(mock_project):
     fg.select_all.return_value.show.assert_called_with(10, online=True)
 
 
+def test_fg_preview_names_the_columns_of_plain_rows(mock_project):
+    from types import SimpleNamespace
+
+    fs = mock_project.get_feature_store.return_value
+    fg = _feature_group("docs", features=[_feature("id", "bigint")])
+    # The online vector-index path returns rows, not a DataFrame.
+    query = fg.select_all.return_value
+    query.show.return_value = [[1, "a"], [2, "b"]]
+    query._left_features = [SimpleNamespace(name="id"), SimpleNamespace(name="text")]
+    fs.get_feature_group.return_value = fg
+    result = CliRunner().invoke(cli, ["--json", "fg", "preview", "docs", "--online"])
+    assert result.exit_code == 0, result.output
+    assert '"text": "a"' in result.output
+
+
 def test_fg_preview_truncates_wide_columns(mock_project):
     import pandas as pd
 

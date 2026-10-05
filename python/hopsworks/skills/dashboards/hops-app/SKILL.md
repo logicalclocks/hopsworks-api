@@ -152,9 +152,11 @@ relative `fetch("api/...")` calls with fixed queries, so the browser sends
 parameters, never SQL. `python-agent-pipeline` ships Node.
 
 The connection comes from the SDK: `trino_env.py` logs in, which writes the
-cluster CA to `/tmp/ca_chain.pem`, and prints the coordinator URL, the user
+cluster CA to `/tmp/ca_chain.pem`, and writes the coordinator URL, the user
 `<project>__<username>`, its password from the secrets store and the schema
-`<project>_featurestore` as shell exports. A feature group is the table
+`<project>_featurestore` to `/tmp/trino.json`, readable only by the app's user.
+Never print the password or export it as an environment variable: both leak it
+into logs and every child process. A feature group is the table
 `<name>_<version>` in catalog `delta` (or `hudi`/`iceberg`, per its format).
 
 ```javascript
@@ -162,12 +164,13 @@ import { readFileSync } from "node:fs";
 import pkg from "trino-client";
 const { Trino, BasicAuth } = pkg;
 
+const conn = JSON.parse(readFileSync("/tmp/trino.json", "utf8")); // from trino_env.py
 const trino = Trino.create({
-  server: process.env.TRINO_SERVER, // https://coordinator.trino.service.consul:8443
+  server: conn.server, // https://coordinator.trino.service.consul:8443
   catalog: "delta",
-  schema: process.env.TRINO_SCHEMA, // <project>_featurestore
-  auth: new BasicAuth(process.env.TRINO_USER, process.env.TRINO_PASSWORD),
-  ssl: { ca: readFileSync(process.env.TRINO_CA) }, // the cluster CA, not in Node's trust store
+  schema: conn.schema, // <project>_featurestore
+  auth: new BasicAuth(conn.user, conn.password),
+  ssl: { ca: readFileSync(conn.ca) }, // the cluster CA, not in Node's trust store
 });
 
 const query = await trino.query("SELECT * FROM customers_1 LIMIT 100");
@@ -191,7 +194,7 @@ hops files upload apps/customers Users/<user>/apps/ --overwrite
 hops app create customers --path /Projects/<project>/Users/<user>/apps/customers/server.js \
   --app-kind custom --app-port 8080 --readiness-probe-path /health \
   --environment python-agent-pipeline --start \
-  --entrypoint-command "bash -lc 'eval \"\$(python trino_env.py)\" && APP_TABLE=customers_1 exec node server.js'"
+  --entrypoint-command "bash -lc 'python trino_env.py && APP_TABLE=customers_1 exec node server.js'"
 ```
 
 ### Streamlit caching and cold start

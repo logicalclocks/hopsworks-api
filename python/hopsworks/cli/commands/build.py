@@ -434,11 +434,11 @@ def _apply_answers(system: _System, answers: dict) -> None:
         sources = []
         for source in answers["data_sources"]:
             name = _ident(str(source.get("name") or ""))
-            kind = source.get("kind") or "synthetic"
-            entry = {**drafted.get(name, {}), "name": name, "kind": kind}
-            if kind == "feature_group":
+            source_kind = source.get("kind") or "synthetic"
+            entry = {**drafted.get(name, {}), "name": name, "kind": source_kind}
+            if source_kind == "feature_group":
                 entry.update(version=int(source.get("version") or 1), status="present")
-            elif kind == "file":
+            elif source_kind == "file":
                 entry.setdefault("status", "needs_download")
             else:
                 entry["kind"] = "synthetic"

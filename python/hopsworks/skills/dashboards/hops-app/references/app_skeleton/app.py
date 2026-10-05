@@ -59,9 +59,9 @@ def index() -> FileResponse:
 
 @app.get("/api/top")
 def top(limit: int = 10) -> list[dict]:
-    """The customers with the highest score in the latest predictions."""
+    """The customers with the highest score, each by its latest prediction."""
     fg = _predictions()
-    rows = fg.select_all().show(1000)
+    rows = fg.select(["customer_id", "score", "predicted_at"]).read(dataframe_type="pandas")
     latest = rows.sort_values("predicted_at").groupby("customer_id").tail(1)
     return latest.nlargest(limit, "score")[["customer_id", "score"]].to_dict(orient="records")
 
