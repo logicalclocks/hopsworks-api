@@ -268,7 +268,10 @@ class JobApi:
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "jobs", name, "executions"]
 
-        _client._send_request("POST", path_params, data=args)
+        # Since 5.0 the backend has two POST handlers on this path, one for text/plain args and one for application/json.
+        # Without a Content-Type both match, Jersey may pick the JSON one, and it rejects the plain args body with 415.
+        headers = {"content-type": "text/plain"}
+        _client._send_request("POST", path_params, headers=headers, data=args)
 
     @usage.method_logger
     def get(self, name: str) -> job.Job:

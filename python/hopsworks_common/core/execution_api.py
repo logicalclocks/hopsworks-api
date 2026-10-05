@@ -24,8 +24,12 @@ class ExecutionApi:
         _client = client.get_instance()
         path_params = ["project", _client._project_id, "jobs", job.name, "executions"]
 
+        # Since 5.0 the backend has two POST handlers on this path, one for text/plain args and one for application/json.
+        # Without a Content-Type both match, Jersey may pick the JSON one, and it rejects the plain args body with 415.
+        headers = {"content-type": "text/plain"}
         return execution.Execution.from_response_json(
-            _client._send_request("POST", path_params, data=args), job
+            _client._send_request("POST", path_params, headers=headers, data=args),
+            job,
         )
 
     def _get(self, job, id):
