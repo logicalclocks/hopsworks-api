@@ -196,6 +196,9 @@ class ComponentScalingConfig(ABC):
         scale_down_stabilization_window_seconds: int | None = None,
         scale_up_stabilization_window_seconds: int | None = None,
         additional_scale_metrics: list[dict | tuple | ScaleMetric | str] | None = None,
+        idle_scale_to_zero: bool | None = None,
+        idle_cooldown_seconds: int | None = None,
+        cold_start_timeout_seconds: int | None = None,
         **kwargs,
     ):
         """Initialize a ComponentScalingConfig instance.
@@ -214,6 +217,14 @@ class ComponentScalingConfig(ABC):
             additional_scale_metrics: KEDA only. Further metrics to scale on next to `scale_metric`, each a
                 `{"scale_metric": ..., "target": ...}` dict or a `(scale_metric, target)` tuple; the most demanding
                 metric decides the instance count. A missing target takes the metric's default.
+            idle_scale_to_zero: KEDA only, predictor only. Scale to zero instances when idle and wake on the
+                first request, which the KEDA HTTP add-on holds until an instance is ready. Needs the add-on
+                installed in the cluster. An LLM deployment reloads its model on every wake, so expect the first
+                request after an idle period to take as long as a cold start.
+            idle_cooldown_seconds: With `idle_scale_to_zero`: seconds (0-3600) without a request before the
+                last instance is removed. Unset means 300.
+            cold_start_timeout_seconds: With `idle_scale_to_zero`: seconds (1-3600) a request is held while the
+                deployment wakes before it fails. Unset means 600. Set it above the model's load time.
             panic_window_percentage: Percentage of the stable window to use as the panic window.
             panic_threshold_percentage: Percentage of the scale metric threshold to trigger scaling.
             stable_window_seconds: Interval in seconds for calculating the average metric.
@@ -257,6 +268,9 @@ class ComponentScalingConfig(ABC):
         self._additional_scale_metrics = _coerce_additional_scale_metrics(
             additional_scale_metrics
         )
+        self._idle_scale_to_zero = idle_scale_to_zero
+        self._idle_cooldown_seconds = idle_cooldown_seconds
+        self._cold_start_timeout_seconds = cold_start_timeout_seconds
 
     @public
     def describe(self):
@@ -432,6 +446,15 @@ class ComponentScalingConfig(ABC):
                 "Invalid scaling configuration JSON: missing 'min_instances' under "
                 f"{expected_location}."
             )
+        kwargs["idle_scale_to_zero"] = util._extract_field_from_json(
+            json_decamelized, "idle_scale_to_zero"
+        )
+        kwargs["idle_cooldown_seconds"] = util._extract_field_from_json(
+            json_decamelized, "idle_cooldown_seconds"
+        )
+        kwargs["cold_start_timeout_seconds"] = util._extract_field_from_json(
+            json_decamelized, "cold_start_timeout_seconds"
+        )
         return kwargs
 
     def update_from_response_json(self, json_dict):
@@ -480,6 +503,12 @@ class ComponentScalingConfig(ABC):
                 {"scale_metric": str(m["scale_metric"]), "target": m["target"]}
                 for m in self._additional_scale_metrics
             ]
+        if self._idle_scale_to_zero is not None:
+            json["idle_scale_to_zero"] = self._idle_scale_to_zero
+        if self._idle_cooldown_seconds is not None:
+            json["idle_cooldown_seconds"] = self._idle_cooldown_seconds
+        if self._cold_start_timeout_seconds is not None:
+            json["cold_start_timeout_seconds"] = self._cold_start_timeout_seconds
         return json
 
     @classmethod
@@ -556,6 +585,48 @@ class ComponentScalingConfig(ABC):
     @scale_up_stabilization_window_seconds.setter
     def scale_up_stabilization_window_seconds(self, seconds: int | None):
         self._scale_up_stabilization_window_seconds = seconds
+
+    @public
+    @property
+    def idle_scale_to_zero(self):
+        """KEDA only, predictor only: scale to zero instances when idle and wake on the first request.
+
+        The KEDA HTTP add-on holds that request until an instance is ready, so the deployment stays reachable
+        at zero. Needs the add-on installed in the cluster; rejected with KServe's HPA, a transformer, or in
+        Knative mode (which scales to zero on its own with `min_instances=0`). An LLM deployment reloads its
+        model on every wake: the first request after an idle period takes as long as a cold start.
+        """
+        return self._idle_scale_to_zero
+
+    @idle_scale_to_zero.setter
+    def idle_scale_to_zero(self, enabled: bool | None):
+        self._idle_scale_to_zero = enabled
+
+    @public
+    @property
+    def idle_cooldown_seconds(self):
+        """With `idle_scale_to_zero`: seconds (0-3600) without a request before the last instance is removed.
+
+        Unset means 300.
+        """
+        return self._idle_cooldown_seconds
+
+    @idle_cooldown_seconds.setter
+    def idle_cooldown_seconds(self, seconds: int | None):
+        self._idle_cooldown_seconds = seconds
+
+    @public
+    @property
+    def cold_start_timeout_seconds(self):
+        """With `idle_scale_to_zero`: seconds (1-3600) a request is held while the deployment wakes.
+
+        Unset means 600. A request held longer fails; set it above the time the model takes to load.
+        """
+        return self._cold_start_timeout_seconds
+
+    @cold_start_timeout_seconds.setter
+    def cold_start_timeout_seconds(self, seconds: int | None):
+        self._cold_start_timeout_seconds = seconds
 
     @public
     @property
@@ -675,7 +746,7 @@ class ComponentScalingConfig(ABC):
         self._log_persistence = _coerce_log_persistence(log_persistence)
 
     def __repr__(self):
-        return f"ComponentScalingConfig(min_instances: {self._min_instances!r}, max_instances: {self._max_instances!r}, scale_metric: {self._scale_metric!r}, target: {self._target!r}, panic_window_percentage: {self._panic_window_percentage!r}, panic_threshold_percentage: {self._panic_threshold_percentage!r}, stable_window_seconds: {self._stable_window_seconds!r}, scale_to_zero_retention_seconds: {self._scale_to_zero_retention_seconds!r}, log_persistence: {self._log_persistence!r}, autoscaler: {self._autoscaler!r}, scale_down_stabilization_window_seconds: {self._scale_down_stabilization_window_seconds!r}, scale_up_stabilization_window_seconds: {self._scale_up_stabilization_window_seconds!r}, additional_scale_metrics: {self._additional_scale_metrics!r})"
+        return f"ComponentScalingConfig(min_instances: {self._min_instances!r}, max_instances: {self._max_instances!r}, scale_metric: {self._scale_metric!r}, target: {self._target!r}, panic_window_percentage: {self._panic_window_percentage!r}, panic_threshold_percentage: {self._panic_threshold_percentage!r}, stable_window_seconds: {self._stable_window_seconds!r}, scale_to_zero_retention_seconds: {self._scale_to_zero_retention_seconds!r}, log_persistence: {self._log_persistence!r}, autoscaler: {self._autoscaler!r}, scale_down_stabilization_window_seconds: {self._scale_down_stabilization_window_seconds!r}, scale_up_stabilization_window_seconds: {self._scale_up_stabilization_window_seconds!r}, additional_scale_metrics: {self._additional_scale_metrics!r}, idle_scale_to_zero: {self._idle_scale_to_zero!r}, idle_cooldown_seconds: {self._idle_cooldown_seconds!r}, cold_start_timeout_seconds: {self._cold_start_timeout_seconds!r})"
 
 
 @public
@@ -701,6 +772,9 @@ class PredictorScalingConfig(ComponentScalingConfig):
             scale_down_stabilization_window_seconds (int | None, optional): KEDA only. Seconds the metric must stay below target before scaling in.
             scale_up_stabilization_window_seconds (int | None, optional): KEDA only. Seconds the metric must stay above target before scaling out.
             additional_scale_metrics (list | None, optional): KEDA only. Further `{"scale_metric", "target"}` metrics; the most demanding one wins.
+            idle_scale_to_zero (bool | None, optional): KEDA only. Scale to zero when idle and wake on the first request (needs the KEDA HTTP add-on).
+            idle_cooldown_seconds (int | None, optional): With `idle_scale_to_zero`. Seconds without a request before the last instance is removed (default 300).
+            cold_start_timeout_seconds (int | None, optional): With `idle_scale_to_zero`. Seconds a request is held while the deployment wakes (default 600).
 
         Raises:
             ValueError: If `min_instances` is not provided.

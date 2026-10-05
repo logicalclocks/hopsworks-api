@@ -104,6 +104,47 @@ class TestScalingConfig:
             {"scale_metric": ScaleMetric.KV_CACHE_USAGE, "target": 80}
         ]
 
+    def test_idle_scale_to_zero_round_trip(self):
+        sc = PredictorScalingConfig(
+            min_instances=1,
+            max_instances=3,
+            autoscaler="keda",
+            idle_scale_to_zero=True,
+            idle_cooldown_seconds=120,
+            cold_start_timeout_seconds=900,
+        )
+        json = sc.to_json()
+        assert json["idle_scale_to_zero"] is True
+        assert json["idle_cooldown_seconds"] == 120
+        assert json["cold_start_timeout_seconds"] == 900
+        read_back = PredictorScalingConfig.from_response_json(
+            {
+                "predictor_scaling_config": {
+                    "min_instances": 1,
+                    "max_instances": 3,
+                    "autoscaler": "KEDA",
+                    "idle_scale_to_zero": True,
+                    "idle_cooldown_seconds": 120,
+                    "cold_start_timeout_seconds": 900,
+                }
+            }
+        )
+        assert read_back.idle_scale_to_zero is True
+        assert read_back.idle_cooldown_seconds == 120
+        assert read_back.cold_start_timeout_seconds == 900
+
+    def test_idle_scale_to_zero_omitted_when_unset(self):
+        sc = PredictorScalingConfig(min_instances=1, max_instances=3)
+        json = sc.to_json()
+        assert "idle_scale_to_zero" not in json
+        assert "idle_cooldown_seconds" not in json
+        assert "cold_start_timeout_seconds" not in json
+        assert sc.idle_scale_to_zero is None
+        sc.idle_scale_to_zero = True
+        sc.idle_cooldown_seconds = 60
+        assert sc.to_json()["idle_scale_to_zero"] is True
+        assert sc.to_json()["idle_cooldown_seconds"] == 60
+
     def test_additional_scale_metric_without_metric_rejected(self):
         with pytest.raises(ValueError, match="must name a scale_metric"):
             PredictorScalingConfig(
