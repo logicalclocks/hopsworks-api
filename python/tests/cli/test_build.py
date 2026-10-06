@@ -474,3 +474,9 @@ def test_an_agent_with_data_sources_keeps_its_account_llm(tmp_path, monkeypatch,
     assert "account environment variables" not in done.output
     assert doc["inference"]["agent"]["llm"]["model_env"] == "LLM_MODEL"
     assert doc["requirements"]["data_sources"][0]["kind"] == "feature_group"
+
+
+def test_mlsystem_lists_create_as_the_build_command():
+    assert mlsystem.mlsystem_group.get_command(None, "create") is build.build_cmd
+    listed = CliRunner().invoke(mlsystem.mlsystem_group, ["--help"])
+    assert "create" in listed.output

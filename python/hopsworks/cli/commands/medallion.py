@@ -1199,3 +1199,12 @@ def medallion_backfill(
             raise click.ClickException(
                 f"the backfill failed; read its log with hops job logs {job_name} --stdout --tail 200"
             )
+
+
+@medallion_group.group("create")
+def medallion_create() -> None:
+    """Create a silver or gold layer; the same commands as `hops medallion silver` and `hops medallion gold`."""
+
+
+medallion_create.add_command(medallion_silver)
+medallion_create.add_command(medallion_gold)

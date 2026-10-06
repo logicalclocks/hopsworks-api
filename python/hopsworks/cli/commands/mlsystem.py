@@ -17,6 +17,7 @@ from pathlib import Path
 
 import click
 from hopsworks.cli import output, session
+from hopsworks.cli.commands.build import build_cmd
 
 
 def code_location(path: Path, project: str | None = None) -> str:
@@ -386,3 +387,7 @@ def mlsystem_status(
         f"{facts['overall']}: {c['failed_runs']} of {c['runs']} job runs failed in {hours} h, "
         f"{c['unhealthy_services']} of {c['services']} deployments and apps unhealthy; report in {target}"
     )
+
+
+# `hops build` is how a system is created; listed here too, as the same command.
+mlsystem_group.add_command(build_cmd, name="create")

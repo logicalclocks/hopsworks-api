@@ -947,3 +947,11 @@ def test_a_layer_can_name_its_repository(tmp_path, monkeypatch):
     bad = _answers_file(tmp_path, {**GOLD_ANSWERS, "repo": "../escape"})
     done = CliRunner().invoke(cli, ["medallion", "gold", "--answers", bad])
     assert done.exit_code != 0 and "repo must be hops-" in done.output
+
+
+def test_medallion_create_lists_the_silver_and_gold_commands():
+    create = medallion.medallion_group.get_command(None, "create")
+    assert create.get_command(None, "silver") is medallion.medallion_silver
+    assert create.get_command(None, "gold") is medallion.medallion_gold
+    listed = CliRunner().invoke(cli, ["medallion", "--help"])
+    assert "create" in listed.output
