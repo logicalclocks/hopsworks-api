@@ -13,7 +13,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
-"""The project's ML systems registry (`/project/{id}/mlsystems`), used by `hops mlsystem` and `hops build`."""
+"""The project's ML systems registry (`/project/{id}/mlsystems`), used by `hops mlsystem`."""
 
 from __future__ import annotations
 

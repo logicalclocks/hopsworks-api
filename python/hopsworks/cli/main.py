@@ -55,7 +55,6 @@ _LAZY_SUBCOMMANDS: dict[str, str] = {
     "git": "hopsworks.cli.commands.git:git_group",
     "skills": "hopsworks.cli.commands.skills:skills_group",
     "init": "hopsworks.cli.commands.init:init_cmd",
-    "build": "hopsworks.cli.commands.build:build_cmd",
     "mlsystem": "hopsworks.cli.commands.mlsystem:mlsystem_group",
     "medallion": "hopsworks.cli.commands.medallion:medallion_group",
     "update": "hopsworks.cli.commands.update:update_cmd",

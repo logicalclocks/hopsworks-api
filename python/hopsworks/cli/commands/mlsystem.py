@@ -2,7 +2,7 @@
 
 A system is registered by where its code lives, so every member of the project
 sees it in the Hopsworks UI: a HopsFS directory in the project, or the Git
-repository of a system built from an external client. ``hops build`` and
+repository of a system built from an external client. ``hops mlsystem create`` and
 ``/hops-build`` register systems themselves; these commands are for listing
 them, for registering or removing one by hand, and for deleting a system with
 what it created.
@@ -17,7 +17,7 @@ from pathlib import Path
 
 import click
 from hopsworks.cli import output, session
-from hopsworks.cli.commands.build import build_cmd
+from hopsworks.cli.commands.build import create_cmd
 
 
 def code_location(path: Path, project: str | None = None) -> str:
@@ -389,5 +389,5 @@ def mlsystem_status(
     )
 
 
-# `hops build` is how a system is created; listed here too, as the same command.
-mlsystem_group.add_command(build_cmd, name="create")
+# The interview and build live in build.py.
+mlsystem_group.add_command(create_cmd)

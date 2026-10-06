@@ -19,8 +19,8 @@ Already known, no need to look again before the first question:
 
 | First word | Do |
 | --- | --- |
-| the slug of a system above | work on that system only, and dispatch the rest of the arguments by this table (`hops build` starts the build this way) |
-| none | with a `system.yaml` above: resume it (with several, ask which), starting with `reqs` while `requirements.status` is `pending`; without one: reply that `hops build` in a shell or `/hops-ml` here runs the interview first, and stop |
+| the slug of a system above | work on that system only, and dispatch the rest of the arguments by this table (`hops mlsystem create` starts the build this way) |
+| none | with a `system.yaml` above: resume it (with several, ask which), starting with `reqs` while `requirements.status` is `pending`; without one: reply that `hops mlsystem create` in a shell or `/hops-ml` here runs the interview first, and stop |
 | `reqs`, `data`, `features`, `train`, `infer`, `app` (and the old `f`, `t`, `i`) | that phase, then every later phase that is not met (below) |
 | `verify` | `verify`; `verify integration` or `verify benchmark` also runs those |
 | `release` | release the system as **Releases** in `hops-reqs/references/repo.md` says: the pending release once its pull request has merged, else the next version after asking its kind |
@@ -34,7 +34,7 @@ template, bundles, tests, the repository contract). Find a skill at `.claude/ski
 repository, else `~/.claude/skills/<name>/` (in a Hopsworks terminal that links to
 `/opt/hops/agent-skills/`).
 
-**Where it runs.** Factory and `hops build` start Claude Code in the system's directory, `<slug>/`,
+**Where it runs.** Factory and `hops mlsystem create` start Claude Code in the system's directory, `<slug>/`,
 so it reads the system's `AGENTS.md`. There, every `<slug>/<path>` in this command and in the
 skills is `<path>` in the current directory; started in the directory above, paths are as written.
 

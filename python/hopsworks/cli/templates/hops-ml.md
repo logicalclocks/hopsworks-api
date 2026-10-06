@@ -41,7 +41,7 @@ first question below whose answer is not yet recorded.
 ## The interview
 
 **1. What do you want to build?** Use the arguments when they say what to predict. Otherwise ask
-with exactly two options, as `hops build` does:
+with exactly two options, as `hops mlsystem create` does:
 
 - **Start a new ML system (Recommended)**: "Type what it should predict in the box below, for
   example which customers will churn next month." A typed answer is the problem. When this option

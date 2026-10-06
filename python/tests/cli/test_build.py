@@ -1,4 +1,4 @@
-"""`hops build`: the structured interview that writes system.yaml, then starts the build."""
+"""`hops mlsystem create`: the structured interview that writes system.yaml, then starts the build."""
 
 from __future__ import annotations
 
@@ -42,7 +42,9 @@ def quiet(monkeypatch):
 def _run(tmp_path: Path, monkeypatch, answers: list[str], *args: str):
     monkeypatch.chdir(tmp_path)
     return CliRunner().invoke(
-        cli, ["build", "--no-launch", *args], input="\n".join(answers) + "\n"
+        cli,
+        ["mlsystem", "create", "--no-launch", *args],
+        input="\n".join(answers) + "\n",
     )
 
 
@@ -139,7 +141,7 @@ def test_the_build_starts_in_the_system_directory(tmp_path, monkeypatch, quiet):
             windows.append(cmd) if cmd[0] == "tmux" else real_run(cmd, **kw)
         ),
     )
-    done = CliRunner().invoke(cli, ["build", "churn-example"])
+    done = CliRunner().invoke(cli, ["mlsystem", "create", "churn-example"])
     assert done.exit_code == 0, done.output
     [window] = windows
     assert window[window.index("-c") + 1] == str(tmp_path / "churn-example")
@@ -476,7 +478,8 @@ def test_an_agent_with_data_sources_keeps_its_account_llm(tmp_path, monkeypatch,
     assert doc["requirements"]["data_sources"][0]["kind"] == "feature_group"
 
 
-def test_mlsystem_lists_create_as_the_build_command():
-    assert mlsystem.mlsystem_group.get_command(None, "create") is build.build_cmd
+def test_mlsystem_lists_create_and_hops_has_no_build():
+    assert mlsystem.mlsystem_group.get_command(None, "create") is build.create_cmd
     listed = CliRunner().invoke(mlsystem.mlsystem_group, ["--help"])
     assert "create" in listed.output
+    assert CliRunner().invoke(cli, ["build"]).exit_code != 0

@@ -1,4 +1,4 @@
-"""``hops build`` — the structured interview for a new ML system, then the build.
+"""``hops mlsystem create`` — the structured interview for a new ML system, then the build.
 
 Asks what the system should predict and the questions that follow from it,
 writing every answer to ``<slug>/system.yaml`` as it is given, then starts
@@ -246,7 +246,7 @@ def _create(cwd: Path, slug: str, example: str | None = None) -> _System:
     target = cwd / slug
     if (target / "system.yaml").exists():
         raise click.ClickException(
-            f"{target} already holds a system; run `hops build {slug}` to resume it."
+            f"{target} already holds a system; run `hops mlsystem create {slug}` to resume it."
         )
     try:
         new_system.create(target, example)
@@ -891,7 +891,7 @@ def _launch(ctx: click.Context, system: _System, launch: bool) -> None:
     os.execvp("claude", command)
 
 
-@click.command("build")
+@click.command("create")
 @click.argument("slug", required=False)
 @click.option(
     "--no-launch",
@@ -909,7 +909,7 @@ def _launch(ctx: click.Context, system: _System, launch: bool) -> None:
     help="A JSON file of the interview's answers, as the Hopsworks UI writes it; only what it leaves out is asked.",
 )
 @click.pass_context
-def build_cmd(
+def create_cmd(
     ctx: click.Context,
     slug: str | None,
     no_launch: bool,
