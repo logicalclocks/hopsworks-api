@@ -420,19 +420,71 @@ def system_status(
     )
 
 
-def _add_layer_commands() -> None:
+@system_group.command("dir")
+@click.argument("slug")
+def system_dir(slug: str) -> None:
+    """Print the directory of the system SLUG under the current directory: ./SLUG, or a medallion layer's in its medallion repository."""
     from hopsworks.cli.commands import medallion
 
-    for command in (
-        medallion.medallion_dir,
-        medallion.medallion_add_tables,
-        medallion.medallion_mart_add,
-        medallion.medallion_mart_update,
-        medallion.medallion_mart_delete,
-        medallion.medallion_job_delete,
-        medallion.medallion_backfill,
-    ):
-        system_group.add_command(command)
+    cwd = Path.cwd()
+    if (cwd / slug / "system.yaml").is_file():
+        click.echo(cwd / slug)
+        return
+    for directory in medallion._layer_dirs(cwd):
+        if directory.name == slug:
+            click.echo(directory)
+            return
+    raise click.ClickException(f"no system {slug!r} under {cwd}")
 
 
-_add_layer_commands()
+@system_group.command("delete-assets")
+@click.argument("system")
+@click.option("--job", "jobs", multiple=True, help="A job to delete; repeatable.")
+@click.option(
+    "--table",
+    "tables",
+    multiple=True,
+    help="A feature group to delete, as NAME or NAME:VERSION; repeatable.",
+)
+@click.option(
+    "--path",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    help="The system's directory, when its code is not in this project's HopsFS.",
+)
+@click.pass_context
+def system_delete_assets(
+    ctx: click.Context,
+    system: str,
+    jobs: tuple[str, ...],
+    tables: tuple[str, ...],
+    path: Path | None,
+) -> None:
+    """Delete some of what SYSTEM (an id, name or slug) built: the jobs, then the feature groups.
+
+    A build runs this when a change removes part of a system; the system and
+    its registry entry stay. Every feature group is checked before anything
+    is deleted: one the system reads, or one tagged as a lower medallion
+    layer (any medallion table, for an ML system), stops the delete with
+    nothing gone. What is already gone is skipped, so it can be run again.
+    """
+    import yaml
+    from hopsworks.cli.commands import medallion
+
+    session.get_project(ctx)
+    entry = _find(system)
+    directory = path or _local_dir(entry)
+    spec = directory / "system.yaml" if directory else None
+    if spec is None or not spec.is_file():
+        raise click.ClickException(
+            f"cannot read the system.yaml of {entry.get('name')}; pass its directory with --path"
+        )
+    doc = yaml.safe_load(spec.read_text(encoding="utf-8")) or {}
+    medallion.delete_assets(
+        ctx,
+        doc,
+        list(jobs),
+        [
+            {"name": name, "version": int(version or 1)}
+            for name, _, version in (t.partition(":") for t in tables)
+        ],
+    )

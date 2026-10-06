@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -263,9 +264,14 @@ def _review(doc: dict) -> None:
     help="Start from one of the factory's examples (`hops factory get NAME` lists them under presets).",
 )
 @click.option(
+    "--change",
+    "change_id",
+    help="Request this change of a recorded system (`hops factory get NAME` lists the factory's changes); its answers come from --answers or are asked here.",
+)
+@click.option(
     "--no-launch",
     is_flag=True,
-    help="Record the system but do not start Claude Code.",
+    help="Record the system or the change but do not start Claude Code.",
 )
 @click.pass_context
 def factory_run(
@@ -274,26 +280,39 @@ def factory_run(
     slug: str | None,
     answers: Path | None,
     preset: str | None,
+    change_id: str | None,
     no_launch: bool,
 ) -> None:
-    """Build a system with the factory NAME, or resume the system SLUG.
+    """Build a system with the factory NAME, resume the system SLUG, or change it.
 
     A new system's answers come from --answers, or each of the factory's
     questions is asked in turn. The system is recorded in ./<slug>/system.yaml,
     registered so the Hopsworks UI lists it, and built by Claude Code. A system
     already recorded (SLUG under the current directory, or the current
     directory itself) is resumed from its system.yaml, which holds the
-    factory, its version and every answer, so it needs none.
+    factory, its version and every answer, so it needs none. With --change,
+    the change's answers are recorded in system.yaml as a pending request,
+    which the build carries out when it resumes.
     """
     from hopsworks_common.core import factory_api
 
     session.get_project(ctx)
     definition = factory_api._get(name)
     existing = _recorded(slug)
+    if change_id and existing is None:
+        raise click.ClickException(
+            "a change is made to a recorded system: name its SLUG, or run this in its directory"
+        )
     if existing is not None:
-        if answers or preset:
+        if preset:
             raise click.UsageError(
                 f"{existing} is already recorded; its answers are in its system.yaml"
+            )
+        if change_id:
+            _request_change(ctx, definition, existing, change_id, answers)
+        elif answers:
+            raise click.UsageError(
+                f"{existing} is already recorded; pass --change with --answers to change it"
             )
         _resume(ctx, definition, existing, not no_launch)
         return
@@ -310,7 +329,7 @@ def factory_run(
     data = (
         _read_answers(answers)
         if answers
-        else _ask(spec, (chosen or {}).get("answers") or {})
+        else _ask(spec["form"], (chosen or {}).get("answers") or {})
     )
     if chosen:
         data = {**data, **(chosen.get("fixed") or {})}
@@ -352,23 +371,53 @@ def _read_answers(path: Path) -> dict:
     return answers
 
 
-def _ask(spec: dict, start: dict) -> dict:
-    """The answers to the factory's questions, asked section by section; `start` holds a preset's answers by field id.
+def _ask(form: dict, start: dict, system: dict | None = None) -> dict:
+    """The answers to a form's questions, asked section by section; `start` holds a preset's answers by field id.
 
     The answers are nested at each field's key, as the Hopsworks UI sends them.
+    An entry field offers the entries of `system`, the system.yaml a change is made to;
+    with `fill`, the chosen entry's values are the defaults of the questions after it.
     """
     answers: dict = {}
-    for section in spec["form"]["sections"]:
+    filled: dict = {}
+    for section in form["sections"]:
         click.echo()
         click.echo(click.style(section["title"], bold=True))
         for field in section.get("fields") or []:
+            key = field.get("key") or field["id"]
             if field["type"] == "account_env":
                 _account_env(field)
                 continue
-            value = _ask_field(field, start.get(field["id"], field.get("default")))
+            if field["type"] == "entry":
+                value, entry = _ask_entry(field, system or {}, start.get(field["id"]))
+                if field.get("fill"):
+                    filled = entry
+            else:
+                default = factory_spec.value_at(filled, key) if filled else None
+                if default is None:
+                    default = start.get(field["id"], field.get("default"))
+                value = _ask_field(field, default)
             if value is not None:
-                _put(answers, field.get("key") or field["id"], value)
+                _put(answers, key, value)
     return answers
+
+
+def _ask_entry(field: dict, system: dict, default: Any) -> tuple[Any, dict]:
+    offered = factory_spec.entries(system, field)
+    if not offered:
+        raise click.ClickException(
+            f"{field['label']}: system.yaml has nothing at {field['from']} to choose from"
+        )
+    for i, entry in enumerate(offered, 1):
+        click.echo(f"  {i}. {entry['label']} ({entry['value']})")
+    values = [str(e["value"]) for e in offered]
+    picked = click.prompt(
+        field["label"],
+        type=click.Choice(values),
+        default=str(default) if str(default) in values else values[0],
+    )
+    entry = offered[values.index(picked)]
+    return entry["value"], entry["entry"]
 
 
 def _put(answers: dict, path: str, value: Any) -> None:
@@ -508,8 +557,8 @@ def _account_env(field: dict) -> None:
         output.success(f"Saved {env} in your account settings.")
 
 
-def _resume(ctx: click.Context, definition: dict, target: Path, launch: bool) -> None:
-    """Start or resume the build of the system recorded in `target`, with the factory version it was built with."""
+def _built_with(definition: dict, target: Path) -> tuple[dict, dict]:
+    """The system.yaml in `target`, and the definition of the factory version it was built with."""
     from hopsworks_common.core import factory_api
 
     doc = yaml.safe_load((target / "system.yaml").read_text(encoding="utf-8")) or {}
@@ -518,10 +567,86 @@ def _resume(ctx: click.Context, definition: dict, target: Path, launch: bool) ->
     if recorded.get("name") not in (None, name):
         raise click.ClickException(
             f"{target.name} was built by the factory {recorded['name']}; "
-            f"resume it with `hops factory run {recorded['name']} {target.name}`"
+            f"run `hops factory run {recorded['name']} {target.name}` instead"
         )
     if recorded.get("version") not in (None, definition.get("version")):
         definition = factory_api._get(name, recorded["version"])
+    return doc, definition
+
+
+def _request_change(
+    ctx: click.Context,
+    definition: dict,
+    target: Path,
+    change_id: str,
+    answers_path: Path | None,
+) -> None:
+    """Record a pending change request in the system's system.yaml, from its answers; the build carries it out."""
+    from datetime import datetime, timezone
+
+    doc, definition = _built_with(definition, target)
+    spec = definition["spec"]
+    try:
+        change = factory_spec.change_of(spec, change_id)
+    except KeyError:
+        known = ", ".join(c["id"] for c in spec.get("changes") or []) or "none"
+        raise click.BadParameter(
+            f"no change {change_id!r}; this factory has {known}", param_hint="--change"
+        ) from None
+    answers = (
+        _read_answers(answers_path) if answers_path else _ask(change["form"], {}, doc)
+    )
+    found = factory_spec.answer_problems(spec, answers, change["form"], doc)
+    if found:
+        raise click.ClickException("\n  ".join(["invalid answers:", *found]))
+    doc.setdefault("changes", []).append(
+        {
+            "id": change_id,
+            "label": change["label"],
+            "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ"),
+            "answers": answers,
+            "instructions": change["instructions"],
+            "status": "pending",
+        }
+    )
+    system_file = target / "system.yaml"
+    system_file.write_text(
+        yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=100),
+        encoding="utf-8",
+    )
+    if _in_git(target):
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(target),
+                "commit",
+                "-q",
+                "-m",
+                f"[{target.name}] request: {change['label']}",
+                "--",
+                "system.yaml",
+            ],
+            check=False,
+            capture_output=True,
+        )
+    output.success(f"{change['label']} requested in {system_file}")
+
+
+def _in_git(target: Path) -> bool:
+    done = subprocess.run(
+        ["git", "-C", str(target), "rev-parse", "--is-inside-work-tree"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    return done.returncode == 0
+
+
+def _resume(ctx: click.Context, definition: dict, target: Path, launch: bool) -> None:
+    """Start or resume the build of the system recorded in `target`, with the factory version it was built with."""
+    _, definition = _built_with(definition, target)
+    name = definition["name"]
     output.info(f"Resuming {target.name} from {target / 'system.yaml'}.")
     builtin = (definition["spec"].get("build") or {}).get("builtin")
     if builtin == "mlsystem":

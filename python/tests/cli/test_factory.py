@@ -392,6 +392,91 @@ def test_create_refuses_answers_the_form_would_refuse(tmp_path, monkeypatch, log
     assert not (tmp_path / "Bad Name").exists()
 
 
+CHANGED = (
+    REVIEW
+    + """\
+changes:
+  - id: drop-week
+    label: Drop a week
+    instructions: Remove the week from the review and rebuild the dashboard.
+    form:
+      sections:
+        - id: pick
+          title: Week
+          fields:
+            - {id: week, type: entry, label: Week, from: outputs.weeks, value: name, fill: true}
+            - {id: note, type: text, label: Note}
+"""
+)
+
+
+def test_a_change_is_recorded_as_a_pending_request_then_the_build_resumes(
+    tmp_path, monkeypatch, logged_in
+):
+    registered, launched = _recording(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        factory_api, "_get", lambda name, version=None: _definition(CHANGED)
+    )
+    system = tmp_path / "q3-review"
+    system.mkdir()
+    (system / "system.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "factory": {"name": "churn-review", "version": 2},
+                "outputs": {"weeks": [{"name": "w1", "note": "old"}, {"name": "w2"}]},
+            }
+        )
+    )
+    run = ["factory", "run", "churn-review", "q3-review", "--change"]
+    # The entry's own values are the defaults of the questions after it.
+    done = CliRunner().invoke(cli, [*run, "drop-week"], input="w1\n\n")
+    assert done.exit_code == 0, done.output
+    [request] = yaml.safe_load((system / "system.yaml").read_text())["changes"]
+    assert request.pop("at")
+    assert request == {
+        "id": "drop-week",
+        "label": "Drop a week",
+        "answers": {"week": "w1", "note": "old"},
+        "instructions": "Remove the week from the review and rebuild the dashboard.",
+        "status": "pending",
+    }
+    assert launched == ["/hops-factory-churn-review q3-review"]
+
+    answers = tmp_path / "answers.json"
+    answers.write_text(json.dumps({"week": "w9"}))
+    wrong = CliRunner().invoke(cli, [*run, "drop-week", "--answers", str(answers)])
+    assert wrong.exit_code != 0 and "w9 is not in system.yaml" in wrong.output
+    unknown = CliRunner().invoke(cli, [*run, "rename"])
+    assert unknown.exit_code != 0 and "this factory has drop-week" in unknown.output
+    nowhere = CliRunner().invoke(
+        cli, ["factory", "run", "churn-review", "--change", "drop-week"]
+    )
+    assert nowhere.exit_code != 0 and "a recorded system" in nowhere.output
+    assert len(yaml.safe_load((system / "system.yaml").read_text())["changes"]) == 1
+
+
+def test_a_change_form_is_checked_as_a_change():
+    assert factory_spec.text_problems(CHANGED) == []
+    found = factory_spec.text_problems(
+        CHANGED.replace(
+            "    instructions: Remove the week from the review and rebuild the dashboard.\n",
+            "",
+        )
+    )
+    assert any("instructions are required" in p for p in found)
+    # An entry picks from a system that exists, so a create form cannot have one.
+    found = factory_spec.text_problems(
+        REVIEW.replace(
+            "{id: question, type: textarea,",
+            "{id: week, type: entry, label: Week, from: outputs.weeks}\n        - {id: question, type: textarea,",
+        )
+    )
+    assert any("cannot be an entry" in p for p in found)
+    assert factory_spec.items_at(
+        {"marts": [{"jobs": [{"name": "a"}]}, {"jobs": [{"name": "b"}]}]}, "marts.jobs"
+    ) == [{"name": "a"}, {"name": "b"}]
+
+
 CLONE = """\
 apiVersion: hopsworks.ai/factory/v1
 kind: Factory

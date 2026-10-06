@@ -30,7 +30,9 @@ hops factory run <name> [--answers answers.json] [--preset id] [--no-launch]
 hops factory run <name> <slug>                     # resume a system from its <slug>/system.yaml, no answers needed
 hops factory system list [--factory <name>]        # the systems built, with the factory and version of each
 hops factory system status|register|remove|delete <system>
-hops factory system mart-add|mart-update|mart-delete|job-delete|add-tables|backfill|dir ...  # medallion layers only
+hops factory run <name> <slug> --change <id> [--answers F]  # request one of the factory's changes; the build carries it out
+hops factory system dir <slug>                     # the system's directory
+hops factory system delete-assets <system> --job J --table T:V  # what a build deletes with; refuses what the system reads
 ```
 
 ## Writing a definition

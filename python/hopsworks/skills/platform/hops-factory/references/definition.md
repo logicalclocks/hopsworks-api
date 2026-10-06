@@ -46,6 +46,7 @@ Every field has a unique `id`, a `type` and a `label`, and may have `help`, `req
 | `feature_groups` | several of them, with the same `filter` | list of `{name, version}` |
 | `list` | entries added and removed by the user, each asking its own `fields`; `item_label`, `min_items` | list of objects |
 | `account_env` | an input (`secret: true` hides it) saved as the user's account variable `env`; not inside a list | nothing: it never reaches the answers |
+| `entry` | in a change's form only: one item of the list at `from` in `system.yaml` (a dotted path; a list met on the way is walked through, so `marts.jobs` is every mart's jobs), named by its `value` key (default `slug`) and shown by `show` (default `name`); with `fill: true` the chosen item's values prefill the change's other fields, read at their keys | the item's `value` |
 
 An option is a value, or `{value, label}` to show a label.
 
@@ -74,3 +75,23 @@ Editing a factory saves a new version; a system keeps the version it was built w
 
 `presets: [{id, label, description, answers, fixed}]`: `answers` are starting answers by field id, `fixed` answers sent as they are and never shown (the built-in ML factories' examples set `example` there).
 The Factory lists them under the factory's New button; `hops factory run <name> --preset <id>` starts from one.
+
+## Changes
+
+`changes: [{id, label, description, form, instructions}]`: what can be asked of a system after it is built, each with its own form (the same field types, no slug field needed, `entry` fields allowed) and the `instructions` the build follows.
+`hops factory run <name> <slug> --change <id>` takes the answers from `--answers` or asks them, checks them against the form and `system.yaml`, appends `{id, label, at, answers, instructions, status: pending}` to the system's `changes` in `system.yaml`, and resumes the build, which carries out each pending request first and marks it `done` or `failed`.
+The Factory shows a system's changes as buttons on its page.
+A change that deletes part of a system says so in its instructions, and the build deletes only with `hops factory system delete-assets <system>`, which refuses a feature group the system reads or one of a lower medallion layer.
+
+```yaml
+changes:
+  - id: drop-week
+    label: Drop a week
+    instructions: Remove the week in answers.week from requirements.weeks and rebuild the dashboard without it.
+    form:
+      sections:
+        - id: pick
+          title: Week
+          fields:
+            - {id: week, type: entry, label: Week, from: outputs.weeks, value: name}
+```

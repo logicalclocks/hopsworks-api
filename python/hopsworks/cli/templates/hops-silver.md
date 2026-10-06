@@ -14,7 +14,7 @@ Already known, no need to look again before the first question:
 
 | First word | Do |
 | --- | --- |
-| the slug of a layer above | work on that layer, and dispatch the rest of the arguments by this table (the Factory and `hops factory run medallion-silver` start the build this way) |
+| the slug of a layer above | work on that layer: carry out its pending change requests, then dispatch the rest of the arguments by this table (the Factory and `hops factory run medallion-silver` start the build this way) |
 | none | with a `system.yaml` above: resume it from its first phase that is not `done`; without one: reply that the Factory's **New Medallion Layer**, or `hops factory run medallion-silver --answers`, records a layer first, and stop |
 | `profile`, `design`, `code`, `backfill`, `schedule`, `verify` | that phase, then every later phase that is not `done` |
 | `apply` | apply the changes to `system.yaml` since the layer was built (below) |
@@ -29,6 +29,7 @@ Find a skill at `.claude/skills/<name>/` in the repository, else `~/.claude/skil
 
 ## Rules
 
+- **Change requests.** The Factory and `hops factory run <factory> <slug> --change <id>` record a change to the system as a `changes` entry with `status: pending`, holding its `label`, `answers` and `instructions`. Before anything else, carry out each pending one, oldest first: follow its `instructions` with its `answers`, then set its `status: done` and `finished` (UTC), or `status: failed` with a `reason` you also report, and commit `[<slug>] <label>`. Delete a job or a feature group only with `hops factory system delete-assets <slug> --job <name> --table <name>:<version>`, which refuses what the system reads.
 - **A cloned factory's additions.** `system.yaml`'s `factory` block names the factory that created the system. When it has `instructions`, a project factory cloned from a built-in one added them: follow them as well as this command, and treat `requirements.extra` as further requirements the user gave.
 - **system.yaml is the record.** Set `layer.status` to `building` when you start and `built` or `failed` when you end; set each phase's `status`, `started` and `finished` (UTC, from `date -u`) as it runs, and `progress.now` to one line on what you are doing. The Factory reads it every few seconds.
 - **Ask, never guess.** When the arrival column of a source, the business key of a table, a match rule between sources, or the meaning of an extra task is unclear, ask with `AskUserQuestion`: one call, up to four questions, two to four concrete options each with the recommended one first. Record every answer and every choice you make yourself in `decisions` (`at`, `by: user` or `by: claude`, `what`, `why`).
@@ -90,7 +91,7 @@ Set `outputs.applied_spec` to the spec just built (`sources` names and versions,
 ### apply
 
 Compare the spec with `outputs.applied_spec`, and read `git log -p -- system.yaml` since the last build or apply commit for why it changed.
-Each `additions` entry with `status: pending` asks for new tables from its sources, described in the user's words: profile those sources, design the tables in 3NF with the rest, and build them as a source added; set the entry's `status: applied` when they are verified.
+Each `additions` entry with `status: pending` (an **Add tables** change request records one) asks for new tables from its sources, described in the user's words: profile those sources, design the tables in 3NF with the rest, and build them as a source added; set the entry's `status: applied` when they are verified.
 Show what changed and what each change recomputes (hops-medallion, Changing a layer) as a short table, and ask only when a change is ambiguous.
 Set `layer.status: building` and the affected phases back to `pending`, then run them: a lifecycle change retags every silver and rejects feature group; a schedule change reschedules the job; a changed task, extra task, engine or source changes and tests the code, creates the next version of each silver table whose content changes, backfills it over the whole bronze history, switches the job to it, and verifies one window.
 Record each new version in `outputs`, and each superseded one in `decisions`; never delete one.

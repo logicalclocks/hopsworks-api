@@ -359,39 +359,6 @@ def test_status_reports_freshness_rejects_and_layout(tmp_path, monkeypatch):
     assert "tablesSection" in page and '"tables": [' in page
 
 
-def test_backfill_runs_the_job_over_all_of_history(tmp_path, monkeypatch):
-    target = tmp_path / "customers-silver"
-    target.mkdir()
-    (target / "system.yaml").write_text(
-        yaml.safe_dump({"outputs": {"job": {"name": "customers-silver-silver"}}}),
-        encoding="utf-8",
-    )
-    calls = []
-    job = SimpleNamespace(
-        run=lambda **kw: (
-            calls.append(kw) or SimpleNamespace(id=9, final_status="SUCCEEDED")
-        )
-    )
-    monkeypatch.setattr(
-        session,
-        "get_project",
-        lambda ctx: SimpleNamespace(
-            get_job_api=lambda: SimpleNamespace(get_job=lambda name: job)
-        ),
-    )
-    from hopsworks_common.core import ml_system_api
-
-    monkeypatch.setattr(
-        ml_system_api, "_list", lambda: [{"id": 7, "name": "L", "pathToCode": "x"}]
-    )
-    monkeypatch.setattr(mlsystem, "_local_dir", lambda e: target)
-    done = CliRunner().invoke(cli, ["factory", "system", "backfill", "L"])
-    assert done.exit_code == 0, done.output
-    [call] = calls
-    assert call["start_time"].year == 1970 and call["await_termination"] is True
-    assert call["end_time"] > call["start_time"]
-
-
 def test_partition_advisor_partitions_only_large_tables(tmp_path):
     advisor = _load_advisor()
     _delta_table(tmp_path / "small_1", 1000, 30, 0)
@@ -581,7 +548,7 @@ def test_delete_without_assets_only_forgets_the_entry(tmp_path, monkeypatch):
         (
             {**SILVER, "outputs": {"tables": [{"name": "crm"}]}},
             {},
-            "a source of this layer",
+            "a source of this system",
         ),
         (SILVER, {"customers": {"medallion_table": '{"layer": "bronze"}'}}, "bronze"),
         # Gold never deletes silver.
@@ -594,72 +561,6 @@ def test_delete_never_deletes_a_lower_layer(tmp_path, monkeypatch, doc, tags, wh
     assert done.exit_code != 0 and why in done.output
     # Refused before anything was deleted.
     assert events == [] and target.exists()
-
-
-def test_mart_delete_keeps_tables_another_mart_lists(tmp_path, monkeypatch):
-    target = _layer_dir(tmp_path, GOLD)
-    done, events = _run(
-        monkeypatch,
-        target,
-        {},
-        ["mart-delete", "L", "churn", "--tables", "--yes"],
-    )
-    assert done.exit_code == 0, done.output
-    assert events == ["job g-churn-weekly", "job g-churn-hourly", "fg fct_churn"]
-    doc = _doc(target)
-    assert [m["slug"] for m in doc["marts"]] == ["sales"]
-    assert "dim_customer are kept" in doc["decisions"][-1]["what"]
-
-
-def test_mart_delete_without_tables_deletes_only_the_jobs(tmp_path, monkeypatch):
-    target = _layer_dir(tmp_path, GOLD)
-    done, events = _run(monkeypatch, target, {}, ["mart-delete", "L", "sales", "--yes"])
-    assert done.exit_code == 0, done.output
-    assert events == ["job g-sales-daily"]
-
-
-def test_job_delete_in_gold_keeps_tables_another_job_writes(tmp_path, monkeypatch):
-    target = _layer_dir(tmp_path, GOLD)
-    done, events = _run(
-        monkeypatch,
-        target,
-        {},
-        ["job-delete", "L", "g-churn-hourly", "--tables", "--yes"],
-    )
-    assert done.exit_code == 0, done.output
-    assert events == ["job g-churn-hourly"]
-    churn = _doc(target)["marts"][1]
-    assert [j["name"] for j in churn["jobs"]] == ["g-churn-weekly"]
-    assert len(churn["tables"]) == 2
-
-
-def test_job_delete_in_silver_drops_the_cadence(tmp_path, monkeypatch):
-    target = _layer_dir(tmp_path, SILVER)
-    done, events = _run(
-        monkeypatch,
-        target,
-        {},
-        ["job-delete", "L", "l-silver-hourly", "--tables", "--yes"],
-    )
-    assert done.exit_code == 0, done.output
-    assert events == ["job l-silver-hourly", "fg sessions", "fg sessions_rejects"]
-    doc = _doc(target)
-    assert [s["name"] for s in doc["sources"]] == ["crm"]
-    # Nothing pending, so applying the spec does not rebuild the job.
-    assert doc["outputs"]["applied_spec"]["sources"] == [
-        {"name": "crm", "version": 1, "cadence": "daily"}
-    ]
-    assert list(doc["schedule"]["cadences"]) == ["daily"]
-    assert doc["freshness"]["max_age_hours"] == {"daily": 26}
-    assert [t["name"] for t in doc["outputs"]["tables"]] == ["customers"]
-    assert doc["outputs"]["rejects"] == []
-
-
-def test_job_delete_refuses_an_unknown_job(tmp_path, monkeypatch):
-    target = _layer_dir(tmp_path, SILVER)
-    done, events = _run(monkeypatch, target, {}, ["job-delete", "L", "nope", "--yes"])
-    assert done.exit_code != 0 and "No job 'nope'" in done.output
-    assert events == []
 
 
 def _answers_file(tmp_path, answers):
@@ -679,93 +580,6 @@ MART = {
         "on_check_failure": "quarantine",
     },
 }
-
-
-def test_mart_add_appends_a_draft_mart(tmp_path, monkeypatch):
-    target = _layer_dir(tmp_path, GOLD)
-    done, _ = _run(
-        monkeypatch,
-        target,
-        {},
-        ["mart-add", "L", "--answers", _answers_file(tmp_path, MART), "--no-launch"],
-    )
-    assert done.exit_code == 0, done.output
-    mart = _doc(target)["marts"][-1]
-    assert mart["slug"] == "returns" and mart["status"] == "draft"
-    assert mart["freshness_hours"] == 170 and mart["applied"] == {}
-    assert mart["phases"]["requirements"] == {"status": "pending"}
-    assert '"/hops-gold customers-silver returns"' in done.output
-
-
-@pytest.mark.parametrize(
-    ("change", "problem"),
-    [
-        ({"slug": "sales"}, "already has a data mart 'sales'"),
-        ({"cadence": "monthly"}, "cadence must be one of"),
-        ({"requirements": {"grain": {"type": "daily"}}}, "grain.type must be one of"),
-        ({"requirements": {"on_check_failure": "ignore"}}, "on_check_failure must be"),
-        ({"requirements": {"vibes": 1}}, "unknown requirement 'vibes'"),
-        ({"requirements": {}}, "needs example_queries"),
-    ],
-)
-def test_mart_add_refuses_bad_answers(tmp_path, monkeypatch, change, problem):
-    target = _layer_dir(tmp_path, GOLD)
-    path = _answers_file(tmp_path, {**MART, **change})
-    done, _ = _run(monkeypatch, target, {}, ["mart-add", "L", "--answers", path])
-    assert done.exit_code != 0 and problem in done.output
-
-
-def test_mart_update_keeps_tables_and_jobs(tmp_path, monkeypatch):
-    target = _layer_dir(tmp_path, GOLD)
-    path = _answers_file(tmp_path, {**MART, "slug": "ignored", "cadence": "hourly"})
-    done, _ = _run(
-        monkeypatch,
-        target,
-        {},
-        ["mart-update", "L", "sales", "--answers", path, "--no-launch"],
-    )
-    assert done.exit_code == 0, done.output
-    sales = _doc(target)["marts"][0]
-    assert sales["slug"] == "sales" and sales["cadence"] == "hourly"
-    assert sales["requirements"]["analysts"] == "merchandising"
-    assert [j["name"] for j in sales["jobs"]] == ["g-sales-daily"]
-
-
-def test_marts_are_only_in_gold(tmp_path, monkeypatch):
-    target = _layer_dir(tmp_path, SILVER)
-    path = _answers_file(tmp_path, MART)
-    done, _ = _run(monkeypatch, target, {}, ["mart-add", "L", "--answers", path])
-    assert done.exit_code != 0 and "is a silver layer" in done.output
-
-
-def test_add_tables_adds_sources_and_a_job_cadence(tmp_path, monkeypatch):
-    target = _layer_dir(tmp_path, SILVER)
-    answers = {
-        "description": "weekly article catalogue",
-        "sources": [{"name": "articles", "cadence": "weekly"}],
-    }
-    path = _answers_file(tmp_path, answers)
-    done, _ = _run(
-        monkeypatch, target, {}, ["add-tables", "L", "--answers", path, "--no-launch"]
-    )
-    assert done.exit_code == 0, done.output
-    doc = _doc(target)
-    assert doc["sources"][-1]["name"] == "articles"
-    assert doc["schedule"]["cadences"]["weekly"]["max_catchup_runs"] == 4
-    assert doc["freshness"]["max_age_hours"] == {
-        "hourly": 2,
-        "daily": 26,
-        "weekly": 170,
-    }
-    assert doc["additions"][-1]["status"] == "pending"
-    assert '"/hops-silver customers-silver apply"' in done.output
-
-
-def test_add_tables_refuses_a_known_source(tmp_path, monkeypatch):
-    target = _layer_dir(tmp_path, SILVER)
-    path = _answers_file(tmp_path, {"sources": [{"name": "crm"}]})
-    done, _ = _run(monkeypatch, target, {}, ["add-tables", "L", "--answers", path])
-    assert done.exit_code != 0 and "crm v1 is already a source" in done.output
 
 
 GOLD_ANSWERS = {
@@ -829,54 +643,6 @@ def test_silver_refuses_an_unknown_source_cadence(tmp_path, monkeypatch):
     answers = {**ANSWERS, "sources": [{"name": "crm", "cadence": "monthly"}]}
     done = _silver(tmp_path, monkeypatch, answers, [])
     assert done.exit_code != 0 and "source crm: cadence must be one of" in done.output
-
-
-def test_backfill_runs_every_job_slowest_first(tmp_path, monkeypatch):
-    target = tmp_path / "customers-silver"
-    target.mkdir()
-    jobs = [
-        {"name": "l-silver-hourly", "cadence": "hourly"},
-        {"name": "l-silver-weekly", "cadence": "weekly"},
-        {"name": "l-silver-daily", "cadence": "daily"},
-    ]
-    (target / "system.yaml").write_text(
-        yaml.safe_dump({"outputs": {"jobs": jobs}}), encoding="utf-8"
-    )
-    ran = []
-
-    def get_job(name):
-        return SimpleNamespace(
-            run=lambda **kw: (
-                ran.append(name) or SimpleNamespace(id=1, final_status="SUCCEEDED")
-            )
-        )
-
-    monkeypatch.setattr(
-        session,
-        "get_project",
-        lambda ctx: SimpleNamespace(
-            get_job_api=lambda: SimpleNamespace(get_job=get_job)
-        ),
-    )
-    from hopsworks_common.core import ml_system_api
-
-    monkeypatch.setattr(
-        ml_system_api, "_list", lambda: [{"id": 7, "name": "L", "pathToCode": "x"}]
-    )
-    monkeypatch.setattr(mlsystem, "_local_dir", lambda e: target)
-    done = CliRunner().invoke(cli, ["factory", "system", "backfill", "L"])
-    assert done.exit_code == 0, done.output
-    assert ran == ["l-silver-weekly", "l-silver-daily", "l-silver-hourly"]
-    # The directory's name finds the layer too.
-    monkeypatch.setattr(
-        ml_system_api,
-        "_list",
-        lambda: [{"id": 7, "name": "L", "pathToCode": "/Projects/p/Users/u/l-silver"}],
-    )
-    assert (
-        CliRunner().invoke(cli, ["factory", "system", "backfill", "l-silver"]).exit_code
-        == 0
-    )
 
 
 def test_status_reads_every_job_and_each_tables_cadence_target(tmp_path, monkeypatch):
@@ -975,19 +741,67 @@ def test_a_layer_can_name_its_repository(tmp_path, monkeypatch):
     assert done.exit_code != 0 and "repo must be hops-" in done.output
 
 
-def test_the_layer_commands_are_system_commands():
-    listed = CliRunner().invoke(cli, ["factory", "system", "--help"])
-    for command in (
-        "mart-add",
-        "mart-update",
-        "mart-delete",
-        "job-delete",
-        "add-tables",
-        "backfill",
-        "dir",
-    ):
-        assert command in listed.output
+def test_delete_assets_deletes_jobs_then_tables_and_keeps_the_system(
+    tmp_path, monkeypatch
+):
+    target = _layer_dir(tmp_path, GOLD)
+    done, events = _run(
+        monkeypatch,
+        target,
+        {},
+        ["delete-assets", "L", "--job", "g-churn-weekly", "--table", "fct_churn:1"],
+    )
+    assert done.exit_code == 0, done.output
+    assert events == ["job g-churn-weekly", "fg fct_churn"]
+    assert target.exists()
+
+
+@pytest.mark.parametrize(
+    ("table", "tags", "why"),
+    [
+        ("customers", {}, "a source of this system"),
+        ("orders", {"orders": {"medallion_table": '{"layer": "silver"}'}}, "silver"),
+    ],
+)
+def test_delete_assets_never_deletes_what_the_system_reads(
+    tmp_path, monkeypatch, table, tags, why
+):
+    target = _layer_dir(tmp_path, GOLD)
+    done, events = _run(
+        monkeypatch,
+        target,
+        tags,
+        ["delete-assets", "L", "--job", "g-sales-daily", "--table", table],
+    )
+    assert done.exit_code != 0 and why in done.output
+    # Refused before the job went too.
+    assert events == []
+
+
+def test_an_ml_system_never_deletes_a_medallion_table(tmp_path, monkeypatch):
+    target = _layer_dir(tmp_path, {"requirements": {"data_sources": []}})
+    done, events = _run(
+        monkeypatch,
+        target,
+        {"orders": {"medallion_table": '{"layer": "gold"}'}},
+        ["delete-assets", "L", "--table", "orders"],
+    )
+    assert done.exit_code != 0 and "gold" in done.output
+    assert events == []
+
+
+def test_the_system_commands_are_the_same_for_every_factory():
     from hopsworks.cli.commands.factory import factory_group
 
-    assert factory_group.get_command(None, "medallion") is None
-    assert factory_group.get_command(None, "mlsystem") is None
+    system = factory_group.get_command(None, "system")
+    assert sorted(system.list_commands(None)) == [
+        "delete",
+        "delete-assets",
+        "dir",
+        "list",
+        "register",
+        "remove",
+        "status",
+    ]
+    for name in ("medallion", "mlsystem"):
+        assert factory_group.get_command(None, name) is None

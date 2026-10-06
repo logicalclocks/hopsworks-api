@@ -14,8 +14,8 @@ Already known, no need to look again before the first question:
 
 | Arguments after the slug | Do |
 | --- | --- |
-| none | every mart, in order: build each from its first phase that is not `done`, and apply the changes of a built mart whose spec differs from its `applied` |
-| `<mart>` | that mart alone, the same way (the Factory's **Add data mart** and **Edit** start it this way) |
+| none | the pending change requests (Rules), then every mart, in order: build each from its first phase that is not `done`, and apply the changes of a built mart whose spec differs from its `applied` |
+| `<mart>` | that mart alone, the same way |
 | `<mart> <phase>` | that phase of that mart, then every later phase that is not `done` |
 | `apply` | the changes to the layer-level spec since it was built: `layer.lifecycle`, `layer.modeling`, `standards`, `sources` (below) |
 
@@ -29,6 +29,7 @@ Find a skill at `.claude/skills/<name>/` in the repository, else `~/.claude/skil
 
 ## Rules
 
+- **Change requests.** The Factory and `hops factory run <factory> <slug> --change <id>` record a change to the system as a `changes` entry with `status: pending`, holding its `label`, `answers` and `instructions`. Before anything else, carry out each pending one, oldest first: follow its `instructions` with its `answers`, then set its `status: done` and `finished` (UTC), or `status: failed` with a `reason` you also report, and commit `[<slug>] <label>`. Delete a job or a feature group only with `hops factory system delete-assets <slug> --job <name> --table <name>:<version>`, which refuses what the system reads.
 - **A cloned factory's additions.** `system.yaml`'s `factory` block names the factory that created the system. When it has `instructions`, a project factory cloned from a built-in one added them: follow them as well as this command, and treat `requirements.extra` as further requirements the user gave.
 - **system.yaml is the record.** Set `layer.status` to `building` when you start and `built` or `failed` when you end, and each mart's `status` (`draft`, `building`, `built`, `failed`) and phases (`status`, `started`, `finished`, UTC from `date -u`) as they run, and `progress.now` to one line naming the mart and what you are doing. The Factory reads it every few seconds.
 - **Ask, never guess.** A requirement left blank, a metric whose formula is ambiguous, a grain that does not identify a row: ask with `AskUserQuestion`, one call, up to four questions, two to four concrete options each with the recommended one first. Record every answer and every choice you make in `decisions` (`at`, `by: user` or `by: claude`, `what`, `why`, `mart`).
@@ -41,7 +42,7 @@ Find a skill at `.claude/skills/<name>/` in the repository, else `~/.claude/skil
 - **The GitHub repository.** A medallion's silver and gold layers share one work tree and one private GitHub repository, `layer.repo.name` (`hops-<prefix>`, the parent of this directory); each layer is a directory in it. With no `layer.repo.url`: when the work tree already has an `origin` (another layer of the medallion set it), record its URL; else when `gh repo view <layer.repo.name>` finds the repository, add it as `origin`; else, with `gh auth status` logged in, create it (`gh repo create <layer.repo.name> --private --source .. --remote origin --push`). Record the URL as `layer.repo.url`. Commit only this layer's directory (`git add -A -- .`, `git commit -m ... -- .`), so another layer's work in progress stays out of the commit, and push after every commit. Without a GitHub login, say once that `github-login` connects one, and keep committing locally.
 - **Logs stay out of the directory**, as `AGENTS.md` says.
 - **No secrets** in arguments, `system.yaml` or the code.
-- **Never delete** what this build did not create; deleting a mart or a job is `hops factory system mart-delete` and `job-delete`, which the user runs from the Factory.
+- **Never delete** what this build did not create; a mart or a job is deleted by a change request the user makes in the Factory.
 
 ## The phases of a data mart
 
@@ -92,7 +93,7 @@ Set the mart's `applied` to its spec (`name`, `description`, `cadence`, `freshne
 
 ## Changing a mart
 
-A built mart whose spec differs from its `applied` has been edited in the Factory (`hops factory system mart-update`).
+A built mart whose spec differs from its `applied` has been edited, by an **Edit data mart** change request.
 Read the difference and `git log -p -- system.yaml` for it, show what it recomputes, and run the affected phases: a changed `cadence` reschedules the jobs (renaming them to the new cadence); a changed metric, grain, filter or `late_data` changes the models, creates the next version of each changed table, backfills it and switches the job to it; a changed `access` or `share` is reapplied; `analysts`, `decisions` or `approver` only update the README.
 Keep superseded versions and name them in `decisions`; end with `applied` set and one commit `[<slug>] <mart> apply: <what changed>`.
 

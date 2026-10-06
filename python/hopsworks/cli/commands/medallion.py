@@ -464,13 +464,6 @@ def _launch(target: Path, launch: bool, request: str | None = None) -> None:
     os.execvp("claude", command)
 
 
-def _answers(path: Path) -> dict:
-    data = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        raise click.ClickException(f"{path}: the answers must be a JSON object")
-    return data
-
-
 def _register(ctx: click.Context, target: Path, name: str, layer: str) -> None:
     from hopsworks.cli import factory_spec
     from hopsworks.cli.commands import mlsystem
@@ -484,17 +477,6 @@ def _register(ctx: click.Context, target: Path, name: str, layer: str) -> None:
         output.warn(
             f"Not registered in the project's Factory ({exc}); run `hops factory system register {target} --factory medallion-{layer}`."
         )
-
-
-ANSWERS = click.option(
-    "--answers",
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-    required=True,
-    help="A JSON file of the answers, as the Hopsworks UI writes it.",
-)
-NO_LAUNCH = click.option(
-    "--no-launch", is_flag=True, help="Record the change but do not start Claude Code."
-)
 
 
 def create_silver(ctx: click.Context, data: dict, launch: bool) -> Path:
@@ -530,7 +512,7 @@ def create_gold(ctx: click.Context, data: dict, launch: bool) -> Path:
     The answers describe the queries the layer serves, its Kimball model
     (star or snowflake), the silver feature groups it reads, the standards
     every mart follows, and the first data mart with its requirements.
-    More marts are added with `hops factory system mart-add`.
+    More marts are added by an Add data mart change request.
     """
     problems = _gold_problems(data)
     if problems:
@@ -542,67 +524,8 @@ def create_gold(ctx: click.Context, data: dict, launch: bool) -> Path:
     return target
 
 
-@click.command("dir")
-@click.argument("slug")
-def medallion_dir(slug: str) -> None:
-    """Print the directory of the layer SLUG under the current directory, in its medallion repository or on its own.
-
-    Args:
-        slug: The layer's slug.
-    """
-    for directory in _layer_dirs(Path.cwd()):
-        if directory.name == slug:
-            click.echo(directory)
-            return
-    raise click.ClickException(f"No layer {slug!r} under {Path.cwd()}")
-
-
-def _entry(ctx: click.Context, name_or_id: str) -> dict:
-    from hopsworks.cli.commands import mlsystem
-
-    session.get_project(ctx)
-    return mlsystem._find(name_or_id)
-
-
-def _layer(ctx: click.Context, name_or_id: str) -> tuple[dict, Path, dict]:
-    """The layer's registry entry, its directory under the terminal's mount, and its system.yaml."""
-    import yaml
-    from hopsworks.cli.commands import mlsystem
-
-    entry = _entry(ctx, name_or_id)
-    directory = mlsystem._local_dir(entry)
-    spec = directory / "system.yaml" if directory else None
-    if spec is None or not spec.is_file():
-        raise click.ClickException(
-            f"Cannot read the system.yaml of {entry.get('name')}; run this in a Hopsworks terminal."
-        )
-    return entry, directory, yaml.safe_load(spec.read_text(encoding="utf-8")) or {}
-
-
 def _kind(doc: dict) -> str:
     return (doc.get("layer") or {}).get("kind") or "silver"
-
-
-def _gold(ctx: click.Context, name_or_id: str) -> tuple[dict, Path, dict]:
-    entry, directory, doc = _layer(ctx, name_or_id)
-    if _kind(doc) != "gold":
-        raise click.ClickException(
-            f"{entry.get('name')} is a {_kind(doc)} layer; data marts are in gold layers"
-        )
-    return entry, directory, doc
-
-
-def _find_mart(doc: dict, name: str) -> dict:
-    for mart in doc.get("marts") or []:
-        if name in (mart.get("slug"), mart.get("name")):
-            return mart
-    raise click.ClickException(f"No data mart {name!r} in this layer.")
-
-
-def _now() -> str:
-    from datetime import datetime, timezone
-
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
 
 
 def silver_jobs(outputs: dict) -> list[dict]:
@@ -652,16 +575,10 @@ def layer_tables(doc: dict) -> list[dict]:
     return list(seen.values())
 
 
-def _job_tables(job: dict) -> set[str]:
-    return {
-        t.get("name") if isinstance(t, dict) else t for t in job.get("tables") or []
-    }
-
-
-def _protected(fg: Any, sources: set[tuple[str, int]], kind: str) -> str | None:
-    """Why a feature group may not be deleted from a layer of `kind`, or None."""
+def _protected(fg: Any, sources: set[tuple[str, int]], kind: str | None) -> str | None:
+    """Why a feature group may not be deleted by a system: a layer of `kind`, or an ML system when None."""
     if (fg.name, int(fg.version)) in sources:
-        return "a source of this layer"
+        return "a source of this system"
     try:
         tags = fg.get_tags() or {}
     except Exception:  # noqa: BLE001 - a table whose tags cannot be read is judged by the sources alone
@@ -674,29 +591,43 @@ def _protected(fg: Any, sources: set[tuple[str, int]], kind: str) -> str | None:
         except ValueError:
             return None
     layer = value.get("layer") if isinstance(value, dict) else None
-    lower = ("bronze",) if kind == "silver" else ("bronze", "silver")
+    lower = {"silver": ("bronze",), "gold": ("bronze", "silver")}.get(
+        kind, ("bronze", "silver", "gold")
+    )
     return f"a {layer} table" if layer in lower else None
 
 
-def _delete_assets(
+def delete_assets(
     ctx: click.Context, doc: dict, job_names: list[str], tables: list[dict]
 ) -> None:
-    """Delete jobs, then feature groups; what is gone is skipped, a table of a lower layer is refused."""
+    """Delete some of what a system built: jobs, then feature groups; what is gone is skipped.
+
+    Every feature group is checked before anything is deleted: one the system reads (its
+    `sources`, or a feature group among `requirements.data_sources`), or one tagged as a lower
+    medallion layer (any layer, for an ML system), stops the delete with nothing gone.
+    """
     project = session.get_project(ctx)
-    kind = _kind(doc)
+    kind = (doc.get("layer") or {}).get("kind")
     sources = {
-        (s.get("name"), int(s.get("version", 1))) for s in doc.get("sources") or []
+        (s.get("name"), int(s.get("version", 1)))
+        for s in [
+            *(doc.get("sources") or []),
+            *(
+                d
+                for d in (doc.get("requirements") or {}).get("data_sources") or []
+                if isinstance(d, dict) and d.get("kind") == "feature_group"
+            ),
+        ]
+        if isinstance(s, dict)
     }
     fs = project.get_feature_store() if tables else None
-    # Every table is checked before anything is deleted, so a bronze or silver
-    # table listed by mistake stops the delete with nothing gone.
     found = []
     for table in tables:
         name, version = table.get("name"), int(table.get("version", 1))
         if not name:
             continue
         # None means it does not exist; any other failure raises and stops the
-        # delete, which leaves the layer as it was, to be deleted again.
+        # delete, which leaves the system as it was, to be deleted again.
         fg = fs.get_feature_group(name, version=version)
         if fg is None:
             output.info(f"feature group {name} v{version}: gone")
@@ -704,7 +635,7 @@ def _delete_assets(
         why = _protected(fg, sources, kind)
         if why:
             raise click.ClickException(
-                f"{name} v{version} is {why}; a {kind} delete never deletes it"
+                f"{name} v{version} is {why}; a system never deletes it"
             )
         found.append(fg)
     for job_name in job_names:
@@ -716,19 +647,7 @@ def _delete_assets(
             output.success(f"✓ Deleted job {job_name}")
     for fg in found:
         fg.delete()
-        output.success(f"✓ Deleted {kind} feature group {fg.name} v{fg.version}")
-
-
-def _note(doc: dict, what: str, mart: str | None = None) -> None:
-    decision = {
-        "at": _now(),
-        "by": "user",
-        "what": what,
-        "why": "requested in the Factory",
-    }
-    if mart:
-        decision["mart"] = mart
-    doc.setdefault("decisions", []).append(decision)
+        output.success(f"✓ Deleted feature group {fg.name} v{fg.version}")
 
 
 def delete_layer(ctx: click.Context, directory: Path, doc: dict) -> str:
@@ -738,7 +657,7 @@ def delete_layer(ctx: click.Context, directory: Path, doc: dict) -> str:
     its sources, or is tagged as a lower layer (bronze, and silver from gold),
     stops the delete before anything is deleted.
     """
-    _delete_assets(ctx, doc, [j["name"] for j in layer_jobs(doc)], layer_tables(doc))
+    delete_assets(ctx, doc, [j["name"] for j in layer_jobs(doc)], layer_tables(doc))
     shutil.rmtree(directory, ignore_errors=True)
     repo = directory.parent
     # In a medallion repository the other layers stay; record that this one went.
@@ -759,287 +678,6 @@ def delete_layer(ctx: click.Context, directory: Path, doc: dict) -> str:
             capture_output=True,
         )
     return "deleted"
-
-
-@click.command("mart-add")
-@click.argument("layer")
-@ANSWERS
-@NO_LAUNCH
-def medallion_mart_add(layer: str, answers: Path, no_launch: bool) -> None:
-    """Add a data mart to a gold layer, and build it with Claude Code.
-
-    The answers are the mart's slug, name, description, cadence, freshness
-    target and requirements (references/gold-marts.md in hops-medallion).
-
-    Args:
-        layer: The gold layer's name, slug or registry id.
-        answers: The mart's answers, as the Hopsworks UI collects them.
-        no_launch: Record the mart only.
-    """
-    ctx = click.get_current_context()
-    _, directory, doc = _gold(ctx, layer)
-    data = _answers(answers)
-    taken = {m.get("slug") for m in doc.get("marts") or []}
-    problems = _mart_problems(data, taken)
-    if problems:
-        raise click.ClickException("invalid answers:\n  " + "\n  ".join(problems))
-    doc.setdefault("marts", []).append(_mart(data))
-    _write(directory, doc, f"[{directory.name}] add data mart {data['slug']}")
-    output.success(f"Data mart {data['slug']} recorded in {directory / 'system.yaml'}")
-    _launch(directory, not no_launch, f"/hops-gold {directory.name} {data['slug']}")
-
-
-@click.command("mart-update")
-@click.argument("layer")
-@click.argument("mart")
-@ANSWERS
-@NO_LAUNCH
-def medallion_mart_update(
-    layer: str, mart: str, answers: Path, no_launch: bool
-) -> None:
-    """Change a data mart's description, cadence, freshness target or requirements, and apply the change with Claude Code.
-
-    The mart keeps its tables and jobs; the difference from what it was built
-    from (`applied`) is what /hops-gold applies.
-
-    Args:
-        layer: The gold layer's name, slug or registry id.
-        mart: The data mart's slug or name.
-        answers: The mart's answers; its slug cannot change.
-        no_launch: Record the change only.
-    """
-    ctx = click.get_current_context()
-    _, directory, doc = _gold(ctx, layer)
-    current = _find_mart(doc, mart)
-    data = {**_answers(answers), "slug": current["slug"]}
-    problems = _mart_problems(data)
-    if problems:
-        raise click.ClickException("invalid answers:\n  " + "\n  ".join(problems))
-    fresh = _mart(data)
-    for key in ("name", "description", "cadence", "freshness_hours", "requirements"):
-        current[key] = fresh[key]
-    _write(directory, doc, f"[{directory.name}] change data mart {current['slug']}")
-    output.success(
-        f"Data mart {current['slug']} changed in {directory / 'system.yaml'}"
-    )
-    _launch(directory, not no_launch, f"/hops-gold {directory.name} {current['slug']}")
-
-
-@click.command("mart-delete")
-@click.argument("layer")
-@click.argument("mart")
-@click.option(
-    "--tables",
-    is_flag=True,
-    help="Also delete the mart's feature groups that no other data mart lists.",
-)
-@click.option("--yes", is_flag=True, help="Do not ask for confirmation.")
-def medallion_mart_delete(layer: str, mart: str, tables: bool, yes: bool) -> None:
-    """Delete a data mart from a gold layer: its jobs, and with --tables its own feature groups.
-
-    A table another mart lists (a conformed dimension) is kept, and silver and
-    bronze tables are never deleted.
-
-    Args:
-        layer: The gold layer's name, slug or registry id.
-        mart: The data mart's slug or name.
-        tables: Also delete the feature groups only this mart lists.
-        yes: Skip the confirmation.
-    """
-    ctx = click.get_current_context()
-    _, directory, doc = _gold(ctx, layer)
-    found = _find_mart(doc, mart)
-    others = {
-        t.get("name")
-        for m in doc.get("marts") or []
-        if m is not found
-        for t in m.get("tables") or []
-    }
-    doomed = [
-        t for t in found.get("tables") or [] if tables and t.get("name") not in others
-    ]
-    jobs = [j["name"] for j in found.get("jobs") or [] if j.get("name")]
-    if not yes:
-        click.confirm(
-            f"Delete the data mart {found['slug']}"
-            + (f", its jobs {', '.join(jobs)}" if jobs else "")
-            + (f" and tables {', '.join(t['name'] for t in doomed)}" if doomed else "")
-            + "?",
-            abort=True,
-        )
-    _delete_assets(ctx, doc, jobs, doomed)
-    doc["marts"] = [m for m in doc.get("marts") or [] if m is not found]
-    kept = [t["name"] for t in found.get("tables") or [] if t not in doomed]
-    _note(
-        doc,
-        f"deleted the data mart {found['slug']}"
-        + (f"; its tables {', '.join(kept)} are kept" if kept else ""),
-        found["slug"],
-    )
-    _write(directory, doc, f"[{directory.name}] delete data mart {found['slug']}")
-    output.success(f"✓ Deleted the data mart {found['slug']}")
-
-
-@click.command("job-delete")
-@click.argument("layer")
-@click.argument("job")
-@click.option(
-    "--tables",
-    is_flag=True,
-    help="Also delete the feature groups only this job writes.",
-)
-@click.option("--yes", is_flag=True, help="Do not ask for confirmation.")
-def medallion_job_delete(layer: str, job: str, tables: bool, yes: bool) -> None:
-    """Delete one job of a silver or gold layer, and with --tables the feature groups only it writes.
-
-    In silver, a job refreshes the tables of one cadence, so its sources leave
-    the layer's spec with it, and nothing rebuilds it; in gold, the job leaves
-    its data mart.
-    Bronze tables, and silver tables from gold, are never deleted.
-
-    Args:
-        layer: The layer's name, slug or registry id.
-        job: The job's name.
-        tables: Also delete the feature groups only this job writes.
-        yes: Skip the confirmation.
-    """
-    ctx = click.get_current_context()
-    _, directory, doc = _layer(ctx, layer)
-    jobs = layer_jobs(doc)
-    spec = next((j for j in jobs if j["name"] == job), None)
-    if spec is None:
-        raise click.ClickException(f"No job {job!r} in this layer.")
-    written = _job_tables(spec)
-    if not written and _kind(doc) != "gold":
-        written = {
-            t.get("name")
-            for t in (doc.get("outputs") or {}).get("tables") or []
-            if t.get("cadence") == spec.get("cadence")
-        }
-    elsewhere = set().union(*(_job_tables(j) for j in jobs if j is not spec))
-    if _kind(doc) == "gold":
-        elsewhere |= {
-            t.get("name")
-            for m in doc.get("marts") or []
-            if m.get("slug") != spec.get("mart")
-            for t in m.get("tables") or []
-        }
-    names = written - elsewhere if tables else set()
-    if _kind(doc) != "gold":
-        names |= {f"{n}_rejects" for n in names}
-    doomed = [t for t in layer_tables(doc) if t.get("name") in names]
-    if not yes:
-        click.confirm(
-            f"Delete the job {job}"
-            + (f" and tables {', '.join(t['name'] for t in doomed)}" if doomed else "")
-            + "?",
-            abort=True,
-        )
-    _delete_assets(ctx, doc, [job], doomed)
-    gone = {t["name"] for t in doomed}
-    if _kind(doc) == "gold":
-        mart = _find_mart(doc, spec["mart"])
-        mart["jobs"] = [j for j in mart.get("jobs") or [] if j.get("name") != job]
-        mart["tables"] = [
-            t for t in mart.get("tables") or [] if t.get("name") not in gone
-        ]
-    else:
-        outputs = doc.setdefault("outputs", {})
-        outputs["jobs"] = [j for j in outputs.get("jobs") or [] if j.get("name") != job]
-        if (outputs.get("job") or {}).get("name") == job:
-            outputs["job"] = {}
-        for key in ("tables", "rejects"):
-            outputs[key] = [
-                t for t in outputs.get(key) or [] if t.get("name") not in gone
-            ]
-        # The cadence's sources go too, so applying the spec does not rebuild the job.
-        cadence = spec.get("cadence")
-        if cadence:
-            doc["sources"] = [
-                s for s in doc.get("sources") or [] if s.get("cadence") != cadence
-            ]
-            applied = outputs.get("applied_spec") or {}
-            if isinstance(applied.get("sources"), list):
-                applied["sources"] = [
-                    s
-                    for s in applied["sources"]
-                    if not isinstance(s, dict) or s.get("cadence") != cadence
-                ]
-            _sync_cadences(doc)
-    _note(
-        doc,
-        f"deleted the job {job}"
-        + (f" and tables {', '.join(sorted(gone))}" if gone else ""),
-        spec.get("mart"),
-    )
-    _write(directory, doc, f"[{directory.name}] delete job {job}")
-    output.success(f"✓ Deleted the job {job}")
-
-
-@click.command("add-tables")
-@click.argument("layer")
-@ANSWERS
-@NO_LAUNCH
-def medallion_add_tables(layer: str, answers: Path, no_launch: bool) -> None:
-    """Add bronze sources to a silver layer, with the tables to build from them, and build them with Claude Code.
-
-    The answers are `sources` (bronze feature groups, each with its cadence)
-    and a `description` of the tables wanted, in the user's words.
-    A new cadence gets its own job.
-
-    Args:
-        layer: The silver layer's name, slug or registry id.
-        answers: The new sources and description, as the Hopsworks UI collects them.
-        no_launch: Record the change only.
-    """
-    ctx = click.get_current_context()
-    _, directory, doc = _layer(ctx, layer)
-    if _kind(doc) != "silver":
-        raise click.ClickException(
-            "tables are added to a gold layer as a data mart; use hops factory system mart-add"
-        )
-    data = _answers(answers)
-    problems = [
-        f"unknown answer {k!r}" for k in sorted(set(data) - {"sources", "description"})
-    ]
-    problems += _source_problems(data.get("sources"), "bronze")
-    known = {
-        (s.get("name"), int(s.get("version", 1))) for s in doc.get("sources") or []
-    }
-    problems += [
-        f"{s['name']} v{s.get('version', 1)} is already a source"
-        for s in data.get("sources") or []
-        if isinstance(s, dict) and (s.get("name"), int(s.get("version", 1))) in known
-    ]
-    if problems:
-        raise click.ClickException("invalid answers:\n  " + "\n  ".join(problems))
-    default = (doc.get("schedule") or {}).get("cadence") or "daily"
-    added = [
-        {
-            "name": s["name"],
-            "version": s.get("version", 1),
-            "cadence": s.get("cadence", default),
-            "arrival_column": s.get("arrival_column"),
-        }
-        for s in data["sources"]
-    ]
-    doc.setdefault("sources", []).extend(added)
-    _sync_cadences(doc)
-    doc.setdefault("additions", []).append(
-        {
-            "at": _now(),
-            "description": data.get("description", ""),
-            "sources": [s["name"] for s in added],
-            "status": "pending",
-        }
-    )
-    _write(
-        directory,
-        doc,
-        f"[{directory.name}] add sources {', '.join(s['name'] for s in added)}",
-    )
-    output.success(f"{len(added)} sources added to {directory / 'system.yaml'}")
-    _launch(directory, not no_launch, f"/hops-silver {directory.name} apply")
 
 
 def layer_status(
@@ -1073,67 +711,3 @@ def layer_status(
         f"{facts['overall']}: {c['failed_runs']} of {c['runs']} job runs failed in {hours} h, "
         f"{c['table_problems']} of {c['tables']} tables with problems; report in {target}"
     )
-
-
-@click.command("backfill")
-@click.argument("name_or_id")
-@click.option("--mart", help="In a gold layer, backfill only this data mart's jobs.")
-@click.option(
-    "--wait/--no-wait",
-    default=True,
-    show_default=True,
-    help="Block until the backfill execution ends.",
-)
-@click.pass_context
-def medallion_backfill(
-    ctx: click.Context, name_or_id: str, mart: str | None, wait: bool
-) -> None:
-    """Recompute the layer's tables from the whole history of the tables it reads.
-
-    Runs each of the layer's jobs once over a window from the epoch to now;
-    the jobs upsert on the primary key, so rows already written are unchanged.
-    A plain run of a scheduled job would get the last cron interval instead,
-    which is why this is a backfill.
-    Silver jobs run slowest cadence first, so entity tables are in place
-    before the tables that reference them; gold jobs run mart by mart.
-
-    Args:
-        ctx: Click context.
-        name_or_id: The layer's name, slug or registry id.
-        mart: In gold, the one data mart to backfill.
-        wait: Block until each execution ends.
-    """
-    from datetime import datetime, timezone
-
-    project = session.get_project(ctx)
-    entry, _directory, doc = _layer(ctx, name_or_id)
-    jobs = layer_jobs(doc)
-    if mart:
-        slug = _find_mart(doc, mart)["slug"]
-        jobs = [j for j in jobs if j.get("mart") == slug]
-    if not jobs:
-        raise click.ClickException(
-            f"{entry.get('name')} has no job yet; build it with /hops-{_kind(doc)} first."
-        )
-    start = datetime(1970, 1, 1, tzinfo=timezone.utc)
-    end = datetime.now(timezone.utc).replace(microsecond=0)
-    if _kind(doc) != "gold":
-        order = {c: i for i, c in enumerate(reversed(CADENCES))}
-        jobs = sorted(jobs, key=lambda j: order.get(j.get("cadence"), 0))
-    for spec in jobs:
-        job_name = spec["name"]
-        job = project.get_job_api().get_job(job_name)
-        if job is None:
-            raise click.ClickException(f"job {job_name} does not exist")
-        execution = job.run(await_termination=wait, start_time=start, end_time=end)
-        state = getattr(execution, "final_status", None) or getattr(
-            execution, "state", "?"
-        )
-        output.success(
-            f"Backfill of {entry.get('name')}: job {job_name}, execution #{getattr(execution, 'id', '?')}, "
-            f"window {start.date()} to {end.isoformat()} ({state})"
-        )
-        if wait and state in ("FAILED", "KILLED"):
-            raise click.ClickException(
-                f"the backfill failed; read its log with hops job logs {job_name} --stdout --tail 200"
-            )

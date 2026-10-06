@@ -35,6 +35,7 @@ FIELD_TYPES = (
     "feature_groups",
     "list",
     "account_env",
+    "entry",
 )
 NAME = re.compile(r"^[a-z][a-z0-9-]{0,62}$")
 ID = re.compile(r"^[a-z][a-z0-9_]{0,62}$")
@@ -98,11 +99,12 @@ def problems(doc: dict) -> list[str]:
         found.append("title must be text of at most 255 characters.")
     if "description" in doc and not isinstance(doc["description"], str):
         found.append("description must be text.")
-    ids = _check_form(doc.get("form"), found)
+    ids = _check_form(doc.get("form"), "form", False, found)
     _check_phases(doc.get("phases"), found)
     _check_build(doc.get("build"), found)
     _check_list(doc.get("list"), found)
     _check_presets(doc.get("presets"), ids, found)
+    _check_changes(doc.get("changes"), found)
     return found
 
 
@@ -115,8 +117,13 @@ def text_problems(text: str) -> list[str]:
 
 
 def fields(doc: dict) -> list[dict]:
-    """Every top-level field of the form, in order."""
-    sections = (doc.get("form") or {}).get("sections") or []
+    """Every top-level field of the create form, in order."""
+    return form_fields(doc.get("form"))
+
+
+def form_fields(form: Any) -> list[dict]:
+    """Every top-level field of a form, the create form or a change's, in order."""
+    sections = (form if isinstance(form, dict) else {}).get("sections") or []
     return [
         f
         for s in sections
@@ -126,17 +133,18 @@ def fields(doc: dict) -> list[dict]:
     ]
 
 
-def _check_form(form: Any, found: list[str]) -> set[str]:
+def _check_form(form: Any, path: str, change: bool, found: list[str]) -> set[str]:
+    """Check a form: the create form, which names the system with a slug field, or a change's, which may pick entries of system.yaml."""
     sections = form.get("sections") if isinstance(form, dict) else None
     ids: set[str] = set()
     if not isinstance(sections, list) or not sections:
-        found.append("form.sections must be a non-empty list.")
+        found.append(f"{path}.sections must be a non-empty list.")
         return ids
     section_ids: set[str] = set()
     keys: set[str] = set()
     slug = False
     for s, section in enumerate(sections):
-        where = f"form.sections[{s}]"
+        where = f"{path}.sections[{s}]"
         if not isinstance(section, dict):
             found.append(f"{where} must be a mapping.")
             continue
@@ -150,9 +158,9 @@ def _check_form(form: Any, found: list[str]) -> set[str]:
         if "collapsed" in section and not isinstance(section["collapsed"], bool):
             found.append(f"{where}.collapsed must be true or false.")
         slug |= _check_fields(
-            section.get("fields"), f"{where}.fields", ids, keys, True, found
+            section.get("fields"), f"{where}.fields", ids, keys, True, change, found
         )
-    if not slug:
+    if not slug and not change:
         found.append(
             "The form needs a field of type slug, which names the system's directory."
         )
@@ -165,6 +173,7 @@ def _check_fields(
     earlier: set[str],
     keys: set[str],
     top: bool,
+    change: bool,
     found: list[str],
 ) -> bool:
     if not isinstance(items, list) or not items:
@@ -172,7 +181,7 @@ def _check_fields(
         return False
     slug = False
     for f, field in enumerate(items):
-        slug |= _check_field(field, f"{where}[{f}]", earlier, keys, top, found)
+        slug |= _check_field(field, f"{where}[{f}]", earlier, keys, top, change, found)
     return slug
 
 
@@ -182,6 +191,7 @@ def _check_field(
     earlier: set[str],
     keys: set[str],
     top: bool,
+    change: bool,
     found: list[str],
 ) -> bool:
     if not isinstance(field, dict):
@@ -230,13 +240,27 @@ def _check_field(
             found.append(f"{where} cannot be an account_env inside a list.")
         if "secret" in field and not isinstance(field["secret"], bool):
             found.append(f"{where}.secret must be true or false.")
+    if kind == "entry":
+        if not change or not top:
+            found.append(
+                f"{where} cannot be an entry outside the top level of a change's form."
+            )
+        if not isinstance(field.get("from"), str) or not PATH.match(field["from"]):
+            found.append(f"{where}.from must be a dotted path into system.yaml.")
+        for name in ("value", "show"):
+            if name in field and (
+                not isinstance(field[name], str) or not ID.match(field[name])
+            ):
+                found.append(f"{where}.{name} must be a key of the entries.")
+        if "fill" in field and not isinstance(field["fill"], bool):
+            found.append(f"{where}.fill must be true or false.")
     if "when" in field:
         found.append(
             f"{where}.when is not supported: a factory's form has no conditions; put optional questions in a collapsed section."
         )
     if kind == "list":
         _check_fields(
-            field.get("fields"), f"{where}.fields", set(), set(), False, found
+            field.get("fields"), f"{where}.fields", set(), set(), False, change, found
         )
     if isinstance(fid, str):
         earlier.add(fid)
@@ -336,6 +360,32 @@ def _check_presets(presets: Any, ids: set[str], found: list[str]) -> None:
         )
 
 
+def _check_changes(changes: Any, found: list[str]) -> None:
+    if changes is None:
+        return
+    if not isinstance(changes, list):
+        found.append("changes must be a list.")
+        return
+    seen: set[str] = set()
+    for c, change in enumerate(changes):
+        where = f"changes[{c}]"
+        if not isinstance(change, dict):
+            found.append(f"{where} must be a mapping.")
+            continue
+        cid = change.get("id")
+        if not isinstance(cid, str) or not NAME.match(cid) or cid in seen:
+            found.append(f"{where}.id must be a unique lowercase name.")
+        else:
+            seen.add(cid)
+        if not _text(change.get("label")):
+            found.append(f"{where}.label is required.")
+        if "description" in change and not isinstance(change["description"], str):
+            found.append(f"{where}.description must be text.")
+        if not _text(change.get("instructions")):
+            found.append(f"{where}.instructions are required: what the build does with it.")
+        _check_form(change.get("form"), f"{where}.form", True, found)
+
+
 def _option_value(option: Any) -> str | None:
     value = option.get("value") if isinstance(option, dict) else option
     return value if _text(value) else None
@@ -411,20 +461,65 @@ def _field_problems(field: dict, value: Any, label: str) -> list[str]:
     return []
 
 
-def answer_problems(doc: dict, answers: dict) -> list[str]:
-    """What keeps the answers from creating a system, one line each, as the form checks them.
+def answer_problems(
+    doc: dict, answers: dict, form: Any = None, system: dict | None = None
+) -> list[str]:
+    """What keeps the answers from creating a system, or from requesting a change, one line each, as the form checks them.
 
+    `form` is a change's form, the create form when None; `system` is the system.yaml a
+    change's entry fields pick from, which are not checked without it.
     The answers are nested by each field's key (its id when it has none); an account_env field's
     value never reaches the answers, since the UI saves it as an account variable.
     """
     found = []
-    for field in fields(doc):
+    for field in form_fields(doc.get("form") if form is None else form):
         if field["type"] == "account_env":
             continue
-        found += _field_problems(
-            field, value_at(answers, field.get("key") or field["id"]), field["label"]
-        )
+        value = value_at(answers, field.get("key") or field["id"])
+        found += _field_problems(field, value, field["label"])
+        if (
+            field["type"] == "entry"
+            and system is not None
+            and not _empty(value)
+            and value not in [e["value"] for e in entries(system, field)]
+        ):
+            found.append(f"{field['label']}: {value} is not in system.yaml.")
     return found
+
+
+def items_at(doc: Any, path: str) -> list:
+    """The items of the list at a dotted path of system.yaml; a list met on the way is walked through, so `marts.jobs` is every mart's jobs."""
+    nodes = [doc]
+    for part in path.split("."):
+        found = []
+        for node in nodes:
+            for item in node if isinstance(node, list) else [node]:
+                if isinstance(item, dict) and part in item:
+                    found.append(item[part])
+        nodes = found
+    return [i for node in nodes for i in (node if isinstance(node, list) else [node])]
+
+
+def entries(system: dict, field: dict) -> list[dict]:
+    """What an entry field offers from system.yaml: `{value, label, entry}` for each item of its `from` list."""
+    value, show = field.get("value") or "slug", field.get("show") or "name"
+    return [
+        {
+            "value": item.get(value),
+            "label": str(item.get(show) or item.get(value)),
+            "entry": item,
+        }
+        for item in items_at(system, field["from"])
+        if isinstance(item, dict) and item.get(value) is not None
+    ]
+
+
+def change_of(doc: dict, change_id: str) -> dict:
+    """The change of the definition with this id; raises KeyError when it has none."""
+    for change in doc.get("changes") or []:
+        if change.get("id") == change_id:
+            return change
+    raise KeyError(change_id)
 
 
 def slug_of(doc: dict, answers: dict) -> str | None:

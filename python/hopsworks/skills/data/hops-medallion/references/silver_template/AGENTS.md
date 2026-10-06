@@ -36,7 +36,7 @@ A replayed window must leave the silver tables unchanged.
 
 Every silver feature group is created with the bronze feature groups it reads as `parents`.
 There is one job per refresh cadence (`<slug>-silver-<cadence>`), each writing the silver tables of that cadence and scheduled with `--catchup`, so missed windows are replayed.
-`hops factory system status <slug>` writes the layer's health report to `status/report.html`; `hops factory system backfill <slug>` reprocesses the whole bronze history (a plain run of the scheduled job gets only the last cron interval).
+`hops factory system status <slug>` writes the layer's health report to `status/report.html`; `hops job run <job> --start-time 1970-01-01 --end-time <now> --wait` reprocesses the whole bronze history for a job (a plain run of the scheduled job gets only the last cron interval).
 
 ## Logs stay out of the repository
 
