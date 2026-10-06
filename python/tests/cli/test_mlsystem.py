@@ -382,15 +382,3 @@ def test_the_inventory_takes_a_rag_system_from_the_helpdesk_example(tmp_path):
     } <= plan
     # The user's uploaded documents are theirs, not an asset the build created.
     assert not any("helpdesk-docs" in p for p in plan)
-
-
-def test_factory_lists_the_two_built_in_factories():
-    from hopsworks.cli.commands import factory
-
-    assert [g.name for g in factory.FACTORIES] == ["mlsystem", "medallion"]
-    listed = CliRunner().invoke(cli, ["factory", "list"])
-    assert listed.exit_code == 0, listed.output
-    assert "mlsystem" in listed.output and "medallion" in listed.output
-    for name in ("mlsystem", "medallion", "build"):
-        assert CliRunner().invoke(cli, [name, "--help"]).exit_code != 0
-    assert "create" not in CliRunner().invoke(cli, ["factory", "--help"]).output

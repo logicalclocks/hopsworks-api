@@ -854,11 +854,15 @@ def _repository(system: _System) -> None:
 
 def _register(ctx: click.Context, system: _System) -> None:
     """Add the system to the project's registry, so every member sees it in the Hopsworks UI."""
+    from hopsworks.cli import factory_spec
     from hopsworks.cli.commands import mlsystem
 
     name = (system.doc.get("system") or {}).get("name")
     try:
-        mlsystem.register(ctx, system.target, name)
+        factory_spec.record_factory(ctx.meta.get(factory_spec.META), system.target)
+        mlsystem.register(
+            ctx, system.target, name, factory_spec.factory_name(ctx, "mlsystem")
+        )
     except Exception as exc:  # noqa: BLE001 - the interview is recorded either way
         output.warn(
             f"Not registered in the project's ML systems ({exc}); run `hops factory mlsystem register {system.target}`."

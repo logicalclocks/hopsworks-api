@@ -47,6 +47,7 @@ into bucket folders:
 - [hops-ui-navigation](platform/hops-ui-navigation/SKILL.md) — where things live in the Hopsworks UI (project sidebar map).
 - [hops-collaboration](platform/hops-collaboration/SKILL.md) — project members, platform user admin, and feature store/dataset sharing.
 - [hops-kubectl-debug](platform/hops-kubectl-debug/SKILL.md) — diagnose failed workloads from namespace-scoped pod state, events, and logs.
+- [hops-factory](platform/hops-factory/SKILL.md) — software factories: definitions, cloning, import and export.
 
 A `SKILL.md` carries what every task using the skill needs; deep dives,
 copy-paste variants and long tables live in the skill's `references/` folder

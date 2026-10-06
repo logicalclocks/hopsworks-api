@@ -62,13 +62,15 @@ def code_location(path: Path, project: str | None = None) -> str:
     return origin
 
 
-def register(ctx: click.Context, path: Path, name: str | None = None) -> dict:
-    """Register the system at `path` with the project's registry; returns the stored entry."""
+def register(
+    ctx: click.Context, path: Path, name: str | None = None, factory: str | None = None
+) -> dict:
+    """Register the system at `path`, built by `factory`, with the project's registry; returns the stored entry."""
     from hopsworks_common.core import ml_system_api
 
     project = session.get_project(ctx)
     return ml_system_api._register(
-        code_location(path, getattr(project, "name", None)), name
+        code_location(path, getattr(project, "name", None)), name, factory
     )
 
 
@@ -124,16 +126,23 @@ def mlsystem_list(ctx: click.Context) -> None:
     default=".",
 )
 @click.option("--name", help="Display name; defaults to the directory name.")
+@click.option(
+    "--factory",
+    help="The factory that built it (hops factory list); a new entry defaults to mlsystem.",
+)
 @click.pass_context
-def mlsystem_register(ctx: click.Context, path: Path, name: str | None) -> None:
-    """Register the ML system in PATH (default: the current directory), or refresh its entry.
+def mlsystem_register(
+    ctx: click.Context, path: Path, name: str | None, factory: str | None
+) -> None:
+    """Register the system in PATH (default: the current directory), or refresh its entry.
 
     Args:
         ctx: Click context.
         path: The system's directory, the one holding its system.yaml.
         name: Display name.
+        factory: The factory that built it.
     """
-    entry = register(ctx, path, name)
+    entry = register(ctx, path, name, factory)
     output.success(f"Registered {entry.get('name')} at {entry.get('pathToCode')}")
 
 

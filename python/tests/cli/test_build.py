@@ -34,7 +34,7 @@ def quiet(monkeypatch):
     monkeypatch.setattr(
         mlsystem,
         "register",
-        lambda ctx, path, name=None: registered.append((path, name)),
+        lambda ctx, path, name=None, factory=None: registered.append((path, name)),
     )
     return registered
 
@@ -357,7 +357,7 @@ def test_a_finished_interview_registers_the_system_once(tmp_path, monkeypatch, q
 def test_a_failed_registration_does_not_lose_the_interview(
     tmp_path, monkeypatch, quiet
 ):
-    def refuse(ctx, path, name=None):
+    def refuse(ctx, path, name=None, factory=None):
         raise RuntimeError("registry unavailable")
 
     monkeypatch.setattr(mlsystem, "register", refuse)

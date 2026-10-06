@@ -471,13 +471,17 @@ def _answers(path: Path) -> dict:
 
 
 def _register(ctx: click.Context, target: Path, name: str) -> None:
+    from hopsworks.cli import factory_spec
     from hopsworks.cli.commands import mlsystem
 
     try:
-        mlsystem.register(ctx, target, name)
+        factory_spec.record_factory(ctx.meta.get(factory_spec.META), target)
+        mlsystem.register(
+            ctx, target, name, factory_spec.factory_name(ctx, "medallion")
+        )
     except Exception as exc:  # noqa: BLE001 - the layer is recorded either way
         output.warn(
-            f"Not registered in the project's Factory ({exc}); run `hops factory mlsystem register {target}`."
+            f"Not registered in the project's Factory ({exc}); run `hops factory mlsystem register {target} --factory medallion`."
         )
 
 

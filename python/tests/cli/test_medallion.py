@@ -36,7 +36,9 @@ def _silver(tmp_path, monkeypatch, answers, registered):
     monkeypatch.setattr(
         mlsystem,
         "register",
-        lambda ctx, target, name=None: registered.append((target, name)) or {},
+        lambda ctx, target, name=None, factory=None: (
+            registered.append((target, name)) or {}
+        ),
     )
     return CliRunner().invoke(
         cli, ["factory", "medallion", "silver", "--answers", str(path), "--no-launch"]
@@ -757,7 +759,9 @@ def test_gold_records_the_layer_and_its_first_mart(tmp_path, monkeypatch):
     monkeypatch.setattr(
         mlsystem,
         "register",
-        lambda ctx, target, name=None: registered.append((target, name)) or {},
+        lambda ctx, target, name=None, factory=None: (
+            registered.append((target, name)) or {}
+        ),
     )
     path = _answers_file(tmp_path, GOLD_ANSWERS)
     done = CliRunner().invoke(
@@ -908,7 +912,9 @@ def test_status_reads_gold_tables_with_their_marts_freshness():
 
 def _created(tmp_path, monkeypatch, kind, answers):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(mlsystem, "register", lambda ctx, target, name=None: {})
+    monkeypatch.setattr(
+        mlsystem, "register", lambda ctx, target, name=None, factory=None: {}
+    )
     done = CliRunner().invoke(
         cli,
         [

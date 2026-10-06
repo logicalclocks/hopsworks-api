@@ -29,6 +29,7 @@ Find a skill at `.claude/skills/<name>/` in the repository, else `~/.claude/skil
 
 ## Rules
 
+- **A project factory's additions.** When `system.yaml` has a `factory` block, a project factory cloned from this one created the system: follow `factory.instructions` as well as this command, and treat `requirements.extra` as further requirements the user gave.
 - **system.yaml is the record.** Set `layer.status` to `building` when you start and `built` or `failed` when you end; set each phase's `status`, `started` and `finished` (UTC, from `date -u`) as it runs, and `progress.now` to one line on what you are doing. The Factory reads it every few seconds.
 - **Ask, never guess.** When the arrival column of a source, the business key of a table, a match rule between sources, or the meaning of an extra task is unclear, ask with `AskUserQuestion`: one call, up to four questions, two to four concrete options each with the recommended one first. Record every answer and every choice you make yourself in `decisions` (`at`, `by: user` or `by: claude`, `what`, `why`).
 - **The engine.** Keep `dbt_trino` unless a task needs code SQL cannot express well (hops-medallion, The engine); then say why, record it in `decisions`, and switch `engine` to `pyspark`.

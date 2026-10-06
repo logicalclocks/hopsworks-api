@@ -27,15 +27,20 @@ def _path(*rest: str | int) -> list[str | int]:
     return ["project", _client._project_id, "mlsystems", *rest]
 
 
-def _register(path_to_code: str, name: str | None = None) -> dict:
-    """Register the system whose code is at `path_to_code`, or refresh it; returns its id, name and path.
+def _register(
+    path_to_code: str, name: str | None = None, factory: str | None = None
+) -> dict:
+    """Register the system whose code is at `path_to_code`, or refresh it; returns its id, name, path and factory.
 
     `path_to_code` is a HopsFS directory in the project (absolute, or relative to the project
     root) or a Git repository URL.
+    `factory` names the factory that built it; the backend takes mlsystem for a new system without one, and keeps the factory of a registered one.
     """
     body = {"pathToCode": path_to_code}
     if name:
         body["name"] = name
+    if factory:
+        body["factory"] = factory
     return client._get_instance()._send_request(
         "POST",
         _path(),
@@ -44,9 +49,14 @@ def _register(path_to_code: str, name: str | None = None) -> dict:
     )
 
 
-def _list() -> list[dict]:
-    """The project's ML systems, most recently updated first, each with whether the caller can open its code."""
-    return client._get_instance()._send_request("GET", _path()).get("items", [])
+def _list(factory: str | None = None) -> list[dict]:
+    """The project's systems, or one factory's, most recently updated first, each with whether the caller can open its code."""
+    query = {"factory": factory} if factory else None
+    return (
+        client._get_instance()
+        ._send_request("GET", _path(), query_params=query)
+        .get("items", [])
+    )
 
 
 def _remove(system_id: int) -> None:
