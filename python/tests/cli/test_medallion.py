@@ -1,4 +1,4 @@
-"""`hops factory medallion`: recording a silver layer from the Factory's answers, and deleting one."""
+"""Medallion layers: `hops factory run medallion-silver|medallion-gold`, and the layer commands of `hops factory system`."""
 
 from __future__ import annotations
 
@@ -11,6 +11,43 @@ from click.testing import CliRunner
 from hopsworks.cli import session
 from hopsworks.cli.commands import medallion, mlsystem
 from hopsworks.cli.main import cli
+from hopsworks_common.core import factory_api
+
+
+def _builtin(name: str) -> dict:
+    """A factory whose only question is the slug, so every answer reaches the built-in build `name`."""
+    text = f"""\
+apiVersion: hopsworks.ai/factory/v1
+kind: Factory
+name: {name}
+title: {name}
+form:
+  sections:
+    - id: layer
+      title: Layer
+      fields:
+        - {{id: slug, type: slug, label: Name, required: true}}
+phases:
+  - {{key: build, label: Build}}
+build:
+  builtin: {name}
+"""
+    return {
+        "name": name,
+        "version": 1,
+        "enabled": True,
+        "definition": text,
+        "spec": yaml.safe_load(text),
+    }
+
+
+def _create(monkeypatch, layer: str, path, *args: str):
+    """`hops factory run medallion-<layer> --answers <path>`, without a cluster."""
+    monkeypatch.setattr(factory_api, "_get", lambda name, version=None: _builtin(name))
+    monkeypatch.setattr(session, "get_project", lambda ctx: SimpleNamespace(name="p"))
+    return CliRunner().invoke(
+        cli, ["factory", "run", f"medallion-{layer}", "--answers", str(path), *args]
+    )
 
 
 ANSWERS = {
@@ -40,9 +77,7 @@ def _silver(tmp_path, monkeypatch, answers, registered):
             registered.append((target, name)) or {}
         ),
     )
-    return CliRunner().invoke(
-        cli, ["factory", "medallion", "silver", "--answers", str(path), "--no-launch"]
-    )
+    return _create(monkeypatch, "silver", path, "--no-launch")
 
 
 def test_silver_records_the_layer_from_the_answers_and_registers_it(
@@ -94,12 +129,11 @@ def test_silver_records_the_layer_from_the_answers_and_registers_it(
 @pytest.mark.parametrize(
     ("change", "problem"),
     [
-        ({"slug": "Bad Slug"}, "slug must be"),
+        ({"slug": "Bad Slug"}, "Name must be"),
         ({"sources": []}, "at least one bronze feature group"),
         ({"tasks": ["teleport"]}, "unknown task 'teleport'"),
         ({"engine": "spark"}, "engine must be one of"),
         ({"cadence": "monthly"}, "cadence must be one of"),
-        ({"surprise": 1}, "unknown answer 'surprise'"),
     ],
 )
 def test_silver_refuses_answers_it_cannot_build(tmp_path, monkeypatch, change, problem):
@@ -114,15 +148,6 @@ def test_silver_does_not_overwrite_an_existing_layer(tmp_path, monkeypatch):
     assert again.exit_code != 0 and "already holds a system.yaml" in again.output
 
 
-def test_a_layer_is_not_listed_as_an_ml_system_by_hops_build(tmp_path, monkeypatch):
-    from hopsworks.cli.commands import build
-
-    assert _silver(tmp_path, monkeypatch, ANSWERS, []).exit_code == 0
-    (tmp_path / "churn").mkdir()
-    (tmp_path / "churn" / "system.yaml").write_text("system: {name: churn}\n")
-    assert build._systems(tmp_path) == [tmp_path / "churn"]
-
-
 def test_delete_with_assets_removes_the_job_tables_directory_then_the_entry(
     tmp_path, monkeypatch
 ):
@@ -131,11 +156,12 @@ def test_delete_with_assets_removes_the_job_tables_directory_then_the_entry(
     (target / "system.yaml").write_text(
         yaml.safe_dump(
             {
+                "layer": {"kind": "silver"},
                 "outputs": {
                     "tables": [{"name": "customers", "version": 1}],
                     "rejects": [{"name": "customers_rejects", "version": 1}],
                     "job": {"name": "customers-silver-silver"},
-                }
+                },
             }
         ),
         encoding="utf-8",
@@ -163,7 +189,7 @@ def test_delete_with_assets_removes_the_job_tables_directory_then_the_entry(
     monkeypatch.setattr(mlsystem, "_local_dir", lambda e: target)
 
     done = CliRunner().invoke(
-        cli, ["factory", "medallion", "delete", "Customers silver", "--assets", "--yes"]
+        cli, ["factory", "system", "delete", "Customers silver", "--assets", "--yes"]
     )
     assert done.exit_code == 0, done.output
     assert events == [
@@ -252,7 +278,7 @@ def test_delete_stops_on_a_feature_group_error_other_than_missing(
     monkeypatch.setattr(ml_system_api, "_remove", lambda i: events.append(i))
     monkeypatch.setattr(mlsystem, "_local_dir", lambda e: target)
     done = CliRunner().invoke(
-        cli, ["factory", "medallion", "delete", "L", "--assets", "--yes"]
+        cli, ["factory", "system", "delete", "L", "--assets", "--yes"]
     )
     assert done.exit_code != 0
     # The layer stays listed and its directory kept, to be deleted again.
@@ -359,7 +385,7 @@ def test_backfill_runs_the_job_over_all_of_history(tmp_path, monkeypatch):
         ml_system_api, "_list", lambda: [{"id": 7, "name": "L", "pathToCode": "x"}]
     )
     monkeypatch.setattr(mlsystem, "_local_dir", lambda e: target)
-    done = CliRunner().invoke(cli, ["factory", "medallion", "backfill", "L"])
+    done = CliRunner().invoke(cli, ["factory", "system", "backfill", "L"])
     assert done.exit_code == 0, done.output
     [call] = calls
     assert call["start_time"].year == 1970 and call["await_termination"] is True
@@ -409,7 +435,7 @@ def _layer_dir(tmp_path, doc):
 
 
 def _run(monkeypatch, target, tags, argv):
-    """Run `hops factory medallion <argv>` on the layer at `target`, recording what is deleted."""
+    """Run `hops factory system <argv>` on the layer at `target`, recording what is deleted."""
     from hopsworks_common.core import ml_system_api
 
     events = []
@@ -438,7 +464,7 @@ def _run(monkeypatch, target, tags, argv):
     )
     monkeypatch.setattr(ml_system_api, "_remove", lambda i: events.append("entry"))
     monkeypatch.setattr(mlsystem, "_local_dir", lambda e: target)
-    done = CliRunner().invoke(cli, ["factory", "medallion", *argv])
+    done = CliRunner().invoke(cli, ["factory", "system", *argv])
     return done, events
 
 
@@ -764,9 +790,7 @@ def test_gold_records_the_layer_and_its_first_mart(tmp_path, monkeypatch):
         ),
     )
     path = _answers_file(tmp_path, GOLD_ANSWERS)
-    done = CliRunner().invoke(
-        cli, ["factory", "medallion", "gold", "--answers", path, "--no-launch"]
-    )
+    done = _create(monkeypatch, "gold", path, "--no-launch")
     assert done.exit_code == 0, done.output
     target = tmp_path / "hops-sales" / "sales-gold"
     doc = _doc(target)
@@ -796,7 +820,7 @@ def test_gold_records_the_layer_and_its_first_mart(tmp_path, monkeypatch):
 def test_gold_refuses_bad_answers(tmp_path, monkeypatch, change, problem):
     monkeypatch.chdir(tmp_path)
     path = _answers_file(tmp_path, {**GOLD_ANSWERS, **change})
-    done = CliRunner().invoke(cli, ["factory", "medallion", "gold", "--answers", path])
+    done = _create(monkeypatch, "gold", path)
     assert done.exit_code != 0 and problem in done.output
     assert not (tmp_path / "hops-sales" / "sales-gold").exists()
 
@@ -840,7 +864,7 @@ def test_backfill_runs_every_job_slowest_first(tmp_path, monkeypatch):
         ml_system_api, "_list", lambda: [{"id": 7, "name": "L", "pathToCode": "x"}]
     )
     monkeypatch.setattr(mlsystem, "_local_dir", lambda e: target)
-    done = CliRunner().invoke(cli, ["factory", "medallion", "backfill", "L"])
+    done = CliRunner().invoke(cli, ["factory", "system", "backfill", "L"])
     assert done.exit_code == 0, done.output
     assert ran == ["l-silver-weekly", "l-silver-daily", "l-silver-hourly"]
     # The directory's name finds the layer too.
@@ -850,9 +874,7 @@ def test_backfill_runs_every_job_slowest_first(tmp_path, monkeypatch):
         lambda: [{"id": 7, "name": "L", "pathToCode": "/Projects/p/Users/u/l-silver"}],
     )
     assert (
-        CliRunner()
-        .invoke(cli, ["factory", "medallion", "backfill", "l-silver"])
-        .exit_code
+        CliRunner().invoke(cli, ["factory", "system", "backfill", "l-silver"]).exit_code
         == 0
     )
 
@@ -915,17 +937,7 @@ def _created(tmp_path, monkeypatch, kind, answers):
     monkeypatch.setattr(
         mlsystem, "register", lambda ctx, target, name=None, factory=None: {}
     )
-    done = CliRunner().invoke(
-        cli,
-        [
-            "factory",
-            "medallion",
-            kind,
-            "--answers",
-            _answers_file(tmp_path, answers),
-            "--no-launch",
-        ],
-    )
+    done = _create(monkeypatch, kind, _answers_file(tmp_path, answers), "--no-launch")
     assert done.exit_code == 0, done.output
     return done
 
@@ -951,7 +963,7 @@ def test_silver_and_gold_share_one_medallion_repository(tmp_path, monkeypatch):
     assert _doc(repo / "sales-gold")["layer"]["repo"] == {"name": "hops-shop"}
     assert not (tmp_path / "hops-sales").exists()
     assert (repo / ".git").is_dir() and not (repo / "sales-gold" / ".git").exists()
-    found = CliRunner().invoke(cli, ["factory", "medallion", "dir", "sales-gold"])
+    found = CliRunner().invoke(cli, ["factory", "system", "dir", "sales-gold"])
     assert found.exit_code == 0 and found.output.strip() == str(repo / "sales-gold")
 
 
@@ -959,13 +971,23 @@ def test_a_layer_can_name_its_repository(tmp_path, monkeypatch):
     _created(tmp_path, monkeypatch, "gold", {**GOLD_ANSWERS, "repo": "hops-retail"})
     assert (tmp_path / "hops-retail" / "sales-gold" / "system.yaml").is_file()
     bad = _answers_file(tmp_path, {**GOLD_ANSWERS, "repo": "../escape"})
-    done = CliRunner().invoke(cli, ["factory", "medallion", "gold", "--answers", bad])
+    done = _create(monkeypatch, "gold", bad)
     assert done.exit_code != 0 and "repo must be hops-" in done.output
 
 
-def test_medallion_create_lists_the_silver_and_gold_commands():
-    create = medallion.medallion_group.get_command(None, "create")
-    assert create.get_command(None, "silver") is medallion.medallion_silver
-    assert create.get_command(None, "gold") is medallion.medallion_gold
-    listed = CliRunner().invoke(cli, ["factory", "medallion", "--help"])
-    assert "create" in listed.output
+def test_the_layer_commands_are_system_commands():
+    listed = CliRunner().invoke(cli, ["factory", "system", "--help"])
+    for command in (
+        "mart-add",
+        "mart-update",
+        "mart-delete",
+        "job-delete",
+        "add-tables",
+        "backfill",
+        "dir",
+    ):
+        assert command in listed.output
+    from hopsworks.cli.commands.factory import factory_group
+
+    assert factory_group.get_command(None, "medallion") is None
+    assert factory_group.get_command(None, "mlsystem") is None

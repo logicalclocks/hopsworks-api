@@ -185,19 +185,13 @@ def test_list_shows_built_in_and_project_factories(monkeypatch, logged_in):
     assert ["churn-review", "Churn", "review", "project", "2", "0", "no"] in rows
 
 
-def test_factory_help_lists_management_commands_and_no_create():
+def test_factory_help_lists_run_and_the_system_commands():
     listed = CliRunner().invoke(cli, ["factory", "--help"])
-    for command in (
-        "list",
-        "import",
-        "export",
-        "clone",
-        "delete",
-        "mlsystem",
-        "medallion",
-    ):
+    for command in ("list", "import", "export", "clone", "delete", "run", "system"):
         assert f"  {command} " in listed.output
     assert "  create " not in listed.output
+    for name in ("mlsystem", "medallion", "create"):
+        assert factory.factory_group.get_command(None, name) is None
     for name in ("mlsystem", "medallion", "build"):
         assert CliRunner().invoke(cli, [name, "--help"]).exit_code != 0
 
@@ -273,26 +267,11 @@ def test_delete_reports_what_the_cluster_refuses(monkeypatch, logged_in):
 
 # endregion
 
-# region A project factory's systems
+# region Running a factory
 
 
-def test_a_project_factory_resolves_to_its_own_commands(monkeypatch, logged_in):
-    monkeypatch.setattr(factory_api, "_get", lambda name, version=None: _definition())
-    listed = CliRunner().invoke(cli, ["factory", "churn-review", "--help"])
-    assert listed.exit_code == 0, listed.output
-    for command in ("create", "list", "status", "register", "remove", "delete"):
-        assert f"  {command} " in listed.output
-
-    def missing(name, version=None):
-        raise RuntimeError("404")
-
-    monkeypatch.setattr(factory_api, "_get", missing)
-    assert CliRunner().invoke(cli, ["factory", "nope", "--help"]).exit_code != 0
-
-
-def test_create_writes_the_system_and_its_build_command(
-    tmp_path, monkeypatch, logged_in
-):
+def _recording(monkeypatch, tmp_path):
+    """Run factories in tmp_path, recording registrations and launches."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(factory_api, "_get", lambda name, version=None: _definition())
     registered, launched = [], []
@@ -308,6 +287,62 @@ def test_create_writes_the_system_and_its_build_command(
         "_launch",
         lambda target, launch, request=None: launched.append(request),
     )
+    return registered, launched
+
+
+def test_run_asks_each_question_then_resumes_from_system_yaml(
+    tmp_path, monkeypatch, logged_in
+):
+    registered, launched = _recording(monkeypatch, tmp_path)
+    typed = [
+        "",  # the name is required, so it is asked again
+        "q3-review",
+        "why",
+        "",  # cadence: the default, weekly
+        "4",
+        "y",  # add a table
+        "orders:2",
+        "daily",
+        "n",
+    ]
+    done = CliRunner().invoke(
+        cli, ["factory", "run", "churn-review"], input="\n".join(typed) + "\n"
+    )
+    assert done.exit_code == 0, done.output
+    assert "Name is required" in done.output
+    doc = yaml.safe_load((tmp_path / "q3-review" / "system.yaml").read_text())
+    assert doc["requirements"] == {
+        "name": "q3-review",
+        "question": "why",
+        "cadence": "weekly",
+        "compare": {"weeks": 4},
+        "tables": [{"table": {"name": "orders", "version": 2}, "cadence": "daily"}],
+    }
+    # A recorded system is resumed from its system.yaml: no answers, nothing asked.
+    again = CliRunner().invoke(cli, ["factory", "run", "churn-review", "q3-review"])
+    assert again.exit_code == 0, again.output
+    assert "Resuming q3-review" in again.output
+    assert launched == ["/hops-factory-churn-review q3-review"] * 2
+    assert registered == [("q3-review", "q3-review", "churn-review")]
+    other = REVIEW.replace("name: churn-review", "name: other-review")
+    monkeypatch.setattr(
+        factory_api, "_get", lambda name, version=None: _definition(other)
+    )
+    refused = CliRunner().invoke(cli, ["factory", "run", "other-review", "q3-review"])
+    assert refused.exit_code != 0
+    assert "hops factory run churn-review q3-review" in refused.output
+    unknown = CliRunner().invoke(cli, ["factory", "run", "churn-review", "nope"])
+    assert unknown.exit_code != 0 and "no system 'nope'" in unknown.output
+    preset = CliRunner().invoke(
+        cli, ["factory", "run", "churn-review", "--preset", "q4"]
+    )
+    assert preset.exit_code != 0 and "this factory has none" in preset.output
+
+
+def test_create_writes_the_system_and_its_build_command(
+    tmp_path, monkeypatch, logged_in
+):
+    registered, launched = _recording(monkeypatch, tmp_path)
     answers = tmp_path / "answers.json"
     answers.write_text(
         json.dumps(
@@ -320,7 +355,7 @@ def test_create_writes_the_system_and_its_build_command(
         )
     )
     done = CliRunner().invoke(
-        cli, ["factory", "churn-review", "create", "--answers", str(answers)]
+        cli, ["factory", "run", "churn-review", "--answers", str(answers)]
     )
     assert done.exit_code == 0, done.output
     doc = yaml.safe_load((tmp_path / "q3-review" / "system.yaml").read_text())
@@ -351,7 +386,7 @@ def test_create_refuses_answers_the_form_would_refuse(tmp_path, monkeypatch, log
     answers = tmp_path / "answers.json"
     answers.write_text(json.dumps({"name": "Bad Name"}))
     done = CliRunner().invoke(
-        cli, ["factory", "churn-review", "create", "--answers", str(answers)]
+        cli, ["factory", "run", "churn-review", "--answers", str(answers)]
     )
     assert done.exit_code != 0 and "Name must be lowercase" in done.output
     assert not (tmp_path / "Bad Name").exists()
@@ -388,9 +423,9 @@ def test_a_clone_of_a_built_in_builds_with_it_and_records_itself(
     )
     seen = {}
 
-    def built_in(ctx, slug, no_launch, example, answers):
-        seen["answers"] = json.loads(answers.read_text())
-        seen["no_launch"] = no_launch
+    def built_in(ctx, answers, launch):
+        seen["answers"] = answers
+        seen["no_launch"] = not launch
         target = tmp_path / "fraud"
         target.mkdir()
         (target / "system.yaml").write_text(
@@ -399,12 +434,7 @@ def test_a_clone_of_a_built_in_builds_with_it_and_records_itself(
         factory_spec.record_factory(ctx.meta.get(factory_spec.META), target)
         seen["factory"] = factory_spec.factory_name(ctx, "ml-batch")
 
-    @factory.click.command()
-    @factory.click.pass_context
-    def stand_in(ctx, slug, no_launch, example, answers):
-        built_in(ctx, slug, no_launch, example, answers)
-
-    monkeypatch.setattr(factory.build, "create_cmd", stand_in)
+    monkeypatch.setattr(factory.build, "create", built_in)
     answers = tmp_path / "answers.json"
     answers.write_text(
         json.dumps(
@@ -416,7 +446,7 @@ def test_a_clone_of_a_built_in_builds_with_it_and_records_itself(
         )
     )
     done = CliRunner().invoke(
-        cli, ["factory", "fraud-ml", "create", "--answers", str(answers), "--no-launch"]
+        cli, ["factory", "run", "fraud-ml", "--answers", str(answers), "--no-launch"]
     )
     assert done.exit_code == 0, done.output
     assert seen["answers"] == {

@@ -1,7 +1,7 @@
-"""The health report of a built ML system, for ``hops factory mlsystem status``.
+"""The health report of a built ML system, for ``hops factory system status``.
 
 `collect` gathers the facts: every job the system created (from the same
-inventory ``hops factory mlsystem delete`` reads in system.yaml) with its executions in
+inventory ``hops factory system delete`` reads in system.yaml) with its executions in
 the last hours and the log tail of each failure, and every deployment and app
 with its state and its pods (phase, readiness, restarts, the last termination
 reason, CPU and memory used against the limits, from kubectl in the project

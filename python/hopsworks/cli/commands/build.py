@@ -1,17 +1,14 @@
-"""``hops factory mlsystem create`` — the structured interview for a new ML system, then the build.
+"""The ML systems built by the ``ml-batch``, ``ml-realtime`` and ``ml-agent`` factories.
 
-Asks what the system should predict and the questions that follow from it,
-writing every answer to ``<slug>/system.yaml`` as it is given, then starts
-Claude Code with ``/hops-build <slug>`` to complete the specification and build
-it. Menus are plain prompts, so each question appears at once; the only model
-call is one Haiku ``claude -p`` that reads the user's description and
-recommends a system type and a name. The login and the listings the later
-questions need run in the background while the first question is answered.
+``hops factory run`` hands this the answers the factory's form collected: they
+are written to ``<slug>/system.yaml``, what they leave out is asked, and Claude
+Code starts with ``/hops-build <slug>`` to complete the specification and build
+it. The login and the listings the later questions need run in the background
+while the first question is answered.
 """
 
 from __future__ import annotations
 
-import json
 import os
 import re
 import shlex
@@ -30,20 +27,7 @@ REFERENCES = (
     Path(__file__).resolve().parents[2] / "skills" / "ml" / "hops-reqs" / "references"
 )
 SLUG = re.compile(r"^[a-z][a-z0-9-]*$")
-SYSTEM_TYPES = {
-    "batch": "predictions on a schedule, read from a table, a report or a dashboard",
-    "realtime": "a prediction per request, answered in milliseconds by a deployment",
-    "agent": "an LLM that reasons over your data and tools",
-}
-INTERPRET = """You recommend how to build an ML system on Hopsworks.
-The user wants to predict: {problem}
-Feature groups in their project: {feature_groups}
-Reply with one JSON object and nothing else:
-{{"system_type": "batch" | "realtime" | "agent",
-  "reason": "<one short sentence>",
-  "name": "<a title of two to four words>",
-  "slug": "<two or three lowercase words joined by hyphens>",
-  "feature_groups": ["<names from the list above that fit the problem>"]}}"""
+SYSTEM_TYPES = ("batch", "realtime", "agent")
 
 
 def _load(path: Path, name: str) -> Any:
@@ -134,53 +118,6 @@ class _Prefetch(threading.Thread):
         return self
 
 
-def _interpret(problem: str, feature_groups: list[str]) -> dict | None:
-    """One Haiku call reading the description; None when claude is missing or slow."""
-    claude = shutil.which("claude")
-    if not claude:
-        return None
-    prompt = INTERPRET.format(
-        problem=problem, feature_groups=", ".join(feature_groups) or "none yet"
-    )
-    try:
-        done = subprocess.run(
-            # No tools and no skills: the user's words are in the prompt, and a
-            # one-shot answer needs neither.
-            [
-                claude,
-                "-p",
-                "--model",
-                "haiku",
-                "--tools",
-                "",
-                "--disable-slash-commands",
-            ]
-            + ["--strict-mcp-config", "--no-session-persistence", prompt],
-            capture_output=True,
-            text=True,
-            timeout=60,
-            stdin=subprocess.DEVNULL,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    match = re.search(r"\{.*\}", done.stdout, re.S)
-    if not match:
-        return None
-    try:
-        answer = json.loads(match.group(0))
-    except json.JSONDecodeError:
-        return None
-    if answer.get("system_type") not in SYSTEM_TYPES:
-        answer.pop("system_type", None)
-    if not SLUG.match(str(answer.get("slug", ""))):
-        answer.pop("slug", None)
-    answer["feature_groups"] = [
-        name for name in answer.get("feature_groups") or [] if name in feature_groups
-    ]
-    return answer
-
-
 # endregion
 
 # region The system file
@@ -234,19 +171,12 @@ def _read(target: Path) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
 
-def _systems(cwd: Path) -> list[Path]:
-    # A medallion layer's system.yaml has a `layer` block; it is not an ML system.
-    return sorted(
-        p.parent for p in cwd.glob("*/system.yaml") if "layer" not in _read(p.parent)
-    )
-
-
 def _create(cwd: Path, slug: str, example: str | None = None) -> _System:
     new_system = _load(REFERENCES / "new_system.py", "new_system")
     target = cwd / slug
     if (target / "system.yaml").exists():
         raise click.ClickException(
-            f"{target} already holds a system; run `hops factory mlsystem create {slug}` to resume it."
+            f"{target} already holds a system; run `hops factory run <factory> {slug}` to resume it."
         )
     try:
         new_system.create(target, example)
@@ -258,86 +188,6 @@ def _create(cwd: Path, slug: str, example: str | None = None) -> _System:
 # endregion
 
 # region The interview
-
-
-def _example(prefetch: _Prefetch, cwd: Path, picked: str | None = None) -> _System:
-    examples = _load(REFERENCES / "new_system.py", "new_system").examples()
-    names = list(examples)
-    if picked is None:
-        picked = names[
-            _choose(
-                "Which example ML system?",
-                [(examples[name]["label"], "") for name in names],
-            )
-        ]
-    elif picked not in examples:
-        raise click.BadParameter(
-            f"{picked!r} is not one of {', '.join(names)}", param_hint="--example"
-        )
-    if (cwd / picked / "system.yaml").exists():
-        return _System(cwd / picked)
-    system = _create(cwd, picked, example=picked)
-    _target(system, prefetch)
-    system.save()
-    return system
-
-
-def _problem(prefetch: _Prefetch, cwd: Path) -> _System:
-    problem = click.prompt(
-        click.style(
-            "What should the ML system predict? Describe it in a sentence", bold=True
-        ),
-        prompt_suffix="\n> ",
-    ).strip()
-    names = [name for name, _ in prefetch.ready().feature_groups]
-    # Haiku takes about six seconds; the repository question does not depend on it,
-    # so it is asked while the description is read.
-    reading: dict = {}
-    reader = threading.Thread(
-        target=lambda: reading.update(_interpret(problem, names) or {}), daemon=True
-    )
-    reader.start()
-    repo = _repository_choice(cwd)
-    if reader.is_alive():
-        output.info("Reading your description...")
-    reader.join(timeout=60)
-    advice = dict(reading)
-    recommended = advice.get("system_type", "batch")
-    order = [recommended, *(t for t in SYSTEM_TYPES if t != recommended)]
-    labels = {"batch": "Batch", "realtime": "Real-time", "agent": "Agentic"}
-    options = [
-        (
-            labels[t] + (" (recommended)" if t == recommended and advice else ""),
-            advice.get("reason", "")
-            if t == recommended and advice.get("reason")
-            else SYSTEM_TYPES[t],
-        )
-        for t in order
-    ]
-    system_type = order[_choose("What type of ML system?", options)]
-    slug = click.prompt(
-        "Short name for the system (lowercase, hyphens)",
-        default=advice.get("slug") or "ml-system",
-        value_proc=_slug,
-    )
-    system = _create(cwd, slug)
-    system.put("schema_version", 1)
-    system.put(
-        "system",
-        {
-            "name": advice.get("name") or slug.replace("-", " ").capitalize(),
-            "slug": slug,
-        },
-    )
-    _target(system, prefetch)
-    system.put("system.status", "draft")
-    system.put("requirements.status", "pending")
-    system.put("requirements.description", problem)
-    system.put("requirements.system_type", system_type)
-    system.put("system.repo", {"url": repo})
-    system.save()
-    system.suggested = advice.get("feature_groups", [])
-    return system
 
 
 ANSWER_KEYS = {
@@ -358,8 +208,8 @@ ANSWER_KEYS = {
 }
 
 
-def _from_answers(prefetch: _Prefetch, cwd: Path, path: Path) -> _System:
-    """A system from the answers the Hopsworks UI collected, as a JSON file.
+def _from_answers(prefetch: _Prefetch, cwd: Path, answers: dict) -> _System:
+    """A system from the answers a factory's form collected.
 
     Keys are those of ANSWER_KEYS; `slug` is required, and names the
     directory and the repository. With `example`, the example is the draft and
@@ -370,10 +220,6 @@ def _from_answers(prefetch: _Prefetch, cwd: Path, path: Path) -> _System:
     `monitoring` is `{"feature_logging": bool, "watch": str}`, for batch and realtime systems: whether predictions log their features, and what to monitor and alert on.
     An existing system of that slug is resumed and the answers are not applied again.
     """
-    try:
-        answers = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        raise click.BadParameter(str(exc), param_hint="--answers") from exc
     unknown = set(answers) - ANSWER_KEYS
     if unknown:
         raise click.BadParameter(
@@ -989,7 +835,7 @@ def _register(ctx: click.Context, system: _System) -> None:
         )
     except Exception as exc:  # noqa: BLE001 - the interview is recorded either way
         output.warn(
-            f"Not registered in the project's ML systems ({exc}); run `hops factory mlsystem register {system.target}`."
+            f"Not registered in the project's ML systems ({exc}); run `hops factory system register {system.target}`."
         )
 
 
@@ -1019,103 +865,36 @@ def _launch(ctx: click.Context, system: _System, launch: bool) -> None:
     os.execvp("claude", command)
 
 
-@click.command("create")
-@click.argument("slug", required=False)
-@click.option(
-    "--no-launch",
-    is_flag=True,
-    help="Record the interview but do not start Claude Code.",
-)
-@click.option(
-    "--example",
-    metavar="NAME",
-    help="Build this example system (churn-example, recs-example or helpdesk-example) without the menu; resumes it if it already exists here.",
-)
-@click.option(
-    "--answers",
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-    help="A JSON file of the interview's answers, as the Hopsworks UI writes it; only what it leaves out is asked.",
-)
-@click.pass_context
-def create_cmd(
-    ctx: click.Context,
-    slug: str | None,
-    no_launch: bool,
-    example: str | None,
-    answers: Path | None,
-) -> None:
-    """Interview for a new ML system, then build it with Claude Code.
+def create(ctx: click.Context, answers: dict, launch: bool) -> Path:
+    """Record the ML system the answers describe in ./<slug>/system.yaml, ask what they leave out, then build it.
 
-    Asks what to predict and the questions that follow (batch, real-time or
-    agentic; cadence or SLAs; data; how predictions are used; where the code
-    goes), writing each answer to ./<slug>/system.yaml. Then starts
-    `claude "/hops-build <slug>"` in <slug>/, in a new tmux window when run inside tmux,
-    which completes the specification and builds the system. With SLUG,
-    resumes that system's interview, or starts its build when the interview is
-    done.
-
-    Args:
-        ctx: Click context.
-        slug: An existing system in this directory to resume.
-        no_launch: Record the interview only.
-        example: An example system to build, as the Hopsworks UI starts one.
-        answers: The interview's answers, as the Hopsworks UI collects them.
+    An existing system of that slug is resumed and the answers are not applied again.
     """
-    if sum(map(bool, (slug, example, answers))) > 1:
-        raise click.UsageError("pass one of SLUG, --example and --answers")
+    return _run(
+        ctx, launch, lambda prefetch: _from_answers(prefetch, Path.cwd(), answers)
+    )
+
+
+def resume(ctx: click.Context, target: Path, launch: bool) -> None:
+    """Ask what the system in `target` still lacks, then start or resume its build."""
+    _run(ctx, launch, lambda prefetch: _System(target))
+
+
+def _run(ctx: click.Context, launch: bool, open_system) -> Path:
     prefetch = _Prefetch(ctx)
     prefetch.start()
     try:
-        _interview(ctx, prefetch, slug, not no_launch, example, answers)
+        system = open_system(prefetch)
+        _finish(ctx, prefetch, system, launch)
     finally:
         # A login still importing the SDK at interpreter exit fails noisily.
         prefetch.join(timeout=15)
+    return system.target
 
 
-def _interview(
-    ctx: click.Context,
-    prefetch: _Prefetch,
-    slug: str | None,
-    launch: bool,
-    example: str | None = None,
-    answers: Path | None = None,
+def _finish(
+    ctx: click.Context, prefetch: _Prefetch, system: _System, launch: bool
 ) -> None:
-    cwd = Path.cwd()
-    existing = _systems(cwd)
-    system: _System | None = None
-    if answers:
-        system = _from_answers(prefetch, cwd, answers)
-    elif example:
-        system = _example(prefetch, cwd, example)
-    elif slug:
-        if not (cwd / slug / "system.yaml").exists():
-            raise click.ClickException(f"no system {slug!r} in {cwd}")
-        system = _System(cwd / slug)
-    else:
-        pending = [
-            p
-            for p in existing
-            if (_read(p).get("requirements") or {}).get("status") != "met"
-        ]
-        options = [
-            ("Start a new ML system", "you describe what it should predict"),
-            ("Build an example ML system", "synthetic data, an app included"),
-        ]
-        # The repository is the interview's last question, so a system that has
-        # one is waiting only for /hops-build.
-        options += [
-            (f"Build {p.name}", "interview done; starts /hops-build")
-            if (_read(p).get("system") or {}).get("repo")
-            else (f"Continue {p.name}", "interview not finished")
-            for p in pending
-        ]
-        picked = _choose("What do you want to build?", options)
-        if picked == 0:
-            system = _problem(prefetch, cwd)
-        elif picked == 1:
-            system = _example(prefetch, cwd)
-        else:
-            system = _System(pending[picked - 2])
     if system.requirements.get("status") == "met":
         _launch(ctx, system, launch)
         return

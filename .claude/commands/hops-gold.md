@@ -19,7 +19,7 @@ Already known, no need to look again before the first question:
 | `<mart> <phase>` | that phase of that mart, then every later phase that is not `done` |
 | `apply` | the changes to the layer-level spec since it was built: `layer.lifecycle`, `layer.modeling`, `standards`, `sources` (below) |
 
-Without a slug and with no `system.yaml` here, reply that the Factory's **New Medallion Layer** (gold), or `hops factory medallion gold --answers`, records a layer first, and stop.
+Without a slug and with no `system.yaml` here, reply that the Factory's **New Medallion Layer** (gold), or `hops factory run medallion-gold --answers`, records a layer first, and stop.
 
 Load **hops-medallion** first: its `SKILL.md` (the tag, lineage, the schedule, incremental processing) and `references/gold-marts.md` (the requirement questions, Kimball modeling, the standards, the jobs) are what this builder runs on.
 Load **hops-dbt** for the dbt project and its runner, **hops-job** before deploying a job, **hops-fg** before creating a feature group, and **hops-trino-sql** for the queries.
@@ -41,7 +41,7 @@ Find a skill at `.claude/skills/<name>/` in the repository, else `~/.claude/skil
 - **The GitHub repository.** A medallion's silver and gold layers share one work tree and one private GitHub repository, `layer.repo.name` (`hops-<prefix>`, the parent of this directory); each layer is a directory in it. With no `layer.repo.url`: when the work tree already has an `origin` (another layer of the medallion set it), record its URL; else when `gh repo view <layer.repo.name>` finds the repository, add it as `origin`; else, with `gh auth status` logged in, create it (`gh repo create <layer.repo.name> --private --source .. --remote origin --push`). Record the URL as `layer.repo.url`. Commit only this layer's directory (`git add -A -- .`, `git commit -m ... -- .`), so another layer's work in progress stays out of the commit, and push after every commit. Without a GitHub login, say once that `github-login` connects one, and keep committing locally.
 - **Logs stay out of the directory**, as `AGENTS.md` says.
 - **No secrets** in arguments, `system.yaml` or the code.
-- **Never delete** what this build did not create; deleting a mart or a job is `hops factory medallion mart-delete` and `job-delete`, which the user runs from the Factory.
+- **Never delete** what this build did not create; deleting a mart or a job is `hops factory system mart-delete` and `job-delete`, which the user runs from the Factory.
 
 ## The phases of a data mart
 
@@ -86,13 +86,13 @@ Apply `access` and `share`: share the feature groups with the projects named (`h
 ### verify
 
 Run one window of each job (`hops job run <job> --start-time <t0> --end-time <t1> --wait`), and prove each `refresh_checks` check with evidence from the runs: row counts and table versions before and after a rerun of the same window, the rows a refresh wrote against the window, a late row's effect on its period.
-Rerun the `example_queries` and `reconcile` checks after the refresh, record every result under `verification`, and run `hops factory medallion status <slug>`, fixing what it flags.
+Rerun the `example_queries` and `reconcile` checks after the refresh, record every result under `verification`, and run `hops factory system status <slug>`, fixing what it flags.
 A mart with a failing check is not `built`: fix it, or ask the user.
 Set the mart's `applied` to its spec (`name`, `description`, `cadence`, `freshness_hours`, `requirements`), its `status: built`, and report its tables, jobs, schedule and checks in a few lines.
 
 ## Changing a mart
 
-A built mart whose spec differs from its `applied` has been edited in the Factory (`hops factory medallion mart-update`).
+A built mart whose spec differs from its `applied` has been edited in the Factory (`hops factory system mart-update`).
 Read the difference and `git log -p -- system.yaml` for it, show what it recomputes, and run the affected phases: a changed `cadence` reschedules the jobs (renaming them to the new cadence); a changed metric, grain, filter or `late_data` changes the models, creates the next version of each changed table, backfills it and switches the job to it; a changed `access` or `share` is reapplied; `analysts`, `decisions` or `approver` only update the README.
 Keep superseded versions and name them in `decisions`; end with `applied` set and one commit `[<slug>] <mart> apply: <what changed>`.
 

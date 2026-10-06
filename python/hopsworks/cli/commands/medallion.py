@@ -1,11 +1,12 @@
-"""``hops factory medallion`` — silver and gold medallion layers built by the Factory.
+"""Silver and gold medallion layers, built by the ``medallion-silver`` and ``medallion-gold`` factories.
 
-``hops factory medallion silver|gold --answers FILE`` records a layer's request, as
-the Hopsworks UI's New Medallion Layer page collects it, in
-``<slug>/system.yaml``, registers the layer with the project's ML systems
-registry so the Factory lists it, and starts Claude Code with
+``hops factory run medallion-silver|medallion-gold`` records a layer's request,
+as the factory's form collects it, in ``<slug>/system.yaml``, registers the
+layer so the Factory lists it, and starts Claude Code with
 ``/hops-silver <slug>`` or ``/hops-gold <slug>`` to build it.
-A gold layer is built as data marts, each added, changed and deleted on its own.
+A gold layer is built as data marts, each added, changed and deleted on its own;
+those commands, the backfill and the layer's status are ``hops factory system``
+commands.
 """
 
 from __future__ import annotations
@@ -481,7 +482,7 @@ def _register(ctx: click.Context, target: Path, name: str, layer: str) -> None:
         )
     except Exception as exc:  # noqa: BLE001 - the layer is recorded either way
         output.warn(
-            f"Not registered in the project's Factory ({exc}); run `hops factory mlsystem register {target} --factory medallion-{layer}`."
+            f"Not registered in the project's Factory ({exc}); run `hops factory system register {target} --factory medallion-{layer}`."
         )
 
 
@@ -496,72 +497,52 @@ NO_LAUNCH = click.option(
 )
 
 
-@click.group("medallion")
-def medallion_group() -> None:
-    """Builds silver and gold medallion layers from bronze tables."""
-
-
-@medallion_group.command("silver")
-@ANSWERS
-@NO_LAUNCH
-@click.pass_context
-def medallion_silver(ctx: click.Context, answers: Path, no_launch: bool) -> None:
+def create_silver(ctx: click.Context, data: dict, launch: bool) -> Path:
     """Record a silver layer in ./<slug>/system.yaml, register it, and build it with Claude Code.
 
     The answers name the bronze feature groups (sources) with the cadence each
     is refreshed at, the silver tasks, any extra tasks in the user's words, the
     engine (dbt_trino or pyspark), the settings and the lifecycle of the tables.
-
-    Args:
-        ctx: Click context.
-        answers: The layer's answers, as the Hopsworks UI collects them.
-        no_launch: Record the layer only.
     """
-    data = _answers(answers)
     # A factory form picks each bronze table as {table: {name, version}, cadence}.
-    data["sources"] = [
-        {**s.pop("table"), **s}
-        if isinstance(s, dict) and isinstance(s.get("table"), dict)
-        else s
-        for s in data.get("sources") or []
-    ]
+    data = {
+        **data,
+        "sources": [
+            {**s["table"], **{k: v for k, v in s.items() if k != "table"}}
+            if isinstance(s, dict) and isinstance(s.get("table"), dict)
+            else s
+            for s in data.get("sources") or []
+        ],
+    }
     problems = _problems(data)
     if problems:
         raise click.ClickException("invalid answers:\n  " + "\n  ".join(problems))
     target = _create(Path.cwd(), data)
     output.success(f"Silver layer recorded in {target / 'system.yaml'}")
     _register(ctx, target, data.get("name") or data["slug"], "silver")
-    _launch(target, not no_launch)
+    _launch(target, launch)
+    return target
 
 
-@medallion_group.command("gold")
-@ANSWERS
-@NO_LAUNCH
-@click.pass_context
-def medallion_gold(ctx: click.Context, answers: Path, no_launch: bool) -> None:
+def create_gold(ctx: click.Context, data: dict, launch: bool) -> Path:
     """Record a gold layer and its first data mart in ./<slug>/system.yaml, register it, and build it with Claude Code.
 
     The answers describe the queries the layer serves, its Kimball model
     (star or snowflake), the silver feature groups it reads, the standards
     every mart follows, and the first data mart with its requirements.
-    More marts are added with `hops factory medallion mart-add`.
-
-    Args:
-        ctx: Click context.
-        answers: The layer's answers, as the Hopsworks UI collects them.
-        no_launch: Record the layer only.
+    More marts are added with `hops factory system mart-add`.
     """
-    data = _answers(answers)
     problems = _gold_problems(data)
     if problems:
         raise click.ClickException("invalid answers:\n  " + "\n  ".join(problems))
     target = _create_gold(Path.cwd(), data)
     output.success(f"Gold layer recorded in {target / 'system.yaml'}")
     _register(ctx, target, data.get("name") or data["slug"], "gold")
-    _launch(target, not no_launch, f"/hops-gold {target.name}")
+    _launch(target, launch, f"/hops-gold {target.name}")
+    return target
 
 
-@medallion_group.command("dir")
+@click.command("dir")
 @click.argument("slug")
 def medallion_dir(slug: str) -> None:
     """Print the directory of the layer SLUG under the current directory, in its medallion repository or on its own.
@@ -577,15 +558,10 @@ def medallion_dir(slug: str) -> None:
 
 
 def _entry(ctx: click.Context, name_or_id: str) -> dict:
-    from hopsworks_common.core import ml_system_api
+    from hopsworks.cli.commands import mlsystem
 
     session.get_project(ctx)
-    for entry in ml_system_api._list():
-        # By id, name, or the directory's name (the slug).
-        slug = str(entry.get("pathToCode") or "").rstrip("/").rsplit("/", 1)[-1]
-        if name_or_id in (str(entry.get("id")), entry.get("name"), slug):
-            return entry
-    raise click.ClickException(f"No layer {name_or_id!r} in the project's Factory.")
+    return mlsystem._find(name_or_id)
 
 
 def _layer(ctx: click.Context, name_or_id: str) -> tuple[dict, Path, dict]:
@@ -755,72 +731,37 @@ def _note(doc: dict, what: str, mart: str | None = None) -> None:
     doc.setdefault("decisions", []).append(decision)
 
 
-@medallion_group.command("delete")
-@click.argument("name_or_id")
-@click.option(
-    "--assets",
-    is_flag=True,
-    help="Also delete the layer's jobs and feature groups (in gold, every data mart's), and its directory.",
-)
-@click.option("--yes", is_flag=True, help="Do not ask for confirmation.")
-@click.pass_context
-def medallion_delete(
-    ctx: click.Context, name_or_id: str, assets: bool, yes: bool
-) -> None:
-    """Remove a silver or gold layer from the Factory, and with --assets its jobs, tables and directory.
+def delete_layer(ctx: click.Context, directory: Path, doc: dict) -> str:
+    """Delete a layer's jobs and feature groups (in gold, every data mart's), then its directory.
 
     A layer never deletes the tables it reads: a feature group that is one of
     its sources, or is tagged as a lower layer (bronze, and silver from gold),
     stops the delete before anything is deleted.
-    The registry entry goes last, so a delete that stops part way leaves the
-    layer listed to be deleted again.
-
-    Args:
-        ctx: Click context.
-        name_or_id: The layer's name, slug or registry id.
-        assets: Also delete the layer's jobs, feature groups and directory.
-        yes: Skip the confirmation.
     """
-    from hopsworks_common.core import ml_system_api
-
-    entry = _entry(ctx, name_or_id)
-    if not yes:
-        click.confirm(
-            f"Delete {entry.get('name')}"
-            + (" with its tables and jobs" if assets else " from the Factory")
-            + "?",
-            abort=True,
+    _delete_assets(ctx, doc, [j["name"] for j in layer_jobs(doc)], layer_tables(doc))
+    shutil.rmtree(directory, ignore_errors=True)
+    repo = directory.parent
+    # In a medallion repository the other layers stay; record that this one went.
+    if (repo / ".git").exists() and shutil.which("git"):
+        git = ["git", "-C", str(repo)]
+        subprocess.run([*git, "add", "-A", "--", directory.name], check=False)
+        subprocess.run(
+            [
+                *git,
+                "commit",
+                "-q",
+                "-m",
+                f"[{directory.name}] delete layer",
+                "--",
+                directory.name,
+            ],
+            check=False,
+            capture_output=True,
         )
-    if assets:
-        _, directory, doc = _layer(ctx, name_or_id)
-        _delete_assets(
-            ctx, doc, [j["name"] for j in layer_jobs(doc)], layer_tables(doc)
-        )
-        shutil.rmtree(directory, ignore_errors=True)
-        output.success(f"✓ Deleted {directory}")
-        repo = directory.parent
-        # In a medallion repository the other layers stay; record that this one went.
-        if (repo / ".git").exists() and shutil.which("git"):
-            git = ["git", "-C", str(repo)]
-            subprocess.run([*git, "add", "-A", "--", directory.name], check=False)
-            subprocess.run(
-                [
-                    *git,
-                    "commit",
-                    "-q",
-                    "-m",
-                    f"[{directory.name}] delete layer",
-                    "--",
-                    directory.name,
-                ],
-                check=False,
-                capture_output=True,
-            )
-    ml_system_api._remove(entry["id"])
-    output.success(f"✓ Removed {entry.get('name')} from the Factory")
+    return "deleted"
 
 
-@medallion_group.command("mart-add")
+@click.command("mart-add")
 @click.argument("layer")
 @ANSWERS
 @NO_LAUNCH
@@ -848,7 +789,7 @@ def medallion_mart_add(layer: str, answers: Path, no_launch: bool) -> None:
     _launch(directory, not no_launch, f"/hops-gold {directory.name} {data['slug']}")
 
 
-@medallion_group.command("mart-update")
+@click.command("mart-update")
 @click.argument("layer")
 @click.argument("mart")
 @ANSWERS
@@ -884,7 +825,7 @@ def medallion_mart_update(
     _launch(directory, not no_launch, f"/hops-gold {directory.name} {current['slug']}")
 
 
-@medallion_group.command("mart-delete")
+@click.command("mart-delete")
 @click.argument("layer")
 @click.argument("mart")
 @click.option(
@@ -939,7 +880,7 @@ def medallion_mart_delete(layer: str, mart: str, tables: bool, yes: bool) -> Non
     output.success(f"✓ Deleted the data mart {found['slug']}")
 
 
-@medallion_group.command("job-delete")
+@click.command("job-delete")
 @click.argument("layer")
 @click.argument("job")
 @click.option(
@@ -1035,7 +976,7 @@ def medallion_job_delete(layer: str, job: str, tables: bool, yes: bool) -> None:
     output.success(f"✓ Deleted the job {job}")
 
 
-@medallion_group.command("add-tables")
+@click.command("add-tables")
 @click.argument("layer")
 @ANSWERS
 @NO_LAUNCH
@@ -1055,7 +996,7 @@ def medallion_add_tables(layer: str, answers: Path, no_launch: bool) -> None:
     _, directory, doc = _layer(ctx, layer)
     if _kind(doc) != "silver":
         raise click.ClickException(
-            "tables are added to a gold layer as a data mart; use hops factory medallion mart-add"
+            "tables are added to a gold layer as a data mart; use hops factory system mart-add"
         )
     data = _answers(answers)
     problems = [
@@ -1101,44 +1042,30 @@ def medallion_add_tables(layer: str, answers: Path, no_launch: bool) -> None:
     _launch(directory, not no_launch, f"/hops-silver {directory.name} apply")
 
 
-@medallion_group.command("status")
-@click.argument("name_or_id")
-@click.option(
-    "--hours",
-    type=click.IntRange(min=1),
-    default=24,
-    show_default=True,
-    help="How far back to read the job runs.",
-)
-@click.option("--no-summary", is_flag=True, help="Skip the summary Claude writes.")
-@click.pass_context
-def medallion_status(
-    ctx: click.Context, name_or_id: str, hours: int, no_summary: bool
+def layer_status(
+    project: Any,
+    directory: Path,
+    doc: dict,
+    hours: int,
+    no_summary: bool,
+    out: Path | None = None,
 ) -> None:
-    """Report the health of a layer as an HTML page, status/report.html in its directory.
+    """Report the health of a layer as an HTML page, by default status/report.html in its directory.
 
     For each of the layer's jobs, its runs in the last HOURS with the log tail
     of each failure; for each table it built, its rows, when it was last
     written against the freshness target, in silver its share of rejected rows
     against the quality gate, and its file layout from the table's files, as
-    hops-table-maintenance reads them. The Factory's Status button runs this.
-
-    Args:
-        ctx: Click context.
-        name_or_id: The layer's name, slug or registry id.
-        hours: How far back to read job runs.
-        no_summary: Skip the Claude summary.
+    hops-table-maintenance reads them.
     """
     from hopsworks.cli import health, silver_status
 
-    project = session.get_project(ctx)
-    _, directory, doc = _layer(ctx, name_or_id)
     facts = silver_status.collect(project, doc, directory.name, hours)
     if output.JSON_MODE:
         output.print_json(facts)
         return
     summary = None if no_summary else health.summarize(facts)
-    target = directory / "status" / "report.html"
+    target = out or directory / "status" / "report.html"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(health.render(facts, summary), encoding="utf-8")
     c = facts["counts"]
@@ -1148,7 +1075,7 @@ def medallion_status(
     )
 
 
-@medallion_group.command("backfill")
+@click.command("backfill")
 @click.argument("name_or_id")
 @click.option("--mart", help="In a gold layer, backfill only this data mart's jobs.")
 @click.option(
@@ -1210,12 +1137,3 @@ def medallion_backfill(
             raise click.ClickException(
                 f"the backfill failed; read its log with hops job logs {job_name} --stdout --tail 200"
             )
-
-
-@medallion_group.group("create")
-def medallion_create() -> None:
-    """Create a silver or gold layer; the same commands as `hops factory medallion silver` and `hops factory medallion gold`."""
-
-
-medallion_create.add_command(medallion_silver)
-medallion_create.add_command(medallion_gold)

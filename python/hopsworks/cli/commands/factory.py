@@ -1,60 +1,36 @@
-"""``hops factory`` — the software factories of this project.
+"""``hops factory`` — the software factories of this project, and the systems they build.
 
 Five are built in, as YAML definitions the cluster ships: ``ml-batch``,
 ``ml-realtime`` and ``ml-agent`` build ML systems, ``medallion-silver`` and
 ``medallion-gold`` build medallion layers. A project's own factories are YAML
 definitions (apiVersion hopsworks.ai/factory/v1) its data owners create,
-import, clone and delete. Every factory takes ``hops factory <name>
-create|list|status|register|remove|delete``; ``hops factory mlsystem ...`` and
-``hops factory medallion ...`` hold the commands of the two built-in builds
-(the ML system interview, data marts, backfills).
+import, clone and delete. ``hops factory run <name>`` builds a system with a
+factory, and ``hops factory system ...`` lists, reports on and deletes the
+systems built.
 """
 
 from __future__ import annotations
 
 import json
 import re
-import tempfile
 from pathlib import Path
+from typing import Any
 
 import click
 import yaml
 from hopsworks.cli import factory_spec, output, session
 from hopsworks.cli.commands import build, medallion, mlsystem
-from hopsworks.cli.commands.medallion import medallion_group
-from hopsworks.cli.commands.mlsystem import mlsystem_group
 
 
-FACTORIES = (mlsystem_group, medallion_group)
 TEMPLATE = Path(__file__).resolve().parent.parent / "templates" / "hops-factory.md"
 
 
-class _FactoryGroup(click.Group):
-    """Resolves a name that is not a built-in or a command to the project factory of that name."""
-
-    def get_command(self, ctx: click.Context, cmd_name: str):
-        command = super().get_command(ctx, cmd_name)
-        if command is not None or ctx.resilient_parsing:
-            return command
-        if not factory_spec.NAME.match(cmd_name):
-            return None
-        try:
-            from hopsworks_common.core import factory_api
-
-            session.get_project(ctx)
-            definition = factory_api._get(cmd_name)
-        except Exception:  # noqa: BLE001 - an unknown name reads as an unknown command
-            return None
-        return _project_factory_group(definition)
-
-
-@click.group("factory", cls=_FactoryGroup)
+@click.group("factory")
 def factory_group() -> None:
     """The software factories: the built-in ML system and medallion layer factories, and the project's own."""
 
 
-for _group in FACTORIES:
-    factory_group.add_command(_group)
+factory_group.add_command(mlsystem.system_group)
 
 
 # region Managing factories
@@ -271,87 +247,300 @@ def _review(doc: dict) -> None:
 
 # endregion
 
-# region A project factory's commands
+# region Running a factory
 
 
-def _project_factory_group(definition: dict) -> click.Group:
-    """The commands of a project factory: create, list, status, register, remove and delete."""
-    name = definition["name"]
+@factory_group.command("run")
+@click.argument("name")
+@click.argument("slug", required=False)
+@click.option(
+    "--answers",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="A JSON file of the answers to the factory's questions, as the Hopsworks UI writes it; without it they are asked here.",
+)
+@click.option(
+    "--preset",
+    help="Start from one of the factory's examples (`hops factory get NAME` lists them under presets).",
+)
+@click.option(
+    "--no-launch",
+    is_flag=True,
+    help="Record the system but do not start Claude Code.",
+)
+@click.pass_context
+def factory_run(
+    ctx: click.Context,
+    name: str,
+    slug: str | None,
+    answers: Path | None,
+    preset: str | None,
+    no_launch: bool,
+) -> None:
+    """Build a system with the factory NAME, or resume the system SLUG.
 
-    @click.group(
-        name,
-        help=f"{definition.get('title')}: {definition.get('description') or 'a project factory.'}",
-    )
-    def group() -> None:
-        pass
+    A new system's answers come from --answers, or each of the factory's
+    questions is asked in turn. The system is recorded in ./<slug>/system.yaml,
+    registered so the Hopsworks UI lists it, and built by Claude Code. A system
+    already recorded (SLUG under the current directory, or the current
+    directory itself) is resumed from its system.yaml, which holds the
+    factory, its version and every answer, so it needs none.
+    """
+    from hopsworks_common.core import factory_api
 
-    @group.command("create")
-    @click.option(
-        "--answers",
-        type=click.Path(exists=True, dir_okay=False, path_type=Path),
-        required=True,
-        help="A JSON file of the answers to the factory's questions, as the Hopsworks UI writes it.",
-    )
-    @click.option(
-        "--no-launch",
-        is_flag=True,
-        help="Record the system but do not start Claude Code.",
-    )
-    @click.pass_context
-    def create(ctx: click.Context, answers: Path, no_launch: bool) -> None:
-        """Record a new system in ./<slug>/system.yaml, register it, and build it with Claude Code."""
-        create_system(ctx, definition, answers, not no_launch)
-
-    @group.command("list")
-    @click.pass_context
-    def listing(ctx: click.Context) -> None:
-        """List the systems this factory built, newest first."""
-        from hopsworks_common.core import ml_system_api
-
-        session.get_project(ctx)
-        systems = ml_system_api._list(name)
-        if output.JSON_MODE:
-            output.print_json(systems)
-            return
-        output.print_table(
-            ["ID", "NAME", "OWNER", "VERSION", "PATH"],
-            [
-                [
-                    s.get("id"),
-                    s.get("name"),
-                    s.get("ownerName") or s.get("owner"),
-                    s.get("factoryVersion"),
-                    s.get("pathToCode"),
-                ]
-                for s in systems
-            ],
+    session.get_project(ctx)
+    definition = factory_api._get(name)
+    existing = _recorded(slug)
+    if existing is not None:
+        if answers or preset:
+            raise click.UsageError(
+                f"{existing} is already recorded; its answers are in its system.yaml"
+            )
+        _resume(ctx, definition, existing, not no_launch)
+        return
+    if slug:
+        raise click.ClickException(
+            f"no system {slug!r} under {Path.cwd()}; leave SLUG out to build a new one"
         )
-
-    @group.command("register")
-    @click.argument(
-        "path",
-        type=click.Path(file_okay=False, path_type=Path),
-        default=Path(),
+    if not definition.get("enabled", True):
+        raise click.ClickException(
+            f"the factory {name} is disabled; `hops factory enable {name}` turns it on"
+        )
+    spec = definition["spec"]
+    chosen = _preset(spec, preset)
+    data = (
+        _read_answers(answers)
+        if answers
+        else _ask(spec, (chosen or {}).get("answers") or {})
     )
-    @click.option(
-        "--name", "display_name", help="Display name; defaults to the directory name."
-    )
-    @click.pass_context
-    def register(ctx: click.Context, path: Path, display_name: str | None) -> None:
-        """Register the system in PATH (default: the current directory) with this factory, or refresh it."""
-        entry = mlsystem.register(ctx, path, display_name, name)
-        output.success(f"Registered {entry.get('name')} at {entry.get('pathToCode')}")
+    if chosen:
+        data = {**data, **(chosen.get("fixed") or {})}
+    create_system(ctx, definition, data, not no_launch)
 
-    group.add_command(mlsystem.mlsystem_status)
-    group.add_command(mlsystem.mlsystem_remove)
-    group.add_command(mlsystem.mlsystem_delete)
-    return group
+
+def _recorded(slug: str | None) -> Path | None:
+    """The directory of a system already recorded: SLUG under here (a layer may be in its medallion repository), or here."""
+    cwd = Path.cwd()
+    if not slug:
+        return cwd if (cwd / "system.yaml").is_file() else None
+    if (cwd / slug / "system.yaml").is_file():
+        return cwd / slug
+    return next((d for d in medallion._layer_dirs(cwd) if d.name == slug), None)
+
+
+def _preset(spec: dict, preset: str | None) -> dict | None:
+    if preset is None:
+        return None
+    presets = spec.get("presets") or []
+    for entry in presets:
+        if entry.get("id") == preset:
+            return entry
+    known = ", ".join(p.get("id", "?") for p in presets) or "none"
+    raise click.BadParameter(
+        f"no preset {preset!r}; this factory has {known}", param_hint="--preset"
+    )
+
+
+def _read_answers(path: Path) -> dict:
+    try:
+        answers = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise click.BadParameter(str(exc), param_hint="--answers") from exc
+    if not isinstance(answers, dict):
+        raise click.BadParameter(
+            "the answers must be a JSON object", param_hint="--answers"
+        )
+    return answers
+
+
+def _ask(spec: dict, start: dict) -> dict:
+    """The answers to the factory's questions, asked section by section; `start` holds a preset's answers by field id.
+
+    The answers are nested at each field's key, as the Hopsworks UI sends them.
+    """
+    answers: dict = {}
+    for section in spec["form"]["sections"]:
+        click.echo()
+        click.echo(click.style(section["title"], bold=True))
+        for field in section.get("fields") or []:
+            if field["type"] == "account_env":
+                _account_env(field)
+                continue
+            value = _ask_field(field, start.get(field["id"], field.get("default")))
+            if value is not None:
+                _put(answers, field.get("key") or field["id"], value)
+    return answers
+
+
+def _put(answers: dict, path: str, value: Any) -> None:
+    *parents, last = path.split(".")
+    node = answers
+    for part in parents:
+        node = node.setdefault(part, {})
+    node[last] = value
+
+
+def _ask_field(field: dict, default: Any, label: str | None = None) -> Any:
+    """One answer, asked until it is valid; None for an optional question left empty."""
+    label = label or field["label"]
+    if field.get("help"):
+        click.echo(click.style(f"  {field['help']}", dim=True))
+    while True:
+        value = _prompt(field, default, label)
+        if value == "" or value == []:
+            value = None
+        found = factory_spec._field_problems(field, value, label)
+        if not found:
+            return value
+        output.warn(found[0])
+
+
+def _prompt(field: dict, default: Any, label: str) -> Any:
+    kind = field["type"]
+    options = [factory_spec._option_value(o) for o in field.get("options") or []]
+    if kind == "boolean":
+        return click.confirm(label, default=bool(default))
+    if kind == "choice":
+        return click.prompt(
+            label,
+            type=click.Choice(options),
+            default=default if default in options else options[0],
+        )
+    if kind == "list":
+        return _ask_list(field, default if isinstance(default, list) else [], label)
+    shown = _shown(kind, default)
+    hint = {
+        "multichoice": f" ({', '.join(options)}; comma-separated)",
+        "feature_group": " (name or name:version)",
+        "feature_groups": " (name or name:version, comma-separated)",
+    }.get(kind, "")
+    raw = click.prompt(
+        label + hint, default=shown, show_default=bool(shown), type=str
+    ).strip()
+    if kind == "number":
+        try:
+            number = float(raw)
+        except ValueError:
+            return raw or None
+        return int(number) if number.is_integer() else number
+    if kind == "multichoice":
+        return [v.strip() for v in raw.split(",") if v.strip()]
+    if kind == "feature_group":
+        return _feature_group(raw) if raw else None
+    if kind == "feature_groups":
+        return [_feature_group(v.strip()) for v in raw.split(",") if v.strip()]
+    return raw
+
+
+def _shown(kind: str, default: Any) -> str:
+    """A default as the prompt shows it and takes it back."""
+    if default is None:
+        return ""
+    if kind == "multichoice" and isinstance(default, list):
+        return ",".join(map(str, default))
+    if kind in ("feature_group", "feature_groups"):
+        groups = default if isinstance(default, list) else [default]
+        return ",".join(
+            f"{g.get('name')}:{g.get('version', 1)}"
+            for g in groups
+            if isinstance(g, dict)
+        )
+    return str(default)
+
+
+def _feature_group(text: str) -> dict:
+    name, _, version = text.partition(":")
+    return {"name": name, "version": int(version) if version.isdigit() else 1}
+
+
+def _ask_list(field: dict, start: list, label: str) -> list:
+    items = []
+    item_label = field.get("item_label") or "entry"
+    while True:
+        wanted = len(items) < len(start) or len(items) < field.get("min_items", 0)
+        if not click.confirm(f"{label}: add a {item_label}?", default=wanted):
+            return items
+        preset = start[len(items)] if len(items) < len(start) else {}
+        item: dict = {}
+        for sub in field.get("fields") or []:
+            value = _ask_field(
+                sub,
+                preset.get(sub["id"], sub.get("default")),
+                f"  {item_label} {len(items) + 1}: {sub['label']}",
+            )
+            if value is not None:
+                _put(item, sub.get("key") or sub["id"], value)
+        items.append(item)
+
+
+def _account_env(field: dict) -> None:
+    """Ask for an account variable the build reads, unless the account has it, and save it there.
+
+    Hopsworks sets account variables in every job, app and deployment the user
+    starts, so the value never enters the answers, system.yaml or a Claude session.
+    """
+    from hopsworks_common.core import env_var_api
+
+    env = field["env"]
+    try:
+        api = env_var_api.EnvVarsApi()
+        present = {v.name for v in api.get_env_vars(include_value=False)}
+    except Exception as exc:  # noqa: BLE001 - the build reads it later, or reports it missing
+        output.warn(
+            f"Could not read your account environment variables ({exc}); set {env} in "
+            "Account settings, Environment variables, before the build needs it."
+        )
+        return
+    if env in present:
+        return
+    secret = bool(field.get("secret"))
+    while True:
+        value = click.prompt(
+            field["label"] + (" (not shown)" if secret else ""),
+            default="" if secret else str(field.get("default") or ""),
+            hide_input=secret,
+            show_default=not secret,
+        ).strip()
+        if value or not field.get("required"):
+            break
+        output.warn(f"{field['label']} is required.")
+    if value:
+        api.set_env_var(env, value, visibility="PRIVATE")
+        output.success(f"Saved {env} in your account settings.")
+
+
+def _resume(ctx: click.Context, definition: dict, target: Path, launch: bool) -> None:
+    """Start or resume the build of the system recorded in `target`, with the factory version it was built with."""
+    from hopsworks_common.core import factory_api
+
+    doc = yaml.safe_load((target / "system.yaml").read_text(encoding="utf-8")) or {}
+    name = definition["name"]
+    recorded = doc.get("factory") or {}
+    if recorded.get("name") not in (None, name):
+        raise click.ClickException(
+            f"{target.name} was built by the factory {recorded['name']}; "
+            f"resume it with `hops factory run {recorded['name']} {target.name}`"
+        )
+    if recorded.get("version") not in (None, definition.get("version")):
+        definition = factory_api._get(name, recorded["version"])
+    output.info(f"Resuming {target.name} from {target / 'system.yaml'}.")
+    builtin = (definition["spec"].get("build") or {}).get("builtin")
+    if builtin == "mlsystem":
+        build.resume(ctx, target, launch)
+    elif builtin in ("medallion-silver", "medallion-gold"):
+        layer = builtin.removeprefix("medallion-")
+        medallion._launch(target, launch, f"/hops-{layer} {target.name}")
+    else:
+        _write_build_files(target, definition, definition["spec"], target.name)
+        medallion._launch(target, launch, f"/hops-factory-{name} {target.name}")
+
+
+# endregion
 
 
 def create_system(
-    ctx: click.Context, definition: dict, answers_path: Path, launch: bool
-) -> Path | None:
-    """Create a system with a factory from the answers file; returns its directory.
+    ctx: click.Context, definition: dict, answers: dict, launch: bool
+) -> Path:
+    """Create a system with a factory from its answers; returns its directory.
 
     A factory whose build is a built-in's (mlsystem, medallion-silver, medallion-gold, and any
     clone of them) hands the answers that built-in knows, with the factory's constant answers,
@@ -360,14 +549,6 @@ def create_system(
     Code on the command generated from its instructions.
     """
     spec = definition["spec"]
-    try:
-        answers = json.loads(answers_path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        raise click.BadParameter(str(exc), param_hint="--answers") from exc
-    if not isinstance(answers, dict):
-        raise click.BadParameter(
-            "the answers must be a JSON object", param_hint="--answers"
-        )
     found = factory_spec.answer_problems(spec, answers)
     if found:
         raise click.ClickException("\n  ".join(["invalid answers:", *found]))
@@ -383,27 +564,13 @@ def create_system(
         "instructions": build_spec.get("instructions"),
         "extra": {k: v for k, v in merged.items() if k not in known},
     }
-    with tempfile.NamedTemporaryFile(
-        "w", suffix=".json", prefix="hops-factory-", delete=False
-    ) as handle:
-        json.dump({k: v for k, v in merged.items() if k in known}, handle)
-    try:
-        path = Path(handle.name)
-        if builtin == "mlsystem":
-            ctx.invoke(
-                build.create_cmd,
-                slug=None,
-                no_launch=not launch,
-                example=None,
-                answers=path,
-            )
-        elif builtin == "medallion-silver":
-            ctx.invoke(medallion.medallion_silver, answers=path, no_launch=not launch)
-        else:
-            ctx.invoke(medallion.medallion_gold, answers=path, no_launch=not launch)
-    finally:
-        Path(handle.name).unlink(missing_ok=True)
-    return None
+    data = {k: v for k, v in merged.items() if k in known}
+    create = {
+        "mlsystem": build.create,
+        "medallion-silver": medallion.create_silver,
+        "medallion-gold": medallion.create_gold,
+    }[builtin]
+    return create(ctx, data, launch)
 
 
 # The answers each built-in build reads; a factory's other answers are its own.
@@ -456,7 +623,7 @@ def _create_own(
         mlsystem.register(ctx, target, slug, name)
     except Exception as exc:  # noqa: BLE001 - the system is recorded either way
         output.warn(
-            f"Not registered in the project's Factory ({exc}); run `hops factory {name} register {target}`."
+            f"Not registered in the project's Factory ({exc}); run `hops factory system register {target} --factory {name}`."
         )
     medallion._launch(target, launch, f"/hops-factory-{name} {slug}")
     return target

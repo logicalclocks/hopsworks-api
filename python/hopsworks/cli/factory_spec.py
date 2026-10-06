@@ -443,7 +443,7 @@ def slug_of(doc: dict, answers: dict) -> str | None:
 def record_factory(meta: dict | None, target: Path) -> None:
     """Record the factory that built the system in its system.yaml, when a project factory delegated to a built-in.
 
-    `meta` is what `hops factory <name> create` put in the click context: the factory's
+    `meta` is what `hops factory run <name>` put in the click context: the factory's
     name and version, its instructions, and the answers to its own fields, which go to
     `requirements.extra`.
     """

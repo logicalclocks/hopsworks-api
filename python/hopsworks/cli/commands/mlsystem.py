@@ -1,11 +1,12 @@
-"""``hops factory mlsystem`` — the project's registry of ML systems.
+"""``hops factory system`` — the systems the project's factories built.
 
 A system is registered by where its code lives, so every member of the project
 sees it in the Hopsworks UI: a HopsFS directory in the project, or the Git
-repository of a system built from an external client. ``hops factory mlsystem create`` and
-``/hops-build`` register systems themselves; these commands are for listing
-them, for registering or removing one by hand, and for deleting a system with
-what it created.
+repository of a system built from an external client. ``hops factory run`` and
+the build commands register systems themselves; these commands list them,
+register or remove one by hand, report a system's health and delete it with
+what it created. A medallion layer's own commands (data marts, jobs, added
+tables, backfills) are here too and refuse any other system.
 """
 
 from __future__ import annotations
@@ -17,7 +18,6 @@ from pathlib import Path
 
 import click
 from hopsworks.cli import output, session
-from hopsworks.cli.commands.build import create_cmd
 
 
 def code_location(path: Path, project: str | None = None) -> str:
@@ -81,33 +81,31 @@ def _when(value):
     return value
 
 
-@click.group("mlsystem")
-def mlsystem_group() -> None:
-    """Builds ML systems: feature, training and inference pipelines, and an app."""
+@click.group("system")
+def system_group() -> None:
+    """The systems the project's factories built: list, register, status, remove and delete them."""
 
 
-@mlsystem_group.command("list")
+@system_group.command("list")
+@click.option("--factory", help="Only the systems this factory built.")
 @click.pass_context
-def mlsystem_list(ctx: click.Context) -> None:
-    """List the project's ML systems, newest first, with whether you can open each one's code.
-
-    Args:
-        ctx: Click context.
-    """
+def system_list(ctx: click.Context, factory: str | None) -> None:
+    """List the project's systems, newest first, with the factory that built each and whether you can open its code."""
     from hopsworks_common.core import ml_system_api
 
     session.get_project(ctx)
-    systems = ml_system_api._list()
+    systems = ml_system_api._list(factory)
     if output.JSON_MODE:
         output.print_json(systems)
         return
     access = {True: "yes", False: "no", None: "repository"}
     output.print_table(
-        ["ID", "NAME", "OWNER", "UPDATED", "CODE ACCESS", "PATH"],
+        ["ID", "NAME", "FACTORY", "OWNER", "UPDATED", "CODE ACCESS", "PATH"],
         [
             [
                 s.get("id"),
                 s.get("name"),
+                f"{s.get('factory') or '-'} v{s.get('factoryVersion') or '?'}",
                 s.get("ownerName") or s.get("owner"),
                 output.format_ts(_when(s.get("lastUpdated"))),
                 access.get(s.get("accessible"), "-"),
@@ -118,7 +116,7 @@ def mlsystem_list(ctx: click.Context) -> None:
     )
 
 
-@mlsystem_group.command("register")
+@system_group.command("register")
 @click.argument(
     "path",
     required=False,
@@ -128,10 +126,10 @@ def mlsystem_list(ctx: click.Context) -> None:
 @click.option("--name", help="Display name; defaults to the directory name.")
 @click.option(
     "--factory",
-    help="The factory that built it (hops factory list); a new entry defaults to mlsystem.",
+    help="The factory that built it (hops factory list); a new entry defaults to ml-batch.",
 )
 @click.pass_context
-def mlsystem_register(
+def system_register(
     ctx: click.Context, path: Path, name: str | None, factory: str | None
 ) -> None:
     """Register the system in PATH (default: the current directory), or refresh its entry.
@@ -147,15 +145,21 @@ def mlsystem_register(
 
 
 def _find(system: str) -> dict:
+    """The registry entry of `system`: its id, its name, or its directory's name (the slug)."""
     from hopsworks_common.core import ml_system_api
 
     matches = [
         s
         for s in ml_system_api._list()
-        if str(s.get("id")) == system or s.get("name") == system
+        if system
+        in (
+            str(s.get("id")),
+            s.get("name"),
+            str(s.get("pathToCode") or "").rstrip("/").rsplit("/", 1)[-1],
+        )
     ]
     if not matches:
-        raise click.ClickException(f"no ML system {system!r} in this project")
+        raise click.ClickException(f"no system {system!r} in this project")
     if len(matches) > 1:
         raise click.ClickException(
             f"{len(matches)} systems are named {system!r}; use its id"
@@ -173,15 +177,15 @@ def _local_dir(entry: dict) -> Path | None:
     return Path(home.split("/Users/", 1)[0]) / found[3]
 
 
-@mlsystem_group.command("remove")
+@system_group.command("remove")
 @click.argument("system")
 @click.pass_context
-def mlsystem_remove(ctx: click.Context, system: str) -> None:
-    """Remove SYSTEM (an id or a name) from the registry; its code is left in place.
+def system_remove(ctx: click.Context, system: str) -> None:
+    """Remove SYSTEM (an id, name or slug) from the registry; its code is left in place.
 
     Args:
         ctx: Click context.
-        system: The id or name of the system.
+        system: The id, name or slug of the system.
     """
     from hopsworks_common.core import ml_system_api
 
@@ -191,7 +195,7 @@ def mlsystem_remove(ctx: click.Context, system: str) -> None:
     output.success(f"Removed {entry.get('name')} from the registry")
 
 
-@mlsystem_group.command("delete")
+@system_group.command("delete")
 @click.argument("system")
 @click.option(
     "--assets",
@@ -213,7 +217,7 @@ def mlsystem_remove(ctx: click.Context, system: str) -> None:
 )
 @click.option("--yes", is_flag=True, help="Skip the confirmation prompt.")
 @click.pass_context
-def mlsystem_delete(
+def system_delete(
     ctx: click.Context,
     system: str,
     assets: bool,
@@ -221,10 +225,12 @@ def mlsystem_delete(
     path: Path | None,
     yes: bool,
 ) -> None:
-    """Delete SYSTEM (an id or a name): its registry entry, and with --assets what it created.
+    """Delete SYSTEM (an id, name or slug): its registry entry, and with --assets what it created.
 
-    Assets are read from the system's system.yaml and deleted downstream first,
-    skipping any already gone; the run stops at the first failure. Then the
+    A medallion layer's assets are its jobs and tables, never the tables it
+    reads, and its directory. Any other system's assets are read from its
+    system.yaml and deleted downstream first, skipping any already gone; the
+    run stops at the first failure. Then the
     repository (with --repo; only the system's branch when the repository holds
     other builds), the code directory and the registry entry, so after a failure
     the system is still listed and the same command can be run again. Without
@@ -232,7 +238,7 @@ def mlsystem_delete(
 
     Args:
         ctx: Click context.
-        system: The id or name of the system.
+        system: The id, name or slug of the system.
         assets: Delete the assets the system created.
         repo: Delete the system's GitHub repository too.
         path: The system's directory.
@@ -240,6 +246,7 @@ def mlsystem_delete(
     """
     import yaml
     from hopsworks.cli import teardown
+    from hopsworks.cli.commands import medallion
     from hopsworks_common.core import ml_system_api
 
     project = session.get_project(ctx)
@@ -258,8 +265,18 @@ def mlsystem_delete(
             raise click.ClickException(
                 f"cannot read the system.yaml of {entry.get('name')}; pass its directory with --path"
             )
+        elif "layer" in (doc := yaml.safe_load(spec.read_text(encoding="utf-8")) or {}):
+            if repo:
+                raise click.ClickException(
+                    "a medallion layer shares its repository with the other layers; delete it without --repo"
+                )
+            steps = [
+                (
+                    f"jobs, tables and directory of the layer {directory}",
+                    lambda: medallion.delete_layer(ctx, directory, doc),
+                )
+            ]
         else:
-            doc = yaml.safe_load(spec.read_text(encoding="utf-8")) or {}
             others = tuple(
                 str(s.get("pathToCode", "")).rstrip("/").rsplit("/", 1)[-1]
                 for s in ml_system_api._list()
@@ -325,7 +342,7 @@ def mlsystem_delete(
     output.success(f"Deleted {entry.get('name')}{kept}")
 
 
-@mlsystem_group.command("status")
+@system_group.command("status")
 @click.argument("system")
 @click.option(
     "--hours",
@@ -346,7 +363,7 @@ def mlsystem_delete(
 )
 @click.option("--no-summary", is_flag=True, help="Skip the summary Claude writes.")
 @click.pass_context
-def mlsystem_status(
+def system_status(
     ctx: click.Context,
     system: str,
     hours: int,
@@ -354,18 +371,19 @@ def mlsystem_status(
     out: Path | None,
     no_summary: bool,
 ) -> None:
-    """Report the health of SYSTEM (an id or a name) as an HTML page.
+    """Report the health of SYSTEM (an id, name or slug) as an HTML page.
 
     Reads the jobs, deployments and apps the system's system.yaml records: each
     job's runs in the last HOURS with the log tail of every failure, and each
     deployment and app with its state and its pods (readiness, restarts, the last
     termination reason, CPU and memory against the limits, from kubectl). Claude
-    writes a short summary of what failed and why. The Factory Status button runs this
-    and shows the page.
+    writes a short summary of what failed and why. A medallion layer's report
+    reads its jobs and tables instead (freshness, rejected rows, file layout).
+    The Factory Status button runs this and shows the page.
 
     Args:
         ctx: Click context.
-        system: The id or name of the system.
+        system: The id, name or slug of the system.
         hours: How far back to read job runs.
         path: The system's directory.
         out: Where to write the report.
@@ -373,6 +391,7 @@ def mlsystem_status(
     """
     import yaml
     from hopsworks.cli import health
+    from hopsworks.cli.commands import medallion
 
     project = session.get_project(ctx)
     entry = _find(system)
@@ -383,6 +402,9 @@ def mlsystem_status(
             f"cannot read the system.yaml of {entry.get('name')}; pass its directory with --path"
         )
     doc = yaml.safe_load(spec.read_text(encoding="utf-8")) or {}
+    if "layer" in doc:
+        medallion.layer_status(project, directory, doc, hours, no_summary, out)
+        return
     facts = health.collect(project, doc, directory.name, hours)
     if output.JSON_MODE:
         output.print_json(facts)
@@ -398,5 +420,19 @@ def mlsystem_status(
     )
 
 
-# The interview and build live in build.py.
-mlsystem_group.add_command(create_cmd)
+def _add_layer_commands() -> None:
+    from hopsworks.cli.commands import medallion
+
+    for command in (
+        medallion.medallion_dir,
+        medallion.medallion_add_tables,
+        medallion.medallion_mart_add,
+        medallion.medallion_mart_update,
+        medallion.medallion_mart_delete,
+        medallion.medallion_job_delete,
+        medallion.medallion_backfill,
+    ):
+        system_group.add_command(command)
+
+
+_add_layer_commands()

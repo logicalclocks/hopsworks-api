@@ -41,7 +41,7 @@ first question below whose answer is not yet recorded.
 ## The interview
 
 **1. What do you want to build?** Use the arguments when they say what to predict. Otherwise ask
-with exactly two options, as `hops factory mlsystem create` does:
+with exactly two options:
 
 - **Start a new ML system (Recommended)**: "Type what it should predict in the box below, for
   example which customers will churn next month." A typed answer is the problem. When this option
@@ -57,7 +57,7 @@ python <skills>/hops-reqs/references/new_system.py <slug>      # <skills>: .clau
 python <slug>/set.py 'schema_version=1' 'system.name=<short title>' 'system.slug=<slug>' \
   'system.target={cluster: <Host>, project: <Project>, stage: development}' 'system.version=0.1.0' 'system.status=draft' \
   'requirements.status=pending' 'requirements.description=<the problem in the user words>'
-hops factory mlsystem register <slug> --name '<short title>'   # lists it in the project's ML systems
+hops factory system register <slug> --name '<short title>'   # lists it in the project's ML systems
 ```
 
 **2. What type of system?** Recommend from the problem: **batch** when predictions are used on a
@@ -146,7 +146,7 @@ example's own slug, which writes its whole `system.yaml`, then record the target
 ```bash
 python <skills>/hops-reqs/references/new_system.py <example> --example <example>
 python <example>/set.py 'system.target={cluster: <Host>, project: <Project>, stage: development}'
-hops factory mlsystem register <example>
+hops factory system register <example>
 ```
 
 The agentic example still needs its LLM: ask the *Which LLM?* question of the Agentic branch, and

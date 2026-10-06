@@ -1,4 +1,4 @@
-"""`hops factory mlsystem`: the project's ML systems registry."""
+"""`hops factory system`: the project's ML systems registry."""
 
 from __future__ import annotations
 
@@ -43,8 +43,8 @@ def logged_in(monkeypatch):
 
 
 def test_list_shows_each_system_with_its_code_access(monkeypatch, logged_in):
-    monkeypatch.setattr(ml_system_api, "_list", lambda: SYSTEMS)
-    done = CliRunner().invoke(cli, ["factory", "mlsystem", "list"])
+    monkeypatch.setattr(ml_system_api, "_list", lambda factory=None: SYSTEMS)
+    done = CliRunner().invoke(cli, ["factory", "system", "list"])
     assert done.exit_code == 0, done.output
     assert "Churn next month" in done.output and "Admin Admin" in done.output
     assert "yes" in done.output and "repository" in done.output
@@ -53,18 +53,18 @@ def test_list_shows_each_system_with_its_code_access(monkeypatch, logged_in):
 
 def test_remove_finds_a_system_by_name_or_id(monkeypatch, logged_in):
     removed = []
-    monkeypatch.setattr(ml_system_api, "_list", lambda: SYSTEMS)
+    monkeypatch.setattr(ml_system_api, "_list", lambda factory=None: SYSTEMS)
     monkeypatch.setattr(ml_system_api, "_remove", removed.append)
     assert (
-        CliRunner().invoke(cli, ["factory", "mlsystem", "remove", "Recs"]).exit_code
+        CliRunner().invoke(cli, ["factory", "system", "remove", "Recs"]).exit_code
         == 0
     )
     assert (
-        CliRunner().invoke(cli, ["factory", "mlsystem", "remove", "7"]).exit_code == 0
+        CliRunner().invoke(cli, ["factory", "system", "remove", "7"]).exit_code == 0
     )
     assert removed == [8, 7]
-    missing = CliRunner().invoke(cli, ["factory", "mlsystem", "remove", "nope"])
-    assert missing.exit_code != 0 and "no ML system" in missing.output
+    missing = CliRunner().invoke(cli, ["factory", "system", "remove", "nope"])
+    assert missing.exit_code != 0 and "no system" in missing.output
 
 
 def test_register_sends_the_path_and_the_name(monkeypatch):
@@ -165,7 +165,7 @@ def system_dir(tmp_path, monkeypatch):
     (home / "churn-example").mkdir(parents=True)
     (home / "churn-example" / "system.yaml").write_text(yaml.safe_dump(SPEC))
     monkeypatch.setenv("HOPSFS_USER_HOME_DIR", str(home))
-    monkeypatch.setattr(ml_system_api, "_list", lambda: SYSTEMS)
+    monkeypatch.setattr(ml_system_api, "_list", lambda factory=None: SYSTEMS)
     return home / "churn-example"
 
 
@@ -187,7 +187,7 @@ def test_a_failed_delete_keeps_the_system_registered_and_a_rerun_finishes(
 
     monkeypatch.setattr(teardown.Deleter, "delete", delete)
     monkeypatch.setattr(ml_system_api, "_remove", removed.append)
-    args = ["factory", "mlsystem", "delete", "7", "--assets", "--yes"]
+    args = ["factory", "system", "delete", "7", "--assets", "--yes"]
     first = CliRunner().invoke(cli, args)
     assert first.exit_code != 0 and "still registered" in first.output
     assert "feature group labels v1" not in deleted and removed == []
@@ -200,9 +200,9 @@ def test_a_failed_delete_keeps_the_system_registered_and_a_rerun_finishes(
 
 def test_metadata_only_needs_no_system_yaml(monkeypatch, logged_in):
     removed = []
-    monkeypatch.setattr(ml_system_api, "_list", lambda: SYSTEMS)
+    monkeypatch.setattr(ml_system_api, "_list", lambda factory=None: SYSTEMS)
     monkeypatch.setattr(ml_system_api, "_remove", removed.append)
-    done = CliRunner().invoke(cli, ["factory", "mlsystem", "delete", "Recs", "--yes"])
+    done = CliRunner().invoke(cli, ["factory", "system", "delete", "Recs", "--yes"])
     assert done.exit_code == 0, done.output
     assert removed == [8]
 
@@ -343,7 +343,7 @@ def test_delete_removes_the_code_last_and_a_retry_after_it_finishes(
     monkeypatch.setattr(teardown.Deleter, "delete", lambda self, asset: "gone")
     removed = []
     monkeypatch.setattr(ml_system_api, "_remove", removed.append)
-    args = ["factory", "mlsystem", "delete", "7", "--assets", "--yes"]
+    args = ["factory", "system", "delete", "7", "--assets", "--yes"]
     done = CliRunner().invoke(cli, args)
     assert done.exit_code == 0, done.output
     assert not system_dir.exists() and removed == [7]

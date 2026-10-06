@@ -25,9 +25,12 @@ hops factory import file.yaml [--name new] [--yes] # create; --update saves a ne
 hops factory clone <source> <new-name> [--title T]
 hops factory enable|disable <name>
 hops factory delete <name>                         # refused while systems built with it exist
-hops factory <name> create --answers answers.json  # a system, as the UI's Create does
-hops factory mlsystem ... | hops factory medallion ...  # the built-in builds' own commands (interview, marts, backfill)
-hops factory <name> list|status|register|remove|delete
+hops factory run <name> [--answers answers.json] [--preset id] [--no-launch]
+                                                   # a new system; without --answers the questions are asked here
+hops factory run <name> <slug>                     # resume a system from its <slug>/system.yaml, no answers needed
+hops factory system list [--factory <name>]        # the systems built, with the factory and version of each
+hops factory system status|register|remove|delete <system>
+hops factory system mart-add|mart-update|mart-delete|job-delete|add-tables|backfill|dir ...  # medallion layers only
 ```
 
 ## Writing a definition
@@ -80,7 +83,7 @@ Field types, list columns and every rule: [references/definition.md](references/
 - Validate before importing; fix every problem `hops factory validate` prints.
 - Never put a secret, a token or a shell command meant to run unreviewed into a definition: the instructions run in the Terminal of whoever builds with it.
 - Importing someone else's definition: read its `build.instructions` in full first, as `hops factory import` prints them.
-- A factory with systems cannot be deleted; delete its systems first with `hops factory <name> delete <system> --assets`.
+- A factory with systems cannot be deleted; delete its systems first with `hops factory system delete <system> --assets`.
 
 ## Next steps
 - [hops-job](../hops-job/SKILL.md) — the jobs a factory's build creates and schedules.

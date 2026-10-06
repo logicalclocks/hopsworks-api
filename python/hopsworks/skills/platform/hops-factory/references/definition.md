@@ -66,10 +66,11 @@ The build writes each phase's `status` (`pending`, `running`, `met`, `unmet`), `
 
 ## What a system gets
 
-`hops factory <name> create --answers` writes `<slug>/system.yaml` with `factory: {name, version, phases}`, `system`, `requirements` (the answers shown) and a `pending` block per phase; `<slug>/.claude/commands/hops-factory-<name>.md`; and `<slug>/AGENTS.md`; then registers the system with the factory and the definition version it was built with.
+`hops factory run <name>` takes the answers from `--answers` (a JSON file nested by each field's key, as the UI writes it) or asks each question in the terminal, then writes `<slug>/system.yaml` with `factory: {name, version, phases}`, `system`, `requirements` (the answers shown) and a `pending` block per phase; `<slug>/.claude/commands/hops-factory-<name>.md`; and `<slug>/AGENTS.md`; then registers the system with the factory and the definition version it was built with.
 Editing a factory saves a new version; a system keeps the version it was built with.
+`hops factory run <name> <slug>` resumes the system from its `system.yaml`, which records the factory, its version and the answers, so it takes no answers file.
 
 ## Presets
 
 `presets: [{id, label, description, answers, fixed}]`: `answers` are starting answers by field id, `fixed` answers sent as they are and never shown (the built-in ML factories' examples set `example` there).
-The Factory lists them under the factory's New button.
+The Factory lists them under the factory's New button; `hops factory run <name> --preset <id>` starts from one.

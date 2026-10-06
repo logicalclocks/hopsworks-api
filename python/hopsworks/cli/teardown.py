@@ -1,4 +1,4 @@
-"""Deleting what an ML system created, for ``hops factory mlsystem delete``.
+"""Deleting what an ML system created, for ``hops factory system delete``.
 
 The assets come from the system's ``system.yaml``, conservatively: only what the
 build writes or names as its own (feature groups it writes, its feature view,

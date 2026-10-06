@@ -58,7 +58,7 @@ dependencies = [
     "packaging",                     # ^21.0
     "hopsworks-apigen>=1.0.4,<2.0.0",
     "click>=8.1",
-    "pyyaml",                        # hops factory mlsystem create and the ML system template read and write system.yaml
+    "pyyaml",                        # hops factory run and the ML system template read and write system.yaml
     "tomli>=2.0; python_version < '3.11'",
     "tomli-w>=1.0",
     "build",
