@@ -471,8 +471,8 @@ class Model:
             feature_logging: Feature logging configuration for the predictor and its feature-log sidecar; see [`DeploymentLoggingConfig`][hsml.deployment_logging_config.DeploymentLoggingConfig].
                 Fields left unset keep the platform defaults.
             knative_mode: Whether to deploy in KServe Knative mode.
-                `None` (default) lets the backend decide: LLM (vLLM) deployments default to Standard, every other deployment defaults to Knative mode; on an update, `None` keeps the deployment's current mode.
-                Standard mode does not scale to zero (minimum one instance). It autoscales on a CPU or memory metric between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum), and runs a fixed replica count without autoscaler when `min_instances == max_instances` (the default for LLM deployments).
+                `None` (default) lets the backend decide: a new deployment runs in Standard mode, which KEDA scales (with scale-to-zero when idle) wherever KEDA is installed; on an update, `None` keeps the deployment's current mode.
+                Standard mode keeps at least one instance while active and autoscales between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum; `concurrency`, `rps` and, for vLLM, the engine metrics are available under KEDA), scales to zero when idle unless `idle_scale_to_zero=False`, and runs a fixed replica count without autoscaler when `min_instances == max_instances` (the default for LLM deployments).
 
         Returns:
             The deployment metadata object of a new or existing deployment.
