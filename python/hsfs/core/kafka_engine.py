@@ -239,7 +239,7 @@ def _init_kafka_producer(
 
 
 def _get_watermark_offsets(
-    consumer: Consumer, partition: TopicPartition, timeout: float
+    consumer: Consumer, partition: TopicPartition, timeout: float | None
 ) -> tuple[int, int]:
     """Read a partition's watermarks, waiting out a partition whose leader is not serving yet.
 
@@ -249,7 +249,8 @@ def _get_watermark_offsets(
     below, so the read is retried with a short backoff for up to `timeout` seconds rather
     than failing the insert that asked for the offsets.
     """
-    deadline = time.monotonic() + timeout
+    # kafka_timeout=None retries for the 6 s used when kafka_timeout is not set at all.
+    deadline = time.monotonic() + (6 if timeout is None else timeout)
     delay = 0.1
     while True:
         try:

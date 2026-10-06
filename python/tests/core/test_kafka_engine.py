@@ -475,6 +475,31 @@ class TestKafkaEngine:
         assert get_watermark_offsets.call_count == 2
         consumer.close.assert_called_once()
 
+    def test_kafka_get_offsets_retries_with_the_default_budget_when_timeout_is_unset(
+        self, mocker
+    ):
+        # Arrange
+        sleep = mocker.patch("hsfs.core.kafka_engine.time.sleep")
+        get_watermark_offsets = mocker.MagicMock(
+            side_effect=[
+                KafkaException(KafkaError(KafkaError.NOT_LEADER_FOR_PARTITION)),
+                (0, 11),
+            ]
+        )
+        self._single_partition_consumer(mocker, get_watermark_offsets)
+
+        # Act
+        result = kafka_engine._kafka_get_offsets(
+            topic_name="test_topic",
+            feature_store_id=99,
+            offline_write_options={"kafka_timeout": None},
+            high=True,
+        )
+
+        # Assert
+        assert result == "test_topic,0:11"
+        assert sleep.call_count == 1
+
     def test_kafka_get_offsets_for_times_retries_a_partition_whose_leader_is_not_serving_yet(
         self, mocker
     ):
