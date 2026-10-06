@@ -326,7 +326,7 @@
 | python/hsfs/core/job\_configuration/\_\_init\_\_.py                              |        2 |        0 |    100% |           |
 | python/hsfs/core/job\_schedule/\_\_init\_\_.py                                   |        2 |        0 |    100% |           |
 | python/hsfs/core/kafka\_api/\_\_init\_\_.py                                      |        2 |        0 |    100% |           |
-| python/hsfs/core/kafka\_engine.py                                                |      190 |        6 |     97% |206, 392, 413, 419, 434, 476 |
+| python/hsfs/core/kafka\_engine.py                                                |      207 |        6 |     97% |207, 424, 445, 451, 466, 508 |
 | python/hsfs/core/keywords\_api/\_\_init\_\_.py                                   |        2 |        0 |    100% |           |
 | python/hsfs/core/monitoring\_window\_config.py                                   |      130 |       29 |     78% |49, 53-55, 63, 67, 70, 152-153, 168-169, 174, 177, 180, 186, 197, 203-214, 231, 236-240, 257, 280, 289 |
 | python/hsfs/core/monitoring\_window\_config\_engine.py                           |      238 |       41 |     83% |52, 72, 81, 126, 163, 227, 240-248, 261, 348-395, 688-699, 739-740, 863, 906, 924 |
@@ -498,7 +498,7 @@
 | python/hsml/utils/schema/tensor.py                                               |        8 |        0 |    100% |           |
 | python/hsml/utils/schema/tensor\_schema.py                                       |       34 |        0 |    100% |           |
 | python/hsml/version.py                                                           |        2 |        2 |      0% |     17-22 |
-| **TOTAL**                                                                        | **50236** | **12937** | **74%** |           |
+| **TOTAL**                                                                        | **50253** | **12937** | **74%** |           |
 
 
 ## Setup coverage badge
