@@ -1,13 +1,13 @@
 ---
 name: hops-factory
-description: Use when creating, editing, cloning, importing, exporting or deleting a software factory in Hopsworks (the Factory's built-in mlsystem and medallion factories, or a project's own), or writing a factory definition YAML. Auto-invoke on "factory", "new factory", "factory definition", "hops factory". Input what the factory should build; output a validated definition imported into the project.
+description: Use when creating, editing, cloning, importing, exporting or deleting a software factory in Hopsworks (the five built-in ML system and medallion layer factories, or a project's own), or writing a factory definition YAML. Auto-invoke on "factory", "new factory", "factory definition", "hops factory". Input what the factory should build; output a validated definition imported into the project.
 ---
 
 # Hopsworks software factories
 
 A factory is a YAML definition: the questions of a creation form, the phases of the build, and the instructions Claude Code follows to build what the answers describe.
 The Hopsworks UI generates the form, the Factory page section and the progress bar from it.
-Two factories are built in and read-only: `mlsystem` (ML systems) and `medallion` (silver and gold layers).
+Five factories are built in and read-only: `ml-batch`, `ml-realtime` and `ml-agent` (ML systems) and `medallion-silver` and `medallion-gold` (medallion layers).
 A project's data owners add its own: written from scratch, cloned from any factory, or imported from a YAML file.
 
 ## Contract
@@ -26,6 +26,7 @@ hops factory clone <source> <new-name> [--title T]
 hops factory enable|disable <name>
 hops factory delete <name>                         # refused while systems built with it exist
 hops factory <name> create --answers answers.json  # a system, as the UI's Create does
+hops factory mlsystem ... | hops factory medallion ...  # the built-in builds' own commands (interview, marts, backfill)
 hops factory <name> list|status|register|remove|delete
 ```
 
@@ -46,9 +47,16 @@ form:
         - {id: question, type: textarea, label: "What should it answer?", required: true}
     - id: refresh
       title: Refresh
-      collapsed: true          # a one-line summary with Edit
+      collapsed: true          # a one-line summary of its answers, with Edit
       fields:
-        - {id: cadence, type: choice, label: Cadence, options: [daily, weekly], default: weekly}
+        - {id: cadence, key: refresh.cadence, type: choice, label: Cadence, default: weekly,
+           options: [{value: daily, label: Every day}, weekly]}
+        - id: tables
+          type: list
+          label: Tables to read
+          item_label: Table
+          fields:
+            - {id: table, type: feature_group, label: Feature group, required: true, filter: {layer: [silver]}}
 phases:
   - {key: build, label: Build, minutes: 20}
   - {key: verify, label: Verify, minutes: 5}
@@ -59,9 +67,12 @@ build:
 ```
 - Every form needs a `slug` field: it names the system's directory.
 - Quote a label holding `?`, `:` or `#`: it is YAML.
-- `when: {field: <earlier id>, equals: <value>}` shows a field only for that answer.
+- A form has no conditions: every question of a section is shown. Put optional questions in a `collapsed: true` section, which shows a summary of its answers with Edit.
+- `key` puts an answer at a dotted path of the answers the build gets; the id when absent.
+- `account_env` fields (`env: LLM_API_KEY`, `secret: true`) are saved as the user's account variables, never in `system.yaml`.
+- `presets` are named starting answers, listed under the factory's New button: `{id, label, answers: {<field id>: ...}, fixed: {...}}`.
 - A phase key cannot be `system`, `factory` or `schema_version`.
-- To extend a built-in instead of replacing it, clone it: the clone keeps `build.builtin` and its built-in form, and its own questions land in `requirements.extra` and its instructions in `factory.instructions` of each system's `system.yaml`.
+- To extend a built-in instead of replacing it, clone it: the clone keeps `build.builtin` (`mlsystem`, `medallion-silver` or `medallion-gold`) and its questions; answers the built-in build does not read land in `requirements.extra` and the clone's instructions in `factory.instructions` of each system's `system.yaml`.
 
 Field types, list columns and every rule: [references/definition.md](references/definition.md).
 

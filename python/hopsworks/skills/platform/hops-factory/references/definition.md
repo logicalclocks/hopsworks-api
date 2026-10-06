@@ -7,13 +7,14 @@ The cluster refuses a definition that breaks a rule below, and `hops factory val
 
 | key | required | rule |
 | --- | --- | --- |
-| `name` | yes | `[a-z][a-z0-9-]*`, at most 63; not `mlsystem` or `medallion` |
+| `name` | yes | `[a-z][a-z0-9-]*`, at most 63; not a built-in's name (`ml-batch`, `ml-realtime`, `ml-agent`, `medallion-silver`, `medallion-gold`) |
 | `title` | yes | text, at most 255 |
 | `description` | no | text |
 | `form.sections` | yes | a non-empty list |
 | `phases` | yes | a non-empty list |
 | `build` | yes | `builtin` or `instructions` |
 | `list.columns` | no | extra columns of the Factory's list |
+| `presets` | no | named starting answers |
 
 The whole definition is at most 29000 bytes of UTF-8.
 
@@ -24,24 +25,29 @@ The whole definition is at most 29000 bytes of UTF-8.
 | `id` | unique, `[a-z][a-z0-9_]*` |
 | `title` | text |
 | `collapsed` | true shows the section as a one-line summary of its answers, with Edit |
+
+A form has no conditions: every question of a section is shown, and `when` is refused.
 | `fields` | a non-empty list |
 
 ## Fields
 
-Every field has a unique `id`, a `type` and a `label`, and may have `help`, `required`, `default` and `when`.
+Every field has a unique `id`, a `type` and a `label`, and may have `help`, `required`, `default` and `key`.
+`key` is the dotted path where the answer goes in the answers the build gets (`sla.batch.cadence`); the id when absent.
 
 | type | renders as | answer |
 | --- | --- | --- |
-| `slug` | text checked against `[a-z][a-z0-9-]*`, unique among the project's systems | string |
+| `slug` | text checked against `[a-z][a-z0-9-]*`, unique among the project's systems; every form has one | string |
 | `text`, `textarea` | input, text area | string |
 | `number` | number input; `min`, `max` | number |
 | `boolean` | checkbox | true or false |
 | `choice` | one of `options` | string |
 | `multichoice` | some of `options` | list of strings |
-| `feature_groups` | the project's feature groups; `filter: {layer: [bronze, silver, gold], hide_logging: true}` | list of `{name, version}` |
-| `component` | a form the UI ships: `mlsystem.requirements`, `medallion.silver`, `medallion.gold` | that form's answers |
+| `feature_group` | one of the project's feature groups; `filter: {layer: [bronze, silver, gold], hide_logging: true}` | `{name, version}` |
+| `feature_groups` | several of them, with the same `filter` | list of `{name, version}` |
+| `list` | entries added and removed by the user, each asking its own `fields`; `item_label`, `min_items` | list of objects |
+| `account_env` | an input (`secret: true` hides it) saved as the user's account variable `env`; not inside a list | nothing: it never reaches the answers |
 
-`when: {field: <id of an earlier field>, equals: <value>}` shows the field only while that answer equals the value; a hidden field is neither checked nor recorded.
+An option is a value, or `{value, label}` to show a label.
 
 ## Phases
 
@@ -52,7 +58,7 @@ The build writes each phase's `status` (`pending`, `running`, `met`, `unmet`), `
 
 - `instructions`: what Claude Code does, in prose. It runs as `/hops-factory-<name> <slug>` in the system's directory, wrapped in the rules every factory shares: resume from `system.yaml`, record phases, record `outputs`, keep the code in a `hops-<slug>` GitHub repository.
 - `skills`: skills to load before the instructions.
-- `builtin: mlsystem | medallion`: build with that built-in instead; its `component` form provides the answers it needs, the factory's other answers go to `requirements.extra` and `instructions` to `factory.instructions`, which the built-in's build follows too.
+- `builtin: mlsystem | medallion-silver | medallion-gold`: build with that built-in instead. `answers` are constants every system gets (`{system_type: batch}`); the answers that built-in reads go to it, the others to `requirements.extra`, and `instructions` to `factory.instructions`, which the built-in build follows too.
 
 ## List columns
 
@@ -62,3 +68,8 @@ The build writes each phase's `status` (`pending`, `running`, `met`, `unmet`), `
 
 `hops factory <name> create --answers` writes `<slug>/system.yaml` with `factory: {name, version, phases}`, `system`, `requirements` (the answers shown) and a `pending` block per phase; `<slug>/.claude/commands/hops-factory-<name>.md`; and `<slug>/AGENTS.md`; then registers the system with the factory and the definition version it was built with.
 Editing a factory saves a new version; a system keeps the version it was built with.
+
+## Presets
+
+`presets: [{id, label, description, answers, fixed}]`: `answers` are starting answers by field id, `fixed` answers sent as they are and never shown (the built-in ML factories' examples set `example` there).
+The Factory lists them under the factory's New button.

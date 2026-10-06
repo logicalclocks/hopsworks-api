@@ -19,8 +19,10 @@ if TYPE_CHECKING:
 API_VERSION = "hopsworks.ai/factory/v1"
 # Bytes of UTF-8, the size of the cluster's column for a definition.
 MAX_LENGTH = 29000
-BUILTINS = ("mlsystem", "medallion")
-COMPONENTS = ("mlsystem.requirements", "medallion.silver", "medallion.gold")
+# The built-in factories; a project factory cannot take their names.
+BUILTINS = ("ml-batch", "ml-realtime", "ml-agent", "medallion-silver", "medallion-gold")
+# The builds a factory can hand its answers to instead of writing its own instructions.
+BUILTIN_BUILDS = ("mlsystem", "medallion-silver", "medallion-gold")
 FIELD_TYPES = (
     "slug",
     "text",
@@ -29,13 +31,16 @@ FIELD_TYPES = (
     "boolean",
     "choice",
     "multichoice",
+    "feature_group",
     "feature_groups",
-    "component",
+    "list",
+    "account_env",
 )
 NAME = re.compile(r"^[a-z][a-z0-9-]{0,62}$")
 ID = re.compile(r"^[a-z][a-z0-9_]{0,62}$")
 SLUG = re.compile(r"^[a-z][a-z0-9-]*$")
 PATH = re.compile(r"^[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)*$")
+ENV = re.compile(r"^[A-Z][A-Z0-9_]{0,62}$")
 # Blocks of system.yaml a phase cannot be named after.
 RESERVED_PHASES = ("system", "factory", "schema_version")
 
@@ -93,18 +98,11 @@ def problems(doc: dict) -> list[str]:
         found.append("title must be text of at most 255 characters.")
     if "description" in doc and not isinstance(doc["description"], str):
         found.append("description must be text.")
-    has_component = _check_form(doc.get("form"), found)
+    ids = _check_form(doc.get("form"), found)
     _check_phases(doc.get("phases"), found)
     _check_build(doc.get("build"), found)
     _check_list(doc.get("list"), found)
-    if (
-        not has_component
-        and "form.sections must be a non-empty list." not in found
-        and not any(f.get("type") == "slug" for f in fields(doc))
-    ):
-        found.append(
-            "The form needs a field of type slug, which names the system's directory."
-        )
+    _check_presets(doc.get("presets"), ids, found)
     return found
 
 
@@ -117,7 +115,7 @@ def text_problems(text: str) -> list[str]:
 
 
 def fields(doc: dict) -> list[dict]:
-    """Every field of the form, in order."""
+    """Every top-level field of the form, in order."""
     sections = (doc.get("form") or {}).get("sections") or []
     return [
         f
@@ -128,14 +126,15 @@ def fields(doc: dict) -> list[dict]:
     ]
 
 
-def _check_form(form: Any, found: list[str]) -> bool:
+def _check_form(form: Any, found: list[str]) -> set[str]:
     sections = form.get("sections") if isinstance(form, dict) else None
+    ids: set[str] = set()
     if not isinstance(sections, list) or not sections:
         found.append("form.sections must be a non-empty list.")
-        return False
+        return ids
     section_ids: set[str] = set()
-    earlier: set[str] = set()
-    has_component = False
+    keys: set[str] = set()
+    slug = False
     for s, section in enumerate(sections):
         where = f"form.sections[{s}]"
         if not isinstance(section, dict):
@@ -150,16 +149,41 @@ def _check_form(form: Any, found: list[str]) -> bool:
             found.append(f"{where}.title is required.")
         if "collapsed" in section and not isinstance(section["collapsed"], bool):
             found.append(f"{where}.collapsed must be true or false.")
-        items = section.get("fields")
-        if not isinstance(items, list) or not items:
-            found.append(f"{where}.fields must be a non-empty list.")
-            continue
-        for f, field in enumerate(items):
-            has_component |= _check_field(field, f"{where}.fields[{f}]", earlier, found)
-    return has_component
+        slug |= _check_fields(
+            section.get("fields"), f"{where}.fields", ids, keys, True, found
+        )
+    if not slug:
+        found.append(
+            "The form needs a field of type slug, which names the system's directory."
+        )
+    return ids
 
 
-def _check_field(field: Any, where: str, earlier: set[str], found: list[str]) -> bool:
+def _check_fields(
+    items: Any,
+    where: str,
+    earlier: set[str],
+    keys: set[str],
+    top: bool,
+    found: list[str],
+) -> bool:
+    if not isinstance(items, list) or not items:
+        found.append(f"{where} must be a non-empty list.")
+        return False
+    slug = False
+    for f, field in enumerate(items):
+        slug |= _check_field(field, f"{where}[{f}]", earlier, keys, top, found)
+    return slug
+
+
+def _check_field(
+    field: Any,
+    where: str,
+    earlier: set[str],
+    keys: set[str],
+    top: bool,
+    found: list[str],
+) -> bool:
     if not isinstance(field, dict):
         found.append(f"{where} must be a mapping.")
         return False
@@ -172,35 +196,51 @@ def _check_field(field: Any, where: str, earlier: set[str], found: list[str]) ->
         found.append(f"{where}.label is required.")
     if "required" in field and not isinstance(field["required"], bool):
         found.append(f"{where}.required must be true or false.")
+    key = field.get("key")
+    if key is not None:
+        if not isinstance(key, str) or not PATH.match(key):
+            found.append(f"{where}.key must be a dotted path of lowercase identifiers.")
+        elif key in keys:
+            found.append(f"{where}.key {key} is used by another field.")
+        else:
+            keys.add(key)
+    elif isinstance(fid, str):
+        if fid in keys:
+            found.append(f"{where}.id {fid} is used as another field's key.")
+        keys.add(fid)
     if kind in ("choice", "multichoice"):
         options = field.get("options")
         if (
             not isinstance(options, list)
             or not options
-            or not all(_text(o) for o in options)
+            or not all(_option_value(o) for o in options)
         ):
-            found.append(f"{where}.options must be a non-empty list of text.")
-    for bound in ("min", "max"):
+            found.append(
+                f"{where}.options must be a non-empty list of text or of {{value, label}}."
+            )
+    for bound in ("min", "max", "min_items", "max_items"):
         if bound in field and (
             isinstance(field[bound], bool) or not isinstance(field[bound], (int, float))
         ):
             found.append(f"{where}.{bound} must be a number.")
-    if kind == "component" and field.get("component") not in COMPONENTS:
+    if kind == "account_env":
+        if not isinstance(field.get("env"), str) or not ENV.match(field["env"]):
+            found.append(f"{where}.env must name an environment variable in capitals.")
+        if not top:
+            found.append(f"{where} cannot be an account_env inside a list.")
+        if "secret" in field and not isinstance(field["secret"], bool):
+            found.append(f"{where}.secret must be true or false.")
+    if "when" in field:
         found.append(
-            f"{where}.component must be one of {', '.join(sorted(COMPONENTS))}."
+            f"{where}.when is not supported: a factory's form has no conditions; put optional questions in a collapsed section."
         )
-    when = field.get("when")
-    if when is not None and (
-        not isinstance(when, dict)
-        or when.get("field") not in earlier
-        or "equals" not in when
-    ):
-        found.append(
-            f"{where}.when must name an earlier field and the value it equals."
+    if kind == "list":
+        _check_fields(
+            field.get("fields"), f"{where}.fields", set(), set(), False, found
         )
     if isinstance(fid, str):
         earlier.add(fid)
-    return kind == "component"
+    return top and kind == "slug"
 
 
 def _check_phases(phases: Any, found: list[str]) -> None:
@@ -231,12 +271,18 @@ def _check_build(build: Any, found: list[str]) -> None:
         found.append("build is required: builtin or instructions.")
         return
     builtin = build.get("builtin")
-    if builtin is not None and builtin not in BUILTINS:
-        found.append(f"build.builtin must be one of {', '.join(sorted(BUILTINS))}.")
+    if builtin is not None and builtin not in BUILTIN_BUILDS:
+        found.append(
+            f"build.builtin must be one of {', '.join(sorted(BUILTIN_BUILDS))}."
+        )
     if builtin is None and not _text(build.get("instructions")):
         found.append("build.instructions is required when build.builtin is not set.")
     if "instructions" in build and not isinstance(build["instructions"], str):
         found.append("build.instructions must be text.")
+    if "answers" in build and not isinstance(build["answers"], dict):
+        found.append(
+            "build.answers must be a mapping of the answers every system gets."
+        )
     skills = build.get("skills")
     if skills is not None and (
         not isinstance(skills, list)
@@ -262,6 +308,39 @@ def _check_list(listing: Any, found: list[str]) -> None:
             found.append(f"list.columns[{c}] needs a label and a dotted path in from.")
 
 
+def _check_presets(presets: Any, ids: set[str], found: list[str]) -> None:
+    if presets is None:
+        return
+    if not isinstance(presets, list):
+        found.append("presets must be a list.")
+        return
+    seen: set[str] = set()
+    for p, preset in enumerate(presets):
+        where = f"presets[{p}]"
+        preset = preset if isinstance(preset, dict) else {}
+        pid = preset.get("id")
+        if not isinstance(pid, str) or not NAME.match(pid) or pid in seen:
+            found.append(f"{where}.id must be a unique lowercase name.")
+        else:
+            seen.add(pid)
+        if not _text(preset.get("label")):
+            found.append(f"{where}.label is required.")
+        answers = preset.get("answers")
+        if not isinstance(answers, dict):
+            found.append(f"{where}.answers must be a mapping of field ids to answers.")
+            continue
+        found.extend(
+            f"{where}.answers names {fid}, which is not a field of the form."
+            for fid in answers
+            if fid not in ids
+        )
+
+
+def _option_value(option: Any) -> str | None:
+    value = option.get("value") if isinstance(option, dict) else option
+    return value if _text(value) else None
+
+
 def _text(value: Any) -> bool:
     return isinstance(value, str) and bool(value.strip())
 
@@ -269,52 +348,82 @@ def _text(value: Any) -> bool:
 # region Answers
 
 
-def visible(doc: dict, answers: dict) -> list[dict]:
-    """The fields the form shows for these answers: those without `when`, or whose condition holds."""
-    shown = []
-    for field in fields(doc):
-        when = field.get("when")
-        if when and answers.get(when.get("field")) != when.get("equals"):
-            continue
-        shown.append(field)
-    return shown
+def value_at(answers: dict, path: str) -> Any:
+    """The answer at a dotted path of the answers a form sent."""
+    node: Any = answers
+    for part in path.split("."):
+        node = node.get(part) if isinstance(node, dict) else None
+    return node
+
+
+def _empty(value: Any) -> bool:
+    return value is None or value == "" or value == []
+
+
+def _field_problems(field: dict, value: Any, label: str) -> list[str]:
+    kind = field["type"]
+    if _empty(value):
+        return (
+            [f"{label} is required."] if field.get("required") or kind == "slug" else []
+        )
+    options = [_option_value(o) for o in field.get("options") or []]
+    if kind == "slug" and not (isinstance(value, str) and SLUG.match(value)):
+        return [
+            f"{label} must be lowercase letters, digits and hyphens, starting with a letter."
+        ]
+    if kind == "number":
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return [f"{label} must be a number."]
+        if ("min" in field and value < field["min"]) or (
+            "max" in field and value > field["max"]
+        ):
+            return [f"{label} is out of range."]
+    if kind == "boolean" and not isinstance(value, bool):
+        return [f"{label} must be true or false."]
+    if kind == "choice" and value not in options:
+        return [f"{label} must be one of {', '.join(options)}."]
+    if kind == "multichoice" and not (
+        isinstance(value, list) and set(value) <= set(options)
+    ):
+        return [f"{label} must be some of {', '.join(options)}."]
+    if kind == "feature_group" and not (isinstance(value, dict) and value.get("name")):
+        return [f"{label} must be a feature group."]
+    if kind == "feature_groups" and not (
+        isinstance(value, list)
+        and all(isinstance(v, dict) and v.get("name") for v in value)
+    ):
+        return [f"{label} must be a list of feature groups."]
+    if kind == "list":
+        if not isinstance(value, list):
+            return [f"{label} must be a list."]
+        found = []
+        if "min_items" in field and len(value) < field["min_items"]:
+            found.append(f"{label} needs at least {field['min_items']}.")
+        for i, item in enumerate(value):
+            item = item if isinstance(item, dict) else {}
+            for sub in field.get("fields") or []:
+                found += _field_problems(
+                    sub,
+                    item.get(sub.get("key") or sub["id"]),
+                    f"{label} {i + 1}: {sub['label']}",
+                )
+        return found
+    return []
 
 
 def answer_problems(doc: dict, answers: dict) -> list[str]:
-    """What keeps the answers from creating a system, one line each, as the form checks them."""
+    """What keeps the answers from creating a system, one line each, as the form checks them.
+
+    The answers are nested by each field's key (its id when it has none); an account_env field's
+    value never reaches the answers, since the UI saves it as an account variable.
+    """
     found = []
-    for field in visible(doc, answers):
-        fid, kind, label = field["id"], field["type"], field["label"]
-        value = answers.get(fid)
-        empty = value is None or value == "" or value == []
-        if empty:
-            if field.get("required") or kind == "slug":
-                found.append(f"{label} is required.")
+    for field in fields(doc):
+        if field["type"] == "account_env":
             continue
-        if kind == "slug" and not (isinstance(value, str) and SLUG.match(value)):
-            found.append(
-                f"{label} must be lowercase letters, digits and hyphens, starting with a letter."
-            )
-        elif kind == "number":
-            if isinstance(value, bool) or not isinstance(value, (int, float)):
-                found.append(f"{label} must be a number.")
-            elif ("min" in field and value < field["min"]) or (
-                "max" in field and value > field["max"]
-            ):
-                found.append(f"{label} is out of range.")
-        elif kind == "boolean" and not isinstance(value, bool):
-            found.append(f"{label} must be true or false.")
-        elif kind == "choice" and value not in field.get("options", []):
-            found.append(f"{label} must be one of {', '.join(field['options'])}.")
-        elif kind == "multichoice" and not (
-            isinstance(value, list) and set(value) <= set(field.get("options", []))
-        ):
-            found.append(f"{label} must be some of {', '.join(field['options'])}.")
-        elif kind == "feature_groups" and not (
-            isinstance(value, list)
-            and all(isinstance(v, dict) and v.get("name") for v in value)
-        ):
-            found.append(f"{label} must be a list of feature groups.")
+        found += _field_problems(
+            field, value_at(answers, field.get("key") or field["id"]), field["label"]
+        )
     return found
 
 
@@ -322,7 +431,7 @@ def slug_of(doc: dict, answers: dict) -> str | None:
     """The system's slug: the answer to the form's slug field."""
     for field in fields(doc):
         if field.get("type") == "slug":
-            return answers.get(field["id"])
+            return value_at(answers, field.get("key") or field["id"])
     return None
 
 

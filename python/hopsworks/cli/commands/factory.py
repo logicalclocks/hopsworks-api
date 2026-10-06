@@ -1,11 +1,13 @@
 """``hops factory`` — the software factories of this project.
 
-Two are built in: ``mlsystem`` builds ML systems (feature, training and
-inference pipelines, and an app) and ``medallion`` builds silver and gold
-layers; each keeps its own command group, ``hops factory mlsystem ...`` and
-``hops factory medallion ...``. A project's own factories are YAML definitions
-(apiVersion hopsworks.ai/factory/v1) its data owners create, import, clone and
-delete; each gets the same commands, ``hops factory <name> create|list|...``.
+Five are built in, as YAML definitions the cluster ships: ``ml-batch``,
+``ml-realtime`` and ``ml-agent`` build ML systems, ``medallion-silver`` and
+``medallion-gold`` build medallion layers. A project's own factories are YAML
+definitions (apiVersion hopsworks.ai/factory/v1) its data owners create,
+import, clone and delete. Every factory takes ``hops factory <name>
+create|list|status|register|remove|delete``; ``hops factory mlsystem ...`` and
+``hops factory medallion ...`` hold the commands of the two built-in builds
+(the ML system interview, data marts, backfills).
 """
 
 from __future__ import annotations
@@ -48,7 +50,7 @@ class _FactoryGroup(click.Group):
 
 @click.group("factory", cls=_FactoryGroup)
 def factory_group() -> None:
-    """The software factories: mlsystem builds ML systems, medallion builds silver and gold layers, and the project's own."""
+    """The software factories: the built-in ML system and medallion layer factories, and the project's own."""
 
 
 for _group in FACTORIES:
@@ -349,12 +351,13 @@ def _project_factory_group(definition: dict) -> click.Group:
 def create_system(
     ctx: click.Context, definition: dict, answers_path: Path, launch: bool
 ) -> Path | None:
-    """Create a system with a project factory from the answers file; returns its directory.
+    """Create a system with a factory from the answers file; returns its directory.
 
-    A factory whose build is a built-in's (a clone of mlsystem or medallion) hands the
-    component's answers to that built-in's create, with the factory's own answers and
-    instructions recorded in system.yaml; any other writes system.yaml itself and starts
-    Claude Code on the command generated from the factory's instructions.
+    A factory whose build is a built-in's (mlsystem, medallion-silver, medallion-gold, and any
+    clone of them) hands the answers that built-in knows, with the factory's constant answers,
+    to that built-in's create; the rest are recorded as `requirements.extra`, with the factory's
+    instructions, in system.yaml. Any other factory writes system.yaml itself and starts Claude
+    Code on the command generated from its instructions.
     """
     spec = definition["spec"]
     try:
@@ -368,69 +371,53 @@ def create_system(
     found = factory_spec.answer_problems(spec, answers)
     if found:
         raise click.ClickException("\n  ".join(["invalid answers:", *found]))
-    shown = factory_spec.visible(spec, answers)
     build_spec = spec.get("build") or {}
     builtin = build_spec.get("builtin")
-    if builtin:
-        own = {
-            f["id"]: answers[f["id"]]
-            for f in shown
-            if f["type"] != "component" and f["id"] in answers
-        }
-        ctx.meta[factory_spec.META] = {
-            "name": definition["name"],
-            "version": definition["version"],
-            "instructions": build_spec.get("instructions"),
-            "extra": own,
-        }
-        components = {
-            f["component"]: f["id"] for f in shown if f["type"] == "component"
-        }
-        _delegate(ctx, builtin, components, answers, launch)
-        return None
-    return _create_own(ctx, definition, spec, shown, answers, launch)
-
-
-def _delegate(
-    ctx: click.Context, builtin: str, components: dict, answers: dict, launch: bool
-) -> None:
-    targets = {
-        "mlsystem.requirements": lambda path: ctx.invoke(
-            build.create_cmd,
-            slug=None,
-            no_launch=not launch,
-            example=None,
-            answers=path,
-        ),
-        "medallion.silver": lambda path: ctx.invoke(
-            medallion.medallion_silver, answers=path, no_launch=not launch
-        ),
-        "medallion.gold": lambda path: ctx.invoke(
-            medallion.medallion_gold, answers=path, no_launch=not launch
-        ),
+    if not builtin:
+        return _create_own(ctx, definition, spec, answers, launch)
+    known = BUILTIN_KEYS[builtin]
+    merged = {**answers, **(build_spec.get("answers") or {})}
+    ctx.meta[factory_spec.META] = {
+        "name": definition["name"],
+        "version": definition["version"],
+        "instructions": build_spec.get("instructions"),
+        "extra": {k: v for k, v in merged.items() if k not in known},
     }
-    for component, field_id in components.items():
-        if component.split(".")[0] != builtin or not isinstance(
-            answers.get(field_id), dict
-        ):
-            continue
-        with tempfile.NamedTemporaryFile(
-            "w", suffix=".json", prefix="hops-factory-", delete=False
-        ) as handle:
-            json.dump(answers[field_id], handle)
-        try:
-            targets[component](Path(handle.name))
-        finally:
-            Path(handle.name).unlink(missing_ok=True)
-        return
-    raise click.ClickException(f"the answers hold no {builtin} section to build from")
+    with tempfile.NamedTemporaryFile(
+        "w", suffix=".json", prefix="hops-factory-", delete=False
+    ) as handle:
+        json.dump({k: v for k, v in merged.items() if k in known}, handle)
+    try:
+        path = Path(handle.name)
+        if builtin == "mlsystem":
+            ctx.invoke(
+                build.create_cmd,
+                slug=None,
+                no_launch=not launch,
+                example=None,
+                answers=path,
+            )
+        elif builtin == "medallion-silver":
+            ctx.invoke(medallion.medallion_silver, answers=path, no_launch=not launch)
+        else:
+            ctx.invoke(medallion.medallion_gold, answers=path, no_launch=not launch)
+    finally:
+        Path(handle.name).unlink(missing_ok=True)
+    return None
+
+
+# The answers each built-in build reads; a factory's other answers are its own.
+BUILTIN_KEYS = {
+    "mlsystem": build.ANSWER_KEYS,
+    "medallion-silver": medallion.ANSWER_KEYS,
+    "medallion-gold": medallion.GOLD_KEYS,
+}
 
 
 def _create_own(
     ctx: click.Context,
     definition: dict,
     spec: dict,
-    shown: list[dict],
     answers: dict,
     launch: bool,
 ) -> Path:
@@ -456,7 +443,8 @@ def _create_own(
                 "status": "draft",
             },
             "requirements": {
-                f["id"]: answers[f["id"]] for f in shown if f["id"] in answers
+                **answers,
+                **((spec.get("build") or {}).get("answers") or {}),
             },
         }
         for phase in phases:

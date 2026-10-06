@@ -247,9 +247,10 @@ def test_the_uis_answers_leave_nothing_to_ask(tmp_path, monkeypatch, quiet):
         "feature_logging": True,
         "watch": "drift in order value",
     }
+    # A daily run fires at the UI's default time when the answers name none.
     assert (req["system_type"], req["sla"]) == (
         "batch",
-        {"batch": {"cadence": "daily"}},
+        {"batch": {"cadence": "daily", "at": "02:00"}},
     )
     assert req["data_sources"] == [
         {
@@ -483,3 +484,46 @@ def test_mlsystem_lists_create_and_hops_has_no_build():
     listed = CliRunner().invoke(mlsystem.mlsystem_group, ["--help"])
     assert "create" in listed.output
     assert CliRunner().invoke(cli, ["build"]).exit_code != 0
+
+
+def test_a_factory_forms_answers_are_normalized():
+    answers = build._normalized(
+        {
+            "sources": {
+                "feature_groups": [{"name": "orders", "version": 2}],
+                "synthetic": [
+                    {
+                        "shape": "events",
+                        "story": "Clickstream for a web shop: 5,000 visitors",
+                    },
+                    {"name": "customers", "story": "5k customers"},
+                ],
+                "files": [{"name": "docs"}],
+            },
+            "app": {"kind": "none", "description": "unused"},
+            "sla": {"batch": {"cadence": "hourly", "at": "02:00"}},
+            "monitoring": {"feature_logging": False, "watch": " "},
+        },
+        "batch",
+    )
+    assert answers["data_sources"] == [
+        {"name": "orders", "kind": "feature_group", "version": 2},
+        {
+            "name": "clickstream_web_shop",
+            "kind": "synthetic",
+            "shape": "events",
+            "story": "Clickstream for a web shop: 5,000 visitors",
+        },
+        {
+            "name": "customers",
+            "kind": "synthetic",
+            "shape": "batch",
+            "story": "5k customers",
+        },
+        {"name": "docs", "kind": "file"},
+    ]
+    assert answers["app"] == {"wanted": False}
+    assert answers["consumers"] == "api"
+    # 02:00 is a daily time; an hourly run fires on the hour unless told a minute.
+    assert answers["sla"]["batch"]["at"] == ":00"
+    assert "monitoring" not in answers and "sources" not in answers

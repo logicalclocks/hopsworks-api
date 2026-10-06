@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from unittest import mock
 
 import pytest
@@ -28,7 +29,17 @@ form:
         - {id: name, type: slug, label: Name, required: true}
         - {id: question, type: textarea, label: "What should it answer?", required: true}
         - {id: cadence, type: choice, label: Cadence, options: [daily, weekly], default: weekly}
-        - {id: weeks, type: number, label: Weeks, min: 1, when: {field: cadence, equals: weekly}}
+        - {id: weeks, key: compare.weeks, type: number, label: Weeks, min: 1}
+    - id: sources
+      title: Sources
+      collapsed: true
+      fields:
+        - id: tables
+          type: list
+          label: Tables
+          fields:
+            - {id: table, type: feature_group, label: Table, required: true}
+            - {id: cadence, type: choice, label: Refresh, options: [{value: daily, label: Daily}, weekly]}
 phases:
   - {key: build, label: Build, minutes: 20}
   - {key: verify, label: Verify}
@@ -71,12 +82,13 @@ def test_a_well_formed_definition_has_no_problems():
         (("name: churn-review", "name: Churn Review"), "name must be"),
         (("type: slug", "type: text"), "needs a field of type slug"),
         (("options: [daily, weekly]", "options: []"), "options must be"),
-        (("field: cadence", "field: later"), "when must name an earlier field"),
-        (("  instructions: Build", "  notes: Build"), "build.instructions is required"),
         (
-            ("type: number", "type: component, component: shell"),
-            "component must be one of",
+            ("min: 1}", "min: 1, when: {field: cadence, equals: weekly}}"),
+            "when is not supported",
         ),
+        (("  instructions: Build", "  notes: Build"), "build.instructions is required"),
+        (("type: number", "type: component"), "type must be one of"),
+        (("key: compare.weeks", "key: name"), "is used by another field"),
         (("from: requirements.cadence", "from: x; rm"), "dotted path"),
         (("id: cadence", "id: name"), "unique"),
         (("key: verify", "key: system"), "a block of system.yaml"),
@@ -102,18 +114,40 @@ def test_unsafe_or_oversized_yaml_is_refused(text, problem):
 
 def test_answers_are_checked_as_the_form_checks_them():
     spec = yaml.safe_load(REVIEW)
-    good = {"name": "q3-review", "question": "why", "cadence": "weekly", "weeks": 4}
+    good = {
+        "name": "q3-review",
+        "question": "why",
+        "cadence": "weekly",
+        "compare": {"weeks": 4},
+        "tables": [{"table": {"name": "orders", "version": 1}, "cadence": "daily"}],
+    }
     assert factory_spec.answer_problems(spec, good) == []
     assert factory_spec.slug_of(spec, good) == "q3-review"
-    bad = {"name": "Q3", "cadence": "monthly", "weeks": 0}
+    bad = {
+        "name": "Q3",
+        "cadence": "monthly",
+        "compare": {"weeks": 0},
+        "tables": [{"cadence": "hourly"}],
+    }
     assert factory_spec.answer_problems(spec, bad) == [
         "Name must be lowercase letters, digits and hyphens, starting with a letter.",
         "What should it answer? is required.",
         "Cadence must be one of daily, weekly.",
+        "Weeks is out of range.",
+        "Tables 1: Table is required.",
+        "Tables 1: Refresh must be one of daily, weekly.",
     ]
-    # A field shown only for weekly is not checked for daily.
-    daily = {**good, "cadence": "daily", "weeks": 0}
-    assert factory_spec.answer_problems(spec, daily) == []
+
+
+@pytest.mark.parametrize("name", factory_spec.BUILTINS)
+def test_the_shipped_built_ins_are_valid(name):
+    resources = (
+        Path(__file__).resolve().parents[4]
+        / "hopsworks-ee/hopsworks-common/src/main/resources/factories"
+    )
+    if not resources.is_dir():
+        pytest.skip("hopsworks-ee is not beside this checkout")
+    assert factory_spec.text_problems((resources / f"{name}.yaml").read_text()) == []
 
 
 # endregion
@@ -277,7 +311,12 @@ def test_create_writes_the_system_and_its_build_command(
     answers = tmp_path / "answers.json"
     answers.write_text(
         json.dumps(
-            {"name": "q3-review", "question": "why", "cadence": "daily", "weeks": 9}
+            {
+                "name": "q3-review",
+                "question": "why",
+                "cadence": "daily",
+                "compare": {"weeks": 9},
+            }
         )
     )
     done = CliRunner().invoke(
@@ -288,11 +327,11 @@ def test_create_writes_the_system_and_its_build_command(
     assert doc["factory"]["name"] == "churn-review"
     assert doc["factory"]["version"] == 2
     assert [p["key"] for p in doc["factory"]["phases"]] == ["build", "verify"]
-    # `weeks` is hidden for a daily cadence, so it is not a requirement.
     assert doc["requirements"] == {
         "name": "q3-review",
         "question": "why",
         "cadence": "daily",
+        "compare": {"weeks": 9},
     }
     assert doc["build"] == {"status": "pending"} and doc["verify"] == {
         "status": "pending"
@@ -325,20 +364,22 @@ name: fraud-ml
 title: Fraud ML system
 form:
   sections:
-    - id: requirements
-      title: Requirements
+    - id: system
+      title: System
       fields:
-        - {id: requirements, type: component, component: mlsystem.requirements, label: Requirements}
+        - {id: slug, type: slug, label: Name, required: true}
+        - {id: description, type: textarea, label: "What should it predict?", required: true}
         - {id: regulator, type: text, label: Regulator to report to}
 phases:
   - {key: requirements, label: Requirements}
 build:
   builtin: mlsystem
+  answers: {system_type: batch, repo: new}
   instructions: Write a model card for the regulator.
 """
 
 
-def test_a_clone_of_mlsystem_builds_with_the_built_in_and_records_itself(
+def test_a_clone_of_a_built_in_builds_with_it_and_records_itself(
     tmp_path, monkeypatch, logged_in
 ):
     monkeypatch.chdir(tmp_path)
@@ -356,7 +397,7 @@ def test_a_clone_of_mlsystem_builds_with_the_built_in_and_records_itself(
             yaml.safe_dump({"requirements": {"status": "pending"}})
         )
         factory_spec.record_factory(ctx.meta.get(factory_spec.META), target)
-        seen["factory"] = factory_spec.factory_name(ctx, "mlsystem")
+        seen["factory"] = factory_spec.factory_name(ctx, "ml-batch")
 
     @factory.click.command()
     @factory.click.pass_context
@@ -368,7 +409,8 @@ def test_a_clone_of_mlsystem_builds_with_the_built_in_and_records_itself(
     answers.write_text(
         json.dumps(
             {
-                "requirements": {"slug": "fraud", "system_type": "batch"},
+                "slug": "fraud",
+                "description": "which payments are fraud",
                 "regulator": "FI",
             }
         )
@@ -377,7 +419,12 @@ def test_a_clone_of_mlsystem_builds_with_the_built_in_and_records_itself(
         cli, ["factory", "fraud-ml", "create", "--answers", str(answers), "--no-launch"]
     )
     assert done.exit_code == 0, done.output
-    assert seen["answers"] == {"slug": "fraud", "system_type": "batch"}
+    assert seen["answers"] == {
+        "slug": "fraud",
+        "description": "which payments are fraud",
+        "system_type": "batch",
+        "repo": "new",
+    }
     assert seen["no_launch"] is True
     assert seen["factory"] == "fraud-ml"
     doc = yaml.safe_load((tmp_path / "fraud" / "system.yaml").read_text())

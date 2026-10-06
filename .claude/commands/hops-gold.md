@@ -29,7 +29,7 @@ Find a skill at `.claude/skills/<name>/` in the repository, else `~/.claude/skil
 
 ## Rules
 
-- **A project factory's additions.** When `system.yaml` has a `factory` block, a project factory cloned from this one created the system: follow `factory.instructions` as well as this command, and treat `requirements.extra` as further requirements the user gave.
+- **A cloned factory's additions.** `system.yaml`'s `factory` block names the factory that created the system. When it has `instructions`, a project factory cloned from a built-in one added them: follow them as well as this command, and treat `requirements.extra` as further requirements the user gave.
 - **system.yaml is the record.** Set `layer.status` to `building` when you start and `built` or `failed` when you end, and each mart's `status` (`draft`, `building`, `built`, `failed`) and phases (`status`, `started`, `finished`, UTC from `date -u`) as they run, and `progress.now` to one line naming the mart and what you are doing. The Factory reads it every few seconds.
 - **Ask, never guess.** A requirement left blank, a metric whose formula is ambiguous, a grain that does not identify a row: ask with `AskUserQuestion`, one call, up to four questions, two to four concrete options each with the recommended one first. Record every answer and every choice you make in `decisions` (`at`, `by: user` or `by: claude`, `what`, `why`, `mart`).
 - **Kimball.** Facts at one declared grain, dimensions with surrogate keys, star or snowflake as `layer.modeling` says, conformed dimensions built once (references/gold-marts.md, Modeling).

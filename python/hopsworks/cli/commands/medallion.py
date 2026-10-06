@@ -470,18 +470,18 @@ def _answers(path: Path) -> dict:
     return data
 
 
-def _register(ctx: click.Context, target: Path, name: str) -> None:
+def _register(ctx: click.Context, target: Path, name: str, layer: str) -> None:
     from hopsworks.cli import factory_spec
     from hopsworks.cli.commands import mlsystem
 
     try:
         factory_spec.record_factory(ctx.meta.get(factory_spec.META), target)
         mlsystem.register(
-            ctx, target, name, factory_spec.factory_name(ctx, "medallion")
+            ctx, target, name, factory_spec.factory_name(ctx, f"medallion-{layer}")
         )
     except Exception as exc:  # noqa: BLE001 - the layer is recorded either way
         output.warn(
-            f"Not registered in the project's Factory ({exc}); run `hops factory mlsystem register {target} --factory medallion`."
+            f"Not registered in the project's Factory ({exc}); run `hops factory mlsystem register {target} --factory medallion-{layer}`."
         )
 
 
@@ -518,12 +518,19 @@ def medallion_silver(ctx: click.Context, answers: Path, no_launch: bool) -> None
         no_launch: Record the layer only.
     """
     data = _answers(answers)
+    # A factory form picks each bronze table as {table: {name, version}, cadence}.
+    data["sources"] = [
+        {**s.pop("table"), **s}
+        if isinstance(s, dict) and isinstance(s.get("table"), dict)
+        else s
+        for s in data.get("sources") or []
+    ]
     problems = _problems(data)
     if problems:
         raise click.ClickException("invalid answers:\n  " + "\n  ".join(problems))
     target = _create(Path.cwd(), data)
     output.success(f"Silver layer recorded in {target / 'system.yaml'}")
-    _register(ctx, target, data.get("name") or data["slug"])
+    _register(ctx, target, data.get("name") or data["slug"], "silver")
     _launch(target, not no_launch)
 
 
@@ -550,7 +557,7 @@ def medallion_gold(ctx: click.Context, answers: Path, no_launch: bool) -> None:
         raise click.ClickException("invalid answers:\n  " + "\n  ".join(problems))
     target = _create_gold(Path.cwd(), data)
     output.success(f"Gold layer recorded in {target / 'system.yaml'}")
-    _register(ctx, target, data.get("name") or data["slug"])
+    _register(ctx, target, data.get("name") or data["slug"], "gold")
     _launch(target, not no_launch, f"/hops-gold {target.name}")
 
 

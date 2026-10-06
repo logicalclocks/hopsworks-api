@@ -354,6 +354,7 @@ ANSWER_KEYS = {
     "llm",
     "reference_code",
     "monitoring",
+    "sources",
 }
 
 
@@ -406,7 +407,129 @@ def _from_answers(prefetch: _Prefetch, cwd: Path, path: Path) -> _System:
     return system
 
 
+# When a scheduled run fires for each fixed cadence, unless the answers say: the UI's defaults.
+DEFAULT_RUN_AT = {"hourly": ":00", "daily": "02:00", "weekly": "Mon 02:00"}
+_STOP_WORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "by",
+    "e",
+    "eg",
+    "for",
+    "from",
+    "g",
+    "in",
+    "into",
+    "is",
+    "it",
+    "its",
+    "of",
+    "on",
+    "or",
+    "per",
+    "so",
+    "that",
+    "the",
+    "their",
+    "them",
+    "this",
+    "to",
+    "with",
+    "each",
+    "about",
+    "over",
+    "every",
+    "one",
+}
+
+
+def _source_name(story: str, index: int, taken: set[str]) -> str:
+    """A synthetic source's name from the first words of its description, made unique."""
+    words = [
+        w
+        for w in re.split(r"[^a-z0-9]+", story.lower())
+        if w and w not in _STOP_WORDS and not w[0].isdigit()
+    ][:3]
+    base = "_".join(words) or f"source_{index + 1}"
+    name, n = base, 2
+    while name in taken:
+        name, n = f"{base}_{n}", n + 1
+    taken.add(name)
+    return name
+
+
+def _normalized(answers: dict, kind: str | None) -> dict:
+    """The answers as _apply_answers reads them, from the shapes a factory form sends.
+
+    A form sends its data as `sources` (feature groups, synthetic data and files), an app it
+    does not want as `app.kind: none`, a batch run time that may not fit the cadence, and
+    monitoring even when nothing is asked; the interview and older clients send the rest as is.
+    """
+    answers = dict(answers)
+    sources = answers.pop("sources", None)
+    if isinstance(sources, dict):
+        listed = []
+        for fg in sources.get("feature_groups") or []:
+            listed.append(
+                {
+                    "name": fg.get("name"),
+                    "kind": "feature_group",
+                    "version": fg.get("version") or 1,
+                }
+            )
+        taken = {
+            str(s.get("name")) for s in sources.get("synthetic") or [] if s.get("name")
+        }
+        for i, synthetic in enumerate(sources.get("synthetic") or []):
+            name = synthetic.get("name") or _source_name(
+                str(synthetic.get("story") or ""), i, taken
+            )
+            listed.append(
+                {
+                    "name": name,
+                    "kind": "synthetic",
+                    "shape": synthetic.get("shape") or "batch",
+                    "story": synthetic.get("story"),
+                }
+            )
+        for file in sources.get("files") or []:
+            listed.append({"name": file.get("name"), "kind": "file"})
+        if listed:
+            answers["data_sources"] = listed
+    app = answers.get("app")
+    if isinstance(app, dict) and app.get("kind") == "none":
+        answers["app"] = {"wanted": False}
+    if "consumers" not in answers and isinstance(answers.get("app"), dict):
+        wanted = answers["app"].get("wanted", True)
+        answers["consumers"] = "ui" if kind == "batch" and wanted else "api"
+    batch = (answers.get("sla") or {}).get("batch")
+    if isinstance(batch, dict) and batch.get("cadence") in DEFAULT_RUN_AT:
+        fallback = DEFAULT_RUN_AT[batch["cadence"]]
+        at = str(batch.get("at") or "")
+        fits = (
+            at
+            and at.startswith(":") == fallback.startswith(":")
+            and at[:1].isupper() == fallback[:1].isupper()
+        )
+        batch["at"] = at if fits else fallback
+    monitoring = answers.get("monitoring")
+    if (
+        isinstance(monitoring, dict)
+        and not monitoring.get("feature_logging")
+        and not str(monitoring.get("watch") or "").strip()
+    ):
+        answers.pop("monitoring")
+    return answers
+
+
 def _apply_answers(system: _System, answers: dict) -> None:
+    answers = _normalized(
+        answers, answers.get("system_type") or system.requirements.get("system_type")
+    )
     for key, dotted in (
         ("name", "system.name"),
         ("description", "requirements.description"),
@@ -860,8 +983,9 @@ def _register(ctx: click.Context, system: _System) -> None:
     name = (system.doc.get("system") or {}).get("name")
     try:
         factory_spec.record_factory(ctx.meta.get(factory_spec.META), system.target)
+        kind = system.requirements.get("system_type") or "batch"
         mlsystem.register(
-            ctx, system.target, name, factory_spec.factory_name(ctx, "mlsystem")
+            ctx, system.target, name, factory_spec.factory_name(ctx, f"ml-{kind}")
         )
     except Exception as exc:  # noqa: BLE001 - the interview is recorded either way
         output.warn(

@@ -44,7 +44,7 @@ a question you are about to ask depends on.
 
 ## Rules
 
-- **A project factory's additions.** When `system.yaml` has a `factory` block, a project factory cloned from this one created the system: follow `factory.instructions` as well as this command, and treat `requirements.extra` as further requirements the user gave.
+- **A cloned factory's additions.** `system.yaml`'s `factory` block names the factory that created the system. When it has `instructions`, a project factory cloned from a built-in one added them: follow them as well as this command, and treat `requirements.extra` as further requirements the user gave.
 - **Ask, never guess, never stall.** When something the work depends on is unclear, ask with
   `AskUserQuestion`: one call, up to four questions, two to four concrete options each with the
   recommended one first and marked "(Recommended)", and a sentence on what each implies. Never
