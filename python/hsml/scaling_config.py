@@ -35,7 +35,8 @@ if TYPE_CHECKING:
 class ScaleMetric(Enum):
     """Scaling metric for a predictor or transformer.
 
-    `CONCURRENCY` and `RPS` are Knative-only metrics, valid for KServe Knative deployments.
+    `CONCURRENCY` and `RPS` are Knative's metrics; in KServe Standard mode the KEDA HTTP add-on measures the same
+    two at the gateway for a predictor without a transformer on any model server but vLLM (needs KEDA).
     `CPU` and `MEMORY` drive CPU/memory-based autoscaling, valid for KServe Standard and non-KServe deployments,
     under either autoscaler (see `Autoscaler`).
     The vLLM engine metrics apply to LLM deployments in KServe Standard mode and are read from Prometheus by KEDA,
@@ -660,8 +661,8 @@ class ComponentScalingConfig(ABC):
     def target(self):
         """Target value for the selected scaling metric that the autoscaler should try to maintain.
 
-        For `RPS`, this is requests per second.
-        For `CONCURRENCY`, this is the number of concurrent requests.
+        For `RPS`, this is requests per second per instance (default 200).
+        For `CONCURRENCY`, this is the number of concurrent requests per instance (default 100).
         For `CPU` and `MEMORY`, this is the utilization percentage.
         For `QUEUE_DEPTH`, this is the number of requests waiting in the vLLM engine queue per replica (default 5).
         For `KV_CACHE_USAGE`, this is the KV-cache utilization percentage per replica (default 80).
