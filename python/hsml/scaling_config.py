@@ -71,10 +71,10 @@ class ScaleMetric(Enum):
 class Autoscaler(Enum):
     """Which autoscaler runs the scale metric of a KServe Standard-mode component.
 
-    `HPA` is KServe's own HorizontalPodAutoscaler on `CPU` or `MEMORY`, the default today and slated for
-    retirement in favour of KEDA.
-    `KEDA` scales on `CPU`, `MEMORY`, or the vLLM engine metrics (`QUEUE_DEPTH`, `KV_CACHE_USAGE`, `RUNNING_REQUESTS`, `QUEUE_TIME`, `TIME_TO_FIRST_TOKEN`, `REQUEST_LATENCY`) through a
-    KEDA ScaledObject; it needs KEDA installed in the cluster.
+    `KEDA` scales on `CPU`, `MEMORY`, or the vLLM engine metrics (`QUEUE_DEPTH`, `KV_CACHE_USAGE`, `RUNNING_REQUESTS`,
+    `QUEUE_TIME`, `TIME_TO_FIRST_TOKEN`, `REQUEST_LATENCY`) through a KEDA ScaledObject, and is the autoscaler
+    wherever KEDA is installed (the default).
+    `HPA` is KServe's own HorizontalPodAutoscaler on `CPU` or `MEMORY`, the fallback of a cluster without KEDA.
     Knative deployments always use the Knative autoscaler and reject this setting.
     """
 
