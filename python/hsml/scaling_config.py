@@ -38,9 +38,13 @@ class ScaleMetric(Enum):
     `CONCURRENCY` and `RPS` are Knative-only metrics, valid for KServe Knative deployments.
     `CPU` and `MEMORY` drive CPU/memory-based autoscaling, valid for KServe Standard and non-KServe deployments,
     under either autoscaler (see `Autoscaler`).
-    `QUEUE_DEPTH` and `KV_CACHE_USAGE` are vLLM engine metrics for LLM deployments in KServe Standard mode: the
-    requests waiting in the engine queue per replica, and the KV-cache utilization in percent. They are read from
-    Prometheus by KEDA, so they need the `KEDA` autoscaler and a cluster with KEDA installed.
+    The vLLM engine metrics apply to LLM deployments in KServe Standard mode and are read from Prometheus by KEDA,
+    so they need the `KEDA` autoscaler and a cluster with KEDA installed:
+    `QUEUE_DEPTH` (requests waiting in the engine queue per replica), `RUNNING_REQUESTS` (requests being generated
+    per replica), `KV_CACHE_USAGE` (KV-cache utilization in percent), `QUEUE_TIME` (average time a request waits
+    before generation starts, in ms), `TIME_TO_FIRST_TOKEN` (average time to the first token, in ms) and
+    `REQUEST_LATENCY` (average end-to-end latency, in ms). The latency metrics are one-minute averages and scale the
+    deployment in proportion to how far the average sits from its target.
     In KServe Standard mode a deployment with `min_instances == max_instances` runs a fixed replica count and ignores the metric.
     """
 
@@ -50,6 +54,10 @@ class ScaleMetric(Enum):
     MEMORY = "MEMORY"
     QUEUE_DEPTH = "QUEUE_DEPTH"
     KV_CACHE_USAGE = "KV_CACHE_USAGE"
+    RUNNING_REQUESTS = "RUNNING_REQUESTS"
+    QUEUE_TIME = "QUEUE_TIME"
+    TIME_TO_FIRST_TOKEN = "TIME_TO_FIRST_TOKEN"
+    REQUEST_LATENCY = "REQUEST_LATENCY"
 
     @classmethod
     def _has_value(cls, value):
@@ -65,7 +73,7 @@ class Autoscaler(Enum):
 
     `HPA` is KServe's own HorizontalPodAutoscaler on `CPU` or `MEMORY`, the default today and slated for
     retirement in favour of KEDA.
-    `KEDA` scales on `CPU`, `MEMORY`, or the vLLM engine metrics (`QUEUE_DEPTH`, `KV_CACHE_USAGE`) through a
+    `KEDA` scales on `CPU`, `MEMORY`, or the vLLM engine metrics (`QUEUE_DEPTH`, `KV_CACHE_USAGE`, `RUNNING_REQUESTS`, `QUEUE_TIME`, `TIME_TO_FIRST_TOKEN`, `REQUEST_LATENCY`) through a
     KEDA ScaledObject; it needs KEDA installed in the cluster.
     Knative deployments always use the Knative autoscaler and reject this setting.
     """
@@ -523,7 +531,7 @@ class ComponentScalingConfig(ABC):
 
         `CONCURRENCY` and `RPS` are Knative-only metrics for KServe Knative deployments.
         `CPU` and `MEMORY` drive CPU/memory-based autoscaling in KServe Standard mode, under KServe's HPA or KEDA.
-        `QUEUE_DEPTH` and `KV_CACHE_USAGE` are vLLM engine metrics for LLM deployments in KServe Standard mode, scaled by KEDA.
+        The vLLM engine metrics (`QUEUE_DEPTH`, `KV_CACHE_USAGE`, `RUNNING_REQUESTS`, `QUEUE_TIME`, `TIME_TO_FIRST_TOKEN`, `REQUEST_LATENCY`) are for LLM deployments in KServe Standard mode, scaled by KEDA.
         Standard deployments default to `CPU` when `min_instances < max_instances` (to `QUEUE_DEPTH` for a vLLM predictor on a cluster with KEDA); with `min_instances == max_instances` no autoscaler is configured and the metric is cleared.
         """
         return self._scale_metric
@@ -549,7 +557,7 @@ class ComponentScalingConfig(ABC):
         """Which autoscaler runs the scale metric of a KServe Standard-mode component.
 
         `HPA` is KServe's own HorizontalPodAutoscaler, `KEDA` a KEDA ScaledObject (needs KEDA installed in the cluster).
-        `CPU` and `MEMORY` run under either; `QUEUE_DEPTH` and `KV_CACHE_USAGE` only under `KEDA`.
+        `CPU` and `MEMORY` run under either; the vLLM engine metrics only under `KEDA`.
         Unset means the backend default: `KEDA` for an engine metric, `HPA` otherwise. Cleared with the metric when
         `min_instances == max_instances`, and rejected for Knative deployments.
         """
@@ -654,6 +662,9 @@ class ComponentScalingConfig(ABC):
         For `CPU` and `MEMORY`, this is the utilization percentage.
         For `QUEUE_DEPTH`, this is the number of requests waiting in the vLLM engine queue per replica (default 5).
         For `KV_CACHE_USAGE`, this is the KV-cache utilization percentage per replica (default 80).
+        For `RUNNING_REQUESTS`, this is the number of requests being generated per replica (default 32).
+        For `QUEUE_TIME`, `TIME_TO_FIRST_TOKEN` and `REQUEST_LATENCY`, this is the average in milliseconds the
+        autoscaler keeps the deployment under (defaults 1000, 2000 and 10000).
         """
         return self._target
 

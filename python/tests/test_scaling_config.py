@@ -104,6 +104,34 @@ class TestScalingConfig:
             {"scale_metric": ScaleMetric.KV_CACHE_USAGE, "target": 80}
         ]
 
+    def test_further_engine_metrics_round_trip(self):
+        for name in [
+            "RUNNING_REQUESTS",
+            "QUEUE_TIME",
+            "TIME_TO_FIRST_TOKEN",
+            "REQUEST_LATENCY",
+        ]:
+            sc = PredictorScalingConfig(
+                min_instances=1,
+                max_instances=3,
+                scale_metric=name.lower(),
+                autoscaler="keda",
+            )
+            assert sc.scale_metric == ScaleMetric(name)
+            assert sc.to_json()["scale_metric"] == name
+            read_back = PredictorScalingConfig.from_response_json(
+                {
+                    "predictor_scaling_config": {
+                        "min_instances": 1,
+                        "max_instances": 3,
+                        "scale_metric": name,
+                        "target": 7,
+                    }
+                }
+            )
+            assert read_back.scale_metric == ScaleMetric(name)
+            assert read_back.target == 7
+
     def test_idle_scale_to_zero_round_trip(self):
         sc = PredictorScalingConfig(
             min_instances=1,
