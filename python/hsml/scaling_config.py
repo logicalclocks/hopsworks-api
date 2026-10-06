@@ -213,7 +213,10 @@ class ComponentScalingConfig(ABC):
         """Initialize a ComponentScalingConfig instance.
 
         Parameters:
-            min_instances: Minimum number of instances to scale to.
+            min_instances: Minimum number of instances to scale to. In KServe Standard mode a minimum of 0 means
+                scale to zero when idle and wake on the first request, through the KEDA HTTP add-on (one instance
+                runs while active); it needs KEDA installed, a predictor without a transformer, and the `KEDA`
+                autoscaler. Knative mode scales to zero with 0 as well, through its own autoscaler.
             max_instances: Maximum number of instances to scale to.
             scale_metric: Metric to use for scaling.
             target: Target value for the selected scaling metric.
@@ -226,14 +229,13 @@ class ComponentScalingConfig(ABC):
             additional_scale_metrics: KEDA only. Further metrics to scale on next to `scale_metric`, each a
                 `{"scale_metric": ..., "target": ...}` dict or a `(scale_metric, target)` tuple; the most demanding
                 metric decides the instance count. A missing target takes the metric's default.
-            idle_scale_to_zero: KEDA only, predictor only. Scale to zero instances when idle and wake on the
-                first request, which the KEDA HTTP add-on holds until an instance is ready. Unset means the
-                backend default: on for a Standard-mode predictor without a transformer on a cluster with KEDA,
-                so pass `False` to keep at least one instance running. An LLM deployment reloads its model on
-                every wake, so expect the first request after an idle period to take as long as a cold start.
-            idle_cooldown_seconds: With `idle_scale_to_zero`: seconds (0-3600) without a request before the
-                last instance is removed. Unset means 300.
-            cold_start_timeout_seconds: With `idle_scale_to_zero`: seconds (1-3600) a request is held while the
+            idle_scale_to_zero: Standard mode only. The same as `min_instances=0`: `True` sets the minimum to
+                0 (scale to zero when idle), and the backend reports it as `True` whenever the minimum is 0.
+                `False` with a minimum of 0 is rejected. An LLM deployment reloads its model on every wake, so
+                expect the first request after an idle period to take as long as a cold start.
+            idle_cooldown_seconds: With a minimum of 0: seconds (0-3600) without a request before the last
+                instance is removed. Unset means 300.
+            cold_start_timeout_seconds: With a minimum of 0: seconds (1-3600) a request is held while the
                 deployment wakes before it fails. Unset means 600. Set it above the model's load time.
             panic_window_percentage: Percentage of the stable window to use as the panic window.
             panic_threshold_percentage: Percentage of the scale metric threshold to trigger scaling.
@@ -599,14 +601,13 @@ class ComponentScalingConfig(ABC):
     @public
     @property
     def idle_scale_to_zero(self):
-        """KEDA only, predictor only: scale to zero instances when idle and wake on the first request.
+        """Standard mode only: whether the deployment scales to zero when idle (`min_instances=0`).
 
-        The KEDA HTTP add-on holds that request until an instance is ready, so the deployment stays reachable
-        at zero. Unset means the backend default, on wherever it applies: a Standard-mode predictor without a
-        transformer on a cluster with KEDA; `False` keeps at least one instance running. Rejected with KServe's
-        HPA, a transformer, or in Knative mode (which scales to zero on its own with `min_instances=0`). An LLM
-        deployment reloads its model on every wake: the first request after an idle period takes as long as a
-        cold start.
+        Setting it to `True` sets the minimum to 0; the backend reports `True` whenever the minimum is 0. The
+        KEDA HTTP add-on holds the first request until an instance is ready, so the deployment stays reachable
+        at zero. Needs KEDA installed and the `KEDA` autoscaler, a predictor without a transformer; Knative mode
+        scales to zero on its own with `min_instances=0`. An LLM deployment reloads its model on every wake: the
+        first request after an idle period takes as long as a cold start.
         """
         return self._idle_scale_to_zero
 
@@ -617,7 +618,7 @@ class ComponentScalingConfig(ABC):
     @public
     @property
     def idle_cooldown_seconds(self):
-        """With `idle_scale_to_zero`: seconds (0-3600) without a request before the last instance is removed.
+        """With a minimum of 0 instances: seconds (0-3600) without a request before the last instance is removed.
 
         Unset means 300.
         """
@@ -630,7 +631,7 @@ class ComponentScalingConfig(ABC):
     @public
     @property
     def cold_start_timeout_seconds(self):
-        """With `idle_scale_to_zero`: seconds (1-3600) a request is held while the deployment wakes.
+        """With a minimum of 0 instances: seconds (1-3600) a request is held while the deployment wakes.
 
         Unset means 600. A request held longer fails; set it above the time the model takes to load.
         """
@@ -681,9 +682,10 @@ class ComponentScalingConfig(ABC):
     def min_instances(self) -> int:
         """Minimum number of instances to scale to.
 
-        KServe Knative deployments scale to zero when this is 0, and the cluster may require it.
-        KServe Standard deployments do not scale to zero and need at least 1.
-        Defaults to 0 for KServe Knative deployments when the cluster requires scale-to-zero, otherwise to 1.
+        0 means scale to zero when idle: KServe Knative deployments through their own autoscaler (the cluster may
+        require it), KServe Standard deployments through the KEDA HTTP add-on, which holds the first request
+        until an instance is ready and runs one instance while active. In Standard mode it needs KEDA installed
+        and a predictor without a transformer. Defaults to 0 wherever the deployment can scale to zero, otherwise 1.
         """
         return self._min_instances
 
@@ -774,7 +776,7 @@ class PredictorScalingConfig(ComponentScalingConfig):
         """Initialize a PredictorScalingConfig instance.
 
         Other Parameters: Keyword arguments for the predictor scaling configuration:
-            min_instances (int): Minimum number of instances to scale to (required).
+            min_instances (int): Minimum number of instances to scale to (required); 0 means scale to zero when idle, in Standard mode through the KEDA HTTP add-on.
             max_instances (int | None, optional): Maximum number of instances to scale to.
             scale_metric (ScaleMetric | str | Default | None, optional): Metric to use for scaling.
             target (int | None, optional): Target value for the selected scaling metric.
@@ -787,9 +789,9 @@ class PredictorScalingConfig(ComponentScalingConfig):
             scale_down_stabilization_window_seconds (int | None, optional): KEDA only. Seconds the metric must stay below target before scaling in.
             scale_up_stabilization_window_seconds (int | None, optional): KEDA only. Seconds the metric must stay above target before scaling out.
             additional_scale_metrics (list | None, optional): KEDA only. Further `{"scale_metric", "target"}` metrics; the most demanding one wins.
-            idle_scale_to_zero (bool | None, optional): KEDA only. Scale to zero when idle and wake on the first request; on by default where KEDA is installed, `False` to keep an instance running.
-            idle_cooldown_seconds (int | None, optional): With `idle_scale_to_zero`. Seconds without a request before the last instance is removed (default 300).
-            cold_start_timeout_seconds (int | None, optional): With `idle_scale_to_zero`. Seconds a request is held while the deployment wakes (default 600).
+            idle_scale_to_zero (bool | None, optional): Standard mode only. The same as `min_instances=0`: `True` sets the minimum to 0.
+            idle_cooldown_seconds (int | None, optional): With a minimum of 0. Seconds without a request before the last instance is removed (default 300).
+            cold_start_timeout_seconds (int | None, optional): With a minimum of 0. Seconds a request is held while the deployment wakes (default 600).
 
         Raises:
             ValueError: If `min_instances` is not provided.
@@ -823,7 +825,7 @@ class TransformerScalingConfig(ComponentScalingConfig):
         """Initialize a TransformerScalingConfig instance.
 
         Other Parameters: Keyword arguments for the transformer scaling configuration:
-            min_instances (int): Minimum number of instances to scale to (required).
+            min_instances (int): Minimum number of instances to scale to (required); 0 means scale to zero when idle, in Standard mode through the KEDA HTTP add-on.
             max_instances (int | None, optional): Maximum number of instances to scale to.
             scale_metric (ScaleMetric | str | Default | None, optional): Metric to use for scaling.
             target (int | None, optional): Target value for the selected scaling metric.
