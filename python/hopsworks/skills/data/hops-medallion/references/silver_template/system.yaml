@@ -1,5 +1,5 @@
 # A silver medallion layer: its specification, and what runs.
-# Written by `hops medallion silver` from the Factory's answers, then by /hops-silver.
+# Written by `hops factory medallion silver` from the Factory's answers, then by /hops-silver.
 # The `layer` block marks this system.yaml as a medallion layer, not an ML system.
 layer:
   kind: silver
@@ -42,7 +42,7 @@ outputs:
   jobs: []            # one per cadence: {name, cadence, cron, environment, tables}
   applied_spec: {}    # the spec the tables were last built from: sources, tasks,
                       # extra_tasks, engine, schedule, lifecycle; a difference is a pending change
-additions: []         # tables asked for after the build, by `hops medallion add-tables`:
+additions: []         # tables asked for after the build, by `hops factory medallion add-tables`:
                       # {at, description, sources, status: pending | applied}
 progress:
   now: ""             # what the build is doing, one line

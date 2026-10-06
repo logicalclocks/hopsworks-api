@@ -1,4 +1,4 @@
-"""The health of a silver or gold medallion layer, for ``hops medallion status``.
+"""The health of a silver or gold medallion layer, for ``hops factory medallion status``.
 
 `collect` gathers the facts: the layer's job runs, and for each feature group
 it built (silver and rejects, or each data mart's gold tables) its rows, when

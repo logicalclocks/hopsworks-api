@@ -134,7 +134,7 @@ class _ThreadSilencedStdout(io.TextIOBase):
     """Stdout that discards writes from threads that asked for silence.
 
     ``contextlib.redirect_stdout`` swaps ``sys.stdout`` for the whole process, so
-    a login in a background thread (``hops mlsystem create`` logs in while the user answers
+    a login in a background thread (``hops factory mlsystem create`` logs in while the user answers
     its first question) would swallow the main thread's prompts.
     """
 

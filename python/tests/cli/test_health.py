@@ -1,4 +1,4 @@
-"""`hops mlsystem status`: the facts of a system's health and the page that shows them."""
+"""`hops factory mlsystem status`: the facts of a system's health and the page that shows them."""
 
 from __future__ import annotations
 

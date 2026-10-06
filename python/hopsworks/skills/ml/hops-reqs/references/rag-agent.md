@@ -35,7 +35,7 @@ with the options "Uploaded", "Use the sample documents" (copy
 after an upload). Count the files with `hops files list`; `data.docs.files` records
 the count and `data.docs.status: present` when there is at least one.
 
-The LLM is not asked here. `hops mlsystem create` asked for its URL and API key and saved
+The LLM is not asked here. `hops factory mlsystem create` asked for its URL and API key and saved
 them as the user's account environment variables `LLM_URL`, `LLM_API_KEY` and
 `LLM_MODEL`, which Hopsworks sets in every job, app and deployment the user
 starts; `inference.agent.llm` records their names, never their values. When

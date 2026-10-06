@@ -1,4 +1,4 @@
-"""``hops mlsystem create`` — the structured interview for a new ML system, then the build.
+"""``hops factory mlsystem create`` — the structured interview for a new ML system, then the build.
 
 Asks what the system should predict and the questions that follow from it,
 writing every answer to ``<slug>/system.yaml`` as it is given, then starts
@@ -246,7 +246,7 @@ def _create(cwd: Path, slug: str, example: str | None = None) -> _System:
     target = cwd / slug
     if (target / "system.yaml").exists():
         raise click.ClickException(
-            f"{target} already holds a system; run `hops mlsystem create {slug}` to resume it."
+            f"{target} already holds a system; run `hops factory mlsystem create {slug}` to resume it."
         )
     try:
         new_system.create(target, example)
@@ -861,7 +861,7 @@ def _register(ctx: click.Context, system: _System) -> None:
         mlsystem.register(ctx, system.target, name)
     except Exception as exc:  # noqa: BLE001 - the interview is recorded either way
         output.warn(
-            f"Not registered in the project's ML systems ({exc}); run `hops mlsystem register {system.target}`."
+            f"Not registered in the project's ML systems ({exc}); run `hops factory mlsystem register {system.target}`."
         )
 
 

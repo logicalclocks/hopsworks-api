@@ -1,5 +1,5 @@
 # A gold medallion layer: its specification, its data marts, and what runs.
-# Written by `hops medallion gold` and `hops medallion mart-add` from the Factory's answers, then by /hops-gold.
+# Written by `hops factory medallion gold` and `hops factory medallion mart-add` from the Factory's answers, then by /hops-gold.
 # The `layer` block marks this system.yaml as a medallion layer, not an ML system.
 layer:
   kind: gold

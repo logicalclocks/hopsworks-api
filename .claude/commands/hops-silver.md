@@ -14,8 +14,8 @@ Already known, no need to look again before the first question:
 
 | First word | Do |
 | --- | --- |
-| the slug of a layer above | work on that layer, and dispatch the rest of the arguments by this table (the Factory and `hops medallion silver` start the build this way) |
-| none | with a `system.yaml` above: resume it from its first phase that is not `done`; without one: reply that the Factory's **New Medallion Layer**, or `hops medallion silver --answers`, records a layer first, and stop |
+| the slug of a layer above | work on that layer, and dispatch the rest of the arguments by this table (the Factory and `hops factory medallion silver` start the build this way) |
+| none | with a `system.yaml` above: resume it from its first phase that is not `done`; without one: reply that the Factory's **New Medallion Layer**, or `hops factory medallion silver --answers`, records a layer first, and stop |
 | `profile`, `design`, `code`, `backfill`, `schedule`, `verify` | that phase, then every later phase that is not `done` |
 | `apply` | apply the changes to `system.yaml` since the layer was built (below) |
 
@@ -83,7 +83,7 @@ Tag every silver and rejects feature group `medallion_table` with `{"layer": "si
 ### verify
 
 For each job, run one window of its cadence (`hops job run <slug>-silver-<cadence> --start-time <t0> --end-time <t1> --wait`) over a stretch of bronze arrivals, check that only that window's rows were read (the job's log states its window and row counts), that a second run of the same window leaves every silver table unchanged, and that the tags are set.
-Run `hops medallion status <slug>` and fix anything it flags.
+Run `hops factory medallion status <slug>` and fix anything it flags.
 Set `outputs.applied_spec` to the spec just built (`sources` names and versions, `tasks`, `extra_tasks`, `engine`, `schedule`, `layer.lifecycle`, `history`, `deletes`, `schema_changes`, `late_data`, `quality`, `freshness`), set `layer.status: built`, and report the silver tables, the job, its schedule and the checks, in a few lines.
 
 ### apply

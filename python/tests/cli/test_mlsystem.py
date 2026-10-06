@@ -1,4 +1,4 @@
-"""`hops mlsystem`: the project's ML systems registry."""
+"""`hops factory mlsystem`: the project's ML systems registry."""
 
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ def logged_in(monkeypatch):
 
 def test_list_shows_each_system_with_its_code_access(monkeypatch, logged_in):
     monkeypatch.setattr(ml_system_api, "_list", lambda: SYSTEMS)
-    done = CliRunner().invoke(cli, ["mlsystem", "list"])
+    done = CliRunner().invoke(cli, ["factory", "mlsystem", "list"])
     assert done.exit_code == 0, done.output
     assert "Churn next month" in done.output and "Admin Admin" in done.output
     assert "yes" in done.output and "repository" in done.output
@@ -55,10 +55,15 @@ def test_remove_finds_a_system_by_name_or_id(monkeypatch, logged_in):
     removed = []
     monkeypatch.setattr(ml_system_api, "_list", lambda: SYSTEMS)
     monkeypatch.setattr(ml_system_api, "_remove", removed.append)
-    assert CliRunner().invoke(cli, ["mlsystem", "remove", "Recs"]).exit_code == 0
-    assert CliRunner().invoke(cli, ["mlsystem", "remove", "7"]).exit_code == 0
+    assert (
+        CliRunner().invoke(cli, ["factory", "mlsystem", "remove", "Recs"]).exit_code
+        == 0
+    )
+    assert (
+        CliRunner().invoke(cli, ["factory", "mlsystem", "remove", "7"]).exit_code == 0
+    )
     assert removed == [8, 7]
-    missing = CliRunner().invoke(cli, ["mlsystem", "remove", "nope"])
+    missing = CliRunner().invoke(cli, ["factory", "mlsystem", "remove", "nope"])
     assert missing.exit_code != 0 and "no ML system" in missing.output
 
 
@@ -182,7 +187,7 @@ def test_a_failed_delete_keeps_the_system_registered_and_a_rerun_finishes(
 
     monkeypatch.setattr(teardown.Deleter, "delete", delete)
     monkeypatch.setattr(ml_system_api, "_remove", removed.append)
-    args = ["mlsystem", "delete", "7", "--assets", "--yes"]
+    args = ["factory", "mlsystem", "delete", "7", "--assets", "--yes"]
     first = CliRunner().invoke(cli, args)
     assert first.exit_code != 0 and "still registered" in first.output
     assert "feature group labels v1" not in deleted and removed == []
@@ -197,7 +202,7 @@ def test_metadata_only_needs_no_system_yaml(monkeypatch, logged_in):
     removed = []
     monkeypatch.setattr(ml_system_api, "_list", lambda: SYSTEMS)
     monkeypatch.setattr(ml_system_api, "_remove", removed.append)
-    done = CliRunner().invoke(cli, ["mlsystem", "delete", "Recs", "--yes"])
+    done = CliRunner().invoke(cli, ["factory", "mlsystem", "delete", "Recs", "--yes"])
     assert done.exit_code == 0, done.output
     assert removed == [8]
 
@@ -338,7 +343,7 @@ def test_delete_removes_the_code_last_and_a_retry_after_it_finishes(
     monkeypatch.setattr(teardown.Deleter, "delete", lambda self, asset: "gone")
     removed = []
     monkeypatch.setattr(ml_system_api, "_remove", removed.append)
-    args = ["mlsystem", "delete", "7", "--assets", "--yes"]
+    args = ["factory", "mlsystem", "delete", "7", "--assets", "--yes"]
     done = CliRunner().invoke(cli, args)
     assert done.exit_code == 0, done.output
     assert not system_dir.exists() and removed == [7]
@@ -377,3 +382,15 @@ def test_the_inventory_takes_a_rag_system_from_the_helpdesk_example(tmp_path):
     } <= plan
     # The user's uploaded documents are theirs, not an asset the build created.
     assert not any("helpdesk-docs" in p for p in plan)
+
+
+def test_factory_lists_the_two_built_in_factories():
+    from hopsworks.cli.commands import factory
+
+    assert [g.name for g in factory.FACTORIES] == ["mlsystem", "medallion"]
+    listed = CliRunner().invoke(cli, ["factory", "list"])
+    assert listed.exit_code == 0, listed.output
+    assert "mlsystem" in listed.output and "medallion" in listed.output
+    for name in ("mlsystem", "medallion", "build"):
+        assert CliRunner().invoke(cli, [name, "--help"]).exit_code != 0
+    assert "create" not in CliRunner().invoke(cli, ["factory", "--help"]).output

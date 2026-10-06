@@ -1,8 +1,8 @@
-"""``hops mlsystem`` — the project's registry of ML systems.
+"""``hops factory mlsystem`` — the project's registry of ML systems.
 
 A system is registered by where its code lives, so every member of the project
 sees it in the Hopsworks UI: a HopsFS directory in the project, or the Git
-repository of a system built from an external client. ``hops mlsystem create`` and
+repository of a system built from an external client. ``hops factory mlsystem create`` and
 ``/hops-build`` register systems themselves; these commands are for listing
 them, for registering or removing one by hand, and for deleting a system with
 what it created.
@@ -81,7 +81,7 @@ def _when(value):
 
 @click.group("mlsystem")
 def mlsystem_group() -> None:
-    """The ML systems registered in this project."""
+    """Builds ML systems: feature, training and inference pipelines, and an app."""
 
 
 @mlsystem_group.command("list")

@@ -1,6 +1,6 @@
-"""``hops medallion`` — silver and gold medallion layers built by the Factory.
+"""``hops factory medallion`` — silver and gold medallion layers built by the Factory.
 
-``hops medallion silver|gold --answers FILE`` records a layer's request, as
+``hops factory medallion silver|gold --answers FILE`` records a layer's request, as
 the Hopsworks UI's New Medallion Layer page collects it, in
 ``<slug>/system.yaml``, registers the layer with the project's ML systems
 registry so the Factory lists it, and starts Claude Code with
@@ -477,7 +477,7 @@ def _register(ctx: click.Context, target: Path, name: str) -> None:
         mlsystem.register(ctx, target, name)
     except Exception as exc:  # noqa: BLE001 - the layer is recorded either way
         output.warn(
-            f"Not registered in the project's Factory ({exc}); run `hops mlsystem register {target}`."
+            f"Not registered in the project's Factory ({exc}); run `hops factory mlsystem register {target}`."
         )
 
 
@@ -494,7 +494,7 @@ NO_LAUNCH = click.option(
 
 @click.group("medallion")
 def medallion_group() -> None:
-    """Medallion layers (bronze, silver, gold) built by the Factory."""
+    """Builds silver and gold medallion layers from bronze tables."""
 
 
 @medallion_group.command("silver")
@@ -533,7 +533,7 @@ def medallion_gold(ctx: click.Context, answers: Path, no_launch: bool) -> None:
     The answers describe the queries the layer serves, its Kimball model
     (star or snowflake), the silver feature groups it reads, the standards
     every mart follows, and the first data mart with its requirements.
-    More marts are added with `hops medallion mart-add`.
+    More marts are added with `hops factory medallion mart-add`.
 
     Args:
         ctx: Click context.
@@ -1044,7 +1044,7 @@ def medallion_add_tables(layer: str, answers: Path, no_launch: bool) -> None:
     _, directory, doc = _layer(ctx, layer)
     if _kind(doc) != "silver":
         raise click.ClickException(
-            "tables are added to a gold layer as a data mart; use hops medallion mart-add"
+            "tables are added to a gold layer as a data mart; use hops factory medallion mart-add"
         )
     data = _answers(answers)
     problems = [
@@ -1203,7 +1203,7 @@ def medallion_backfill(
 
 @medallion_group.group("create")
 def medallion_create() -> None:
-    """Create a silver or gold layer; the same commands as `hops medallion silver` and `hops medallion gold`."""
+    """Create a silver or gold layer; the same commands as `hops factory medallion silver` and `hops factory medallion gold`."""
 
 
 medallion_create.add_command(medallion_silver)

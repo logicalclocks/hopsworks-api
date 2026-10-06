@@ -1,4 +1,4 @@
-"""`hops medallion`: recording a silver layer from the Factory's answers, and deleting one."""
+"""`hops factory medallion`: recording a silver layer from the Factory's answers, and deleting one."""
 
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ def _silver(tmp_path, monkeypatch, answers, registered):
         lambda ctx, target, name=None: registered.append((target, name)) or {},
     )
     return CliRunner().invoke(
-        cli, ["medallion", "silver", "--answers", str(path), "--no-launch"]
+        cli, ["factory", "medallion", "silver", "--answers", str(path), "--no-launch"]
     )
 
 
@@ -161,7 +161,7 @@ def test_delete_with_assets_removes_the_job_tables_directory_then_the_entry(
     monkeypatch.setattr(mlsystem, "_local_dir", lambda e: target)
 
     done = CliRunner().invoke(
-        cli, ["medallion", "delete", "Customers silver", "--assets", "--yes"]
+        cli, ["factory", "medallion", "delete", "Customers silver", "--assets", "--yes"]
     )
     assert done.exit_code == 0, done.output
     assert events == [
@@ -249,7 +249,9 @@ def test_delete_stops_on_a_feature_group_error_other_than_missing(
     )
     monkeypatch.setattr(ml_system_api, "_remove", lambda i: events.append(i))
     monkeypatch.setattr(mlsystem, "_local_dir", lambda e: target)
-    done = CliRunner().invoke(cli, ["medallion", "delete", "L", "--assets", "--yes"])
+    done = CliRunner().invoke(
+        cli, ["factory", "medallion", "delete", "L", "--assets", "--yes"]
+    )
     assert done.exit_code != 0
     # The layer stays listed and its directory kept, to be deleted again.
     assert events == [] and target.exists()
@@ -355,7 +357,7 @@ def test_backfill_runs_the_job_over_all_of_history(tmp_path, monkeypatch):
         ml_system_api, "_list", lambda: [{"id": 7, "name": "L", "pathToCode": "x"}]
     )
     monkeypatch.setattr(mlsystem, "_local_dir", lambda e: target)
-    done = CliRunner().invoke(cli, ["medallion", "backfill", "L"])
+    done = CliRunner().invoke(cli, ["factory", "medallion", "backfill", "L"])
     assert done.exit_code == 0, done.output
     [call] = calls
     assert call["start_time"].year == 1970 and call["await_termination"] is True
@@ -405,7 +407,7 @@ def _layer_dir(tmp_path, doc):
 
 
 def _run(monkeypatch, target, tags, argv):
-    """Run `hops medallion <argv>` on the layer at `target`, recording what is deleted."""
+    """Run `hops factory medallion <argv>` on the layer at `target`, recording what is deleted."""
     from hopsworks_common.core import ml_system_api
 
     events = []
@@ -434,7 +436,7 @@ def _run(monkeypatch, target, tags, argv):
     )
     monkeypatch.setattr(ml_system_api, "_remove", lambda i: events.append("entry"))
     monkeypatch.setattr(mlsystem, "_local_dir", lambda e: target)
-    done = CliRunner().invoke(cli, ["medallion", *argv])
+    done = CliRunner().invoke(cli, ["factory", "medallion", *argv])
     return done, events
 
 
@@ -759,7 +761,7 @@ def test_gold_records_the_layer_and_its_first_mart(tmp_path, monkeypatch):
     )
     path = _answers_file(tmp_path, GOLD_ANSWERS)
     done = CliRunner().invoke(
-        cli, ["medallion", "gold", "--answers", path, "--no-launch"]
+        cli, ["factory", "medallion", "gold", "--answers", path, "--no-launch"]
     )
     assert done.exit_code == 0, done.output
     target = tmp_path / "hops-sales" / "sales-gold"
@@ -790,7 +792,7 @@ def test_gold_records_the_layer_and_its_first_mart(tmp_path, monkeypatch):
 def test_gold_refuses_bad_answers(tmp_path, monkeypatch, change, problem):
     monkeypatch.chdir(tmp_path)
     path = _answers_file(tmp_path, {**GOLD_ANSWERS, **change})
-    done = CliRunner().invoke(cli, ["medallion", "gold", "--answers", path])
+    done = CliRunner().invoke(cli, ["factory", "medallion", "gold", "--answers", path])
     assert done.exit_code != 0 and problem in done.output
     assert not (tmp_path / "hops-sales" / "sales-gold").exists()
 
@@ -834,7 +836,7 @@ def test_backfill_runs_every_job_slowest_first(tmp_path, monkeypatch):
         ml_system_api, "_list", lambda: [{"id": 7, "name": "L", "pathToCode": "x"}]
     )
     monkeypatch.setattr(mlsystem, "_local_dir", lambda e: target)
-    done = CliRunner().invoke(cli, ["medallion", "backfill", "L"])
+    done = CliRunner().invoke(cli, ["factory", "medallion", "backfill", "L"])
     assert done.exit_code == 0, done.output
     assert ran == ["l-silver-weekly", "l-silver-daily", "l-silver-hourly"]
     # The directory's name finds the layer too.
@@ -843,7 +845,12 @@ def test_backfill_runs_every_job_slowest_first(tmp_path, monkeypatch):
         "_list",
         lambda: [{"id": 7, "name": "L", "pathToCode": "/Projects/p/Users/u/l-silver"}],
     )
-    assert CliRunner().invoke(cli, ["medallion", "backfill", "l-silver"]).exit_code == 0
+    assert (
+        CliRunner()
+        .invoke(cli, ["factory", "medallion", "backfill", "l-silver"])
+        .exit_code
+        == 0
+    )
 
 
 def test_status_reads_every_job_and_each_tables_cadence_target(tmp_path, monkeypatch):
@@ -905,6 +912,7 @@ def _created(tmp_path, monkeypatch, kind, answers):
     done = CliRunner().invoke(
         cli,
         [
+            "factory",
             "medallion",
             kind,
             "--answers",
@@ -937,7 +945,7 @@ def test_silver_and_gold_share_one_medallion_repository(tmp_path, monkeypatch):
     assert _doc(repo / "sales-gold")["layer"]["repo"] == {"name": "hops-shop"}
     assert not (tmp_path / "hops-sales").exists()
     assert (repo / ".git").is_dir() and not (repo / "sales-gold" / ".git").exists()
-    found = CliRunner().invoke(cli, ["medallion", "dir", "sales-gold"])
+    found = CliRunner().invoke(cli, ["factory", "medallion", "dir", "sales-gold"])
     assert found.exit_code == 0 and found.output.strip() == str(repo / "sales-gold")
 
 
@@ -945,7 +953,7 @@ def test_a_layer_can_name_its_repository(tmp_path, monkeypatch):
     _created(tmp_path, monkeypatch, "gold", {**GOLD_ANSWERS, "repo": "hops-retail"})
     assert (tmp_path / "hops-retail" / "sales-gold" / "system.yaml").is_file()
     bad = _answers_file(tmp_path, {**GOLD_ANSWERS, "repo": "../escape"})
-    done = CliRunner().invoke(cli, ["medallion", "gold", "--answers", bad])
+    done = CliRunner().invoke(cli, ["factory", "medallion", "gold", "--answers", bad])
     assert done.exit_code != 0 and "repo must be hops-" in done.output
 
 
@@ -953,5 +961,5 @@ def test_medallion_create_lists_the_silver_and_gold_commands():
     create = medallion.medallion_group.get_command(None, "create")
     assert create.get_command(None, "silver") is medallion.medallion_silver
     assert create.get_command(None, "gold") is medallion.medallion_gold
-    listed = CliRunner().invoke(cli, ["medallion", "--help"])
+    listed = CliRunner().invoke(cli, ["factory", "medallion", "--help"])
     assert "create" in listed.output
