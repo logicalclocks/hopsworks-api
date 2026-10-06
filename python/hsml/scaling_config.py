@@ -217,7 +217,7 @@ class ComponentScalingConfig(ABC):
             scale_metric: Metric to use for scaling.
             target: Target value for the selected scaling metric.
             autoscaler: Which autoscaler runs the metric in KServe Standard mode, `HPA` (KServe) or `KEDA`.
-                Unset means the backend default: `KEDA` for an engine metric, `HPA` otherwise.
+                Unset means the backend default: `KEDA` wherever it is installed, `HPA` otherwise.
             scale_down_stabilization_window_seconds: KEDA only. How long (0-3600 s) the metric must stay below
                 target before instances are removed. Unset means the cluster default (300 s).
             scale_up_stabilization_window_seconds: KEDA only. How long (0-3600 s) the metric must stay above
@@ -226,9 +226,10 @@ class ComponentScalingConfig(ABC):
                 `{"scale_metric": ..., "target": ...}` dict or a `(scale_metric, target)` tuple; the most demanding
                 metric decides the instance count. A missing target takes the metric's default.
             idle_scale_to_zero: KEDA only, predictor only. Scale to zero instances when idle and wake on the
-                first request, which the KEDA HTTP add-on holds until an instance is ready. Needs the add-on
-                installed in the cluster. An LLM deployment reloads its model on every wake, so expect the first
-                request after an idle period to take as long as a cold start.
+                first request, which the KEDA HTTP add-on holds until an instance is ready. Unset means the
+                backend default: on for a Standard-mode predictor without a transformer on a cluster with KEDA,
+                so pass `False` to keep at least one instance running. An LLM deployment reloads its model on
+                every wake, so expect the first request after an idle period to take as long as a cold start.
             idle_cooldown_seconds: With `idle_scale_to_zero`: seconds (0-3600) without a request before the
                 last instance is removed. Unset means 300.
             cold_start_timeout_seconds: With `idle_scale_to_zero`: seconds (1-3600) a request is held while the
@@ -600,9 +601,11 @@ class ComponentScalingConfig(ABC):
         """KEDA only, predictor only: scale to zero instances when idle and wake on the first request.
 
         The KEDA HTTP add-on holds that request until an instance is ready, so the deployment stays reachable
-        at zero. Needs the add-on installed in the cluster; rejected with KServe's HPA, a transformer, or in
-        Knative mode (which scales to zero on its own with `min_instances=0`). An LLM deployment reloads its
-        model on every wake: the first request after an idle period takes as long as a cold start.
+        at zero. Unset means the backend default, on wherever it applies: a Standard-mode predictor without a
+        transformer on a cluster with KEDA; `False` keeps at least one instance running. Rejected with KServe's
+        HPA, a transformer, or in Knative mode (which scales to zero on its own with `min_instances=0`). An LLM
+        deployment reloads its model on every wake: the first request after an idle period takes as long as a
+        cold start.
         """
         return self._idle_scale_to_zero
 
@@ -779,11 +782,11 @@ class PredictorScalingConfig(ComponentScalingConfig):
             stable_window_seconds (int | None, optional): Interval in seconds for calculating the average metric.
             scale_to_zero_retention_seconds (int | None, optional): Time in seconds to retain the last instance before scaling to zero.
             log_persistence (LogPersistence | str | Default | None, optional): Whether instances upload their logs to the Logs dataset when they stop.
-            autoscaler (Autoscaler | str | None, optional): Which autoscaler runs the metric in KServe Standard mode, `HPA` (KServe) or `KEDA`.
+            autoscaler (Autoscaler | str | None, optional): Which autoscaler runs the metric in KServe Standard mode, `HPA` (KServe) or `KEDA` (the default where installed).
             scale_down_stabilization_window_seconds (int | None, optional): KEDA only. Seconds the metric must stay below target before scaling in.
             scale_up_stabilization_window_seconds (int | None, optional): KEDA only. Seconds the metric must stay above target before scaling out.
             additional_scale_metrics (list | None, optional): KEDA only. Further `{"scale_metric", "target"}` metrics; the most demanding one wins.
-            idle_scale_to_zero (bool | None, optional): KEDA only. Scale to zero when idle and wake on the first request (needs the KEDA HTTP add-on).
+            idle_scale_to_zero (bool | None, optional): KEDA only. Scale to zero when idle and wake on the first request; on by default where KEDA is installed, `False` to keep an instance running.
             idle_cooldown_seconds (int | None, optional): With `idle_scale_to_zero`. Seconds without a request before the last instance is removed (default 300).
             cold_start_timeout_seconds (int | None, optional): With `idle_scale_to_zero`. Seconds a request is held while the deployment wakes (default 600).
 
@@ -828,7 +831,7 @@ class TransformerScalingConfig(ComponentScalingConfig):
             stable_window_seconds (int | None, optional): Interval in seconds for calculating the average metric.
             scale_to_zero_retention_seconds (int | None, optional): Time in seconds to retain the last instance before scaling to zero.
             log_persistence (LogPersistence | str | Default | None, optional): Whether instances upload their logs to the Logs dataset when they stop.
-            autoscaler (Autoscaler | str | None, optional): Which autoscaler runs the metric in KServe Standard mode, `HPA` (KServe) or `KEDA`.
+            autoscaler (Autoscaler | str | None, optional): Which autoscaler runs the metric in KServe Standard mode, `HPA` (KServe) or `KEDA` (the default where installed).
             scale_down_stabilization_window_seconds (int | None, optional): KEDA only. Seconds the metric must stay below target before scaling in.
             scale_up_stabilization_window_seconds (int | None, optional): KEDA only. Seconds the metric must stay above target before scaling out.
             additional_scale_metrics (list | None, optional): KEDA only. Further `{"scale_metric", "target"}` metrics; the most demanding one wins.
