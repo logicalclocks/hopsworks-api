@@ -584,7 +584,9 @@ def _request_change(
     """Record a pending change request in the system's system.yaml, from its answers; the build carries it out."""
     from datetime import datetime, timezone
 
-    doc, definition = _built_with(definition, target)
+    # A system keeps the factory version it was built with, but its changes are the current
+    # version's: each request records the instructions it was made with.
+    doc, _ = _built_with(definition, target)
     spec = definition["spec"]
     try:
         change = factory_spec.change_of(spec, change_id)

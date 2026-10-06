@@ -80,7 +80,7 @@ The Factory lists them under the factory's New button; `hops factory run <name> 
 
 `changes: [{id, label, description, form, instructions}]`: what can be asked of a system after it is built, each with its own form (the same field types, no slug field needed, `entry` fields allowed) and the `instructions` the build follows.
 `hops factory run <name> <slug> --change <id>` takes the answers from `--answers` or asks them, checks them against the form and `system.yaml`, appends `{id, label, at, answers, instructions, status: pending}` to the system's `changes` in `system.yaml`, and resumes the build, which carries out each pending request first and marks it `done` or `failed`.
-The Factory shows a system's changes as buttons on its page.
+The Factory lists a system's changes under **Change** on its page. They are the factory's current version's, also for a system built with an earlier one.
 A change that deletes part of a system says so in its instructions, and the build deletes only with `hops factory system delete-assets <system>`, which refuses a feature group the system reads or one of a lower medallion layer.
 
 ```yaml
