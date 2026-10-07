@@ -18,6 +18,7 @@ from __future__ import annotations
 import contextlib
 import json
 import warnings
+import time
 from datetime import datetime, timezone
 from io import BytesIO
 from typing import TYPE_CHECKING, Any, Literal
@@ -271,6 +272,35 @@ def _init_kafka_producer(
     return Producer(_get_kafka_config(feature_store_id, offline_write_options))
 
 
+def _get_watermark_offsets(
+    consumer: Consumer, partition: TopicPartition, timeout: float
+) -> tuple[int, int]:
+    """Read a partition's watermarks, waiting out a partition whose leader is not serving yet.
+
+    A topic is listed as soon as it is created, but each broker answers for its partitions
+    only once it has loaded them, a fraction of a second later; a partition whose leader
+    just moved is the same. Until then the broker refuses the read with one of the errors
+    below, so the read is retried with a short backoff for up to `timeout` seconds rather
+    than failing the insert that asked for the offsets.
+    """
+    deadline = time.monotonic() + timeout
+    delay = 0.1
+    while True:
+        try:
+            return consumer.get_watermark_offsets(partition)
+        except KafkaException as e:
+            error = e.args[0] if e.args else None
+            transient = isinstance(error, KafkaError) and error.code() in (
+                KafkaError.NOT_LEADER_FOR_PARTITION,
+                KafkaError.LEADER_NOT_AVAILABLE,
+                KafkaError.UNKNOWN_TOPIC_OR_PART,
+            )
+            if not transient or time.monotonic() + delay > deadline:
+                raise
+        time.sleep(delay)
+        delay = min(delay * 2, 1.0)
+
+
 @_uses_confluent_kafka
 def _kafka_get_offsets(
     topic_name: str,
@@ -279,22 +309,22 @@ def _kafka_get_offsets(
     high: bool,
 ) -> str:
     consumer = _init_kafka_consumer(feature_store_id, offline_write_options)
-    topics = consumer.list_topics(
-        timeout=offline_write_options.get("kafka_timeout", 6)
-    ).topics
-    if topic_name in topics:
-        # topic exists
+    try:
+        timeout = offline_write_options.get("kafka_timeout", 6)
+        topics = consumer.list_topics(timeout=timeout).topics
+        if topic_name not in topics:
+            return ""
         offsets = ""
         tuple_value = int(high)
         for partition_metadata in topics.get(topic_name).partitions.values():
             partition = TopicPartition(
                 topic=topic_name, partition=partition_metadata.id
             )
-            offsets += f",{partition_metadata.id}:{consumer.get_watermark_offsets(partition)[tuple_value]}"
-        consumer.close()
-
+            watermarks = _get_watermark_offsets(consumer, partition, timeout)
+            offsets += f",{partition_metadata.id}:{watermarks[tuple_value]}"
         return f"{topic_name + offsets}"
-    return ""
+    finally:
+        consumer.close()
 
 
 @_uses_confluent_kafka
@@ -340,8 +370,8 @@ def _kafka_get_offsets_for_times(
         # a record appended in between, which the lookup did not see and the read would
         # then skip.
         highs = {
-            partition: consumer.get_watermark_offsets(
-                TopicPartition(topic=topic_name, partition=partition)
+            partition: _get_watermark_offsets(
+                consumer, TopicPartition(topic=topic_name, partition=partition), timeout
             )[1]
             for partition in partitions
         }
@@ -353,8 +383,10 @@ def _kafka_get_offsets_for_times(
         for result in consumer.offsets_for_times(lookups, timeout=timeout):
             # Read after the lookup, since retention can drop the record any offset below
             # points at.
-            low, _ = consumer.get_watermark_offsets(
-                TopicPartition(topic=topic_name, partition=result.partition)
+            low, _ = _get_watermark_offsets(
+                consumer,
+                TopicPartition(topic=topic_name, partition=result.partition),
+                timeout,
             )
             if result.error is not None:
                 # Reading from the low watermark is what this function is meant to avoid,
