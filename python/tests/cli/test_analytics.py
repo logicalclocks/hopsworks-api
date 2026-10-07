@@ -1,4 +1,4 @@
-"""Medallion layers: `hops factory run medallion-silver|medallion-gold`, and the layer commands of `hops factory system`."""
+"""Analytics layers: `hops factory run analytics-silver|analytics-gold`, and the layer commands of `hops factory system`."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import pytest
 import yaml
 from click.testing import CliRunner
 from hopsworks.cli import session
-from hopsworks.cli.commands import medallion, mlsystem
+from hopsworks.cli.commands import analytics, mlsystem
 from hopsworks.cli.main import cli
 from hopsworks_common.core import factory_api
 
@@ -42,11 +42,11 @@ build:
 
 
 def _create(monkeypatch, layer: str, path, *args: str):
-    """`hops factory run medallion-<layer> --answers <path>`, without a cluster."""
+    """`hops factory run analytics-<layer> --answers <path>`, without a cluster."""
     monkeypatch.setattr(factory_api, "_get", lambda name, version=None: _builtin(name))
     monkeypatch.setattr(session, "get_project", lambda ctx: SimpleNamespace(name="p"))
     return CliRunner().invoke(
-        cli, ["factory", "run", f"medallion-{layer}", "--answers", str(path), *args]
+        cli, ["factory", "run", f"analytics-{layer}", "--answers", str(path), *args]
     )
 
 
@@ -172,7 +172,7 @@ def test_delete_with_assets_removes_the_job_tables_directory_then_the_entry(
         get_feature_group=lambda name, version: SimpleNamespace(
             name=name,
             version=version,
-            get_tags=lambda: {"medallion_table": {"layer": "silver"}},
+            get_tags=lambda: {"analytics_table": {"layer": "silver"}},
             delete=lambda: events.append(f"fg {name} v{version}"),
         )
     )
@@ -202,9 +202,9 @@ def test_delete_with_assets_removes_the_job_tables_directory_then_the_entry(
 
 
 def test_tasks_offered_by_the_factory_are_the_ones_the_skill_documents():
-    tasks = medallion.TEMPLATE.parents[1] / "SKILL.md"
+    tasks = analytics.TEMPLATE.parents[1] / "SKILL.md"
     text = tasks.read_text(encoding="utf-8")
-    for task in medallion.TASKS:
+    for task in analytics.TASKS:
         assert f"| `{task}` |" in text, task
 
 
@@ -383,7 +383,7 @@ def _load_advisor():
     import importlib.util
 
     path = (
-        medallion.TEMPLATE.parents[2]
+        analytics.TEMPLATE.parents[2]
         / "hops-partitioning"
         / "scripts"
         / "partition_advisor.py"
@@ -550,9 +550,9 @@ def test_delete_without_assets_only_forgets_the_entry(tmp_path, monkeypatch):
             {},
             "a source of this system",
         ),
-        (SILVER, {"customers": {"medallion_table": '{"layer": "bronze"}'}}, "bronze"),
+        (SILVER, {"customers": {"analytics_table": '{"layer": "bronze"}'}}, "bronze"),
         # Gold never deletes silver.
-        (GOLD, {"fct_orders": {"medallion_table": '{"layer": "silver"}'}}, "silver"),
+        (GOLD, {"fct_orders": {"analytics_table": '{"layer": "silver"}'}}, "silver"),
     ],
 )
 def test_delete_never_deletes_a_lower_layer(tmp_path, monkeypatch, doc, tags, why):
@@ -615,7 +615,7 @@ def test_gold_records_the_layer_and_its_first_mart(tmp_path, monkeypatch):
     ]
     # The user's standard is kept, the rest proposed.
     assert doc["standards"]["naming"] == "our naming"
-    assert doc["standards"]["quality"] == medallion.DEFAULT_STANDARDS["quality"]
+    assert doc["standards"]["quality"] == analytics.DEFAULT_STANDARDS["quality"]
     assert [m["slug"] for m in doc["marts"]] == ["returns"]
     assert "Data marts" in (target / "AGENTS.md").read_text(encoding="utf-8")
     assert registered == [(target, "Sales gold")]
@@ -685,13 +685,13 @@ def test_status_reads_gold_tables_with_their_marts_freshness():
     from hopsworks.cli import silver_status
 
     doc = {**GOLD, "marts": [{**GOLD["marts"][0], "freshness_hours": 30}]}
-    tables = medallion.layer_tables(doc)
+    tables = analytics.layer_tables(doc)
     assert [(t["name"], t["kind"], t["mart"]) for t in tables] == [
         ("fct_orders", "gold", "sales"),
         ("dim_customer", "gold", "sales"),
     ]
     assert silver_status._freshness(doc, tables[0]) == 30
-    assert [j["mart"] for j in medallion.layer_jobs(GOLD)] == [
+    assert [j["mart"] for j in analytics.layer_jobs(GOLD)] == [
         "sales",
         "churn",
         "churn",
@@ -708,7 +708,7 @@ def _created(tmp_path, monkeypatch, kind, answers):
     return done
 
 
-def test_silver_and_gold_share_one_medallion_repository(tmp_path, monkeypatch):
+def test_silver_and_gold_share_one_analytics_repository(tmp_path, monkeypatch):
     _created(tmp_path, monkeypatch, "silver", {**ANSWERS, "slug": "shop-silver"})
     repo = tmp_path / "hops-shop"
     silver = _doc(repo / "shop-silver")
@@ -724,7 +724,7 @@ def test_silver_and_gold_share_one_medallion_repository(tmp_path, monkeypatch):
         "sources": [{"name": "orders"}],
     }
     _created(tmp_path, monkeypatch, "gold", gold)
-    # Its slug names another medallion, but it joins the silver layer's.
+    # Its slug names another analytics, but it joins the silver layer's.
     assert (repo / "sales-gold" / "system.yaml").is_file()
     assert _doc(repo / "sales-gold")["layer"]["repo"] == {"name": "hops-shop"}
     assert not (tmp_path / "hops-sales").exists()
@@ -760,7 +760,7 @@ def test_delete_assets_deletes_jobs_then_tables_and_keeps_the_system(
     ("table", "tags", "why"),
     [
         ("customers", {}, "a source of this system"),
-        ("orders", {"orders": {"medallion_table": '{"layer": "silver"}'}}, "silver"),
+        ("orders", {"orders": {"analytics_table": '{"layer": "silver"}'}}, "silver"),
     ],
 )
 def test_delete_assets_never_deletes_what_the_system_reads(
@@ -778,12 +778,12 @@ def test_delete_assets_never_deletes_what_the_system_reads(
     assert events == []
 
 
-def test_an_ml_system_never_deletes_a_medallion_table(tmp_path, monkeypatch):
+def test_an_ml_system_never_deletes_a_analytics_table(tmp_path, monkeypatch):
     target = _layer_dir(tmp_path, {"requirements": {"data_sources": []}})
     done, events = _run(
         monkeypatch,
         target,
-        {"orders": {"medallion_table": '{"layer": "gold"}'}},
+        {"orders": {"analytics_table": '{"layer": "gold"}'}},
         ["delete-assets", "L", "--table", "orders"],
     )
     assert done.exit_code != 0 and "gold" in done.output
@@ -803,7 +803,7 @@ def test_the_system_commands_are_the_same_for_every_factory():
         "remove",
         "status",
     ]
-    for name in ("medallion", "mlsystem"):
+    for name in ("analytics", "mlsystem"):
         assert factory_group.get_command(None, name) is None
 
 
@@ -905,7 +905,7 @@ def test_delete_bronze_deletes_the_bronze_tables_it_wrote(tmp_path, monkeypatch)
         },
     }
     target = _layer_dir(tmp_path, doc)
-    tags = {"clickstream_clicks": {"medallion_table": '{"layer": "bronze"}'}}
+    tags = {"clickstream_clicks": {"analytics_table": '{"layer": "bronze"}'}}
     done, events = _delete(monkeypatch, target, tags, ["--assets"])
     assert done.exit_code == 0, done.output
     assert events == [

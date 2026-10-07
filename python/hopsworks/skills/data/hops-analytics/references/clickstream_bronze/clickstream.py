@@ -17,7 +17,7 @@ is derived from the window, so a replayed window rewrites the same rows.
 Bronze holds the data as it arrived: about 0.001% of clicks arrive twice (the same click_id
 under a new ingest_id, as an at-least-once collector delivers them), and an order's lines are
 a JSON array in its items column.
-Every table is an offline Delta feature group tagged medallion_table {"layer": "bronze"}.
+Every table is an offline Delta feature group tagged analytics_table {"layer": "bronze"}.
 """
 
 from __future__ import annotations
@@ -48,7 +48,7 @@ DAILY = {
     "new_orders": 650,
 }
 PREFIX = "clickstream_"
-TAG = "medallion_table"
+TAG = "analytics_table"
 
 COUNTRIES = {
     "SE": ["Stockholm", "Gothenburg", "Malmo", "Uppsala"],

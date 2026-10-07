@@ -1,10 +1,10 @@
-"""Medallion layers, built by the ``medallion-bronze``, ``medallion-silver`` and ``medallion-gold`` factories.
+"""Analytics layers, built by the ``analytics-bronze``, ``analytics-silver`` and ``analytics-gold`` factories.
 
-``hops factory run medallion-bronze|medallion-silver|medallion-gold`` records a
+``hops factory run analytics-bronze|analytics-silver|analytics-gold`` records a
 layer's request, as the factory's form collects it, in ``<slug>/system.yaml``,
 registers the layer so the Factory lists it, and starts Claude Code with
 ``/hops-bronze <slug>``, ``/hops-silver <slug>`` or ``/hops-gold <slug>`` to build it.
-A bronze layer is generated data: one of the generators in the hops-medallion
+A bronze layer is generated data: one of the generators in the hops-analytics
 references, such as the clickstream example's, copied into the layer.
 A gold layer is built as data marts, each added, changed and deleted on its own;
 those commands, the backfill and the layer's status are ``hops factory system``
@@ -30,14 +30,14 @@ REFERENCES = (
     Path(__file__).resolve().parents[2]
     / "skills"
     / "data"
-    / "hops-medallion"
+    / "hops-analytics"
     / "references"
 )
 TEMPLATE = REFERENCES / "silver_template"
 GOLD_TEMPLATE = REFERENCES / "gold_template"
 BRONZE_TEMPLATE = REFERENCES / "bronze_template"
 SLUG = re.compile(r"^[a-z][a-z0-9-]*$")
-# A layer's medallion repository is hops-<its slug without -bronze, -silver or -gold>.
+# A layer's analytics repository is hops-<its slug without -bronze, -silver or -gold>.
 LAYER_SUFFIX = re.compile(r"-(bronze|silver|gold)$")
 REPO = re.compile(r"^hops-[a-z0-9][a-z0-9-]*$")
 TASKS = (
@@ -211,18 +211,18 @@ def _problems(answers: dict) -> list[str]:
 
 
 def _repo_prefix(slug: str) -> str:
-    """The medallion a layer belongs to: its slug without a -silver or -gold suffix."""
+    """The analytics a layer belongs to: its slug without a -silver or -gold suffix."""
     return LAYER_SUFFIX.sub("", slug) or slug
 
 
 def _layer_dirs(cwd: Path):
-    """Every layer directory under cwd: in a medallion repository, or on its own as before."""
+    """Every layer directory under cwd: in an analytics repository, or on its own as before."""
     for spec in [*cwd.glob("hops-*/*/system.yaml"), *cwd.glob("*/system.yaml")]:
         yield spec.parent
 
 
 def _builder_repo(cwd: Path, sources: list[dict], kind: str) -> Path | None:
-    """The medallion repository of the `kind` layer that builds any of these tables, if it has one."""
+    """The analytics repository of the `kind` layer that builds any of these tables, if it has one."""
     import yaml
 
     wanted = {s.get("name") for s in sources}
@@ -240,7 +240,7 @@ def _builder_repo(cwd: Path, sources: list[dict], kind: str) -> Path | None:
 
 
 def _repo_dir(cwd: Path, answers: dict, kind: str) -> Path:
-    """The medallion repository a new layer goes in, one git work tree for its layers.
+    """The analytics repository a new layer goes in, one git work tree for its layers.
 
     The answers' `repo`, else the repository of the layer below that builds its
     sources (bronze for silver, silver for gold), else `hops-<prefix>` from the
@@ -264,7 +264,7 @@ def _copy_template(repo: Path, slug: str, template: Path) -> tuple[Path, dict]:
     if (target / "system.yaml").exists():
         raise click.ClickException(f"{target} already holds a system.yaml")
     target.mkdir(parents=True, exist_ok=True)
-    # One work tree for the medallion's layers, pushed as one GitHub repository.
+    # One work tree for the analytics pipeline's layers, pushed as one GitHub repository.
     if shutil.which("git") and not (repo / ".git").exists():
         subprocess.run(["git", "init", "-q", str(repo)], check=False)
     for item in template.iterdir():
@@ -472,7 +472,7 @@ def _bronze_problems(answers: dict) -> list[str]:
             sorted(d.parent.name for d in REFERENCES.glob("*/bronze.yaml"))
         )
         problems.append(
-            f"reference_code must name a bronze generator in the hops-medallion references: {known}"
+            f"reference_code must name a bronze generator in the hops-analytics references: {known}"
         )
     return problems
 
@@ -542,11 +542,11 @@ def _register(ctx: click.Context, target: Path, name: str, layer: str) -> None:
     try:
         factory_spec.record_factory(ctx.meta.get(factory_spec.META), target)
         mlsystem.register(
-            ctx, target, name, factory_spec.factory_name(ctx, f"medallion-{layer}")
+            ctx, target, name, factory_spec.factory_name(ctx, f"analytics-{layer}")
         )
     except Exception as exc:  # noqa: BLE001 - the layer is recorded either way
         output.warn(
-            f"Not registered in the project's Factory ({exc}); run `hops factory system register {target} --factory medallion-{layer}`."
+            f"Not registered in the project's Factory ({exc}); run `hops factory system register {target} --factory analytics-{layer}`."
         )
 
 
@@ -554,7 +554,7 @@ def create_bronze(ctx: click.Context, data: dict, launch: bool) -> Path:
     """Record a bronze layer of generated data in ./<slug>/system.yaml, register it, and build it with Claude Code.
 
     The answers name the generator (`reference_code`, a directory of the
-    hops-medallion references with a bronze.yaml), which is copied into the
+    hops-analytics references with a bronze.yaml), which is copied into the
     layer with the tables it writes and the jobs that run it on each cadence.
     """
     problems = _bronze_problems(data)
@@ -690,7 +690,7 @@ def _protected(fg: Any, sources: set[tuple[str, int]], kind: str | None) -> str 
         tags = fg.get_tags() or {}
     except Exception:  # noqa: BLE001 - a table whose tags cannot be read is judged by the sources alone
         return None
-    tag = tags.get("medallion_table")
+    tag = tags.get("analytics_table")
     value = getattr(tag, "value", tag)
     if isinstance(value, str):
         try:
@@ -712,7 +712,7 @@ def delete_assets(
 
     Every feature group is checked before anything is deleted: one the system reads (its
     `sources`, or a feature group among `requirements.data_sources`), or one tagged as a lower
-    medallion layer (any layer, for an ML system), stops the delete with nothing gone.
+    analytics layer (any layer, for an ML system), stops the delete with nothing gone.
     """
     project = session.get_project(ctx)
     kind = (doc.get("layer") or {}).get("kind")
@@ -768,7 +768,7 @@ def delete_layer(ctx: click.Context, directory: Path, doc: dict) -> str:
     delete_assets(ctx, doc, [j["name"] for j in layer_jobs(doc)], layer_tables(doc))
     shutil.rmtree(directory, ignore_errors=True)
     repo = directory.parent
-    # In a medallion repository the other layers stay; record that this one went.
+    # In an analytics repository the other layers stay; record that this one went.
     if (repo / ".git").exists() and shutil.which("git"):
         git = ["git", "-C", str(repo)]
         subprocess.run([*git, "add", "-A", "--", directory.name], check=False)

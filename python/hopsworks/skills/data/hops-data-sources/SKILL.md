@@ -174,11 +174,11 @@ class MyTransformer(HopsIngestionTransformer):
 
 ### Tag the ingested table as bronze
 
-A table ingested raw is a bronze table of a medallion layer; tag it so the Factory offers it as a source for a silver layer (**hops-medallion**).
+A table ingested raw is a bronze table of an analytics layer; tag it so the Factory offers it as a source for a silver layer (**hops-analytics**).
 The UI's ingestion review has a "Tag as a bronze table" checkbox, off by default; from code, tag each feature group after it is created:
 
 ```python
-fg.add_tag("medallion_table", {"layer": "bronze", "lifecycle": "dev"})
+fg.add_tag("analytics_table", {"layer": "bronze", "lifecycle": "dev"})
 ```
 
 ## Ingest many tables with one job

@@ -1,4 +1,4 @@
-# The clickstream example's generator, read by `hops factory run medallion-bronze` into system.yaml.
+# The clickstream example's generator, read by `hops factory run analytics-bronze` into system.yaml.
 program: clickstream.py
 environment: python-feature-pipeline
 backfill:

@@ -1,6 +1,6 @@
-# A gold medallion layer: its specification, its data marts, and what runs.
-# Written by `hops factory run medallion-gold` from the Factory's answers, then by /hops-gold.
-# The `layer` block marks this system.yaml as a medallion layer, not an ML system.
+# A gold analytics layer: its specification, its data marts, and what runs.
+# Written by `hops factory run analytics-gold` from the Factory's answers, then by /hops-gold.
+# The `layer` block marks this system.yaml as an analytics layer, not an ML system.
 layer:
   kind: gold
   name: ""            # title shown in the Factory
@@ -8,9 +8,9 @@ layer:
   description: ""     # what the gold layer serves
   queries: ""         # the queries analysts will run on it, in their words
   modeling: star      # star | snowflake (Kimball)
-  lifecycle: dev      # dev | staging | prod, mirrored in each table's medallion_table tag
+  lifecycle: dev      # dev | staging | prod, mirrored in each table's analytics_table tag
   status: draft       # draft | building | built | failed
-  repo: {}            # {name, url}: the medallion's repository, hops-<prefix>, shared with its silver layer
+  repo: {}            # {name, url}: the analytics pipeline's repository, hops-<prefix>, shared with its silver layer
 sources: []           # silver feature groups the marts read: {name, version}
 standards:            # every mart follows these; the Factory proposes them, the user may edit them
   naming: ""

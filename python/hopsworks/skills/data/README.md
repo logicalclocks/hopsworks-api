@@ -8,7 +8,7 @@ list is `hops skills list --bucket data`.
 - [hops-data-discovery](hops-data-discovery/SKILL.md) — Find available data: feature groups, data sources, free-text search, files.
 - [hops-data-sources](hops-data-sources/SKILL.md) — Mount a table as an external feature group, or ingest into a new FG via DLTHub.
 - [hops-partitioning](hops-partitioning/SKILL.md) — Whether a derived feature group should be partitioned by hour, day or week, from the source table's files.
-- [hops-medallion](hops-medallion/SKILL.md) — Medallion layers: the medallion_table tag, silver tables built from bronze feature groups, and gold layers of Kimball data marts built from silver, each refreshed by incremental jobs.
+- [hops-analytics](hops-analytics/SKILL.md) — Analytics layers: the analytics_table tag, silver tables built from bronze feature groups, and gold layers of Kimball data marts built from silver, each refreshed by incremental jobs.
 - [hops-delta](hops-delta/SKILL.md) — Maintain Delta feature groups: optimize, vacuum, checkpoint, and choosing a write mode and layout.
 - [hops-dbt](hops-dbt/SKILL.md) — Run dbt models over feature groups in Trino, validate with data tests, produce an execution graph.
 - [hops-spark](hops-spark/SKILL.md) — PySpark on Hopsworks (Spark Connect + Delta config).

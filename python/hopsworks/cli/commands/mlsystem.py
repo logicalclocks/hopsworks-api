@@ -5,7 +5,7 @@ sees it in the Hopsworks UI: a HopsFS directory in the project, or the Git
 repository of a system built from an external client. ``hops factory run`` and
 the build commands register systems themselves; these commands list them,
 register or remove one by hand, report a system's health and delete it with
-what it created. A medallion layer's own commands (data marts, jobs, added
+what it created. An analytics layer's own commands (data marts, jobs, added
 tables, backfills) are here too and refuse any other system.
 """
 
@@ -227,7 +227,7 @@ def system_delete(
 ) -> None:
     """Delete SYSTEM (an id, name or slug): its registry entry, and with --assets what it created.
 
-    A medallion layer's assets are its jobs and tables, never the tables it
+    An analytics layer's assets are its jobs and tables, never the tables it
     reads, and its directory. Any other system's assets are read from its
     system.yaml and deleted downstream first, skipping any already gone; the
     run stops at the first failure. Then the
@@ -246,7 +246,7 @@ def system_delete(
     """
     import yaml
     from hopsworks.cli import teardown
-    from hopsworks.cli.commands import medallion
+    from hopsworks.cli.commands import analytics
     from hopsworks_common.core import ml_system_api
 
     project = session.get_project(ctx)
@@ -268,12 +268,12 @@ def system_delete(
         elif "layer" in (doc := yaml.safe_load(spec.read_text(encoding="utf-8")) or {}):
             if repo:
                 raise click.ClickException(
-                    "a medallion layer shares its repository with the other layers; delete it without --repo"
+                    "an analytics layer shares its repository with the other layers; delete it without --repo"
                 )
             steps = [
                 (
                     f"jobs, tables and directory of the layer {directory}",
-                    lambda: medallion.delete_layer(ctx, directory, doc),
+                    lambda: analytics.delete_layer(ctx, directory, doc),
                 )
             ]
         else:
@@ -377,7 +377,7 @@ def system_status(
     job's runs in the last HOURS with the log tail of every failure, and each
     deployment and app with its state and its pods (readiness, restarts, the last
     termination reason, CPU and memory against the limits, from kubectl). Claude
-    writes a short summary of what failed and why. A medallion layer's report
+    writes a short summary of what failed and why. An analytics layer's report
     reads its jobs and tables instead (freshness, rejected rows, file layout).
     The Factory Status button runs this and shows the page.
 
@@ -391,7 +391,7 @@ def system_status(
     """
     import yaml
     from hopsworks.cli import health
-    from hopsworks.cli.commands import medallion
+    from hopsworks.cli.commands import analytics
 
     project = session.get_project(ctx)
     entry = _find(system)
@@ -403,7 +403,7 @@ def system_status(
         )
     doc = yaml.safe_load(spec.read_text(encoding="utf-8")) or {}
     if "layer" in doc:
-        medallion.layer_status(project, directory, doc, hours, no_summary, out)
+        analytics.layer_status(project, directory, doc, hours, no_summary, out)
         return
     facts = health.collect(project, doc, directory.name, hours)
     if output.JSON_MODE:
@@ -423,14 +423,14 @@ def system_status(
 @system_group.command("dir")
 @click.argument("slug")
 def system_dir(slug: str) -> None:
-    """Print the directory of the system SLUG under the current directory: ./SLUG, or a medallion layer's in its medallion repository."""
-    from hopsworks.cli.commands import medallion
+    """Print the directory of the system SLUG under the current directory: ./SLUG, or an analytics layer's in its analytics repository."""
+    from hopsworks.cli.commands import analytics
 
     cwd = Path.cwd()
     if (cwd / slug / "system.yaml").is_file():
         click.echo(cwd / slug)
         return
-    for directory in medallion._layer_dirs(cwd):
+    for directory in analytics._layer_dirs(cwd):
         if directory.name == slug:
             click.echo(directory)
             return
@@ -463,12 +463,12 @@ def system_delete_assets(
 
     A build runs this when a change removes part of a system; the system and
     its registry entry stay. Every feature group is checked before anything
-    is deleted: one the system reads, or one tagged as a lower medallion
-    layer (any medallion table, for an ML system), stops the delete with
+    is deleted: one the system reads, or one tagged as a lower analytics
+    layer (any analytics table, for an ML system), stops the delete with
     nothing gone. What is already gone is skipped, so it can be run again.
     """
     import yaml
-    from hopsworks.cli.commands import medallion
+    from hopsworks.cli.commands import analytics
 
     session.get_project(ctx)
     entry = _find(system)
@@ -479,7 +479,7 @@ def system_delete_assets(
             f"cannot read the system.yaml of {entry.get('name')}; pass its directory with --path"
         )
     doc = yaml.safe_load(spec.read_text(encoding="utf-8")) or {}
-    medallion.delete_assets(
+    analytics.delete_assets(
         ctx,
         doc,
         list(jobs),

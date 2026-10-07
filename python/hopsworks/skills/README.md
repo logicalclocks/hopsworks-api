@@ -13,7 +13,7 @@ into bucket folders:
 - [hops-data-sources](data/hops-data-sources/SKILL.md) — mount external tables / DLTHub ingestion.
 - [hops-delta](data/hops-delta/SKILL.md) — maintain Delta feature groups: optimize, vacuum, write modes and layout.
 - [hops-partitioning](data/hops-partitioning/SKILL.md) — Whether a derived feature group should be partitioned by time, from the source table's files.
-- [hops-medallion](data/hops-medallion/SKILL.md) — Medallion layers: the medallion_table tag, incremental silver tables from bronze feature groups, and gold layers of Kimball data marts from silver.
+- [hops-analytics](data/hops-analytics/SKILL.md) — Analytics layers: the analytics_table tag, incremental silver tables from bronze feature groups, and gold layers of Kimball data marts from silver.
 - [hops-dbt](data/hops-dbt/SKILL.md) — dbt models over feature groups in Trino, with tests and an execution graph.
 - [hops-spark](data/hops-spark/SKILL.md) — PySpark on Hopsworks (Spark Connect + Delta).
 - [hops-synthetic-data](data/hops-synthetic-data/SKILL.md) — seeded synthetic batch tables or event streams into feature groups.

@@ -1,5 +1,5 @@
 ---
-description: Hopsworks gold layer builder. Builds the data marts of the gold medallion layer that system.yaml describes, a Kimball star or snowflake model of fact and dimension feature groups built from silver tables, each mart with its own requirements and its own scheduled jobs (dbt on Trino by default), and tags them. A mart can be built, changed or rebuilt alone.
+description: Hopsworks gold layer builder. Builds the data marts of the gold analytics layer that system.yaml describes, a Kimball star or snowflake model of fact and dimension feature groups built from silver tables, each mart with its own requirements and its own scheduled jobs (dbt on Trino by default), and tags them. A mart can be built, changed or rebuilt alone.
 argument-hint: "[<slug>] [<mart>|apply] [requirements|design|code|backfill|schedule|verify|dashboards]"
 ---
 
@@ -19,9 +19,9 @@ Already known, no need to look again before the first question:
 | `<mart> <phase>` | that phase of that mart, then every later phase that is not `done` |
 | `apply` | the changes to the layer-level spec since it was built: `layer.lifecycle`, `layer.modeling`, `standards`, `sources` (below) |
 
-Without a slug and with no `system.yaml` here, reply that the Factory's **New Medallion Layer** (gold), or `hops factory run medallion-gold --answers`, records a layer first, and stop.
+Without a slug and with no `system.yaml` here, reply that the Factory's **New Analytics** (gold), or `hops factory run analytics-gold --answers`, records a layer first, and stop.
 
-Load **hops-medallion** first: its `SKILL.md` (the tag, lineage, the schedule, incremental processing) and `references/gold-marts.md` (the requirement questions, Kimball modeling, the standards, the jobs) are what this builder runs on.
+Load **hops-analytics** first: its `SKILL.md` (the tag, lineage, the schedule, incremental processing) and `references/gold-marts.md` (the requirement questions, Kimball modeling, the standards, the jobs) are what this builder runs on.
 Load **hops-dbt** for the dbt project and its runner, **hops-job** before deploying a job, **hops-fg** before creating a feature group, and **hops-trino-sql** for the queries.
 Find a skill at `.claude/skills/<name>/` in the repository, else `~/.claude/skills/<name>/` (in a Hopsworks terminal that links to `/opt/hops/agent-skills/`).
 
@@ -39,7 +39,7 @@ Find a skill at `.claude/skills/<name>/` in the repository, else `~/.claude/skil
 - **Silver and bronze are read-only.** Never insert into, update, delete or retag them.
 - **A mart owns its tables.** A table is listed in the mart that builds it; a mart that reads another mart's table lists it with `shared: true` and never writes it.
 - **Commit each phase** in the layer's git work tree, `[<slug>] <mart> <phase>: <what>`, with `system.yaml`, and push it.
-- **The GitHub repository.** A medallion's silver and gold layers share one work tree and one private GitHub repository, `layer.repo.name` (`hops-<prefix>`, the parent of this directory); each layer is a directory in it. With no `layer.repo.url`: when the work tree already has an `origin` (another layer of the medallion set it), record its URL; else when `gh repo view <layer.repo.name>` finds the repository, add it as `origin` and put the work tree's commits on its history (`git fetch origin` then `git rebase origin/<its default branch>`; the work tree was started fresh, and each layer's commits touch only its own directory); else, with `gh auth status` logged in, create it (`gh repo create <layer.repo.name> --private --source .. --remote origin --push`). Record the URL as `layer.repo.url`. Commit only this layer's directory (`git add -A -- .`, `git commit -m ... -- .`), so another layer's work in progress stays out of the commit, and push after every commit. Without a GitHub login, say once that `github-login` connects one, and keep committing locally.
+- **The GitHub repository.** An analytics pipeline's silver and gold layers share one work tree and one private GitHub repository, `layer.repo.name` (`hops-<prefix>`, the parent of this directory); each layer is a directory in it. With no `layer.repo.url`: when the work tree already has an `origin` (another layer of the analytics pipeline set it), record its URL; else when `gh repo view <layer.repo.name>` finds the repository, add it as `origin` and put the work tree's commits on its history (`git fetch origin` then `git rebase origin/<its default branch>`; the work tree was started fresh, and each layer's commits touch only its own directory); else, with `gh auth status` logged in, create it (`gh repo create <layer.repo.name> --private --source .. --remote origin --push`). Record the URL as `layer.repo.url`. Commit only this layer's directory (`git add -A -- .`, `git commit -m ... -- .`), so another layer's work in progress stays out of the commit, and push after every commit. Without a GitHub login, say once that `github-login` connects one, and keep committing locally.
 - **Logs stay out of the directory**, as `AGENTS.md` says.
 - **No secrets** in arguments, `system.yaml` or the code.
 - **Never delete** what this build did not create; a mart or a job is deleted by a change request the user makes in the Factory.
@@ -49,7 +49,7 @@ Find a skill at `.claude/skills/<name>/` in the repository, else `~/.claude/skil
 ### requirements
 
 Read the mart's `requirements` against the questions in references/gold-marts.md.
-For `existing_tables`, list the gold tables of every mart in this layer and of other gold layers in the project (`hops fg list`, the `medallion_table` tag `layer: gold`), with their grain and columns, and propose reusing or extending them where they fit; otherwise propose new tables from the silver `sources`.
+For `existing_tables`, list the gold tables of every mart in this layer and of other gold layers in the project (`hops fg list`, the `analytics_table` tag `layer: gold`), with their grain and columns, and propose reusing or extending them where they fit; otherwise propose new tables from the silver `sources`.
 The Factory's form asks only for the layer, its questions, its silver tables and the mart's refresh, so most requirements start blank.
 Draft each blank one from the layer's `description` and `queries`, the mart's description and the silver tables' columns: the grain (what one row is, what identifies it, the kind of fact), the metrics with their formulas, the example questions with the answers you expect, the totals to reconcile, the invariants, the late-data handling and the dashboards.
 Show the drafts as a short table and ask the user to confirm or correct them, the grain and the metrics' formulas first; never record a business definition the user has not confirmed.
@@ -83,7 +83,7 @@ Fix and rerun until the checks pass; record the counts and the reconciliation in
 ### schedule
 
 Schedule each job with catch-up (`hops job schedule <job> "<cron>" --start-time <end of the backfill> --catchup --max-catchup-runs <48 hourly, 14 daily, 4 weekly>`) and, with a receiver configured (`hops alert receiver list`), a failure alert (`hops alert job create <job> --receiver <receiver> --status failed --severity critical`).
-Tag every gold feature group `medallion_table` with `{"layer": "gold", "lifecycle": "<layer.lifecycle>"}`.
+Tag every gold feature group `analytics_table` with `{"layer": "gold", "lifecycle": "<layer.lifecycle>"}`.
 Apply `access` and `share`: share the feature groups with the projects named (`hops files share` of the feature store dataset, or ask how when the requirement names rows or columns rather than projects).
 
 ### verify

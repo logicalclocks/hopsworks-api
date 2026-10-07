@@ -10,7 +10,7 @@ import pytest
 import yaml
 from click.testing import CliRunner
 from hopsworks.cli import factory_spec, session
-from hopsworks.cli.commands import factory, medallion, mlsystem
+from hopsworks.cli.commands import analytics, factory, mlsystem
 from hopsworks.cli.main import cli
 from hopsworks_common.core import factory_api
 
@@ -190,9 +190,9 @@ def test_factory_help_lists_run_and_the_system_commands():
     for command in ("list", "import", "export", "clone", "delete", "run", "system"):
         assert f"  {command} " in listed.output
     assert "  create " not in listed.output
-    for name in ("mlsystem", "medallion", "create"):
+    for name in ("mlsystem", "analytics", "create"):
         assert factory.factory_group.get_command(None, name) is None
-    for name in ("mlsystem", "medallion", "build"):
+    for name in ("mlsystem", "analytics", "build"):
         assert CliRunner().invoke(cli, [name, "--help"]).exit_code != 0
 
 
@@ -283,7 +283,7 @@ def _recording(monkeypatch, tmp_path):
         ),
     )
     monkeypatch.setattr(
-        medallion,
+        analytics,
         "_launch",
         lambda target, launch, request=None: launched.append(request),
     )

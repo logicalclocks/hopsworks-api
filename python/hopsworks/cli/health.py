@@ -262,7 +262,7 @@ def summarize(facts: dict, timeout: int = 180) -> str | None:
     if not shutil.which("claude"):
         return None
     prompt = (
-        "You are writing the summary section of a health report for an ML system or a medallion layer on Hopsworks. "
+        "You are writing the summary section of a health report for an ML system or an analytics layer on Hopsworks. "
         "From the JSON facts below, write at most 150 words as an HTML fragment using only <p>, <ul>, "
         "<li>, <strong> and <code>: first one sentence on the overall health, then, for each failed "
         "job run, unhealthy deployment or app, or table with problems (stale, rejects over the gate, small files), "

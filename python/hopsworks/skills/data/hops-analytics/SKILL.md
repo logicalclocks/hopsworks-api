@@ -1,26 +1,26 @@
 ---
-name: hops-medallion
-description: Use when building a medallion layer on Hopsworks (bronze, silver, gold tables), tagging tables with the medallion_table tag, building the example bronze layer of generated data (`hops factory run medallion-bronze --preset clickstream-example`, `/hops-bronze`), building a silver layer from bronze feature groups (`hops factory run medallion-silver`, `/hops-silver`), or a gold layer of Kimball data marts from silver tables (`hops factory run medallion-gold`, `/hops-gold`), with the Factory's "New Medallion Layer". Auto-invoke on "silver layer", "gold layer", "data mart", "star schema", "bronze table", "medallion", "cleanse raw data". Input bronze (for silver) or silver (for gold) feature groups; output materialized feature groups refreshed incrementally by scheduled jobs.
+name: hops-analytics
+description: Use when building an analytics layer on Hopsworks (bronze, silver, gold tables), tagging tables with the analytics_table tag, building the example bronze layer of generated data (`hops factory run analytics-bronze --preset clickstream-example`, `/hops-bronze`), building a silver layer from bronze feature groups (`hops factory run analytics-silver`, `/hops-silver`), or a gold layer of Kimball data marts from silver tables (`hops factory run analytics-gold`, `/hops-gold`), with the Factory's "New Analytics". Auto-invoke on "silver layer", "gold layer", "data mart", "star schema", "bronze table", "analytics", "cleanse raw data". Input bronze (for silver) or silver (for gold) feature groups; output materialized feature groups refreshed incrementally by scheduled jobs.
 ---
 
-# Medallion layers on Hopsworks
+# Analytics layers on Hopsworks
 
 Bronze tables hold raw data exactly as it arrived; silver tables hold it cleansed, conformed and normalized to third normal form (deduplicated, typed, standardized, validated, PII protected); gold tables hold consumption-ready models, denormalized (star schemas, aggregates, wide feature tables) for their consumers.
 On Hopsworks every layer is a set of offline feature groups, and every silver and gold table is materialized: a feature group written by a job, never a view.
-A silver or gold layer is built by the Factory (**New Medallion Layer**) or `hops factory run medallion-silver|medallion-gold`, which records the request in `<slug>/system.yaml` and starts Claude Code on `/hops-silver <slug>` or `/hops-gold <slug>`.
-An example bronze layer of generated data is built by the Factory's **New Medallion Layer**, **Examples**, or `hops factory run medallion-bronze --preset <example>`, which starts Claude Code on `/hops-bronze <slug>` (Bronze layers of generated data, below).
-Each layer is its own Factory entry and directory; a medallion's layers share one git work tree and one GitHub repository, `hops-<prefix>` (the layers' slug without `-bronze`, `-silver` or `-gold`; a silver layer joins the repository of the bronze layer that writes its sources, a gold layer that of the silver layer that builds them), recorded as `layer.repo`; a gold layer is built as data marts (Gold layers and data marts, below).
+A silver or gold layer is built by the Factory (**New Analytics**) or `hops factory run analytics-silver|analytics-gold`, which records the request in `<slug>/system.yaml` and starts Claude Code on `/hops-silver <slug>` or `/hops-gold <slug>`.
+An example bronze layer of generated data is built by the Factory's **New Analytics**, **Examples**, or `hops factory run analytics-bronze --preset <example>`, which starts Claude Code on `/hops-bronze <slug>` (Bronze layers of generated data, below).
+Each layer is its own Factory entry and directory; an analytics pipeline's layers share one git work tree and one GitHub repository, `hops-<prefix>` (the layers' slug without `-bronze`, `-silver` or `-gold`; a silver layer joins the repository of the bronze layer that writes its sources, a gold layer that of the silver layer that builds them), recorded as `layer.repo`; a gold layer is built as data marts (Gold layers and data marts, below).
 
 ## Contract
 
 - **Input:** one or more bronze feature groups, the silver tasks to perform, and the engine (dbt on Trino by default, PySpark when a task needs it).
-- **Output:** silver feature groups tagged `medallion_table` `{"layer": "silver"}`, written by one scheduled Hopsworks job that processes only the bronze rows that arrived since its last run, and `system.yaml` describing what runs.
+- **Output:** silver feature groups tagged `analytics_table` `{"layer": "silver"}`, written by one scheduled Hopsworks job that processes only the bronze rows that arrived since its last run, and `system.yaml` describing what runs.
 - **Pre-condition:** the project has bronze feature groups with raw data.
   Without them there is nothing to build a silver or gold layer from: say that bronze tables with raw data are needed first (ingest them with a DLTHub data source, **hops-data-sources**, and tick "Tag as a bronze table", or build the example bronze layer of generated data).
 
-## The medallion_table tag
+## The analytics_table tag
 
-Hopsworks installs a schematized tag `medallion_table`, archived, so every change of its value is kept in the tag history:
+Hopsworks installs a schematized tag `analytics_table`, archived, so every change of its value is kept in the tag history:
 
 ```json
 {"type": "object",
@@ -31,16 +31,16 @@ Hopsworks installs a schematized tag `medallion_table`, archived, so every chang
 ```
 
 ```bash
-hops fg add-tag crm_customers medallion_table --value '{"layer": "bronze", "lifecycle": "dev"}'
+hops fg add-tag crm_customers analytics_table --value '{"layer": "bronze", "lifecycle": "dev"}'
 hops fg tags crm_customers
 ```
 
 ```python
-fg.add_tag("medallion_table", {"layer": "silver", "lifecycle": "dev"})
+fg.add_tag("analytics_table", {"layer": "silver", "lifecycle": "dev"})
 ```
 
 A table's layer never changes; its lifecycle moves from `dev` to `staging` to `prod` as it is promoted, and the history records when.
-A cluster installed before the tag existed gets it from a platform admin: `POST /hopsworks-api/api/tags?name=medallion_table&archive=true` with the schema above as the body.
+A cluster installed before the tag existed gets it from a platform admin: `POST /hopsworks-api/api/tags?name=analytics_table&archive=true` with the schema above as the body.
 
 ## Silver is in third normal form
 
@@ -176,7 +176,7 @@ Deleting a bronze layer deletes its jobs and the bronze tables it wrote, which n
 2. **design**: the silver tables in third normal form (one per entity or event, named after it in lowercase, `customers`, `order_lines`), each with its sources, business key, foreign keys, `event_time`, columns and the tasks applied to it; the engine; the cron.
 3. **code**: the dbt project and runner, or the PySpark program, in the layer's directory, with unit tests of the transformations (DuckDB over sample rows for dbt SQL, pandas or local Spark for PySpark) and dbt data tests for `validate`.
 4. **backfill**: deploy the job, run it once over the whole bronze history, and check the silver tables: row counts against bronze, no duplicate keys, no nulls in required columns, rejects counted.
-5. **schedule**: schedule the job; tag every silver feature group `medallion_table` `{"layer": "silver", "lifecycle": <system.yaml lifecycle>}`.
+5. **schedule**: schedule the job; tag every silver feature group `analytics_table` `{"layer": "silver", "lifecycle": <system.yaml lifecycle>}`.
 6. **verify**: run the job for one window (`hops job run <job> --start-time ... --end-time ... --wait`) and check that only that window's rows were processed.
 
 ## Rules

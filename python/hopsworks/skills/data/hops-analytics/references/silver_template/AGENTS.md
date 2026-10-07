@@ -1,20 +1,20 @@
-# A silver medallion layer built from system.yaml
+# A silver analytics layer built from system.yaml
 
-This directory is a silver layer on Hopsworks, built with Claude Code by `/hops-silver <slug>` (the Factory's **New Medallion Layer** in the Hopsworks UI), where `<slug>` is this directory's name.
+This directory is a silver layer on Hopsworks, built with Claude Code by `/hops-silver <slug>` (the Factory's **New Analytics** in the Hopsworks UI), where `<slug>` is this directory's name.
 `system.yaml` is the specification: the bronze sources, the silver tasks, the engine, the schedule, and the silver tables, job and decisions the build made.
-The skill **hops-medallion** describes how a silver layer is built.
+The skill **hops-analytics** describes how a silver layer is built.
 
 ## system.yaml always describes the layer as it is
 
 Every change you make to this layer updates `system.yaml` in the same commit, whatever it is for: a fix, maintenance, a new silver table or column, a changed task, schedule, engine or source.
 Record why in `decisions`.
 `system.yaml` must always reflect what runs: before you finish, check that every table, version, job and schedule it names is the one that exists, and correct it where it is not.
-Commit to this directory only (`git add -A -- .`, `git commit -- .`) and push every commit to the medallion's GitHub repository (`layer.repo`), which its gold layers share.
+Commit to this directory only (`git add -A -- .`, `git commit -- .`) and push every commit to the analytics pipeline's GitHub repository (`layer.repo`), which its gold layers share.
 
 ## When system.yaml has changed
 
 Before anything else in a session, compare the spec in `system.yaml` (`sources`, `tasks`, `extra_tasks`, `engine`, `schedule`, `layer.lifecycle`) with `outputs.applied_spec`, the spec the tables were last built from, and read `git log -p -- system.yaml` since the last `[<slug>] apply` or build commit.
-A difference is a change to apply, with `/hops-silver <slug> apply`: retag for a lifecycle, reschedule for a schedule, and for a changed task, engine or source a new version of each silver table whose content changes, backfilled and switched to by the job (hops-medallion, Changing a layer).
+A difference is a change to apply, with `/hops-silver <slug> apply`: retag for a lifecycle, reschedule for a schedule, and for a changed task, engine or source a new version of each silver table whose content changes, backfilled and switched to by the job (hops-analytics, Changing a layer).
 Keep the superseded versions, and end by setting `outputs.applied_spec` to the spec applied.
 An `additions` entry with `status: pending` is a request for new tables from its sources, in the user's words: design and build them like the first tables, and set it to `applied`.
 
@@ -24,7 +24,7 @@ Every silver table is a feature group written by this layer's job, never a view 
 The silver tables are in third normal form: one table per entity or event, atomic columns, every non-key column depending on the whole key and nothing but the key, lookups in their own tables, no aggregates or denormalized copies, which belong in gold.
 A change that would break the normal form is redesigned, not built.
 Bronze feature groups are never modified.
-Every silver feature group carries the `medallion_table` tag with `layer: silver` and the lifecycle in `system.yaml`.
+Every silver feature group carries the `analytics_table` tag with `layer: silver` and the lifecycle in `system.yaml`.
 
 ## Incremental runs
 

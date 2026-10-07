@@ -1,14 +1,14 @@
-# A silver medallion layer: its specification, and what runs.
-# Written by `hops factory run medallion-silver` from the Factory's answers, then by /hops-silver.
-# The `layer` block marks this system.yaml as a medallion layer, not an ML system.
+# A silver analytics layer: its specification, and what runs.
+# Written by `hops factory run analytics-silver` from the Factory's answers, then by /hops-silver.
+# The `layer` block marks this system.yaml as an analytics layer, not an ML system.
 layer:
   kind: silver
   name: ""            # title shown in the Factory
   slug: ""            # this directory's name
   description: ""     # what the silver tables are for
-  lifecycle: dev      # dev | staging | prod, mirrored in each table's medallion_table tag
+  lifecycle: dev      # dev | staging | prod, mirrored in each table's analytics_table tag
   status: draft       # draft | building | built | failed
-  repo: {}            # {name, url}: the medallion's repository, hops-<prefix>, shared with its gold layers
+  repo: {}            # {name, url}: the analytics pipeline's repository, hops-<prefix>, shared with its gold layers
 sources: []           # bronze feature groups: {name, version, cadence, arrival_column}
 tasks: []             # deduplicate, cast_types, standardize, handle_nulls, validate,
                       # mask_pii, conform_entities, surrogate_keys, referential_checks

@@ -7,7 +7,7 @@ The cluster refuses a definition that breaks a rule below, and `hops factory val
 
 | key | required | rule |
 | --- | --- | --- |
-| `name` | yes | `[a-z][a-z0-9-]*`, at most 63; not a built-in's name (`ml-batch`, `ml-realtime`, `ml-agent`, `medallion-bronze`, `medallion-silver`, `medallion-gold`) |
+| `name` | yes | `[a-z][a-z0-9-]*`, at most 63; not a built-in's name (`ml-batch`, `ml-realtime`, `ml-agent`, `analytics-bronze`, `analytics-silver`, `analytics-gold`) |
 | `title` | yes | text, at most 255 |
 | `description` | no | text |
 | `form.sections` | yes | a non-empty list |
@@ -59,7 +59,7 @@ The build writes each phase's `status` (`pending`, `running`, `met`, `unmet`), `
 
 - `instructions`: what Claude Code does, in prose. It runs as `/hops-factory-<name> <slug>` in the system's directory, wrapped in the rules every factory shares: resume from `system.yaml`, record phases, record `outputs`, keep the code in a `hops-<slug>` GitHub repository.
 - `skills`: skills to load before the instructions.
-- `builtin: mlsystem | medallion-bronze | medallion-silver | medallion-gold`: build with that built-in instead. `answers` are constants every system gets (`{system_type: batch}`); the answers that built-in reads go to it, the others to `requirements.extra`, and `instructions` to `factory.instructions`, which the built-in build follows too.
+- `builtin: mlsystem | analytics-bronze | analytics-silver | analytics-gold`: build with that built-in instead. `answers` are constants every system gets (`{system_type: batch}`); the answers that built-in reads go to it, the others to `requirements.extra`, and `instructions` to `factory.instructions`, which the built-in build follows too.
 
 ## List columns
 
@@ -81,7 +81,7 @@ The Factory lists them under the factory's New button; `hops factory run <name> 
 `changes: [{id, label, description, form, instructions}]`: what can be asked of a system after it is built, each with its own form (the same field types, no slug field needed, `entry` fields allowed) and the `instructions` the build follows.
 `hops factory run <name> <slug> --change <id>` takes the answers from `--answers` or asks them, checks them against the form and `system.yaml`, appends `{id, label, at, answers, instructions, status: pending}` to the system's `changes` in `system.yaml`, and resumes the build, which carries out each pending request first and marks it `done` or `failed`.
 The Factory lists a system's changes under **Change** on its page. They are the factory's current version's, also for a system built with an earlier one.
-A change that deletes part of a system says so in its instructions, and the build deletes only with `hops factory system delete-assets <system>`, which refuses a feature group the system reads or one of a lower medallion layer.
+A change that deletes part of a system says so in its instructions, and the build deletes only with `hops factory system delete-assets <system>`, which refuses a feature group the system reads or one of a lower analytics layer.
 
 ```yaml
 changes:

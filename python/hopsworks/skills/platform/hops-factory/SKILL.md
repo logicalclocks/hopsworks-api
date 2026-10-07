@@ -1,13 +1,13 @@
 ---
 name: hops-factory
-description: Use when creating, editing, cloning, importing, exporting or deleting a software factory in Hopsworks (the six built-in ML system and medallion layer factories, or a project's own), or writing a factory definition YAML. Auto-invoke on "factory", "new factory", "factory definition", "hops factory". Input what the factory should build; output a validated definition imported into the project.
+description: Use when creating, editing, cloning, importing, exporting or deleting a software factory in Hopsworks (the six built-in ML system and analytics layer factories, or a project's own), or writing a factory definition YAML. Auto-invoke on "factory", "new factory", "factory definition", "hops factory". Input what the factory should build; output a validated definition imported into the project.
 ---
 
 # Hopsworks software factories
 
 A factory is a YAML definition: the questions of a creation form, the phases of the build, and the instructions Claude Code follows to build what the answers describe.
 The Hopsworks UI generates the form, the Factory page section and the progress bar from it.
-Six factories are built in and read-only: `ml-batch`, `ml-realtime` and `ml-agent` (ML systems) and `medallion-bronze`, `medallion-silver` and `medallion-gold` (medallion layers); `medallion-bronze` builds only its examples, generated data from a generator in the hops-medallion references.
+Six factories are built in and read-only: `ml-batch`, `ml-realtime` and `ml-agent` (ML systems) and `analytics-bronze`, `analytics-silver` and `analytics-gold` (analytics layers); `analytics-bronze` builds only its examples, generated data from a generator in the hops-analytics references.
 A project's data owners add its own: written from scratch, cloned from any factory, or imported from a YAML file.
 
 ## Contract
@@ -77,7 +77,7 @@ build:
 - `account_env` fields (`env: LLM_API_KEY`, `secret: true`) are saved as the user's account variables, never in `system.yaml`.
 - `presets` are named starting answers, listed under the factory's New button: `{id, label, answers: {<field id>: ...}, fixed: {...}}`.
 - A phase key cannot be `system`, `factory` or `schema_version`.
-- To extend a built-in instead of replacing it, clone it: the clone keeps `build.builtin` (`mlsystem`, `medallion-bronze`, `medallion-silver` or `medallion-gold`) and its questions; answers the built-in build does not read land in `requirements.extra` and the clone's instructions in `factory.instructions` of each system's `system.yaml`.
+- To extend a built-in instead of replacing it, clone it: the clone keeps `build.builtin` (`mlsystem`, `analytics-bronze`, `analytics-silver` or `analytics-gold`) and its questions; answers the built-in build does not read land in `requirements.extra` and the clone's instructions in `factory.instructions` of each system's `system.yaml`.
 
 Field types, list columns and every rule: [references/definition.md](references/definition.md).
 

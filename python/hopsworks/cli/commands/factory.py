@@ -1,8 +1,8 @@
 """``hops factory`` — the software factories of this project, and the systems they build.
 
 Six are built in, as YAML definitions the cluster ships: ``ml-batch``,
-``ml-realtime`` and ``ml-agent`` build ML systems, ``medallion-bronze``,
-``medallion-silver`` and ``medallion-gold`` build medallion layers. A
+``ml-realtime`` and ``ml-agent`` build ML systems, ``analytics-bronze``,
+``analytics-silver`` and ``analytics-gold`` build analytics layers. A
 project's own factories are YAML definitions (apiVersion hopsworks.ai/factory/v1) its data owners create,
 import, clone and delete. ``hops factory run <name>`` builds a system with a
 factory, and ``hops factory system ...`` lists, reports on and deletes the
@@ -20,7 +20,7 @@ from typing import Any
 import click
 import yaml
 from hopsworks.cli import factory_spec, output, session
-from hopsworks.cli.commands import build, medallion, mlsystem
+from hopsworks.cli.commands import analytics, build, mlsystem
 
 
 TEMPLATE = Path(__file__).resolve().parent.parent / "templates" / "hops-factory.md"
@@ -28,7 +28,7 @@ TEMPLATE = Path(__file__).resolve().parent.parent / "templates" / "hops-factory.
 
 @click.group("factory")
 def factory_group() -> None:
-    """The software factories: the built-in ML system and medallion layer factories, and the project's own."""
+    """The software factories: the built-in ML system and analytics layer factories, and the project's own."""
 
 
 factory_group.add_command(mlsystem.system_group)
@@ -337,13 +337,13 @@ def factory_run(
 
 
 def _recorded(slug: str | None) -> Path | None:
-    """The directory of a system already recorded: SLUG under here (a layer may be in its medallion repository), or here."""
+    """The directory of a system already recorded: SLUG under here (a layer may be in its analytics repository), or here."""
     cwd = Path.cwd()
     if not slug:
         return cwd if (cwd / "system.yaml").is_file() else None
     if (cwd / slug / "system.yaml").is_file():
         return cwd / slug
-    return next((d for d in medallion._layer_dirs(cwd) if d.name == slug), None)
+    return next((d for d in analytics._layer_dirs(cwd) if d.name == slug), None)
 
 
 def _preset(spec: dict, preset: str | None) -> dict | None:
@@ -658,12 +658,12 @@ def _resume(ctx: click.Context, definition: dict, target: Path, launch: bool) ->
     builtin = (definition["spec"].get("build") or {}).get("builtin")
     if builtin == "mlsystem":
         build.resume(ctx, target, launch)
-    elif builtin in ("medallion-bronze", "medallion-silver", "medallion-gold"):
-        layer = builtin.removeprefix("medallion-")
-        medallion._launch(target, launch, f"/hops-{layer} {target.name}")
+    elif builtin in ("analytics-bronze", "analytics-silver", "analytics-gold"):
+        layer = builtin.removeprefix("analytics-")
+        analytics._launch(target, launch, f"/hops-{layer} {target.name}")
     else:
         _write_build_files(target, definition, definition["spec"], target.name)
-        medallion._launch(target, launch, f"/hops-factory-{name} {target.name}")
+        analytics._launch(target, launch, f"/hops-factory-{name} {target.name}")
 
 
 # endregion
@@ -674,7 +674,7 @@ def create_system(
 ) -> Path:
     """Create a system with a factory from its answers; returns its directory.
 
-    A factory whose build is a built-in's (mlsystem, medallion-bronze|silver|gold, and any
+    A factory whose build is a built-in's (mlsystem, analytics-bronze|silver|gold, and any
     clone of them) hands the answers that built-in knows, with the factory's constant answers,
     to that built-in's create; the rest are recorded as `requirements.extra`, with the factory's
     instructions, in system.yaml. Any other factory writes system.yaml itself and starts Claude
@@ -699,9 +699,9 @@ def create_system(
     data = {k: v for k, v in merged.items() if k in known}
     create = {
         "mlsystem": build.create,
-        "medallion-bronze": medallion.create_bronze,
-        "medallion-silver": medallion.create_silver,
-        "medallion-gold": medallion.create_gold,
+        "analytics-bronze": analytics.create_bronze,
+        "analytics-silver": analytics.create_silver,
+        "analytics-gold": analytics.create_gold,
     }[builtin]
     return create(ctx, data, launch)
 
@@ -709,9 +709,9 @@ def create_system(
 # The answers each built-in build reads; a factory's other answers are its own.
 BUILTIN_KEYS = {
     "mlsystem": build.ANSWER_KEYS,
-    "medallion-bronze": medallion.BRONZE_KEYS,
-    "medallion-silver": medallion.ANSWER_KEYS,
-    "medallion-gold": medallion.GOLD_KEYS,
+    "analytics-bronze": analytics.BRONZE_KEYS,
+    "analytics-silver": analytics.ANSWER_KEYS,
+    "analytics-gold": analytics.GOLD_KEYS,
 }
 
 
@@ -759,7 +759,7 @@ def _create_own(
         output.warn(
             f"Not registered in the project's Factory ({exc}); run `hops factory system register {target} --factory {name}`."
         )
-    medallion._launch(target, launch, f"/hops-factory-{name} {slug}")
+    analytics._launch(target, launch, f"/hops-factory-{name} {slug}")
     return target
 
 

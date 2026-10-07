@@ -1,16 +1,16 @@
-# A bronze medallion layer of generated data: its specification, and what runs.
-# Written by `hops factory run medallion-bronze` from the Factory's answers and the generator's
+# A bronze analytics layer of generated data: its specification, and what runs.
+# Written by `hops factory run analytics-bronze` from the Factory's answers and the generator's
 # bronze.yaml, then by /hops-bronze.
-# The `layer` block marks this system.yaml as a medallion layer, not an ML system.
+# The `layer` block marks this system.yaml as an analytics layer, not an ML system.
 layer:
   kind: bronze
   name: ""            # title shown in the Factory
   slug: ""            # this directory's name
   description: ""     # what the bronze tables hold
-  lifecycle: dev      # dev | staging | prod, mirrored in each table's medallion_table tag
+  lifecycle: dev      # dev | staging | prod, mirrored in each table's analytics_table tag
   status: draft       # draft | building | built | failed
-  repo: {}            # {name, url}: the medallion's repository, hops-<prefix>, shared with its silver and gold layers
-generator:            # the program that writes the bronze tables, copied from the hops-medallion references
+  repo: {}            # {name, url}: the analytics pipeline's repository, hops-<prefix>, shared with its silver and gold layers
+generator:            # the program that writes the bronze tables, copied from the hops-analytics references
   reference: ""       # the references/ directory it came from
   program: ""         # run by every job, with the job's args
   environment: ""     # the Python environment the jobs run in

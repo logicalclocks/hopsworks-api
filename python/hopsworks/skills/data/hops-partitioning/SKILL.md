@@ -64,4 +64,4 @@ Changing a table's partitioning is a new feature group version: record the decis
 ## Next Steps
 
 - File compaction and clustering of an existing table: **hops-table-maintenance**, **hops-delta**.
-- Where a silver layer records the decision: **hops-medallion**.
+- Where a silver layer records the decision: **hops-analytics**.

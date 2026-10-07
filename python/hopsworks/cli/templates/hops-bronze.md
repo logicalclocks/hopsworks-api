@@ -1,5 +1,5 @@
 ---
-description: Hopsworks bronze layer builder. Builds the bronze medallion layer of generated data that system.yaml describes, from its generator program to offline Delta feature groups tagged bronze, backfilled once and written by scheduled jobs. Phases can be run alone.
+description: Hopsworks bronze layer builder. Builds the bronze analytics layer of generated data that system.yaml describes, from its generator program to offline Delta feature groups tagged bronze, backfilled once and written by scheduled jobs. Phases can be run alone.
 argument-hint: "[<slug>] [code|backfill|schedule|verify]"
 ---
 
@@ -15,11 +15,11 @@ Already known, no need to look again before the first question:
 
 | First word | Do |
 | --- | --- |
-| the slug of a layer above | work on that layer: carry out its pending change requests, then resume it from its first phase that is not `done` (the Factory and `hops factory run medallion-bronze` start the build this way) |
-| none | with a `system.yaml` above: resume it from its first phase that is not `done`; without one: reply that the Factory's **New Medallion Layer** examples, or `hops factory run medallion-bronze --preset <example>`, record a layer first, and stop |
+| the slug of a layer above | work on that layer: carry out its pending change requests, then resume it from its first phase that is not `done` (the Factory and `hops factory run analytics-bronze` start the build this way) |
+| none | with a `system.yaml` above: resume it from its first phase that is not `done`; without one: reply that the Factory's **New Analytics** examples, or `hops factory run analytics-bronze --preset <example>`, record a layer first, and stop |
 | `code`, `backfill`, `schedule`, `verify` | that phase, then every later phase that is not `done` |
 
-Load **hops-medallion** first (the `medallion_table` tag and the layers built on bronze), and **hops-job** and **hops-fg** before deploying a job or checking a feature group.
+Load **hops-analytics** first (the `analytics_table` tag and the layers built on bronze), and **hops-job** and **hops-fg** before deploying a job or checking a feature group.
 Find a skill at `.claude/skills/<name>/` in the repository, else `~/.claude/skills/<name>/` (in a Hopsworks terminal that links to `/opt/hops/agent-skills/`).
 
 **Where it runs.** The Factory starts Claude Code in the layer's directory, `<slug>/`, so it reads the layer's `AGENTS.md`; every `<slug>/<path>` here is `<path>` in the current directory.
@@ -28,10 +28,10 @@ Find a skill at `.claude/skills/<name>/` in the repository, else `~/.claude/skil
 
 - **Change requests.** A `changes` entry with `status: pending` in `system.yaml` is a change the Factory recorded: before anything else, carry out each, oldest first, following its `instructions` with its `answers`, then set its `status: done` and `finished` (UTC), or `status: failed` with a `reason`, and commit `[<slug>] <label>`. Delete a job or a feature group only with `hops factory system delete-assets <slug> --job <name> --table <name>:<version>`.
 - **system.yaml is the record.** Set `layer.status` to `building` when you start and `built` or `failed` when you end; set each phase's `status`, `started` and `finished` (UTC, from `date -u`) as it runs, and `progress.now` to one line on what you are doing. The Factory reads it every few seconds.
-- **The generator is given.** `generator.program` was copied from the hops-medallion references and its tests are in `tests/`. Run it as it is; change it only to fix a failure, recording the fix and why in `decisions`.
+- **The generator is given.** `generator.program` was copied from the hops-analytics references and its tests are in `tests/`. Run it as it is; change it only to fix a failure, recording the fix and why in `decisions`.
 - **Ask, never guess.** When a feature group the generator writes already exists and was not written by this layer, or the jobs' Python environment is missing, ask with `AskUserQuestion` (one call, up to four questions, two to four concrete options each with the recommended one first). Record every answer and every choice you make yourself in `decisions` (`at`, `by: user` or `by: claude`, `what`, `why`).
 - **Commit each phase** in the layer's git work tree: `[<slug>] <phase>: <what>`, `system.yaml` with the code.
-- **The GitHub repository.** A medallion's layers share one work tree and one private GitHub repository, `layer.repo.name` (`hops-<prefix>`, the parent of this directory); each layer is a directory in it. With no `layer.repo.url`: when the work tree already has an `origin`, record its URL; else when `gh repo view <layer.repo.name>` finds the repository, add it as `origin` and put the work tree's commits on its history (`git fetch origin` then `git rebase origin/<its default branch>`; the work tree was started fresh, and each layer's commits touch only its own directory); else, with `gh auth status` logged in, create it (`gh repo create <layer.repo.name> --private --source .. --remote origin --push`). Record the URL as `layer.repo.url`. Commit only this layer's directory (`git add -A -- .`, `git commit -m ... -- .`) and push after every commit. Without a GitHub login, say once that `github-login` connects one, and keep committing locally.
+- **The GitHub repository.** An analytics pipeline's layers share one work tree and one private GitHub repository, `layer.repo.name` (`hops-<prefix>`, the parent of this directory); each layer is a directory in it. With no `layer.repo.url`: when the work tree already has an `origin`, record its URL; else when `gh repo view <layer.repo.name>` finds the repository, add it as `origin` and put the work tree's commits on its history (`git fetch origin` then `git rebase origin/<its default branch>`; the work tree was started fresh, and each layer's commits touch only its own directory); else, with `gh auth status` logged in, create it (`gh repo create <layer.repo.name> --private --source .. --remote origin --push`). Record the URL as `layer.repo.url`. Commit only this layer's directory (`git add -A -- .`, `git commit -m ... -- .`) and push after every commit. Without a GitHub login, say once that `github-login` connects one, and keep committing locally.
 - **Logs stay out of the directory**, as `AGENTS.md` says.
 - **Never delete** what this build did not create.
 
@@ -40,14 +40,14 @@ Find a skill at `.claude/skills/<name>/` in the repository, else `~/.claude/skil
 ### code
 
 Run the generator's tests: `python -m pytest -q tests` (`uv pip install pytest` first when it is missing).
-Check that none of the feature groups in `tables` exists yet (`hops fg list`); one that does and is not tagged `medallion_table` `layer: bronze` belongs to someone else: ask before going on, and never write into it.
+Check that none of the feature groups in `tables` exists yet (`hops fg list`); one that does and is not tagged `analytics_table` `layer: bronze` belongs to someone else: ask before going on, and never write into it.
 Check that `generator.environment` is one of the project's Python environments; when it is not, ask which to use.
 Create the GitHub repository, as the rules say, and commit.
 
 ### backfill
 
 Deploy the backfill job and run it once, waiting for it: `hops job deploy <slug>-backfill <generator.program> --env <generator.environment> --args "<generator.backfill.args>" --run --wait`.
-It creates the feature groups in `tables` (offline, Delta), writes the history up to the last midnight (UTC), adds each feature's description and tags each `medallion_table` `{"layer": "bronze", "lifecycle": "<layer.lifecycle>"}`.
+It creates the feature groups in `tables` (offline, Delta), writes the history up to the last midnight (UTC), adds each feature's description and tags each `analytics_table` `{"layer": "bronze", "lifecycle": "<layer.lifecycle>"}`.
 A scheduled run appends `-start_time <fire instant>` to the program's arguments, which the program accepts and ignores (**hops-job**, Windows and backfill).
 When it fails, read its log (`hops job logs <slug>-backfill --stdout --tail 200`, and `--stderr`), fix the cause, and run it again; a rerun rewrites the same rows.
 Check each table: its rows against `tables[].rows` (`hops trino query --catalog delta --schema <project>_featurestore "SELECT count(*) FROM <table>_1"`, the project name lowercased), that it is offline and Delta (`hops fg info <name>`), and its tag (`hops fg tags <name>`).
@@ -66,4 +66,4 @@ Wait for the first catch-up run of the most frequent cadence to finish (`hops jo
 Run the daily job once by hand for the last full day only when no daily window has run yet and the user wants it now: it writes yesterday's changes, which the next scheduled run would also write, and a rerun of the same window rewrites the same rows.
 Check the duplicate deliveries a silver layer will have to remove, for the clickstream example: `SELECT count(*) - count(DISTINCT click_id) FROM clickstream_clicks_1` (same catalog and schema) is about 0.001% of the clicks.
 Run `hops factory system status <slug>` and fix anything it flags.
-Set `outputs.applied_spec` to the spec just built (`generator`, `tables`, `schedule`, `layer.lifecycle`), set `layer.status: built`, and report the tables with their rows, the jobs with their schedules, and that the tables are ready for a silver layer (**New Medallion Layer**, **Silver layer**), in a few lines.
+Set `outputs.applied_spec` to the spec just built (`generator`, `tables`, `schedule`, `layer.lifecycle`), set `layer.status: built`, and report the tables with their rows, the jobs with their schedules, and that the tables are ready for a silver layer (**New Analytics**, **Silver layer**), in a few lines.

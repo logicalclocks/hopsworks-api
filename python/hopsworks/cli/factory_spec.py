@@ -24,12 +24,12 @@ BUILTINS = (
     "ml-batch",
     "ml-realtime",
     "ml-agent",
-    "medallion-bronze",
-    "medallion-silver",
-    "medallion-gold",
+    "analytics-bronze",
+    "analytics-silver",
+    "analytics-gold",
 )
 # The builds a factory can hand its answers to instead of writing its own instructions.
-BUILTIN_BUILDS = ("mlsystem", "medallion-bronze", "medallion-silver", "medallion-gold")
+BUILTIN_BUILDS = ("mlsystem", "analytics-bronze", "analytics-silver", "analytics-gold")
 FIELD_TYPES = (
     "slug",
     "text",
