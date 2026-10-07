@@ -41,6 +41,8 @@ class RestAPIError(Exception):
     class FeatureStoreErrorCode(int, Enum):
         FEATURE_GROUP_COMMIT_NOT_FOUND = 270227
         STATISTICS_NOT_FOUND = 270228
+        DATA_SOURCE_CREDENTIALS_NOT_PROVIDED = 270334
+        DATA_SOURCE_CREDENTIALS_INVALID = 270336
 
         def __eq__(self, other: int | Any) -> bool:
             if isinstance(other, int):
@@ -72,6 +74,7 @@ class RestAPIError(Exception):
         )
         if len(error_object) != 0:
             self.error_code = error_object.get("errorCode", "")
+        self.user_message = error_object.get("usrMsg", "")
         super().__init__(message)
         self.url = url
         self.response = response

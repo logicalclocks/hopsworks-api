@@ -2871,3 +2871,46 @@ class TestIsSparkDataFrame:
         session = spark_engine_mod.Engine()._spark_session
         sdf = session.createDataFrame([(1,)], ["a"])
         assert hasattr(sdf, "drop_duplicates") and hasattr(sdf, "distinct")
+
+
+class TestExternalFeatureGroupDataSourceAccess:
+    def test_from_response_json_reads_the_access_state(self, backend_fixtures):
+        json = dict(backend_fixtures["external_feature_group"]["get"]["response"])
+        json["dataSourceAccess"] = {
+            "status": "NO_ACCESS",
+            "errorCode": "ORA-00942",
+            "message": "table or view does not exist",
+            "checkedAt": "2026-10-07T10:00:00Z",
+        }
+
+        fg = feature_group.ExternalFeatureGroup.from_response_json(json)
+
+        assert fg.data_source_access == {
+            "status": "NO_ACCESS",
+            "error_code": "ORA-00942",
+            "message": "table or view does not exist",
+            "checked_at": "2026-10-07T10:00:00Z",
+        }
+
+    def test_absent_for_a_shared_data_source(self, backend_fixtures):
+        json = backend_fixtures["external_feature_group"]["get"]["response"]
+
+        fg = feature_group.ExternalFeatureGroup.from_response_json(json)
+
+        assert fg.data_source_access is None
+        assert "dataSourceAccess" not in fg.to_dict()
+
+    def test_test_data_source_access_stores_the_result(self, mocker, backend_fixtures):
+        json = backend_fixtures["external_feature_group"]["get"]["response"]
+        fg = feature_group.ExternalFeatureGroup.from_response_json(json)
+        mock_test = mocker.patch.object(
+            fg._feature_group_engine._feature_group_api,
+            "_test_data_source_access",
+            return_value={"status": "OK", "checkedAt": "2026-10-07T10:00:00Z"},
+        )
+
+        access = fg.test_data_source_access()
+
+        mock_test.assert_called_once_with(fg)
+        assert access == {"status": "OK", "checked_at": "2026-10-07T10:00:00Z"}
+        assert fg.data_source_access == access

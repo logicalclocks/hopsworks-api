@@ -20,6 +20,7 @@ import contextlib
 import inspect
 import json
 import logging
+import re
 import warnings
 from functools import wraps
 from typing import TYPE_CHECKING, Any
@@ -95,6 +96,9 @@ def _is_no_commits_found_error(exception):
     ) and "No commits found" in str(exception)
 
 
+_ORACLE_ERROR = re.compile(r"ORA-\d{5}")
+
+
 def _is_no_metadata_found_error(exception):
     return isinstance(exception, pyarrow._flight.FlightServerError) and any(
         msg in str(exception)
@@ -107,6 +111,19 @@ def _is_no_data_found_error(exception):
     return isinstance(
         exception, pyarrow._flight.FlightServerError
     ) and "No data found" in str(exception)
+
+
+def _data_source_error(exception) -> str | None:
+    """The data source's own refusal, such as an Oracle grant error, as its first line.
+
+    A member reading through their own credentials needs the database's reason to tell a missing grant from a wrong password.
+    """
+    if not isinstance(exception, pyarrow._flight.FlightServerError):
+        return None
+    match = _ORACLE_ERROR.search(str(exception))
+    if match is None:
+        return None
+    return str(exception)[match.start() :].splitlines()[0].split(". Detail:")[0]
 
 
 def _should_retry_healthcheck(exception):
@@ -451,6 +468,9 @@ class ArrowFlightClient:
                 or _is_no_data_found_error(error)
             ):
                 return FeatureStoreException(str(error).split("Details:")[0])
+            refusal = _data_source_error(error)
+            if refusal is not None:
+                return FeatureStoreException(f"{user_message} {refusal}")
             return FeatureStoreException(user_message)
 
         def decorator(func):

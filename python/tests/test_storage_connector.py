@@ -2059,6 +2059,313 @@ class TestOracleConnector:
             sc.get_tables()
 
 
+class TestSqlConnectorProvidedCredentials:
+    """A PROVIDED data source carries no credentials of its own: they come from the caller."""
+
+    def _provided(self, backend_fixtures, key="get_oracle_provided"):
+        json = backend_fixtures["storage_connector"][key]["response"]
+        return storage_connector.StorageConnector.from_response_json(json)
+
+    def _inject(self, monkeypatch, connector_id="2", **values):
+        """Set the variables a runtime gets for the data source named oracle-sales."""
+        monkeypatch.setenv("HOPS_DS_ORACLE_SALES_CONNECTOR_ID", connector_id)
+        for suffix, value in values.items():
+            monkeypatch.setenv(f"HOPS_DS_ORACLE_SALES_{suffix.upper()}", value)
+
+    def test_from_response_json_round_trips_the_mode_and_the_binding(
+        self, backend_fixtures
+    ):
+        sc = self._provided(backend_fixtures)
+
+        assert sc.credentials_mode == "PROVIDED"
+        assert sc.user_credentials["status"] == "VALID"
+        assert sc.user_credentials["username_env_var"] == "DS_ORACLE_SALES_67_USER"
+        assert (
+            sc.user_credentials["password_secret_name"] == "ds_oracle_sales_67_password"
+        )
+        # The backend fills the DTO with the caller's own values, which the read paths use.
+        assert sc.user == "scott"
+        assert sc.password == "tiger"
+        assert sc.wallet_password == "wallet_pass"
+
+        d = sc.to_dict()
+
+        assert d["credentialsMode"] == "PROVIDED"
+        # The caller's credentials never travel back to the backend.
+        assert d["user"] is None
+        assert d["password"] is None
+        assert d["walletPath"] is None
+        assert d["walletPassword"] is None
+
+    def test_an_old_backend_without_the_field_is_shared(self, backend_fixtures):
+        sc = self._provided(backend_fixtures, "get_oracle")
+
+        assert sc.credentials_mode == "SHARED"
+        assert sc.user_credentials is None
+        assert sc.to_dict()["credentialsMode"] == "SHARED"
+        assert sc.to_dict()["user"] == "test_user"
+
+    def test_env_vars_take_precedence_over_the_dto(self, backend_fixtures, monkeypatch):
+        sc = self._provided(backend_fixtures)
+        self._inject(
+            monkeypatch,
+            user="env_user",
+            password="env_pass",
+            wallet_password="env_wallet_pass",
+        )
+
+        assert sc.user == "env_user"
+        assert sc.password == "env_pass"
+        assert sc.wallet_password == "env_wallet_pass"
+        opts = sc.spark_options()
+        assert opts["user"] == "env_user"
+        assert opts["password"] == "env_pass"
+        props = sc.connector_options()
+        assert props["user"] == "env_user"
+        assert props["password"] == "env_pass"
+        assert props["wallet_password"] == "env_wallet_pass"
+
+    def test_env_vars_are_ignored_for_a_shared_data_source(
+        self, backend_fixtures, monkeypatch
+    ):
+        sc = self._provided(backend_fixtures, "get_oracle")
+        monkeypatch.setenv("HOPS_DS_TEST_ORACLE_USER", "env_user")
+
+        assert sc.user == "test_user"
+
+    def test_the_env_name_normalises_the_data_source_name(self):
+        sc = storage_connector.SqlConnector(
+            id=1,
+            name="my-oracle.sales 2",
+            featurestore_id=67,
+            database_type="ORACLE",
+            credentials_mode="PROVIDED",
+        )
+
+        assert sc._env_var("USER") == "HOPS_DS_MY_ORACLE_SALES_2_USER"
+        assert sc._default_secret_name("password") == "ds_my_oracle_sales_2_67_password"
+        assert sc._credentials_body("u", "p", None, None, None, None, None)[
+            "username"
+        ] == {"envVarName": "DS_MY_ORACLE_SALES_2_67_USER", "value": "u"}
+
+    def test_get_tables_defaults_to_the_resolved_user_schema(
+        self, backend_fixtures, monkeypatch, mocker
+    ):
+        sc = self._provided(backend_fixtures)
+        self._inject(monkeypatch, user="env_user")
+        mock_get_tables = mocker.patch.object(
+            sc._data_source_api, "_get_tables", return_value=[]
+        )
+
+        sc.get_tables()
+
+        mock_get_tables.assert_called_once_with(sc, "ENV_USER")
+
+    def test_spark_options_with_an_env_var_wallet_path_uses_tcps(
+        self, backend_fixtures, monkeypatch, tmp_path
+    ):
+        wallet_zip = tmp_path / "wallet-1.zip"
+        wallet_zip.write_bytes(b"PK")
+        sc = self._provided(backend_fixtures, "get_oracle_provided_missing")
+        self._inject(
+            monkeypatch,
+            user="env_user",
+            password="env_pass",
+            wallet_path=str(wallet_zip),
+        )
+
+        opts = sc.spark_options()
+
+        assert opts["url"] == "jdbc:oracle:thin:@tcps://test_host:1521/test_database"
+        assert sc.wallet_path == str(wallet_zip)
+
+    def test_an_env_var_wallet_is_read_locally_not_through_the_engine(
+        self, backend_fixtures, monkeypatch, mocker, tmp_path
+    ):
+        import zipfile
+
+        wallet_zip = tmp_path / "wallet.zip"
+        with zipfile.ZipFile(str(wallet_zip), "w") as zf:
+            zf.writestr("cwallet.sso", "fake")
+        sc = self._provided(backend_fixtures, "get_oracle_provided_missing")
+        self._inject(
+            monkeypatch,
+            user="env_user",
+            password="env_pass",
+            wallet_path=str(wallet_zip),
+            wallet_password="env_wallet_pass",
+        )
+        mock_engine = mocker.patch("hsfs.engine._get_instance")
+        mocker.patch.object(sc, "_refetch")
+
+        sc.read(query="SELECT 1")
+
+        mock_engine.return_value._add_file.assert_not_called()
+        call_options = mock_engine.return_value._read_jdbc_on_driver.call_args[0][0]
+        assert call_options["oracle.net.tns_admin"] == str(tmp_path / "wallet")
+        assert call_options["oracle.net.wallet_password"] == "env_wallet_pass"
+
+    @pytest.mark.parametrize(
+        "use",
+        [
+            lambda sc: sc.spark_options(),
+            lambda sc: sc.connector_options(),
+            lambda sc: sc.read(query="SELECT 1"),
+            lambda sc: sc.get_tables(),
+            lambda sc: sc.get_databases(),
+        ],
+    )
+    def test_use_without_credentials_names_set_credentials(
+        self, backend_fixtures, mocker, use
+    ):
+        from hopsworks_common.client.exceptions import FeatureStoreException
+
+        sc = self._provided(backend_fixtures, "get_oracle_provided_missing")
+        mocker.patch("hsfs.engine._get_instance")
+        mocker.patch.object(sc, "_refetch")
+        mocker.patch.object(sc, "_data_source_api")
+
+        with pytest.raises(FeatureStoreException, match="set_credentials") as exc:
+            use(sc)
+
+        assert "oracle-sales" in str(exc.value)
+
+    def test_an_incomplete_binding_says_what_is_gone(self, backend_fixtures):
+        from hopsworks_common.client.exceptions import FeatureStoreException
+
+        sc = self._provided(backend_fixtures, "get_oracle_provided_missing")
+        sc._user_credentials = {"status": "INCOMPLETE"}
+
+        with pytest.raises(FeatureStoreException, match="no longer exists"):
+            sc.spark_options()
+
+    def test_env_vars_satisfy_the_credentials_check(
+        self, backend_fixtures, monkeypatch
+    ):
+        sc = self._provided(backend_fixtures, "get_oracle_provided_missing")
+        self._inject(monkeypatch, user="env_user", password="env_pass")
+
+        assert sc.spark_options()["user"] == "env_user"
+
+    def test_env_vars_of_a_same_named_data_source_elsewhere_are_ignored(
+        self, backend_fixtures, monkeypatch
+    ):
+        # The runtime's own feature store has an oracle-sales with id 9; this one is id 2.
+        here = self._provided(backend_fixtures)
+        json = dict(
+            backend_fixtures["storage_connector"]["get_oracle_provided"]["response"]
+        )
+        json.update(id=9, featurestoreId=68, user="own_user", password="own_pass")
+        own = storage_connector.StorageConnector.from_response_json(json)
+        self._inject(
+            monkeypatch,
+            connector_id="9",
+            user="env_user",
+            password="env_pass",
+            wallet_password="env_wallet_pass",
+        )
+
+        assert (own.user, own.password) == ("env_user", "env_pass")
+        assert (here.user, here.password) == ("scott", "tiger")
+        assert here.wallet_password == "wallet_pass"
+        assert here.spark_options()["user"] == "scott"
+
+    def test_env_vars_without_a_connector_id_are_ignored(
+        self, backend_fixtures, monkeypatch
+    ):
+        from hopsworks_common.client.exceptions import FeatureStoreException
+
+        sc = self._provided(backend_fixtures, "get_oracle_provided_missing")
+        monkeypatch.setenv("HOPS_DS_ORACLE_SALES_USER", "env_user")
+        monkeypatch.setenv("HOPS_DS_ORACLE_SALES_PASSWORD", "env_pass")
+
+        assert sc.user is None
+        with pytest.raises(FeatureStoreException, match="set_credentials"):
+            sc.spark_options()
+
+    def test_an_unreadable_env_var_wallet_is_downloaded_from_hopsfs(
+        self, backend_fixtures, monkeypatch, mocker, tmp_path
+    ):
+        sc = self._provided(backend_fixtures)
+        self._inject(
+            monkeypatch,
+            user="env_user",
+            password="env_pass",
+            wallet_path=str(tmp_path / "not-mounted" / "wallet-1.zip"),
+        )
+        hopsfs_wallet = (
+            "/Projects/test_project/Users/scott/.datasources/oracle-sales/wallet.zip"
+        )
+        downloaded = tmp_path / "downloaded"
+        downloaded.mkdir()
+        mock_engine = mocker.patch("hsfs.engine._get_instance")
+        mock_engine.return_value._add_file.return_value = str(downloaded)
+
+        assert sc.wallet_path == hopsfs_wallet
+        assert sc._prepare_wallet() == str(downloaded)
+        mock_engine.return_value._add_file.assert_called_once_with(
+            hopsfs_wallet, distribute=False
+        )
+
+    def test_a_new_provided_data_source_refuses_credentials(self, mocker):
+        sc = storage_connector.SqlConnector(
+            id=None,
+            name="oracle-sales",
+            featurestore_id=67,
+            database_type="ORACLE",
+            host="h",
+            port=1521,
+            database="svc",
+            credentials_mode="PROVIDED",
+            user="SCOTT",
+            password="tiger",
+        )
+        create = mocker.patch.object(sc._storage_connector_api, "_create")
+
+        with pytest.raises(ValueError, match="set_credentials") as exc:
+            sc.save()
+
+        assert "user, password" in str(exc.value)
+        create.assert_not_called()
+
+    def test_a_new_provided_data_source_without_credentials_is_created(self, mocker):
+        sc = storage_connector.SqlConnector(
+            id=None,
+            name="oracle-sales",
+            featurestore_id=67,
+            database_type="ORACLE",
+            host="h",
+            port=1521,
+            database="svc",
+            credentials_mode="PROVIDED",
+        )
+        create = mocker.patch.object(sc._storage_connector_api, "_create")
+
+        sc.save()
+
+        create.assert_called_once_with(sc)
+
+    def test_an_update_never_sends_the_credentials_filled_in_on_read(
+        self, backend_fixtures, mocker
+    ):
+        sc = self._provided(backend_fixtures)
+        client_mock = mocker.MagicMock()
+        mocker.patch("hopsworks_common.client._get_instance", return_value=client_mock)
+        client_mock._send_request.return_value = backend_fixtures["storage_connector"][
+            "get_oracle_provided"
+        ]["response"]
+
+        sc.update()
+
+        import json as _json
+
+        body = _json.loads(client_mock._send_request.call_args.kwargs["data"])
+        assert body["user"] is None
+        assert body["password"] is None
+        assert body["walletPath"] is None
+        assert body["walletPassword"] is None
+
+
 class TestSapHanaConnector:
     def test_from_response_json(self, backend_fixtures):
         json = backend_fixtures["storage_connector"]["get_sap_hana"]["response"]

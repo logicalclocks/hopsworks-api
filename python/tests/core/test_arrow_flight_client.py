@@ -312,3 +312,30 @@ class TestArrowFlightClient:
         flight_client_mock.assert_called_once()
         args, kwargs = flight_client_mock.call_args
         assert kwargs.get("override_hostname") == "flyingduck.service.hopsworks.ai"
+
+
+class TestDataSourceError:
+    """A refusal from the data source reaches the caller instead of a generic read failure."""
+
+    def test_oracle_grant_error_is_extracted(self):
+        import pyarrow.flight
+
+        error = pyarrow.flight.FlightServerError(
+            "ORA-00942: table or view does not exist\n"
+            "Help: https://docs.oracle.com/error-help/db/ora-00942/. Detail: Failed"
+        )
+        assert (
+            arrow_flight_client._data_source_error(error)
+            == "ORA-00942: table or view does not exist"
+        )
+
+    def test_other_errors_keep_the_generic_message(self):
+        import pyarrow.flight
+
+        assert (
+            arrow_flight_client._data_source_error(
+                pyarrow.flight.FlightServerError("Connection reset")
+            )
+            is None
+        )
+        assert arrow_flight_client._data_source_error(ValueError("ORA-00942")) is None

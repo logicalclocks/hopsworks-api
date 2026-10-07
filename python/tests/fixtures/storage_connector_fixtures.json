@@ -892,6 +892,76 @@
         },
         "headers": null
     },
+    "get_oracle_provided": {
+        "response": {
+            "type": "featurestoreSqlConnectorDTO",
+            "description": "Oracle data source with provided credentials",
+            "featurestoreId": 67,
+            "id": 2,
+            "name": "oracle-sales",
+            "storageConnectorType": "SQL",
+            "databaseType": "ORACLE",
+            "host": "test_host",
+            "port": 1521,
+            "database": "test_database",
+            "credentialsMode": "PROVIDED",
+            "user": "scott",
+            "password": "tiger",
+            "walletPath": "/Projects/test_project/Users/scott/.datasources/oracle-sales/wallet.zip",
+            "walletPassword": "wallet_pass",
+            "userCredentials": {
+                "status": "VALID",
+                "usernameEnvVar": "DS_ORACLE_SALES_67_USER",
+                "passwordSecretName": "ds_oracle_sales_67_password",
+                "walletPath": "/Projects/test_project/Users/scott/.datasources/oracle-sales/wallet.zip",
+                "walletPasswordSecretName": "ds_oracle_sales_67_wallet_password",
+                "validatedAt": "2026-10-07T10:00:00Z"
+            }
+        },
+        "method": "GET",
+        "path_params": [
+            "project",
+            "119",
+            "featurestores",
+            67,
+            "storageconnectors",
+            "oracle-sales"
+        ],
+        "query_params": {
+            "temporaryCredentials": true
+        },
+        "headers": null
+    },
+    "get_oracle_provided_missing": {
+        "response": {
+            "type": "featurestoreSqlConnectorDTO",
+            "featurestoreId": 67,
+            "id": 2,
+            "name": "oracle-sales",
+            "storageConnectorType": "SQL",
+            "databaseType": "ORACLE",
+            "host": "test_host",
+            "port": 1521,
+            "database": "test_database",
+            "credentialsMode": "PROVIDED",
+            "userCredentials": {
+                "status": "MISSING"
+            }
+        },
+        "method": "GET",
+        "path_params": [
+            "project",
+            "119",
+            "featurestores",
+            67,
+            "storageconnectors",
+            "oracle-sales"
+        ],
+        "query_params": {
+            "temporaryCredentials": true
+        },
+        "headers": null
+    },
     "get_mongodb": {
         "response": {
             "type": "featurestoreMongoConnectorDTO",

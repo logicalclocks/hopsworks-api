@@ -524,6 +524,104 @@ class TestTrinoApi:
         assert connect_args["isolation_level"] == IsolationLevel.READ_COMMITTED
         assert connect_args["timezone"] == "UTC"
 
+    def _client_with_credentials(self, mocker, response=None, side_effect=None):
+        mocker.patch(
+            "hopsworks_common.core.trino_api.client._is_external", return_value=False
+        )
+        mock_client = Mock()
+        mock_client._project_id = 119
+        mock_client._get_ca_chain_path.return_value = "/tmp/ca.pem"
+        mock_client._send_request.return_value = response
+        mock_client._send_request.side_effect = side_effect
+        mocker.patch(
+            "hopsworks_common.core.trino_api.client._get_instance",
+            return_value=mock_client,
+        )
+        return mock_client
+
+    _CREDENTIALS = {
+        "items": [
+            {"name": "hops_ds_42_user", "value": "SCOTT"},
+            {"name": "hops_ds_42_password", "value": "tiger"},
+        ]
+    }
+
+    def test_connect_sends_the_callers_data_source_credentials(self, mocker, trino_api):
+        mock_client = self._client_with_credentials(mocker, self._CREDENTIALS)
+        mock_trino_connect = mocker.patch(
+            "hopsworks_common.core.trino_api._trino_connect"
+        )
+
+        trino_api.connect(catalog="oracle_sales")
+
+        mock_client._send_request.assert_called_once_with(
+            "GET", ["project", 119, "trino", "extra-credentials"]
+        )
+        assert mock_trino_connect.call_args.kwargs["extra_credential"] == [
+            ("hops_ds_42_user", "SCOTT"),
+            ("hops_ds_42_password", "tiger"),
+        ]
+
+    def test_a_callers_extra_credential_wins_for_the_same_name(self, mocker, trino_api):
+        self._client_with_credentials(mocker, self._CREDENTIALS)
+        mock_trino_connect = mocker.patch(
+            "hopsworks_common.core.trino_api._trino_connect"
+        )
+
+        trino_api.connect(
+            extra_credential=[("hops_ds_42_user", "OTHER"), ("custom", "x")]
+        )
+
+        assert mock_trino_connect.call_args.kwargs["extra_credential"] == [
+            ("hops_ds_42_user", "OTHER"),
+            ("hops_ds_42_password", "tiger"),
+            ("custom", "x"),
+        ]
+
+    def test_connect_without_the_endpoint_sends_no_extra_credentials(
+        self, mocker, trino_api
+    ):
+        from hopsworks_common.client.exceptions import RestAPIError
+
+        response = Mock(status_code=404, reason="Not Found", content=b"")
+        response.json.return_value = {}
+        self._client_with_credentials(mocker, side_effect=RestAPIError("url", response))
+        mock_trino_connect = mocker.patch(
+            "hopsworks_common.core.trino_api._trino_connect"
+        )
+
+        trino_api.connect(catalog="iceberg")
+
+        assert "extra_credential" not in mock_trino_connect.call_args.kwargs
+
+    def test_connect_without_the_endpoint_keeps_the_callers_extra_credential(
+        self, mocker, trino_api
+    ):
+        self._client_with_credentials(mocker, side_effect=RuntimeError("down"))
+        mock_trino_connect = mocker.patch(
+            "hopsworks_common.core.trino_api._trino_connect"
+        )
+
+        trino_api.connect(extra_credential=[("custom", "x")])
+
+        assert mock_trino_connect.call_args.kwargs["extra_credential"] == [
+            ("custom", "x")
+        ]
+
+    def test_create_engine_sends_the_callers_data_source_credentials(
+        self, mocker, trino_api
+    ):
+        self._client_with_credentials(mocker, self._CREDENTIALS)
+        mock_create_engine = mocker.patch("sqlalchemy.create_engine")
+
+        trino_api.create_engine(catalog="oracle_sales")
+
+        connect_args = mock_create_engine.call_args.kwargs["connect_args"]
+        assert connect_args["extra_credential"] == [
+            ("hops_ds_42_user", "SCOTT"),
+            ("hops_ds_42_password", "tiger"),
+        ]
+
     def test_has_trino_when_installed(self):
         """Test that HAS_TRINO is True when trino package is installed."""
         # Arrange & Act

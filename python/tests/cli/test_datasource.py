@@ -752,3 +752,69 @@ def test_an_unknown_choice_is_refused_before_any_request():
             "SQLITE",
         ]
     )
+
+
+def test_sql_provided_credentials_refuse_the_owner_credentials():
+    base = [
+        "sql",
+        "n",
+        "--database-type",
+        "ORACLE",
+        "--host",
+        "h",
+        "--port",
+        "1522",
+        "--database",
+        "svc",
+        "--credentials-mode",
+        "provided",
+    ]
+
+    body = _create(base)
+    assert body["credentialsMode"] == "PROVIDED"
+    assert "user" not in body and "password" not in body
+
+    assert "does not take --user" in _refused([*base, "--user", "u"])
+    assert "does not take --password" in _refused([*base, "--password", "p"])
+    assert "does not take --wallet-path" in _refused([*base, "--wallet-path", "/w"])
+
+
+def test_sql_provided_oracle_takes_a_host_only_or_nothing():
+    base = [
+        "sql",
+        "n",
+        "--database-type",
+        "ORACLE",
+        "--port",
+        "1522",
+        "--database",
+        "svc",
+        "--credentials-mode",
+        "PROVIDED",
+    ]
+
+    assert "host" not in _create(base)
+    assert _create([*base, "--host", "h"])["host"] == "h"
+
+
+def test_sql_provided_credentials_are_oracle_only():
+    output = _refused(
+        [
+            "sql",
+            "n",
+            *_without(_MINIMAL["sql"], "--user"),
+            "--credentials-mode",
+            "provided",
+        ]
+    )
+    assert "ORACLE only" in output
+
+
+def test_sql_shared_credentials_still_need_a_user():
+    body = _create(["sql", "n", *_MINIMAL["sql"]])
+    assert body["credentialsMode"] == "SHARED"
+    assert body["user"] == "u"
+
+    assert "--credentials-mode SHARED needs --user" in _refused(
+        ["sql", "n", *_without(_MINIMAL["sql"], "--user")]
+    )
