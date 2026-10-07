@@ -1098,7 +1098,14 @@ class TestTransformationFunctionEngine:
         engine._set_instance(engine=python.Engine(), engine_type="python")
 
         def fake_parallel(
-            execution_graph, data, online, n_processes, engine_type, column_store, merge
+            execution_graph,
+            data,
+            online,
+            n_processes,
+            engine_type,
+            column_store,
+            merge,
+            transformation_context=None,
         ):
             for tf in execution_graph.nodes:
                 for col in tf.hopsworks_udf.output_column_names:

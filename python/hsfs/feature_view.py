@@ -55,6 +55,7 @@ from hsfs.core import (
     feature_monitoring_result_engine,
     feature_view_engine,
     job,
+    partition_grains,
     statistics_engine,
     transformation_execution_dag,
     transformation_function_engine,
@@ -573,6 +574,10 @@ class FeatureView:
                 - `timeout`: int, optional.
                   The timeout for the rest client in seconds.
                   Defaults to 2.
+                - `max_connections`: int, optional.
+                  Reads allowed in flight, and the size of the connection pool they share.
+                  A read that cannot get a turn within its timeout raises rather than waiting.
+                  Defaults to 16.
                 - `use_ssl`: boolean, optional.
                   Use SSL to connect to the online store.
                   Defaults to True.
@@ -793,7 +798,7 @@ class FeatureView:
     def _offline_only_partition_features(self) -> list[str]:
         """Names of selected features that are `partitioned_by` grain columns not available online.
 
-        Grain columns are derived from `event_time`.
+        Grain columns are the `year`, `month`, ... columns a Hudi feature group derives from `event_time` for its temporal transforms.
         Unless the feature group enabled `online_partition_columns`, they live only in the
         offline store, so the online serving APIs cannot return them.
         Walks the query (including joins) so it covers every feature group in the view.
@@ -802,11 +807,12 @@ class FeatureView:
 
         def _walk(query) -> None:
             fg = query._left_feature_group
-            partitioned_by = getattr(fg, "partitioned_by", None) or []
+            is_hudi = (getattr(fg, "time_travel_format", None) or "").upper() == "HUDI"
+            grains = partition_grains._grains(fg) if is_hudi else []
             online_grains = bool(getattr(fg, "online_partition_columns", False))
-            if partitioned_by and not online_grains:
+            if grains and not online_grains:
                 for feat in query._left_features:
-                    if feat.name in partitioned_by and feat.name not in offending:
+                    if feat.name in grains and feat.name not in offending:
                         offending.append(feat.name)
             for join in query._joins:
                 _walk(join.query)
@@ -864,6 +870,7 @@ class FeatureView:
         transformation_context: dict[str, Any] = None,
         logging_data: bool = False,
         n_processes: int | None = None,
+        timeout: float | None = None,
         entry: dict[str, Any] | None = None,
     ) -> (
         list[Any]
@@ -990,7 +997,10 @@ class FeatureView:
                 Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
                 When not set, the value passed to `init_serving` is used.
                 Ignored by the Spark engine, which pushes transformations down to Spark.
-
+            timeout: Seconds to wait for the online read, as a deadline for the whole of it.
+                It covers waiting for a free connection, sending the request and receiving the answer, and raises `TimeoutError` when it runs out.
+                Must be a finite number of seconds greater than zero.
+                Unset keeps what a caller that names no timeout got before: the REST client's configured `timeout` bounds each connection attempt and each socket read rather than the whole call, and a SQL read has no deadline.
             entry:
                 Deprecated alias for `serving_keys`, kept so existing code keeps working.
                 Passing it emits a `DeprecationWarning`; passing both is an error.
@@ -1008,7 +1018,8 @@ class FeatureView:
         self._assert_no_offline_only_partition_features()
 
         if not self._vector_server._serving_initialized:
-            self.init_serving(external=external)
+            # force_rest_client is forwarded here as the batch method already does it: without it, a first single call asking for REST used to initialise SQL and then pick REST anyway.
+            self.init_serving(external=external, init_rest_client=force_rest_client)
 
         if n_processes is None:
             n_processes = self._transformation_n_processes
@@ -1030,6 +1041,7 @@ class FeatureView:
             transformation_context=transformation_context,
             logging_data=logging_data,
             n_processes=n_processes,
+            timeout=timeout,
         )
 
     @public
@@ -1047,8 +1059,7 @@ class FeatureView:
         handed to a worker thread and nothing queues on the client's task thread, which
         serves one lookup at a time however many callers there are.
 
-        Falls back to the blocking path where there is nothing to overlap: a REST client
-        deployment, or a request with no serving keys.
+        A REST client deployment has no awaitable path, so its blocking call runs on a worker thread and does not hold up the event loop.
 
         Takes the arguments of [`get_feature_vector`][hsfs.feature_view.FeatureView.get_feature_vector].
 
@@ -1062,8 +1073,9 @@ class FeatureView:
         """
         entry = kwargs.pop("entry", None)
         external = kwargs.pop("external", None)
+        force_rest_client = kwargs.get("force_rest_client", False)
         if not self._vector_server._serving_initialized:
-            self.init_serving(external=external)
+            self.init_serving(external=external, init_rest_client=force_rest_client)
         if kwargs.get("n_processes") is None:
             kwargs["n_processes"] = self._transformation_n_processes
         vector_db_features = None
@@ -1082,8 +1094,7 @@ class FeatureView:
         synchronous method hands the work to a task thread that serves one lookup at a
         time however many callers there are, which is the ceiling this method removes.
 
-        Falls back to the blocking path when the lookup is not the SQL client's to make: a
-        REST client deployment, or a request with no serving keys.
+        A REST client deployment has no awaitable path, so its blocking call runs on a worker thread and does not hold up the event loop.
 
         Takes the arguments of [`get_feature_vectors`][hsfs.feature_view.FeatureView.get_feature_vectors].
 
@@ -1104,8 +1115,7 @@ class FeatureView:
             kwargs["n_processes"] = self._transformation_n_processes
         vector_db_features = []
         if self._vector_db_client:
-            for _entry in entry:
-                vector_db_features.append(self._get_vector_db_result(_entry))
+            vector_db_features = self._get_vector_db_results(entry)
         return await self._vector_server._get_feature_vectors_async(
             entries=entry, vector_db_features=vector_db_features, **kwargs
         )
@@ -1126,6 +1136,7 @@ class FeatureView:
         transformation_context: dict[str, Any] = None,
         logging_data: bool = False,
         n_processes: int | None = None,
+        timeout: float | None = None,
         entry: list[dict[str, Any]] | None = None,
     ) -> (
         list[list[Any]]
@@ -1249,7 +1260,10 @@ class FeatureView:
                 Defaults to `1` (sequential execution); a value above the DAG's maximum parallelism is capped, with a warning.
                 When not set, the value passed to `init_serving` is used.
                 Ignored by the Spark engine, which pushes transformations down to Spark.
-
+            timeout: Seconds to wait for the online read, as a deadline for the whole of it.
+                It covers waiting for a free connection, sending the request and receiving the answer, and raises `TimeoutError` when it runs out.
+                Must be a finite number of seconds greater than zero.
+                Unset keeps what a caller that names no timeout got before: the REST client's configured `timeout` bounds each connection attempt and each socket read rather than the whole call, and a SQL read has no deadline.
             entry:
                 Deprecated alias for `serving_keys`, kept so existing code keeps working.
                 Passing it emits a `DeprecationWarning`; passing both is an error.
@@ -1274,8 +1288,7 @@ class FeatureView:
 
         vector_db_features = []
         if self._vector_db_client:
-            for _entry in serving_keys:
-                vector_db_features.append(self._get_vector_db_result(_entry))
+            vector_db_features = self._get_vector_db_results(serving_keys)
 
         return self._vector_server._get_feature_vectors(
             entries=serving_keys,
@@ -1291,6 +1304,7 @@ class FeatureView:
             transformation_context=transformation_context,
             logging_data=logging_data,
             n_processes=n_processes,
+            timeout=timeout,
         )
 
     @public
@@ -1423,25 +1437,51 @@ class FeatureView:
     ) -> dict[str, Any] | None:
         if not self._vector_db_client:
             return {}
-        result_vectors = {}
-        for join_index, fg in self._vector_db_client.embedding_fg_by_join_index.items():
-            complete, fg_entry = self._vector_db_client._filter_entry_by_join_index(
-                entry, join_index
-            )
-            if not complete:
-                # Not retrieving from vector db if entry is not completed
-                continue
-            vector_db_features = self._vector_db_client._read(
-                fg.id,
-                fg.columns,
-                keys=fg_entry,
-                index_name=fg.embedding_index.index_name,
-            )
+        return self._get_vector_db_results([entry])[0]
 
-            # if result is not empty
-            if vector_db_features:
-                vector_db_features = vector_db_features[0]  # get the first result
-                result_vectors.update(vector_db_features)
+    def _get_vector_db_results(
+        self,
+        entries: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """The embedding features of every entry, one round trip per embedding group.
+
+        A batch of N entries joined to J embedding groups used to cost N times J
+        sequential reads before the online store was touched at all. The entries
+        an embedding group can answer are collected and read together, and the
+        results are put back by the position of the entry they belong to, so the
+        matching, the join prefix and the treatment of an entry the group cannot
+        answer are what they were.
+        """
+        if not self._vector_db_client:
+            return [{} for _ in entries]
+        result_vectors: list[dict[str, Any]] = [{} for _ in entries]
+        for join_index, fg in self._vector_db_client.embedding_fg_by_join_index.items():
+            positions = []
+            key_sets = []
+            for position, entry in enumerate(entries):
+                complete, fg_entry = self._vector_db_client._filter_entry_by_join_index(
+                    entry, join_index
+                )
+                if not complete:
+                    # Not retrieving from vector db if entry is not completed
+                    continue
+                positions.append(position)
+                key_sets.append(fg_entry)
+            if not key_sets:
+                continue
+            for position, found in zip(
+                positions,
+                self._vector_db_client._read_many(
+                    fg.id,
+                    fg.columns,
+                    key_sets,
+                    index_name=fg.embedding_index.index_name,
+                ),
+                strict=True,
+            ):
+                # if result is not empty
+                if found:
+                    result_vectors[position].update(found[0])
         return result_vectors
 
     @public
@@ -4740,6 +4780,7 @@ class FeatureView:
         start_date_time: int | str | datetime | date | pd.Timestamp | None = None,
         end_date_time: int | str | datetime | date | pd.Timestamp | None = None,
         cron_expression: str | None = "0 0 12 ? * * *",
+        event_time: str | bool | None = None,
     ) -> fmc.FeatureMonitoringConfig:
         """Create a job to compute statistics on snapshot of feature data on a schedule.
 
@@ -4769,12 +4810,16 @@ class FeatureView:
             description: Description of the feature monitoring configuration.
             start_date_time: Start date and time from which to start computing statistics.
             end_date_time: End date and time at which to stop computing statistics.
-            cron_expression: Cron expression to use to schedule the job. The cron expression
-                must be in UTC and follow the Quartz specification. Default is '0 0 12 ? * * *',
-                every day at 12pm UTC.
+            cron_expression: Cron expression to use to schedule the job.
+                The cron expression must be in UTC and follow the Quartz specification.
+                The default value means "every day at 12pm UTC".
+            event_time: The feature the detection window is sliced by.
+                When `None`, uses the left feature group's own event-time feature if one is defined, otherwise commit time.
+                Pass a feature name to slice by a different feature instead; it must exist on this feature view, and may come from a joined feature group, with an offline type of TIMESTAMP, DATE or BIGINT.
+                Pass `False` to force commit-time windows even when the left feature group declares an event-time feature.
 
         Raises:
-            hopsworks.client.exceptions.FeatureStoreException: If the feature view is not registered in Hopsworks
+            hopsworks.client.exceptions.FeatureStoreException: If the feature view is not registered in Hopsworks, or if event_time names a feature that does not exist or has an unsupported type.
 
         Returns:
             Configuration with minimal information about the feature monitoring.
@@ -4794,6 +4839,14 @@ class FeatureView:
         elif not isinstance(feature_names, list):
             feature_names = [feature_names]
 
+        resolved_event_time = (
+            self._feature_monitoring_config_engine._resolve_event_time(
+                event_time=event_time,
+                default_event_time=self._root_feature_group_event_time_column_name,
+                valid_features=self._event_time_valid_features(valid_features),
+            )
+        )
+
         return self._feature_monitoring_config_engine._build_default_scheduled_statistics_config(
             name=name,
             feature_names=feature_names,
@@ -4803,6 +4856,7 @@ class FeatureView:
             cron_expression=cron_expression,
             end_date_time=end_date_time,
             valid_features=valid_features,
+            event_time=resolved_event_time,
         )
 
     @public
@@ -4813,6 +4867,7 @@ class FeatureView:
         start_date_time: int | str | datetime | date | pd.Timestamp | None = None,
         end_date_time: int | str | datetime | date | pd.Timestamp | None = None,
         cron_expression: str | None = "0 0 12 ? * * *",
+        event_time: str | bool | None = None,
     ) -> fmc.FeatureMonitoringConfig:
         """Enable feature monitoring to compare statistics on snapshots of feature data over time.
 
@@ -4852,9 +4907,13 @@ class FeatureView:
             cron_expression: Cron expression to use to schedule the job.
                 The cron expression must be in UTC and follow the Quartz specification.
                 The default value means "every day at 12pm UTC".
+            event_time: The feature the detection and reference windows are sliced by.
+                When `None`, uses the left feature group's own event-time feature if one is defined, otherwise commit time.
+                Pass a feature name to slice by a different feature instead; it must exist on this feature view, and may come from a joined feature group, with an offline type of TIMESTAMP, DATE or BIGINT.
+                Pass `False` to force commit-time windows even when the left feature group declares an event-time feature.
 
         Raises:
-            hopsworks.client.exceptions.FeatureStoreException: If the feature view is not registered in Hopsworks.
+            hopsworks.client.exceptions.FeatureStoreException: If the feature view is not registered in Hopsworks, or if event_time names a feature that does not exist or has an unsupported type.
 
         Returns:
             Configuration with minimal information about the feature monitoring.
@@ -4866,6 +4925,13 @@ class FeatureView:
             )
 
         valid_features = {feat.name: feat.type for feat in self._features}
+        resolved_event_time = (
+            self._feature_monitoring_config_engine._resolve_event_time(
+                event_time=event_time,
+                default_event_time=self._root_feature_group_event_time_column_name,
+                valid_features=self._event_time_valid_features(valid_features),
+            )
+        )
         return self._feature_monitoring_config_engine._build_default_feature_monitoring_config(
             name=name,
             description=description,
@@ -4874,6 +4940,7 @@ class FeatureView:
             end_date_time=end_date_time,
             cron_expression=cron_expression,
             valid_features=valid_features,
+            event_time=resolved_event_time,
         )
 
     @public
@@ -5073,12 +5140,15 @@ class FeatureView:
             )
 
         logging_fg = self.feature_logging.get_feature_group()
+        # Model monitoring always slices by the logging FG's log_time
+        # column — the basis is not a user choice here, unlike create_feature_monitoring.
         config = logging_fg.create_feature_monitoring(
             name=name,
             description=description,
             start_date_time=start_date_time,
             end_date_time=end_date_time,
             cron_expression=cron_expression,
+            event_time="log_time",
         )
         # Stamp model fields onto the config — they are persisted via to_dict() and
         # threaded through to the FM job, where they become a Filter on the logging FG.
@@ -6744,6 +6814,29 @@ class FeatureView:
                 and feature.name not in self.inference_helper_columns
             ]
         return self.__untransformed_feature_names[version]
+
+    def _event_time_valid_features(
+        self, valid_features: dict[str, str]
+    ) -> dict[str, str]:
+        """Features a monitoring configuration may slice its windows by.
+
+        The left feature group's event time is included even when the view does not select it.
+        It is the default time basis, so naming it explicitly must be accepted as well.
+
+        Parameters:
+            valid_features: Mapping of the view's selected feature names to their offline types.
+
+        Returns:
+            A new mapping with the left feature group's event-time column added when missing.
+        """
+        root_event_time = self._root_feature_group_event_time_column_name
+        if not root_event_time or root_event_time in valid_features:
+            return valid_features
+        left_fg = self.query._left_feature_group
+        feature = left_fg.get_feature(root_event_time) if left_fg is not None else None
+        if feature is None:
+            return valid_features
+        return {**valid_features, root_event_time: feature.type}
 
     @property
     def _label_column_names(self) -> set[str]:

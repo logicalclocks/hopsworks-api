@@ -540,8 +540,11 @@ class Predictor(DeployableComponent):
         kwargs["created_at"] = json_decamelized.pop("created")
         kwargs["creator"] = json_decamelized.pop("creator")
         kwargs["api_protocol"] = json_decamelized.pop("api_protocol")
-        if "environment_dto" in json_decamelized:
-            environment = json_decamelized.pop("environment_dto")
+        # environment_dto is what a backend that predates per-component environments sends.
+        environment = json_decamelized.pop(
+            "predictor_environment", None
+        ) or json_decamelized.pop("environment_dto", None)
+        if environment is not None:
             kwargs["environment"] = environment["name"]
         if "predictor_env_vars" in json_decamelized:
             env_vars = json_decamelized.pop("predictor_env_vars")
@@ -612,6 +615,9 @@ class Predictor(DeployableComponent):
         if self.environment is not None:
             predictor_dict = {
                 **predictor_dict,
+                "predictorEnvironment": {"name": self._environment},
+                # Deprecated, sent alongside so a backend that predates per-component environments
+                # still applies it. A current backend prefers predictorEnvironment and ignores this.
                 "environmentDTO": {"name": self._environment},
             }
         if self._resources is not None:
@@ -674,7 +680,7 @@ class Predictor(DeployableComponent):
     @public
     @property
     def version(self):
-        """Version of the predictor."""
+        """Number of the active configuration version of the deployment."""
         return self._version
 
     @public
@@ -758,10 +764,8 @@ class Predictor(DeployableComponent):
     @public
     @property
     def artifact_path(self):
-        """Path of the model artifact deployed by the predictor. Resolves to /Projects/{project_name}/Models/{name}/{version}/Artifacts/{artifact_version}/{name}_{version}_{artifact_version}.zip."""
-        # TODO: Deprecated
-        artifact_name = f"{self._model_name}_{str(self._model_version)}_{str(self._artifact_version)}.zip"
-        return f"{self._model_path}/{str(self._model_version)}/Artifacts/{str(self._artifact_version)}/{artifact_name}"
+        """Path of the artifact files deployed by the predictor, the same as `artifact_files_path`."""
+        return self.artifact_files_path
 
     @public
     @property
@@ -939,13 +943,18 @@ class Predictor(DeployableComponent):
         """
         if self._schema is not None or self._schema_loaded:
             return self._schema
-        self._schema_loaded = True
         schema_id = self.schema_id
         if schema_id is None:
+            self._schema_loaded = True
             return None
         from hsml.engine import serving_engine
 
-        self._schema = serving_engine.ServingEngine()._read_schema(self, schema_id)
+        schema = serving_engine.ServingEngine()._read_schema(self, schema_id)
+        # Marked loaded only once the read has answered. A download that failed
+        # used to leave the object permanently schema-less, because the flag was
+        # set before the call it guards.
+        self._schema = schema
+        self._schema_loaded = True
         return self._schema
 
     @schema.setter
