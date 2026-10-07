@@ -1,9 +1,9 @@
 """``hops factory`` — the software factories of this project, and the systems they build.
 
-Five are built in, as YAML definitions the cluster ships: ``ml-batch``,
-``ml-realtime`` and ``ml-agent`` build ML systems, ``medallion-silver`` and
-``medallion-gold`` build medallion layers. A project's own factories are YAML
-definitions (apiVersion hopsworks.ai/factory/v1) its data owners create,
+Six are built in, as YAML definitions the cluster ships: ``ml-batch``,
+``ml-realtime`` and ``ml-agent`` build ML systems, ``medallion-bronze``,
+``medallion-silver`` and ``medallion-gold`` build medallion layers. A
+project's own factories are YAML definitions (apiVersion hopsworks.ai/factory/v1) its data owners create,
 import, clone and delete. ``hops factory run <name>`` builds a system with a
 factory, and ``hops factory system ...`` lists, reports on and deletes the
 systems built.
@@ -658,7 +658,7 @@ def _resume(ctx: click.Context, definition: dict, target: Path, launch: bool) ->
     builtin = (definition["spec"].get("build") or {}).get("builtin")
     if builtin == "mlsystem":
         build.resume(ctx, target, launch)
-    elif builtin in ("medallion-silver", "medallion-gold"):
+    elif builtin in ("medallion-bronze", "medallion-silver", "medallion-gold"):
         layer = builtin.removeprefix("medallion-")
         medallion._launch(target, launch, f"/hops-{layer} {target.name}")
     else:
@@ -674,7 +674,7 @@ def create_system(
 ) -> Path:
     """Create a system with a factory from its answers; returns its directory.
 
-    A factory whose build is a built-in's (mlsystem, medallion-silver, medallion-gold, and any
+    A factory whose build is a built-in's (mlsystem, medallion-bronze|silver|gold, and any
     clone of them) hands the answers that built-in knows, with the factory's constant answers,
     to that built-in's create; the rest are recorded as `requirements.extra`, with the factory's
     instructions, in system.yaml. Any other factory writes system.yaml itself and starts Claude
@@ -699,6 +699,7 @@ def create_system(
     data = {k: v for k, v in merged.items() if k in known}
     create = {
         "mlsystem": build.create,
+        "medallion-bronze": medallion.create_bronze,
         "medallion-silver": medallion.create_silver,
         "medallion-gold": medallion.create_gold,
     }[builtin]
@@ -708,6 +709,7 @@ def create_system(
 # The answers each built-in build reads; a factory's other answers are its own.
 BUILTIN_KEYS = {
     "mlsystem": build.ANSWER_KEYS,
+    "medallion-bronze": medallion.BRONZE_KEYS,
     "medallion-silver": medallion.ANSWER_KEYS,
     "medallion-gold": medallion.GOLD_KEYS,
 }

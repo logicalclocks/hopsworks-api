@@ -73,7 +73,14 @@ def _validate(doc: dict) -> list[str]:
 # region The command and the agents
 
 
-COMMANDS = ["hops.md", "hops-ml.md", "hops-build.md", "hops-silver.md", "hops-gold.md"]
+COMMANDS = [
+    "hops.md",
+    "hops-ml.md",
+    "hops-build.md",
+    "hops-bronze.md",
+    "hops-silver.md",
+    "hops-gold.md",
+]
 AGENTS = {
     # The ML agents inherit the model of /hops-build, the session's own.
     "hops-train-agent": None,

@@ -1,0 +1,33 @@
+# A bronze medallion layer of generated data: its specification, and what runs.
+# Written by `hops factory run medallion-bronze` from the Factory's answers and the generator's
+# bronze.yaml, then by /hops-bronze.
+# The `layer` block marks this system.yaml as a medallion layer, not an ML system.
+layer:
+  kind: bronze
+  name: ""            # title shown in the Factory
+  slug: ""            # this directory's name
+  description: ""     # what the bronze tables hold
+  lifecycle: dev      # dev | staging | prod, mirrored in each table's medallion_table tag
+  status: draft       # draft | building | built | failed
+  repo: {}            # {name, url}: the medallion's repository, hops-<prefix>, shared with its silver and gold layers
+generator:            # the program that writes the bronze tables, copied from the hops-medallion references
+  reference: ""       # the references/ directory it came from
+  program: ""         # run by every job, with the job's args
+  environment: ""     # the Python environment the jobs run in
+  backfill: {}        # {args}: run once, before the jobs are scheduled
+tables: []            # the bronze feature groups the program writes: {name, version, primary_key, event_time, partition_key, cadence, rows}
+schedule:
+  catchup: true       # replay the windows missed while the scheduler was down
+  cadences: {}        # one job per cadence: {hourly: {cron, max_catchup_runs, args, tables}, ...}
+phases:               # each {status: pending | running | done | failed, started, finished, note}
+  code: {status: pending}
+  backfill: {status: pending}
+  schedule: {status: pending}
+  verify: {status: pending}
+outputs:
+  tables: []          # the bronze feature groups as built: {name, version, cadence, primary_key, event_time, rows}
+  jobs: []            # {name, cadence, cron, environment, tables}; the backfill job has no cadence
+  applied_spec: {}    # the spec the layer was last built from: generator, tables, schedule, lifecycle
+progress:
+  now: ""             # what the build is doing, one line
+decisions: []         # append-only: {at, by, what, why}

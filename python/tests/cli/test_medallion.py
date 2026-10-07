@@ -819,3 +819,98 @@ def test_a_mart_asks_for_dashboards_and_builds_them_last(tmp_path, monkeypatch):
     [built] = _doc(tmp_path / "hops-sales" / "sales-gold")["marts"]
     assert built["requirements"]["dashboards"].startswith("Weekly returns")
     assert list(built["phases"])[-1] == "dashboards"
+
+
+BRONZE_ANSWERS = {
+    "slug": "clickstream-bronze",
+    "name": "Synthetic clickstream",
+    "lifecycle": "dev",
+    "reference_code": "clickstream_bronze",
+}
+
+
+def test_bronze_copies_the_generator_and_records_its_tables_and_jobs(
+    tmp_path, monkeypatch
+):
+    done = _created(tmp_path, monkeypatch, "bronze", BRONZE_ANSWERS)
+    target = tmp_path / "hops-clickstream" / "clickstream-bronze"
+    doc = _doc(target)
+    assert (
+        doc["layer"]["kind"] == "bronze"
+        and doc["layer"]["name"] == "Synthetic clickstream"
+    )
+    assert doc["layer"]["repo"] == {"name": "hops-clickstream"}
+    assert doc["generator"] == {
+        "reference": "clickstream_bronze",
+        "program": "clickstream.py",
+        "environment": "python-feature-pipeline",
+        "backfill": {"args": "--mode backfill"},
+    }
+    assert [t["name"] for t in doc["tables"]] == [
+        "clickstream_customers",
+        "clickstream_products",
+        "clickstream_orders",
+        "clickstream_clicks",
+    ]
+    assert {c: v["args"] for c, v in doc["schedule"]["cadences"].items()} == {
+        "hourly": "--mode clicks",
+        "daily": "--mode daily",
+    }
+    assert doc["freshness"] == {"max_age_hours": {"hourly": 2, "daily": 26}}
+    # The program and its tests are the layer's code; bronze.yaml lives on in system.yaml.
+    assert (target / "clickstream.py").is_file()
+    assert (target / "tests" / "test_clickstream.py").is_file()
+    assert not (target / "bronze.yaml").exists()
+    assert 'claude "/hops-bronze clickstream-bronze"' in done.output
+
+
+def test_bronze_refuses_a_generator_the_references_do_not_hold(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    for generator in ("silver_template", "../clickstream_bronze", "missing_bronze"):
+        path = _answers_file(tmp_path, {**BRONZE_ANSWERS, "reference_code": generator})
+        done = _create(monkeypatch, "bronze", path, "--no-launch")
+        assert done.exit_code != 0 and "clickstream_bronze" in done.output
+    assert not (tmp_path / "hops-clickstream").exists()
+
+
+def test_silver_joins_the_repository_of_the_bronze_layer_it_reads(
+    tmp_path, monkeypatch
+):
+    _created(tmp_path, monkeypatch, "bronze", BRONZE_ANSWERS)
+    repo = tmp_path / "hops-clickstream"
+    bronze = _doc(repo / "clickstream-bronze")
+    bronze["outputs"]["tables"] = [{"name": "clickstream_clicks", "version": 1}]
+    (repo / "clickstream-bronze" / "system.yaml").write_text(
+        yaml.safe_dump(bronze), encoding="utf-8"
+    )
+    silver = {
+        **ANSWERS,
+        "slug": "web-silver",
+        "sources": [{"name": "clickstream_clicks"}],
+    }
+    _created(tmp_path, monkeypatch, "silver", silver)
+    assert _doc(repo / "web-silver")["layer"]["repo"] == {"name": "hops-clickstream"}
+    assert not (tmp_path / "hops-web").exists()
+
+
+def test_delete_bronze_deletes_the_bronze_tables_it_wrote(tmp_path, monkeypatch):
+    doc = {
+        "layer": {"kind": "bronze"},
+        "outputs": {
+            "tables": [{"name": "clickstream_clicks", "cadence": "hourly"}],
+            "jobs": [
+                {"name": "c-backfill"},
+                {"name": "c-hourly", "cadence": "hourly"},
+            ],
+        },
+    }
+    target = _layer_dir(tmp_path, doc)
+    tags = {"clickstream_clicks": {"medallion_table": '{"layer": "bronze"}'}}
+    done, events = _delete(monkeypatch, target, tags, ["--assets"])
+    assert done.exit_code == 0, done.output
+    assert events == [
+        "job c-backfill",
+        "job c-hourly",
+        "fg clickstream_clicks",
+        "entry",
+    ]

@@ -1,9 +1,11 @@
-"""Silver and gold medallion layers, built by the ``medallion-silver`` and ``medallion-gold`` factories.
+"""Medallion layers, built by the ``medallion-bronze``, ``medallion-silver`` and ``medallion-gold`` factories.
 
-``hops factory run medallion-silver|medallion-gold`` records a layer's request,
-as the factory's form collects it, in ``<slug>/system.yaml``, registers the
-layer so the Factory lists it, and starts Claude Code with
-``/hops-silver <slug>`` or ``/hops-gold <slug>`` to build it.
+``hops factory run medallion-bronze|medallion-silver|medallion-gold`` records a
+layer's request, as the factory's form collects it, in ``<slug>/system.yaml``,
+registers the layer so the Factory lists it, and starts Claude Code with
+``/hops-bronze <slug>``, ``/hops-silver <slug>`` or ``/hops-gold <slug>`` to build it.
+A bronze layer is generated data: one of the generators in the hops-medallion
+references, such as the clickstream example's, copied into the layer.
 A gold layer is built as data marts, each added, changed and deleted on its own;
 those commands, the backfill and the layer's status are ``hops factory system``
 commands.
@@ -33,9 +35,10 @@ REFERENCES = (
 )
 TEMPLATE = REFERENCES / "silver_template"
 GOLD_TEMPLATE = REFERENCES / "gold_template"
+BRONZE_TEMPLATE = REFERENCES / "bronze_template"
 SLUG = re.compile(r"^[a-z][a-z0-9-]*$")
-# A layer's medallion repository is hops-<its slug without -silver or -gold>.
-LAYER_SUFFIX = re.compile(r"-(silver|gold)$")
+# A layer's medallion repository is hops-<its slug without -bronze, -silver or -gold>.
+LAYER_SUFFIX = re.compile(r"-(bronze|silver|gold)$")
 REPO = re.compile(r"^hops-[a-z0-9][a-z0-9-]*$")
 TASKS = (
     "deduplicate",
@@ -83,6 +86,9 @@ ANSWER_KEYS = {
     "freshness_hours",
     "repo",
 }
+BRONZE_KEYS = {"slug", "name", "description", "lifecycle", "reference_code", "repo"}
+# A generator in the references: a directory holding its bronze.yaml.
+GENERATOR = re.compile(r"^[a-z][a-z0-9_]*_bronze$")
 MODELINGS = ("star", "snowflake")
 GRAIN_TYPES = (
     "transaction",
@@ -215,8 +221,8 @@ def _layer_dirs(cwd: Path):
         yield spec.parent
 
 
-def _silver_repo(cwd: Path, sources: list[dict]) -> Path | None:
-    """The medallion repository of the silver layer that builds any of these tables, if it has one."""
+def _builder_repo(cwd: Path, sources: list[dict], kind: str) -> Path | None:
+    """The medallion repository of the `kind` layer that builds any of these tables, if it has one."""
     import yaml
 
     wanted = {s.get("name") for s in sources}
@@ -228,22 +234,23 @@ def _silver_repo(cwd: Path, sources: list[dict]) -> Path | None:
             or {}
         )
         built = {t.get("name") for t in (doc.get("outputs") or {}).get("tables") or []}
-        if _kind(doc) == "silver" and built & wanted:
+        if _kind(doc) == kind and built & wanted:
             return directory.parent
     return None
 
 
 def _repo_dir(cwd: Path, answers: dict, kind: str) -> Path:
-    """The medallion repository a new layer goes in, one git work tree for its silver and gold layers.
+    """The medallion repository a new layer goes in, one git work tree for its layers.
 
-    The answers' `repo`, else for gold the repository of the silver layer
-    that builds its sources, else `hops-<prefix>` from the layer's slug,
-    reused when it exists.
+    The answers' `repo`, else the repository of the layer below that builds its
+    sources (bronze for silver, silver for gold), else `hops-<prefix>` from the
+    layer's slug, reused when it exists.
     """
     if answers.get("repo"):
         return cwd / answers["repo"]
-    if kind == "gold":
-        found = _silver_repo(cwd, answers.get("sources") or [])
+    below = {"silver": "bronze", "gold": "silver"}.get(kind)
+    if below:
+        found = _builder_repo(cwd, answers.get("sources") or [], below)
         if found:
             return found
     return cwd / f"hops-{_repo_prefix(answers['slug'])}"
@@ -451,6 +458,65 @@ def _create_gold(cwd: Path, answers: dict) -> Path:
     return target
 
 
+def _bronze_problems(answers: dict) -> list[str]:
+    problems = [f"unknown answer {k!r}" for k in sorted(set(answers) - BRONZE_KEYS)]
+    problems += _repo_problems(answers)
+    if not SLUG.match(str(answers.get("slug", ""))):
+        problems.append(
+            "slug must be lowercase letters, digits and hyphens, starting with a letter"
+        )
+    if answers.get("lifecycle", "dev") not in LIFECYCLES:
+        problems.append(f"lifecycle must be one of {', '.join(LIFECYCLES)}")
+    generator = str(answers.get("reference_code") or "")
+    if (
+        not GENERATOR.match(generator)
+        or not (REFERENCES / generator / "bronze.yaml").is_file()
+    ):
+        known = ", ".join(
+            sorted(d.parent.name for d in REFERENCES.glob("*/bronze.yaml"))
+        )
+        problems.append(
+            f"reference_code must name a bronze generator in the hops-medallion references: {known}"
+        )
+    return problems
+
+
+def _create_bronze(cwd: Path, answers: dict) -> Path:
+    """Copy the bronze template and the generator into ``cwd/<slug>``, and describe both in its system.yaml."""
+    import yaml
+
+    repo = _repo_dir(cwd, answers, "bronze")
+    target, doc = _copy_template(repo, answers["slug"], BRONZE_TEMPLATE)
+    source = REFERENCES / answers["reference_code"]
+    generator = yaml.safe_load((source / "bronze.yaml").read_text(encoding="utf-8"))
+    shutil.copytree(
+        source,
+        target,
+        dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns("bronze.yaml", "__pycache__", ".pytest_cache"),
+    )
+    doc["layer"]["repo"] = {"name": repo.name}
+    doc["layer"].update(
+        name=answers.get("name") or answers["slug"],
+        slug=answers["slug"],
+        description=answers.get("description", ""),
+        lifecycle=answers.get("lifecycle", "dev"),
+    )
+    doc["generator"] = {
+        "reference": answers["reference_code"],
+        "program": generator["program"],
+        "environment": generator["environment"],
+        "backfill": generator["backfill"],
+    }
+    doc["tables"] = generator["tables"]
+    doc["schedule"]["cadences"] = generator["cadences"]
+    doc["freshness"] = {
+        "max_age_hours": {c: FRESHNESS_HOURS[c] for c in generator["cadences"]}
+    }
+    _write(target, doc)
+    return target
+
+
 def _launch(target: Path, launch: bool, request: str | None = None) -> None:
     """Start Claude Code on the layer: `request` is the slash command, /hops-silver <slug> by default."""
     slug = target.name
@@ -486,6 +552,23 @@ def _register(ctx: click.Context, target: Path, name: str, layer: str) -> None:
         output.warn(
             f"Not registered in the project's Factory ({exc}); run `hops factory system register {target} --factory medallion-{layer}`."
         )
+
+
+def create_bronze(ctx: click.Context, data: dict, launch: bool) -> Path:
+    """Record a bronze layer of generated data in ./<slug>/system.yaml, register it, and build it with Claude Code.
+
+    The answers name the generator (`reference_code`, a directory of the
+    hops-medallion references with a bronze.yaml), which is copied into the
+    layer with the tables it writes and the jobs that run it on each cadence.
+    """
+    problems = _bronze_problems(data)
+    if problems:
+        raise click.ClickException("invalid answers:\n  " + "\n  ".join(problems))
+    target = _create_bronze(Path.cwd(), data)
+    output.success(f"Bronze layer recorded in {target / 'system.yaml'}")
+    _register(ctx, target, data.get("name") or data["slug"], "bronze")
+    _launch(target, launch, f"/hops-bronze {target.name}")
+    return target
 
 
 def create_silver(ctx: click.Context, data: dict, launch: bool) -> Path:
@@ -558,12 +641,12 @@ def layer_jobs(doc: dict) -> list[dict]:
 
 
 def layer_tables(doc: dict) -> list[dict]:
-    """The tables a layer built, each once, with its `kind` (silver, rejects, or gold) and, in gold, its `mart`."""
+    """The tables a layer built, each once, with its `kind` (bronze, silver, rejects, or gold) and, in gold, its `mart`."""
     if _kind(doc) != "gold":
         outputs = doc.get("outputs") or {}
         return [
             {**t, "kind": kind}
-            for kind, key in (("silver", "tables"), ("rejects", "rejects"))
+            for kind, key in ((_kind(doc), "tables"), ("rejects", "rejects"))
             for t in outputs.get(key) or []
             if t.get("name")
         ]
@@ -600,7 +683,8 @@ def _protected(fg: Any, sources: set[tuple[str, int]], kind: str | None) -> str 
         except ValueError:
             return None
     layer = value.get("layer") if isinstance(value, dict) else None
-    lower = {"silver": ("bronze",), "gold": ("bronze", "silver")}.get(
+    # A bronze layer deletes the bronze tables it wrote; nothing else deletes a bronze table.
+    lower = {"bronze": (), "silver": ("bronze",), "gold": ("bronze", "silver")}.get(
         kind, ("bronze", "silver", "gold")
     )
     return f"a {layer} table" if layer in lower else None

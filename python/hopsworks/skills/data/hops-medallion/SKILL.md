@@ -1,6 +1,6 @@
 ---
 name: hops-medallion
-description: Use when building a medallion layer on Hopsworks (bronze, silver, gold tables), tagging tables with the medallion_table tag, building a silver layer from bronze feature groups (`hops factory run medallion-silver`, `/hops-silver`), or a gold layer of Kimball data marts from silver tables (`hops factory run medallion-gold`, `/hops-gold`), with the Factory's "New Medallion Layer". Auto-invoke on "silver layer", "gold layer", "data mart", "star schema", "bronze table", "medallion", "cleanse raw data". Input bronze (for silver) or silver (for gold) feature groups; output materialized feature groups refreshed incrementally by scheduled jobs.
+description: Use when building a medallion layer on Hopsworks (bronze, silver, gold tables), tagging tables with the medallion_table tag, building the example bronze layer of generated data (`hops factory run medallion-bronze --preset clickstream-example`, `/hops-bronze`), building a silver layer from bronze feature groups (`hops factory run medallion-silver`, `/hops-silver`), or a gold layer of Kimball data marts from silver tables (`hops factory run medallion-gold`, `/hops-gold`), with the Factory's "New Medallion Layer". Auto-invoke on "silver layer", "gold layer", "data mart", "star schema", "bronze table", "medallion", "cleanse raw data". Input bronze (for silver) or silver (for gold) feature groups; output materialized feature groups refreshed incrementally by scheduled jobs.
 ---
 
 # Medallion layers on Hopsworks
@@ -8,14 +8,15 @@ description: Use when building a medallion layer on Hopsworks (bronze, silver, g
 Bronze tables hold raw data exactly as it arrived; silver tables hold it cleansed, conformed and normalized to third normal form (deduplicated, typed, standardized, validated, PII protected); gold tables hold consumption-ready models, denormalized (star schemas, aggregates, wide feature tables) for their consumers.
 On Hopsworks every layer is a set of offline feature groups, and every silver and gold table is materialized: a feature group written by a job, never a view.
 A silver or gold layer is built by the Factory (**New Medallion Layer**) or `hops factory run medallion-silver|medallion-gold`, which records the request in `<slug>/system.yaml` and starts Claude Code on `/hops-silver <slug>` or `/hops-gold <slug>`.
-Each layer is its own Factory entry and directory; a medallion's silver and gold layers share one git work tree and one GitHub repository, `hops-<prefix>` (the layers' slug without `-silver` or `-gold`; a gold layer joins the repository of the silver layer that builds its sources), recorded as `layer.repo`; a gold layer is built as data marts (Gold layers and data marts, below).
+An example bronze layer of generated data is built by the Factory's **New Medallion Layer**, **Examples**, or `hops factory run medallion-bronze --preset <example>`, which starts Claude Code on `/hops-bronze <slug>` (Bronze layers of generated data, below).
+Each layer is its own Factory entry and directory; a medallion's layers share one git work tree and one GitHub repository, `hops-<prefix>` (the layers' slug without `-bronze`, `-silver` or `-gold`; a silver layer joins the repository of the bronze layer that writes its sources, a gold layer that of the silver layer that builds them), recorded as `layer.repo`; a gold layer is built as data marts (Gold layers and data marts, below).
 
 ## Contract
 
 - **Input:** one or more bronze feature groups, the silver tasks to perform, and the engine (dbt on Trino by default, PySpark when a task needs it).
 - **Output:** silver feature groups tagged `medallion_table` `{"layer": "silver"}`, written by one scheduled Hopsworks job that processes only the bronze rows that arrived since its last run, and `system.yaml` describing what runs.
 - **Pre-condition:** the project has bronze feature groups with raw data.
-  Without them there is nothing to build a silver or gold layer from: say that bronze tables with raw data are needed first (ingest them with a DLTHub data source, **hops-data-sources**, and tick "Tag as a bronze table").
+  Without them there is nothing to build a silver or gold layer from: say that bronze tables with raw data are needed first (ingest them with a DLTHub data source, **hops-data-sources**, and tick "Tag as a bronze table", or build the example bronze layer of generated data).
 
 ## The medallion_table tag
 
@@ -157,6 +158,15 @@ It is a set of data marts, each the unit that is added, changed and deleted (the
 A conformed dimension is built once and marked `shared` in every other mart that reads it; deleting a mart never deletes a table another mart lists.
 Gold feature groups are tagged `{"layer": "gold"}` with their silver tables as `parents`.
 The requirement questions every mart answers, the modeling rules and the standards are in [references/gold-marts.md](references/gold-marts.md); `/hops-gold <slug> <mart>` builds a mart or applies its changed requirements (`marts[].requirements` against `marts[].applied`).
+
+## Bronze layers of generated data
+
+A bronze layer built by the Factory is generated data, for trying silver and gold layers without a source system: `system.yaml` has `layer.kind: bronze`, and its `generator` names the program copied from a directory of these references (`reference_code`), with the jobs that run it per cadence in `schedule.cadences` and the tables it writes in `tables`.
+The clickstream example, [references/clickstream_bronze/](references/clickstream_bronze/clickstream.py), writes a web shop's `clickstream_customers`, `clickstream_products`, `clickstream_orders` and `clickstream_clicks`: a backfill of the 30 days up to the last midnight (10,000 customers, 1,000 products, 20,000 orders, 1,000,000 clicks), 10,000 clicks an hour, and each day's new and changed customers, products and orders.
+Its data is raw on purpose: about 0.001% of clicks arrive twice (the same `click_id` under a new `ingest_id`, the bronze primary key), customers, products and orders arrive again whole when they change (`updated_at` is the event time), and an order's lines are a JSON array in `items`, which a silver layer normalizes into an order lines table.
+Every job writes the window `[HOPS_START_TIME, HOPS_END_TIME)` from a generator seeded with the window's start, so a replayed window rewrites the same rows.
+`/hops-bronze <slug>` tests the generator, runs the backfill job, deploys and schedules a job per cadence from the backfill's end with catch-up, and verifies a run; the generator tags each table `{"layer": "bronze"}` when it creates it.
+Deleting a bronze layer deletes its jobs and the bronze tables it wrote, which no other layer ever deletes.
 
 ## Building a silver layer
 

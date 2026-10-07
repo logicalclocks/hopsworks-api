@@ -20,9 +20,16 @@ API_VERSION = "hopsworks.ai/factory/v1"
 # Bytes of UTF-8, the size of the cluster's column for a definition.
 MAX_LENGTH = 29000
 # The built-in factories; a project factory cannot take their names.
-BUILTINS = ("ml-batch", "ml-realtime", "ml-agent", "medallion-silver", "medallion-gold")
+BUILTINS = (
+    "ml-batch",
+    "ml-realtime",
+    "ml-agent",
+    "medallion-bronze",
+    "medallion-silver",
+    "medallion-gold",
+)
 # The builds a factory can hand its answers to instead of writing its own instructions.
-BUILTIN_BUILDS = ("mlsystem", "medallion-silver", "medallion-gold")
+BUILTIN_BUILDS = ("mlsystem", "medallion-bronze", "medallion-silver", "medallion-gold")
 FIELD_TYPES = (
     "slug",
     "text",
@@ -382,7 +389,9 @@ def _check_changes(changes: Any, found: list[str]) -> None:
         if "description" in change and not isinstance(change["description"], str):
             found.append(f"{where}.description must be text.")
         if not _text(change.get("instructions")):
-            found.append(f"{where}.instructions are required: what the build does with it.")
+            found.append(
+                f"{where}.instructions are required: what the build does with it."
+            )
         _check_form(change.get("form"), f"{where}.form", True, found)
 
 

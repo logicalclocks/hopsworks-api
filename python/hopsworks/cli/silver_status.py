@@ -1,4 +1,4 @@
-"""The health of a silver or gold medallion layer, for ``hops factory system status``.
+"""The health of a bronze, silver or gold medallion layer, for ``hops factory system status``.
 
 `collect` gathers the facts: the layer's job runs, and for each feature group
 it built (silver and rejects, or each data mart's gold tables) its rows, when
@@ -121,7 +121,7 @@ def _table(project: Any, conn: Any, table: dict, doc: dict, now: datetime) -> di
     fact["layout"] = _layout(path)
     problems = []
     target = _freshness(doc, table)
-    if kind in ("silver", "gold") and written and target:
+    if kind in ("bronze", "silver", "gold") and written and target:
         age = (now - written) / timedelta(hours=1)
         fact["age_hours"] = round(age, 1)
         fact["max_age_hours"] = target
@@ -157,7 +157,7 @@ def _reject_shares(tables: list[dict], doc: dict) -> None:
 
 
 def collect(project: Any, doc: dict, slug: str, hours: int = 24) -> dict:
-    """The facts of a silver or gold layer's status report."""
+    """The facts of a medallion layer's status report."""
     now = datetime.now(timezone.utc)
     since = now - timedelta(hours=hours)
     from hopsworks.cli.commands.medallion import layer_jobs, layer_tables

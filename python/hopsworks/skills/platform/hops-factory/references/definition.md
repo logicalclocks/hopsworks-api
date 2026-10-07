@@ -7,7 +7,7 @@ The cluster refuses a definition that breaks a rule below, and `hops factory val
 
 | key | required | rule |
 | --- | --- | --- |
-| `name` | yes | `[a-z][a-z0-9-]*`, at most 63; not a built-in's name (`ml-batch`, `ml-realtime`, `ml-agent`, `medallion-silver`, `medallion-gold`) |
+| `name` | yes | `[a-z][a-z0-9-]*`, at most 63; not a built-in's name (`ml-batch`, `ml-realtime`, `ml-agent`, `medallion-bronze`, `medallion-silver`, `medallion-gold`) |
 | `title` | yes | text, at most 255 |
 | `description` | no | text |
 | `form.sections` | yes | a non-empty list |
@@ -59,7 +59,7 @@ The build writes each phase's `status` (`pending`, `running`, `met`, `unmet`), `
 
 - `instructions`: what Claude Code does, in prose. It runs as `/hops-factory-<name> <slug>` in the system's directory, wrapped in the rules every factory shares: resume from `system.yaml`, record phases, record `outputs`, keep the code in a `hops-<slug>` GitHub repository.
 - `skills`: skills to load before the instructions.
-- `builtin: mlsystem | medallion-silver | medallion-gold`: build with that built-in instead. `answers` are constants every system gets (`{system_type: batch}`); the answers that built-in reads go to it, the others to `requirements.extra`, and `instructions` to `factory.instructions`, which the built-in build follows too.
+- `builtin: mlsystem | medallion-bronze | medallion-silver | medallion-gold`: build with that built-in instead. `answers` are constants every system gets (`{system_type: batch}`); the answers that built-in reads go to it, the others to `requirements.extra`, and `instructions` to `factory.instructions`, which the built-in build follows too.
 
 ## List columns
 

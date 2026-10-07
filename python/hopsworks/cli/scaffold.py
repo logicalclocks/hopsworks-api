@@ -235,6 +235,7 @@ CLI_BUNDLE = {
     ".claude/commands/hops.md": "hops.md",
     ".claude/commands/hops-ml.md": "hops-ml.md",
     ".claude/commands/hops-build.md": "hops-build.md",
+    ".claude/commands/hops-bronze.md": "hops-bronze.md",
     ".claude/commands/hops-silver.md": "hops-silver.md",
     ".claude/commands/hops-gold.md": "hops-gold.md",
     ".claude/agents/hops-train-agent.md": "hops-train-agent.md",
