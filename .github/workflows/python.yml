@@ -95,7 +95,7 @@ jobs:
           uv sync --extra ${{ matrix.extra }} --project python --reinstall-package hopsworks
 
       - name: Check every module is importable
-        run: uv run --project python python python/scripts/check_importable.py
+        run: uv run --extra ${{ matrix.extra }} --project python python python/scripts/check_importable.py
 
   pep8_public:
     name: PEP-8 / @public check
