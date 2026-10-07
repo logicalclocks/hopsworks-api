@@ -7,8 +7,8 @@ platform mounts at `$SECRETS_DIR/token.jwt`. The API base is
 
 `REST_ENDPOINT` is an internal `https://` address signed by the cluster CA, which
 is not in the image's system bundle. The platform mounts that CA as a Java
-truststore, and the app launcher converts it to PEM before the entrypoint runs
-and exports the path two ways:
+truststore, converts it to PEM before the entrypoint runs, and sets two pod
+environment variables for it:
 
 - `LIBHDFS_ROOT_CA_BUNDLE` — the PEM file, `$PEMS_DIR/${HADOOP_USER_NAME}_root_ca.pem`,
   for any HTTP client that takes a CA file.
@@ -16,8 +16,8 @@ and exports the path two ways:
   startup, so `fetch` / `https` verify the endpoint with nothing else to configure.
 
 Nothing to do in the entrypoint; `exec node server.js` is enough. On a Hopsworks
-version whose launcher does not export these yet, set the variable yourself from
-the file the launcher already wrote:
+version whose pods do not carry these variables yet, set the variable yourself
+from the file the launcher already wrote:
 
 ```bash
 export NODE_EXTRA_CA_CERTS="$PEMS_DIR/${HADOOP_USER_NAME}_root_ca.pem"
@@ -42,6 +42,8 @@ async function readHopsworksSecret(name) {
   const body = await res.json();
   return body.items[0].secret;
 }
+
+module.exports = { readHopsworksSecret };   // also used for TRINO_PASSWORD_SECRET_NAME
 
 async function mysqlConfig() {
   const password = process.env.MYSQL_PASSWORD

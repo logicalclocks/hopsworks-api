@@ -50,6 +50,45 @@ variables, so code written for one works in the other.
 - Injection happens before the app's own `env_vars`, so an app can override
   `MYSQL_DB` etc. to point at a different database if it must.
 
+### Offline feature groups through Trino (same `db_access` knob)
+
+When Trino is enabled on the cluster, the same flag also injects the identifiers
+of the project's Trino coordinator, so an app in any language can read the
+**offline** feature group tables with SQL (the Python SDK does this through
+`project.get_trino_api()`, see **hops-trino-sql**):
+
+| Variable | Value |
+|---|---|
+| `TRINO_HOST` / `TRINO_PORT` | internal DNS name and HTTPS port (`8443`) of the Trino coordinator |
+| `TRINO_USER` | `<project>__<username>` of the person who **started** the app (the HDFS username, two underscores) |
+| `TRINO_PASSWORD_SECRET_NAME` | name of the **Hopsworks secret** holding that user's Trino password (same string as `TRINO_USER`) |
+| `TRINO_SCHEMA` | `<project>_featurestore`, the project's offline feature store schema |
+
+There is deliberately **no `TRINO_CATALOG`**: the catalog depends on each feature
+group's format, so pick it in the app.
+
+- Same password rule as MySQL: read the secret through the SDK or the REST API
+  with the job JWT. `TRINO_USER` and `MYSQL_USER` are different users with
+  different secrets; do not mix them up.
+- Tables are `<catalog>.<TRINO_SCHEMA>.<fg_name>_<version>`. The catalog is the
+  feature group's format: `delta` for Delta groups, `hudi` for Hudi ones
+  (`fg.time_travel_format` in the SDK, or the format shown on the feature group
+  page). Either pass `catalog` when creating the client or fully qualify every
+  table name. Trino's access rules give the app exactly the starter's project
+  role (and the feature stores shared with the project).
+- Trino is for scans and aggregations over the lakehouse tables. Primary-key
+  lookups belong on the online tables through `MYSQL_*`.
+
+### TLS to the platform from a non-Python app
+
+`REST_ENDPOINT` and the Trino coordinator serve certificates signed by the
+cluster CA, which is not in the image's system bundle. The pod gets the CA as
+PEM at `$LIBHDFS_ROOT_CA_BUNDLE`, and `NODE_EXTRA_CA_CERTS` points at the same
+file, so Node's `fetch` / `https` verify both with nothing to configure. Other
+runtimes pass `$LIBHDFS_ROOT_CA_BUNDLE` as the CA file. Do not point
+`SSL_CERT_FILE` or `REQUESTS_CA_BUNDLE` at it: those replace the system bundle
+and the app's calls to public HTTPS APIs stop verifying.
+
 ### Privileges follow the project role of the user who starts the app
 
 | Role of the starter | Grant on the project database |
@@ -259,6 +298,53 @@ app.listen(Number(process.env.APP_PORT), "0.0.0.0");
 `package.json` needs `express` and `mysql2`. Because the browser reaches the app
 under the Hopsworks proxy mount, build client-side URLs relative to the mount
 (**hops-app**, "Routing and readiness").
+
+### Offline feature groups from Node.js with Trino
+
+`trino-client` (the official Trino Node client, HTTP under the hood) plus the
+`TRINO_*` variables. The password is the Hopsworks secret named by
+`TRINO_PASSWORD_SECRET_NAME`, read with the job JWT exactly like the MySQL one
+(`readHopsworksSecret` is in
+[references/nodejs_secret_via_rest.md](references/nodejs_secret_via_rest.md)).
+`NODE_EXTRA_CA_CERTS` already makes the coordinator's certificate trusted.
+
+```js
+// trino.js — one client per process; the secret lookup is a REST call, do it once
+import { Trino, BasicAuth } from "trino-client";
+import { readHopsworksSecret } from "./secrets.js";
+
+for (const v of ["TRINO_HOST", "TRINO_PORT", "TRINO_USER", "TRINO_PASSWORD_SECRET_NAME", "TRINO_SCHEMA"]) {
+  if (!process.env[v]) throw new Error(`${v} is not set: db_access=False, Trino disabled on the cluster, or not in a Hopsworks pod`);
+}
+
+const password = await readHopsworksSecret(process.env.TRINO_PASSWORD_SECRET_NAME);
+export const trino = Trino.create({
+  server: `https://${process.env.TRINO_HOST}:${process.env.TRINO_PORT}`,
+  catalog: "delta",                       // the feature groups' format: delta or hudi
+  schema: process.env.TRINO_SCHEMA,
+  auth: new BasicAuth(process.env.TRINO_USER, password),
+});
+
+// Collect a result set as [{column: value}]; results arrive in pages, the first page carries the columns.
+export async function rows(sql) {
+  const iter = await trino.query(sql);
+  const out = [];
+  let columns = null;
+  for await (const page of iter) {
+    if (page.error) throw new Error(`${page.error.errorName}: ${page.error.message}`);
+    if (page.columns && !columns) columns = page.columns.map((c) => c.name);
+    for (const row of page.data ?? []) out.push(Object.fromEntries(row.map((v, i) => [columns[i], v])));
+  }
+  return out;
+}
+
+// offline feature group table <fg_name>_<version> in the project schema; filter on the partition key
+const recent = await rows(
+  `SELECT cc_num, amount, event_time FROM transactions_1 WHERE event_time >= DATE '2025-01-01' LIMIT 100`);
+```
+
+Quote identifiers with double quotes and never interpolate user input into the
+SQL text; `trino-client` has no bound parameters, so validate values first.
 
 ## Commands / API
 

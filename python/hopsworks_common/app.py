@@ -365,10 +365,12 @@ class App:
     @public
     @property
     def db_access(self) -> bool:
-        """Whether the app gets access to the project's online feature store database.
+        """Whether the app gets access to the project's feature store data.
 
-        When True, the database is created on demand when the app starts and the
-        `MYSQL_*` connection environment variables are injected into the app container.
+        When True, the online database is created on demand when the app starts and
+        the `MYSQL_*` connection environment variables are injected into the app
+        container, plus the `TRINO_*` ones for the offline tables when Trino is
+        enabled on the cluster.
         """
         return self._db_access
 

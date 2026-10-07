@@ -7,8 +7,10 @@ Streamlit apps use ``--path``; git-backed Streamlit apps use ``--git-url`` and
 ``--entrypoint-script``; custom apps use ``--entrypoint-command``. Use
 ``--app-base-path`` to mount the app at ``/`` or a subpath like ``/myapp``,
 and ``--readiness-probe-path`` to override the readiness probe when needed.
-Apps get the project's online feature store database by default (created on
-demand at start, ``MYSQL_*`` env vars injected); pass ``--no-db-access`` to opt out.
+Apps get the project's feature store data access by default: the online
+database (created on demand at start, ``MYSQL_*`` env vars injected) and, when
+Trino is enabled, the Trino coordinator for the offline tables (``TRINO_*`` env
+vars); pass ``--no-db-access`` to opt out of both.
 App metadata can also carry monitoring config (``enabled`` plus optional
 ``routes`` with ``path`` and ``matchType``), and ``hops app info`` prints the
 monitoring state and route list when it is present. Legacy apps that still
@@ -303,8 +305,9 @@ def _report_running(name: str, a: Any) -> None:
     default=True,
     show_default=True,
     help=(
-        "Give the app access to the project's online feature store database: "
-        "create it on demand at start and inject the MYSQL_* env vars."
+        "Give the app access to the project's feature store data: create the online "
+        "database on demand at start and inject the MYSQL_* env vars, plus the TRINO_* "
+        "env vars for the offline tables when Trino is enabled."
     ),
 )
 @click.option(
@@ -368,7 +371,8 @@ def app_create(
         entrypoint_script: Relative entrypoint script for Streamlit git apps.
         app_base_path: Public mount path for the app.
         readiness_probe_path: Optional readiness probe path override.
-        db_access: Whether the app gets the project's online feature store database.
+        db_access: Whether the app gets the project's feature store data access
+            (MYSQL_* for the online database, TRINO_* for the offline tables).
         description: Optional app description.
         environment: Python environment name.
         memory: Memory in MB.
