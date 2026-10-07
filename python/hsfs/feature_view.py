@@ -5733,6 +5733,7 @@ class FeatureView:
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to log features.
+            hopsworks.client.exceptions.FeatureStoreException: If only one of `model_name` and `model_version` is passed on a logging feature group created before Hopsworks 4.6, which stores the model as a single `<model_name>_<model_version>` value.
         """
         if not self.logging_enabled:
             warnings.warn(
@@ -5891,11 +5892,16 @@ class FeatureView:
             log_entries = feature_view.read_log(filter=fg.feature1 > 10)
             ```
 
+        Info: Logging feature groups created before Hopsworks 4.6
+            These groups store the model as a single `<model_name>_<model_version>` value instead of separate `model_name` and `model_version` columns.
+            On them, `model_name` and `model_version` filter only when passed together, because a prefix match on that value cannot express "any version": `_` is a wildcard and sibling model names share the prefix.
+
         Returns:
             The dataframe containing the feature data.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: in case the backend fails to read the log entries.
+            hopsworks.client.exceptions.FeatureStoreException: If only one of `model_name` and `model_version` is passed on a logging feature group created before Hopsworks 4.6.
         """
         return self._feature_view_engine._read_feature_logs(
             self,
@@ -5987,6 +5993,11 @@ class FeatureView:
             # drop the log and switch to the job transport
             feature_view.delete_log(transport="job")
             ```
+
+        Info: Logging feature groups created before Hopsworks 4.6
+            A feature view that still has the separate transformed and untransformed logging feature groups gets both deleted and replaced by one combined logging feature group, whatever `transformed` is set to.
+            The pair is replaced as a whole because a mixed layout cannot be written to by any client.
+            A deployment that still runs a pre-4.6 client cannot write to the combined group and its logs are lost, so update the deployment's environment before deleting the log.
 
         Raises:
              hopsworks.client.exceptions.RestAPIError: in case the backend fails to delete the log.

@@ -4969,6 +4969,70 @@ class TestFeatureViewEngine:
         # hsml_model is metadata, not an expected user data column.
         assert "hsml_model" not in call_args[1]["logging_features"]
 
+    @pytest.mark.parametrize(
+        "model_name, model_version", [("test_model", None), (None, 1)]
+    )
+    def test_get_feature_logging_data_legacy_model_column_requires_name_and_version(
+        self, mocker, model_name, model_version
+    ):
+        # Arrange
+        feature_store_id = 99
+
+        mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")
+        mocked_engine = mocker.Mock()
+        mocker.patch("hsfs.engine._get_instance", return_value=mocked_engine)
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+
+        fv_engine = feature_view_engine.FeatureViewEngine(
+            feature_store_id=feature_store_id
+        )
+
+        fg = feature_group.FeatureGroup(
+            name="test1",
+            version=1,
+            featurestore_id=99,
+            primary_key=["primary_key"],
+            event_time="event_time",
+            partition_key=[],
+            features=[
+                feature.Feature("primary_key", primary=True, type="bigint"),
+                feature.Feature("event_time", type="timestamp"),
+                feature.Feature("feature_1", type="float"),
+                feature.Feature("feature_2", type="float"),
+            ],
+            id=11,
+            stream=False,
+            featurestore_name="test_fs",
+        )
+        fv = feature_view.FeatureView(
+            name="fv_name",
+            version=1,
+            featurestore_id=feature_store_id,
+            query=fg.select_all(),
+        )
+        fv.schema = [
+            TrainingDatasetFeature("feature_1", type="double"),
+            TrainingDatasetFeature("feature_2", type="double"),
+            TrainingDatasetFeature(name="label", type="bigint", label=True),
+        ]
+        fv._serving_keys = []
+        fv._FeatureView__extra_logging_column_names = []
+
+        # Act / Assert: half a model identity in hsml_model could never be selected by a model filter.
+        with pytest.raises(FeatureStoreException, match="must be passed together"):
+            fv_engine._get_feature_logging_data(
+                fv=fv,
+                logging_feature_group=self._legacy_logging_fg(),
+                untransformed_features=pd.DataFrame(
+                    {"feature_1": [0.1], "feature_2": [0.2]}
+                ),
+                predictions=pd.DataFrame({"label": [1]}),
+                model_name=model_name,
+                model_version=model_version,
+                return_list=False,
+            )
+        mocked_engine._get_feature_logging_df.assert_not_called()
+
     def test_log_features_legacy_per_kind_targeting_untransformed(self, mocker):
         # Arrange
         mocker.patch("hsfs.core.feature_view_api.FeatureViewApi")

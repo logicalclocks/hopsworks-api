@@ -2202,12 +2202,16 @@ class FeatureViewEngine:
             logging_feature_group_feature_names
         ):
             model_col_name = constants.FEATURE_LOGGING.LEGACY_MODEL_COLUMN_NAME
-            if model_name is not None:
-                model_name = (
-                    f"{model_name}_{model_version}"
-                    if model_version is not None
-                    else model_name
+            # Half a model identity would be stored where no model filter can select it again,
+            # since the read side matches the full "<name>_<version>" value only.
+            if (model_name is None) != (model_version is None):
+                raise FeatureStoreException(
+                    "This logging feature group predates the model_name/model_version columns and "
+                    "stores the model as a single `<name>_<version>` value, so `model_name` and "
+                    "`model_version` must be passed together. Pass both, or `model`."
                 )
+            if model_name is not None:
+                model_name = f"{model_name}_{model_version}"
 
         metadata_column_names = set(constants.FEATURE_LOGGING.LOGGING_METADATA_COLUMNS)
         metadata_column_names.add(model_col_name)
