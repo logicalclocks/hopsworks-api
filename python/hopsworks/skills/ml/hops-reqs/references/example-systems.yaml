@@ -247,7 +247,7 @@ gis-example:
     problem:
       task: detection
     sla:
-      realtime: {p99_ms: 3000, throughput_qps: 2}
+      realtime: {p99_ms: 3000, throughput_qps: 0.5}
     consumers: ui
     data_sources: []
   data:

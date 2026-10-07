@@ -701,7 +701,7 @@ def _realtime(ctx: click.Context, system: _System, prefetch: _Prefetch) -> None:
         [("10", ""), ("100", "recommended"), ("1000", ""), ("Other", "")],
         default=1,
     )
-    qps = rates[picked] if picked < 3 else click.prompt("Requests per second", type=int)
+    qps = rates[picked] if picked < 3 else click.prompt("Requests per second", type=float)
     system.put("requirements.sla", {"realtime": {"p99_ms": p99, "throughput_qps": qps}})
     system.save()
 
