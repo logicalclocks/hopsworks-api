@@ -2171,6 +2171,7 @@ class Engine:
             )
             update_schema.addColumn(_feature.name, iceberg_type)
         update_schema.commit()
+        iceberg_engine_instance._sync_metastore()
 
     def _shallow_copy_dataframe(self, dataframe: DataFrame) -> DataFrame:
         return dataframe.copy(deep=False)

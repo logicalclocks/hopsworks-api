@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 from hopsworks_common import client
-from hopsworks_common.client.exceptions import FeatureStoreException
+from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
 from hopsworks_common.core import project_api
 from hopsworks_common.core.constants import HAS_POLARS
 from hopsworks_common.core.type_systems import _convert_offline_type_to_pyarrow_type
@@ -278,9 +278,31 @@ class IcebergEngine:
             )
         if fg_commit is None:
             # nothing was committed (e.g. schema-only table creation)
+            self._sync_metastore()
             return None
         fg_commit.validation_id = validation_id
         return self._feature_group_api._commit(self._feature_group, fg_commit)
+
+    def _sync_metastore(self) -> None:
+        """Register the table's current metadata in the Hive metastore after a commit that registers no feature group commit.
+
+        Trino reads ICEBERG feature groups through the metastore, so without this it keeps reading the previous state until the next registered commit.
+        A failure only logs, since the table change itself already succeeded.
+        """
+        if self._glue_catalog() is not None:
+            # Glue holds its own pointer; the backend mirrors HopsFS tables only.
+            return
+        try:
+            self._feature_group_api._sync_metastore(self._feature_group)
+        except RestAPIError as e:
+            # A 4xx is a backend without the endpoint or a feature group it does not mirror.
+            log = _logger.debug if e.response.status_code < 500 else _logger.warning
+            log(
+                "Could not register the Iceberg metadata of feature group %s v%s in the metastore: %s",
+                self._feature_group.name,
+                self._feature_group.version,
+                e,
+            )
 
     def _is_iceberg_table_at(self, location: str) -> bool:
         """Return True iff *location* contains a readable Iceberg table.
@@ -1174,6 +1196,7 @@ class IcebergEngine:
                 "target-file-size-bytes", str(target_file_size_mb * 1024 * 1024)
             )
         result = action.execute()
+        self._sync_metastore()
         metrics = {"strategy": strategy}
         for key, getter in (
             ("rewritten_data_files", "rewrittenDataFilesCount"),
@@ -1409,6 +1432,7 @@ class IcebergEngine:
             )
             update.commit()
             table.refresh()
+            self._sync_metastore()
         return self._spec_expressions(table)
 
     @staticmethod
@@ -1476,6 +1500,7 @@ class IcebergEngine:
             self._save_empty_iceberg_table_pyspark(write_options=write_options)
         else:
             self._save_empty_iceberg_table_python(write_options=write_options)
+        self._sync_metastore()
 
     def _save_empty_iceberg_table_pyspark(
         self, write_options: dict[str, Any] | None = None

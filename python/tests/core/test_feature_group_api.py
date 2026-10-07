@@ -78,3 +78,43 @@ class TestFeatureGroupApi:
 
         # Assert
         assert len(warning_record) == 1
+
+    def test_delete_content_refreshes_the_recreated_feature_group(self, mocker):
+        # Arrange: clear recreates the feature group under a new id
+        client_mock = Mock()
+        client_mock._project_id = 1
+        client_mock._send_request.return_value = {"id": 43}
+        mocker.patch("hopsworks_common.client._get_instance", return_value=client_mock)
+        fg = Mock()
+        fg.id = 42
+        fg.feature_store_id = 99
+
+        # Act
+        feature_group_api.FeatureGroupApi()._delete_content(fg)
+
+        # Assert
+        assert client_mock._send_request.call_args.args[1][-2:] == [42, "clear"]
+        fg.update_from_response_json.assert_called_once_with({"id": 43})
+
+    def test_sync_metastore(self, mocker):
+        client_mock = Mock()
+        client_mock._project_id = 1
+        mocker.patch("hopsworks_common.client._get_instance", return_value=client_mock)
+        fg = Mock()
+        fg.id = 42
+        fg.feature_store_id = 99
+
+        feature_group_api.FeatureGroupApi()._sync_metastore(fg)
+
+        client_mock._send_request.assert_called_once_with(
+            "POST",
+            [
+                "project",
+                1,
+                "featurestores",
+                99,
+                "featuregroups",
+                42,
+                "metastoresync",
+            ],
+        )
