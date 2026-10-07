@@ -72,24 +72,38 @@ pipelines), `pandas-training-pipeline` (training). Inference environments (e.g.
 ## No Spark statistics jobs from a Python job
 
 A Python job that computes with Polars, Pandas or DuckDB never starts a Spark
-job. In the Python client, statistics are not computed in the job: every
-statistics computation the SDK triggers (after an insert, on creating training
-data, or `compute_statistics()`) submits a separate Spark statistics job and
-waits for it, which needs Spark capacity the job did not ask for and can take
-longer than the job itself. Turn statistics off on everything the job writes:
+job. From the Python client, these start one:
+
+- `fg.insert(...)` on a feature group with statistics enabled: after the
+  ingestion the backend runs a statistics job over the feature group.
+- `fv.create_training_data(...)`, `create_train_test_split(...)` and
+  `create_train_validation_test_split(...)`: writing a materialized training
+  dataset is itself a Spark job, whatever its statistics setting.
+- `compute_statistics()` on a feature group or training dataset.
+
+Reading training data never does: `get_training_data(version)` of a
+materialized dataset reads its files without statistics, and the in-memory
+`training_data()`, `train_test_split()` and `train_validation_test_split()`
+compute their statistics in the job's own process, which still costs the job
+time and memory on every call.
+
+So a Python job turns statistics off on what it writes, uses in-memory
+training data, and never calls `compute_statistics()`:
 
 ```python
 fg = fs.get_or_create_feature_group(
     name="customer_features", version=1, primary_key=["customer_id"],
-    online_enabled=False, statistics_config=False,   # no Spark statistics job on insert
+    online_enabled=False, statistics_config=False,   # no statistics job after insert
 )
-fv.create_training_data(..., statistics_config=False)   # also create_train_test_split, training_data
+X_train, X_test, y_train, y_test = fv.train_test_split(
+    test_size=0.2, statistics_config=False,          # in memory, no statistics
+)
 ```
 
 A feature group created before with statistics on is turned off once, before
 the job inserts: `fg.statistics_config = False; fg.update_statistics_config()`.
-Never call `compute_statistics()` from a Python job. Statistics a project needs
-are computed by a Spark job of their own, scheduled where it is wanted.
+Statistics a project needs are computed by a Spark job of their own, scheduled
+where it is wanted.
 
 ## Windows and backfill
 
