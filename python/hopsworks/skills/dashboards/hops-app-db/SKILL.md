@@ -192,9 +192,10 @@ A custom app (`app_kind="CUSTOM"`) can run Node. Two prerequisites:
    `node` is not on the path, clone the environment and add the pip-installable
    `nodejs-bin` to its `app-requirements.txt` (see **hops-environments**), or
    build a custom image.
-2. **The password.** Resolve the secret with the Python SDK in the entrypoint and
-   hand it to Node as `MYSQL_PASSWORD`; the Node code then reads plain env vars.
-   A pure-Node REST lookup is in
+2. **The password.** Either resolve the secret with the Python SDK in the
+   entrypoint and hand it to Node as `MYSQL_PASSWORD` (below), or read it from
+   the REST API in Node: the launcher exports `NODE_EXTRA_CA_CERTS` for the
+   cluster CA, so a plain `fetch` to `$REST_ENDPOINT` with the job JWT works. See
    [references/nodejs_secret_via_rest.md](references/nodejs_secret_via_rest.md).
 
 ```python

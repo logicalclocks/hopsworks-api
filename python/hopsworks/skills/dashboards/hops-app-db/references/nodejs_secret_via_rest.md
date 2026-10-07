@@ -5,19 +5,28 @@ platform mounts at `$SECRETS_DIR/token.jwt`. The API base is
 `$REST_ENDPOINT/hopsworks-api/api`, and a private secret is read with
 `GET /users/secrets/<name>`, which answers `{"items": [{"name": ..., "secret": ...}]}`.
 
-`REST_ENDPOINT` is an internal `https://` address signed by the cluster CA. The
-pod only carries that CA as a Java truststore (`$DOMAIN_CA_TRUSTSTORE`), so
-either export it as PEM once in the entrypoint and point Node at it, or resolve
-the password in the entrypoint with the Python SDK as the main skill shows
-(simplest, and what agent deployments do).
+`REST_ENDPOINT` is an internal `https://` address signed by the cluster CA, which
+is not in the image's system bundle. The platform mounts that CA as a Java
+truststore, and the app launcher converts it to PEM before the entrypoint runs
+and exports the path two ways:
 
-Export the CA as PEM in the entrypoint (the Python SDK writes it on login):
+- `LIBHDFS_ROOT_CA_BUNDLE` — the PEM file, `$PEMS_DIR/${HADOOP_USER_NAME}_root_ca.pem`,
+  for any HTTP client that takes a CA file.
+- `NODE_EXTRA_CA_CERTS` — the same file; Node adds it to its default trust store at
+  startup, so `fetch` / `https` verify the endpoint with nothing else to configure.
+
+Nothing to do in the entrypoint; `exec node server.js` is enough. On a Hopsworks
+version whose launcher does not export these yet, set the variable yourself from
+the file the launcher already wrote:
 
 ```bash
-python -c 'import hopsworks; hopsworks.login()'      # materialises /tmp/ca_chain.pem
-export NODE_EXTRA_CA_CERTS=/tmp/ca_chain.pem
+export NODE_EXTRA_CA_CERTS="$PEMS_DIR/${HADOOP_USER_NAME}_root_ca.pem"
 exec node server.js
 ```
+
+Do not point `SSL_CERT_FILE` or `REQUESTS_CA_BUNDLE` at this file: those replace
+the system bundle instead of extending it, and the app's calls to public HTTPS
+APIs would stop verifying.
 
 Then in Node:
 
