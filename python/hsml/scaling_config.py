@@ -281,6 +281,9 @@ class ComponentScalingConfig(ABC):
             additional_scale_metrics
         )
         self._idle_scale_to_zero = idle_scale_to_zero
+        if idle_scale_to_zero is True and (min_instances is None or min_instances > 0):
+            # Scale to zero when idle is a minimum of 0 instances.
+            self._min_instances = 0
         self._idle_cooldown_seconds = idle_cooldown_seconds
         self._cold_start_timeout_seconds = cold_start_timeout_seconds
 
@@ -614,6 +617,8 @@ class ComponentScalingConfig(ABC):
     @idle_scale_to_zero.setter
     def idle_scale_to_zero(self, enabled: bool | None):
         self._idle_scale_to_zero = enabled
+        if enabled is True and (self._min_instances is None or self._min_instances > 0):
+            self._min_instances = 0
 
     @public
     @property
@@ -692,6 +697,14 @@ class ComponentScalingConfig(ABC):
     @min_instances.setter
     def min_instances(self, min_instances: int):
         self._min_instances = min_instances
+        # The idle flag is the backend's reading of the minimum: one read back from a
+        # configuration at 0 must not pull a minimum raised by hand back down to 0.
+        if (
+            min_instances is not None
+            and min_instances > 0
+            and self._idle_scale_to_zero is True
+        ):
+            self._idle_scale_to_zero = None
 
     @public
     @property

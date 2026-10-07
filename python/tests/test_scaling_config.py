@@ -161,6 +161,40 @@ class TestScalingConfig:
         assert read_back.idle_cooldown_seconds == 120
         assert read_back.cold_start_timeout_seconds == 900
 
+    def test_idle_scale_to_zero_is_a_minimum_of_zero(self):
+        # The flag asked for in the constructor or the setter lowers the minimum to 0.
+        sc = PredictorScalingConfig(
+            min_instances=1, max_instances=3, idle_scale_to_zero=True
+        )
+        assert sc.min_instances == 0
+        sc = PredictorScalingConfig(min_instances=2, max_instances=3)
+        sc.idle_scale_to_zero = True
+        assert sc.min_instances == 0
+        assert sc.to_json()["min_instances"] == 0
+
+    def test_raising_the_minimum_clears_a_flag_read_back(self):
+        # A configuration read back at 0 carries the flag; a minimum raised by hand must
+        # win, not be pulled back to 0 by the echoed flag on the next save.
+        read_back = PredictorScalingConfig.from_response_json(
+            {
+                "predictor_scaling_config": {
+                    "min_instances": 0,
+                    "max_instances": 3,
+                    "autoscaler": "KEDA",
+                    "idle_scale_to_zero": True,
+                    "idle_cooldown_seconds": 120,
+                }
+            }
+        )
+        read_back.min_instances = 1
+        assert read_back.idle_scale_to_zero is None
+        json = read_back.to_json()
+        assert json["min_instances"] == 1
+        assert "idle_scale_to_zero" not in json
+        # Lowering it to 0 again is the idle flag's meaning, no flag needed.
+        read_back.min_instances = 0
+        assert read_back.to_json()["min_instances"] == 0
+
     def test_idle_scale_to_zero_omitted_when_unset(self):
         sc = PredictorScalingConfig(min_instances=1, max_instances=3)
         json = sc.to_json()
