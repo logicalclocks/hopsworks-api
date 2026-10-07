@@ -1064,6 +1064,67 @@ class TestKafkaEngine:
             "subjectId": b"823",
         }
 
+    def test_wait_for_online_ingestion_waits_on_the_header_ingestion(self, mocker):
+        # Arrange
+        fg = mocker.Mock()
+
+        # Act
+        kafka_engine._wait_for_online_ingestion(
+            fg,
+            {"subjectId": b"823", "onlineIngestionId": b"42"},
+            {
+                "wait_for_online_ingestion": True,
+                "online_ingestion_options": {"timeout": 5},
+            },
+        )
+
+        # Assert: the latest ingestion is picked by id on the backend, which with several
+        # mysqlds can be an older one, so the wait has to follow the id the records carry.
+        fg.get_online_ingestion.assert_called_once_with(42)
+        fg.get_online_ingestion.return_value.wait_for_completion.assert_called_once_with(
+            options={"timeout": 5}
+        )
+        fg.get_latest_online_ingestion.assert_not_called()
+
+    def test_wait_for_online_ingestion_pruned_ingestion_warns(self, mocker):
+        # Arrange
+        fg = mocker.Mock()
+        fg.name = "test"
+        fg.get_online_ingestion.return_value = None
+
+        # Act
+        with pytest.warns(UserWarning, match="Online ingestion 42 .* was pruned"):
+            kafka_engine._wait_for_online_ingestion(
+                fg, {"onlineIngestionId": b"42"}, {"wait_for_online_ingestion": True}
+            )
+
+        # Assert
+        fg.get_online_ingestion.assert_called_once_with(42)
+
+    def test_wait_for_online_ingestion_not_requested(self, mocker):
+        # Arrange
+        fg = mocker.Mock()
+
+        # Act
+        kafka_engine._wait_for_online_ingestion(fg, {"onlineIngestionId": b"42"}, {})
+
+        # Assert
+        fg.get_online_ingestion.assert_not_called()
+
+    def test_wait_for_online_ingestion_without_ingestion_id(self, mocker):
+        # Arrange
+        fg = mocker.Mock()
+
+        # Act
+        kafka_engine._wait_for_online_ingestion(
+            fg, {"storage": b"offline"}, {"wait_for_online_ingestion": True}
+        )
+
+        # Assert: an offline-only write has no online ingestion, and waiting on any other
+        # would block on whichever ingestion happened to run before it.
+        fg.get_online_ingestion.assert_not_called()
+        fg.get_latest_online_ingestion.assert_not_called()
+
     def _acked_error(self, mocker, code, is_multi_part_insert=False):
         msg = mocker.Mock()
         msg.topic.return_value = "test_topic"

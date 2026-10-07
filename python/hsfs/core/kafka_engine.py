@@ -18,6 +18,7 @@ from __future__ import annotations
 import contextlib
 import json
 import time
+import warnings
 from datetime import datetime, timezone
 from io import BytesIO
 from typing import TYPE_CHECKING, Any, Literal
@@ -227,6 +228,39 @@ def _get_headers(
         headers["onlineIngestionId"] = str(online_ingestion_instance.id).encode("utf8")
 
     return headers
+
+
+def _wait_for_online_ingestion(
+    feature_group: FeatureGroup | ExternalFeatureGroup,
+    headers: dict[str, bytes],
+    options: dict[str, Any],
+) -> None:
+    """Block until OnlineFS has ingested the records written with `headers`, if `options` asks to wait.
+
+    Returns at once for records that carry no online ingestion id, such as those of an offline-only write.
+    Warns and returns when the ingestion no longer exists, as the backend prunes the oldest ingestions of a feature group.
+    """
+    if not options.get("wait_for_online_ingestion", False):
+        return
+    online_ingestion_id = headers.get("onlineIngestionId")
+    if online_ingestion_id is None:
+        return
+    online_ingestion_id = int(online_ingestion_id)
+    # Not get_latest_online_ingestion: the backend picks the latest by id, and NDB hands out
+    # auto-increment ids in per-mysqld blocks, so with several mysqlds the latest by id can be
+    # an older ingestion that has already completed.
+    online_ingestion_instance = feature_group.get_online_ingestion(online_ingestion_id)
+    if online_ingestion_instance is None:
+        warnings.warn(
+            f"Online ingestion {online_ingestion_id} of feature group '{feature_group.name}' "
+            "was pruned by the backend before the write could wait for it, so the write returns "
+            "without knowing whether its rows have reached the online feature store.",
+            stacklevel=1,
+        )
+        return
+    online_ingestion_instance.wait_for_completion(
+        options=options.get("online_ingestion_options", {})
+    )
 
 
 @_uses_confluent_kafka
