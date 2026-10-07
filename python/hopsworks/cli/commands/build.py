@@ -308,6 +308,12 @@ def _source_name(story: str, index: int, taken: set[str]) -> str:
     return name
 
 
+def _as_ident(name: str) -> str:
+    """A name typed in a form as an identifier: "Clickstream data" is clickstream_data."""
+    ident = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+    return f"s_{ident}" if ident[:1].isdigit() else ident
+
+
 def _normalized(answers: dict, kind: str | None) -> dict:
     """The answers as _apply_answers reads them, from the shapes a factory form sends.
 
@@ -328,10 +334,12 @@ def _normalized(answers: dict, kind: str | None) -> dict:
                 }
             )
         taken = {
-            str(s.get("name")) for s in sources.get("synthetic") or [] if s.get("name")
+            _as_ident(str(s["name"]))
+            for s in sources.get("synthetic") or []
+            if s.get("name")
         }
         for i, synthetic in enumerate(sources.get("synthetic") or []):
-            name = synthetic.get("name") or _source_name(
+            name = _as_ident(str(synthetic.get("name") or "")) or _source_name(
                 str(synthetic.get("story") or ""), i, taken
             )
             listed.append(
@@ -342,8 +350,9 @@ def _normalized(answers: dict, kind: str | None) -> dict:
                     "story": synthetic.get("story"),
                 }
             )
-        for file in sources.get("files") or []:
-            listed.append({"name": file.get("name"), "kind": "file"})
+        for i, file in enumerate(sources.get("files") or []):
+            name = _as_ident(str(file.get("name") or "")) or f"files_{i + 1}"
+            listed.append({"name": name, "kind": "file"})
         if listed:
             answers["data_sources"] = listed
     app = answers.get("app")

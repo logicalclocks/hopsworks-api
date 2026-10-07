@@ -540,6 +540,11 @@ def _account_env(field: dict) -> None:
         )
         return
     if env in present:
+        click.echo(
+            click.style(
+                f"  {field['label']}: {env} is saved in your account.", dim=True
+            )
+        )
         return
     secret = bool(field.get("secret"))
     while True:

@@ -479,3 +479,24 @@ def test_a_factory_forms_answers_are_normalized():
     # 02:00 is a daily time; an hourly run fires on the hour unless told a minute.
     assert answers["sla"]["batch"]["at"] == ":00"
     assert "monitoring" not in answers and "sources" not in answers
+
+
+def test_a_typed_source_name_becomes_an_identifier():
+    answers = build._normalized(
+        {
+            "sources": {
+                "synthetic": [
+                    {"name": "Clickstream data", "story": "clicks on a retail website"},
+                    {"name": "2024 orders", "story": "orders"},
+                ],
+                "files": [{"name": "Help desk docs"}, {}],
+            }
+        },
+        "agent",
+    )
+    assert [s["name"] for s in answers["data_sources"]] == [
+        "clickstream_data",
+        "s_2024_orders",
+        "help_desk_docs",
+        "files_2",
+    ]
