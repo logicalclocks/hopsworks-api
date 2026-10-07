@@ -17,8 +17,8 @@ from __future__ import annotations
 
 import contextlib
 import json
-import warnings
 import time
+import warnings
 from datetime import datetime, timezone
 from io import BytesIO
 from typing import TYPE_CHECKING, Any, Literal
