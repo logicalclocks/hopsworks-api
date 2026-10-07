@@ -20,6 +20,7 @@ import os
 import queue
 import sys
 import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -325,6 +326,37 @@ class TestWriterMain:
         assert statuses[-1]["bytes_ready"] == 0
         assert statuses[-1]["chunks_uploaded"] == 1
         assert len(uploads.paths) == 1
+
+
+class TestStoppingTheUploader:
+    def test_an_upload_in_flight_is_counted_before_stop_returns(self, tmp_path):
+        """Stop used to return while the thread had removed a segment but not yet counted it."""
+        uploads = _Uploads()
+        writer = flf._SegmentWriter(_options(tmp_path), uploader=uploads)
+        writer._append(_stream(3), 3)
+        writer._rotate()
+        removed = threading.Event()
+        release = threading.Event()
+        observe = writer._observe_upload
+
+        def held(seconds):
+            # Runs after the segment is removed and before it is counted.
+            removed.set()
+            release.wait(5)
+            observe(seconds)
+
+        writer._observe_upload = held
+        uploader = flf._Uploader(writer)
+        uploader.start()
+        uploader.wake.set()
+        assert removed.wait(5), "the upload thread never started its upload"
+        assert not writer._has_ready()
+
+        threading.Timer(0.2, release.set).start()
+        assert flf._stop_uploader(uploader, deadline=time.monotonic() + 5)
+
+        assert writer.chunks_uploaded == 1
+        assert uploads.paths and len(uploads.paths) == 1
 
 
 @posix_only

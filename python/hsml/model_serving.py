@@ -298,7 +298,8 @@ class ModelServing:
         Parameters:
             model: Model to be deployed.
             name: Name of the predictor.
-            artifact_version: (**Deprecated**) Version number of the model artifact to deploy, `CREATE` to create a new model artifact or `MODEL-ONLY` to reuse the shared artifact containing only the model files.
+            artifact_version: (**Deprecated**) Ignored.
+                Deployments are versioned as a whole, see [`Deployment.save`][hsml.deployment.Deployment.save].
             serving_tool: Serving tool used to deploy the model server.
             script_file: Path to a custom predictor script implementing the Predict class, either local or already uploaded to HopsFS. The script must implement a `Predictor` class with a `predict(self, inputs)` method that takes the model inputs and returns the model predictions. The script is passed to the model deployment and can be accessed via the `SCRIPT_FILE_PATH` environment variable from within the predictor script.
             config_file: Model server configuration file to be passed to the model deployment, either local or already uploaded to HopsFS.
@@ -448,6 +449,7 @@ class ModelServing:
         resources: PredictorResources | dict | None = None,
         scaling_configuration: TransformerScalingConfig | dict | None = None,
         env_vars: dict | None = None,
+        environment: str | None = None,
     ) -> Transformer:
         """Create a Transformer metadata object.
 
@@ -504,6 +506,7 @@ class ModelServing:
             resources: Resources to be allocated for the transformer.
             scaling_configuration: Scaling configuration for the transformer.
             env_vars: Environment variables to set on the transformer.
+            environment: The project Python environment the transformer runs in; defaults to the predictor's, or to the one the deployment names when the predictor runs a fixed runtime image and has none of its own.
 
         Returns:
             The transformer metadata object.
@@ -513,6 +516,7 @@ class ModelServing:
             resources=resources,
             scaling_configuration=scaling_configuration,
             env_vars=env_vars,
+            environment=environment,
         )
 
     @public

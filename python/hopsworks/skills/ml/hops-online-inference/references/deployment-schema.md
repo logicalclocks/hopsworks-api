@@ -57,6 +57,7 @@ Enforcement also needs an inference image whose wrapper carries it; an older ima
 
 Changing the batch limit through `SERVING_MAX_BATCH_ROWS` in `env_vars=` publishes a new schema id, since the limit is part of the content.
 After changing the view or enabling logging, run `deployment.reinfer_schema(); deployment.save()` to publish the new contract.
+That save edits the active deployment version in place; pass `new_version=True` to keep the previous contract reachable through a rollback.
 
 ## Feature logging
 

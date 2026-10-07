@@ -745,13 +745,11 @@ class Engine:
                 f"_{feature_group.name}_{feature_group.version}_onlinefs"
             )
 
+        # No storage header: the topic is the only source of both stores here, so OnlineFS
+        # and the offline materialization job both read these records.
+        headers = kafka_engine._get_headers(feature_group, options=write_options)
         query = (
-            serialized_df.withColumn(
-                # No storage header: the topic is the only source of both stores here, so
-                # OnlineFS and the offline materialization job both read these records.
-                "headers",
-                self._get_headers(feature_group, options=write_options),
-            )
+            serialized_df.withColumn("headers", self._headers_column(headers))
             .writeStream.outputMode(output_mode)
             .format(self.KAFKA_FORMAT)
             .option(
@@ -772,14 +770,9 @@ class Engine:
 
         if await_termination:
             query.awaitTermination(timeout)
-
-            # wait for online ingestion
-            if feature_group.online_enabled and write_options.get(
-                "wait_for_online_ingestion", False
-            ):
-                feature_group.get_latest_online_ingestion().wait_for_completion(
-                    options=write_options.get("online_ingestion_options", {})
-                )
+            kafka_engine._wait_for_online_ingestion(
+                feature_group, headers, write_options
+            )
 
         return query
 
@@ -894,24 +887,22 @@ class Engine:
             dataframe = self._filter_online_dataframe(feature_group, dataframe)
         serialized_df = self._serialize_to_avro(feature_group, dataframe)
 
-        (
-            serialized_df.withColumn(
-                "headers",
-                self._get_headers(
-                    feature_group,
-                    None
-                    if write_options.get("online_ingestion_options", {}).get(
-                        "disable_online_ingestion_count", False
-                    )
-                    else dataframe.count(),
-                    write_options,
-                    operation=operation,
-                    # Spark writes the offline leg straight to the table, so these records
-                    # are for OnlineFS alone: without the header the materialization job
-                    # would write them to the offline table a second time.
-                    storage=kafka_engine._STORAGE_ONLINE,
-                ),
+        headers = kafka_engine._get_headers(
+            feature_group,
+            None
+            if write_options.get("online_ingestion_options", {}).get(
+                "disable_online_ingestion_count", False
             )
+            else dataframe.count(),
+            write_options,
+            operation=operation,
+            # Spark writes the offline leg straight to the table, so these records are for
+            # OnlineFS alone: without the header the materialization job would write them to
+            # the offline table a second time.
+            storage=kafka_engine._STORAGE_ONLINE,
+        )
+        (
+            serialized_df.withColumn("headers", self._headers_column(headers))
             .write.format(self.KAFKA_FORMAT)
             .options(**write_options)
             .option("topic", feature_group._online_topic_name)
@@ -920,12 +911,7 @@ class Engine:
 
         # wait for online ingestion. On a delete this keeps callers that set
         # wait_for_online_ingestion from returning before OnlineFS has applied it.
-        if feature_group.online_enabled and write_options.get(
-            "wait_for_online_ingestion", False
-        ):
-            feature_group.get_latest_online_ingestion().wait_for_completion(
-                options=write_options.get("online_ingestion_options", {})
-            )
+        kafka_engine._wait_for_online_ingestion(feature_group, headers, write_options)
 
     def _delete_online_dataframe(self, feature_group, dataframe, write_options):
         # Produce an online delete tombstone for every row in `dataframe`. Each message
@@ -954,20 +940,12 @@ class Engine:
             ],
         )
 
-    def _get_headers(
-        self,
-        feature_group: fg_mod.FeatureGroup | fg_mod.ExternalFeatureGroup,
-        num_entries: int | None = None,
-        options: dict | None = None,
-        operation: str | None = None,
-        storage: str | None = None,
-    ) -> array:
+    @staticmethod
+    def _headers_column(headers: dict[str, bytes]) -> array:
         return array(
             *[
                 struct(lit(key).alias("key"), lit(value).alias("value"))
-                for key, value in kafka_engine._get_headers(
-                    feature_group, num_entries, options, operation, storage
-                ).items()
+                for key, value in headers.items()
             ]
         )
 

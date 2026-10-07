@@ -14,6 +14,7 @@
 #   limitations under the License.
 from __future__ import annotations
 
+import threading
 import warnings
 from typing import TYPE_CHECKING, Any
 
@@ -34,6 +35,7 @@ if TYPE_CHECKING:
     from hsml.deployment_logging_config import DeploymentLoggingConfig
     from hsml.deployment_schema import DeploymentSchema
     from hsml.deployment_tracing_config import DeploymentTracingConfig
+    from hsml.deployment_version import DeploymentVersion
     from hsml.inference_batcher import InferenceBatcher
     from hsml.inference_logger import InferenceLogger
     from hsml.predictor_state import PredictorState
@@ -95,21 +97,100 @@ class Deployment:
         self._model_api = model_api.ModelApi()
         self._grpc_channel = None
         self._model_registry_id = None
+        # Concurrent first callers prepare once and share the outcome, rather
+        # than each downloading the schema and opening a transport.
+        self._predict_init_lock = threading.Lock()
+        # Separate from the preparation lock, which is held while the channel is created.
+        self._grpc_channel_lock = threading.Lock()
+        self._predict_prepared = False
 
     @public
     @usage._method_logger
-    def save(self, await_update: int | None = 600):
+    def save(self, await_update: int | None = 600, new_version: bool = False) -> None:
         """Persist this deployment including the predictor and metadata to Model Serving.
+
+        On an existing deployment the active version is edited in place by default and keeps its number.
+        With `new_version` the configuration is stored as a new version, numbered one above the highest the deployment ever had, and made active.
+        A save that changes nothing does nothing in either mode: no version is created and the running instances are not restarted.
+        Two cases always count as a change: a script read from outside the version (a HopsFS mount path or git) and a changed environment image.
+        Use [`Deployment.restart`][hsml.deployment.Deployment.restart] to refresh the running instances on purpose.
+
+        Info: Older backends
+            A backend that predates deployment versions has no in-place edit.
+            There a changed script is stored as a new version automatically, and `new_version` raises.
+
+        Note: What a version holds
+            The predictor and transformer scripts, config file, resources, scaling, environment variables, environments, tracing, feature logging configuration, git source, vLLM settings and the model artifact belong to a version.
+            The API protocol, request batching, inference logging, scheduling configuration and Knative mode do not.
+            They are edited in place whichever way you save, and a rollback does not restore them.
 
         Parameters:
             await_update: If the deployment is running, awaiting time (seconds) for the running instances to be updated.
-                          If the running instances are not updated within this timespan, the call to this method returns while
-                          the update in the background.
+                          If the running instances are not updated within this timespan, the call raises, while the update continues in the background.
+                          A value below 5 is rounded up to one 5-second poll.
+            new_version: Store this configuration as a new version of the deployment instead of editing the active one.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue, including a conflict when the deployment was rolled back or given a new version by someone else since it was read.
+            hopsworks.client.exceptions.ModelServingException: If `new_version` is set on a deployment that has not been created yet, or the backend does not support deployment versions.
+            hopsworks.client.exceptions.ModelServingException: If the running instances are not updated within `await_update`.
+
+        Example: Save as a new version and roll back
+            ```python
+            deployment.predictor.scaling_configuration.min_instances = 2
+            deployment.predictor.scaling_configuration.max_instances = 4
+            deployment.save(new_version=True)
+            deployment.rollback(1)
+            ```
+        """
+        self._serving_engine._save(self, await_update, new_version)
+
+    @public
+    @usage._method_logger
+    def get_versions(self) -> list[DeploymentVersion]:
+        """Get every configuration version this deployment has ever had, newest first.
+
+        Returns:
+            One [`DeploymentVersion`][hsml.deployment_version.DeploymentVersion] per version, with `active` set on the one the deployment runs.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
+            hopsworks.client.exceptions.ModelServingException: If the deployment has not been saved yet or the backend does not support deployment versions.
         """
-        self._serving_engine._save(self, await_update)
+        return self._serving_api._get_versions(self)
+
+    @public
+    @usage._method_logger
+    def rollback(
+        self, version: int | DeploymentVersion, await_update: int | None = 600
+    ) -> None:
+        """Make an earlier version of this deployment the active one again.
+
+        Nothing is copied: the version's files are still where they were, and it keeps its number.
+        This object is updated to the reactivated configuration.
+        Rolling back to the version that is already active does nothing.
+
+        Warning: Running instances are restarted
+            A running deployment is rolled to the version, so its pods restart and requests fail over during the rollout.
+            The API protocol, request batching, inference logging, scheduling configuration and Knative mode are kept as they are, because they are not part of a version.
+            A version that was edited in place after it was created comes back as edited, not as it was first saved.
+
+        Rolling back while a new version is updating replaces that rollout with one for the target version; the instances that were serving keep serving until it is ready.
+        An in-place edit of the active version cannot be undone this way: stop the deployment or wait for it to fail, then save the previous configuration.
+
+        Parameters:
+            version: The version to activate, as its number or as a [`DeploymentVersion`][hsml.deployment_version.DeploymentVersion].
+            await_update: If the deployment is running, awaiting time (seconds) for the running instances to be updated.
+                          If the running instances are not updated within this timespan, the call raises, while the update continues in the background.
+                          A value below 5 is rounded up to one 5-second poll.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue, including a version the deployment does not have.
+            hopsworks.client.exceptions.ModelServingException: If the deployment is starting or stopping, has not been saved yet, or the backend does not support deployment versions, or if the running instances are not updated within `await_update`.
+        """
+        if not isinstance(version, int):
+            version = version.version
+        self._serving_engine._rollback(self, version, await_update)
 
     @public
     @usage._method_logger
@@ -118,11 +199,12 @@ class Deployment:
 
         Parameters:
             await_running: Awaiting time (seconds) for the deployment to start.
-                           If the deployment has not started within this timespan, the call to this method returns while
-                           it deploys in the background.
+                           If the deployment has not started within this timespan, the call raises, while it deploys in the background.
+                           A value below 5 is rounded up to one 5-second poll.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
+            hopsworks.client.exceptions.ModelServingException: If the deployment fails to start or has not started within `await_running`.
         """
         self._serving_engine._start(self, await_status=await_running)
 
@@ -133,11 +215,12 @@ class Deployment:
 
         Parameters:
             await_stopped: Awaiting time (seconds) for the deployment to stop.
-                           If the deployment has not stopped within this timespan, the call to this method returns while
-                           it stopping in the background.
+                           If the deployment has not stopped within this timespan, the call raises, while it stops in the background.
+                           A value below 5 is rounded up to one 5-second poll.
 
         Raises:
             hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
+            hopsworks.client.exceptions.ModelServingException: If the deployment has not stopped within `await_stopped`.
         """
         self._serving_engine._stop(self, await_status=await_stopped)
 
@@ -368,6 +451,42 @@ class Deployment:
             ```
         """
         return self._serving_engine._predict(self, data, inputs, validate=validate)
+
+    @public
+    @usage._method_logger
+    def init_predict(self) -> None:
+        """Prepare this deployment for inference, so the first `predict()` does not.
+
+        Downloads the schema the deployment's revision names and connects the
+        transport its API protocol selects: the gRPC channel, or for REST an
+        open connection to the model's endpoint, made with a metadata `GET`.
+        Calling it is optional: `predict()` prepares the schema and the channel
+        the same way on its first call, through the same code, and opens its
+        connection with the request itself. Call it when the first request
+        should not pay for discovery or the connection setup, for instance when
+        a serving process starts before it takes traffic.
+
+        No prediction is sent. A prediction can log rows and have application
+        side effects, so it is not used as a warm-up.
+
+        Concurrent callers prepare once and share the result. A failure leaves
+        the deployment unprepared and is raised to the caller, so it can be
+        tried again.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: In case the backend encounters an issue.
+
+        Example:
+            ```python
+            # login into Hopsworks using hopsworks.login()
+            ms = project.get_model_serving()
+            my_deployment = ms.get_deployment("my_deployment")
+
+            my_deployment.init_predict()
+            predictions = my_deployment.predict(inputs=[[1, 2, 3, 4]])
+            ```
+        """
+        self._serving_engine._init_predict(self)
 
     @public
     def get_model(self):
@@ -994,7 +1113,7 @@ class Deployment:
     @public
     @property
     def version(self):
-        """Version of the deployment."""
+        """Number of the active configuration version of the deployment."""
         return self._predictor.version
 
     @public
@@ -1298,7 +1417,18 @@ class Deployment:
     @public
     @property
     def environment(self):
-        """Name of inference environment."""
+        """Name of the inference environment the predictor runs in.
+
+        Warning: Deprecated
+            Use `deployment.predictor.environment`, or
+            `deployment.transformer.environment` for the transformer's own environment.
+
+        Warning: Changed in 5.2
+            Setting this on a deployment that was read back moves the predictor only. The
+            transformer keeps the environment it was read with, where before 5.2 both
+            components moved together. Set `deployment.transformer.environment` as well to
+            move both.
+        """
         return self._predictor.environment
 
     @environment.setter
