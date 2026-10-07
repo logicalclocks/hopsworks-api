@@ -231,11 +231,14 @@ A custom app (`app_kind="CUSTOM"`) can run Node. Two prerequisites:
    `node` is not on the path, clone the environment and add the pip-installable
    `nodejs-bin` to its `app-requirements.txt` (see **hops-environments**), or
    build a custom image.
-2. **The password.** Either resolve the secret with the Python SDK in the
-   entrypoint and hand it to Node as `MYSQL_PASSWORD` (below), or read it from
-   the REST API in Node: the launcher exports `NODE_EXTRA_CA_CERTS` for the
-   cluster CA, so a plain `fetch` to `$REST_ENDPOINT` with the job JWT works. See
+2. **The password.** `@hopsworks/app`, pre-installed in `python-app-pipeline`
+   (no `package.json` entry needed), resolves it: `mysqlConfig()` returns
+   `{ host, port, user, password, database }` for `mysql2`, reading the secret
+   over the REST API with the job JWT. What it does under the hood, for an
+   image without the module, is in
    [references/nodejs_secret_via_rest.md](references/nodejs_secret_via_rest.md).
+   Resolving the password with the Python SDK in the entrypoint and handing it
+   to Node as `MYSQL_PASSWORD` also works and is honoured by `mysqlConfig()`.
 
 ```python
 node_app = apps.create_app(
@@ -243,12 +246,7 @@ node_app = apps.create_app(
     app_kind="CUSTOM",
     git_url="https://github.com/<org>/<repo>.git",
     git_provider="GitHub",
-    entrypoint_command=(
-        'bash -lc "'
-        "export MYSQL_PASSWORD=$(python -c 'import os, hopsworks; hopsworks.login(); "
-        "print(hopsworks.get_secrets_api().get(os.environ[\\\"MYSQL_PASSWORD_SECRET_NAME\\\"]))') && "
-        'npm ci --omit=dev && exec node server.js"'
-    ),
+    entrypoint_command='bash -lc "npm ci --omit=dev && exec node server.js"',
     app_port=8080,
     environment="node-app-env",     # the clone that has node
 )
@@ -256,22 +254,11 @@ node_app = apps.create_app(
 
 ```js
 // server.js — mysql2 pool over the injected variables; bind to 0.0.0.0:$APP_PORT
-const express = require("express");
-const mysql = require("mysql2/promise");
+import express from "express";
+import mysql from "mysql2/promise";
+import { mysqlConfig } from "@hopsworks/app";   // throws a HopsworksEnvError naming the missing MYSQL_* variable
 
-for (const v of ["MYSQL_HOST", "MYSQL_DB", "MYSQL_USER", "MYSQL_PASSWORD"]) {
-  if (!process.env[v]) throw new Error(`${v} is not set: created with db_access=False, or not in a Hopsworks pod`);
-}
-
-const pool = mysql.createPool({
-  host: process.env.MYSQL_HOST,
-  port: Number(process.env.MYSQL_PORT || 3306),
-  user: process.env.MYSQL_USER,
-  password: process.env.MYSQL_PASSWORD,
-  database: process.env.MYSQL_DB,
-  waitForConnections: true,
-  connectionLimit: 5,
-});
+const pool = mysql.createPool({ ...(await mysqlConfig()), waitForConnections: true, connectionLimit: 5 });
 
 const app = express();
 app.use(express.json());
@@ -295,56 +282,44 @@ app.post("/api/notes", async (req, res) => {                        // app-owned
 app.listen(Number(process.env.APP_PORT), "0.0.0.0");
 ```
 
-`package.json` needs `express` and `mysql2`. Because the browser reaches the app
-under the Hopsworks proxy mount, build client-side URLs relative to the mount
+`package.json` needs `express` and `mysql2` (`"type": "module"` for the
+top-level `await`; CommonJS can `require("@hopsworks/app")` instead). Because
+the browser reaches the app under the Hopsworks proxy mount, build client-side
+URLs relative to the mount and route on path suffixes, not on an exact `/`
 (**hops-app**, "Routing and readiness").
 
 ### Offline feature groups from Node.js with Trino
 
-`trino-client` (the official Trino Node client, HTTP under the hood) plus the
-`TRINO_*` variables. The password is the Hopsworks secret named by
-`TRINO_PASSWORD_SECRET_NAME`, read with the job JWT exactly like the MySQL one
-(`readHopsworksSecret` is in
-[references/nodejs_secret_via_rest.md](references/nodejs_secret_via_rest.md)).
-`NODE_EXTRA_CA_CERTS` already makes the coordinator's certificate trusted.
+`@hopsworks/app` wraps `trino-client` (the official Trino Node client) with
+the `TRINO_*` variables: `trinoClient({ catalog })` returns an authenticated
+client (the password is the Hopsworks secret named by
+`TRINO_PASSWORD_SECRET_NAME`, read once over REST with the job JWT), `query()`
+collects a result as `[{ column: value }]`, `streamQuery()` yields rows page by
+page for large results, and `featureGroupTable()` builds a fully qualified
+name. `NODE_EXTRA_CA_CERTS` already makes the coordinator's certificate trusted.
 
 ```js
-// trino.js — one client per process; the secret lookup is a REST call, do it once
-import { Trino, BasicAuth } from "trino-client";
-import { readHopsworksSecret } from "./secrets.js";
+// trino.js — one client per process; creating it is the one REST call for the secret
+import { trinoClient, query, streamQuery, featureGroupTable } from "@hopsworks/app";
 
-for (const v of ["TRINO_HOST", "TRINO_PORT", "TRINO_USER", "TRINO_PASSWORD_SECRET_NAME", "TRINO_SCHEMA"]) {
-  if (!process.env[v]) throw new Error(`${v} is not set: db_access=False, Trino disabled on the cluster, or not in a Hopsworks pod`);
-}
-
-const password = await readHopsworksSecret(process.env.TRINO_PASSWORD_SECRET_NAME);
-export const trino = Trino.create({
-  server: `https://${process.env.TRINO_HOST}:${process.env.TRINO_PORT}`,
-  catalog: "delta",                       // the feature groups' format: delta or hudi
-  schema: process.env.TRINO_SCHEMA,
-  auth: new BasicAuth(process.env.TRINO_USER, password),
-});
-
-// Collect a result set as [{column: value}]; results arrive in pages, the first page carries the columns.
-export async function rows(sql) {
-  const iter = await trino.query(sql);
-  const out = [];
-  let columns = null;
-  for await (const page of iter) {
-    if (page.error) throw new Error(`${page.error.errorName}: ${page.error.message}`);
-    if (page.columns && !columns) columns = page.columns.map((c) => c.name);
-    for (const row of page.data ?? []) out.push(Object.fromEntries(row.map((v, i) => [columns[i], v])));
-  }
-  return out;
-}
+export const trino = await trinoClient({ catalog: "delta" });   // the feature groups' format: delta or hudi
 
 // offline feature group table <fg_name>_<version> in the project schema; filter on the partition key
-const recent = await rows(
+const recent = await query(trino,
   `SELECT cc_num, amount, event_time FROM transactions_1 WHERE event_time >= DATE '2025-01-01' LIMIT 100`);
+
+// a Hudi group, or a shared feature store, through a fully qualified name
+const shared = await query(trino,
+  `SELECT count(*) AS n FROM ${featureGroupTable("transactions", 1, { catalog: "hudi", schema: "other_featurestore" })}`);
+
+// large results: constant memory
+for await (const row of streamQuery(trino, "SELECT * FROM transactions_1")) process(row);
 ```
 
 Quote identifiers with double quotes and never interpolate user input into the
-SQL text; `trino-client` has no bound parameters, so validate values first.
+SQL text; Trino's HTTP protocol has no bound parameters, so validate values
+first. Outside a pod the functions throw a `HopsworksEnvError` naming the
+missing variable, so guard local development on `inHopsworks()`.
 
 ## Commands / API
 

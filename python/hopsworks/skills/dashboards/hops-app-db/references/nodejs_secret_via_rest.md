@@ -1,4 +1,9 @@
-# Resolving the MySQL password from Node.js without the Python SDK
+# Resolving a Hopsworks secret from Node.js over the REST API
+
+`@hopsworks/app` (pre-installed in `python-app-pipeline`) does this for you:
+`getSecret(name)`, `mysqlConfig()` and `trinoClient()` all read the password
+this way. This page is what happens underneath, for an image without the module
+or another runtime.
 
 The pod authenticates to the Hopsworks REST API with the job JWT that the
 platform mounts at `$SECRETS_DIR/token.jwt`. The API base is
