@@ -50,8 +50,10 @@ Find a skill at `.claude/skills/<name>/` in the repository, else `~/.claude/skil
 
 Read the mart's `requirements` against the questions in references/gold-marts.md.
 For `existing_tables`, list the gold tables of every mart in this layer and of other gold layers in the project (`hops fg list`, the `medallion_table` tag `layer: gold`), with their grain and columns, and propose reusing or extending them where they fit; otherwise propose new tables from the silver `sources`.
-Ask what is still blank or ambiguous, the grain and the metrics' formulas first; never invent a business definition.
-Write the answers back into `requirements`, and the user's approval of the definitions, with the `approver`, into `decisions`.
+The Factory's form asks only for the layer, its questions, its silver tables and the mart's refresh, so most requirements start blank.
+Draft each blank one from the layer's `description` and `queries`, the mart's description and the silver tables' columns: the grain (what one row is, what identifies it, the kind of fact), the metrics with their formulas, the example questions with the answers you expect, the totals to reconcile, the invariants, the late-data handling and the dashboards.
+Show the drafts as a short table and ask the user to confirm or correct them, the grain and the metrics' formulas first; never record a business definition the user has not confirmed.
+Write the answers back into `requirements`, so they can be edited in `system.yaml` later, and the user's approval of the definitions, with the `approver`, into `decisions`.
 
 ### design
 

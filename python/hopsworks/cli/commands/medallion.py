@@ -384,10 +384,6 @@ def _mart_problems(mart: Any, taken: set[str] = frozenset()) -> list[str]:
         f"unknown requirement {k!r}"
         for k in sorted(set(requirements) - REQUIREMENT_KEYS)
     ]
-    if not str(requirements.get("example_queries") or "").strip():
-        problems.append(
-            "a data mart needs example_queries: questions with the answers you expect, which verify it"
-        )
     grain = requirements.get("grain") or {}
     if grain.get("type") and grain["type"] not in GRAIN_TYPES:
         problems.append(f"grain.type must be one of {', '.join(GRAIN_TYPES)}")
@@ -598,6 +594,24 @@ def create_silver(ctx: click.Context, data: dict, launch: bool) -> Path:
     return target
 
 
+def _with_default_mart(data: dict) -> dict:
+    """The answers with the first data mart named after the layer when the form did not name it.
+
+    The Factory's form asks only for the layer and the mart's refresh; the
+    mart's requirements left blank are drafted by /hops-gold's requirements phase.
+    """
+    mart = data.get("mart")
+    if mart is not None and not isinstance(mart, dict):
+        return data
+    mart = dict(mart or {})
+    slug = str(data.get("slug", ""))
+    mart.setdefault("slug", _repo_prefix(slug))
+    mart.setdefault("name", data.get("name") or mart["slug"])
+    if data.get("description") and not mart.get("description"):
+        mart["description"] = data["description"]
+    return {**data, "mart": mart}
+
+
 def create_gold(ctx: click.Context, data: dict, launch: bool) -> Path:
     """Record a gold layer and its first data mart in ./<slug>/system.yaml, register it, and build it with Claude Code.
 
@@ -606,6 +620,7 @@ def create_gold(ctx: click.Context, data: dict, launch: bool) -> Path:
     every mart follows, and the first data mart with its requirements.
     More marts are added by an Add data mart change request.
     """
+    data = _with_default_mart(data)
     problems = _gold_problems(data)
     if problems:
         raise click.ClickException("invalid answers:\n  " + "\n  ".join(problems))

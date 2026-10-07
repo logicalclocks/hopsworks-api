@@ -627,7 +627,7 @@ def test_gold_records_the_layer_and_its_first_mart(tmp_path, monkeypatch):
     [
         ({"sources": []}, "at least one silver feature group"),
         ({"modeling": "galaxy"}, "modeling must be one of"),
-        ({"mart": None}, "needs a data mart"),
+        ({"mart": "returns"}, "needs a data mart"),
         ({"standards": {"style": "x"}}, "standards takes"),
     ],
 )
@@ -914,3 +914,20 @@ def test_delete_bronze_deletes_the_bronze_tables_it_wrote(tmp_path, monkeypatch)
         "fg clickstream_clicks",
         "entry",
     ]
+
+
+def test_gold_names_its_first_mart_after_the_layer_when_the_form_does_not(
+    tmp_path, monkeypatch
+):
+    answers = {
+        **GOLD_ANSWERS,
+        "description": "Sales for the regional managers",
+        "mart": {"cadence": "hourly", "requirements": {"grain": {"type": "aggregate"}}},
+    }
+    _created(tmp_path, monkeypatch, "gold", answers)
+    mart = _doc(tmp_path / "hops-sales" / "sales-gold")["marts"][0]
+    assert (mart["slug"], mart["name"]) == ("sales", "Sales gold")
+    assert mart["description"] == "Sales for the regional managers"
+    assert mart["cadence"] == "hourly"
+    # Requirements left blank are drafted by the build, not refused here.
+    assert "example_queries" not in mart["requirements"]
