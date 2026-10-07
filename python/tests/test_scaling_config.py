@@ -195,6 +195,60 @@ class TestScalingConfig:
         read_back.min_instances = 0
         assert read_back.to_json()["min_instances"] == 0
 
+    def test_transformer_keda_and_idle_fields_round_trip(self):
+        # The transformer wrapper shares the fields and has its own JSON key.
+        sc = TransformerScalingConfig(
+            min_instances=1,
+            max_instances=3,
+            scale_metric="cpu",
+            autoscaler="keda",
+            scale_down_stabilization_window_seconds=120,
+            scale_up_stabilization_window_seconds=0,
+            additional_scale_metrics=[("memory", 70)],
+            idle_scale_to_zero=True,
+            idle_cooldown_seconds=90,
+            cold_start_timeout_seconds=300,
+        )
+        payload = sc.to_dict()
+        assert list(payload) == ["transformerScalingConfig"]
+        body = payload["transformerScalingConfig"]
+        assert body["autoscaler"] == "KEDA"
+        assert body["scaleDownStabilizationWindowSeconds"] == 120
+        assert body["scaleUpStabilizationWindowSeconds"] == 0
+        assert body["additionalScaleMetrics"] == [
+            {"scaleMetric": "MEMORY", "target": 70}
+        ]
+        assert body["idleScaleToZero"] is True
+        assert body["minInstances"] == 0
+        assert body["idleCooldownSeconds"] == 90
+        assert body["coldStartTimeoutSeconds"] == 300
+        read_back = TransformerScalingConfig.from_response_json(
+            {
+                "transformer_scaling_config": {
+                    "min_instances": 0,
+                    "max_instances": 3,
+                    "scale_metric": "CPU",
+                    "autoscaler": "KEDA",
+                    "scale_down_stabilization_window_seconds": 120,
+                    "additional_scale_metrics": [
+                        {"scale_metric": "MEMORY", "target": 70}
+                    ],
+                    "idle_scale_to_zero": True,
+                    "idle_cooldown_seconds": 90,
+                    "cold_start_timeout_seconds": 300,
+                }
+            }
+        )
+        assert isinstance(read_back, TransformerScalingConfig)
+        assert read_back.autoscaler == Autoscaler.KEDA
+        assert read_back.scale_down_stabilization_window_seconds == 120
+        assert read_back.additional_scale_metrics == [
+            {"scale_metric": ScaleMetric.MEMORY, "target": 70}
+        ]
+        assert read_back.idle_scale_to_zero is True
+        assert read_back.idle_cooldown_seconds == 90
+        assert read_back.cold_start_timeout_seconds == 300
+
     def test_idle_scale_to_zero_omitted_when_unset(self):
         sc = PredictorScalingConfig(min_instances=1, max_instances=3)
         json = sc.to_json()

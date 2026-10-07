@@ -213,30 +213,34 @@ class ComponentScalingConfig(ABC):
         """Initialize a ComponentScalingConfig instance.
 
         Parameters:
-            min_instances: Minimum number of instances to scale to. In KServe Standard mode a minimum of 0 means
-                scale to zero when idle and wake on the first request, through the KEDA HTTP add-on (one instance
-                runs while active); it needs KEDA installed, a predictor without a transformer, and the `KEDA`
-                autoscaler. Knative mode scales to zero with 0 as well, through its own autoscaler.
+            min_instances: Minimum number of instances to scale to.
+                In KServe Standard mode a minimum of 0 means scale to zero when idle and wake on the first request, through the KEDA HTTP add-on, with one instance running while active.
+                That needs KEDA installed, a predictor without a transformer, and the `KEDA` autoscaler.
+                Knative mode scales to zero with 0 as well, through its own autoscaler.
             max_instances: Maximum number of instances to scale to.
             scale_metric: Metric to use for scaling.
             target: Target value for the selected scaling metric.
             autoscaler: Which autoscaler runs the metric in KServe Standard mode, `HPA` (KServe) or `KEDA`.
                 Unset means the backend default: `KEDA` wherever it is installed, `HPA` otherwise.
-            scale_down_stabilization_window_seconds: KEDA only. How long (0-3600 s) the metric must stay below
-                target before instances are removed. Unset means the cluster default (300 s).
-            scale_up_stabilization_window_seconds: KEDA only. How long (0-3600 s) the metric must stay above
-                target before instances are added. Unset means the cluster default (0 s).
-            additional_scale_metrics: KEDA only. Further metrics to scale on next to `scale_metric`, each a
-                `{"scale_metric": ..., "target": ...}` dict or a `(scale_metric, target)` tuple; the most demanding
-                metric decides the instance count. A missing target takes the metric's default.
-            idle_scale_to_zero: Standard mode only. The same as `min_instances=0`: `True` sets the minimum to
-                0 (scale to zero when idle), and the backend reports it as `True` whenever the minimum is 0.
-                `False` with a minimum of 0 is rejected. An LLM deployment reloads its model on every wake, so
-                expect the first request after an idle period to take as long as a cold start.
-            idle_cooldown_seconds: With a minimum of 0: seconds (0-3600) without a request before the last
-                instance is removed. Unset means 300.
-            cold_start_timeout_seconds: With a minimum of 0: seconds (1-3600) a request is held while the
-                deployment wakes before it fails. Unset means 600. Set it above the model's load time.
+            scale_down_stabilization_window_seconds: KEDA only.
+                How long (0-3600 s) the metric must stay below target before instances are removed.
+                Unset means the cluster default (300 s).
+            scale_up_stabilization_window_seconds: KEDA only.
+                How long (0-3600 s) the metric must stay above target before instances are added.
+                Unset means the cluster default (0 s).
+            additional_scale_metrics: KEDA only.
+                Further metrics to scale on next to `scale_metric`, each a `{"scale_metric": ..., "target": ...}` dict or a `(scale_metric, target)` tuple; the most demanding metric decides the instance count.
+                A missing target takes the metric's default.
+                The request metrics `CONCURRENCY` and `RPS` follow the same rule as in `scale_metric`: a predictor without a transformer, not vLLM.
+            idle_scale_to_zero: Standard mode only, the same as `min_instances=0`.
+                `True` sets the minimum to 0 (scale to zero when idle), and the backend reports it as `True` whenever the minimum is 0.
+                `False` with a minimum of 0 is rejected.
+                An LLM deployment reloads its model on every wake, so expect the first request after an idle period to take as long as a cold start.
+            idle_cooldown_seconds: With a minimum of 0, the seconds (0-3600) without a request before the last instance is removed.
+                Unset means 300.
+            cold_start_timeout_seconds: With a minimum of 0, the seconds (1-3600) a request is held while the deployment wakes before it fails.
+                Unset means 600.
+                Set it above the model's load time.
             panic_window_percentage: Percentage of the stable window to use as the panic window.
             panic_threshold_percentage: Percentage of the scale metric threshold to trigger scaling.
             stable_window_seconds: Interval in seconds for calculating the average metric.
@@ -536,7 +540,8 @@ class ComponentScalingConfig(ABC):
     def scale_metric(self):
         """The metric to use for scaling.
 
-        `CONCURRENCY` and `RPS` are Knative-only metrics for KServe Knative deployments.
+        `CONCURRENCY` and `RPS` are Knative's request metrics, available on every KServe Knative deployment.
+        In KServe Standard mode the KEDA HTTP add-on measures them at the gateway, for the predictor of a deployment without a transformer on any model server but vLLM; elsewhere the backend rejects them.
         `CPU` and `MEMORY` drive CPU/memory-based autoscaling in KServe Standard mode, under KServe's HPA or KEDA.
         The vLLM engine metrics (`QUEUE_DEPTH`, `KV_CACHE_USAGE`, `RUNNING_REQUESTS`, `QUEUE_TIME`, `TIME_TO_FIRST_TOKEN`, `REQUEST_LATENCY`) are for LLM deployments in KServe Standard mode, scaled by KEDA.
         Standard deployments default to `CPU` when `min_instances < max_instances` (to `QUEUE_DEPTH` for a vLLM predictor on a cluster with KEDA); with `min_instances == max_instances` no autoscaler is configured and the metric is cleared.
@@ -560,7 +565,7 @@ class ComponentScalingConfig(ABC):
 
     @public
     @property
-    def autoscaler(self):
+    def autoscaler(self) -> Autoscaler | None:
         """Which autoscaler runs the scale metric of a KServe Standard-mode component.
 
         `HPA` is KServe's own HorizontalPodAutoscaler, `KEDA` a KEDA ScaledObject (needs KEDA installed in the cluster).
@@ -571,12 +576,12 @@ class ComponentScalingConfig(ABC):
         return self._autoscaler
 
     @autoscaler.setter
-    def autoscaler(self, autoscaler: Autoscaler | str | None):
+    def autoscaler(self, autoscaler: Autoscaler | str | None) -> None:
         self._autoscaler = _coerce_autoscaler(autoscaler)
 
     @public
     @property
-    def scale_down_stabilization_window_seconds(self):
+    def scale_down_stabilization_window_seconds(self) -> int | None:
         """KEDA only: seconds (0-3600) the metric must stay below target before instances are removed.
 
         Unset means the cluster default (300 s). GPU-bound LLM replicas are slow to bring back, so a long
@@ -585,12 +590,12 @@ class ComponentScalingConfig(ABC):
         return self._scale_down_stabilization_window_seconds
 
     @scale_down_stabilization_window_seconds.setter
-    def scale_down_stabilization_window_seconds(self, seconds: int | None):
+    def scale_down_stabilization_window_seconds(self, seconds: int | None) -> None:
         self._scale_down_stabilization_window_seconds = seconds
 
     @public
     @property
-    def scale_up_stabilization_window_seconds(self):
+    def scale_up_stabilization_window_seconds(self) -> int | None:
         """KEDA only: seconds (0-3600) the metric must stay above target before instances are added.
 
         Unset means the cluster default (0 s, react at once). Rejected with KServe's HPA, which ignores it.
@@ -598,12 +603,12 @@ class ComponentScalingConfig(ABC):
         return self._scale_up_stabilization_window_seconds
 
     @scale_up_stabilization_window_seconds.setter
-    def scale_up_stabilization_window_seconds(self, seconds: int | None):
+    def scale_up_stabilization_window_seconds(self, seconds: int | None) -> None:
         self._scale_up_stabilization_window_seconds = seconds
 
     @public
     @property
-    def idle_scale_to_zero(self):
+    def idle_scale_to_zero(self) -> bool | None:
         """Standard mode only: whether the deployment scales to zero when idle (`min_instances=0`).
 
         Setting it to `True` sets the minimum to 0; the backend reports `True` whenever the minimum is 0. The
@@ -615,14 +620,14 @@ class ComponentScalingConfig(ABC):
         return self._idle_scale_to_zero
 
     @idle_scale_to_zero.setter
-    def idle_scale_to_zero(self, enabled: bool | None):
+    def idle_scale_to_zero(self, enabled: bool | None) -> None:
         self._idle_scale_to_zero = enabled
         if enabled is True and (self._min_instances is None or self._min_instances > 0):
             self._min_instances = 0
 
     @public
     @property
-    def idle_cooldown_seconds(self):
+    def idle_cooldown_seconds(self) -> int | None:
         """With a minimum of 0 instances: seconds (0-3600) without a request before the last instance is removed.
 
         Unset means 300.
@@ -630,12 +635,12 @@ class ComponentScalingConfig(ABC):
         return self._idle_cooldown_seconds
 
     @idle_cooldown_seconds.setter
-    def idle_cooldown_seconds(self, seconds: int | None):
+    def idle_cooldown_seconds(self, seconds: int | None) -> None:
         self._idle_cooldown_seconds = seconds
 
     @public
     @property
-    def cold_start_timeout_seconds(self):
+    def cold_start_timeout_seconds(self) -> int | None:
         """With a minimum of 0 instances: seconds (1-3600) a request is held while the deployment wakes.
 
         Unset means 600. A request held longer fails; set it above the time the model takes to load.
@@ -643,12 +648,12 @@ class ComponentScalingConfig(ABC):
         return self._cold_start_timeout_seconds
 
     @cold_start_timeout_seconds.setter
-    def cold_start_timeout_seconds(self, seconds: int | None):
+    def cold_start_timeout_seconds(self, seconds: int | None) -> None:
         self._cold_start_timeout_seconds = seconds
 
     @public
     @property
-    def additional_scale_metrics(self):
+    def additional_scale_metrics(self) -> list[dict] | None:
         """KEDA only: further metrics scaled on next to `scale_metric`, as `{"scale_metric", "target"}` dicts.
 
         KEDA sizes the deployment by whichever metric asks for the most instances, e.g. queue depth or
@@ -659,7 +664,7 @@ class ComponentScalingConfig(ABC):
     @additional_scale_metrics.setter
     def additional_scale_metrics(
         self, items: list[dict | tuple | ScaleMetric | str] | None
-    ):
+    ) -> None:
         self._additional_scale_metrics = _coerce_additional_scale_metrics(items)
 
     @public
@@ -667,8 +672,8 @@ class ComponentScalingConfig(ABC):
     def target(self):
         """Target value for the selected scaling metric that the autoscaler should try to maintain.
 
-        For `RPS`, this is requests per second per instance (default 200).
-        For `CONCURRENCY`, this is the number of concurrent requests per instance (default 100).
+        For `RPS`, this is requests per second per instance (default 200), in Knative mode or, through the KEDA HTTP add-on, for an eligible Standard-mode predictor.
+        For `CONCURRENCY`, this is the number of concurrent requests per instance (default 100), under the same rule.
         For `CPU` and `MEMORY`, this is the utilization percentage.
         For `QUEUE_DEPTH`, this is the number of requests waiting in the vLLM engine queue per replica (default 5).
         For `KV_CACHE_USAGE`, this is the KV-cache utilization percentage per replica (default 80).
