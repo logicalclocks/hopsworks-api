@@ -1,6 +1,6 @@
 ---
 description: Hopsworks gold layer builder. Builds the data marts of the gold medallion layer that system.yaml describes, a Kimball star or snowflake model of fact and dimension feature groups built from silver tables, each mart with its own requirements and its own scheduled jobs (dbt on Trino by default), and tags them. A mart can be built, changed or rebuilt alone.
-argument-hint: "[<slug>] [<mart>|apply] [requirements|design|code|backfill|schedule|verify]"
+argument-hint: "[<slug>] [<mart>|apply] [requirements|design|code|backfill|schedule|verify|dashboards]"
 ---
 
 You are running `/hops-gold` with arguments: `$ARGUMENTS`
@@ -88,13 +88,19 @@ Apply `access` and `share`: share the feature groups with the projects named (`h
 
 Run one window of each job (`hops job run <job> --start-time <t0> --end-time <t1> --wait`), and prove each `refresh_checks` check with evidence from the runs: row counts and table versions before and after a rerun of the same window, the rows a refresh wrote against the window, a late row's effect on its period.
 Rerun the `example_queries` and `reconcile` checks after the refresh, record every result under `verification`, and run `hops factory system status <slug>`, fixing what it flags.
-A mart with a failing check is not `built`: fix it, or ask the user.
-Set the mart's `applied` to its spec (`name`, `description`, `cadence`, `freshness_hours`, `requirements`), its `status: built`, and report its tables, jobs, schedule and checks in a few lines.
+A mart with a failing check is not `built`: fix it, or ask the user, and do not start its dashboards.
+
+### dashboards
+
+Build the Superset dashboards the mart's `requirements.dashboards` describes, in the user's words; with it empty, set the phase `done` with the note "no dashboards asked for" and build nothing.
+Load **hops-superset**. For each dashboard: ask with `AskUserQuestion` only what the text leaves open (which metric a chart shows, a filter's default), then write `marts/<mart>/dashboards/<name>.py`, which creates the dashboard or updates it in place and prints its URL, with datasets over the mart's gold tables through Trino, charts for the questions it answers and filters on the mart's dimensions; run it, open each chart's data (`hops superset chart info`), and check it is not empty and agrees with the mart's verified numbers.
+Record each in the mart's `dashboards` as `{name, id, url, script, charts}`, and commit the scripts.
+Set the mart's `applied` to its spec (`name`, `description`, `cadence`, `freshness_hours`, `requirements`), its `status: built`, and report its tables, jobs, schedule, checks and dashboards with their URLs, in a few lines.
 
 ## Changing a mart
 
 A built mart whose spec differs from its `applied` has been edited, by an **Edit data mart** change request.
-Read the difference and `git log -p -- system.yaml` for it, show what it recomputes, and run the affected phases: a changed `cadence` reschedules the jobs (renaming them to the new cadence); a changed metric, grain, filter or `late_data` changes the models, creates the next version of each changed table, backfills it and switches the job to it; a changed `access` or `share` is reapplied; `analysts`, `decisions` or `approver` only update the README.
+Read the difference and `git log -p -- system.yaml` for it, show what it recomputes, and run the affected phases: a changed `cadence` reschedules the jobs (renaming them to the new cadence); a changed metric, grain, filter or `late_data` changes the models, creates the next version of each changed table, backfills it and switches the job to it; a changed `access` or `share` is reapplied; a changed `dashboards` reruns the dashboards phase, updating the dashboards in place, building new ones and deleting with `hops superset dashboard delete` only those this build made that the text no longer asks for; `analysts`, `decisions` or `approver` only update the README.
 Keep superseded versions and name them in `decisions`; end with `applied` set and one commit `[<slug>] <mart> apply: <what changed>`.
 
 ## apply (the layer)

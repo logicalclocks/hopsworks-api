@@ -805,3 +805,17 @@ def test_the_system_commands_are_the_same_for_every_factory():
     ]
     for name in ("medallion", "mlsystem"):
         assert factory_group.get_command(None, name) is None
+
+
+def test_a_mart_asks_for_dashboards_and_builds_them_last(tmp_path, monkeypatch):
+    mart = {
+        **GOLD_ANSWERS["mart"],
+        "requirements": {
+            **GOLD_ANSWERS["mart"]["requirements"],
+            "dashboards": "Weekly returns by product group for merchandising",
+        },
+    }
+    _created(tmp_path, monkeypatch, "gold", {**GOLD_ANSWERS, "mart": mart})
+    [built] = _doc(tmp_path / "hops-sales" / "sales-gold")["marts"]
+    assert built["requirements"]["dashboards"].startswith("Weekly returns")
+    assert list(built["phases"])[-1] == "dashboards"

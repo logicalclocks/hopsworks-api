@@ -21,7 +21,8 @@ marts: []             # data marts, each built and deleted on its own:
                       # {slug, name, description, status, cadence, freshness_hours, requirements,
                       #  phases, tables: [{name, version, kind: fact|dimension, grain, shared}],
                       #  jobs: [{name, cadence, cron, tables}],
-                      #  verification: [{check, sql, expected, result, passed, at}], applied}
+                      #  verification: [{check, sql, expected, result, passed, at}],
+                      #  dashboards: [{name, id, url, script, charts}], applied}
 outputs:
   applied_spec: {}    # the layer-level spec the marts were last built from
 progress:

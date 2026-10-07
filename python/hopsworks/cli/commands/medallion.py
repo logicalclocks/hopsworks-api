@@ -128,8 +128,17 @@ REQUIREMENT_KEYS = {
     "on_check_failure",
     "access",
     "share",
+    "dashboards",
 }
-MART_PHASES = ("requirements", "design", "code", "backfill", "schedule", "verify")
+MART_PHASES = (
+    "requirements",
+    "design",
+    "code",
+    "backfill",
+    "schedule",
+    "verify",
+    "dashboards",
+)
 # Proposed by the Factory; references/gold-marts.md, Standards.
 DEFAULT_STANDARDS = {
     "naming": "fct_<process> for facts, dim_<entity> for dimensions, agg_<process>_<grain> for aggregates; snake case in the business's terms; never the name of an existing feature group",

@@ -25,6 +25,7 @@ The Factory's form asks these questions and `system.yaml` records the answers un
 | `on_check_failure` | `fail` the run and publish nothing, `quarantine` the failing rows, or `warn` and publish. |
 | `access` | Who may read which rows and columns. |
 | `share` | Whether the mart is shared with other projects, and which. |
+| `dashboards` | The dashboards to build from the mart, in plain text: for each, who reads it, the questions it answers, and the charts and filters wanted. Empty for none. |
 
 ### Verification: how the user knows the mart is right
 
@@ -52,6 +53,12 @@ Every mart follows the layer's `standards`; the Factory proposes these, and the 
 - **Modeling**: one declared grain per fact; surrogate keys on every dimension; no measure without a unit; no nulls in foreign keys (an "unknown" dimension member instead).
 - **Documentation**: every table and column has a description, every metric its formula in the feature group description, and the mart's `README.md` in the repository lists its tables, grain, metrics, owner and approver.
 - **Quality**: dbt tests (or Great Expectations) for keys, not-null foreign keys, accepted values and the mart's invariants; the reconciliation checks run on every refresh; a check failure is handled as `on_check_failure` says.
+
+## Dashboards
+
+The last phase of a mart, `dashboards`, builds the Superset dashboards its `dashboards` requirement describes, over the mart's gold tables, once the mart is verified; with the requirement empty it is done at once, with nothing built.
+Each dashboard is a program in the mart's directory, `marts/<mart>/dashboards/<name>.py`, that creates it or updates it in place (hops-superset), so a rerun keeps its id and URL; the mart records each as `dashboards: [{name, id, url, script, charts}]`.
+A dashboard's charts read the gold tables through Trino, so every number it shows is one the mart's verification already checked.
 
 ## Jobs
 
