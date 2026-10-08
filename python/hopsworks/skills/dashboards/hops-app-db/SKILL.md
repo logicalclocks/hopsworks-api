@@ -80,6 +80,12 @@ group's format, so pick it in the app.
   role (and the feature stores shared with the project).
 - Trino is for scans and aggregations over the lakehouse tables. Primary-key
   lookups belong on the online tables through `MYSQL_*`.
+- **Python apps read offline feature groups with the SDK first**
+  (`fg.select(...).filter(...).read()`, feature views for batch data, see
+  **hops-fg** / **hops-fv**): it knows the format and location and keeps the
+  model's transformations. Trino is the extra option for a Python app (ad-hoc
+  SQL, joins with other Trino catalogs, `project.get_trino_api()`), and the
+  main path for an app in another language.
 
 ### TLS to the platform from a non-Python app
 
