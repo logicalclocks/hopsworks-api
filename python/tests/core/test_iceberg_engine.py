@@ -17,7 +17,8 @@ import sys
 from unittest import mock
 
 import pytest
-from hopsworks_common.client.exceptions import FeatureStoreException
+import requests
+from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
 from hopsworks_common.core.constants import HAS_PYICEBERG
 from hsfs import feature_group
 from hsfs.core import feature_group_engine, partition_transforms
@@ -2118,3 +2119,81 @@ class TestPyIcebergEngine:
         assert version == 3
         rows = table.scan().to_arrow().sort_by("id").to_pydict()
         assert rows["id"] == [2, 3]
+
+
+class TestIcebergMetastoreSync:
+    @staticmethod
+    def _rest_error(status_code):
+        response = mock.MagicMock()
+        response.status_code = status_code
+        response.json.return_value = {}
+        return RestAPIError("url", response)
+
+    def test_sync_calls_the_backend(self, mocker):
+        iceberg_engine = _make_engine(mocker)
+        mocker.patch.object(iceberg_engine, "_glue_catalog", return_value=None)
+
+        iceberg_engine._sync_metastore()
+
+        iceberg_engine._feature_group_api._sync_metastore.assert_called_once_with(
+            iceberg_engine._feature_group
+        )
+
+    def test_sync_skips_glue(self, mocker):
+        iceberg_engine = _make_engine(mocker)
+        mocker.patch.object(iceberg_engine, "_glue_catalog", return_value=mocker.Mock())
+
+        iceberg_engine._sync_metastore()
+
+        iceberg_engine._feature_group_api._sync_metastore.assert_not_called()
+
+    @pytest.mark.parametrize("status_code", [400, 404, 500])
+    def test_sync_failure_does_not_raise(self, mocker, status_code):
+        iceberg_engine = _make_engine(mocker)
+        mocker.patch.object(iceberg_engine, "_glue_catalog", return_value=None)
+        iceberg_engine._feature_group_api._sync_metastore.side_effect = (
+            self._rest_error(status_code)
+        )
+
+        iceberg_engine._sync_metastore()
+
+    def test_sync_connection_failure_does_not_raise(self, mocker):
+        iceberg_engine = _make_engine(mocker)
+        mocker.patch.object(iceberg_engine, "_glue_catalog", return_value=None)
+        iceberg_engine._feature_group_api._sync_metastore.side_effect = (
+            requests.exceptions.ConnectionError("reset")
+        )
+
+        iceberg_engine._sync_metastore()
+
+    def test_optimize_syncs(self, mocker):
+        iceberg_engine = _make_engine(mocker, spark_context=mocker.MagicMock())
+        mocker.patch.object(iceberg_engine, "_glue_catalog", return_value=None)
+        sync = mocker.patch.object(iceberg_engine, "_sync_metastore")
+
+        iceberg_engine._optimize()
+
+        sync.assert_called_once_with()
+
+    def test_update_partition_spec_syncs_only_after_a_commit(self, mocker):
+        iceberg_engine = _make_engine(mocker, spark_context=mocker.MagicMock())
+        mocker.patch.object(iceberg_engine, "_glue_catalog", return_value=None)
+        mocker.patch.object(IcebergEngine, "_spec_expressions", return_value=[])
+        sync = mocker.patch.object(iceberg_engine, "_sync_metastore")
+
+        iceberg_engine._update_partition_spec([], [])
+        sync.assert_not_called()
+
+        iceberg_engine._update_partition_spec(
+            partition_transforms._parse(["hour(ts)"]), []
+        )
+        sync.assert_called_once_with()
+
+    def test_save_empty_table_syncs(self, mocker):
+        iceberg_engine = _make_engine(mocker)
+        mocker.patch.object(iceberg_engine, "_save_empty_iceberg_table_pyspark")
+        sync = mocker.patch.object(iceberg_engine, "_sync_metastore")
+
+        iceberg_engine._save_empty_table()
+
+        sync.assert_called_once_with()
