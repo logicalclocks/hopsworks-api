@@ -225,7 +225,7 @@ fraud-example:
       A fraud console: the deployment's and the streaming jobs' state, a form that generates a
       batch of transactions for real cards with injected chain attacks and scores each with the
       deployment, optionally writing them through Kafka into the streaming job, then tiles of the predicted and
-      the injected fraud caught, the transactions with predicted fraud highlighted, and each
+      the injected fraud caught and the prediction latency, the transactions with predicted fraud highlighted, and each
       card's live window features
     status: pending
 

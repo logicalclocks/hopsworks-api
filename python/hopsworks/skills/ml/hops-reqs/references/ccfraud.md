@@ -22,7 +22,7 @@ directory outside the system:
 
 ```bash
 git clone -q https://github.com/featurestorebook/mlfs-book /tmp/mlfs-book
-git -C /tmp/mlfs-book checkout -q 23509a956f1b35b8eef0d9598152520d6bb26f66
+git -C /tmp/mlfs-book checkout -q cfd40f192486d4b2baf00e837af3f5567c847511
 cp -r /tmp/mlfs-book/ccfraud/ccfraud <slug>/ccfraud      # the package: generator, pipelines, features/
 cp -r /tmp/mlfs-book/ccfraud/app <slug>/app
 cp <this directory>/ccfraud/{train_fraud.py,predictor.py} <slug>/ccfraud/
@@ -139,5 +139,7 @@ transactions for real cards and merchants, injects chain attacks at the chosen
 fraud rate, and scores each with the deployment. With "Write transactions to
 feature group" checked (it starts unchecked) it also writes them to
 `credit_card_transactions`, and so through Kafka into the streaming job: metric tiles
-for the predicted and the injected fraud caught, the transactions with predicted
-fraud highlighted, and each card's live window features.
+for the predicted and the injected fraud caught and the prediction latency (p50,
+p95 and max of the predict round trips, sent several at a time), the transactions
+with predicted fraud highlighted and each one's latency, and each card's live
+window features.
