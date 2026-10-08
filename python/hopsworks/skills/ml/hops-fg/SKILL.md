@@ -149,7 +149,7 @@ combination:
 Rules that bite:
 
 - **Iceberg hidden partitioning is invisible in the schema.** `hops fg features` shows a blank PARTITION column and the UI no partition key even though the table *is* partitioned. Check `fg.get_partition_spec()`, not the column list.
-- **The whole Iceberg write path needs a JVM** (PyIceberg reaches HopsFS through JNI `libhdfs`), including the empty first commit, so an Iceberg feature pipeline is a **PYSPARK job**, not a Python one. Spark Connect (the terminal) cannot create Iceberg tables or run Delta upserts either; see **hops-spark**.
+- **Iceberg writes from the Python engine need libhdfs-golang and a Java runtime in the pod** (PyIceberg goes through PyArrow's `HadoopFileSystem`), including the empty first commit. From Hopsworks 5.2, Python jobs, Python apps, DLT jobs and the Python and GPU terminals have both; on earlier versions an Iceberg feature pipeline is a **PYSPARK job**. Spark Connect (the Spark terminal) cannot create Iceberg tables or run Delta upserts; see **hops-spark**.
 - **Delta cannot partition and liquid-cluster at once.** Either derive a day column and cluster on both, or switch to Iceberg (`partitioned_by` + `zorder_by`). Say which trade-off you took.
 
 Grammar, per-format behaviour, inspection (`get_partition_spec`, `get_clustering_columns`, `update_clustering`), and the shuffle-manager caveat: [references/table-layout.md](references/table-layout.md). Diagnosing an existing table: **hops-table-maintenance**.
