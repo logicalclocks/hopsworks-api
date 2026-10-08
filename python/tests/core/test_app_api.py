@@ -264,3 +264,84 @@ class TestAppApiCreate:
 
         body = json.loads(mock_client._send_request.call_args.kwargs["data"])
         assert body == {"enabled": False}
+
+
+class TestAppApiCreateKinds:
+    @pytest.fixture
+    def mock_client(self, mocker):
+        client_mock = Mock()
+        client_mock._project_id = 119
+        client_mock._project_name = "demo"
+        client_mock._send_request.return_value = {}
+        mocker.patch(
+            "hopsworks_common.core.app_api.client._get_instance",
+            return_value=client_mock,
+        )
+        return client_mock
+
+    @pytest.fixture
+    def api(self, mocker):
+        api = AppApi()
+        mocker.patch.object(api, "get_app", return_value=App(name="created"))
+        return api
+
+    @staticmethod
+    def _body(mock_client):
+        return json.loads(mock_client._send_request.call_args.kwargs["data"])
+
+    def test_flask_app_is_launched_from_its_file_on_a_port(self, mock_client, api):
+        api.create_app(
+            "web", app_path="Resources/app.py", app_kind="flask", app_port=5000
+        )
+        body = self._body(mock_client)
+        assert body["appKind"] == "FLASK"
+        assert body["appPath"] == "hdfs:///Projects/demo/Resources/app.py"
+        assert body["appPort"] == 5000
+        assert "entrypointCommand" not in body
+
+    def test_node_app_takes_javascript_and_typescript_files(self, mock_client, api):
+        for entry in ("server.js", "server.mjs", "server.cjs", "server.ts"):
+            api.create_app("api", app_path=f"Resources/{entry}", app_kind="NODEJS")
+            assert self._body(mock_client)["appKind"] == "NODEJS"
+        with pytest.raises(ValueError, match="app_path must be a .js"):
+            api.create_app("api", app_path="Resources/app.py", app_kind="NODEJS")
+
+    def test_gradio_git_app_needs_an_entrypoint_script(self, mock_client, api):
+        with pytest.raises(
+            ValueError, match="entrypoint_script is required for Gradio"
+        ):
+            api.create_app(
+                "demo",
+                app_kind="GRADIO",
+                git_url="https://github.com/acme/demo",
+                git_provider="GitHub",
+            )
+        api.create_app(
+            "demo",
+            app_kind="GRADIO",
+            git_url="https://github.com/acme/demo",
+            git_provider="GitHub",
+            entrypoint_script="demo/app.py",
+            app_port=7860,
+        )
+        body = self._body(mock_client)
+        assert body["entrypointScript"] == "demo/app.py"
+        assert body["appPort"] == 7860
+        assert "appPath" not in body
+
+    def test_file_launched_kinds_refuse_an_entrypoint_command(self, mock_client, api):
+        with pytest.raises(
+            ValueError, match="entrypoint_command is only used for custom apps"
+        ):
+            api.create_app(
+                "web",
+                app_path="Resources/app.py",
+                app_kind="FLASK",
+                entrypoint_command="flask run",
+            )
+        with pytest.raises(ValueError, match="app_path is required for Flask"):
+            api.create_app("web", app_kind="FLASK")
+
+    def test_unknown_kind_is_refused(self, mock_client, api):
+        with pytest.raises(ValueError, match="Unknown app_kind"):
+            api.create_app("web", app_path="Resources/app.py", app_kind="DJANGO")
