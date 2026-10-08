@@ -155,17 +155,17 @@ class AppApi:
             readiness_probe_path: Optional readiness probe path to use instead of
                 the platform default.
 
-            db_access: Give the app access to the project's feature store data.
-                Defaults to True: starting the app creates the online database
+            db_access: Give the app access to the project's online feature store
+                database. Defaults to True: starting the app creates the database
                 if the project does not have one yet and injects the `MYSQL_USER`,
                 `MYSQL_PASSWORD_SECRET_NAME`, `MYSQL_DB`, `MYSQL_HOST` and `MYSQL_PORT`
                 environment variables into the app container, the same way agent
-                deployments get them. When Trino is enabled on the cluster it also
-                injects `TRINO_HOST`, `TRINO_PORT`, `TRINO_USER`,
-                `TRINO_PASSWORD_SECRET_NAME` and `TRINO_SCHEMA`, so the app can read
-                the offline feature group tables with SQL (the catalog is the
-                feature group's format, `delta` or `hudi`, chosen by the app). Set to
-                False for apps that do not need either.
+                deployments get them. Set to False for apps that do not need the
+                database. Independently of this flag, when Trino is enabled on the
+                cluster every app gets `TRINO_HOST`, `TRINO_PORT`, `TRINO_USER`,
+                `TRINO_PASSWORD_SECRET_NAME` and `TRINO_SCHEMA` to read the offline
+                feature group tables with SQL (the catalog is the feature group's
+                format, `delta` or `hudi`, chosen by the app).
 
         Returns:
             The created App object.

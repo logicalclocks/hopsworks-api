@@ -15,14 +15,15 @@ import { getSecret, mysqlConfig, trinoClient, query, streamQuery, featureGroupTa
 | `getSecret(name)` | a private secret of the user who **started** the app (cached per process) | `REST_ENDPOINT`, `SECRETS_DIR` |
 | `restCall(path, init?)` | parsed JSON of a Hopsworks REST call as that user; `path` is relative to `/hopsworks-api/api` | same |
 | `mysqlConfig()` | `{ host, port, user, password, database }` of the project's online feature store, for `mysql2` / `mysql` / `knex` | `MYSQL_*` (`db_access=True`) |
-| `trinoClient({ catalog, schema? })` | an authenticated `TrinoClient` (Trino REST protocol, no dependency) for the offline feature groups | `TRINO_*` (`db_access=True`, Trino enabled) |
+| `trinoClient({ catalog, schema? })` | an authenticated `TrinoClient` (Trino REST protocol, no dependency) for the offline feature groups | `TRINO_*` (Trino enabled; independent of `db_access`) |
 | `query(client, sql)` | all rows as `[{ column: value }]` | — |
 | `streamQuery(client, sql)` | async iterator of row objects, page by page | — |
 | `featureGroupTable(name, version, { catalog, schema? })` | `"<catalog>"."<schema>"."<name>_<version>"`, quoted | `TRINO_SCHEMA` unless `schema` given |
 
 Every function throws `HopsworksEnvError` (with `.variable`) when a variable is
-missing, so the error says whether the app was created with `db_access=False`,
-Trino is disabled, or the code is running outside a pod. Passwords are never in
+missing, so the error says whether the app was created with `db_access=False`
+(MySQL), Trino is disabled on the cluster (Trino), or the code is running
+outside a pod. Passwords are never in
 the environment: they are read once over REST with the pod's job JWT.
 
 ## Secrets

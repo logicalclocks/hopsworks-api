@@ -50,12 +50,14 @@ variables, so code written for one works in the other.
 - Injection happens before the app's own `env_vars`, so an app can override
   `MYSQL_DB` etc. to point at a different database if it must.
 
-### Offline feature groups through Trino (same `db_access` knob)
+### Offline feature groups through Trino (independent of `db_access`)
 
-When Trino is enabled on the cluster, the same flag also injects the identifiers
-of the project's Trino coordinator, so an app in any language can read the
+When Trino is enabled on the cluster, every app also gets the identifiers of
+the project's Trino coordinator, so an app in any language can read the
 **offline** feature group tables with SQL (the Python SDK does this through
-`project.get_trino_api()`, see **hops-trino-sql**):
+`project.get_trino_api()`, see **hops-trino-sql**). This does not depend on
+`db_access`, which is about the online database only: an app created with
+`db_access=False` still gets `TRINO_*`.
 
 | Variable | Value |
 |---|---|
