@@ -234,9 +234,9 @@ A custom app (`app_kind="CUSTOM"`) can run Node. Two prerequisites:
 2. **The password.** `@hopsworks/app`, pre-installed in `python-app-pipeline`
    (no `package.json` entry needed), resolves it: `mysqlConfig()` returns
    `{ host, port, user, password, database }` for `mysql2`, reading the secret
-   over the REST API with the job JWT. What it does under the hood, for an
-   image without the module, is in
-   [references/nodejs_secret_via_rest.md](references/nodejs_secret_via_rest.md).
+   over the REST API with the job JWT. The module's full API, local-development
+   pattern and what it does underneath are in
+   [references/nodejs_hopsworks_app.md](references/nodejs_hopsworks_app.md).
    Resolving the password with the Python SDK in the entrypoint and handing it
    to Node as `MYSQL_PASSWORD` also works and is honoured by `mysqlConfig()`.
 
@@ -290,13 +290,15 @@ URLs relative to the mount and route on path suffixes, not on an exact `/`
 
 ### Offline feature groups from Node.js with Trino
 
-`@hopsworks/app` wraps `trino-client` (the official Trino Node client) with
-the `TRINO_*` variables: `trinoClient({ catalog })` returns an authenticated
-client (the password is the Hopsworks secret named by
-`TRINO_PASSWORD_SECRET_NAME`, read once over REST with the job JWT), `query()`
-collects a result as `[{ column: value }]`, `streamQuery()` yields rows page by
-page for large results, and `featureGroupTable()` builds a fully qualified
-name. `NODE_EXTRA_CA_CERTS` already makes the coordinator's certificate trusted.
+`@hopsworks/app` speaks the Trino REST protocol with the `TRINO_*` variables:
+`trinoClient({ catalog })` returns an authenticated client (the password is the
+Hopsworks secret named by `TRINO_PASSWORD_SECRET_NAME`, read once over REST with
+the job JWT), `query()` collects a result as `[{ column: value }]`,
+`streamQuery()` yields rows page by page for large results and cancels the
+query if you leave the loop early, and `featureGroupTable()` builds a fully
+qualified name. Integers above 2^53 arrive as `BigInt`, never rounded (full reference:
+[references/nodejs_hopsworks_app.md](references/nodejs_hopsworks_app.md)).
+`NODE_EXTRA_CA_CERTS` already makes the coordinator's certificate trusted.
 
 ```js
 // trino.js — one client per process; creating it is the one REST call for the secret
