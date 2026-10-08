@@ -456,6 +456,17 @@ def _prompt(field: dict, default: Any, label: str) -> Any:
         )
     if kind == "list":
         return _ask_list(field, default if isinstance(default, list) else [], label)
+    if kind == "repository":
+        start = default if isinstance(default, dict) else {"create": True}
+        if click.confirm("Create new GitHub repo", default=start.get("create", True)):
+            return {"create": True}
+        url = click.prompt(
+            "URL of the GitHub, GitLab, Bitbucket or other git repository to store the code",
+            default=start.get("url") or "",
+            show_default=bool(start.get("url")),
+            type=str,
+        ).strip()
+        return {"create": False, "url": url}
     shown = _shown(kind, default)
     hint = {
         "multichoice": f" ({', '.join(options)}; comma-separated)",

@@ -43,6 +43,7 @@ FIELD_TYPES = (
     "list",
     "account_env",
     "entry",
+    "repository",
 )
 NAME = re.compile(r"^[a-z][a-z0-9-]{0,62}$")
 ID = re.compile(r"^[a-z][a-z0-9_]{0,62}$")
@@ -415,6 +416,54 @@ def value_at(answers: dict, path: str) -> Any:
     return node
 
 
+# A git repository a system's code goes to: https://host/owner/name(.git), ssh://..., or git@host:owner/name.
+REPO_URL = re.compile(r"^(https://[^\s/]+/\S+|ssh://\S+|git@[^\s:]+:\S+)$")
+REPO_PROVIDERS = ("github", "gitlab", "bitbucket")
+
+
+def repo_provider(url: str) -> str:
+    """The git host a repository URL is on: github, gitlab, bitbucket, or git for any other."""
+    host = (
+        re.sub(r"^(https://|ssh://)?([^@/]*@)?", "", url)
+        .split("/")[0]
+        .split(":")[0]
+        .lower()
+    )
+    return next((name for name in REPO_PROVIDERS if name in host), "git")
+
+
+def repository_problems(value: Any, label: str) -> list[str]:
+    """What is wrong with a repository answer, {create: true} or {create: false, url}."""
+    if not isinstance(value, dict) or not isinstance(value.get("create", True), bool):
+        return [f"{label} must say whether to create a new GitHub repository."]
+    if value.get("create", True):
+        return []
+    url = str(value.get("url") or "").strip()
+    if not url:
+        return [
+            f"{label} is unchecked: give the URL of the repository to store the code in."
+        ]
+    if re.match(r"^https://[^/@\s]*:[^/@\s]*@", url):
+        return [
+            f"{label}: the URL must not carry a password or token; the build pushes with the terminal's git login."
+        ]
+    if not REPO_URL.match(url):
+        return [
+            f"{url} is not a git repository URL (https://host/owner/name or git@host:owner/name)."
+        ]
+    return []
+
+
+def repo_record(value: Any) -> dict:
+    """What system.yaml records for a repository answer: url new for one the build creates, else url and provider."""
+    if isinstance(value, str):
+        return {"url": value}
+    if not isinstance(value, dict) or value.get("create", True):
+        return {"url": "new", "provider": "github"}
+    url = str(value["url"]).strip()
+    return {"url": url, "provider": repo_provider(url)}
+
+
 def _empty(value: Any) -> bool:
     return value is None or value == "" or value == []
 
@@ -452,6 +501,8 @@ def _field_problems(field: dict, value: Any, label: str) -> list[str]:
         and all(isinstance(v, dict) and v.get("name") for v in value)
     ):
         return [f"{label} must be a list of feature groups."]
+    if kind == "repository":
+        return repository_problems(value, label)
     if kind == "list":
         if not isinstance(value, list):
             return [f"{label} must be a list."]

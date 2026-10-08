@@ -741,6 +741,21 @@ def test_a_layer_can_name_its_repository(tmp_path, monkeypatch):
     assert done.exit_code != 0 and "repo must be hops-" in done.output
 
 
+def test_a_layer_can_store_its_code_in_an_existing_repository(tmp_path, monkeypatch):
+    url = "git@bitbucket.org:acme/retail.git"
+    answers = {**GOLD_ANSWERS, "repo": {"create": False, "url": url}}
+    _created(tmp_path, monkeypatch, "gold", answers)
+    doc = _doc(tmp_path / "hops-sales" / "sales-gold")
+    assert doc["layer"]["repo"] == {
+        "name": "hops-sales",
+        "url": url,
+        "provider": "bitbucket",
+    }
+    bad = _answers_file(tmp_path, {**GOLD_ANSWERS, "repo": {"create": False}})
+    done = _create(monkeypatch, "gold", bad)
+    assert done.exit_code != 0 and "give the URL" in done.output
+
+
 def test_delete_assets_deletes_jobs_then_tables_and_keeps_the_system(
     tmp_path, monkeypatch
 ):

@@ -24,6 +24,7 @@ from typing import Any
 
 import click
 from hopsworks.cli import output, session
+from hopsworks.cli.factory_spec import repo_record, repository_problems
 
 
 REFERENCES = (
@@ -170,6 +171,8 @@ def _source_problems(sources: Any, lower: str) -> list[str]:
 
 def _repo_problems(answers: dict) -> list[str]:
     repo = answers.get("repo")
+    if isinstance(repo, dict):
+        return repository_problems(repo, "repo")
     if repo and not REPO.match(str(repo)):
         return ["repo must be hops- followed by lowercase letters, digits and hyphens"]
     return []
@@ -246,7 +249,7 @@ def _repo_dir(cwd: Path, answers: dict, kind: str) -> Path:
     sources (bronze for silver, silver for gold), else `hops-<prefix>` from the
     layer's slug, reused when it exists.
     """
-    if answers.get("repo"):
+    if isinstance(answers.get("repo"), str) and answers["repo"]:
         return cwd / answers["repo"]
     below = {"silver": "bronze", "gold": "silver"}.get(kind)
     if below:
@@ -254,6 +257,16 @@ def _repo_dir(cwd: Path, answers: dict, kind: str) -> Path:
         if found:
             return found
     return cwd / f"hops-{_repo_prefix(answers['slug'])}"
+
+
+def _layer_repo(repo: Path, answers: dict) -> dict:
+    """What a layer's system.yaml records of its repository: the work tree's name, and the URL and provider of an existing one."""
+    record = {"name": repo.name}
+    if isinstance(answers.get("repo"), dict) and not answers["repo"].get(
+        "create", True
+    ):
+        record.update(repo_record(answers["repo"]))
+    return record
 
 
 def _copy_template(repo: Path, slug: str, template: Path) -> tuple[Path, dict]:
@@ -326,7 +339,7 @@ def _create(cwd: Path, answers: dict) -> Path:
     """Copy the silver template into ``cwd/<slug>`` and write the answers into its system.yaml."""
     repo = _repo_dir(cwd, answers, "silver")
     target, doc = _copy_template(repo, answers["slug"], TEMPLATE)
-    doc["layer"]["repo"] = {"name": repo.name}
+    doc["layer"]["repo"] = _layer_repo(repo, answers)
     cadence = answers.get("cadence", "daily")
     doc["layer"].update(
         name=answers.get("name") or answers["slug"],
@@ -435,7 +448,7 @@ def _create_gold(cwd: Path, answers: dict) -> Path:
     """Copy the gold template into ``cwd/<slug>`` and write the answers, with the first data mart, into its system.yaml."""
     repo = _repo_dir(cwd, answers, "gold")
     target, doc = _copy_template(repo, answers["slug"], GOLD_TEMPLATE)
-    doc["layer"]["repo"] = {"name": repo.name}
+    doc["layer"]["repo"] = _layer_repo(repo, answers)
     doc["layer"].update(
         name=answers.get("name") or answers["slug"],
         slug=answers["slug"],
@@ -491,7 +504,7 @@ def _create_bronze(cwd: Path, answers: dict) -> Path:
         dirs_exist_ok=True,
         ignore=shutil.ignore_patterns("bronze.yaml", "__pycache__", ".pytest_cache"),
     )
-    doc["layer"]["repo"] = {"name": repo.name}
+    doc["layer"]["repo"] = _layer_repo(repo, answers)
     doc["layer"].update(
         name=answers.get("name") or answers["slug"],
         slug=answers["slug"],

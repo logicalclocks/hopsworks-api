@@ -228,7 +228,7 @@ def test_the_uis_answers_leave_nothing_to_ask(tmp_path, monkeypatch, quiet):
             }
         ],
         app={"wanted": True, "kind": "dashboard", "description": "ops reads it"},
-        repo="new",
+        repo={"create": False, "url": "https://gitlab.com/acme/late-orders.git"},
         reference_code="https://github.com/acme/late-orders-demo",
         monitoring={"feature_logging": True, "watch": " drift in order value "},
     )
@@ -236,6 +236,10 @@ def test_the_uis_answers_leave_nothing_to_ask(tmp_path, monkeypatch, quiet):
     assert done.exit_code == 0, done.output
     assert "?" not in done.output.replace("Where should the code go?", "")
     doc = _doc(tmp_path / "late-orders")
+    assert doc["system"]["repo"] == {
+        "url": "https://gitlab.com/acme/late-orders.git",
+        "provider": "gitlab",
+    }
     req = doc["requirements"]
     assert req["reference_code"] == "https://github.com/acme/late-orders-demo"
     assert req["monitoring"] == {
@@ -262,7 +266,6 @@ def test_the_uis_answers_leave_nothing_to_ask(tmp_path, monkeypatch, quiet):
         "wanted": True,
         "status": "pending",
     }
-    assert doc["system"]["repo"] == {"url": "new"}
     assert doc["system"]["version"] == "0.1.0"
     assert quiet == [(tmp_path / "late-orders", "Late orders")]
 

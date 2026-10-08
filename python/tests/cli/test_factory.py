@@ -139,6 +139,39 @@ def test_answers_are_checked_as_the_form_checks_them():
     ]
 
 
+@pytest.mark.parametrize(
+    "url, provider",
+    [
+        ("https://github.com/acme/churn", "github"),
+        ("git@gitlab.example.com:acme/churn.git", "gitlab"),
+        ("https://user@bitbucket.org/acme/churn.git", "bitbucket"),
+        ("ssh://git@git.acme.internal/acme/churn", "git"),
+    ],
+)
+def test_an_existing_repository_is_recorded_with_its_provider(url, provider):
+    answer = {"create": False, "url": url}
+    assert factory_spec.repository_problems(answer, "Repo") == []
+    assert factory_spec.repo_record(answer) == {"url": url, "provider": provider}
+
+
+def test_a_new_repository_needs_no_url_and_an_existing_one_a_clean_url():
+    assert factory_spec.repo_record({"create": True}) == {
+        "url": "new",
+        "provider": "github",
+    }
+    assert factory_spec.repository_problems({"create": True}, "Repo") == []
+    for answer, problem in (
+        ({"create": False}, "give the URL"),
+        ({"create": False, "url": "churn"}, "is not a git repository URL"),
+        (
+            {"create": False, "url": "https://me:token@github.com/a/b"},
+            "password or token",
+        ),
+        ("yes", "must say whether"),
+    ):
+        assert problem in factory_spec.repository_problems(answer, "Repo")[0]
+
+
 @pytest.mark.parametrize("name", factory_spec.BUILTINS)
 def test_the_shipped_built_ins_are_valid(name):
     resources = (

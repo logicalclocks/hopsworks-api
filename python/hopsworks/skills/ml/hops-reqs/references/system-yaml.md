@@ -80,8 +80,10 @@ system:
   name: Telco churn call list
   slug: telco-churn
   target: {cluster: https://hopsworks.acme.internal, project: skillstest, stage: development}   # the autonomous path runs only against stage: development
-  repo: {url: https://github.com/acme/ml-systems, host: github.com, default_branch: main, branch: hops/telco-churn, pr: 12}
+  repo: {url: https://github.com/acme/ml-systems, provider: github, host: github.com, default_branch: main, branch: hops/telco-churn, pr: 12}
+  #     url: new until the build creates the GitHub repository; provider: github | gitlab | bitbucket | git, from the url
   #     push: ssh when gh is logged out and an SSH key pushes: no pr, a compare link instead (repo.md)
+  #     push: git on gitlab, bitbucket or another host: no pr, a merge request link instead (repo.md, Other git hosts)
   version: 0.2.0                      # this commit's version: 0.1.0 at first; after a release, the next one of its kind (repo.md, Releases)
   releases: [{version: 0.1.0, tag: v0.1.0, kind: initial, commit: 41c0f2e, at: 2026-09-23,
               url: https://github.com/acme/ml-systems/releases/tag/v0.1.0, notes: first release}]

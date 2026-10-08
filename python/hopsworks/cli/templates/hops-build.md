@@ -150,8 +150,11 @@ change after a release sets `system.version` to that next version in the same co
 
 ### Before reqs: the repository
 
-The interview created `<slug>/` from the system template and recorded `system.repo.url`: the
-current GitHub repository, or `new`. Follow `hops-reqs/references/repo.md`: GitHub access is any one
+The interview created `<slug>/` from the system template and recorded `system.repo`: `url: new`
+for a GitHub repository the build creates, or the `url` and `provider` (`github`, `gitlab`,
+`bitbucket` or `git`) of an existing repository the user gave. A `gitlab`, `bitbucket` or `git`
+provider follows **Other git hosts** in `hops-reqs/references/repo.md`: git alone, no `gh`, a
+merge request link in place of the pull request. For GitHub, follow `hops-reqs/references/repo.md`: GitHub access is any one
 of the `gh` login, a GitHub token from Hopsworks Account Settings (as `GH_TOKEN`), or an SSH
 key GitHub accepts. With only the SSH key there is no GitHub API: the user picks between adding
 a login or token and pushing to an existing repository they name (push-only: no pull request, a

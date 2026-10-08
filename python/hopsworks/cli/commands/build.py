@@ -21,6 +21,7 @@ from typing import Any
 
 import click
 from hopsworks.cli import output, session
+from hopsworks.cli.factory_spec import repo_record
 
 
 REFERENCES = (
@@ -456,7 +457,7 @@ def _apply_answers(system: _System, answers: dict) -> None:
             record["watch"] = watch
         system.put("requirements.monitoring", record)
     if answers.get("repo"):
-        system.put("system.repo", {"url": answers["repo"]})
+        system.put("system.repo", repo_record(answers["repo"]))
     if kind == "agent" and answers.get("llm") == "account":
         record = {
             "endpoint_env": LLM_VARS["url"],
@@ -701,7 +702,9 @@ def _realtime(ctx: click.Context, system: _System, prefetch: _Prefetch) -> None:
         [("10", ""), ("100", "recommended"), ("1000", ""), ("Other", "")],
         default=1,
     )
-    qps = rates[picked] if picked < 3 else click.prompt("Requests per second", type=float)
+    qps = (
+        rates[picked] if picked < 3 else click.prompt("Requests per second", type=float)
+    )
     system.put("requirements.sla", {"realtime": {"p99_ms": p99, "throughput_qps": qps}})
     system.save()
 

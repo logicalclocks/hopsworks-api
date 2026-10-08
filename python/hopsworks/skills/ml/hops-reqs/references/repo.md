@@ -1,8 +1,13 @@
 # The repository contract
 
-Everything `/hops-build` writes is code, and it lives in a GitHub repository from
-the first phase. GitHub is the only forge; a GitHub Enterprise host works
-through `gh`'s `GH_HOST`, recorded as `system.repo.host`.
+Everything `/hops-build` writes is code, and it lives in a git repository from
+the first phase. `system.repo` says which: `{url: new, provider: github}` for a
+GitHub repository the build creates (the Factory's **Create new GitHub repo**,
+checked), or `{url, provider}` for an existing repository the user gave, where
+`provider` is `github`, `gitlab`, `bitbucket` or `git` (any other host). A GitHub
+Enterprise host works through `gh`'s `GH_HOST`, recorded as `system.repo.host`.
+A repository on GitLab, Bitbucket or another host follows **Other git hosts**
+below instead of the GitHub steps.
 
 ## Before `reqs`
 
@@ -49,7 +54,9 @@ git remote get-url origin            # on GitHub?
 gh api user --jq .login              # the owner for a new repository (CLI login or token)
 ```
 
-- **Existing or new repository is the user's call**, asked with `AskUserQuestion`.
+- **Existing or new repository is the user's call.** A `system.repo.url` the
+  Factory recorded is that answer: `new`, or the URL to use. Without one, ask with
+  `AskUserQuestion`.
   Inside a work tree whose `origin` is on GitHub (outside a Hopsworks home), propose
   that repository with the system under `<repo>/<slug>/`. Otherwise, or when the user
   declines, a new repository whose root is the system directory, below. Never create
@@ -93,6 +100,39 @@ git switch -c hops/<slug>            # or hops/<slug>-<project>, above; an examp
   with the system at its root: `git init -b <default_branch>`, `git remote add origin
   <url>`, `git fetch origin <default_branch>`, `git reset origin/<default_branch>`
   (mixed: the index follows the remote, the files stay), then the branch.
+
+## Other git hosts
+
+A `system.repo.provider` of `gitlab`, `bitbucket` or `git` is a repository the user
+gave by URL. `gh` has nothing to do with it: the build pushes with git alone, as
+push-only over SSH does on GitHub, and opens no pull request itself.
+
+- **Access.** Check `git ls-remote <system.repo.url>` before `reqs`. It works with a
+  token for that host registered in Hopsworks (Account Settings, Git providers; a
+  terminal writes it to `~/.git-credentials` for HTTPS URLs) or an SSH key at
+  `<project home>/.ssh/id_rsa` the host accepts (for `git@` and `ssh://` URLs). When
+  it fails, stop and say which of the two fixes it for that URL. Never ask for a
+  token in the session or write one into the URL.
+- **Layout.** The system is the repository root, as a named repository in a
+  Hopsworks home is above: `git init -b <default_branch>`, `git remote add origin
+  <url>`, then `git fetch origin <default_branch>` and `git reset
+  origin/<default_branch>` when the repository has commits. An empty repository
+  takes the template's `.gitignore` and `AGENTS.md` as its first commit on `main`.
+- **Branches.** The rules of **Branches and commits** hold: `hops/<slug>`, or the
+  default branch for an example in a repository of its own. Record
+  `system.repo.branch` and `system.repo.push: git`.
+- **The merge request.** In place of `gh pr create`, report the link that opens one
+  for the branch, with the body written to a file the user can paste; there is no
+  Copilot round:
+
+| Provider | Link |
+| --- | --- |
+| `gitlab` | `https://<host>/<path>/-/merge_requests/new?merge_request[source_branch]=<branch>` |
+| `bitbucket` | `https://bitbucket.org/<workspace>/<repo>/pull-requests/new?source=<branch>` |
+| `git` | none: report the branch and the commit |
+
+- **Releases.** Tag `v<version>` and push the tag (`git push origin v<version>`);
+  record it in `system.releases` with the tag in place of a GitHub release URL.
 
 ## Branches and commits
 

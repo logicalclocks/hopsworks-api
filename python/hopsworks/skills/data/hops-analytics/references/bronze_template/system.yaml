@@ -9,7 +9,7 @@ layer:
   description: ""     # what the bronze tables hold
   lifecycle: dev      # dev | staging | prod, mirrored in each table's analytics_table tag
   status: draft       # draft | building | built | failed
-  repo: {}            # {name, url}: the analytics pipeline's repository, hops-<prefix>, shared with its silver and gold layers
+  repo: {}            # {name, url, provider}: the analytics pipeline's repository (provider github, gitlab, bitbucket or git), hops-<prefix>, shared with its silver and gold layers
 generator:            # the program that writes the bronze tables, copied from the hops-analytics references
   reference: ""       # the references/ directory it came from
   program: ""         # run by every job, with the job's args
