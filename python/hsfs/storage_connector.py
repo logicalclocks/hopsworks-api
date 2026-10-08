@@ -25,7 +25,6 @@ import warnings
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
-from urllib.parse import quote
 
 import humps
 from cryptography.hazmat.backends import default_backend
@@ -42,7 +41,7 @@ from hopsworks_common.core.opensearch_api import OPENSEARCH_CONFIG
 from hopsworks_common.core.rest_endpoint import RestEndpointConfig
 from hsfs import engine
 from hsfs.core import data_source as ds
-from hsfs.core import data_source_api, storage_connector_api
+from hsfs.core import data_source_api, elasticsearch_api, storage_connector_api
 
 
 if TYPE_CHECKING:
@@ -4046,6 +4045,7 @@ class ElasticsearchConnector(StorageConnector):
         self._default_index = default_index
         self._trust_store_path = trust_store_path
         self._trust_store_password = trust_store_password
+        self._elasticsearch_api = elasticsearch_api.ElasticsearchApi()
         self._arguments = (
             {opt["name"]: opt["value"] for opt in arguments}
             if isinstance(arguments, list)
@@ -4260,30 +4260,49 @@ class ElasticsearchConnector(StorageConnector):
             name = "f_" + name
         return name[: cls._FEATURE_NAME_MAX_LENGTH]
 
-    def _get_mapping(self, index: str) -> dict[str, Any]:
-        """Fetch the `_mapping` of every index behind `index` straight from the cluster."""
-        import requests
+    def _get_mapping(self, index: str, spark_options: dict[str, Any]) -> dict[str, Any]:
+        """Fetch the `_mapping` of every index behind `index`, connecting as the Spark reader does.
 
-        opts = self.connector_options()
-        headers = {"Accept": "application/json"}
-        if "api_key" in opts:
-            headers["Authorization"] = f"ApiKey {opts['api_key']}"
-        verify = (
-            False if opts.get("verify_certs") is False else opts.get("ca_certs", True)
+        The address, path prefix, headers and credentials come from `spark_options`, so overrides passed to the read apply here too.
+        """
+        node = str(spark_options.get("es.nodes") or self._host).split(",")[0].strip()
+        ssl = str(spark_options.get("es.net.ssl", "true")).lower() == "true"
+        if "://" not in node:
+            has_port = re.search(r"(^[^:]*|\])(:\d+)$", node) is not None
+            if not has_port:
+                port = spark_options.get("es.port") or 9200
+                node = (
+                    f"[{node}]:{port}"
+                    if ":" in node and not node.startswith("[")
+                    else f"{node}:{port}"
+                )
+            node = f"{'https' if ssl else 'http'}://{node}"
+        prefix = str(spark_options.get("es.nodes.path.prefix") or "").strip("/")
+        base_url = node.rstrip("/") + (f"/{prefix}" if prefix else "")
+        user = spark_options.get("es.net.http.auth.user")
+        headers = {
+            key[len("es.net.http.header.") :]: str(value)
+            for key, value in spark_options.items()
+            if key.startswith("es.net.http.header.")
+        }
+        verify: bool | str = True
+        if (
+            ssl
+            and str(
+                spark_options.get("es.net.ssl.cert.allow.self.signed", "false")
+            ).lower()
+            == "true"
+        ):
+            verify = False
+        elif ssl:
+            verify = self._create_ca_certs() or True
+        return self._elasticsearch_api._get_mapping(
+            base_url,
+            index,
+            (user, spark_options.get("es.net.http.auth.pass")) if user else None,
+            headers,
+            verify,
         )
-        response = requests.get(
-            f"{opts['hosts'][0]}/{quote(index, safe='*,:-_.')}/_mapping",
-            auth=opts.get("basic_auth"),
-            headers=headers,
-            verify=verify,
-            timeout=60,
-        )
-        if response.status_code >= 300:
-            raise FeatureStoreException(
-                f"Elasticsearch returned HTTP {response.status_code} for the mapping of '{index}': "
-                f"{response.text[:500]}"
-            )
-        return response.json()
 
     @staticmethod
     def _object_paths(mapping_response: dict[str, Any]) -> set[str]:
@@ -4330,8 +4349,11 @@ class ElasticsearchConnector(StorageConnector):
                 is_array = isinstance(data_type, ArrayType)
                 element = data_type.elementType if is_array else data_type
                 # Spark nests one array level per array crossed; the Query Service returns one flat list.
+                # flatten() is null when any inner array is, so an element missing the field is dropped first.
                 if in_array and is_array:
-                    column = F.flatten(column)
+                    column = F.flatten(
+                        F.filter(column, lambda inner: inner.isNotNull())
+                    )
                 if path in object_paths and isinstance(element, StructType):
                     visit(element.fields, parts, column, in_array or is_array)
                     continue
@@ -4411,7 +4433,7 @@ class ElasticsearchConnector(StorageConnector):
             self, self.ELASTICSEARCH_FORMAT, merged, None, "spark"
         )
         dataframe = self._flatten_columns(
-            dataframe, self._object_paths(self._get_mapping(index))
+            dataframe, self._object_paths(self._get_mapping(index, merged))
         )
         return engine._get_instance()._return_dataframe_type(dataframe, dataframe_type)
 

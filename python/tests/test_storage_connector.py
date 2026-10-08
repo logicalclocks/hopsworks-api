@@ -3047,6 +3047,29 @@ class TestElasticsearchConnector:
         assert row["users_groups_name"] == ["g1", "g2", "g3"]
         assert row["users_groups_tags"] == ["x", "y", "z", "w"]
 
+    def test_spark_flattening_keeps_values_when_an_element_lacks_the_array(self):
+        pytest.importorskip("pyspark")
+        from pyspark.sql.types import ArrayType, StringType, StructField, StructType
+
+        session = spark.Engine()._spark_session
+        schema = StructType(
+            [
+                StructField(
+                    "users",
+                    ArrayType(
+                        StructType([StructField("tags", ArrayType(StringType()))])
+                    ),
+                )
+            ]
+        )
+        dataframe = session.createDataFrame([([(["x"],), (None,)],), (None,)], schema)
+
+        flat = storage_connector.ElasticsearchConnector._flatten_columns(
+            dataframe, {"users"}
+        )
+
+        assert [row["users_tags"] for row in flat.collect()] == [["x"], None]
+
     def test_object_paths_follow_the_query_service_flattening(self):
         mapping = {
             "a": {
@@ -3080,30 +3103,76 @@ class TestElasticsearchConnector:
 
         assert paths == {"user", "org", "org.unit"}
 
-    def test_get_mapping_authenticates_and_verifies_like_the_client(self, mocker):
+    def test_get_mapping_connects_as_the_spark_reader(self, mocker):
         response = mocker.Mock(status_code=200)
         response.json.return_value = {"events": {"mappings": {}}}
         mock_get = mocker.patch("requests.get", return_value=response)
         sc = self._connector(auth_type="API_KEY", api_key="k==", verify=False)
+        options = {
+            **sc.spark_options(),
+            "es.nodes.path.prefix": "/es/",
+            "es.net.http.header.X-Tenant": "t1",
+        }
 
-        assert sc._get_mapping("logs-*,other") == {"events": {"mappings": {}}}
+        assert sc._get_mapping("logs-*,other", options) == {"events": {"mappings": {}}}
 
         assert (
             mock_get.call_args.args[0]
-            == "https://es.example.com:9200/logs-*,other/_mapping"
+            == "https://es.example.com:9200/es/logs-*,other/_mapping"
         )
-        assert mock_get.call_args.kwargs["headers"]["Authorization"] == "ApiKey k=="
+        headers = mock_get.call_args.kwargs["headers"]
+        assert headers["Authorization"] == "ApiKey k=="
+        assert headers["X-Tenant"] == "t1"
         assert mock_get.call_args.kwargs["verify"] is False
         assert mock_get.call_args.kwargs["auth"] is None
+
+    @pytest.mark.parametrize(
+        "nodes,port,ssl,url",
+        [
+            ("es.example.com", "9243", "true", "https://es.example.com:9243"),
+            (
+                "a.example.com:9300,b.example.com",
+                "9200",
+                "false",
+                "http://a.example.com:9300",
+            ),
+            ("::1", "9200", "false", "http://[::1]:9200"),
+            ("[::1]:9201", "9200", "false", "http://[::1]:9201"),
+            ("https://proxy.example.com", "9200", "true", "https://proxy.example.com"),
+        ],
+    )
+    def test_get_mapping_resolves_the_spark_node_address(
+        self, mocker, nodes, port, ssl, url
+    ):
+        mock_api = mocker.patch.object(
+            storage_connector.elasticsearch_api.ElasticsearchApi, "_get_mapping"
+        )
+        sc = self._connector(username="u", password="p")
+
+        sc._get_mapping(
+            "events",
+            {
+                "es.nodes": nodes,
+                "es.port": port,
+                "es.net.ssl": ssl,
+                "es.net.http.auth.user": "u",
+                "es.net.http.auth.pass": "p",
+            },
+        )
+
+        base_url, index, auth, headers, verify = mock_api.call_args.args
+        assert (base_url, index, auth, headers) == (url, "events", ("u", "p"), {})
+        assert verify is True
 
     def test_get_mapping_reports_the_cluster_error(self, mocker):
         mocker.patch(
             "requests.get",
             return_value=mocker.Mock(status_code=404, text="index_not_found"),
         )
+        sc = self._connector(username="u", password="p")
 
         with pytest.raises(FeatureStoreException, match="HTTP 404.*index_not_found"):
-            self._connector(username="u", password="p")._get_mapping("missing")
+            sc._get_mapping("missing", sc.spark_options())
 
     def test_spark_truststore_is_a_url_every_executor_resolves(self, mocker):
         mock_engine = mocker.Mock()
