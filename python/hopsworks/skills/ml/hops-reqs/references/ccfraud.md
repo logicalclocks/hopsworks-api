@@ -22,7 +22,7 @@ directory outside the system:
 
 ```bash
 git clone -q https://github.com/featurestorebook/mlfs-book /tmp/mlfs-book
-git -C /tmp/mlfs-book checkout -q 4ee4d26e0408ddf6c89ac459919aa811dab96dff
+git -C /tmp/mlfs-book checkout -q 23509a956f1b35b8eef0d9598152520d6bb26f66
 cp -r /tmp/mlfs-book/ccfraud/ccfraud <slug>/ccfraud      # the package: generator, pipelines, features/
 cp -r /tmp/mlfs-book/ccfraud/app <slug>/app
 cp <this directory>/ccfraud/{train_fraud.py,predictor.py} <slug>/ccfraud/
@@ -86,7 +86,8 @@ latest window online. Then two jobs run until stopped: the streaming job reads
 the transactions' Kafka topic and writes `cc_trans_aggs_fg` every minute (1-hour
 windows sliding by one minute, online at most ~3 minutes old), and the
 transaction generator writes 100 transactions a minute with fraud at the same
-rate. Run the backfill before the streaming job, which needs the feature group
+rate. The streaming job keeps its state in 4 shuffle partitions, fixed when its
+checkpoint is first written. Run the backfill before the streaming job, which needs the feature group
 it creates. Every feature group has statistics off, so no insert starts a Spark
 statistics job. Record each group in `data.<source>.writes` and both running
 jobs in `features.jobs`.
@@ -135,7 +136,8 @@ Deploy `<slug>/app/` as **hops-app** says, in `python-agent-pipeline`. The page
 shows the project, the entity counts, the deployment's state (with a Start
 button) and whether the two streaming jobs run. A form generates a batch of
 transactions for real cards and merchants, injects chain attacks at the chosen
-fraud rate, writes them to `credit_card_transactions` (and so through Kafka into
-the streaming job) when asked, and scores each with the deployment: metric tiles
+fraud rate, and scores each with the deployment. With "Write transactions to
+feature group" checked (it starts unchecked) it also writes them to
+`credit_card_transactions`, and so through Kafka into the streaming job: metric tiles
 for the predicted and the injected fraud caught, the transactions with predicted
 fraud highlighted, and each card's live window features.
