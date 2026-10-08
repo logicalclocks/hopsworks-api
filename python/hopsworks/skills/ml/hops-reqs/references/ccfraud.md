@@ -36,8 +36,19 @@ its own: pass `hops job deploy` the script's HopsFS path,
 `hdfs:///Projects/<project>/<the system directory below /hopsfs/>/ccfraud/<script>`,
 never the local file, which `hops job deploy` would upload alone to
 `Resources/jobs/<name>`. In `app/app.py` set `DEPLOYMENT` to the deployment's
-name and `JOBS` to `["<slug>-streaming-aggs", "<slug>-transactions"]`. Change
-nothing else: the code is tested as it is. The feature group, feature view and
+name and `JOBS` to `["<slug>-streaming-aggs", "<slug>-transactions"]`. The page
+names them too, and finds each job's row by an id made of its name, so rename
+them in `app/static/index.html` as well:
+
+```bash
+sed -i -e 's/ccfraud-streaming-aggs/<slug>-streaming-aggs/g' \
+  -e 's/ccfraud-transactions/<slug>-transactions/g' \
+  -e 's|<strong>ccfraud</strong>|<strong><deployment></strong>|' \
+  -e 's|<span class="name">ccfraud</span>|<span class="name"><deployment></span>|' \
+  <slug>/app/static/index.html
+```
+
+Change nothing else: the code is tested as it is. The feature group, feature view and
 model names are fixed, which the deployment and the app read, so a project holds
 one fraud example.
 
