@@ -85,7 +85,7 @@ print(deployment.predict(inputs={"prompt": "hello"}))
 # After editing the code: re-create, then deployment.restart()
 ```
 
-An agent scales like a model deployment: pass `scaling_configuration=PredictorScalingConfig(...)` to `deploy_agent` (instances, the metric and its target; `min_instances=0` rests at zero when idle and wakes on the first request). The choices and their rules are in [hops-autoscaling](../../scaling/hops-autoscaling/SKILL.md).
+An agent scales like a model deployment: pass `scaling_configuration=PredictorScalingConfig(...)` to `deploy_agent` (instances, the metric and its target; `min_instances=0` rests at zero when idle and wakes on the first request, the SDK's default minimum being 1). The choices and their rules are in [hops-autoscaling](../../scaling/hops-autoscaling/SKILL.md).
 
 ### Git-backed Agents
 

@@ -569,9 +569,9 @@ class ComponentScalingConfig(ABC):
         """Which autoscaler runs the scale metric of a KServe Standard-mode component.
 
         `HPA` is KServe's own HorizontalPodAutoscaler, `KEDA` a KEDA ScaledObject (needs KEDA installed in the cluster).
-        `CPU` and `MEMORY` run under either; the vLLM engine metrics only under `KEDA`.
-        Unset means the backend default: `KEDA` for an engine metric, `HPA` otherwise. Cleared with the metric when
-        `min_instances == max_instances`, and rejected for Knative deployments.
+        `CPU` and `MEMORY` run under either; the vLLM engine metrics and the request metrics only under `KEDA`.
+        Unset means the backend default: `KEDA` wherever it is installed, `HPA` otherwise.
+        Cleared with the metric when `min_instances == max_instances`, and rejected for Knative deployments.
         """
         return self._autoscaler
 
@@ -584,8 +584,9 @@ class ComponentScalingConfig(ABC):
     def scale_down_stabilization_window_seconds(self) -> int | None:
         """KEDA only: seconds (0-3600) the metric must stay below target before instances are removed.
 
-        Unset means the cluster default (300 s). GPU-bound LLM replicas are slow to bring back, so a long
-        window avoids churn; rejected with KServe's HPA, which ignores it.
+        Unset means the cluster default (300 s).
+        GPU-bound LLM replicas are slow to bring back, so a long window avoids churn.
+        Rejected with KServe's HPA, which ignores it.
         """
         return self._scale_down_stabilization_window_seconds
 
@@ -611,11 +612,11 @@ class ComponentScalingConfig(ABC):
     def idle_scale_to_zero(self) -> bool | None:
         """Standard mode only: whether the deployment scales to zero when idle (`min_instances=0`).
 
-        Setting it to `True` sets the minimum to 0; the backend reports `True` whenever the minimum is 0. The
-        KEDA HTTP add-on holds the first request until an instance is ready, so the deployment stays reachable
-        at zero. Needs KEDA installed and the `KEDA` autoscaler, a predictor without a transformer; Knative mode
-        scales to zero on its own with `min_instances=0`. An LLM deployment reloads its model on every wake: the
-        first request after an idle period takes as long as a cold start.
+        Setting it to `True` sets the minimum to 0; the backend reports `True` whenever the minimum is 0.
+        The KEDA HTTP add-on holds the first request until an instance is ready, so the deployment stays reachable at zero.
+        Needs KEDA installed and the `KEDA` autoscaler, and a predictor without a transformer.
+        Knative mode scales to zero on its own with `min_instances=0`.
+        An LLM deployment reloads its model on every wake: the first request after an idle period takes as long as a cold start.
         """
         return self._idle_scale_to_zero
 
@@ -692,10 +693,10 @@ class ComponentScalingConfig(ABC):
     def min_instances(self) -> int:
         """Minimum number of instances to scale to.
 
-        0 means scale to zero when idle: KServe Knative deployments through their own autoscaler (the cluster may
-        require it), KServe Standard deployments through the KEDA HTTP add-on, which holds the first request
-        until an instance is ready and runs one instance while active. In Standard mode it needs KEDA installed
-        and a predictor without a transformer. Defaults to 0 wherever the deployment can scale to zero, otherwise 1.
+        0 means scale to zero when idle: KServe Knative deployments through their own autoscaler (the cluster may require it), KServe Standard deployments through the KEDA HTTP add-on, which holds the first request until an instance is ready and runs one instance while active.
+        In Standard mode it needs KEDA installed and a predictor without a transformer.
+        Through the SDK the minimum defaults to 1 (`resources.num_instances`), so scale to zero is opt-in: set it to 0.
+        The UI defaults a new deployment to 0 where KEDA is installed.
         """
         return self._min_instances
 

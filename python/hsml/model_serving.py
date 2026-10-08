@@ -339,7 +339,7 @@ class ModelServing:
             knative_mode: Whether to deploy in KServe Knative mode.
                 `None` (default) lets the backend decide: a new deployment runs in Standard mode, Knative is the opt-in; on an update, `None` keeps the deployment's current mode.
                 Standard mode autoscales between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum, under KEDA wherever it is installed and KServe's HPA otherwise), and runs a fixed replica count without autoscaler when `min_instances == max_instances` (the default for LLM deployments).
-                A predictor without a transformer scales to zero when idle with `min_instances=0`, its default where KEDA is installed; see [`PredictorScalingConfig`][hsml.scaling_config.PredictorScalingConfig].
+                A predictor without a transformer scales to zero when idle with `min_instances=0`; the SDK sends a minimum of 1 unless you set it (the UI defaults a new deployment to 0 where KEDA is installed); see [`PredictorScalingConfig`][hsml.scaling_config.PredictorScalingConfig].
 
         Returns:
             The predictor metadata object.
@@ -579,7 +579,7 @@ class ModelServing:
             knative_mode: Whether to deploy in KServe Knative mode.
                 `None` (default) lets the backend decide: a new deployment runs in Standard mode, Knative is the opt-in; on an update, `None` keeps the deployment's current mode.
                 Standard mode autoscales between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum, under KEDA wherever it is installed and KServe's HPA otherwise), and runs a fixed replica count without autoscaler when `min_instances == max_instances` (the default for LLM deployments).
-                A predictor without a transformer scales to zero when idle with `min_instances=0`, its default where KEDA is installed; see [`PredictorScalingConfig`][hsml.scaling_config.PredictorScalingConfig].
+                A predictor without a transformer scales to zero when idle with `min_instances=0`; the SDK sends a minimum of 1 unless you set it (the UI defaults a new deployment to 0 where KEDA is installed); see [`PredictorScalingConfig`][hsml.scaling_config.PredictorScalingConfig].
 
         Returns:
             The predictor metadata object.
@@ -687,7 +687,7 @@ class ModelServing:
             knative_mode: Whether to deploy in KServe Knative mode.
                 `None` (default) lets the backend decide: a new deployment runs in Standard mode, Knative is the opt-in; on an update, `None` keeps the deployment's current mode.
                 Standard mode autoscales between `min_instances` and `max_instances` (default: CPU at 80% up to the cluster maximum, under KEDA wherever it is installed and KServe's HPA otherwise), and runs a fixed replica count without autoscaler when `min_instances == max_instances` (the default for LLM deployments).
-                A predictor without a transformer scales to zero when idle with `min_instances=0`, its default where KEDA is installed; see [`PredictorScalingConfig`][hsml.scaling_config.PredictorScalingConfig].
+                A predictor without a transformer scales to zero when idle with `min_instances=0`; the SDK sends a minimum of 1 unless you set it (the UI defaults a new deployment to 0 where KEDA is installed); see [`PredictorScalingConfig`][hsml.scaling_config.PredictorScalingConfig].
 
         Returns:
             The deployment metadata object.
