@@ -19,6 +19,7 @@ import os
 from pathlib import WindowsPath
 
 import pytest
+from hopsworks_common.client.exceptions import FeatureStoreException
 from hsfs import engine, storage_connector
 from hsfs.engine import python, spark
 from hsfs.storage_connector import BigQueryConnector
@@ -2861,7 +2862,10 @@ class TestElasticsearchConnector:
         mocker.patch.object(
             storage_connector.ElasticsearchConnector,
             "_flatten_columns",
-            side_effect=lambda df: df,
+            side_effect=lambda df, paths: df,
+        )
+        mocker.patch.object(
+            storage_connector.ElasticsearchConnector, "_get_mapping", return_value={}
         )
 
         self._connector(default_index="events").read('{"term": {"status": "ok"}}')
@@ -2928,7 +2932,9 @@ class TestElasticsearchConnector:
         dataframe = spark.Engine()._spark_session.createDataFrame([], schema)
 
         with pytest.raises(ValueError, match="both map to feature name 'user_name'"):
-            storage_connector.ElasticsearchConnector._flatten_columns(dataframe)
+            storage_connector.ElasticsearchConnector._flatten_columns(
+                dataframe, {"user"}
+            )
 
     def test_a_basic_info_connector_is_refetched_keeping_the_chosen_index(self, mocker):
         sc = self._connector(host=None, default_index="events")
@@ -2952,6 +2958,7 @@ class TestElasticsearchConnector:
         pytest.importorskip("pyspark")
         from pyspark.sql.types import (
             ArrayType,
+            DoubleType,
             LongType,
             StringType,
             StructField,
@@ -2966,15 +2973,147 @@ class TestElasticsearchConnector:
                 StructField(
                     "items", ArrayType(StructType([StructField("sku", StringType())]))
                 ),
+                StructField(
+                    "location",
+                    StructType(
+                        [
+                            StructField("lat", DoubleType()),
+                            StructField("lon", DoubleType()),
+                        ]
+                    ),
+                ),
             ]
         )
         dataframe = session.createDataFrame(
-            [("2026-01-01", (7,), [("a",), ("b",)])], schema
+            [("2026-01-01", (7,), [("a",), ("b",)], (1.5, 2.5))], schema
         )
 
-        flat = storage_connector.ElasticsearchConnector._flatten_columns(dataframe)
+        # items is mapped nested and location geo_point: neither is an object the Query Service flattens.
+        flat = storage_connector.ElasticsearchConnector._flatten_columns(
+            dataframe, {"user"}
+        )
 
-        assert flat.columns == ["timestamp", "user_id", "items"]
+        assert flat.columns == ["timestamp", "user_id", "items", "location"]
         row = flat.collect()[0]
         assert row["user_id"] == 7
         assert row["items"] == '[{"sku":"a"},{"sku":"b"}]'
+        assert row["location"] == '{"lat":1.5,"lon":2.5}'
+
+    def test_spark_flattening_turns_object_arrays_into_leaf_arrays(self):
+        pytest.importorskip("pyspark")
+        from pyspark.sql.types import ArrayType, StringType, StructField, StructType
+
+        session = spark.Engine()._spark_session
+        group = StructType(
+            [
+                StructField("name", StringType()),
+                StructField("tags", ArrayType(StringType())),
+            ]
+        )
+        schema = StructType(
+            [
+                StructField(
+                    "users",
+                    ArrayType(
+                        StructType(
+                            [
+                                StructField("name", StringType()),
+                                StructField("groups", ArrayType(group)),
+                            ]
+                        )
+                    ),
+                )
+            ]
+        )
+        dataframe = session.createDataFrame(
+            [
+                (
+                    [
+                        ("a", [("g1", ["x"]), ("g2", ["y", "z"])]),
+                        ("b", [("g3", ["w"])]),
+                    ],
+                )
+            ],
+            schema,
+        )
+
+        flat = storage_connector.ElasticsearchConnector._flatten_columns(
+            dataframe, {"users", "users.groups"}
+        )
+
+        assert flat.columns == ["users_name", "users_groups_name", "users_groups_tags"]
+        row = flat.collect()[0]
+        assert row["users_name"] == ["a", "b"]
+        assert row["users_groups_name"] == ["g1", "g2", "g3"]
+        assert row["users_groups_tags"] == ["x", "y", "z", "w"]
+
+    def test_object_paths_follow_the_query_service_flattening(self):
+        mapping = {
+            "a": {
+                "mappings": {
+                    "properties": {
+                        "user": {"properties": {"name": {"type": "keyword"}}},
+                        "items": {
+                            "type": "nested",
+                            "properties": {"sku": {"type": "keyword"}},
+                        },
+                        "location": {"type": "geo_point"},
+                        "meta": {"type": "object"},
+                    }
+                }
+            },
+            "b": {
+                "mappings": {
+                    "properties": {
+                        "org": {
+                            "type": "object",
+                            "properties": {
+                                "unit": {"properties": {"id": {"type": "long"}}}
+                            },
+                        }
+                    }
+                }
+            },
+        }
+
+        paths = storage_connector.ElasticsearchConnector._object_paths(mapping)
+
+        assert paths == {"user", "org", "org.unit"}
+
+    def test_get_mapping_authenticates_and_verifies_like_the_client(self, mocker):
+        response = mocker.Mock(status_code=200)
+        response.json.return_value = {"events": {"mappings": {}}}
+        mock_get = mocker.patch("requests.get", return_value=response)
+        sc = self._connector(auth_type="API_KEY", api_key="k==", verify=False)
+
+        assert sc._get_mapping("logs-*,other") == {"events": {"mappings": {}}}
+
+        assert (
+            mock_get.call_args.args[0]
+            == "https://es.example.com:9200/logs-*,other/_mapping"
+        )
+        assert mock_get.call_args.kwargs["headers"]["Authorization"] == "ApiKey k=="
+        assert mock_get.call_args.kwargs["verify"] is False
+        assert mock_get.call_args.kwargs["auth"] is None
+
+    def test_get_mapping_reports_the_cluster_error(self, mocker):
+        mocker.patch(
+            "requests.get",
+            return_value=mocker.Mock(status_code=404, text="index_not_found"),
+        )
+
+        with pytest.raises(FeatureStoreException, match="HTTP 404.*index_not_found"):
+            self._connector(username="u", password="p")._get_mapping("missing")
+
+    def test_spark_truststore_is_a_url_every_executor_resolves(self, mocker):
+        mock_engine = mocker.Mock()
+        mock_engine._add_file_as_url.return_value = "file:.hopsworks-ab-ts.jks"
+        mocker.patch("hsfs.engine._get_instance", return_value=mock_engine)
+        sc = self._connector(trust_store_path="/Projects/p/Resources/ts.jks")
+
+        options = sc.spark_options()
+
+        mock_engine._add_file_as_url.assert_called_once_with(
+            "/Projects/p/Resources/ts.jks"
+        )
+        assert options["es.net.ssl.truststore.location"] == "file:.hopsworks-ab-ts.jks"

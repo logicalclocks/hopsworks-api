@@ -25,6 +25,7 @@ import warnings
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
+from urllib.parse import quote
 
 import humps
 from cryptography.hazmat.backends import default_backend
@@ -4227,7 +4228,7 @@ class ElasticsearchConnector(StorageConnector):
             opts["es.net.ssl.cert.allow.self.signed"] = "true"
         elif self._trust_store_path:
             opts["es.net.ssl.truststore.location"] = (
-                "file://" + engine._get_instance()._add_file(self._trust_store_path)
+                engine._get_instance()._add_file_as_url(self._trust_store_path)
             )
             if self._trust_store_password:
                 opts["es.net.ssl.truststore.pass"] = self._trust_store_password
@@ -4259,11 +4260,55 @@ class ElasticsearchConnector(StorageConnector):
             name = "f_" + name
         return name[: cls._FEATURE_NAME_MAX_LENGTH]
 
-    @classmethod
-    def _flatten_columns(cls, dataframe: Any) -> Any:
-        """Flatten object fields into one column per leaf, named as the Query Service names them.
+    def _get_mapping(self, index: str) -> dict[str, Any]:
+        """Fetch the `_mapping` of every index behind `index` straight from the cluster."""
+        import requests
 
-        Arrays of objects (`nested` fields) become JSON strings, as the Query Service returns them.
+        opts = self.connector_options()
+        headers = {"Accept": "application/json"}
+        if "api_key" in opts:
+            headers["Authorization"] = f"ApiKey {opts['api_key']}"
+        verify = (
+            False if opts.get("verify_certs") is False else opts.get("ca_certs", True)
+        )
+        response = requests.get(
+            f"{opts['hosts'][0]}/{quote(index, safe='*,:-_.')}/_mapping",
+            auth=opts.get("basic_auth"),
+            headers=headers,
+            verify=verify,
+            timeout=60,
+        )
+        if response.status_code >= 300:
+            raise FeatureStoreException(
+                f"Elasticsearch returned HTTP {response.status_code} for the mapping of '{index}': "
+                f"{response.text[:500]}"
+            )
+        return response.json()
+
+    @staticmethod
+    def _object_paths(mapping_response: dict[str, Any]) -> set[str]:
+        """Return the dotted paths mapped as objects with properties in any index, which the Query Service flattens.
+
+        Every other field, `nested` and `geo_point` included, is one feature even when Spark reads it as a struct.
+        """
+        paths: set[str] = set()
+
+        def visit(properties, prefix):
+            for field, spec in properties.items():
+                if "properties" in spec and spec.get("type", "object") == "object":
+                    paths.add(prefix + field)
+                    visit(spec["properties"], prefix + field + ".")
+
+        for index_mapping in mapping_response.values():
+            visit((index_mapping.get("mappings") or {}).get("properties") or {}, "")
+        return paths
+
+    @classmethod
+    def _flatten_columns(cls, dataframe: Any, object_paths: set[str]) -> Any:
+        """Flatten object fields into one column per leaf, named and shaped as the Query Service returns them.
+
+        An object field holding an array of objects gives one array column per leaf, and arrays met along the way are concatenated into one list.
+        Any other struct or array of structs, such as a `nested` or `geo_point` field, becomes a JSON string.
         """
         from pyspark.sql import functions as F
         from pyspark.sql.types import ArrayType, StructType
@@ -4271,30 +4316,37 @@ class ElasticsearchConnector(StorageConnector):
         columns = []
         sources: dict[str, str] = {}
 
-        def visit(fields, parents):
+        def visit(fields, parents, parent, in_array):
+            # parent is a struct column, or an array of structs once an array has been crossed.
             for field in fields:
                 parts = [*parents, field.name]
-                column = F.col(
-                    ".".join("`" + p.replace("`", "``") + "`" for p in parts)
+                path = ".".join(parts)
+                column = (
+                    F.col("`" + field.name.replace("`", "``") + "`")
+                    if parent is None
+                    else parent.getField(field.name)
                 )
-                name = cls._to_feature_name(".".join(parts))
-                if isinstance(field.dataType, StructType):
-                    visit(field.dataType.fields, parts)
+                data_type = field.dataType
+                is_array = isinstance(data_type, ArrayType)
+                element = data_type.elementType if is_array else data_type
+                # Spark nests one array level per array crossed; the Query Service returns one flat list.
+                if in_array and is_array:
+                    column = F.flatten(column)
+                if path in object_paths and isinstance(element, StructType):
+                    visit(element.fields, parts, column, in_array or is_array)
                     continue
+                name = cls._to_feature_name(path)
                 if name in sources:
                     raise ValueError(
-                        f"Elasticsearch fields '{sources[name]}' and '{'.'.join(parts)}' both map to "
+                        f"Elasticsearch fields '{sources[name]}' and '{path}' both map to "
                         f"feature name '{name}'; rename one of the fields in Elasticsearch"
                     )
-                sources[name] = ".".join(parts)
-                if isinstance(field.dataType, ArrayType) and isinstance(
-                    field.dataType.elementType, StructType
-                ):
-                    columns.append(F.to_json(column).alias(name))
-                else:
-                    columns.append(column.alias(name))
+                sources[name] = path
+                if isinstance(element, StructType):
+                    column = F.to_json(column)
+                columns.append(column.alias(name))
 
-        visit(dataframe.schema.fields, [])
+        visit(dataframe.schema.fields, [], None, False)
         return dataframe.select(*columns)
 
     @public
@@ -4358,7 +4410,9 @@ class ElasticsearchConnector(StorageConnector):
         dataframe = engine._get_instance()._read(
             self, self.ELASTICSEARCH_FORMAT, merged, None, "spark"
         )
-        dataframe = self._flatten_columns(dataframe)
+        dataframe = self._flatten_columns(
+            dataframe, self._object_paths(self._get_mapping(index))
+        )
         return engine._get_instance()._return_dataframe_type(dataframe, dataframe_type)
 
 
