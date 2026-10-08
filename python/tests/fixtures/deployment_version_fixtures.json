@@ -1,0 +1,96 @@
+{
+  "get_versions": {
+    "response": {
+      "count": 2,
+      "items": [
+        {
+          "version": 2,
+          "active": true,
+          "created": "2026-09-29T10:00:00Z",
+          "createdBy": "Ada Lovelace",
+          "updated": null,
+          "updatedBy": null,
+          "modelPath": "/Projects/p/Models/m",
+          "modelName": "m",
+          "modelVersion": 1,
+          "modelFramework": "PYTHON",
+          "modelServer": "PYTHON",
+          "predictor": "predictor.py",
+          "configFile": null,
+          "predictorResources": {
+            "requests": {
+              "cores": 1,
+              "memory": 1024,
+              "gpus": 0
+            }
+          },
+          "predictorScalingConfig": {
+            "minInstances": 1
+          },
+          "predictorEnvVars": [
+            "A=1"
+          ],
+          "predictorEnvironmentId": 3,
+          "transformer": "transformer.py",
+          "transformerResources": null,
+          "transformerScalingConfig": null,
+          "transformerEnvVars": null,
+          "transformerEnvironmentId": null,
+          "gitUrl": null,
+          "gitBranch": null,
+          "gitProvider": null,
+          "gitAutoRedeploy": false,
+          "gitCurrentCommit": null,
+          "vllmVariant": null,
+          "vllmImageTag": null,
+          "tracing": null,
+          "featureLogging": null
+        },
+        {
+          "version": 1,
+          "active": false,
+          "created": "2026-09-28T10:00:00Z",
+          "createdBy": "Ada Lovelace",
+          "updated": "2026-09-28T12:00:00Z",
+          "updatedBy": "Ada Lovelace",
+          "modelPath": "/Projects/p/Models/m",
+          "modelName": "m",
+          "modelVersion": 1,
+          "modelFramework": "PYTHON",
+          "modelServer": "PYTHON",
+          "predictor": "predictor.py",
+          "configFile": null,
+          "predictorResources": null,
+          "predictorScalingConfig": null,
+          "predictorEnvVars": null,
+          "predictorEnvironmentId": 3,
+          "transformer": null,
+          "transformerResources": null,
+          "transformerScalingConfig": null,
+          "transformerEnvVars": null,
+          "transformerEnvironmentId": null,
+          "gitUrl": null,
+          "gitBranch": null,
+          "gitProvider": null,
+          "gitAutoRedeploy": false,
+          "gitCurrentCommit": null,
+          "vllmVariant": null,
+          "vllmImageTag": null,
+          "tracing": null,
+          "featureLogging": null
+        }
+      ]
+    }
+  },
+  "get_version": {
+    "response": {
+      "version": 3,
+      "active": true,
+      "created": "2026-09-29T10:00:00Z",
+      "createdBy": "Ada Lovelace",
+      "modelName": "m",
+      "modelVersion": 1,
+      "predictor": "predictor.py"
+    }
+  }
+}
