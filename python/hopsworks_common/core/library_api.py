@@ -82,3 +82,80 @@ class LibraryApi:
 
         headers = {"content-type": "application/json"}
         _client._send_request("DELETE", path_params, headers=headers)
+
+    def _install_npm(self, name: str, request: dict) -> list[library.Library]:
+        """Install npm packages in the environment as one image build.
+
+        Parameters:
+            name: Name of the environment.
+            request: The install request: ``{"packages": [...], "flags": [...]}``.
+
+        Returns:
+            One library object per package, in request order.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        _client = client._get_instance()
+        path_params = self._npm_path(_client, name, "install")
+        headers = {"content-type": "application/json"}
+        response = _client._send_request(
+            "POST", path_params, headers=headers, data=json.dumps(request)
+        )
+        return [
+            library.Library.from_response_json(item, environment=self)
+            for item in (response or {}).get("items", []) or []
+        ]
+
+    def _resolve_npm(self, name: str, request: dict) -> dict:
+        """Resolve a package.json's dependencies to exact versions.
+
+        Parameters:
+            name: Name of the environment.
+            request: The resolve request (package.json content or project path, optional lockfile).
+
+        Returns:
+            The resolve result as the backend returns it.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        _client = client._get_instance()
+        path_params = self._npm_path(_client, name, "resolve")
+        headers = {"content-type": "application/json"}
+        return _client._send_request(
+            "POST", path_params, headers=headers, data=json.dumps(request)
+        )
+
+    def _inspect_npm_git(self, name: str, request: dict) -> dict:
+        """Read and resolve the package.json files of a git repository.
+
+        Parameters:
+            name: Name of the environment.
+            request: ``{"url": ..., "ref": ..., "includeDevDependencies": ...}``.
+
+        Returns:
+            The inspection result as the backend returns it.
+
+        Raises:
+            hopsworks.client.exceptions.RestAPIError: If the backend encounters an error when handling the request.
+        """
+        _client = client._get_instance()
+        path_params = self._npm_path(_client, name, "git", "inspect")
+        headers = {"content-type": "application/json"}
+        return _client._send_request(
+            "POST", path_params, headers=headers, data=json.dumps(request)
+        )
+
+    @staticmethod
+    def _npm_path(_client, name: str, *tail: str) -> list:
+        return [
+            "project",
+            _client._project_id,
+            "python",
+            "environments",
+            name,
+            "libraries",
+            "npm",
+            *tail,
+        ]
