@@ -166,7 +166,7 @@ FeatureStoreException: Creating Iceberg tables is not supported in Spark Connect
 because it requires JVM bridge access. Create the feature group from a classic Spark session instead.
 ```
 
-So **an Iceberg feature pipeline on Spark is a `--type PYSPARK` job**, not a Spark-terminal script (once the table exists, appends and reads work from the terminal again). From Hopsworks 5.2 the Python engine can also create and write Iceberg feature groups on HopsFS, from a Python job or a Python terminal; see **hops-fg**.
+So **an Iceberg feature pipeline on Spark is a `--type PYSPARK` job**, not a Spark-terminal script (once the table exists, appends and reads work from the terminal again).
 
 Also note the Iceberg upsert cost: a path-based table has no catalog identifier for `MERGE INTO`, so hsfs implements the upsert as an anti-join of existing data against the incoming keys followed by an **atomic overwrite of the whole table**. For append-only data always pass `operation="insert"`.
 
