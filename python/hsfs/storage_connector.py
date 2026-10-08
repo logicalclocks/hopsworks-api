@@ -4364,8 +4364,10 @@ class ElasticsearchConnector(StorageConnector):
                     )
                 sources[name] = path
                 if in_array:
-                    # The Query Service skips elements without the leaf and gives null when none has it.
-                    column = F.filter(column, lambda value: value.isNotNull())
+                    # The Query Service skips elements without the leaf and gives null when none has it. An
+                    # array-valued leaf already lost its missing elements before flatten(), and keeps explicit nulls.
+                    if not is_array:
+                        column = F.filter(column, lambda value: value.isNotNull())
                     column = F.when(F.size(column) > 0, column)
                 if isinstance(element, StructType):
                     column = F.to_json(column)

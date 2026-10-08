@@ -3063,14 +3063,25 @@ class TestElasticsearchConnector:
             ]
         )
         dataframe = session.createDataFrame(
-            [([(["x"],), (None,)],), ([(None,), (None,)],), (None,)], schema
+            [
+                ([(["x", None],), (None,)],),
+                ([([None],)],),
+                ([(None,), (None,)],),
+                (None,),
+            ],
+            schema,
         )
 
         flat = storage_connector.ElasticsearchConnector._flatten_columns(
             dataframe, {"users"}
         )
 
-        assert [row["users_tags"] for row in flat.collect()] == [["x"], None, None]
+        assert [row["users_tags"] for row in flat.collect()] == [
+            ["x", None],
+            [None],
+            None,
+            None,
+        ]
 
     def test_spark_flattening_skips_object_array_elements_without_the_leaf(self):
         pytest.importorskip("pyspark")
