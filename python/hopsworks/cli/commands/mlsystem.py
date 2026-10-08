@@ -5,8 +5,8 @@ sees it in the Hopsworks UI: a HopsFS directory in the project, or the Git
 repository of a system built from an external client. ``hops factory run`` and
 the build commands register systems themselves; these commands list them,
 register or remove one by hand, report a system's health and delete it with
-what it created. An analytics layer's own commands (data marts, jobs, added
-tables, backfills) are here too and refuse any other system.
+what it created. A change to a built system, an analytics layer's data marts
+included, is a change request: ``hops factory run <factory> <system> --change``.
 """
 
 from __future__ import annotations
