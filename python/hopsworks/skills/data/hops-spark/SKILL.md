@@ -157,7 +157,7 @@ fs.get_or_create_feature_group(..., time_travel_format="ICEBERG",
 The full grammar, the per-format rules and the error messages the backend
 raises are in **hops-fg** (`references/table-layout.md`).
 
-### Iceberg pipelines cannot run in the terminal
+### Iceberg tables cannot be created over Spark Connect
 
 Creating a path-based (HadoopTables) Iceberg table goes through the JVM Iceberg API — `SparkSchemaUtil.convert(dataset._jdf.schema())` and `PartitionSpec.builderFor(...)` — which the Connect client cannot reach. hsfs fails fast and tells you what to do:
 
@@ -166,7 +166,7 @@ FeatureStoreException: Creating Iceberg tables is not supported in Spark Connect
 because it requires JVM bridge access. Create the feature group from a classic Spark session instead.
 ```
 
-So **an Iceberg feature pipeline is a `--type PYSPARK` job**, not a terminal script (once the table exists, appends and reads work from the terminal again).
+So **an Iceberg feature pipeline on Spark is a `--type PYSPARK` job**, not a Spark-terminal script (once the table exists, appends and reads work from the terminal again). From Hopsworks 5.2 the Python engine can also create and write Iceberg feature groups on HopsFS, from a Python job or a Python terminal; see **hops-fg**.
 
 Also note the Iceberg upsert cost: a path-based table has no catalog identifier for `MERGE INTO`, so hsfs implements the upsert as an anti-join of existing data against the incoming keys followed by an **atomic overwrite of the whole table**. For append-only data always pass `operation="insert"`.
 
@@ -233,4 +233,4 @@ An append-mode pipeline is **not idempotent** — re-running it doubles the rows
 ## Related skills
 
 - **hops-fg** / **hops-fv** — the `fg.read()` / `fg.insert()` paths this session powers, and the `partitioned_by` / `partition_key` / `clustered_by` reference.
-- **hops-job** — run a PySpark script as a scheduled Hopsworks job; the required path for Iceberg table creation and Delta upserts.
+- **hops-job** — run a PySpark script as a scheduled Hopsworks job; the classic-Spark path for Iceberg table creation and Delta upserts, which Spark Connect cannot do.
