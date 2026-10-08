@@ -14,6 +14,7 @@
 #   limitations under the License.
 #
 
+import copy
 import warnings
 from unittest.mock import Mock
 
@@ -79,22 +80,26 @@ class TestFeatureGroupApi:
         # Assert
         assert len(warning_record) == 1
 
-    def test_delete_content_refreshes_the_recreated_feature_group(self, mocker):
+    def test_delete_content_refreshes_the_recreated_feature_group(
+        self, mocker, backend_fixtures
+    ):
         # Arrange: clear recreates the feature group under a new id
+        json = backend_fixtures["feature_group"]["get_basic_info"]["response"]
+        fg = fg_mod.FeatureGroup.from_response_json(copy.deepcopy(json))
+        old_id = fg.id
+        recreated = copy.deepcopy(json)
+        recreated["id"] = old_id + 1
         client_mock = Mock()
         client_mock._project_id = 1
-        client_mock._send_request.return_value = {"id": 43}
+        client_mock._send_request.return_value = recreated
         mocker.patch("hopsworks_common.client._get_instance", return_value=client_mock)
-        fg = Mock()
-        fg.id = 42
-        fg.feature_store_id = 99
 
         # Act
         feature_group_api.FeatureGroupApi()._delete_content(fg)
 
         # Assert
-        assert client_mock._send_request.call_args.args[1][-2:] == [42, "clear"]
-        fg.update_from_response_json.assert_called_once_with({"id": 43})
+        assert client_mock._send_request.call_args.args[1][-2:] == [old_id, "clear"]
+        assert fg.id == old_id + 1
 
     def test_sync_metastore(self, mocker):
         client_mock = Mock()
@@ -117,4 +122,5 @@ class TestFeatureGroupApi:
                 42,
                 "metastoresync",
             ],
+            timeout=60,
         )

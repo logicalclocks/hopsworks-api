@@ -23,6 +23,7 @@ import uuid
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
+import requests
 from hopsworks_common import client
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
 from hopsworks_common.core import project_api
@@ -294,10 +295,10 @@ class IcebergEngine:
             return
         try:
             self._feature_group_api._sync_metastore(self._feature_group)
-        except RestAPIError as e:
+        except (RestAPIError, requests.exceptions.RequestException) as e:
             # A 4xx is a backend without the endpoint or a feature group it does not mirror.
-            log = _logger.debug if e.response.status_code < 500 else _logger.warning
-            log(
+            quiet = isinstance(e, RestAPIError) and e.response.status_code < 500
+            (_logger.debug if quiet else _logger.warning)(
                 "Could not register the Iceberg metadata of feature group %s v%s in the metastore: %s",
                 self._feature_group.name,
                 self._feature_group.version,

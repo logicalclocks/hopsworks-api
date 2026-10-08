@@ -316,7 +316,8 @@ class FeatureGroupApi:
             feature_group_instance.id,
             "metastoresync",
         ]
-        _client._send_request("POST", path_params)
+        # Bounded, since the caller only logs a failure: the table change it follows already succeeded.
+        _client._send_request("POST", path_params, timeout=60)
 
     def _delete(
         self,

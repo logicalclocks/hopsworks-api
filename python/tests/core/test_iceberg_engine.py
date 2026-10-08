@@ -17,6 +17,7 @@ import sys
 from unittest import mock
 
 import pytest
+import requests
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
 from hopsworks_common.core.constants import HAS_PYICEBERG
 from hsfs import feature_group
@@ -2152,6 +2153,15 @@ class TestIcebergMetastoreSync:
         mocker.patch.object(iceberg_engine, "_glue_catalog", return_value=None)
         iceberg_engine._feature_group_api._sync_metastore.side_effect = (
             self._rest_error(status_code)
+        )
+
+        iceberg_engine._sync_metastore()
+
+    def test_sync_connection_failure_does_not_raise(self, mocker):
+        iceberg_engine = _make_engine(mocker)
+        mocker.patch.object(iceberg_engine, "_glue_catalog", return_value=None)
+        iceberg_engine._feature_group_api._sync_metastore.side_effect = (
+            requests.exceptions.ConnectionError("reset")
         )
 
         iceberg_engine._sync_metastore()
