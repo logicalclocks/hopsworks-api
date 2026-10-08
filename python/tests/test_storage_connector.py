@@ -3062,13 +3062,38 @@ class TestElasticsearchConnector:
                 )
             ]
         )
-        dataframe = session.createDataFrame([([(["x"],), (None,)],), (None,)], schema)
+        dataframe = session.createDataFrame(
+            [([(["x"],), (None,)],), ([(None,), (None,)],), (None,)], schema
+        )
 
         flat = storage_connector.ElasticsearchConnector._flatten_columns(
             dataframe, {"users"}
         )
 
-        assert [row["users_tags"] for row in flat.collect()] == [["x"], None]
+        assert [row["users_tags"] for row in flat.collect()] == [["x"], None, None]
+
+    def test_spark_flattening_skips_object_array_elements_without_the_leaf(self):
+        pytest.importorskip("pyspark")
+        from pyspark.sql.types import ArrayType, StringType, StructField, StructType
+
+        session = spark.Engine()._spark_session
+        schema = StructType(
+            [
+                StructField(
+                    "users",
+                    ArrayType(StructType([StructField("name", StringType())])),
+                )
+            ]
+        )
+        dataframe = session.createDataFrame(
+            [([("a",), (None,)],), ([(None,)],)], schema
+        )
+
+        flat = storage_connector.ElasticsearchConnector._flatten_columns(
+            dataframe, {"users"}
+        )
+
+        assert [row["users_name"] for row in flat.collect()] == [["a"], None]
 
     def test_object_paths_follow_the_query_service_flattening(self):
         mapping = {
@@ -3138,7 +3163,18 @@ class TestElasticsearchConnector:
             ),
             ("::1", "9200", "false", "http://[::1]:9200"),
             ("[::1]:9201", "9200", "false", "http://[::1]:9201"),
-            ("https://proxy.example.com", "9200", "true", "https://proxy.example.com"),
+            (
+                "https://proxy.example.com",
+                "9200",
+                "true",
+                "https://proxy.example.com:9200",
+            ),
+            (
+                "https://proxy.example.com:443/",
+                "9200",
+                "true",
+                "https://proxy.example.com:443",
+            ),
         ],
     )
     def test_get_mapping_resolves_the_spark_node_address(

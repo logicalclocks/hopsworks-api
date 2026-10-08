@@ -4267,16 +4267,15 @@ class ElasticsearchConnector(StorageConnector):
         """
         node = str(spark_options.get("es.nodes") or self._host).split(",")[0].strip()
         ssl = str(spark_options.get("es.net.ssl", "true")).lower() == "true"
-        if "://" not in node:
-            has_port = re.search(r"(^[^:]*|\])(:\d+)$", node) is not None
-            if not has_port:
-                port = spark_options.get("es.port") or 9200
-                node = (
-                    f"[{node}]:{port}"
-                    if ":" in node and not node.startswith("[")
-                    else f"{node}:{port}"
-                )
-            node = f"{'https' if ssl else 'http'}://{node}"
+        scheme, _, address = node.rpartition("://")
+        scheme = scheme or ("https" if ssl else "http")
+        address = address.rstrip("/")
+        # A node without its own port takes es.port, scheme-qualified or not, as elasticsearch-hadoop does.
+        if re.search(r"(^[^:]*|\])(:\d+)$", address) is None:
+            port = spark_options.get("es.port") or 9200
+            bracketed = ":" in address and not address.startswith("[")
+            address = f"[{address}]:{port}" if bracketed else f"{address}:{port}"
+        node = f"{scheme}://{address}"
         prefix = str(spark_options.get("es.nodes.path.prefix") or "").strip("/")
         base_url = node.rstrip("/") + (f"/{prefix}" if prefix else "")
         user = spark_options.get("es.net.http.auth.user")
@@ -4364,6 +4363,10 @@ class ElasticsearchConnector(StorageConnector):
                         f"feature name '{name}'; rename one of the fields in Elasticsearch"
                     )
                 sources[name] = path
+                if in_array:
+                    # The Query Service skips elements without the leaf and gives null when none has it.
+                    column = F.filter(column, lambda value: value.isNotNull())
+                    column = F.when(F.size(column) > 0, column)
                 if isinstance(element, StructType):
                     column = F.to_json(column)
                 columns.append(column.alias(name))
