@@ -221,7 +221,10 @@ user to upload documents, and its `train` and `infer` follow that page instead o
 training and inference agents. The personalized recommender (`task: ranking`, the `recs-example`)
 is built the same way by `hops-reqs/references/recommender.md`, from the reference code in
 `recommender/`: its `data` phase downloads the public H&M files instead of generating data, and
-its `train` and `infer` follow that page. The GIS military infrastructure finder (`task: detection`,
+its `train` and `infer` follow that page. The credit card fraud detector (the `fraud-example`) is
+built by `hops-reqs/references/ccfraud.md` from the book's code at a pinned commit and `ccfraud/`:
+its `data` runs the book's generator instead of generating data, its `features` start a Spark
+Structured Streaming job, and its `train`, `infer` and monitoring follow that page. The GIS military infrastructure finder (`task: detection`,
 the `gis-example`) has no reference code: every file is written from its requirements and
 `hops-reqs/references/gis-detector.md`, which gives each phase's contract, the facts the code
 depends on and the tests to write. `data` and `features` are `skipped`, `train` registers a

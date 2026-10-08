@@ -37,7 +37,10 @@ embedded into a vector-indexed feature group, a LangGraph agent, a chat app),
 and the `ranking` recommender of the `recs-example` as
 [references/recommender.md](references/recommender.md) says (two-tower
 retrieval over a vector index, a CatBoost ranker, one deployment, a storefront
-app), and the `detection` GIS app of the `gis-example` as
+app), the credit card fraud detector of the `fraud-example` as
+[references/ccfraud.md](references/ccfraud.md) says (the book's synthetic
+transactions, streaming sliding-window features, an XGBoost classifier, one
+deployment, a fraud console app), and the `detection` GIS app of the `gis-example` as
 [references/gis-detector.md](references/gis-detector.md) says (a pretrained YOLO26
 aerial detector of military infrastructure, registered from Hugging Face and
 embedded in a JavaScript map app; no data, features, training or deployment, and no reference

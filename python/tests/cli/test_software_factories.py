@@ -169,6 +169,7 @@ def test_the_first_question_offers_a_description_or_an_example_system():
     assert labels == {
         "churn-example": "Churn: which customers will cancel next month (batch)",
         "recs-example": "Personalized recommendations: the products each shopper is likely to buy next (real-time)",
+        "fraud-example": "Credit card fraud: flags fraudulent card transactions as they happen, from streaming features (real-time)",
         "gis-example": "GIS military infrastructure finder: outlines aircraft, ships and harbours on a map of Sweden with a pretrained YOLO model (real-time)",
         "helpdesk-example": "Help desk agent: answers support questions from your documents and the customer's recent events (agentic)",
         "run-example": "Hops Run with Kumo Tabular: a racing game flown by NVIDIA's pretrained in-context classifier, served as a deployment (real-time)",
@@ -204,7 +205,14 @@ def test_an_example_system_records_synthetic_data_and_an_app(tmp_path):
 
 @pytest.mark.parametrize(
     "example",
-    ["churn-example", "recs-example", "helpdesk-example", "gis-example", "run-example"],
+    [
+        "churn-example",
+        "recs-example",
+        "fraud-example",
+        "helpdesk-example",
+        "gis-example",
+        "run-example",
+    ],
 )
 def test_every_example_creates_a_valid_system(tmp_path, example):
     new_system = _load(REQS / "new_system.py")
