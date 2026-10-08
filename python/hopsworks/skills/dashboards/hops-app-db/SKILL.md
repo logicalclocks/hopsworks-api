@@ -135,6 +135,7 @@ needed in `python-app-pipeline`.
 import os
 import hopsworks
 import pymysql
+from sqlalchemy.engine import URL
 
 def mysql_settings() -> dict:
     try:
@@ -155,9 +156,11 @@ def connect() -> pymysql.Connection:
     return pymysql.connect(**mysql_settings(), autocommit=True,
                            cursorclass=pymysql.cursors.DictCursor)
 
-def sqlalchemy_url() -> str:
+def sqlalchemy_url() -> URL:
+    # URL.create, not an f-string: the password is random and may contain @ / : #
     s = mysql_settings()
-    return f"mysql+pymysql://{s['user']}:{s['password']}@{s['host']}:{s['port']}/{s['database']}"
+    return URL.create("mysql+pymysql", username=s["user"], password=s["password"],
+                      host=s["host"], port=s["port"], database=s["database"])
 ```
 
 Plain PyMySQL:
