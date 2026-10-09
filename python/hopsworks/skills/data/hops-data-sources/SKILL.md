@@ -39,7 +39,7 @@ Non-SQL sources (CRM, Google Sheets, REST) have no catalog to read the schema fr
 `StorageConnector.get_data_batch(data_sources)` fetches several resources with ONE job that processes them sequentially in a single container — prefer it whenever you preview more than one resource.
 
 ```python
-sc = fs.get_storage_connector("my_crm_connector")
+sc = fs.get_data_source("my_crm_connector").storage_connector
 tables = sc.get_tables()                  # CRM: the connector's supported resources
 
 by_name = sc.get_data_batch(tables[:3])   # N resources, ONE schema-fetch job
@@ -280,7 +280,7 @@ The spreadsheet ID is optional at connector level — you can leave it blank and
 
 ```python
 # The connector only needs to be created once.
-connector = fs.get_storage_connector("my_google_sheets_connector")
+connector = fs.get_data_source("my_google_sheets_connector").storage_connector
 ```
 
 **Ingest a sheet into a feature group**
@@ -295,7 +295,7 @@ from hsfs.core.data_source import DataSource
 project = hopsworks.login()
 fs = project.get_feature_store()
 
-connector = fs.get_storage_connector("my_google_sheets_connector")
+connector = fs.get_data_source("my_google_sheets_connector").storage_connector
 
 fg = fs.create_feature_group(
     name="budget_actuals",
