@@ -110,4 +110,24 @@ class TestSqlConnector {
         assertThrows(FeatureStoreException.class, () -> sc.sparkOptions(null));
     assertTrue(e.getMessage().contains("NOT_A_DATABASE"));
   }
+
+  @Test
+  void testSqlServerUrlCarriesTheDatabaseAsAProperty() throws FeatureStoreException {
+    SqlConnector sc = new SqlConnector();
+    sc.setStorageConnectorType(StorageConnectorType.SQL);
+    sc.setDatabaseType("SQLSERVER");
+    sc.setHost("mssql.example.com");
+    sc.setPort(1433);
+    sc.setDatabase("master");
+    sc.setUser("sa");
+    sc.setPassword("secret");
+    sc.setArguments(Arrays.asList(new Option("databaseName", "other_db"), new Option("encrypt", "false")));
+
+    Map<String, String> options = sc.sparkOptions(null);
+
+    assertEquals("jdbc:sqlserver://mssql.example.com:1433;databaseName={master}", options.get(Constants.JDBC_URL));
+    assertEquals("com.microsoft.sqlserver.jdbc.SQLServerDriver", options.get(Constants.JDBC_DRIVER));
+    assertEquals("false", options.get("encrypt"));
+    assertFalse(options.containsKey("databaseName"));
+  }
 }

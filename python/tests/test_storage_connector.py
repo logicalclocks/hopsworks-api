@@ -1695,6 +1695,51 @@ class TestSqlConnector:
         ):
             connector.spark_options()
 
+    def test_sqlserver_url_carries_the_database_as_a_property(self):
+        connector = storage_connector.SqlConnector(
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
+            database_type="SQLSERVER",
+            host="mssql.example.com",
+            port=1433,
+            database="sales",
+            user="sa",
+            password="pass",
+            arguments=[
+                {"name": "trustServerCertificate", "value": "true"},
+                {"name": "databaseName", "value": "other_db"},
+            ],
+        )
+
+        options = connector.spark_options()
+
+        assert (
+            options["url"]
+            == "jdbc:sqlserver://mssql.example.com:1433;databaseName={sales}"
+        )
+        assert options["driver"] == "com.microsoft.sqlserver.jdbc.SQLServerDriver"
+        assert options["trustServerCertificate"] == "true"
+        # The field owns the database; Spark would hand the argument to the driver and override it.
+        assert "databaseName" not in options
+
+    def test_sqlserver_database_cannot_add_url_properties(self):
+        connector = storage_connector.SqlConnector(
+            id=1,
+            name="test_connector",
+            featurestore_id=1,
+            database_type="SQLSERVER",
+            host="mssql.example.com",
+            port=1433,
+            database="sales;encrypt=false}x",
+            user="sa",
+            password="pass",
+        )
+
+        assert connector.spark_options()["url"] == (
+            "jdbc:sqlserver://mssql.example.com:1433;databaseName={sales;encrypt=false}}x}"
+        )
+
     def test_clickhouse_ssl_argument_reaches_the_jdbc_driver(self):
         # Arrange
         connector = storage_connector.SqlConnector(
