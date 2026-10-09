@@ -282,6 +282,31 @@ class TestVectorServer:
 
         assert vector == [1, 4, 5.0]
 
+    def test_assemble_does_not_overwrite_passed_null(self, mocker):
+        server = self._echo_server(mocker)
+
+        vector = self._assemble(
+            server,
+            {"tid": 1, "amount": 5.0},
+            {"tid": 1, "cc_num": 9},
+            allow_missing=True,
+            passed_values={"cc_num": None},
+        )
+
+        assert vector == [1, None, 5.0]
+
+    def test_assemble_does_not_overwrite_fetched_null(self, mocker):
+        server = self._echo_server(mocker)
+
+        vector = self._assemble(
+            server,
+            {"tid": 1, "cc_num": None, "amount": 5.0},
+            {"tid": 1, "cc_num": 9},
+            allow_missing=True,
+        )
+
+        assert vector == [1, None, 5.0]
+
     def test_assemble_does_not_overwrite_fetched_or_passed_value(self, mocker):
         server = self._echo_server(mocker)
 

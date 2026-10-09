@@ -1270,12 +1270,13 @@ class VectorServer:
         """Fill the vector slot of each serving key the caller supplied and the lookup did not return.
 
         The row that carries a key can be missing while the caller still asked about that key's value.
-        A fetched or passed value is never overwritten, and a null key value is not echoed.
+        A key already in the result is never overwritten, even with a null, so a fetched or passed null wins.
+        A null key value in the entry is not echoed.
         """
         for key, value in (entry or {}).items():
             if (
                 value is not None
-                and result_dict.get(key) is None
+                and key not in result_dict
                 and key in self._required_feature_names
             ):
                 result_dict[key] = value
