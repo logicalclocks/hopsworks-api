@@ -1,8 +1,8 @@
 # A bronze analytics layer of generated data, built from system.yaml
 
-This directory is a bronze layer on Hopsworks, built with Claude Code by `/hops-bronze <slug>` (an example under the Factory's **New Analytics** in the Hopsworks UI), where `<slug>` is this directory's name.
+This directory is a bronze layer on Hopsworks, built with Claude Code by `/hops-bronze <slug>` (a blueprint under the Factory's **From Template > Analytics** in the Hopsworks UI), where `<slug>` is this directory's name.
 `system.yaml` is the specification: the generator program, the bronze tables it writes, the jobs that run it and their schedules, and the decisions the build made.
-The skill **hops-analytics** describes the analytics layers; silver and gold layers are built on these tables with **New Analytics**.
+The skill **hops-analytics** describes the analytics layers; silver and gold layers are built on these tables from the Factory's **From Template > Analytics**.
 
 ## system.yaml always describes the layer as it is
 

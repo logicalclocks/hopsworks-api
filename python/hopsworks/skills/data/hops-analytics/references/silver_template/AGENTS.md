@@ -1,6 +1,6 @@
 # A silver analytics layer built from system.yaml
 
-This directory is a silver layer on Hopsworks, built with Claude Code by `/hops-silver <slug>` (the Factory's **New Analytics** in the Hopsworks UI), where `<slug>` is this directory's name.
+This directory is a silver layer on Hopsworks, built with Claude Code by `/hops-silver <slug>` (the Factory's **From Template > Analytics > Silver layer** in the Hopsworks UI), where `<slug>` is this directory's name.
 `system.yaml` is the specification: the bronze sources, the silver tasks, the engine, the schedule, and the silver tables, job and decisions the build made.
 The skill **hops-analytics** describes how a silver layer is built.
 

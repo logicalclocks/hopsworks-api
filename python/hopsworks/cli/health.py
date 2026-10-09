@@ -170,7 +170,7 @@ def _pods(prefixes: dict[str, str]) -> dict[str, list[dict]]:
 
 
 def collect(project: Any, doc: dict, slug: str, hours: int = 24) -> dict:
-    """The facts of the report: jobs over the last `hours`, deployments and apps with their pods."""
+    """The facts of the report: jobs over the last `hours`, what the feature pipelines wrote, deployments and apps with their pods."""
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
     assets = teardown.inventory(doc, slug)
     job_names = [a.name for a in assets if a.kind == "job" and not a.name.endswith("*")]
@@ -214,6 +214,11 @@ def collect(project: Any, doc: dict, slug: str, hours: int = 24) -> dict:
     pods = _pods({s["name"]: s.pop("prefix") for s in services})
     for service in services:
         service["pods"] = pods.get(service["name"], [])
+    # Imported here: pipeline_data reads tables through silver_status, which imports this module.
+    from hopsworks.cli import pipeline_data
+
+    pipelines = pipeline_data.collect(project, doc, hours)
+    troubled = [p["name"] for p in pipelines if p["problems"]]
 
     failed = sum(
         1
@@ -241,9 +246,9 @@ def collect(project: Any, doc: dict, slug: str, hours: int = 24) -> dict:
         "generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "hours": hours,
         "overall": "failing"
-        if failed and unhealthy
+        if failed and (unhealthy or troubled)
         else "degraded"
-        if failed or unhealthy
+        if failed or unhealthy or troubled
         else "healthy",
         "counts": {
             "jobs": len(jobs),
@@ -251,9 +256,12 @@ def collect(project: Any, doc: dict, slug: str, hours: int = 24) -> dict:
             "failed_runs": failed,
             "services": len(services),
             "unhealthy_services": len(unhealthy),
+            "pipelines": len(pipelines),
+            "pipeline_problems": len(troubled),
         },
         "jobs": jobs,
         "services": services,
+        "pipelines": pipelines,
     }
 
 
@@ -464,7 +472,6 @@ function servicesSection() {
 function tablesSection() {
   const all = facts.tables || [];
   const rows = all.filter((t) => !onlyProblems || (t.problems || []).length);
-  const size = (b) => b >= 1 << 30 ? `${(b / (1 << 30)).toFixed(1)} GB` : b >= 1 << 20 ? `${Math.round(b / (1 << 20))} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
   // An unpartitioned table reads as one partition; only more is worth saying.
   const files = (l) => [`${l.active_files} file${l.active_files === 1 ? '' : 's'}`, l.total_bytes ? size(l.total_bytes) : '', l.partitions > 1 ? `${l.partitions} partitions` : ''].filter(Boolean).join(', ');
   return el('section', { class: 'card' }, el('h2', {}, 'Tables'),
@@ -480,6 +487,55 @@ function tablesSection() {
       : el('p', { class: 'muted' }, onlyProblems ? 'No table has a problem.' : 'No tables yet.'));
 }
 
+const size = (b) => b >= 1 << 30 ? `${(b / (1 << 30)).toFixed(1)} GB` : b >= 1 << 20 ? `${Math.round(b / (1 << 20))} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
+
+// What one input or output took in over the window: rows and bytes from a table's commits, or files.
+function written(d) {
+  if (d.kind === 'data source') return el('span', { class: 'muted' }, 'not measured');
+  if (d.missing) return el('span', { class: 'fail-text' }, 'missing');
+  if (d.kind === 'files') return d.files == null ? el('span', { class: 'muted' }, 'n/a') : `${d.files} file${d.files === 1 ? '' : 's'}${d.bytes ? `, ${size(d.bytes)}` : ''}`;
+  if (d.commits == null) return el('span', { class: 'muted' }, 'n/a');
+  return `${(d.rows || 0).toLocaleString()} rows${d.bytes ? `, ${size(d.bytes)}` : ''} in ${d.commits} commit${d.commits === 1 ? '' : 's'}`;
+}
+
+// Nulls per column, worst first, and the hours or days with no rows.
+function missingData(o) {
+  if (o.columns_error) return el('span', { class: 'muted xs' }, `not checked: ${o.columns_error}`);
+  if (o.nulls == null) return el('span', { class: 'muted' }, o.kind === 'feature group' ? 'not checked' : '');
+  const worst = Object.entries(o.nulls).sort((a, b) => b[1] - a[1]);
+  const scope = o.checked === 'window' ? `${(o.checked_rows || 0).toLocaleString()} rows in the window` : `the whole table (${(o.checked_rows || 0).toLocaleString()} rows; no event time)`;
+  return el('div', {},
+    worst.length ? worst.slice(0, 4).map(([c, pct]) => el('div', { class: pct >= 100 ? 'fail-text xs' : 'xs' }, `${c}: ${pct}% null`)) : el('div', { class: 'xs' }, 'no nulls'),
+    worst.length > 4 ? el('div', { class: 'muted xs' }, `and ${worst.length - 4} more columns with nulls`) : '',
+    (o.missing || []).length ? el('div', { class: 'fail-text xs' }, `${o.missing.length} empty period${o.missing.length === 1 ? '' : 's'}`) : '',
+    el('div', { class: 'muted xs' }, `over ${scope}`));
+}
+
+function pipelinesSection() {
+  const all = facts.pipelines || [];
+  const rows = all.filter((p) => !onlyProblems || p.problems.length);
+  if (!rows.length) return el('section', { class: 'card' }, el('h2', {}, `Data, last ${facts.hours} hours`), el('p', { class: 'muted' }, 'No pipeline has a problem.'));
+  return rows.map((p) => {
+    const ratio = p.rows_in && p.rows_out ? ` · ${(p.rows_out / p.rows_in).toFixed(2)} rows out per row in` : '';
+    const flow = p.rows_in || p.rows_out
+      ? `${p.rows_in.toLocaleString()} rows in, ${p.rows_out.toLocaleString()} rows out${ratio}`
+      : `${size(p.bytes_in || 0)} in, ${size(p.bytes_out || 0)} out`;
+    const line = (d, dir) => { const probs = d.problems || [];
+      return el('tr', {},
+        el('td', {}, el('div', { style: 'font-weight:500' }, d.name), el('div', { class: 'muted xs' }, `${dir} · ${d.kind}`), probs.map((m) => el('div', { class: 'fail-text xs' }, m))),
+        el('td', {}, written(d)),
+        el('td', {}, d.last_write ? ago(d.last_write) : el('span', { class: 'muted' }, d.kind === 'data source' ? '' : 'never')),
+        el('td', {}, dir === 'out' ? missingData(d) : ''),
+        el('td', { style: 'text-align:right' }, dir === 'in' ? '' : probs.length ? badge('fail', 'problem') : badge('success', 'healthy'))); };
+    return el('section', { class: 'card' },
+      el('h2', {}, `Data, last ${facts.hours} hours: ${p.name}${p.engine ? ` (${p.engine})` : ''}`),
+      el('p', { class: 'muted', style: 'margin:0 0 12px' }, flow),
+      (p.flow_problems || []).map((m) => el('p', { class: 'fail-text', style: 'margin:0 0 12px' }, m)),
+      table(['Data', 'Written in the window', 'Last write', 'Missing data', ''],
+        [...p.inputs.map((d) => line(d, 'in')), ...p.outputs.map((d) => line(d, 'out'))]));
+  });
+}
+
 function draw() {
   const c = facts.counts;
   document.getElementById('root').replaceChildren(
@@ -489,10 +545,13 @@ function draw() {
       badge(facts.overall, facts.overall)),
     el('div', { class: 'cards' },
       (facts.tables ? [[c.runs, `job runs in ${facts.hours} h`], [c.failed_runs, 'failed runs'], [c.tables, 'tables'], [c.table_problems, 'tables with problems']]
+        : (facts.pipelines || []).length && !facts.services.length ? [[c.runs, `job runs in ${facts.hours} h`], [c.failed_runs, 'failed runs'],
+          [facts.pipelines.reduce((n, p) => n + p.rows_out, 0).toLocaleString(), `rows written in ${facts.hours} h`], [c.pipeline_problems, 'pipelines with problems']]
         : [[c.runs, `job runs in ${facts.hours} h`], [c.failed_runs, 'failed runs'], [c.services, 'deployments and apps'], [c.unhealthy_services, 'unhealthy']]).map(([v, l], i) =>
-        el('div', { class: 'card stat' }, el('div', { class: `v ${(i === 1 || i === 3) && v ? 'fail-text' : ''}` }, String(v)), el('div', { class: 'l' }, l)))),
+        el('div', { class: 'card stat' }, el('div', { class: `v ${(i === 1 || i === 3) && v && v !== '0' ? 'fail-text' : ''}` }, String(v)), el('div', { class: 'l' }, l)))),
     summary ? (() => { const s = el('section', { class: 'card summary' }, el('h2', {}, 'Summary')); const d = el('div'); d.innerHTML = summary; s.append(d); return s; })() : '',
-    jobsSection(), facts.tables ? tablesSection() : servicesSection());
+    jobsSection(), (facts.pipelines || []).length ? pipelinesSection() : '',
+    facts.tables ? tablesSection() : facts.services.length || !(facts.pipelines || []).length ? servicesSection() : '');
 }
 draw();
 </script>

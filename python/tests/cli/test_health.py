@@ -116,6 +116,8 @@ def test_the_facts_hold_the_last_day_of_runs_and_the_pods(tmp_path, monkeypatch)
         "failed_runs": 1,
         "services": 2,
         "unhealthy_services": 1,
+        "pipelines": 0,
+        "pipeline_problems": 0,
     }
 
 

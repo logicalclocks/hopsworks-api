@@ -16,7 +16,7 @@ Already known, no need to look again before the first question:
 | First word | Do |
 | --- | --- |
 | the slug of a layer above | work on that layer: carry out its pending change requests, then resume it from its first phase that is not `done` (the Factory and `hops factory run analytics-bronze` start the build this way) |
-| none | with a `system.yaml` above: resume it from its first phase that is not `done`; without one: reply that the Factory's **New Analytics** examples, or `hops factory run analytics-bronze --preset <example>`, record a layer first, and stop |
+| none | with a `system.yaml` above: resume it from its first phase that is not `done`; without one: reply that the Factory's **From Template > Analytics > Blueprints**, or `hops factory run analytics-bronze --preset <example>`, record a layer first, and stop |
 | `code`, `backfill`, `schedule`, `verify` | that phase, then every later phase that is not `done` |
 
 Load **hops-analytics** first (the `analytics_table` tag and the layers built on bronze), and **hops-job** and **hops-fg** before deploying a job or checking a feature group.
@@ -66,4 +66,4 @@ Wait for the first catch-up run of the most frequent cadence to finish (`hops jo
 Run the daily job once by hand for the last full day only when no daily window has run yet and the user wants it now: it writes yesterday's changes, which the next scheduled run would also write, and a rerun of the same window rewrites the same rows.
 Check the duplicate deliveries a silver layer will have to remove, for the clickstream example: `SELECT count(*) - count(DISTINCT click_id) FROM clickstream_clicks_1` (same catalog and schema) is about 0.001% of the clicks.
 Run `hops factory system status <slug>` and fix anything it flags.
-Set `outputs.applied_spec` to the spec just built (`generator`, `tables`, `schedule`, `layer.lifecycle`), set `layer.status: built`, and report the tables with their rows, the jobs with their schedules, and that the tables are ready for a silver layer (**New Analytics**, **Silver layer**), in a few lines.
+Set `outputs.applied_spec` to the spec just built (`generator`, `tables`, `schedule`, `layer.lifecycle`), set `layer.status: built`, and report the tables with their rows, the jobs with their schedules, and that the tables are ready for a silver layer (**From Template > Analytics > Silver layer**), in a few lines.

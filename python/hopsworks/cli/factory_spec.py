@@ -27,6 +27,7 @@ BUILTINS = (
     "analytics-bronze",
     "analytics-silver",
     "analytics-gold",
+    "analytics-pipeline",
 )
 # The builds a factory can hand its answers to instead of writing its own instructions.
 BUILTIN_BUILDS = ("mlsystem", "analytics-bronze", "analytics-silver", "analytics-gold")

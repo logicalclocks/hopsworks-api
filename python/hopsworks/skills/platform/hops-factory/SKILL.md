@@ -7,7 +7,7 @@ description: Use when creating, editing, cloning, importing, exporting or deleti
 
 A factory is a YAML definition: the questions of a creation form, the phases of the build, and the instructions Claude Code follows to build what the answers describe.
 The Hopsworks UI generates the form, the Factory page section and the progress bar from it.
-Six factories are built in and read-only: `ml-batch`, `ml-realtime` and `ml-agent` (ML systems) and `analytics-bronze`, `analytics-silver` and `analytics-gold` (analytics layers); `analytics-bronze` builds only its examples, generated data from a generator in the hops-analytics references.
+Seven factories are built in and read-only: `ml-batch`, `ml-realtime` and `ml-agent` (ML systems), `analytics-bronze`, `analytics-silver` and `analytics-gold` (analytics layers), and `analytics-pipeline` (a data pipeline in PySpark, DuckDB, Polars or dbt on Trino, built from its written instructions, whose system.yaml has only the `features` block); `analytics-bronze` builds only its examples, generated data from a generator in the hops-analytics references.
 A project's data owners add its own: written from scratch, cloned from any factory, or imported from a YAML file.
 
 ## Contract

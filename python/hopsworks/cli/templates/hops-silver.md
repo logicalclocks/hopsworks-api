@@ -15,7 +15,7 @@ Already known, no need to look again before the first question:
 | First word | Do |
 | --- | --- |
 | the slug of a layer above | work on that layer: carry out its pending change requests, then dispatch the rest of the arguments by this table (the Factory and `hops factory run analytics-silver` start the build this way) |
-| none | with a `system.yaml` above: resume it from its first phase that is not `done`; without one: reply that the Factory's **New Analytics**, or `hops factory run analytics-silver --answers`, records a layer first, and stop |
+| none | with a `system.yaml` above: resume it from its first phase that is not `done`; without one: reply that the Factory's **From Template > Analytics**, or `hops factory run analytics-silver --answers`, records a layer first, and stop |
 | `profile`, `design`, `code`, `backfill`, `schedule`, `verify` | that phase, then every later phase that is not `done` |
 | `apply` | apply the changes to `system.yaml` since the layer was built (below) |
 

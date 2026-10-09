@@ -1,6 +1,6 @@
 # A gold analytics layer built from system.yaml
 
-This directory is a gold layer on Hopsworks, built with Claude Code by `/hops-gold <slug>` (the Factory's **New Analytics**, gold, in the Hopsworks UI), where `<slug>` is this directory's name.
+This directory is a gold layer on Hopsworks, built with Claude Code by `/hops-gold <slug>` (the Factory's **From Template > Analytics > Data Mart** in the Hopsworks UI), where `<slug>` is this directory's name.
 `system.yaml` is the specification: the queries the layer serves, its Kimball model (star or snowflake), the silver tables it reads, the standards every mart follows, and its data marts, each with its requirements, tables and jobs.
 The skill **hops-analytics** (and its `references/gold-marts.md`) describes how a gold layer is built.
 

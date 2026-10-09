@@ -19,7 +19,7 @@ Already known, no need to look again before the first question:
 | `<mart> <phase>` | that phase of that mart, then every later phase that is not `done` |
 | `apply` | the changes to the layer-level spec since it was built: `layer.lifecycle`, `layer.modeling`, `standards`, `sources` (below) |
 
-Without a slug and with no `system.yaml` here, reply that the Factory's **New Analytics** (gold), or `hops factory run analytics-gold --answers`, records a layer first, and stop.
+Without a slug and with no `system.yaml` here, reply that the Factory's **From Template > Analytics > Data Mart**, or `hops factory run analytics-gold --answers`, records a layer first, and stop.
 
 Load **hops-analytics** first: its `SKILL.md` (the tag, lineage, the schedule, incremental processing) and `references/gold-marts.md` (the requirement questions, Kimball modeling, the standards, the jobs) are what this builder runs on.
 Load **hops-dbt** for the dbt project and its runner, **hops-job** before deploying a job, **hops-fg** before creating a feature group, and **hops-trino-sql** for the queries.

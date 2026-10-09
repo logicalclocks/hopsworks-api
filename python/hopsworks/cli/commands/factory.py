@@ -1,8 +1,9 @@
 """``hops factory`` — the software factories of this project, and the systems they build.
 
-Six are built in, as YAML definitions the cluster ships: ``ml-batch``,
+Seven are built in, as YAML definitions the cluster ships: ``ml-batch``,
 ``ml-realtime`` and ``ml-agent`` build ML systems, ``analytics-bronze``,
-``analytics-silver`` and ``analytics-gold`` build analytics layers. A
+``analytics-silver`` and ``analytics-gold`` build analytics layers, and
+``analytics-pipeline`` builds a data pipeline from its written instructions. A
 project's own factories are YAML definitions (apiVersion hopsworks.ai/factory/v1) its data owners create,
 import, clone and delete. ``hops factory run <name>`` builds a system with a
 factory, and ``hops factory system ...`` lists, reports on and deletes the
