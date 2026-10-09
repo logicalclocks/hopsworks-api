@@ -272,10 +272,12 @@ class FeatureGroupApi:
     def _delete_content(
         self,
         feature_group_instance: fg_mod.FeatureGroup | fg_mod.ExternalFeatureGroup,
-    ) -> None:
+    ) -> fg_mod.FeatureGroup | fg_mod.ExternalFeatureGroup:
         """Delete the content of a feature group.
 
-        This endpoint serves to simulate the overwrite/insert mode.
+        This endpoint serves to simulate the overwrite/insert mode. The backend recreates
+        the feature group under a new id; the instance is updated from its response, so
+        later calls (the overwrite's commit) address the new group.
 
         Parameters:
             feature_group_instance: metadata object of feature group to clear the content for
@@ -290,7 +292,9 @@ class FeatureGroupApi:
             feature_group_instance.id,
             "clear",
         ]
-        _client._send_request("POST", path_params)
+        return feature_group_instance.update_from_response_json(
+            _client._send_request("POST", path_params)
+        )
 
     def _delete(
         self,
