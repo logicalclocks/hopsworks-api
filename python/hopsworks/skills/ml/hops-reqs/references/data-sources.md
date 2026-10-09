@@ -71,6 +71,7 @@ index must be loaded, or the source is an API with no table to mount.
 | adls | Azure Data Lake Storage | `--account-name`, `--generation`, `--directory-id`, `--application-id` | `--service-credential` (`HOPSWORKS_DS_ADLS_SERVICE_CREDENTIAL`) |
 | bigquery | Google BigQuery | `--parent-project`, `--key-path` | none; the key file is uploaded to HopsFS first |
 | crm | CRM and analytics APIs | `--crm-type` | `--api-key`, `--password`, `--dev-token`, `--refresh-token`, `--private-app-password` (`HOPSWORKS_DS_CRM_<OPTION>`) |
+| elasticsearch | Elasticsearch | `--host` | `--password`, `--api-key`, `--truststore-password` (`HOPSWORKS_DS_ELASTICSEARCH_<OPTION>`) |
 | gcs | Google Cloud Storage | `--bucket`, `--key-path` | `--encryption-key` (`HOPSWORKS_DS_GCS_ENCRYPTION_KEY`) |
 | glue | AWS Glue Data Catalog | `--database`, `--region` | `--secret-key`, `--session-token` (`HOPSWORKS_DS_GLUE_<OPTION>`) |
 | google-sheets | Google Sheets | `--key-path` | none; the key file is uploaded to HopsFS first |
