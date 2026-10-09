@@ -77,7 +77,14 @@ _UniqueKeyLoader.add_constructor(
 
 
 def parse(text: str) -> dict:
-    """The definition as a dict; raises ValueError when it is empty, too long, not YAML, or not a mapping."""
+    """The definition as a dict; raises ValueError when it is empty, too long, not YAML, or not a mapping.
+
+    Args:
+        text: The definition's YAML.
+
+    Returns:
+        The definition.
+    """
     if not text or not text.strip():
         raise ValueError("The definition is empty.")
     size = len(text.encode("utf-8"))
@@ -93,7 +100,14 @@ def parse(text: str) -> dict:
 
 
 def problems(doc: dict) -> list[str]:
-    """What is wrong with a parsed definition, one line each; empty when it is valid."""
+    """What is wrong with a parsed definition, one line each; empty when it is valid.
+
+    Args:
+        doc: The parsed definition.
+
+    Returns:
+        The problems.
+    """
     found: list[str] = []
     if doc.get("apiVersion") != API_VERSION:
         found.append(f"apiVersion must be {API_VERSION}.")
@@ -118,7 +132,14 @@ def problems(doc: dict) -> list[str]:
 
 
 def text_problems(text: str) -> list[str]:
-    """The problems of YAML text, including a parse failure."""
+    """The problems of YAML text, including a parse failure.
+
+    Args:
+        text: The definition's YAML.
+
+    Returns:
+        The problems.
+    """
     try:
         return problems(parse(text))
     except ValueError as exc:
@@ -126,12 +147,26 @@ def text_problems(text: str) -> list[str]:
 
 
 def fields(doc: dict) -> list[dict]:
-    """Every top-level field of the create form, in order."""
+    """Every top-level field of the create form, in order.
+
+    Args:
+        doc: The parsed definition.
+
+    Returns:
+        The fields.
+    """
     return form_fields(doc.get("form"))
 
 
 def form_fields(form: Any) -> list[dict]:
-    """Every top-level field of a form, the create form or a change's, in order."""
+    """Every top-level field of a form, the create form or a change's, in order.
+
+    Args:
+        form: The form.
+
+    Returns:
+        The fields.
+    """
     sections = (form if isinstance(form, dict) else {}).get("sections") or []
     return [
         f
@@ -410,7 +445,15 @@ def _text(value: Any) -> bool:
 
 
 def value_at(answers: dict, path: str) -> Any:
-    """The answer at a dotted path of the answers a form sent."""
+    """The answer at a dotted path of the answers a form sent.
+
+    Args:
+        answers: The answers.
+        path: The dotted path.
+
+    Returns:
+        The answer, None when there is none.
+    """
     node: Any = answers
     for part in path.split("."):
         node = node.get(part) if isinstance(node, dict) else None
@@ -423,7 +466,14 @@ REPO_PROVIDERS = ("github", "gitlab", "bitbucket")
 
 
 def repo_provider(url: str) -> str:
-    """The git host a repository URL is on: github, gitlab, bitbucket, or git for any other."""
+    """The git host a repository URL is on: github, gitlab, bitbucket, or git for any other.
+
+    Args:
+        url: The repository URL.
+
+    Returns:
+        The provider.
+    """
     host = (
         re.sub(r"^(https://|ssh://)?([^@/]*@)?", "", url)
         .split("/")[0]
@@ -434,7 +484,15 @@ def repo_provider(url: str) -> str:
 
 
 def repository_problems(value: Any, label: str) -> list[str]:
-    """What is wrong with a repository answer, {create: true} or {create: false, url}."""
+    """What is wrong with a repository answer, {create: true} or {create: false, url}.
+
+    Args:
+        value: The answer.
+        label: The question, for the messages.
+
+    Returns:
+        The problems.
+    """
     if not isinstance(value, dict) or not isinstance(value.get("create", True), bool):
         return [f"{label} must say whether to create a new GitHub repository."]
     if value.get("create", True):
@@ -456,7 +514,14 @@ def repository_problems(value: Any, label: str) -> list[str]:
 
 
 def repo_record(value: Any) -> dict:
-    """What system.yaml records for a repository answer: url new for one the build creates, else url and provider."""
+    """What system.yaml records for a repository answer: url new for one the build creates, else url and provider.
+
+    Args:
+        value: The answer.
+
+    Returns:
+        The record.
+    """
     if isinstance(value, str):
         return {"url": value}
     if not isinstance(value, dict) or value.get("create", True):
@@ -531,6 +596,15 @@ def answer_problems(
     change's entry fields pick from, which are not checked without it.
     The answers are nested by each field's key (its id when it has none); an account_env field's
     value never reaches the answers, since the UI saves it as an account variable.
+
+    Args:
+        doc: The parsed definition.
+        answers: The answers.
+        form: The form answered; default: the create form.
+        system: The system.yaml a change is made to.
+
+    Returns:
+        The problems.
     """
     found = []
     for field in form_fields(doc.get("form") if form is None else form):
@@ -549,7 +623,15 @@ def answer_problems(
 
 
 def items_at(doc: Any, path: str) -> list:
-    """The items of the list at a dotted path of system.yaml; a list met on the way is walked through, so `marts.jobs` is every mart's jobs."""
+    """The items of the list at a dotted path of system.yaml; a list met on the way is walked through, so `marts.jobs` is every mart's jobs.
+
+    Args:
+        doc: The system.yaml.
+        path: The dotted path.
+
+    Returns:
+        The items.
+    """
     nodes = [doc]
     for part in path.split("."):
         found = []
@@ -562,7 +644,15 @@ def items_at(doc: Any, path: str) -> list:
 
 
 def entries(system: dict, field: dict) -> list[dict]:
-    """What an entry field offers from system.yaml: `{value, label, entry}` for each item of its `from` list."""
+    """What an entry field offers from system.yaml: `{value, label, entry}` for each item of its `from` list.
+
+    Args:
+        system: The system.yaml.
+        field: The entry field.
+
+    Returns:
+        The entries.
+    """
     value, show = field.get("value") or "slug", field.get("show") or "name"
     return [
         {
@@ -576,7 +666,15 @@ def entries(system: dict, field: dict) -> list[dict]:
 
 
 def change_of(doc: dict, change_id: str) -> dict:
-    """The change of the definition with this id; raises KeyError when it has none."""
+    """The change of the definition with this id; raises KeyError when it has none.
+
+    Args:
+        doc: The parsed definition.
+        change_id: The change's id.
+
+    Returns:
+        The change.
+    """
     for change in doc.get("changes") or []:
         if change.get("id") == change_id:
             return change
@@ -584,7 +682,15 @@ def change_of(doc: dict, change_id: str) -> dict:
 
 
 def slug_of(doc: dict, answers: dict) -> str | None:
-    """The system's slug: the answer to the form's slug field."""
+    """The system's slug: the answer to the form's slug field.
+
+    Args:
+        doc: The parsed definition.
+        answers: The answers.
+
+    Returns:
+        The slug, None when the form has no slug field.
+    """
     for field in fields(doc):
         if field.get("type") == "slug":
             return value_at(answers, field.get("key") or field["id"])
@@ -602,22 +708,39 @@ def record_factory(meta: dict | None, target: Path) -> None:
     `meta` is what `hops factory run <name>` put in the click context: the factory's
     name and version, its instructions, and the answers to its own fields, which go to
     `requirements.extra`.
+
+    Args:
+        meta: What `hops factory run` put in the click context.
+        target: The system's directory.
     """
     if not meta:
         return
-    spec = target / "system.yaml"
-    doc = yaml.safe_load(spec.read_text(encoding="utf-8")) or {}
+    from hopsworks.cli import system_doc
+
     record = {"name": meta["name"], "version": meta["version"]}
+    if meta.get("digest"):
+        record["digest"] = meta["digest"]
     if meta.get("instructions"):
         record["instructions"] = meta["instructions"]
-    doc["factory"] = record
-    if meta.get("extra"):
-        doc.setdefault("requirements", {})["extra"] = meta["extra"]
-    spec.write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
+
+    def change(doc: dict) -> None:
+        doc["factory"] = record
+        if meta.get("extra"):
+            doc.setdefault("requirements", {})["extra"] = meta["extra"]
+
+    system_doc.update(target, change)
 
 
 def factory_name(ctx: Any, default: str) -> str:
-    """The factory a built-in's create registers with: the project factory delegating to it, else the built-in."""
+    """The factory a built-in's create registers with: the project factory delegating to it, else the built-in.
+
+    Args:
+        ctx: Click context.
+        default: The built-in's own name.
+
+    Returns:
+        The factory's name.
+    """
     meta = getattr(ctx, "meta", {}).get(META) if ctx is not None else None
     return meta["name"] if meta else default
 

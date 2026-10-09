@@ -12,7 +12,6 @@ from __future__ import annotations
 import os
 import re
 import shlex
-import shutil
 import subprocess
 import sys
 import threading
@@ -128,48 +127,47 @@ class _System:
     """One system directory: its system.yaml, validated on every write."""
 
     def __init__(self, target: Path) -> None:
+        from hopsworks.cli import system_doc
+
         self.target = target
         self.suggested: list[str] = []
         # The shipped set.py, not the system's copy: a system created by an older
         # template may predate the UI registration.
         self.setter = _load(REFERENCES / "system_template" / "set.py", "system_set")
-        self.doc = _read(target)
+        self.doc, _ = system_doc.read(target)
+        # The puts since the last save, replayed on the file as it is then.
+        self._pending: list[tuple[str, Any, bool]] = []
 
     @property
     def requirements(self) -> dict:
         return self.doc.setdefault("requirements", {})
 
     def put(self, dotted: str, value: Any, append: bool = False) -> None:
-        node = self.doc
-        *parents, last = dotted.split(".")
-        for part in parents:
-            node = node.setdefault(part, {})
-        if append:
-            node.setdefault(last, []).append(value)
-        else:
-            node[last] = value
+        _put(self.doc, dotted, value, append)
+        self._pending.append((dotted, value, append))
 
     def save(self) -> None:
-        import yaml
+        from hopsworks.cli import system_doc
 
-        problems = self.setter._validator().validate(self.doc)
-        if problems:
-            raise click.ClickException(
-                "system.yaml would be invalid:\n  " + "\n  ".join(problems)
-            )
-        self.setter._write_atomically(
-            self.target / "system.yaml",
-            yaml.safe_dump(self.doc, sort_keys=False, allow_unicode=True, width=100),
+        def replay(doc: dict) -> None:
+            for dotted, value, append in self._pending:
+                _put(doc, dotted, value, append)
+
+        self.doc = system_doc.update(
+            self.target, replay, self.setter._validator().validate
         )
+        self._pending = []
 
 
-def _read(target: Path) -> dict:
-    import yaml
-
-    path = target / "system.yaml"
-    if not path.exists():
-        return {}
-    return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+def _put(doc: dict, dotted: str, value: Any, append: bool) -> None:
+    node = doc
+    *parents, last = dotted.split(".")
+    for part in parents:
+        node = node.setdefault(part, {})
+    if append:
+        node.setdefault(last, []).append(value)
+    else:
+        node[last] = value
 
 
 def _create(cwd: Path, slug: str, example: str | None = None) -> _System:
@@ -847,40 +845,31 @@ def _register(ctx: click.Context, system: _System) -> None:
         )
     except Exception as exc:  # noqa: BLE001 - the interview is recorded either way
         output.warn(
-            f"Not registered in the project's ML systems ({exc}); run `hops factory system register {system.target}`."
+            f"Not registered in the project's ML systems ({exc}); run `hops factory system register {shlex.quote(str(system.target))}`."
         )
 
 
 def _launch(ctx: click.Context, system: _System, launch: bool) -> None:
-    slug = system.target.name
-    command = ["claude", f"/hops-build {slug}"]
-    printable = f'claude "/hops-build {slug}"'
-    status = system.target / "status.py"
+    from hopsworks.cli.commands import analytics
+
     output.success(f"Interview recorded in {system.target / 'system.yaml'}")
     _register(ctx, system)
-    subprocess.run([sys.executable, str(status)], check=False)
-    if not launch or not shutil.which("claude"):
-        click.echo(f"\nBuild it with:  cd {system.target} && {printable}")
-        return
-    if os.environ.get("TMUX") and shutil.which("tmux"):
-        subprocess.run(
-            ["tmux", "new-window", "-n", slug, "-c", str(system.target)]
-            + [shlex.join(command)],
-            check=True,
-        )
-        click.echo(
-            f"\nBuilding in the tmux window '{slug}'; the Hopsworks UI shows its progress."
-        )
-        return
-    # In the system directory, so Claude Code reads its AGENTS.md.
-    os.chdir(system.target)
-    os.execvp("claude", command)
+    subprocess.run([sys.executable, str(system.target / "status.py")], check=False)
+    analytics._launch(system.target, launch, f"/hops-build {system.target.name}")
 
 
 def create(ctx: click.Context, answers: dict, launch: bool) -> Path:
     """Record the ML system the answers describe in ./<slug>/system.yaml, ask what they leave out, then build it.
 
     An existing system of that slug is resumed and the answers are not applied again.
+
+    Args:
+        ctx: Click context.
+        answers: The answers of the factory's form.
+        launch: Start Claude Code on the system.
+
+    Returns:
+        The system's directory.
     """
     return _run(
         ctx, launch, lambda prefetch: _from_answers(prefetch, Path.cwd(), answers)
@@ -888,7 +877,13 @@ def create(ctx: click.Context, answers: dict, launch: bool) -> Path:
 
 
 def resume(ctx: click.Context, target: Path, launch: bool) -> None:
-    """Ask what the system in `target` still lacks, then start or resume its build."""
+    """Ask what the system in `target` still lacks, then start or resume its build.
+
+    Args:
+        ctx: Click context.
+        target: The system's directory.
+        launch: Start Claude Code on the system.
+    """
     _run(ctx, launch, lambda prefetch: _System(target))
 
 

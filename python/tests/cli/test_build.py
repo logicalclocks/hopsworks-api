@@ -13,7 +13,7 @@ import click
 import pytest
 from click.testing import CliRunner
 from hopsworks.cli import auth, session
-from hopsworks.cli.commands import build, mlsystem
+from hopsworks.cli.commands import analytics, build, mlsystem
 from hopsworks.cli.main import cli
 from hopsworks_common.core import factory_api
 
@@ -29,7 +29,7 @@ yaml = pytest.importorskip("yaml")
 def quiet(monkeypatch):
     """No login, no project listing, no model call, no Claude Code; registrations are recorded."""
     monkeypatch.setattr(build._Prefetch, "run", lambda self: None)
-    monkeypatch.setattr(build.shutil, "which", lambda name: None)
+    monkeypatch.setattr(analytics.shutil, "which", lambda name: None)
     monkeypatch.delenv("TMUX", raising=False)
     registered = []
     monkeypatch.setattr(
@@ -107,7 +107,7 @@ def test_an_example_asks_only_where_the_code_goes(tmp_path, monkeypatch, quiet):
     assert (
         "Which data" not in done.output and "How are the predictions" not in done.output
     )
-    assert 'claude "/hops-build churn-example"' in done.output
+    assert "claude '/hops-build churn-example'" in done.output
 
 
 def test_the_helpdesk_example_keeps_its_llm_in_account_env_vars(
@@ -171,7 +171,7 @@ def test_the_build_starts_in_the_system_directory(tmp_path, monkeypatch, quiet):
     windows = []
     real_run = subprocess.run
     monkeypatch.setenv("TMUX", "/tmp/tmux-1/default,1,0")
-    monkeypatch.setattr(build.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(analytics.shutil, "which", lambda name: f"/usr/bin/{name}")
     monkeypatch.setattr(
         build.subprocess,
         "run",
@@ -183,6 +183,16 @@ def test_the_build_starts_in_the_system_directory(tmp_path, monkeypatch, quiet):
     assert done.exit_code == 0, done.output
     [window] = windows
     assert window[window.index("-c") + 1] == str(tmp_path / "churn-example")
+    # The build holds the lease the run took, and gets its token.
+    lease = json.loads((tmp_path / "churn-example" / ".hops.lock").read_text())
+    assert (
+        window[-1]
+        == f"env HOPS_LEASE_TOKEN={lease['token']} claude '/hops-build churn-example'"
+    )
+    again = CliRunner(env={"HOPS_LEASE_TOKEN": ""}).invoke(
+        cli, ["factory", "run", "ml-test", "churn-example"]
+    )
+    assert again.exit_code == 4 and "is being built by" in again.output
     agents = (tmp_path / "churn-example" / "AGENTS.md").read_text(encoding="utf-8")
     # Every change, a fix or maintenance included, keeps system.yaml current.
     assert "must always reflect the current state of the ML system" in agents
@@ -199,7 +209,7 @@ def test_the_ui_starts_an_example_by_name_and_resumes_it(tmp_path, monkeypatch, 
     again = _example(tmp_path, monkeypatch, [], "recs-example")
     assert again.exit_code == 0, again.output
     assert "Where should the code go?" not in again.output
-    assert 'claude "/hops-build recs-example"' in again.output
+    assert "claude '/hops-build recs-example'" in again.output
     unknown = _example(tmp_path, monkeypatch, [], "fraud")
     assert unknown.exit_code != 0 and "churn-example" in unknown.output
 

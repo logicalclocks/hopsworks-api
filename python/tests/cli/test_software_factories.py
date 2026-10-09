@@ -20,6 +20,7 @@ import textwrap
 import uuid
 from datetime import date, datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import click
 import numpy as np
@@ -1536,34 +1537,44 @@ def test_trino_env_writes_the_connection_to_a_private_file(tmp_path):
     }
 
 
-def test_the_app_skeleton_ranks_every_customer_by_their_latest_score(monkeypatch):
+def test_the_app_skeleton_ranks_in_the_query_engine_with_bound_values(monkeypatch):
     pytest.importorskip("fastapi")
-    import pandas as pd
     from starlette.testclient import TestClient
 
     app = _load(APP / "app.py", "app_skeleton_top")
-    rows = pd.DataFrame(
-        {
-            "customer_id": [1, 1, 2, 3],
-            "score": [0.9, 0.1, 0.5, 0.7],
-            "predicted_at": pd.to_datetime(
-                ["2026-01-01", "2026-02-01", "2026-02-01", "2026-02-01"]
-            ),
-        }
+    app._cache.clear()
+    executed = []
+
+    class _Cursor:
+        def execute(self, sql, params):
+            executed.append((sql, params))
+            self.params = params
+
+        def fetchall(self):
+            if "WHERE customer_id = ?" in executed[-1][0]:
+                return [(0.4, "2026-02-01 00:00:00")] if self.params == (3,) else []
+            return [(3, 0.7), (2, 0.5)]
+
+    monkeypatch.setattr(app, "_connection", lambda: SimpleNamespace(cursor=_Cursor))
+    client = TestClient(app.app)
+    assert client.get("/api/top?limit=2").json() == [
+        {"customer_id": 3, "score": 0.7},
+        {"customer_id": 2, "score": 0.5},
+    ]
+    sql, params = executed[0]
+    # Latest per customer and the top k are the engine's work; the limit is a bound value.
+    assert (
+        "ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY predicted_at DESC)" in sql
     )
-
-    class _Query:
-        def read(self, dataframe_type):
-            return rows
-
-    class _Group:
-        def select(self, columns):
-            return _Query()
-
-    monkeypatch.setattr(app, "_predictions", lambda: _Group())
-    top = TestClient(app.app).get("/api/top?limit=2").json()
-    # Customer 1's latest score is 0.1, so its older 0.9 does not rank it first.
-    assert top == [{"customer_id": 3, "score": 0.7}, {"customer_id": 2, "score": 0.5}]
+    assert "ORDER BY score DESC" in sql and "LIMIT ?" in sql and params == (2,)
+    assert '"telco_churn_predictions_1"' in sql
+    # A repeated request inside the cache window does not query again.
+    client.get("/api/top?limit=2")
+    assert len(executed) == 1
+    assert client.get("/api/top?limit=100000").status_code == 422
+    assert client.get("/api/customers/3").json()["score"] == 0.4
+    assert executed[-1][1] == (3,) and "LIMIT 1" in executed[-1][0]
+    assert client.get("/api/customers/9").status_code == 404
 
 
 def test_the_trino_js_app_queries_on_the_server_and_uses_relative_urls():

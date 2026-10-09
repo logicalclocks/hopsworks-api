@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from unittest import mock
@@ -456,6 +457,7 @@ def test_a_change_is_recorded_as_a_pending_request_then_the_build_resumes(
         yaml.safe_dump(
             {
                 "factory": {"name": "churn-review", "version": 2},
+                "system": {"slug": "q3-review"},
                 "outputs": {"weeks": [{"name": "w1", "note": "old"}, {"name": "w2"}]},
             }
         )
@@ -547,7 +549,9 @@ def test_a_clone_of_a_built_in_builds_with_it_and_records_itself(
         target = tmp_path / "fraud"
         target.mkdir()
         (target / "system.yaml").write_text(
-            yaml.safe_dump({"requirements": {"status": "pending"}})
+            yaml.safe_dump(
+                {"system": {"slug": "fraud"}, "requirements": {"status": "pending"}}
+            )
         )
         factory_spec.record_factory(ctx.meta.get(factory_spec.META), target)
         seen["factory"] = factory_spec.factory_name(ctx, "ml-batch")
@@ -576,9 +580,11 @@ def test_a_clone_of_a_built_in_builds_with_it_and_records_itself(
     assert seen["no_launch"] is True
     assert seen["factory"] == "fraud-ml"
     doc = yaml.safe_load((tmp_path / "fraud" / "system.yaml").read_text())
+    # The digest of the definition text fetched, which registration sends with the version.
     assert doc["factory"] == {
         "name": "fraud-ml",
         "version": 3,
+        "digest": hashlib.sha256(CLONE.encode()).hexdigest(),
         "instructions": "Write a model card for the regulator.",
     }
     assert doc["requirements"] == {"status": "pending", "extra": {"regulator": "FI"}}

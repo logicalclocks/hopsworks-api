@@ -97,12 +97,26 @@ a question you are about to ask depends on.
   `hops job stop` and recorded as a crash), delete `*_test_*` objects of this system whose run is
   not running, run `verify` so stale claims are caught, then continue from the first phase whose
   status is not `met`, `skipped` or `accepted`.
-- **The lock** is `<slug>/.hops.lock` (holder, host, since), held for the whole invocation and
-  removed at the end. Another invocation holding it: refuse and print it. Older than a day with no
-  running execution behind it: report it and ask whether to take it over.
-- **Writing `system.yaml`**: write the whole new file to a temporary path, run
-  `python <slug>/tests/unit/test_system_yaml.py <temp>`, and rename it into place only when it
-  passes. A phase writes its own block, appends to `decisions`, and preserves every other line.
+- **The lock** is the build lease `<slug>/.hops.lock` (`owner`, `token`, `acquired`, `expires`,
+  UTC). `hops factory run` took it and passed its token as `$HOPS_LEASE_TOKEN`; started any other
+  way, take it with `hops factory system lease acquire <slug>`, which prints the token to pass as
+  `--token` below. Exit 4 means another invocation builds the system: print
+  `hops factory system lease show <slug>` and stop. Renew it with
+  `hops factory system lease renew <slug>` when each phase starts and at least hourly while you wait
+  on a job; it lapses 4 hours after the last renewal and is then taken over. A renewal that exits 4
+  means the lease was lost: stop at once and write nothing more. Release it with
+  `hops factory system lease release <slug>` when the invocation ends, done, stopped or failed.
+- **Writing `system.yaml`**: change fields with `python <slug>/set.py key=value ...`, which locks,
+  validates and replaces the file atomically and redoes the change if another writer got there
+  first. To rewrite more than fields, write the whole new file to `<slug>/.system.yaml.edit-<n>`,
+  run `python <slug>/tests/unit/test_system_yaml.py` on it, then
+  `hops factory system write-doc <slug> --expected-sha256 <sha256sum of the system.yaml you read> --from <it>`;
+  exit 3 means it changed since you read it: read it again and redo the edit. Never write
+  `system.yaml` directly. A phase writes its own block, appends to `decisions`, and preserves
+  every other line.
+- **Every asset you create names `<slug>` in its description** (feature groups, feature views,
+  models, deployments, jobs, apps): `hops factory system delete --assets` deletes an asset whose
+  name does not carry the slug only when its description names the system.
 - **Run onwards.** `/hops-build <phase>` runs that phase and then every later phase that is not
   `met` or that the rerun invalidated (a new model invalidates `inference` onwards; a new feature
   pipeline invalidates `training` onwards; see the transition table), through `verify`, without

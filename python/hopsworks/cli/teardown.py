@@ -25,7 +25,7 @@ import os
 import re
 import shutil
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
 
 
@@ -44,9 +44,10 @@ _MENTION = re.compile(r"\b([A-Za-z_][\w]*) v(\d+)\b")
 class Asset:
     """One thing to delete.
 
-    `version` None means every version; with `owned_by`, every version whose
-    description names that system. A job named `<slug>-*` means every job with
-    that prefix.
+    `version` None means every version; with `owned_by`, only what the
+    description names that system in (for a feature group without a version,
+    every version whose description does). A job named `<slug>-*` means every
+    job with that prefix.
     """
 
     kind: str
@@ -57,11 +58,12 @@ class Asset:
     def __str__(self) -> str:
         if self.kind == "job" and self.name.endswith("-*"):
             return f"jobs {self.name} (any not named above)"
-        if self.owned_by:
+        if self.owned_by and self.kind == "feature group" and self.version is None:
             return f"{self.kind} {self.name} (every other version {self.owned_by} made)"
-        return f"{self.kind} {self.name}" + (
+        shown = f"{self.kind} {self.name}" + (
             f" v{self.version}" if self.version is not None else ""
         )
+        return shown + (f" (if {self.owned_by} made it)" if self.owned_by else "")
 
 
 # Downstream first: nothing is deleted while something still in the list reads it.
@@ -104,7 +106,15 @@ def _version(value: Any) -> int | None:
 
 
 def inventory(doc: dict, slug: str) -> list[Asset]:
-    """The assets `doc` (a parsed system.yaml) says the system `slug` created, in deletion order."""
+    """The assets `doc` (a parsed system.yaml) says the system `slug` created, in deletion order.
+
+    Args:
+        doc: The parsed system.yaml.
+        slug: The system.
+
+    Returns:
+        The assets.
+    """
     found: list[Asset] = []
 
     def add(asset: Asset) -> None:
@@ -191,13 +201,59 @@ def inventory(doc: dict, slug: str) -> list[Asset]:
     )
 
 
+def _derives(name: str, slug: str) -> bool:
+    """Whether `name` carries the slug, as the build names what it creates (`<slug>-app`, `<slug_pkg>_predictions`, `<slug>model`)."""
+    plain = re.sub(r"[-_]", "", name.lower())
+    return re.sub(r"[-_]", "", slug.lower()) in plain
+
+
+def plan(
+    doc: dict, slug: str, others: dict[str, dict]
+) -> tuple[list[Asset], list[str]]:
+    """The assets to delete for the system `slug`, and why each one left out is kept.
+
+    A system made from an example starts with the example's system.yaml, so its
+    names alone do not prove it created an asset.
+    `others` maps every other registered system's slug to its system.yaml: what
+    any of them names is never deleted, and an asset whose name does not carry
+    `slug` is deleted only where its description names `slug`.
+
+    Args:
+        doc: The parsed system.yaml.
+        slug: The system.
+        others: Every other registered system's system.yaml, by slug.
+
+    Returns:
+        The assets to delete, and a line for each asset kept.
+    """
+    claimed: dict[tuple[str, str], str] = {}
+    for other, other_doc in others.items():
+        for asset in inventory(other_doc, other):
+            claimed.setdefault((asset.kind, asset.name), other)
+    assets: list[Asset] = []
+    kept: list[str] = []
+    for asset in inventory(doc, slug):
+        owner = claimed.get((asset.kind, asset.name))
+        if owner:
+            kept.append(f"kept {asset}: {owner} names it too")
+        elif asset.owned_by or _derives(asset.name, slug):
+            assets.append(asset)
+        else:
+            assets.append(replace(asset, owned_by=slug))
+    return assets, kept
+
+
+def _names(slug: str):
+    return re.compile(rf"(?<![\w-]){re.escape(slug)}(?![\w-])")
+
+
 def _missing(exc: Exception) -> bool:
     status = getattr(getattr(exc, "response", None), "status_code", None)
     return status == 404 or "not found" in str(exc).lower()
 
 
 class Deleter:
-    """Deletes assets of one project; each call returns "deleted" or "gone", or raises."""
+    """Deletes assets of one project; each call returns "deleted", "gone" or why it kept the asset, or raises."""
 
     def __init__(self, project: Any, other_slugs: tuple[str, ...] = ()) -> None:
         self.project = project
@@ -212,42 +268,52 @@ class Deleter:
         return self._fs
 
     def delete(self, asset: Asset) -> str:
-        """Delete `asset`, stopping or unscheduling it first where that is needed."""
+        """Delete `asset`, stopping or unscheduling it first where that is needed.
+
+        Args:
+            asset: The asset.
+
+        Returns:
+            The outcome.
+        """
         return getattr(self, "_" + asset.kind.replace(" ", "_"))(asset)
 
-    def _each(self, items: list) -> str:
-        for item in items:
-            item.delete()
-        return "deleted" if items else "gone"
+    def _each(self, asset: Asset, items: list) -> str:
+        """Delete the items, only those whose description names `asset.owned_by` when it is set."""
+        found = [i for i in items if i is not None]
+        mine = found
+        if asset.owned_by:
+            owner = _names(asset.owned_by)
+            mine = [
+                i for i in found if owner.search(getattr(i, "description", None) or "")
+            ]
+        # The earlier versions of a group the system writes may all be another's.
+        sweep = asset.kind == "feature group" and asset.version is None
+        if found and not mine and not sweep:
+            return f"kept {asset}: not created by {asset.owned_by}"
+        stop = {"app": "stop", "job": "unschedule"}.get(asset.kind)
+        for item in mine:
+            # A job with no schedule, or an app that is not running, cannot be stopped.
+            if stop:
+                with contextlib.suppress(Exception):
+                    getattr(item, stop)()
+            if asset.kind == "deployment":
+                item.delete(force=True)
+            else:
+                item.delete()
+        return "deleted" if mine else "gone"
 
     def _app(self, asset: Asset) -> str:
-        app = self.project.get_app_api().get_app(asset.name)
-        if app is None:
-            return "gone"
-        # An app that is not running cannot be stopped.
-        with contextlib.suppress(Exception):
-            app.stop()
-        app.delete()
-        return "deleted"
+        return self._each(asset, [self.project.get_app_api().get_app(asset.name)])
 
     def _deployment(self, asset: Asset) -> str:
-        deployment = self.project.get_model_serving().get_deployment(asset.name)
-        if deployment is None:
-            return "gone"
-        deployment.delete(force=True)
-        return "deleted"
+        serving = self.project.get_model_serving()
+        return self._each(asset, [serving.get_deployment(asset.name)])
 
     def _job(self, asset: Asset) -> str:
         if asset.name.endswith("-*"):
             return self._jobs_named(asset.name[:-1])
-        job = self.project.get_job_api().get_job(asset.name)
-        if job is None:
-            return "gone"
-        # A job with no schedule cannot be unscheduled.
-        with contextlib.suppress(Exception):
-            job.unschedule()
-        job.delete()
-        return "deleted"
+        return self._each(asset, [self.project.get_job_api().get_job(asset.name)])
 
     def _jobs_named(self, prefix: str) -> str:
         jobs = [
@@ -261,15 +327,11 @@ class Deleter:
                 if o.startswith(prefix)
             )
         ]
-        for job in jobs:
-            with contextlib.suppress(Exception):
-                job.unschedule()
-            job.delete()
-        return "deleted" if jobs else "gone"
+        return self._each(Asset("job", prefix + "*"), jobs)
 
     def _model(self, asset: Asset) -> str:
         return self._each(
-            self.project.get_model_registry().get_models(asset.name) or []
+            asset, self.project.get_model_registry().get_models(asset.name) or []
         )
 
     def _feature_view(self, asset: Asset) -> str:
@@ -280,7 +342,7 @@ class Deleter:
                 return "gone"
             raise
         # A feature view's training datasets are deleted with it.
-        return self._each(views)
+        return self._each(asset, views)
 
     def _feature_group(self, asset: Asset) -> str:
         try:
@@ -292,15 +354,14 @@ class Deleter:
             if _missing(exc):
                 return "gone"
             raise
-        groups = [g for g in groups if g is not None]
-        if asset.owned_by:
-            names = re.compile(rf"(?<![\w-]){re.escape(asset.owned_by)}(?![\w-])")
-            groups = [g for g in groups if names.search(g.description or "")]
-        return self._each(groups)
+        return self._each(asset, groups)
 
     def _data_source(self, asset: Asset) -> str:
         from hopsworks_common.core import rest
 
+        # A data source has no description to prove whose it is.
+        if asset.owned_by:
+            return f"kept {asset}: not created by {asset.owned_by}"
         try:
             rest._send_request(
                 "DELETE",
@@ -333,7 +394,14 @@ class Deleter:
 
 
 def repo_of(doc: dict) -> tuple[str, str, str] | None:
-    """`(host, owner, name)` of the system's recorded GitHub repository, or None."""
+    """`(host, owner, name)` of the system's recorded GitHub repository, or None.
+
+    Args:
+        doc: The parsed system.yaml.
+
+    Returns:
+        The repository.
+    """
     repo = (doc.get("system") or {}).get("repo") or {}
     url = str(repo.get("url") or "")
     found = re.match(
@@ -431,6 +499,15 @@ def delete_repo(
     Branches are read and deleted with git, which any of the gh login, a token
     or an SSH key allows; deleting a whole repository needs the GitHub API.
 
+    Args:
+        doc: The parsed system.yaml.
+        slug: The system.
+        project: The project's name.
+        directory: The system's directory, for its git remote.
+
+    Returns:
+        The outcome.
+
     Raises:
         RuntimeError: git or GitHub refused.
     """
@@ -492,7 +569,14 @@ def delete_repo(
 
 
 def delete_code(directory: Path | None) -> str:
-    """Delete the system's code directory, its git work tree included."""
+    """Delete the system's code directory, its git work tree included.
+
+    Args:
+        directory: The system's directory.
+
+    Returns:
+        The outcome.
+    """
     if directory is None or not directory.exists():
         return "gone"
     shutil.rmtree(directory)
@@ -506,6 +590,10 @@ def run(
     steps: list[tuple[str, Callable[[], str]]], report: Callable[[str, str], None]
 ) -> str | None:
     """Run the steps in order, reporting each outcome, up to the first that fails.
+
+    Args:
+        steps: Each step's label and what runs it.
+        report: Called with each step's label and outcome.
 
     Returns:
         The label of the step that failed, or None when every step succeeded.

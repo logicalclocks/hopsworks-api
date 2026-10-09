@@ -157,7 +157,17 @@ def _reject_shares(tables: list[dict], doc: dict) -> None:
 
 
 def collect(project: Any, doc: dict, slug: str, hours: int = 24) -> dict:
-    """The facts of an analytics layer's status report."""
+    """The facts of an analytics layer's status report.
+
+    Args:
+        project: The project.
+        doc: The layer's system.yaml.
+        slug: The layer.
+        hours: How far back to read the job runs.
+
+    Returns:
+        The facts.
+    """
     now = datetime.now(timezone.utc)
     since = now - timedelta(hours=hours)
     from hopsworks.cli.commands.analytics import layer_jobs, layer_tables

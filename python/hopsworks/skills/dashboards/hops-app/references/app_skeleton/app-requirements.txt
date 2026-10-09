@@ -2,3 +2,5 @@
 # and uvicorn; a clone of python-app-pipeline needs both pinned here.
 fastapi==0.141.1
 uvicorn==0.52.4
+# The SDK's Trino connection (project.get_trino_api().connect()) needs the client.
+trino==0.336.0

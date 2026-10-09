@@ -5,14 +5,15 @@ Two checks at one moment, with the model and transformation versions the YAML
 pins. First, the transformed features the offline store gives for each entity
 at `parity.at` match the transformed vector the online store serves. Second,
 the downloaded model scoring those vectors matches what the deployment returns
-for the same keys. Applies only where both paths exist (a realtime system).
+for the same keys, one prediction per entity. `<pkg>.parity` holds the comparison and its null
+policy: null on both sides is equal, null on one side or an infinity is a mismatch. Applies only
+where both paths exist (a realtime system).
 """
 
 from __future__ import annotations
 
 import importlib
 
-import numpy as np
 import pytest
 
 
@@ -48,36 +49,28 @@ def test_batch_and_online_paths_agree(project, system):
     keys = list(sample[key_column])
 
     online = fv.get_feature_vectors(entry=[{entity: k} for k in keys], return_type="pandas")
-    offline = sample.drop(columns=[key_column, time_column]).reset_index(drop=True)
-    columns = [c for c in online.columns if c in offline.columns]
-    # With no shared column or no entity, the comparison below would pass vacuously.
-    assert keys and columns, (
-        f"nothing to compare: {len(keys)} entities, online columns {list(online.columns)}, "
-        f"offline columns {list(offline.columns)}"
-    )
-    feature_diff = np.abs(
-        offline[columns].to_numpy(dtype=float) - online[columns].to_numpy(dtype=float)
-    )
-    mismatched = int((feature_diff > parity["tolerance"]).any(axis=1).sum())
-    assert mismatched <= parity["max_mismatch"], (
-        f"{mismatched} of {len(keys)} entities have different transformed features offline and online"
-    )
-
+    offline = sample.drop(columns=[key_column, time_column])
+    # The feature view's schema, so a column missing on either side is a mismatch, not skipped.
+    expected = [
+        f.name for f in fv.features if not f.label and f.name not in (key_column, time_column)
+    ]
     pkg = system["system"]["slug"].replace("-", "_")
+    parity_check = importlib.import_module(f"{pkg}.parity")
+    problems = parity_check.feature_problems(
+        offline, online, expected, len(keys), parity["tolerance"], parity["max_mismatch"]
+    )
+    assert not problems, "; ".join(problems)
+
     evaluate = importlib.import_module(f"{pkg}.evaluate")
     model = project.get_model_registry().get_model(
         training["model"]["name"], version=parity["model_version"]
     )
-    local = np.asarray(evaluate.load_predictor(model.download())(online), dtype=float)
+    local = evaluate.load_predictor(model.download())(online)
     deployment = project.get_model_serving().get_deployment(
         system["inference"]["realtime"]["deployment"]
     )
-    served = np.asarray(
-        [deployment.predict(inputs=[{entity: k}])["predictions"][0] for k in keys],
-        dtype=float,
-    ).ravel()
-    prediction_diff = np.abs(local.ravel() - served)
-    wrong = int((prediction_diff > parity["tolerance"]).sum())
-    assert wrong <= parity["max_mismatch"], (
-        f"{wrong} of {len(keys)} predictions differ between the downloaded model and the deployment"
+    served = [deployment.predict(inputs=[{entity: k}])["predictions"][0] for k in keys]
+    problems = parity_check.prediction_problems(
+        local, served, len(keys), parity["tolerance"], parity["max_mismatch"]
     )
+    assert not problems, "; ".join(problems)

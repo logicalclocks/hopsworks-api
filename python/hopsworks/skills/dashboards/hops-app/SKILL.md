@@ -299,14 +299,21 @@ A full dashboard (statistics, monitoring history, data sample) is in
   never shifts the page sideways.
 - **The description is the module docstring** of `app.py`, updated on every
   edit, so the next edit starts from what the app is now.
+- **Each request reads only what it returns.** The skeleton's routes query the
+  feature group through Trino: the latest row per entity with
+  `ROW_NUMBER() OVER (PARTITION BY <id> ORDER BY <ts> DESC)`, the top k with
+  `ORDER BY ... LIMIT ?`, one entity with `WHERE <id> = ? ORDER BY <ts> DESC
+  LIMIT 1`. Values are bound as `?` parameters, never formatted into the SQL;
+  `limit` is capped (`MAX_LIMIT`), and results are cached for `CACHE_SECONDS`.
+  Never read a whole feature group into pandas to sort or filter it per request.
 - **Where the source lives.** `Users/<user>/apps/<name>/` (`~/apps/<name>/` in a
   terminal; `./apps/<name>/` from a laptop, mirrored with `hops files upload`),
   or a git-backed app when the working directory is a GitHub repository
   (`--git-url`, `--git-branch`, `--git-auto-redeploy`, so a push is a
   redeploy). An ML system's app keeps its source in the system's repository
   under `<slug>/app/`.
-- **Environment.** `python-agent-pipeline` ships FastAPI and uvicorn, so the
-  skeleton runs there with no clone. A library neither base has goes into
+- **Environment.** `python-agent-pipeline` ships FastAPI and uvicorn; the
+  skeleton's `app-requirements.txt` adds the Trino client where it is missing. A library neither base has goes into
   `app-requirements.txt` and a clone `<name>-app-env` (see **Custom libraries**).
 
 ```bash

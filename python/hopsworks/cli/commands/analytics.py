@@ -281,30 +281,20 @@ def _copy_template(repo: Path, slug: str, template: Path) -> tuple[Path, dict]:
     if shutil.which("git") and not (repo / ".git").exists():
         subprocess.run(["git", "init", "-q", str(repo)], check=False)
     for item in template.iterdir():
+        if item.name == "system.yaml":
+            continue
         name = ".gitignore" if item.name == "gitignore" else item.name
         shutil.copy(item, target / name)
-    return target, yaml.safe_load((target / "system.yaml").read_text(encoding="utf-8"))
-
-
-def _write(directory: Path, doc: dict, message: str | None = None) -> None:
-    """Write system.yaml, and commit the change in the layer's work tree when given a message."""
-    import yaml
-
-    (directory / "system.yaml").write_text(
-        yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=100),
-        encoding="utf-8",
+    return target, yaml.safe_load(
+        (template / "system.yaml").read_text(encoding="utf-8")
     )
-    if not shutil.which("git"):
-        return
-    if message:
-        # Only this layer's directory: the work tree holds the other layers too.
-        git = ["git", "-C", str(directory)]
-        subprocess.run([*git, "add", "-A", "--", "."], check=False)
-        subprocess.run(
-            [*git, "commit", "-q", "-m", message, "--", "."],
-            check=False,
-            capture_output=True,
-        )
+
+
+def _write(directory: Path, doc: dict) -> None:
+    """Write the new layer's system.yaml."""
+    from hopsworks.cli import system_doc
+
+    system_doc.create(directory, doc)
 
 
 def _sync_cadences(doc: dict, hours: Any = None) -> None:
@@ -527,14 +517,20 @@ def _create_bronze(cwd: Path, answers: dict) -> Path:
 
 
 def _launch(target: Path, launch: bool, request: str | None = None) -> None:
-    """Start Claude Code on the layer: `request` is the slash command, /hops-silver <slug> by default."""
+    """Start Claude Code on the system in `target` with the build lease: `request` is the slash command, /hops-silver <slug> by default."""
+    from hopsworks.cli import system_doc
+
     slug = target.name
     request = request or f"/hops-silver {slug}"
-    command = ["claude", request]
     if not launch or not shutil.which("claude"):
-        click.echo(f'\nBuild it with:  cd {target} && claude "{request}"')
+        click.echo(
+            f"\nBuild it with:  cd {shlex.quote(str(target))} && claude {shlex.quote(request)}"
+        )
         return
+    token = system_doc.acquire(target)["token"]
     if os.environ.get("TMUX") and shutil.which("tmux"):
+        # A tmux window starts from the server's environment, not this one's.
+        command = ["env", f"{system_doc.TOKEN_ENV}={token}", "claude", request]
         subprocess.run(
             ["tmux", "new-window", "-n", slug, "-c", str(target), shlex.join(command)],
             check=True,
@@ -543,9 +539,11 @@ def _launch(target: Path, launch: bool, request: str | None = None) -> None:
             f"\nBuilding in the tmux window '{slug}'; the Hopsworks UI shows its progress."
         )
         return
-    # In the layer directory, so Claude Code reads its AGENTS.md.
+    # In the system directory, so Claude Code reads its AGENTS.md.
     os.chdir(target)
-    os.execvp("claude", command)
+    os.execvpe(
+        "claude", ["claude", request], {**os.environ, system_doc.TOKEN_ENV: token}
+    )
 
 
 def _register(ctx: click.Context, target: Path, name: str, layer: str) -> None:
@@ -559,7 +557,7 @@ def _register(ctx: click.Context, target: Path, name: str, layer: str) -> None:
         )
     except Exception as exc:  # noqa: BLE001 - the layer is recorded either way
         output.warn(
-            f"Not registered in the project's Factory ({exc}); run `hops factory system register {target} --factory analytics-{layer}`."
+            f"Not registered in the project's Factory ({exc}); run `hops factory system register {shlex.quote(str(target))} --factory analytics-{layer}`."
         )
 
 
@@ -569,6 +567,14 @@ def create_bronze(ctx: click.Context, data: dict, launch: bool) -> Path:
     The answers name the generator (`reference_code`, a directory of the
     hops-analytics references with a bronze.yaml), which is copied into the
     layer with the tables it writes and the jobs that run it on each cadence.
+
+    Args:
+        ctx: Click context.
+        data: The answers of the bronze factory's form.
+        launch: Start Claude Code on the layer.
+
+    Returns:
+        The layer's directory.
     """
     problems = _bronze_problems(data)
     if problems:
@@ -586,6 +592,14 @@ def create_silver(ctx: click.Context, data: dict, launch: bool) -> Path:
     The answers name the bronze feature groups (sources) with the cadence each
     is refreshed at, the silver tasks, any extra tasks in the user's words, the
     engine (dbt_trino or pyspark), the settings and the lifecycle of the tables.
+
+    Args:
+        ctx: Click context.
+        data: The answers of the silver factory's form.
+        launch: Start Claude Code on the layer.
+
+    Returns:
+        The layer's directory.
     """
     # A factory form picks each bronze table as {table: {name, version}, cadence}.
     data = {
@@ -632,6 +646,14 @@ def create_gold(ctx: click.Context, data: dict, launch: bool) -> Path:
     (star or snowflake), the silver feature groups it reads, the standards
     every mart follows, and the first data mart with its requirements.
     More marts are added by an Add data mart change request.
+
+    Args:
+        ctx: Click context.
+        data: The answers of the gold factory's form.
+        launch: Start Claude Code on the layer.
+
+    Returns:
+        The layer's directory.
     """
     data = _with_default_mart(data)
     problems = _gold_problems(data)
@@ -649,7 +671,14 @@ def _kind(doc: dict) -> str:
 
 
 def silver_jobs(outputs: dict) -> list[dict]:
-    """The silver layer's jobs, one per cadence; a layer built before that has one `job`."""
+    """The silver layer's jobs, one per cadence; a layer built before that has one `job`.
+
+    Args:
+        outputs: The layer's `outputs` block.
+
+    Returns:
+        The jobs, each a mapping with its name.
+    """
     jobs = [j for j in outputs.get("jobs") or [] if j.get("name")]
     if not jobs and (outputs.get("job") or {}).get("name"):
         jobs = [outputs["job"]]
@@ -657,7 +686,14 @@ def silver_jobs(outputs: dict) -> list[dict]:
 
 
 def layer_jobs(doc: dict) -> list[dict]:
-    """The jobs a layer runs: silver's one per cadence, gold's every data mart's, each with its `mart`."""
+    """The jobs a layer runs: silver's one per cadence, gold's every data mart's, each with its `mart`.
+
+    Args:
+        doc: The layer's system.yaml.
+
+    Returns:
+        The jobs, each a mapping with its name.
+    """
     if _kind(doc) != "gold":
         return silver_jobs(doc.get("outputs") or {})
     return [
@@ -669,7 +705,14 @@ def layer_jobs(doc: dict) -> list[dict]:
 
 
 def layer_tables(doc: dict) -> list[dict]:
-    """The tables a layer built, each once, with its `kind` (bronze, silver, rejects, or gold) and, in gold, its `mart`."""
+    """The tables a layer built, each once, with its `kind` (bronze, silver, rejects, or gold) and, in gold, its `mart`.
+
+    Args:
+        doc: The layer's system.yaml.
+
+    Returns:
+        The tables, each a mapping with its name, version and kind.
+    """
     if _kind(doc) != "gold":
         outputs = doc.get("outputs") or {}
         return [
@@ -726,6 +769,12 @@ def delete_assets(
     Every feature group is checked before anything is deleted: one the system reads (its
     `sources`, or a feature group among `requirements.data_sources`), or one tagged as a lower
     analytics layer (any layer, for an ML system), stops the delete with nothing gone.
+
+    Args:
+        ctx: Click context.
+        doc: The system's system.yaml.
+        job_names: The jobs to delete.
+        tables: The feature groups to delete, each `{name, version}`.
     """
     project = session.get_project(ctx)
     kind = (doc.get("layer") or {}).get("kind")
@@ -777,6 +826,14 @@ def delete_layer(ctx: click.Context, directory: Path, doc: dict) -> str:
     A layer never deletes the tables it reads: a feature group that is one of
     its sources, or is tagged as a lower layer (bronze, and silver from gold),
     stops the delete before anything is deleted.
+
+    Args:
+        ctx: Click context.
+        directory: The layer's directory.
+        doc: The layer's system.yaml.
+
+    Returns:
+        What was deleted.
     """
     delete_assets(ctx, doc, [j["name"] for j in layer_jobs(doc)], layer_tables(doc))
     shutil.rmtree(directory, ignore_errors=True)
@@ -816,6 +873,14 @@ def layer_status(
     written against the freshness target, in silver its share of rejected rows
     against the quality gate, and its file layout from the table's files, as
     hops-table-maintenance reads them.
+
+    Args:
+        project: The project the layer is in.
+        directory: The layer's directory.
+        doc: The layer's system.yaml.
+        hours: How far back to read the job runs.
+        no_summary: Skip the summary Claude writes.
+        out: Where to write the page; default: status/report.html in the layer's directory.
     """
     from hopsworks.cli import health, silver_status
 

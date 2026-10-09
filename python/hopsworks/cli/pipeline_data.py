@@ -90,7 +90,15 @@ def _added(metrics: dict) -> tuple[int, int]:
 
 
 def delta_written(table: Path, since: datetime) -> dict | None:
-    """The commits of a Delta table since `since`: their count, rows and bytes added, and the last one's time."""
+    """The commits of a Delta table since `since`: their count, rows and bytes added, and the last one's time.
+
+    Args:
+        table: The table's location.
+        since: The start of the window.
+
+    Returns:
+        The facts.
+    """
     log = table / "_delta_log"
     if not log.is_dir():
         return None
@@ -120,7 +128,15 @@ def delta_written(table: Path, since: datetime) -> dict | None:
 
 
 def files_written(directory: Path, since: datetime) -> dict | None:
-    """The files under `directory` modified since `since`: how many, their bytes, and the latest time."""
+    """The files under `directory` modified since `since`: how many, their bytes, and the latest time.
+
+    Args:
+        directory: The directory.
+        since: The start of the window.
+
+    Returns:
+        The facts.
+    """
     if not directory.exists():
         return None
     files = (
@@ -163,7 +179,19 @@ def column_checks(
     bucket: str | None,
     hours: int,
 ) -> dict:
-    """With Trino: per column, the share of nulls among the window's rows, and the buckets with no rows."""
+    """With Trino: per column, the share of nulls among the window's rows, and the buckets with no rows.
+
+    Args:
+        conn: A Trino connection.
+        table: The table.
+        event_time: Its event time column.
+        since: The start of the window.
+        bucket: The bucket width.
+        hours: The window's length.
+
+    Returns:
+        The checks.
+    """
     cur = conn.cursor()
     cur.execute(f'select * from "{table}" limit 0')
     columns = [d[0] for d in cur.description]
@@ -307,7 +335,16 @@ def _output(
 
 
 def collect(project: Any, doc: dict, hours: int = 24) -> list[dict]:
-    """One fact per pipeline that writes: what came in, what went out, and the problems in what went out."""
+    """One fact per pipeline that writes: what came in, what went out, and the problems in what went out.
+
+    Args:
+        project: The project.
+        doc: The system's system.yaml.
+        hours: How far back to look.
+
+    Returns:
+        The facts.
+    """
     pipelines = [
         p
         for p in _as_list((doc.get("features") or {}).get("pipelines"))

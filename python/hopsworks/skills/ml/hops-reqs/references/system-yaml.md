@@ -40,10 +40,10 @@ below and passes on that example.
    identity fields on every piece of evidence. It runs with the unit tests, and a phase writes
    the YAML to a temporary file, runs that test against it, and renames it into place, so a
    half-written or invalid file never replaces a valid one.
-8. **One invocation at a time.** `/hops` takes `<slug>/.hops.lock` (holder, host, time) for
-   the whole invocation and refuses to start while another holds it, so two sessions cannot
-   interleave writes. A lock older than a day with no running execution behind it is reported
-   and may be taken over.
+8. **One invocation at a time.** The build holds the lease `<slug>/.hops.lock` (owner, token,
+   expiry) for the whole invocation, renewing it as it goes, and another refuses to start
+   while it holds, so two sessions cannot interleave writes. A lease past its expiry is taken
+   over.
 9. **Intent before effect, evidence after.** A row for a job run or a model registration is
    written with `state: submitted` before the remote call, updated to `running` with the
    execution id, and to `finished` or `failed` with the result, so a crash between the effect
@@ -316,24 +316,34 @@ only to document them.
 
 ## Writing the file
 
-A phase never edits `system.yaml` in place. It writes the new content to a
-temporary file, validates it, and renames it over the old one, so a half-written
-or invalid file never replaces a valid one:
+A phase never edits `system.yaml` in place. `set.py` changes fields: under the
+system's write lock it reads the file and its sha256, applies the change,
+validates the result, writes a temporary file in the same directory, and
+replaces the old one only when its sha256 is still the one read; otherwise it
+redoes the change on the newer file. A whole new file goes through the same path:
 
 ```bash
-python <slug>/tests/unit/test_system_yaml.py /tmp/system.yaml.new && mv /tmp/system.yaml.new <slug>/system.yaml
+python <slug>/tests/unit/test_system_yaml.py <slug>/.system.yaml.edit-1 \
+  && hops factory system write-doc <slug> --expected-sha256 <sha256 of the file read> --from <slug>/.system.yaml.edit-1
 ```
 
-The lock is `<slug>/.hops.lock`, a one-line YAML mapping written when an
-invocation starts and removed when it ends:
+`write-doc` exits 3 when the file changed since it was read (read it again and
+redo the edit) and 2 when the new file is not valid YAML. The Hopsworks UI saves
+an edited `system.yaml` the same way.
 
-```yaml
-{holder: "claude-code session 5837752b", host: jim-laptop, since: 2026-09-22T09:02Z}
+The lock is the build lease `<slug>/.hops.lock`, JSON written by
+`hops factory run` before it starts Claude Code, which gets its token as
+`$HOPS_LEASE_TOKEN`:
+
+```json
+{"owner": "meb10000@terminal-0:4121", "token": "9f0c...", "acquired": "2026-09-22T09:02:00Z", "expires": "2026-09-22T13:02:00Z"}
 ```
 
-A second invocation that finds the file refuses to start and prints it. A lock
-older than a day whose holder has no running execution in `system.progress.now`
-is reported, and the user may tell the command to take it over.
+A second `hops factory run` refuses to start while it holds and prints the
+owner. The build renews it (`hops factory system lease renew <slug>`) as each
+phase starts and while it waits on a job, and releases it when it ends; a
+lease past `expires` is taken over by the next run. A renewal that fails means
+another invocation took over: the build stops writing at once.
 
 ## Progress and estimates
 

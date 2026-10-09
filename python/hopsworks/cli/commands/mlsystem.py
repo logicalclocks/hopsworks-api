@@ -11,6 +11,7 @@ included, is a change request: ``hops factory run <factory> <system> --change``.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import subprocess
 from datetime import datetime, timezone
@@ -26,6 +27,13 @@ def code_location(path: Path, project: str | None = None) -> str:
     A directory under the Hopsworks terminal's HopsFS mount becomes its HopsFS path
     (``/Projects/<project>/...``); any other directory becomes the URL of its Git
     repository's ``origin``.
+
+    Args:
+        path: The system's directory.
+        project: The project's name, when the environment does not say.
+
+    Returns:
+        The HopsFS path or the Git URL.
 
     Raises:
         click.ClickException: when the directory is neither in HopsFS nor in a Git repository with an origin.
@@ -65,12 +73,33 @@ def code_location(path: Path, project: str | None = None) -> str:
 def register(
     ctx: click.Context, path: Path, name: str | None = None, factory: str | None = None
 ) -> dict:
-    """Register the system at `path`, built by `factory`, with the project's registry; returns the stored entry."""
+    """Register the system at `path`, built by `factory`, with the project's registry; returns the stored entry.
+
+    The factory version and definition digest its system.yaml records go along, so the
+    registry records the definition the system was generated from, not the factory's current one.
+
+    Args:
+        ctx: Click context.
+        path: The system's directory.
+        name: Its display name.
+        factory: The factory that built it.
+
+    Returns:
+        The registry entry.
+    """
+    from hopsworks.cli import system_doc
     from hopsworks_common.core import ml_system_api
 
     project = session.get_project(ctx)
+    recorded = system_doc.read(path)[0].get("factory") or {}
+    if not isinstance(recorded, dict) or recorded.get("name") not in (None, factory):
+        recorded = {}
     return ml_system_api._register(
-        code_location(path, getattr(project, "name", None)), name, factory
+        code_location(path, getattr(project, "name", None)),
+        name,
+        factory or recorded.get("name"),
+        factory_version=recorded.get("version"),
+        factory_digest=recorded.get("digest"),
     )
 
 
@@ -90,7 +119,12 @@ def system_group() -> None:
 @click.option("--factory", help="Only the systems this factory built.")
 @click.pass_context
 def system_list(ctx: click.Context, factory: str | None) -> None:
-    """List the project's systems, newest first, with the factory that built each and whether you can open its code."""
+    """List the project's systems, newest first, with the factory that built each and whether you can open its code.
+
+    Args:
+        ctx: Click context.
+        factory: Only this factory's systems.
+    """
     from hopsworks_common.core import ml_system_api
 
     session.get_project(ctx)
@@ -99,6 +133,12 @@ def system_list(ctx: click.Context, factory: str | None) -> None:
         output.print_json(systems)
         return
     access = {True: "yes", False: "no", None: "repository"}
+
+    def code_access(s: dict) -> str:
+        if s.get("available") is False:
+            return "unavailable"
+        return access.get(s.get("accessible"), "-")
+
     output.print_table(
         ["ID", "NAME", "FACTORY", "OWNER", "UPDATED", "CODE ACCESS", "PATH"],
         [
@@ -108,7 +148,7 @@ def system_list(ctx: click.Context, factory: str | None) -> None:
                 f"{s.get('factory') or '-'} v{s.get('factoryVersion') or '?'}",
                 s.get("ownerName") or s.get("owner"),
                 output.format_ts(_when(s.get("lastUpdated"))),
-                access.get(s.get("accessible"), "-"),
+                code_access(s),
                 s.get("pathToCode"),
             ]
             for s in systems
@@ -148,6 +188,9 @@ def _find(system: str) -> dict:
     """The registry entry of `system`: its id, its name, or its directory's name (the slug)."""
     from hopsworks_common.core import ml_system_api
 
+    if system.isdigit():
+        with contextlib.suppress(Exception):
+            return ml_system_api._get(int(system))
     matches = [
         s
         for s in ml_system_api._list()
@@ -175,6 +218,25 @@ def _local_dir(entry: dict) -> Path | None:
     if not code.startswith("/Projects/") or len(found) < 4 or "/Users/" not in home:
         return None
     return Path(home.split("/Users/", 1)[0]) / found[3]
+
+
+def _other_docs(entry: dict) -> dict[str, dict]:
+    """The system.yaml of every other registered system, by slug; empty for one whose code this terminal cannot read."""
+    import yaml
+    from hopsworks_common.core import ml_system_api
+
+    docs: dict[str, dict] = {}
+    for other in ml_system_api._list():
+        if other.get("id") == entry.get("id"):
+            continue
+        slug = str(other.get("pathToCode") or "").rstrip("/").rsplit("/", 1)[-1]
+        directory = _local_dir(other)
+        doc: dict = {}
+        if directory is not None:
+            with contextlib.suppress(OSError, yaml.YAMLError):
+                doc = yaml.safe_load((directory / "system.yaml").read_text("utf-8"))
+        docs[slug] = doc if isinstance(doc, dict) else {}
+    return docs
 
 
 @system_group.command("remove")
@@ -253,6 +315,7 @@ def system_delete(
     entry = _find(system)
     assets = assets or repo
     steps: list = []
+    kept: list[str] = []
     doc: dict = {}
     directory = path or _local_dir(entry)
     slug = directory.name if directory else str(entry.get("name"))
@@ -277,16 +340,10 @@ def system_delete(
                 )
             ]
         else:
-            others = tuple(
-                str(s.get("pathToCode", "")).rstrip("/").rsplit("/", 1)[-1]
-                for s in ml_system_api._list()
-                if s.get("id") != entry.get("id")
-            )
-            deleter = teardown.Deleter(project, other_slugs=others)
-            steps = [
-                (str(a), lambda a=a: deleter.delete(a))
-                for a in teardown.inventory(doc, slug)
-            ]
+            others = _other_docs(entry)
+            deleter = teardown.Deleter(project, other_slugs=tuple(others))
+            planned, kept = teardown.plan(doc, slug, others)
+            steps = [(str(a), lambda a=a: deleter.delete(a)) for a in planned]
             if repo:
                 found = teardown.repo_of(doc)
                 label = f"repository {found[1]}/{found[2]}" if found else "repository"
@@ -312,6 +369,8 @@ def system_delete(
         click.echo(f"Deleting {entry.get('name')} ({entry.get('pathToCode')}):")
         for label, _ in steps:
             click.echo(f"  {label}")
+        for line in kept:
+            click.echo(f"  {line}")
     if not yes and not output.JSON_MODE:
         click.confirm("Delete all of these?", abort=True)
     outcomes: list[dict] = []
@@ -328,7 +387,12 @@ def system_delete(
     failed = teardown.run(steps, report)
     if output.JSON_MODE:
         output.print_json(
-            {"system": entry.get("id"), "steps": outcomes, "failed": failed}
+            {
+                "system": entry.get("id"),
+                "steps": outcomes,
+                "kept": kept,
+                "failed": failed,
+            }
         )
     if failed:
         raise click.ClickException(
@@ -420,21 +484,179 @@ def system_status(
     )
 
 
-@system_group.command("dir")
-@click.argument("slug")
-def system_dir(slug: str) -> None:
-    """Print the directory of the system SLUG under the current directory: ./SLUG, or an analytics layer's in its analytics repository."""
+def _system_path(slug_or_dir: str) -> Path | None:
+    """The directory of a system: SLUG_OR_DIR itself, ./SLUG, the current directory when it is SLUG, or an analytics layer's in its analytics repository."""
     from hopsworks.cli.commands import analytics
 
     cwd = Path.cwd()
-    if (cwd / slug / "system.yaml").is_file():
-        click.echo(cwd / slug)
+    here = [cwd] if cwd.name == slug_or_dir else []
+    for candidate in (Path(slug_or_dir), cwd / slug_or_dir, *here):
+        if (candidate / "system.yaml").is_file():
+            return candidate
+    return next((d for d in analytics._layer_dirs(cwd) if d.name == slug_or_dir), None)
+
+
+def _require_path(slug_or_dir: str) -> Path:
+    found = _system_path(slug_or_dir)
+    if found is None:
+        raise click.ClickException(f"no system {slug_or_dir!r} under {Path.cwd()}")
+    return found
+
+
+@system_group.command("dir")
+@click.argument("slug")
+def system_dir(slug: str) -> None:
+    """Print the directory of the system SLUG under the current directory: ./SLUG, or an analytics layer's in its analytics repository.
+
+    Args:
+        slug: The system.
+    """
+    click.echo(_require_path(slug))
+
+
+@system_group.command("write-doc")
+@click.argument("slug_or_dir")
+@click.option(
+    "--expected-sha256",
+    "expected",
+    required=True,
+    help="The sha256 of the system.yaml the edit started from.",
+)
+@click.option(
+    "--from",
+    "source",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="The edited document; it is removed afterwards.",
+)
+def system_write_doc(slug_or_dir: str, expected: str, source: Path) -> None:
+    """Replace the system.yaml of SLUG_OR_DIR with the edited document in --from.
+
+    Exits 3 when system.yaml changed since the edit read it, and 2 when the edit is not a valid system.yaml.
+
+    Args:
+        slug_or_dir: The system's slug or directory.
+        expected: The sha256 of the system.yaml the edit started from.
+        source: The edited document.
+    """
+    from hopsworks.cli import system_doc
+
+    try:
+        target = _require_path(slug_or_dir)
+        written = system_doc.replace(
+            target, source.read_text(encoding="utf-8"), expected.lower()
+        )
+    finally:
+        source.unlink(missing_ok=True)
+    if output.JSON_MODE:
+        output.print_json({"path": str(target / "system.yaml"), "sha256": written})
         return
-    for directory in analytics._layer_dirs(cwd):
-        if directory.name == slug:
-            click.echo(directory)
-            return
-    raise click.ClickException(f"no system {slug!r} under {cwd}")
+    output.success(f"Wrote {target / 'system.yaml'} ({written})")
+
+
+@system_group.group("lease")
+def lease_group() -> None:
+    """The build lease of a system: which invocation is building it, until when."""
+
+
+@lease_group.command("show")
+@click.argument("slug_or_dir")
+def lease_show(slug_or_dir: str) -> None:
+    """Print the build lease of SLUG_OR_DIR, if any; exits 1 when there is none.
+
+    Args:
+        slug_or_dir: The system's slug or directory.
+    """
+    from hopsworks.cli import system_doc
+
+    held = system_doc.lease(_require_path(slug_or_dir))
+    if held is None:
+        raise click.ClickException("no build lease")
+    held = {**held, "expired": system_doc.expired(held)}
+    if output.JSON_MODE:
+        output.print_json(held)
+        return
+    for key, value in held.items():
+        click.echo(f"{key}: {value}")
+
+
+def _ttl(minutes: int):
+    from datetime import timedelta
+
+    return timedelta(minutes=minutes)
+
+
+_TTL = click.option(
+    "--ttl-minutes",
+    type=click.IntRange(min=1),
+    default=240,
+    show_default=True,
+    help="How long the lease lasts without a renewal.",
+)
+_TOKEN = click.option(
+    "--token",
+    envvar="HOPS_LEASE_TOKEN",
+    help="The lease's token; default: $HOPS_LEASE_TOKEN.",
+)
+
+
+@lease_group.command("acquire")
+@click.argument("slug_or_dir")
+@_TOKEN
+@_TTL
+def lease_acquire(slug_or_dir: str, token: str | None, ttl_minutes: int) -> None:
+    """Take the build lease of SLUG_OR_DIR and print its token; exits 4 while another invocation holds it.
+
+    Args:
+        slug_or_dir: The system's slug or directory.
+        token: A token of a lease already held, to adopt.
+        ttl_minutes: How long the lease lasts without a renewal.
+    """
+    from hopsworks.cli import system_doc
+
+    held = system_doc.acquire(_require_path(slug_or_dir), token, _ttl(ttl_minutes))
+    if output.JSON_MODE:
+        output.print_json(held)
+        return
+    click.echo(held["token"])
+
+
+@lease_group.command("renew")
+@click.argument("slug_or_dir")
+@_TOKEN
+@_TTL
+def lease_renew(slug_or_dir: str, token: str | None, ttl_minutes: int) -> None:
+    """Extend the build lease TOKEN holds; exits 4 when the lease is no longer TOKEN's.
+
+    Args:
+        slug_or_dir: The system's slug or directory.
+        token: The lease's token.
+        ttl_minutes: How long the lease lasts without a renewal.
+    """
+    from hopsworks.cli import system_doc
+
+    if not token:
+        raise click.UsageError("no --token and no HOPS_LEASE_TOKEN")
+    held = system_doc.renew(_require_path(slug_or_dir), token, _ttl(ttl_minutes))
+    output.success(f"Lease renewed until {held['expires']}")
+
+
+@lease_group.command("release")
+@click.argument("slug_or_dir")
+@_TOKEN
+def lease_release(slug_or_dir: str, token: str | None) -> None:
+    """Give up the build lease TOKEN holds; a lease held with another token is left alone.
+
+    Args:
+        slug_or_dir: The system's slug or directory.
+        token: The lease's token.
+    """
+    from hopsworks.cli import system_doc
+
+    if system_doc.release(_require_path(slug_or_dir), token):
+        output.success("Lease released")
+    else:
+        output.info("No lease held with that token")
 
 
 @system_group.command("delete-assets")
@@ -466,6 +688,13 @@ def system_delete_assets(
     is deleted: one the system reads, or one tagged as a lower analytics
     layer (any analytics table, for an ML system), stops the delete with
     nothing gone. What is already gone is skipped, so it can be run again.
+
+    Args:
+        ctx: Click context.
+        system: The id, name or slug of the system.
+        jobs: The jobs to delete.
+        tables: The feature groups to delete, as NAME or NAME:VERSION.
+        path: The system's directory.
     """
     import yaml
     from hopsworks.cli.commands import analytics

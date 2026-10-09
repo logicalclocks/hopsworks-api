@@ -172,7 +172,7 @@ def test_a_failed_delete_keeps_the_system_registered_and_a_rerun_finishes(
     from hopsworks.cli import teardown
 
     deleted, removed = [], []
-    broken = {"feature group labels v2"}
+    broken = {"feature group labels v2 (if churn-example made it)"}
 
     def delete(self, asset):
         if str(asset) in broken:

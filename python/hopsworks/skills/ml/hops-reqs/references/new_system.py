@@ -42,7 +42,9 @@ def example_doc(name: str, slug: str) -> dict:
     entry = examples().get(name)
     if entry is None:
         raise SystemExit(f"no example {name!r}; one of {sorted(examples())}")
-    doc = {key: value for key, value in entry.items() if key != "label"}
+    doc = _renamed(
+        {key: value for key, value in entry.items() if key != "label"}, name, slug
+    )
     doc["system"] = {
         **doc.get("system", {}),
         "slug": slug,
@@ -52,6 +54,29 @@ def example_doc(name: str, slug: str) -> dict:
     }
     doc["requirements"] = {"status": "pending", **doc.get("requirements", {})}
     return {"schema_version": 1, **doc}
+
+
+def _renamed(node, example: str, slug: str):
+    """`node` with the example's own asset names (`<example>-app`, `example_pkg_x`, `examplename`) named after `slug`.
+
+    Teardown takes a name carrying the slug as the system's own, and the example system may own the
+    example's names.
+    Generic names (`customers`, `query_model`) stay: teardown keeps those unless their description
+    names the system.
+    """
+    if isinstance(node, dict):
+        return {key: _renamed(value, example, slug) for key, value in node.items()}
+    if isinstance(node, list):
+        return [_renamed(value, example, slug) for value in node]
+    if not isinstance(node, str) or example == slug:
+        return node
+    for old, new in (
+        (example, slug),
+        (example.replace("-", "_"), slug.replace("-", "_")),
+        (example.replace("-", ""), slug.replace("-", "")),
+    ):
+        node = re.sub(rf"(?<![A-Za-z0-9]){re.escape(old)}", new, node)
+    return node
 
 
 def create(target: Path, example: str | None = None) -> Path:

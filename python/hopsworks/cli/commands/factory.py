@@ -14,13 +14,14 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
 import subprocess
 from pathlib import Path
 from typing import Any
 
 import click
 import yaml
-from hopsworks.cli import factory_spec, output, session
+from hopsworks.cli import factory_spec, output, session, system_doc
 from hopsworks.cli.commands import analytics, build, mlsystem
 
 
@@ -41,7 +42,11 @@ factory_group.add_command(mlsystem.system_group)
 @factory_group.command("list")
 @click.pass_context
 def factory_list(ctx: click.Context) -> None:
-    """List the factories: the built-in ones and the project's own, with how many systems each built."""
+    """List the factories: the built-in ones and the project's own, with how many systems each built.
+
+    Args:
+        ctx: Click context.
+    """
     from hopsworks_common.core import factory_api
 
     session.get_project(ctx)
@@ -75,7 +80,13 @@ def factory_list(ctx: click.Context) -> None:
 @click.option("--version", type=int, help="An earlier version of the definition.")
 @click.pass_context
 def factory_get(ctx: click.Context, name: str, version: int | None) -> None:
-    """Print the YAML definition of factory NAME."""
+    """Print the YAML definition of factory NAME.
+
+    Args:
+        ctx: Click context.
+        name: The factory.
+        version: An earlier version of its definition.
+    """
     from hopsworks_common.core import factory_api
 
     session.get_project(ctx)
@@ -100,7 +111,14 @@ def factory_get(ctx: click.Context, name: str, version: int | None) -> None:
 def factory_export(
     ctx: click.Context, name: str, version: int | None, out: Path | None
 ) -> None:
-    """Write the YAML definition of factory NAME to a file, to import in another project or cluster."""
+    """Write the YAML definition of factory NAME to a file, to import in another project or cluster.
+
+    Args:
+        ctx: Click context.
+        name: The factory.
+        version: An earlier version of its definition.
+        out: The file to write.
+    """
     from hopsworks_common.core import factory_api
 
     project = session.get_project(ctx)
@@ -114,7 +132,11 @@ def factory_export(
 @factory_group.command("validate")
 @click.argument("file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
 def factory_validate(file: Path) -> None:
-    """Check the factory definition in FILE, without a cluster."""
+    """Check the factory definition in FILE, without a cluster.
+
+    Args:
+        file: The definition.
+    """
     found = factory_spec.text_problems(file.read_text(encoding="utf-8"))
     if found:
         raise click.ClickException("\n  ".join(["invalid definition:", *found]))
@@ -138,6 +160,13 @@ def factory_import(
 
     The review prints its questions, phases, skills and its build instructions in full:
     Claude Code follows those instructions in your Terminal, with your credentials.
+
+    Args:
+        ctx: Click context.
+        file: The definition.
+        name: The name to import it under.
+        update: Save it as a new version of the factory of its name.
+        yes: Skip the review and the confirmation.
     """
     from hopsworks_common.core import factory_api
 
@@ -167,7 +196,14 @@ def factory_import(
 def factory_clone(
     ctx: click.Context, source: str, name: str, title: str | None
 ) -> None:
-    """Clone factory SOURCE, built-in or the project's own, into a new project factory NAME."""
+    """Clone factory SOURCE, built-in or the project's own, into a new project factory NAME.
+
+    Args:
+        ctx: Click context.
+        source: The factory to clone.
+        name: The new factory.
+        title: The new factory's title.
+    """
     from hopsworks_common.core import factory_api
 
     session.get_project(ctx)
@@ -183,7 +219,12 @@ def factory_clone(
 @click.argument("name")
 @click.pass_context
 def factory_enable(ctx: click.Context, name: str) -> None:
-    """Show the project factory NAME in the Factory again."""
+    """Show the project factory NAME in the Factory again.
+
+    Args:
+        ctx: Click context.
+        name: The factory.
+    """
     _set_enabled(ctx, name, True)
 
 
@@ -191,7 +232,12 @@ def factory_enable(ctx: click.Context, name: str) -> None:
 @click.argument("name")
 @click.pass_context
 def factory_disable(ctx: click.Context, name: str) -> None:
-    """Hide the project factory NAME from the Factory; its systems are kept."""
+    """Hide the project factory NAME from the Factory; its systems are kept.
+
+    Args:
+        ctx: Click context.
+        name: The factory.
+    """
     _set_enabled(ctx, name, False)
 
 
@@ -200,7 +246,13 @@ def factory_disable(ctx: click.Context, name: str) -> None:
 @click.option("--yes", is_flag=True, help="Skip the confirmation prompt.")
 @click.pass_context
 def factory_delete(ctx: click.Context, name: str, yes: bool) -> None:
-    """Delete the project factory NAME; refused while systems it built still exist."""
+    """Delete the project factory NAME; refused while systems it built still exist.
+
+    Args:
+        ctx: Click context.
+        name: The factory.
+        yes: Skip the confirmation.
+    """
     from hopsworks_common.core import factory_api
 
     if not yes:
@@ -294,17 +346,37 @@ def factory_run(
     factory, its version and every answer, so it needs none. With --change,
     the change's answers are recorded in system.yaml as a pending request,
     which the build carries out when it resumes.
+
+    Args:
+        ctx: Click context.
+        name: The factory.
+        slug: The recorded system to resume or change.
+        answers: A JSON file of the answers.
+        preset: The example to start from.
+        change_id: The change to request.
+        no_launch: Record without starting Claude Code.
     """
     from hopsworks_common.core import factory_api
 
     session.get_project(ctx)
     definition = factory_api._get(name)
+    if not definition.get("enabled", True):
+        raise click.ClickException(
+            f"the factory {name} is disabled; `hops factory enable {name}` turns it on"
+        )
     existing = _recorded(slug)
     if change_id and existing is None:
         raise click.ClickException(
             "a change is made to a recorded system: name its SLUG, or run this in its directory"
         )
     if existing is not None:
+        if not factory_spec.SLUG.match(existing.name):
+            raise click.ClickException(
+                f"{existing.name!r} is not a system slug (lowercase letters, digits and hyphens); "
+                "rename the directory to resume it"
+            )
+        if not no_launch:
+            system_doc.check(existing)
         if preset:
             raise click.UsageError(
                 f"{existing} is already recorded; its answers are in its system.yaml"
@@ -320,10 +392,6 @@ def factory_run(
     if slug:
         raise click.ClickException(
             f"no system {slug!r} under {Path.cwd()}; leave SLUG out to build a new one"
-        )
-    if not definition.get("enabled", True):
-        raise click.ClickException(
-            f"the factory {name} is disabled; `hops factory enable {name}` turns it on"
         )
     spec = definition["spec"]
     chosen = _preset(spec, preset)
@@ -618,21 +686,18 @@ def _request_change(
     found = factory_spec.answer_problems(spec, answers, change["form"], doc)
     if found:
         raise click.ClickException("\n  ".join(["invalid answers:", *found]))
-    doc.setdefault("changes", []).append(
-        {
-            "id": change_id,
-            "label": change["label"],
-            "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ"),
-            "answers": answers,
-            "instructions": change["instructions"],
-            "status": "pending",
-        }
+    request = {
+        "id": change_id,
+        "label": change["label"],
+        "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ"),
+        "answers": answers,
+        "instructions": change["instructions"],
+        "status": "pending",
+    }
+    system_doc.update(
+        target, lambda current: current.setdefault("changes", []).append(request)
     )
     system_file = target / "system.yaml"
-    system_file.write_text(
-        yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=100),
-        encoding="utf-8",
-    )
     if _in_git(target):
         subprocess.run(
             [
@@ -691,6 +756,15 @@ def create_system(
     to that built-in's create; the rest are recorded as `requirements.extra`, with the factory's
     instructions, in system.yaml. Any other factory writes system.yaml itself and starts Claude
     Code on the command generated from its instructions.
+
+    Args:
+        ctx: Click context.
+        definition: The factory's definition, as the registry returns it.
+        answers: The answers of its form.
+        launch: Start Claude Code on the system.
+
+    Returns:
+        The system's directory.
     """
     spec = definition["spec"]
     found = factory_spec.answer_problems(spec, answers)
@@ -705,6 +779,7 @@ def create_system(
     ctx.meta[factory_spec.META] = {
         "name": definition["name"],
         "version": definition["version"],
+        "digest": _digest(definition),
         "instructions": build_spec.get("instructions"),
         "extra": {k: v for k, v in merged.items() if k not in known},
     }
@@ -748,7 +823,12 @@ def _create_own(
         ]
         doc: dict = {
             "schema_version": 1,
-            "factory": {"name": name, "version": version, "phases": phases},
+            "factory": {
+                "name": name,
+                "version": version,
+                "digest": _digest(definition),
+                "phases": phases,
+            },
             "system": {
                 "name": slug.replace("-", " ").capitalize(),
                 "slug": slug,
@@ -762,17 +842,23 @@ def _create_own(
         }
         for phase in phases:
             doc.setdefault(phase["key"], {})["status"] = "pending"
-        system_file.write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
+        system_doc.create(target, doc)
     _write_build_files(target, definition, spec, slug)
     output.success(f"Recorded in {system_file}")
     try:
         mlsystem.register(ctx, target, slug, name)
     except Exception as exc:  # noqa: BLE001 - the system is recorded either way
         output.warn(
-            f"Not registered in the project's Factory ({exc}); run `hops factory system register {target} --factory {name}`."
+            f"Not registered in the project's Factory ({exc}); run `hops factory system register {shlex.quote(str(target))} --factory {name}`."
         )
     analytics._launch(target, launch, f"/hops-factory-{name} {slug}")
     return target
+
+
+def _digest(definition: dict) -> str | None:
+    """The sha256 of the definition's YAML text as fetched, which the registry checks against the version it stores."""
+    text = definition.get("definition")
+    return system_doc.sha256(text) if isinstance(text, str) else None
 
 
 def _write_build_files(target: Path, definition: dict, spec: dict, slug: str) -> None:

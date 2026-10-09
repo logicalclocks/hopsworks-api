@@ -123,7 +123,7 @@ def test_silver_records_the_layer_from_the_answers_and_registers_it(
     assert "Logs/factory/<slug>/" in (target / "AGENTS.md").read_text(encoding="utf-8")
     assert "logs-*/" in (target / ".gitignore").read_text(encoding="utf-8").splitlines()
     assert registered == [(target, "Customers silver")]
-    assert 'claude "/hops-silver customers-silver"' in done.output
+    assert "claude '/hops-silver customers-silver'" in done.output
 
 
 @pytest.mark.parametrize(
@@ -619,7 +619,7 @@ def test_gold_records_the_layer_and_its_first_mart(tmp_path, monkeypatch):
     assert [m["slug"] for m in doc["marts"]] == ["returns"]
     assert "Data marts" in (target / "AGENTS.md").read_text(encoding="utf-8")
     assert registered == [(target, "Sales gold")]
-    assert 'claude "/hops-gold sales-gold"' in done.output
+    assert "claude '/hops-gold sales-gold'" in done.output
 
 
 @pytest.mark.parametrize(
@@ -813,10 +813,12 @@ def test_the_system_commands_are_the_same_for_every_factory():
         "delete",
         "delete-assets",
         "dir",
+        "lease",
         "list",
         "register",
         "remove",
         "status",
+        "write-doc",
     ]
     for name in ("analytics", "mlsystem"):
         assert factory_group.get_command(None, name) is None
@@ -876,7 +878,7 @@ def test_bronze_copies_the_generator_and_records_its_tables_and_jobs(
     assert (target / "clickstream.py").is_file()
     assert (target / "tests" / "test_clickstream.py").is_file()
     assert not (target / "bronze.yaml").exists()
-    assert 'claude "/hops-bronze clickstream-bronze"' in done.output
+    assert "claude '/hops-bronze clickstream-bronze'" in done.output
 
 
 def test_bronze_refuses_a_generator_the_references_do_not_hold(tmp_path, monkeypatch):

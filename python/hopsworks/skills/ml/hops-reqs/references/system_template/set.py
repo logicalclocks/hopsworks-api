@@ -9,7 +9,9 @@ The requirements interview records each answer the moment it is given:
 A value is parsed as YAML, so `3`, `true`, `[a, b]` and `{k: v}` keep their types; anything
 else is a string. `key+=value` appends to a list. The result is checked by
 tests/unit/test_system_yaml.py (draft rules while `requirements.status` is `pending`) and
-renamed into place only when it passes, so an invalid write never replaces a valid file.
+renamed into place only when it passes, so an invalid write never replaces a valid file. With
+the hops CLI installed the write also takes the system's write lock and is redone on the newer
+file when another writer changed it meanwhile (hopsworks.cli.system_doc).
 """
 
 from __future__ import annotations
@@ -58,28 +60,45 @@ def apply(doc: dict, assignment: str) -> None:
         node[last] = value
 
 
-def _write_atomically(path: Path, text: str) -> None:
-    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
-    with os.fdopen(fd, "w", encoding="utf-8") as out:
-        out.write(text)
-    os.replace(tmp, path)
-
-
 def main(argv: list[str]) -> int:
-    """Apply every assignment, validate, and write the file atomically."""
+    """Apply every assignment and validate, then write the file the way every writer of it does."""
     if not argv:
         sys.exit(__doc__)
+    validate = _validator().validate
+    try:
+        from hopsworks.cli import system_doc
+    except ImportError:
+        # Without the hops CLI: no lock or conflict check, but still never a partial file.
+        return _write_alone(argv, validate)
+
+    def change(doc: dict) -> None:
+        for assignment in argv:
+            apply(doc, assignment)
+
+    try:
+        system_doc.update(ROOT, change, validate)
+    except system_doc.Invalid as exc:
+        print(exc.message, file=sys.stderr)
+        return 1
+    return 0
+
+
+def _write_alone(argv: list[str], validate) -> int:
     path = ROOT / "system.yaml"
-    doc = yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else {}
-    doc = doc or {}
+    doc = (yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else {}) or {}
     for assignment in argv:
         apply(doc, assignment)
-    problems = _validator().validate(doc)
+    problems = validate(doc)
     if problems:
         for line in problems:
             print(line, file=sys.stderr)
         return 1
-    _write_atomically(path, yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=100))
+    fd, tmp = tempfile.mkstemp(dir=ROOT, prefix=".system.yaml.")
+    with os.fdopen(fd, "w", encoding="utf-8") as out:
+        out.write(yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=100))
+        out.flush()
+        os.fsync(out.fileno())
+    os.replace(tmp, path)
     return 0
 
 

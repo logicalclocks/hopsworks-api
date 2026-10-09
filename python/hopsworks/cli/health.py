@@ -170,7 +170,17 @@ def _pods(prefixes: dict[str, str]) -> dict[str, list[dict]]:
 
 
 def collect(project: Any, doc: dict, slug: str, hours: int = 24) -> dict:
-    """The facts of the report: jobs over the last `hours`, what the feature pipelines wrote, deployments and apps with their pods."""
+    """The facts of the report: jobs over the last `hours`, what the feature pipelines wrote, deployments and apps with their pods.
+
+    Args:
+        project: The project.
+        doc: The system's system.yaml.
+        slug: The system.
+        hours: How far back to read the job runs.
+
+    Returns:
+        The facts.
+    """
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
     assets = teardown.inventory(doc, slug)
     job_names = [a.name for a in assets if a.kind == "job" and not a.name.endswith("*")]
@@ -266,7 +276,15 @@ def collect(project: Any, doc: dict, slug: str, hours: int = 24) -> dict:
 
 
 def summarize(facts: dict, timeout: int = 180) -> str | None:
-    """Claude's short account of what failed and why, as HTML paragraphs and lists, or None."""
+    """Claude's short account of what failed and why, as HTML paragraphs and lists, or None.
+
+    Args:
+        facts: The facts of the report.
+        timeout: Seconds to wait for Claude.
+
+    Returns:
+        The summary, None when Claude is not there or did not answer.
+    """
     if not shutil.which("claude"):
         return None
     prompt = (
@@ -304,7 +322,15 @@ def summarize(facts: dict, timeout: int = 180) -> str | None:
 
 
 def render(facts: dict, summary: str | None) -> str:
-    """One self-contained HTML page: the facts as JSON, drawn by the script in the page."""
+    """One self-contained HTML page: the facts as JSON, drawn by the script in the page.
+
+    Args:
+        facts: The facts of the report.
+        summary: Claude's summary.
+
+    Returns:
+        The page.
+    """
     data = json.dumps({"facts": facts, "summary": summary}, default=str).replace(
         "</", "<\\/"
     )

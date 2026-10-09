@@ -228,9 +228,11 @@ exclude = [
     "site-packages",
     "venv",
     "java",
-    "hopsworks/skills",              # Copy-paste examples shipped to users, not SDK code
+    "**/hopsworks/skills",           # Copy-paste examples shipped to users, not SDK code
     "transformation_test_helper.py", # File excluded from ruff formatting to maintain formatting required for tests
 ]
+# CI passes the changed files by name, and ruff lints a named file even when excluded unless this is set.
+force-exclude = true
 
 # Same as Black.
 line-length = 88
