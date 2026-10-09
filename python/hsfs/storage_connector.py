@@ -4301,6 +4301,7 @@ class ElasticsearchConnector(StorageConnector):
             (user, spark_options.get("es.net.http.auth.pass")) if user else None,
             headers,
             verify,
+            engine._get_instance()._run_where_spark_runs,
         )
 
     @staticmethod
@@ -4401,6 +4402,7 @@ class ElasticsearchConnector(StorageConnector):
             query: Index, alias, data stream or pattern to read, or a JSON query DSL document (a bare query clause or a body with a `query` key) applied to the default index.
             data_format: Not used for Elasticsearch.
             options: Extra `es.*` options for the Spark reader; fields holding arrays must be listed in `es.read.field.as.array.include`.
+                The truststore comes from the connector's `trust_store_path` only.
             path: Not used for Elasticsearch.
             dataframe_type: Type of the returned dataframe.
 
@@ -4409,7 +4411,7 @@ class ElasticsearchConnector(StorageConnector):
 
         Raises:
             NotImplementedError: With the Python engine.
-            ValueError: If neither the query nor the connector names an index.
+            ValueError: If neither the query nor the connector names an index, or the options or connector arguments set a truststore.
         """
         if engine._get_type() != "spark":
             raise NotImplementedError(
@@ -4419,6 +4421,17 @@ class ElasticsearchConnector(StorageConnector):
         import json
 
         self._ensure_full()
+        # The mapping request trusts the connector's truststore, so Spark must not be handed another.
+        truststore_overrides = [
+            key
+            for key in ("es.net.ssl.truststore.location", "es.net.ssl.truststore.pass")
+            if key in (options or {}) or key in self._arguments
+        ]
+        if truststore_overrides:
+            raise ValueError(
+                f"Elasticsearch read does not take {', '.join(truststore_overrides)}: "
+                "set trust_store_path and trust_store_password on the connector instead."
+            )
         merged = {**self.spark_options(), **(options or {})}
         index = self._default_index
         text = (query or "").strip()

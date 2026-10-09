@@ -3139,9 +3139,15 @@ class TestElasticsearchConnector:
 
         assert paths == {"user", "org", "org.unit"}
 
-    def test_get_mapping_connects_as_the_spark_reader(self, mocker):
-        response = mocker.Mock(status_code=200)
-        response.json.return_value = {"events": {"mappings": {}}}
+    @pytest.fixture
+    def local_engine(self, mocker):
+        mock_engine = mocker.Mock()
+        mock_engine._run_where_spark_runs.side_effect = lambda func, _: func()
+        mocker.patch("hsfs.engine._get_instance", return_value=mock_engine)
+        return mock_engine
+
+    def test_get_mapping_connects_as_the_spark_reader(self, mocker, local_engine):
+        response = mocker.Mock(status_code=200, text='{"events": {"mappings": {}}}')
         mock_get = mocker.patch("requests.get", return_value=response)
         sc = self._connector(auth_type="API_KEY", api_key="k==", verify=False)
         options = {
@@ -3189,7 +3195,7 @@ class TestElasticsearchConnector:
         ],
     )
     def test_get_mapping_resolves_the_spark_node_address(
-        self, mocker, nodes, port, ssl, url
+        self, mocker, local_engine, nodes, port, ssl, url
     ):
         mock_api = mocker.patch.object(
             storage_connector.elasticsearch_api.ElasticsearchApi, "_get_mapping"
@@ -3207,11 +3213,45 @@ class TestElasticsearchConnector:
             },
         )
 
-        base_url, index, auth, headers, verify = mock_api.call_args.args
+        base_url, index, auth, headers, verify, _ = mock_api.call_args.args
         assert (base_url, index, auth, headers) == (url, "events", ("u", "p"), {})
         assert verify is True
 
-    def test_get_mapping_reports_the_cluster_error(self, mocker):
+    def test_get_mapping_is_requested_where_spark_runs(self, mocker):
+        mock_engine = mocker.Mock()
+        mock_engine._run_where_spark_runs.return_value = (200, '{"events": {}}')
+        mocker.patch("hsfs.engine._get_instance", return_value=mock_engine)
+        mock_get = mocker.patch("requests.get")
+        sc = self._connector(username="u", password="p")
+
+        assert sc._get_mapping("events", sc.spark_options()) == {"events": {}}
+
+        mock_get.assert_not_called()
+        assert (
+            mock_engine._run_where_spark_runs.call_args.args[1]
+            == "struct<status:int,text:string>"
+        )
+
+    @pytest.mark.parametrize(
+        "options,arguments",
+        [
+            ({"es.net.ssl.truststore.location": "file:other.jks"}, None),
+            (None, {"es.net.ssl.truststore.pass": "secret"}),
+        ],
+    )
+    def test_read_refuses_a_truststore_besides_the_connectors(
+        self, mocker, options, arguments
+    ):
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        mock_engine = mocker.patch("hsfs.engine._get_instance").return_value
+        sc = self._connector(default_index="events", arguments=arguments)
+
+        with pytest.raises(ValueError, match="trust_store_path"):
+            sc.read(options=options)
+
+        mock_engine._read.assert_not_called()
+
+    def test_get_mapping_reports_the_cluster_error(self, mocker, local_engine):
         mocker.patch(
             "requests.get",
             return_value=mocker.Mock(status_code=404, text="index_not_found"),

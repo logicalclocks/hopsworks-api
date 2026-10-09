@@ -15,10 +15,15 @@
 #
 from __future__ import annotations
 
-from typing import Any
+import json
+from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
 from hopsworks_common.client.exceptions import FeatureStoreException
+
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 class ElasticsearchApi:
@@ -31,19 +36,31 @@ class ElasticsearchApi:
         auth: tuple[str, str] | None,
         headers: dict[str, str],
         verify: bool | str,
+        run: Callable[[Callable[[], Any], str], Any] | None = None,
     ) -> dict[str, Any]:
-        import requests
+        """Return the `_mapping` response of `index`.
 
-        response = requests.get(
-            f"{base_url}/{quote(index, safe='*,:-_.')}/_mapping",
-            auth=auth,
-            headers={"Accept": "application/json", **headers},
-            verify=verify,
-            timeout=60,
-        )
-        if response.status_code >= 300:
-            raise FeatureStoreException(
-                f"Elasticsearch returned HTTP {response.status_code} for the mapping of '{index}': "
-                f"{response.text[:500]}"
+        `run` sends the request instead of this process, taking the request function and the Spark DDL type of its `(status, text)` result.
+        """
+        url = f"{base_url}/{quote(index, safe='*,:-_.')}/_mapping"
+        request_headers = {"Accept": "application/json", **headers}
+
+        def fetch():
+            import requests
+
+            response = requests.get(
+                url,
+                auth=auth,
+                headers=request_headers,
+                verify=verify,
+                timeout=60,
             )
-        return response.json()
+            return response.status_code, response.text
+
+        status, text = run(fetch, "struct<status:int,text:string>") if run else fetch()
+        if status >= 300:
+            raise FeatureStoreException(
+                f"Elasticsearch returned HTTP {status} for the mapping of '{index}': "
+                f"{text[:500]}"
+            )
+        return json.loads(text)

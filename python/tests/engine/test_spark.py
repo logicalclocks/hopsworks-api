@@ -4955,6 +4955,36 @@ class TestSpark:
         assert url == "file:///tmp/materialisation_dir/test_file"
         mock_add_file.assert_not_called()
 
+    def test_add_file_as_url_refuses_spark_connect(self, mocker):
+        spark_engine = spark.Engine()
+        spark_engine._is_connect = True
+        mock_add_file = mocker.patch.object(spark_engine, "_add_file")
+
+        with pytest.raises(exceptions.FeatureStoreException, match="Spark Connect"):
+            spark_engine._add_file_as_url("/Projects/p/Resources/ts.jks")
+
+        mock_add_file.assert_not_called()
+
+    def test_run_where_spark_runs_calls_in_process_without_spark_connect(self):
+        spark_engine = spark.Engine()
+        spark_engine._is_connect = False
+
+        assert spark_engine._run_where_spark_runs(lambda: (200, "{}"), "unused") == (
+            200,
+            "{}",
+        )
+
+    def test_run_where_spark_runs_uses_a_spark_task_under_spark_connect(self):
+        spark_engine = spark.Engine()
+        spark_engine._is_connect = True
+        spark_engine._spark_session = pyspark.sql.SparkSession.builder.getOrCreate()
+
+        status, text = spark_engine._run_where_spark_runs(
+            lambda: (200, "{}"), "struct<status:int,text:string>"
+        )
+
+        assert (status, text) == (200, "{}")
+
     def test_profile(self, mocker):
         # Arrange
         mock_spark_context = MagicMock()
