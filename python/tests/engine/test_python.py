@@ -4252,6 +4252,65 @@ class TestPython:
         mock_create_online_ingestion.assert_not_called()
         job_mock.run.assert_called_once()
 
+    @pytest.mark.parametrize("storage", [None, "online"])
+    def test_materialization_kafka_waits_on_its_own_online_ingestion(
+        self, mocker, storage
+    ):
+        # Arrange
+        self._setup_storage_header_mocks(mocker)
+        mock_get_online_ingestion = mocker.patch(
+            "hsfs.feature_group.FeatureGroup.get_online_ingestion"
+        )
+        mock_get_latest_online_ingestion = mocker.patch(
+            "hsfs.feature_group.FeatureGroup.get_latest_online_ingestion"
+        )
+        python_engine = python.Engine()
+        fg, df, _ = self._make_storage_header_fg(mocker)
+
+        # Act
+        python_engine._run_materialization_job(
+            feature_group=fg,
+            dataframe=df,
+            offline_write_options={
+                "start_offline_materialization": True,
+                "wait_for_online_ingestion": True,
+            },
+            storage=storage,
+        )
+
+        # Assert: the wait follows the ingestion this insert created, not whichever one the
+        # backend reports as latest.
+        mock_get_online_ingestion.assert_called_once_with(123)
+        mock_get_online_ingestion.return_value.wait_for_completion.assert_called_once()
+        mock_get_latest_online_ingestion.assert_not_called()
+
+    def test_materialization_kafka_storage_offline_does_not_wait_online(self, mocker):
+        # Arrange
+        self._setup_storage_header_mocks(mocker)
+        mock_get_online_ingestion = mocker.patch(
+            "hsfs.feature_group.FeatureGroup.get_online_ingestion"
+        )
+        mock_get_latest_online_ingestion = mocker.patch(
+            "hsfs.feature_group.FeatureGroup.get_latest_online_ingestion"
+        )
+        python_engine = python.Engine()
+        fg, df, _ = self._make_storage_header_fg(mocker)
+
+        # Act
+        python_engine._run_materialization_job(
+            feature_group=fg,
+            dataframe=df,
+            offline_write_options={
+                "start_offline_materialization": True,
+                "wait_for_online_ingestion": True,
+            },
+            storage="offline",
+        )
+
+        # Assert
+        mock_get_online_ingestion.assert_not_called()
+        mock_get_latest_online_ingestion.assert_not_called()
+
     def test_save_dataframe_stream_passes_storage(self, mocker):
         # Arrange
         mock_python_engine_run_materialization_job = mocker.patch(

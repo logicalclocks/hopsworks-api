@@ -95,7 +95,7 @@ jobs:
           uv sync --extra ${{ matrix.extra }} --project python --reinstall-package hopsworks
 
       - name: Check every module is importable
-        run: uv run --project python python python/scripts/check_importable.py
+        run: uv run --extra ${{ matrix.extra }} --project python python python/scripts/check_importable.py
 
   pep8_public:
     name: PEP-8 / @public check
@@ -129,7 +129,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
 
     steps:
       - name: Set up JDK 17

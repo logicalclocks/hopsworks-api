@@ -40,6 +40,6 @@ uv run --project python pytest python/tests -v # verbose
 
 Three test runs in CI (see @docs/development/ci.md):
 
-- Main matrix: Python 3.9–3.13, full dev install
+- Main matrix: Python 3.10–3.14, full dev install
 - No optional deps: Python 3.10, core install only
 - Pandas 1.x: Python 3.9–3.11, `pandas<2.0`

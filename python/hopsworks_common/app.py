@@ -87,6 +87,7 @@ class App:
         readiness_probe_path=None,
         public_access=None,
         public_token=None,
+        db_access=None,
         **kwargs,
     ):
         self._job_id = job_id
@@ -122,6 +123,8 @@ class App:
         self._readiness_probe_path = readiness_probe_path
         self._public_access = public_access or False
         self._public_token = public_token
+        # Backend default is True; None only happens for responses from older servers.
+        self._db_access = True if db_access is None else bool(db_access)
         # Runtime env-var override; set by AppApi.create_app() and applied on run().
         # Not part of the persisted app config — the backend has no field for it.
         self._env_vars: dict[str, str] | None = None
@@ -368,6 +371,17 @@ class App:
 
     @public
     @property
+    def db_access(self) -> bool:
+        """Whether the app gets access to the project's online feature store database.
+
+        When True, the database is created on demand when the app starts and the
+        `MYSQL_*` connection environment variables are injected into the app container.
+        Trino access to the offline tables (`TRINO_*`) does not depend on this flag.
+        """
+        return self._db_access
+
+    @public
+    @property
     def public_url(self) -> str | None:
         """Public share URL.
 
@@ -526,6 +540,7 @@ class App:
         self._entrypoint_script = updated._entrypoint_script
         self._public_access = updated._public_access
         self._public_token = updated._public_token
+        self._db_access = updated._db_access
         return self
 
     def _wait_for_serving(self) -> App:
