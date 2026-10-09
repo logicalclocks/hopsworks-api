@@ -122,7 +122,8 @@ class TestSqlConnector {
     sc.setUser("sa");
     sc.setPassword("secret");
     sc.setArguments(Arrays.asList(new Option("databaseName", "other_db"), new Option("serverName", "evil.example.com"),
-        new Option("portNumber", "1434"), new Option("trustServerCertificate", "true")));
+        new Option("portNumber", "1434"), new Option("server", "evil.example.com"),
+        new Option("trustServerCertificate", "true")));
 
     Map<String, String> options = sc.sparkOptions(null);
 
@@ -133,6 +134,7 @@ class TestSqlConnector {
     assertFalse(options.containsKey("databaseName"));
     assertFalse(options.containsKey("serverName"));
     assertFalse(options.containsKey("portNumber"));
+    assertFalse(options.containsKey("server"));
   }
 
   @Test

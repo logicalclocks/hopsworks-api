@@ -1711,6 +1711,7 @@ class TestSqlConnector:
                 {"name": "databaseName", "value": "other_db"},
                 {"name": "serverName", "value": "evil.example.com"},
                 {"name": "portNumber", "value": "1434"},
+                {"name": "server", "value": "evil.example.com"},
             ],
         )
 
@@ -1726,6 +1727,7 @@ class TestSqlConnector:
         assert "databaseName" not in options
         assert "serverName" not in options
         assert "portNumber" not in options
+        assert "server" not in options
 
     def test_sqlserver_database_cannot_add_url_properties(self):
         connector = storage_connector.SqlConnector(
