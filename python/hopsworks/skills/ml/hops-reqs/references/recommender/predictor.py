@@ -182,7 +182,7 @@ class Predict:
         fs = project.get_feature_store()
         self.ranker = CatBoostClassifier()
         self.ranker.load_model(load_model_file("ranking_model.cbm"))
-        with open(load_model_file("features.json")) as f:
+        with open(load_model_file("features.json"), encoding="utf-8") as f:
             self.spec = json.load(f)
 
         # The latest query tower: each retrieval run registers one and rewrites every
@@ -192,7 +192,7 @@ class Predict:
         query_dir = query_model.download()
         self.query_tower = torch.jit.load(os.path.join(query_dir, "query_tower.pt"))
         self.query_tower.eval()
-        with open(os.path.join(query_dir, "customer_vocab.json")) as f:
+        with open(os.path.join(query_dir, "customer_vocab.json"), encoding="utf-8") as f:
             self.customer_vocab = json.load(f)
         self.torch = torch
         self.rng = np.random.default_rng()

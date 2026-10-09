@@ -528,7 +528,9 @@ def deployment_predict(
     """
     if not data and not file_path:
         raise click.UsageError("Provide --data or --file.")
-    payload_str = Path(file_path).read_text() if file_path else (data or "")
+    payload_str = (
+        Path(file_path).read_text(encoding="utf-8") if file_path else (data or "")
+    )
     try:
         payload = json.loads(payload_str)
     except json.JSONDecodeError as exc:

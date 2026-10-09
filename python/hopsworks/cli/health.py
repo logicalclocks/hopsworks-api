@@ -63,7 +63,7 @@ def _memory_mib(value: str) -> float | None:
 
 
 def _read(path: str | None) -> str:
-    return Path(path).read_text(errors="replace") if path else ""
+    return Path(path).read_text(encoding="utf-8", errors="replace") if path else ""
 
 
 def _tail(text: str | None, lines: int = LOG_TAIL_LINES) -> str:

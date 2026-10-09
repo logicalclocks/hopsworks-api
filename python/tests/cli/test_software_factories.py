@@ -32,6 +32,11 @@ from hopsworks.cli.main import cli
 
 yaml = pytest.importorskip("yaml")
 
+needs_cluster_python = pytest.mark.skipif(
+    sys.version_info < (3, 11),
+    reason="the system code runs on the cluster's Python 3.13 and imports datetime.UTC",
+)
+
 SKILLS = Path(scaffold.__file__).resolve().parents[1] / "skills"
 TEMPLATES = Path(scaffold.__file__).resolve().parent / "templates"
 REQS = SKILLS / "ml" / "hops-reqs" / "references"
@@ -816,6 +821,7 @@ def test_new_system_names_the_package_after_the_slug(tmp_path):
         new_system.create(target)
 
 
+@needs_cluster_python
 def test_a_generated_system_passes_its_own_unit_tests(tmp_path):
     target = _new_system(tmp_path)
     done = subprocess.run(
@@ -870,6 +876,7 @@ def _git(target: Path, *args: str) -> None:
     )
 
 
+@needs_cluster_python
 def test_a_bundle_is_checked_against_its_manifest(tmp_path, monkeypatch):
     target = _new_system(tmp_path)
     _git(target, "init", "-q")
@@ -894,7 +901,7 @@ def test_a_bundle_is_checked_against_its_manifest(tmp_path, monkeypatch):
 
     monkeypatch.setenv("HOPS_RESULT_DIR", str(tmp_path))
     written = evaluate._write_result(manifest, {"metrics": {"pr_auc": 0.6}})
-    result = json.loads(Path(written).read_text())
+    result = json.loads(Path(written).read_text(encoding="utf-8"))
     assert result["run_id"] == "train-1-1" and result["commit"] == manifest["commit"]
 
     tampered = tmp_path / "tampered.tar.gz"
@@ -925,6 +932,7 @@ def test_a_bundle_refuses_uncommitted_changes(tmp_path):
 # region The synthetic data generator
 
 
+@needs_cluster_python
 def test_the_generator_is_seeded_and_tells_its_story():
     pytest.importorskip("polars")
     generator = _load(GENERATOR, "generator_under_test")
@@ -947,6 +955,7 @@ def test_the_generator_is_seeded_and_tells_its_story():
     assert churner_share < 0.2
 
 
+@needs_cluster_python
 def test_a_live_tick_writes_its_rate_inside_the_tick():
     pytest.importorskip("polars")
     generator = _load(GENERATOR, "generator_under_test")
@@ -959,6 +968,7 @@ def test_a_live_tick_writes_its_rate_inside_the_tick():
     assert tick.equals(generator.tick(entities, now, 10, 5, 7))
 
 
+@needs_cluster_python
 def test_an_offline_source_gets_an_offline_delta_group():
     pytest.importorskip("polars")
     generator = _load(GENERATOR, "generator_under_test")
@@ -1096,6 +1106,7 @@ def test_the_generated_interactions_surround_every_purchase():
 
 
 def test_retrieval_recall_counts_the_true_article_in_the_top_k_chunk_by_chunk():
+    pytest.importorskip("polars")
     retrieval = _load(RECS / "train_retrieval.py", "train_retrieval_under_test")
     rng = np.random.default_rng(0)
     query, items = rng.normal(size=(300, 4)), rng.normal(size=(50, 4))
@@ -1148,6 +1159,7 @@ def test_the_ranker_learns_from_earlier_purchases_and_labels_the_latest():
     assert all(type(v) is float for v in metrics.values())
 
 
+@needs_cluster_python
 def test_the_deployment_ranks_by_taste_what_the_customer_has_not_bought():
     pd = pytest.importorskip("pandas")
     predictor = _load(RECS / "predictor.py", "recs_predictor_under_test")
@@ -1193,6 +1205,7 @@ def test_the_deployment_ranks_by_taste_what_the_customer_has_not_bought():
 
 
 def test_session_embeddings_are_centered_and_unit_length():
+    pytest.importorskip("polars")
     retrieval = _load(RECS / "train_retrieval.py", "train_retrieval_under_test")
     # Three articles sharing one large direction, as trained item embeddings do.
     shared = np.array([30.0, 30.0])
@@ -1205,6 +1218,7 @@ def test_session_embeddings_are_centered_and_unit_length():
     assert session[0] @ session[2] < -0.9
 
 
+@needs_cluster_python
 def test_the_session_steers_retrieval_and_ranking_and_leaves_room_to_explore():
     pytest.importorskip("pandas")
     predictor = _load(RECS / "predictor.py", "recs_predictor_under_test")
@@ -1250,6 +1264,7 @@ def test_the_session_steers_retrieval_and_ranking_and_leaves_room_to_explore():
     assert len(predictor.select(items()[:3], {}, None, 5, rng)) == 3
 
 
+@needs_cluster_python
 def test_the_storefront_records_clicks_purchases_and_ignores(monkeypatch):
     pytest.importorskip("fastapi")
     from starlette.testclient import TestClient
@@ -1483,6 +1498,7 @@ def test_the_app_skeleton_uses_only_relative_urls():
     assert "cdn" not in page.lower() and "https://" not in page
 
 
+@pytest.mark.skipif(os.name == "nt", reason="Windows has no POSIX file modes")
 def test_trino_env_writes_the_connection_to_a_private_file(tmp_path):
     ca = tmp_path / "ca_chain.pem"
     ca.write_text("CA", encoding="utf-8")
@@ -1706,7 +1722,9 @@ def test_the_rules_label_every_situation_with_a_move_the_hops_can_make(monkeypat
         rules.query({"lane": "up"})
 
 
+@needs_cluster_python
 def test_the_game_asks_kumo_and_keeps_one_board(monkeypatch, tmp_path):
+    pytest.importorskip("fastapi")
     from starlette.testclient import TestClient
 
     _kumo_rules(monkeypatch)

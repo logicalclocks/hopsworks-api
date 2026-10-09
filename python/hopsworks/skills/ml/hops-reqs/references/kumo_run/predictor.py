@@ -40,7 +40,7 @@ logging.basicConfig(level=logging.INFO)
 def cpu_limit() -> int:
     """The pod's CPU limit in whole cores (cgroup v2 cpu.max), at least one; one when unlimited."""
     with contextlib.suppress(OSError, ValueError):
-        quota, period = Path("/sys/fs/cgroup/cpu.max").read_text().split()
+        quota, period = Path("/sys/fs/cgroup/cpu.max").read_text(encoding="utf-8").split()
         if quota != "max":
             return max(1, int(int(quota) / int(period)))
     return 1

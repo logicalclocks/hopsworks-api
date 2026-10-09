@@ -230,8 +230,10 @@ def _check(
 
 
 def _text(path: Path) -> str | None:
+    # Bytes, not text mode: the sha256 every writer compares is of the file's bytes,
+    # which Windows text mode would change by translating line endings.
     try:
-        return path.read_text(encoding="utf-8")
+        return path.read_bytes().decode("utf-8")
     except FileNotFoundError:
         return None
 
@@ -239,7 +241,7 @@ def _text(path: Path) -> str | None:
 def _commit(path: Path, expected: str | None, text: str) -> None:
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as out:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as out:
             out.write(text)
             out.flush()
             os.fsync(out.fileno())

@@ -21,6 +21,16 @@ import click
 from hopsworks.cli import output, session
 
 
+def hopsfs_mount() -> Path | None:
+    """The HopsFS mount the terminal's home directory is under, None outside a Hopsworks terminal.
+
+    Returns:
+        The directory holding `Users/<user>`, the home `HOPSFS_USER_HOME_DIR` names.
+    """
+    home = Path(os.environ.get("HOPSFS_USER_HOME_DIR", ""))
+    return home.parent.parent if home.parent.name == "Users" else None
+
+
 def code_location(path: Path, project: str | None = None) -> str:
     """Where a system's code is, as the registry stores it.
 
@@ -39,11 +49,10 @@ def code_location(path: Path, project: str | None = None) -> str:
         click.ClickException: when the directory is neither in HopsFS nor in a Git repository with an origin.
     """
     resolved = path.resolve()
-    home = os.environ.get("HOPSFS_USER_HOME_DIR", "")
-    if "/Users/" in home:
-        mount = Path(home.split("/Users/", 1)[0]).resolve()
+    mount = hopsfs_mount()
+    if mount is not None:
         try:
-            relative = resolved.relative_to(mount)
+            relative = resolved.relative_to(mount.resolve())
         except ValueError:
             relative = None
         if relative is not None:
@@ -213,11 +222,11 @@ def _find(system: str) -> dict:
 def _local_dir(entry: dict) -> Path | None:
     """The system's directory under the terminal's HopsFS mount, None when its code is elsewhere."""
     code = str(entry.get("pathToCode") or "")
-    home = os.environ.get("HOPSFS_USER_HOME_DIR", "")
+    mount = hopsfs_mount()
     found = code.split("/", 3)
-    if not code.startswith("/Projects/") or len(found) < 4 or "/Users/" not in home:
+    if not code.startswith("/Projects/") or len(found) < 4 or mount is None:
         return None
-    return Path(home.split("/Users/", 1)[0]) / found[3]
+    return mount / found[3]
 
 
 def _other_docs(entry: dict) -> dict[str, dict]:

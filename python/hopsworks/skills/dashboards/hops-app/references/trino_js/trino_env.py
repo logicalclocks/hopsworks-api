@@ -12,20 +12,26 @@ import os
 
 import hopsworks
 
-project = hopsworks.login()
-trino = project.get_trino_api()
-user, password = trino.get_basic_auth()
-connection = {
-    "server": f"https://{trino.get_host()}:{trino.get_port()}",
-    "user": user,
-    "password": password,
-    "ca": "/tmp/ca_chain.pem",
-    "schema": f"{project.name.lower()}_featurestore",
-}
-if not os.path.exists(connection["ca"]):
-    raise SystemExit("trino_env.py: no cluster CA at /tmp/ca_chain.pem")
-path = os.environ.get("TRINO_CONNECTION", "/tmp/trino.json")
-fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-with os.fdopen(fd, "w", encoding="utf-8") as f:
-    json.dump(connection, f)
-print(f"trino_env.py: connection for {user} written to {path}")
+
+def _main():
+    project = hopsworks.login()
+    trino = project.get_trino_api()
+    user, password = trino.get_basic_auth()
+    connection = {
+        "server": f"https://{trino.get_host()}:{trino.get_port()}",
+        "user": user,
+        "password": password,
+        "ca": "/tmp/ca_chain.pem",
+        "schema": f"{project.name.lower()}_featurestore",
+    }
+    if not os.path.exists(connection["ca"]):
+        raise SystemExit("trino_env.py: no cluster CA at /tmp/ca_chain.pem")
+    path = os.environ.get("TRINO_CONNECTION", "/tmp/trino.json")
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump(connection, f)
+    print(f"trino_env.py: connection for {user} written to {path}")
+
+
+if __name__ == "__main__":
+    _main()

@@ -537,10 +537,11 @@ def _data(ctx: click.Context, system: _System, prefetch: _Prefetch) -> None:
 def _files(system: _System) -> dict:
     path = Path(click.prompt("Path to the file or directory")).expanduser()
     name = click.prompt("Name for this source", default=path.stem.replace("-", "_"))
-    home = os.environ.get("HOPSFS_USER_HOME_DIR", "")
-    mount = home.split("/Users/", 1)[0] if "/Users/" in home else ""
-    if mount and str(path.resolve()).startswith(mount + "/"):
-        location = str(path.resolve())[len(mount) + 1 :]
+    from hopsworks.cli.commands import mlsystem
+
+    mount = mlsystem.hopsfs_mount()
+    if mount is not None and mount.resolve() in path.resolve().parents:
+        location = path.resolve().relative_to(mount.resolve()).as_posix()
     else:
         location = f"Resources/{system.target.name}/data/"
         subprocess.run(["hops", "files", "mkdir", location], check=False)

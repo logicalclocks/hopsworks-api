@@ -206,7 +206,9 @@ def model_register(
     input_example = None
     if input_example_path:
         try:
-            input_example = json.loads(Path(input_example_path).read_text())
+            input_example = json.loads(
+                Path(input_example_path).read_text(encoding="utf-8")
+            )
         except (OSError, json.JSONDecodeError) as exc:
             raise click.ClickException(f"Invalid input example: {exc}") from exc
 

@@ -62,7 +62,7 @@ def cpu_limit() -> int:
     under a one-CPU limit are throttled to a crawl.
     """
     try:
-        quota, period = open("/sys/fs/cgroup/cpu.max").read().split()  # noqa: PTH123, SIM115
+        quota, period = open("/sys/fs/cgroup/cpu.max", encoding="utf-8").read().split()  # noqa: PTH123, SIM115
         if quota != "max":
             return max(1, int(quota) // int(period))
     except (OSError, ValueError):
@@ -237,7 +237,8 @@ def main() -> int:
         directory = Path(tmp)
         model.save_model(str(directory / "ranking_model.cbm"))
         (directory / "features.json").write_text(
-            json.dumps({"features": FEATURES, "categorical": CATEGORICAL, "taste": TASTE})
+            json.dumps({"features": FEATURES, "categorical": CATEGORICAL, "taste": TASTE}),
+            encoding="utf-8",
         )
         registered = project.get_model_registry().python.create_model(
             name="ranking_model",

@@ -88,7 +88,7 @@ class Board:
         self.lock = threading.Lock()
         self.runs: list[dict] = []
         if path and path.exists():
-            self.runs = json.loads(path.read_text())
+            self.runs = json.loads(path.read_text(encoding="utf-8"))
 
     def _save(self) -> None:
         if not self.path:
@@ -96,7 +96,7 @@ class Board:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         # Written beside and renamed over, so a crash mid-write never leaves half a board.
         tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(self.runs))
+        tmp.write_text(json.dumps(self.runs), encoding="utf-8")
         tmp.replace(self.path)
 
     def find(self, run_key: str) -> dict | None:
@@ -249,7 +249,7 @@ def health() -> dict:
 
 @app.get("/", response_class=HTMLResponse)
 def index() -> str:
-    page = (STATIC / "page.html").read_text()
+    page = (STATIC / "page.html").read_text(encoding="utf-8")
     return page.replace("{{VERSION}}", VERSION).replace("{{BOARD}}", board_html(board.top()))
 
 

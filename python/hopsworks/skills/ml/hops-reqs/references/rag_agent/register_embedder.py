@@ -59,7 +59,7 @@ def main() -> None:
         )
         encoder = SentenceTransformer(path)
         dimension = encoder.get_sentence_embedding_dimension()
-        with open(f"{path}/hopsworks_embedder.json", "w") as f:
+        with open(f"{path}/hopsworks_embedder.json", "w", encoding="utf-8") as f:
             json.dump({"repo": args.repo, "revision": revision, "dimension": dimension}, f)
         model = registry.python.create_model(
             args.name,

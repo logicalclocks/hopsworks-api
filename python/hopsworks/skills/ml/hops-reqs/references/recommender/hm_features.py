@@ -261,13 +261,12 @@ def generate_interactions(
     customer's previous interaction, START for the first.
     """
     rng = np.random.default_rng(seed)
-    hour = pl.duration(hours=1)
     purchases = transactions.select(
         "t_dat", "customer_id", "article_id", interaction_score=pl.lit(2, pl.Int64)
     )
     clicked = purchases.filter(pl.Series(rng.random(purchases.height) < 0.9))
     before = clicked.with_columns(
-        t_dat=pl.col("t_dat") - hour * pl.Series(rng.integers(1, 48, clicked.height)),
+        t_dat=pl.col("t_dat") - pl.duration(hours=pl.Series(rng.integers(1, 48, clicked.height))),
         interaction_score=pl.lit(1, pl.Int64),
     )
     last = transactions.group_by("customer_id").agg(last=pl.col("t_dat").max()).sort("customer_id")
@@ -284,7 +283,7 @@ def generate_interactions(
                 "hours": rng.integers(1, max_hours, rows),
             }
         ).select(
-            t_dat=pl.col("last") - hour * pl.col("hours"),
+            t_dat=pl.col("last") - pl.duration(hours=pl.col("hours")),
             customer_id="customer_id",
             article_id="article_id",
             interaction_score=pl.lit(score, pl.Int64),

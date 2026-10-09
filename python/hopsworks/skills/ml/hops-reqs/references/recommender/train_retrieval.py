@@ -56,7 +56,7 @@ def cpu_limit() -> int:
     under a one-CPU limit are throttled to a crawl.
     """
     try:
-        quota, period = open("/sys/fs/cgroup/cpu.max").read().split()  # noqa: PTH123, SIM115
+        quota, period = open("/sys/fs/cgroup/cpu.max", encoding="utf-8").read().split()  # noqa: PTH123, SIM115
         if quota != "max":
             return max(1, int(quota) // int(period))
     except (OSError, ValueError):
@@ -222,7 +222,9 @@ def save_query_model(query_tower, vocabs: dict, directory: Path) -> Path:
     import torch
 
     torch.jit.script(query_tower).save(str(directory / "query_tower.pt"))
-    (directory / "customer_vocab.json").write_text(json.dumps(vocabs["customer_id"]))
+    (directory / "customer_vocab.json").write_text(
+        json.dumps(vocabs["customer_id"]), encoding="utf-8"
+    )
     return directory
 
 

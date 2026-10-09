@@ -289,15 +289,16 @@ def _delta_table(path, rows, days, commit_ms):
     """A Delta table of `rows` rows spread over `days`, its commit dated `commit_ms`."""
     from datetime import datetime, timedelta, timezone
 
-    import pandas as pd
-    from deltalake import write_deltalake
+    write_deltalake = pytest.importorskip("deltalake").write_deltalake
+    pa = pytest.importorskip("pyarrow")
 
     start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    # A pyarrow table, which deltalake takes with every pandas the matrix installs.
     write_deltalake(
         str(path),
-        pd.DataFrame(
+        pa.table(
             {
-                "id": range(rows),
+                "id": list(range(rows)),
                 "ts": [start + timedelta(days=days * i / rows) for i in range(rows)],
             }
         ),
