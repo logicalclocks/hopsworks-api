@@ -1709,6 +1709,8 @@ class TestSqlConnector:
             arguments=[
                 {"name": "trustServerCertificate", "value": "true"},
                 {"name": "databaseName", "value": "other_db"},
+                {"name": "serverName", "value": "evil.example.com"},
+                {"name": "portNumber", "value": "1434"},
             ],
         )
 
@@ -1722,6 +1724,8 @@ class TestSqlConnector:
         assert options["trustServerCertificate"] == "true"
         # The field owns the database; Spark would hand the argument to the driver and override it.
         assert "databaseName" not in options
+        assert "serverName" not in options
+        assert "portNumber" not in options
 
     def test_sqlserver_database_cannot_add_url_properties(self):
         connector = storage_connector.SqlConnector(

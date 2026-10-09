@@ -3449,6 +3449,9 @@ class SqlConnector(StorageConnector):
             "dbs_port",
             "database",
             "databasename",
+            # SQL Server's JDBC driver reads the host and port under these names too.
+            "servername",
+            "portnumber",
             "database_type",
             "user",
             "username",

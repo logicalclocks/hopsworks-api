@@ -650,8 +650,8 @@ public abstract class StorageConnector {
      * URL built from those same fields. Mirrors the set in hopsworks-ee and in the Python client.
      */
     private static final Set<String> RESERVED_ARGUMENTS = new HashSet<>(Arrays.asList(
-        "host", "port", "dbs_port", "database", "databasename", "database_type", "user", "username", "password",
-        Constants.JDBC_URL, Constants.JDBC_DRIVER));
+        "host", "port", "dbs_port", "database", "databasename", "servername", "portnumber", "database_type",
+        "user", "username", "password", Constants.JDBC_URL, Constants.JDBC_DRIVER));
 
     @Override
     public Map<String, String> sparkOptions(DataSource dataSource) throws FeatureStoreException {
