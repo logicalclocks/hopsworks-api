@@ -416,6 +416,8 @@ const healthyState = (s) => ['RUNNING', 'IDLE'].includes(String(s.state).toUpper
 const badge = (variant, text) => el('span', { class: `badge ${variant}` }, text);
 const table = (heads, rows) => el('div', { class: 'table' }, el('table', {}, el('thead', {}, el('tr', {}, heads.map((h) => el('th', {}, h)))), el('tbody', {}, rows)));
 let onlyProblems = false;
+// The report's window as the user picked it: whole days in days, otherwise hours.
+const period = facts.hours % 24 === 0 ? (facts.hours === 24 ? '24 hours' : `${facts.hours / 24} days`) : `${facts.hours} hours`;
 
 function usage(used, limit, unit) {
   if (used == null) return el('span', { class: 'muted' }, 'no metrics');
@@ -445,7 +447,7 @@ function jobsSection() {
       el('td', { style: 'text-align:right' }, toggle || (j.missing || j.error ? badge('fail', 'missing') : j.runs.length ? badge('success', 'healthy') : badge('info', 'idle')))));
     body.push(detail);
   }
-  return el('section', { class: 'card' }, el('h2', {}, `Jobs, last ${facts.hours} hours`),
+  return el('section', { class: 'card' }, el('h2', {}, `Jobs, last ${period}`),
     rows.length ? table(['Job', 'Runs', 'Succeeded', 'Last run', ''], body)
       : el('p', { class: 'muted' }, onlyProblems ? 'No job has a failed run.' : 'No jobs.'));
 }
@@ -514,7 +516,7 @@ function missingData(o) {
 function pipelinesSection() {
   const all = facts.pipelines || [];
   const rows = all.filter((p) => !onlyProblems || p.problems.length);
-  if (!rows.length) return [el('section', { class: 'card' }, el('h2', {}, `Data, last ${facts.hours} hours`), el('p', { class: 'muted' }, 'No pipeline has a problem.'))];
+  if (!rows.length) return [el('section', { class: 'card' }, el('h2', {}, `Data, last ${period}`), el('p', { class: 'muted' }, 'No pipeline has a problem.'))];
   return rows.map((p) => {
     const ratio = p.rows_in && p.rows_out ? ` · ${(p.rows_out / p.rows_in).toFixed(2)} rows out per row in` : '';
     const flow = p.rows_in || p.rows_out
@@ -528,7 +530,7 @@ function pipelinesSection() {
         el('td', {}, dir === 'out' ? missingData(d) : ''),
         el('td', { style: 'text-align:right' }, dir === 'in' ? '' : probs.length ? badge('fail', 'problem') : badge('success', 'healthy'))); };
     return el('section', { class: 'card' },
-      el('h2', {}, `Data, last ${facts.hours} hours: ${p.name}${p.engine ? ` (${p.engine})` : ''}`),
+      el('h2', {}, `Data, last ${period}: ${p.name}${p.engine ? ` (${p.engine})` : ''}`),
       el('p', { class: 'muted', style: 'margin:0 0 12px' }, flow),
       (p.flow_problems || []).map((m) => el('p', { class: 'fail-text', style: 'margin:0 0 12px' }, m)),
       table(['Data', 'Written in the window', 'Last write', 'Missing data', ''],
@@ -544,10 +546,10 @@ function draw() {
       el('label', { class: 'filter' }, el('input', { type: 'checkbox', ...(onlyProblems ? { checked: '' } : {}), onchange: (e) => { onlyProblems = e.target.checked; draw(); } }), 'Only problems'),
       badge(facts.overall, facts.overall)),
     el('div', { class: 'cards' },
-      (facts.tables ? [[c.runs, `job runs in ${facts.hours} h`], [c.failed_runs, 'failed runs'], [c.tables, 'tables'], [c.table_problems, 'tables with problems']]
-        : (facts.pipelines || []).length && !facts.services.length ? [[c.runs, `job runs in ${facts.hours} h`], [c.failed_runs, 'failed runs'],
-          [facts.pipelines.reduce((n, p) => n + p.rows_out, 0).toLocaleString(), `rows written in ${facts.hours} h`], [c.pipeline_problems, 'pipelines with problems']]
-        : [[c.runs, `job runs in ${facts.hours} h`], [c.failed_runs, 'failed runs'], [c.services, 'deployments and apps'], [c.unhealthy_services, 'unhealthy']]).map(([v, l], i) =>
+      (facts.tables ? [[c.runs, `job runs in the last ${period}`], [c.failed_runs, 'failed runs'], [c.tables, 'tables'], [c.table_problems, 'tables with problems']]
+        : (facts.pipelines || []).length && !facts.services.length ? [[c.runs, `job runs in the last ${period}`], [c.failed_runs, 'failed runs'],
+          [facts.pipelines.reduce((n, p) => n + p.rows_out, 0).toLocaleString(), `rows written in the last ${period}`], [c.pipeline_problems, 'pipelines with problems']]
+        : [[c.runs, `job runs in the last ${period}`], [c.failed_runs, 'failed runs'], [c.services, 'deployments and apps'], [c.unhealthy_services, 'unhealthy']]).map(([v, l], i) =>
         el('div', { class: 'card stat' }, el('div', { class: `v ${(i === 1 || i === 3) && v && v !== '0' ? 'fail-text' : ''}` }, String(v)), el('div', { class: 'l' }, l)))),
     summary ? (() => { const s = el('section', { class: 'card summary' }, el('h2', {}, 'Summary')); const d = el('div'); d.innerHTML = summary; s.append(d); return s; })() : '',
     jobsSection(), ...((facts.pipelines || []).length ? pipelinesSection() : []),
