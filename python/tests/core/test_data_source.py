@@ -95,6 +95,20 @@ class TestDataSource:
         # Assert
         assert sc._database == ds.database
 
+    def test_update_storage_connector_elasticsearch(self):
+        # Arrange
+        ds = data_source.DataSource()
+        ds.database = "cluster"
+        ds.table = "events"
+
+        sc = storage_connector.ElasticsearchConnector(1, "test", 100)
+
+        # Act
+        ds._update_storage_connector(sc)
+
+        # Assert
+        assert sc.default_index == "events"
+
     def test_update_storage_connector_other(self):
         # Arrange
         ds = data_source.DataSource()
