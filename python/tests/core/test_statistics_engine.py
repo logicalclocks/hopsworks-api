@@ -1049,6 +1049,29 @@ class TestStatisticsEngine:
         assert result.window_start_commit_time is None
         assert result.window_end_commit_time is None
 
+    def test_compute_and_save_monitoring_statistics_probes_emptiness_once(self, mocker):
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        mock_engine = mocker.patch("hsfs.engine._get_instance")
+        mock_engine.return_value._profile.return_value = '{"columns": []}'
+        mocker.patch("hsfs.core.statistics_engine.StatisticsEngine._save_statistics")
+        s_engine = statistics_engine.StatisticsEngine(99, "featuregroup")
+        feature_dataframe = mocker.Mock()
+        feature_dataframe.head.return_value = [mocker.Mock()]
+
+        s_engine._compute_and_save_monitoring_statistics(
+            metadata_instance=mocker.Mock(),
+            feature_dataframe=feature_dataframe,
+            window_start_commit_time=1000,
+            window_end_commit_time=2000,
+            row_percentage=1.0,
+            feature_name=["amount"],
+        )
+
+        # Each head(1) is a Spark job over the monitoring window.
+        assert feature_dataframe.head.call_count == 1
+        mock_engine.return_value._profile.assert_called_once()
+
     def test_parse_deequ_statistics_exact_uniqueness(self, mocker):
         # Arrange
         feature_store_id = 99

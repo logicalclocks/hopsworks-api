@@ -98,6 +98,7 @@ numpy_not_installed_message = (
 )
 
 HAS_POLARS: bool = importlib.util.find_spec("polars") is not None
+HAS_DATASKETCHES: bool = importlib.util.find_spec("datasketches") is not None
 polars_not_installed_message = (
     "Polars package not found. "
     "If you want to use Polars with Hopsworks you can install the corresponding extra via "

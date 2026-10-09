@@ -22,8 +22,8 @@ from typing import TYPE_CHECKING, TypeVar
 
 from hopsworks_common.client.exceptions import FeatureStoreException, RestAPIError
 from hsfs import feature_group, feature_view, util
+from hsfs.core import incremental_statistics_engine, statistics_engine
 from hsfs.core import monitoring_window_config as mwc
-from hsfs.core import statistics_engine
 from hsfs.feature import Feature
 from hsfs.training_dataset_split import TrainingDatasetSplit
 
@@ -52,6 +52,13 @@ class MonitoringWindowConfigEngine:
         self._statistics_engine = statistics_engine.StatisticsEngine(
             feature_store_id=feature_store_id,
             entity_type=entity_type,
+        )
+
+    def _incremental_statistics_engine(
+        self,
+    ) -> incremental_statistics_engine.IncrementalStatisticsEngine:
+        return incremental_statistics_engine.IncrementalStatisticsEngine(
+            self._statistics_engine
         )
 
     def _validate_monitoring_window_config(
@@ -404,6 +411,14 @@ class MonitoringWindowConfigEngine:
             # commit-time window on an entity without a commit history: the backend
             # rejects commit bounds for it and there is no commit to key a reuse on, so
             # the window is always profiled anew.
+            # Only a distribution comparison reads the extended statistics (histograms, KLL);
+            # every other comparison works on the descriptive values, so the extended
+            # statistics files are not read for it.
+            with_content = (
+                "content"
+                if profile_flags and profile_flags.get("for_distribution_comparison")
+                else "descriptive"
+            )
             if event_time_feature is not None:
                 registered_stats = self._statistics_engine._get_by_time_window(
                     metadata_instance=entity,
@@ -412,6 +427,7 @@ class MonitoringWindowConfigEngine:
                     event_time=event_time_feature.name,
                     feature_names=feature_names,
                     row_percentage=monitoring_window_config.row_percentage,
+                    with_content=with_content,
                 )
             else:
                 registered_stats = self._statistics_engine._get_by_time_window(
@@ -420,6 +436,7 @@ class MonitoringWindowConfigEngine:
                     end_commit_time=end_time,
                     feature_names=feature_names,
                     row_percentage=monitoring_window_config.row_percentage,
+                    with_content=with_content,
                 )
 
         # The lookup matches a row that holds any of the requested features, and a row
@@ -467,62 +484,93 @@ class MonitoringWindowConfigEngine:
                     reused_statistics + merged_fds_list, feature_names
                 )
 
-            # Fetch the actual data for which to compute statistics based on row_percentage and time window.
-            # An ALL_TIME window is the latest snapshot on either basis: with an event-time
-            # feature no time filter is applied at all (the window bounds above are kept
-            # only for registering the statistics), whereas the commit-time path still
-            # anchors the snapshot with as_of.
-            all_time_event_window = (
-                event_time_feature is not None
-                and monitoring_window_config.window_config_type
-                == mwc.WindowConfigType.ALL_TIME
-            )
-            entity_feature_df = self._fetch_entity_data_in_monitoring_window(
-                entity=entity,
-                feature_names=missing_feature_names,
-                start_time=None if all_time_event_window else start_time,
-                end_time=None if all_time_event_window else end_time,
-                row_percentage=monitoring_window_config.row_percentage,
-                model_filter=model_filter,
-                event_time_feature=event_time_feature,
-            )
-
-            # Compute statistics on the feature dataframe.
-            # `for_distribution_comparison` is a routing flag for the merge-path
-            # dispatcher above, not a profile flag accepted by the statistics engine.
-            extra_profile_flags = {
-                k: v
-                for k, v in (profile_flags or {}).items()
-                if k != "for_distribution_comparison"
-            }
-            # Commit bounds are registered only where the backend keeps commits; an
-            # entity without a commit history gets a row stamped with the computation
-            # time alone.
-            register_commit_bounds = (
-                event_time_feature is None and self._reads_by_commit_time(entity)
-            )
-            registered_stats = (
-                self._statistics_engine._compute_and_save_monitoring_statistics(
+            # Statistics of a commit from the previous snapshot's, when the cluster allows it
+            # and the window is one whose statistics merge (see IncrementalStatisticsEngine).
+            incremental_stats = None
+            incremental_applies = (
+                event_time_feature is None
+                and model_filter is None
+                and self._incremental_statistics_engine()._applies(
                     entity,
-                    feature_dataframe=entity_feature_df,
-                    window_start_commit_time=start_time
-                    if register_commit_bounds
-                    else None,
-                    window_end_commit_time=end_time if register_commit_bounds else None,
-                    window_start_event_time=start_time
-                    if event_time_feature is not None
-                    else None,
-                    window_end_event_time=end_time
-                    if event_time_feature is not None
-                    else None,
-                    event_time=event_time_feature.name
-                    if event_time_feature is not None
-                    else None,
-                    row_percentage=monitoring_window_config.row_percentage,
-                    feature_name=missing_feature_names,
-                    **extra_profile_flags,
+                    monitoring_window_config,
+                    profile_flags,
+                    start_time,
+                    end_time,
                 )
             )
+            if incremental_applies:
+                incremental_stats = self._incremental_statistics_engine()._compute(
+                    entity,
+                    missing_feature_names,
+                    end_time,
+                    kll=bool((profile_flags or {}).get("kll")),
+                    histogram_bins=(profile_flags or {}).get("histogram_bins"),
+                )
+            if incremental_stats is not None:
+                registered_stats = incremental_stats
+            else:
+                # Fetch the actual data for which to compute statistics based on row_percentage and time window.
+                # An ALL_TIME window is the latest snapshot on either basis: with an event-time
+                # feature no time filter is applied at all (the window bounds above are kept
+                # only for registering the statistics), whereas the commit-time path still
+                # anchors the snapshot with as_of.
+                all_time_event_window = (
+                    event_time_feature is not None
+                    and monitoring_window_config.window_config_type
+                    == mwc.WindowConfigType.ALL_TIME
+                )
+                entity_feature_df = self._fetch_entity_data_in_monitoring_window(
+                    entity=entity,
+                    feature_names=missing_feature_names,
+                    start_time=None if all_time_event_window else start_time,
+                    end_time=None if all_time_event_window else end_time,
+                    row_percentage=monitoring_window_config.row_percentage,
+                    model_filter=model_filter,
+                    event_time_feature=event_time_feature,
+                )
+
+                # Compute statistics on the feature dataframe.
+                # `for_distribution_comparison` is a routing flag for the merge-path
+                # dispatcher above, not a profile flag accepted by the statistics engine.
+                extra_profile_flags = {
+                    k: v
+                    for k, v in (profile_flags or {}).items()
+                    if k != "for_distribution_comparison"
+                }
+                if incremental_applies:
+                    # the first snapshot, or one after a commit that changed rows: profiled in
+                    # full, with the state the next commit's rows are merged into
+                    extra_profile_flags["mergeable_state"] = True
+                # Commit bounds are registered only where the backend keeps commits; an
+                # entity without a commit history gets a row stamped with the computation
+                # time alone.
+                register_commit_bounds = (
+                    event_time_feature is None and self._reads_by_commit_time(entity)
+                )
+                registered_stats = (
+                    self._statistics_engine._compute_and_save_monitoring_statistics(
+                        entity,
+                        feature_dataframe=entity_feature_df,
+                        window_start_commit_time=start_time
+                        if register_commit_bounds
+                        else None,
+                        window_end_commit_time=end_time
+                        if register_commit_bounds
+                        else None,
+                        window_start_event_time=start_time
+                        if event_time_feature is not None
+                        else None,
+                        window_end_event_time=end_time
+                        if event_time_feature is not None
+                        else None,
+                        event_time=event_time_feature.name
+                        if event_time_feature is not None
+                        else None,
+                        row_percentage=monitoring_window_config.row_percentage,
+                        feature_name=missing_feature_names,
+                        **extra_profile_flags,
+                    )
+                )
 
         assert registered_stats.feature_descriptive_statistics is not None, (
             "statistics should contain the feature descriptive statistics"

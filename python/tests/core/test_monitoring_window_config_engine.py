@@ -1667,3 +1667,104 @@ class TestEntitiesWithoutCommitHistory:
         assert not engine._should_use_merge_path(
             _make_external_fg(backend_fixtures), _make_rolling_window_config(), flags
         )
+
+
+class TestIncrementalStatisticsHook:
+    def _engine_with_mocked_statistics(self, mocker):
+        engine = mwce.MonitoringWindowConfigEngine()
+        mocker.patch.object(engine, "_init_statistics_engine")
+        stats_engine_mock = MagicMock()
+        registered = MagicMock()
+        registered.feature_descriptive_statistics = [
+            FeatureDescriptiveStatistics(feature_name="intt", count=4)
+        ]
+        stats_engine_mock._compute_and_save_monitoring_statistics.return_value = (
+            registered
+        )
+        stats_engine_mock._get_by_time_window.return_value = None
+        engine._statistics_engine = stats_engine_mock
+        mocker.patch.object(engine, "_fetch_entity_data_in_monitoring_window")
+        return engine, stats_engine_mock, registered
+
+    def test_a_merged_snapshot_replaces_the_full_profile(self, mocker):
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        engine, stats_engine_mock, _ = self._engine_with_mocked_statistics(mocker)
+        merged = MagicMock()
+        merged.feature_descriptive_statistics = [
+            FeatureDescriptiveStatistics(feature_name="intt", count=40)
+        ]
+        incremental = MagicMock()
+        incremental._applies.return_value = True
+        incremental._compute.return_value = merged
+        mocker.patch.object(
+            engine, "_incremental_statistics_engine", return_value=incremental
+        )
+
+        result = engine._run_single_window_monitoring(
+            entity=_make_hudi_fg(None),
+            monitoring_window_config=mwc.MonitoringWindowConfig(
+                window_config_type=mwc.WindowConfigType.ALL_TIME, row_percentage=1.0
+            ),
+            feature_names=["intt"],
+            end_commit_time_override=1000,
+        )
+
+        assert result == merged.feature_descriptive_statistics
+        stats_engine_mock._compute_and_save_monitoring_statistics.assert_not_called()
+        assert incremental._compute.call_args.args[2] == 1000
+
+    def test_the_full_profile_carries_the_mergeable_state_when_nothing_merges(
+        self, mocker
+    ):
+        # the first snapshot, or one after a commit that changed rows
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        engine, stats_engine_mock, registered = self._engine_with_mocked_statistics(
+            mocker
+        )
+        incremental = MagicMock()
+        incremental._applies.return_value = True
+        incremental._compute.return_value = None
+        mocker.patch.object(
+            engine, "_incremental_statistics_engine", return_value=incremental
+        )
+
+        result = engine._run_single_window_monitoring(
+            entity=_make_hudi_fg(None),
+            monitoring_window_config=mwc.MonitoringWindowConfig(
+                window_config_type=mwc.WindowConfigType.ALL_TIME, row_percentage=1.0
+            ),
+            feature_names=["intt"],
+            end_commit_time_override=1000,
+        )
+
+        assert result == registered.feature_descriptive_statistics
+        save_kwargs = (
+            stats_engine_mock._compute_and_save_monitoring_statistics.call_args.kwargs
+        )
+        assert save_kwargs["mergeable_state"] is True
+
+    def test_the_full_profile_carries_no_state_when_the_merge_does_not_apply(
+        self, mocker
+    ):
+        mocker.patch("hsfs.engine._get_type", return_value="spark")
+        engine, stats_engine_mock, _ = self._engine_with_mocked_statistics(mocker)
+        incremental = MagicMock()
+        incremental._applies.return_value = False
+        mocker.patch.object(
+            engine, "_incremental_statistics_engine", return_value=incremental
+        )
+
+        engine._run_single_window_monitoring(
+            entity=_make_hudi_fg(None),
+            monitoring_window_config=mwc.MonitoringWindowConfig(
+                window_config_type=mwc.WindowConfigType.ALL_TIME, row_percentage=1.0
+            ),
+            feature_names=["intt"],
+            end_commit_time_override=1000,
+        )
+
+        save_kwargs = (
+            stats_engine_mock._compute_and_save_monitoring_statistics.call_args.kwargs
+        )
+        assert "mergeable_state" not in save_kwargs
+        incremental._compute.assert_not_called()

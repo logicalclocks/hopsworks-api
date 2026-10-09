@@ -1158,11 +1158,11 @@ class TestPython:
         assert (
             result
             == '{"columns": [{"dataType": "Integral", "test_key": "test_value", "isDataTypeInferred": "false", '
-            '"column": "col1", "completeness": 1}, '
+            '"column": "col1", "completeness": 1.0}, '
             '{"dataType": "Fractional", "test_key": "test_value", "isDataTypeInferred": "false", '
-            '"column": "col2", "completeness": 1}, '
+            '"column": "col2", "completeness": 1.0}, '
             '{"dataType": "String", "test_key": "test_value", "isDataTypeInferred": "false", '
-            '"column": "col3", "completeness": 1}]}'
+            '"column": "col3", "completeness": 1.0}]}'
         )
         assert mock_python_engine_convert_pandas_statistics.call_count == 3
 
@@ -1196,11 +1196,11 @@ class TestPython:
         assert (
             result
             == '{"columns": [{"dataType": "Integral", "test_key": "test_value", "isDataTypeInferred": "false", '
-            '"column": "col1", "completeness": 1}, '
+            '"column": "col1", "completeness": 1.0}, '
             '{"dataType": "Fractional", "test_key": "test_value", "isDataTypeInferred": "false", '
-            '"column": "col2", "completeness": 1}, '
+            '"column": "col2", "completeness": 0.5}, '
             '{"dataType": "String", "test_key": "test_value", "isDataTypeInferred": "false", '
-            '"column": "col3", "completeness": 1}]}'
+            '"column": "col3", "completeness": 0.0}]}'
         )
         assert mock_python_engine_convert_pandas_statistics.call_count == 3
 
@@ -1238,11 +1238,11 @@ class TestPython:
         assert (
             result
             == '{"columns": [{"dataType": "Integral", "test_key": "test_value", "isDataTypeInferred": "false", '
-            '"column": "col1", "completeness": 1}, '
+            '"column": "col1", "completeness": 1.0}, '
             '{"dataType": "Fractional", "test_key": "test_value", "isDataTypeInferred": "false", '
-            '"column": "col2", "completeness": 1}, '
+            '"column": "col2", "completeness": 1.0}, '
             '{"dataType": "String", "test_key": "test_value", "isDataTypeInferred": "false", '
-            '"column": "col3", "completeness": 1}]}'
+            '"column": "col3", "completeness": 1.0}]}'
         )
         assert mock_python_engine_convert_pandas_statistics.call_count == 3
 
@@ -1316,50 +1316,151 @@ class TestPython:
         )
         assert result == (
             '{"columns": [{"dataType": "String", "test_key": "test_value", "isDataTypeInferred": "false", '
-            '"column": "col_list", "completeness": 1}]}'
+            '"column": "col_list", "completeness": 1.0}]}'
         )
 
     @pytest.mark.skipif(
         not HAS_POLARS,
         reason="Polars is not installed.",
     )
-    def test_profile_polars_casts_timestamp_columns_to_string(self, mocker):
-        # Arrange - exercises the polars `with_columns(pl.col(...).cast(pl.String))`
-        # branch that runs before describe() to normalize timestamp/date columns.
-        # side_effect returns a fresh dict per call so the production code's
-        # in-place stat["column"] assignment doesn't alias entries.
-        mocker.patch(
-            "hsfs.engine.python.Engine._convert_pandas_statistics",
-            side_effect=lambda stat, dataType: {
-                "dataType": dataType,
-                "min": stat.get("min"),
-            },
-        )
+    def test_profile_polars_profiles_temporal_columns_as_strings(self):
         python_engine = python.Engine()
         df = pl.DataFrame(
             {
-                "ts": [datetime(2024, 1, 1), datetime(2024, 1, 2)],
-                "d": [date(2024, 1, 1), date(2024, 1, 2)],
+                "ts": [datetime(2024, 1, 1), datetime(2024, 1, 2), None],
+                "d": [date(2024, 1, 1), date(2024, 1, 1), date(2024, 1, 2)],
             }
         )
 
-        # Act - the cast branch turns timestamp/date columns into strings; if it
-        # didn't run, describe() would surface raw timestamp objects and the min
-        # values below would not match these string literals.
-        result = python_engine._profile(
-            df=df,
-            relevant_columns=None,
-            correlations=None,
-            histograms=None,
-            exact_uniqueness=True,
+        by_col = {
+            col["column"]: col
+            for col in json.loads(
+                python_engine._profile(
+                    df=df,
+                    relevant_columns=None,
+                    correlations=None,
+                    histograms=None,
+                )
+            )["columns"]
+        }
+
+        assert by_col["ts"]["dataType"] == "String"
+        assert by_col["ts"]["count"] == 2
+        assert by_col["ts"]["approximateNumDistinctValues"] == 2
+        assert by_col["d"]["approximateNumDistinctValues"] == 2
+        assert df.schema["ts"] == pl.Datetime
+
+    def test_profile_pandas_leaves_the_callers_frame_unchanged(self):
+        python_engine = python.Engine()
+        df = pd.DataFrame(
+            {
+                "ts": pd.to_datetime(["2024-01-01", "2024-01-02", None]),
+                "x": [1.0, 2.0, 3.0],
+            }
         )
 
-        # Assert
-        parsed = json.loads(result)
-        by_col = {col["column"]: col for col in parsed["columns"]}
-        assert set(by_col) == {"ts", "d"}
-        assert by_col["ts"]["min"] == "2024-01-01 00:00:00.000000"
-        assert by_col["d"]["min"] == "2024-01-01"
+        by_col = {
+            col["column"]: col
+            for col in json.loads(
+                python_engine._profile(
+                    df=df,
+                    relevant_columns=None,
+                    correlations=None,
+                    histograms=None,
+                )
+            )["columns"]
+        }
+
+        assert pd.api.types.is_datetime64_any_dtype(df["ts"])
+        assert by_col["ts"]["dataType"] == "String"
+        assert by_col["ts"]["count"] == 2
+        assert by_col["ts"]["approximateNumDistinctValues"] == 2
+        assert by_col["ts"]["completeness"] == pytest.approx(2 / 3)
+
+    @pytest.mark.parametrize("frame", ["pandas", "polars"])
+    def test_profile_duplicate_relevant_columns(self, frame):
+        # Transformation statistics pass a label-encoded feature twice.
+        if frame == "polars" and not HAS_POLARS:
+            pytest.skip("Polars is not installed.")
+        data = {"col3": ["a", "b", "a"], "col1": [1, 2, 3]}
+        df = pl.DataFrame(data) if frame == "polars" else pd.DataFrame(data)
+
+        columns = json.loads(
+            python.Engine()._profile(
+                df=df,
+                relevant_columns=["col3", "col1", "col3"],
+                correlations=None,
+                histograms=None,
+            )
+        )["columns"]
+
+        assert [col["column"] for col in columns] == ["col3", "col1"]
+        assert columns[0]["approximateNumDistinctValues"] == 2
+
+    def test_profile_pandas_computes_every_percentile(self):
+        python_engine = python.Engine()
+        df = pd.DataFrame({"x": [float(v) for v in range(1, 101)] + [None]})
+
+        stat = json.loads(
+            python_engine._profile(
+                df=df,
+                relevant_columns=None,
+                correlations=None,
+                histograms=None,
+            )
+        )["columns"][0]
+
+        percentiles = stat["approxPercentiles"]
+        # Same shape as the Spark profiler: q1 .. q99, so the last entry is not the maximum.
+        assert len(percentiles) == 99
+        assert percentiles == sorted(percentiles)
+        assert percentiles[24] == pytest.approx(df["x"].quantile(0.25))
+        assert percentiles[0] == pytest.approx(df["x"].quantile(0.01))
+        assert percentiles[-1] == pytest.approx(df["x"].quantile(0.99))
+        assert stat["completeness"] == pytest.approx(100 / 101)
+
+    @pytest.mark.skipif(
+        not HAS_POLARS,
+        reason="Polars is not installed.",
+    )
+    def test_profile_polars_computes_every_percentile(self):
+        python_engine = python.Engine()
+        df = pl.DataFrame({"x": list(range(1, 101))})
+
+        stat = json.loads(
+            python_engine._profile(
+                df=df,
+                relevant_columns=None,
+                correlations=None,
+                histograms=None,
+            )
+        )["columns"][0]
+
+        percentiles = stat["approxPercentiles"]
+        assert len(percentiles) == 99
+        assert percentiles == sorted(percentiles)
+        for index in (0, 24, 49, 98):
+            assert percentiles[index] == df["x"].quantile(
+                (index + 1) / 100, interpolation="nearest"
+            )
+
+    def test_profile_pandas_profiles_object_numbers_as_numeric(self):
+        python_engine = python.Engine()
+        df = pd.DataFrame({"n": pd.Series([1, 2, None, 4], dtype=object)})
+
+        stat = json.loads(
+            python_engine._profile(
+                df=df,
+                relevant_columns=None,
+                correlations=None,
+                histograms=None,
+            )
+        )["columns"][0]
+
+        assert stat["dataType"] == "Integral"
+        assert stat["minimum"] == 1.0
+        assert stat["maximum"] == 4.0
+        assert len(stat["approxPercentiles"]) == 99
 
     @pytest.mark.skipif(
         not HAS_POLARS,
@@ -1395,11 +1496,11 @@ class TestPython:
         assert (
             result
             == '{"columns": [{"dataType": "Integral", "test_key": "test_value", "isDataTypeInferred": "false", '
-            '"column": "col1", "completeness": 1}, '
+            '"column": "col1", "completeness": 1.0}, '
             '{"dataType": "Fractional", "test_key": "test_value", "isDataTypeInferred": "false", '
-            '"column": "col2", "completeness": 1}, '
+            '"column": "col2", "completeness": 0.5}, '
             '{"dataType": "String", "test_key": "test_value", "isDataTypeInferred": "false", '
-            '"column": "col3", "completeness": 1}]}'
+            '"column": "col3", "completeness": 0.0}]}'
         )
         assert mock_python_engine_convert_pandas_statistics.call_count == 3
 
@@ -1432,7 +1533,7 @@ class TestPython:
         assert (
             result
             == '{"columns": [{"dataType": "Integral", "test_key": "test_value", "isDataTypeInferred": "false", '
-            '"column": "col1", "completeness": 1}]}'
+            '"column": "col1", "completeness": 1.0}]}'
         )
         assert mock_python_engine_convert_pandas_statistics.call_count == 1
 
@@ -1465,9 +1566,9 @@ class TestPython:
         assert (
             result
             == '{"columns": [{"dataType": "Integral", "test_key": "test_value", "isDataTypeInferred": "false", '
-            '"column": "col1", "completeness": 1}, '
+            '"column": "col1", "completeness": 1.0}, '
             '{"dataType": "String", "test_key": "test_value", "isDataTypeInferred": "false", '
-            '"column": "col3", "completeness": 1}]}'
+            '"column": "col3", "completeness": 1.0}]}'
         )
         assert mock_python_engine_convert_pandas_statistics.call_count == 2
 
@@ -1515,9 +1616,9 @@ class TestPython:
         )
         assert result == (
             '{"columns": [{"dataType": "Integral", "test_key": "test_value", "isDataTypeInferred": "false", '
-            '"column": "col_int", "completeness": 1}, '
+            '"column": "col_int", "completeness": 1.0}, '
             '{"dataType": "String", "test_key": "test_value", "isDataTypeInferred": "false", '
-            f'"column": "{col_name}", "completeness": 1}}]}}'
+            f'"column": "{col_name}", "completeness": 1.0}}]}}'
         )
 
     @pytest.mark.parametrize(
@@ -1566,7 +1667,7 @@ class TestPython:
         )
         assert result == (
             '{"columns": [{"dataType": "String", "test_key": "test_value", "isDataTypeInferred": "false", '
-            f'"column": "{col_name}", "completeness": 1}}]}}'
+            f'"column": "{col_name}", "completeness": 1.0}}]}}'
         )
 
     @pytest.mark.parametrize(
@@ -1615,9 +1716,9 @@ class TestPython:
         )
         assert result == (
             '{"columns": [{"dataType": "Integral", "test_key": "test_value", "isDataTypeInferred": "false", '
-            '"column": "col_int", "completeness": 1}, '
+            '"column": "col_int", "completeness": 1.0}, '
             '{"dataType": "String", "test_key": "test_value", "isDataTypeInferred": "false", '
-            f'"column": "{col_name}", "completeness": 1}}]}}'
+            f'"column": "{col_name}", "completeness": 1.0}}]}}'
         )
 
     def test_convert_pandas_statistics(self):
@@ -2209,6 +2310,10 @@ class TestPython:
         )
         mock_delta_engine = mocker.patch("hsfs.core.delta_engine.DeltaEngine")
         mocker.patch("hsfs.engine._get_type", return_value="python")
+        mock_client_statistics = mocker.patch(
+            "hsfs.core.client_statistics_engine.ClientStatisticsEngine"
+        )
+        mock_client_statistics.return_value._prepare.return_value = None
 
         python_engine = python.Engine()
 
@@ -2253,7 +2358,51 @@ class TestPython:
 
         # Verify save_delta_fg was called with correct parameters
         mock_delta_engine.return_value._save_delta_fg.assert_called_once_with(
-            test_dataframe, write_options={}, validation_id=None, operation="insert"
+            test_dataframe,
+            write_options={},
+            validation_id=None,
+            operation="insert",
+            statistics_supplied=False,
+        )
+        mock_client_statistics.return_value._register_commit_statistics.assert_not_called()
+
+    def test_save_dataframe_delta_registers_client_statistics(self, mocker):
+        # Arrange
+        mock_delta_engine = mocker.patch("hsfs.core.delta_engine.DeltaEngine")
+        mocker.patch("hsfs.engine._get_type", return_value="python")
+        mock_client_statistics = mocker.patch(
+            "hsfs.core.client_statistics_engine.ClientStatisticsEngine"
+        )
+        prepared = mock_client_statistics.return_value._prepare.return_value
+        fg = feature_group.FeatureGroup(
+            name="test",
+            version=1,
+            featurestore_id=99,
+            primary_key=[],
+            partition_key=[],
+            id=10,
+            stream=False,
+            time_travel_format="DELTA",
+        )
+        test_dataframe = pd.DataFrame({"col1": [1, 2, 3]})
+
+        # Act
+        python.Engine()._save_dataframe(
+            feature_group=fg,
+            dataframe=test_dataframe,
+            operation="insert",
+            online_enabled=False,
+            storage="offline",
+            offline_write_options={},
+            online_write_options={},
+        )
+
+        # Assert: the commit tells the backend not to start the statistics job, and the
+        # profile is registered against the acknowledged commit
+        save = mock_delta_engine.return_value._save_delta_fg
+        assert save.call_args.kwargs["statistics_supplied"] is True
+        mock_client_statistics.return_value._register_commit_statistics.assert_called_once_with(
+            prepared, save.return_value
         )
 
     def test_to_arrow_table_pandas(self):
@@ -10267,3 +10416,82 @@ class TestPython:
                 self._get_val_multi(result, {"user_id": 1, "item_id": 10}, "val")
                 == "new"
             )
+
+    def test_profile_by_spark_waits_on_the_execution_the_backend_started(self, mocker):
+        # The feature group statistics job is shared with the ingestion trigger, so the
+        # client must wait on the execution the compute endpoint started, not on the
+        # job's latest execution.
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.util._get_job_url")
+        started_job = job.Job(
+            id=1,
+            name="fg_1_compute_stats",
+            creation_time=None,
+            config={},
+            job_type="PYSPARK",
+            creator=None,
+            executions={"id": 7, "state": "INITIALIZING"},
+        )
+        mock_stat_api = mocker.patch("hsfs.core.statistics_api.StatisticsApi")
+        mock_stat_api.return_value._compute.return_value = started_job
+        wait = mocker.patch.object(
+            started_job._execution_engine, "_wait_until_finished"
+        )
+        last_execution = mocker.patch.object(started_job._job_api, "last_execution")
+
+        result = python.Engine()._profile_by_spark(
+            mocker.Mock(feature_store_id=99, ENTITY_TYPE="featuregroups")
+        )
+
+        assert result is started_job
+        assert wait.call_args.kwargs["execution"].id == 7
+        last_execution.assert_not_called()
+
+    def test_profile_by_spark_falls_back_to_the_latest_execution(self, mocker):
+        # A backend that returns the job alone gets the previous behaviour.
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.util._get_job_url")
+        started_job = job.Job(
+            id=1,
+            name="fg_1_compute_stats",
+            creation_time=None,
+            config={},
+            job_type="PYSPARK",
+            creator=None,
+        )
+        mock_stat_api = mocker.patch("hsfs.core.statistics_api.StatisticsApi")
+        mock_stat_api.return_value._compute.return_value = started_job
+        wait_for_job = mocker.patch.object(started_job, "_wait_for_job")
+
+        python.Engine()._profile_by_spark(
+            mocker.Mock(feature_store_id=99, ENTITY_TYPE="featuregroups")
+        )
+
+        wait_for_job.assert_called_once_with()
+
+    @pytest.mark.parametrize(
+        "executions, expected_id",
+        [
+            ({"id": 7, "state": "INITIALIZING"}, 7),
+            ({"count": 1, "items": [{"id": 8, "state": "INITIALIZING"}]}, 8),
+            ({"count": 0, "items": []}, None),
+            (None, None),
+        ],
+    )
+    def test_started_execution_reads_both_response_shapes(
+        self, mocker, executions, expected_id
+    ):
+        mocker.patch("hopsworks_common.client._get_instance")
+        started_job = job.Job(
+            id=1,
+            name="fg_1_compute_stats",
+            creation_time=None,
+            config={},
+            job_type="PYSPARK",
+            creator=None,
+            executions=executions,
+        )
+
+        started = python.Engine._started_execution(started_job)
+
+        assert (started.id if started is not None else None) == expected_id

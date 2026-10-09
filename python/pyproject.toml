@@ -78,6 +78,7 @@ python = [
     "hops-deltalake==1.4.0-post121; sys_platform == 'linux' or (sys_platform == 'darwin' and platform_machine == 'arm64')",
     "pyiceberg>=0.11.0,<0.13.0",
     "httpx<=0.28.1",
+    "datasketches>=5.2.0",
 ]
 sqlalchemy-1 = [
     "pandas<2.2.0; python_version < '3.13'",

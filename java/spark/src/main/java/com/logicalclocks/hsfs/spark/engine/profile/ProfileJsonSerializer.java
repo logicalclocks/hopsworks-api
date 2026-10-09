@@ -118,6 +118,7 @@ class ProfileJsonSerializer {
     if (profile.getApproxPercentiles() != null) {
       map.put("approxPercentiles", toDoubleList(profile.getApproxPercentiles()));
     }
+    putMergeable(map, profile);
     return map;
   }
 
@@ -133,6 +134,7 @@ class ProfileJsonSerializer {
     if (profile.getHistogram() != null) {
       map.put("histogram", profile.getHistogram());
     }
+    putMergeable(map, profile);
     return map;
   }
 
@@ -176,13 +178,43 @@ class ProfileJsonSerializer {
   }
 
   /**
+   * The state {@link ProfileMerger} merges a later profile into: the sketches as base64 and the
+   * moments of the non-null values as strings, so that NaN and the infinities survive the JSON
+   * round trip (the descriptive statistics DTO drops non-finite numbers).
+   */
+  private void putMergeable(Map<String, Object> map, ColumnProfile profile) {
+    if (profile.getMergeableHll() == null && profile.getMergeableKll() == null) {
+      return;
+    }
+    Map<String, Object> mergeable = new LinkedHashMap<String, Object>();
+    mergeable.put("format", ProfileMerger.FORMAT);
+    if (profile.getMergeableHll() != null) {
+      mergeable.put("hll", Base64.getEncoder().encodeToString(profile.getMergeableHll()));
+    }
+    if (profile.getMergeableKll() != null) {
+      mergeable.put("kll", Base64.getEncoder().encodeToString(profile.getMergeableKll()));
+    }
+    Map<String, Object> moments = new LinkedHashMap<String, Object>();
+    moments.put("n", profile.getNumRecordsNonNull());
+    if (profile.getMean() != null) {
+      moments.put("sum", Double.toString(profile.getSum()));
+      moments.put("mean", Double.toString(profile.getMean()));
+      moments.put("m2", Double.toString(profile.getStdDev() * profile.getStdDev() * profile.getNumRecordsNonNull()));
+      moments.put("min", Double.toString(profile.getMinimum()));
+      moments.put("max", Double.toString(profile.getMaximum()));
+    }
+    mergeable.put("moments", moments);
+    map.put("mergeable", mergeable);
+  }
+
+  /**
    * Builds the Phase 1.5 native KLL map.
    *
    * <p>The {@code buckets} field is derived from the sketch CDF using 20 equal-width bin edges
    * matching the numeric histogram, so read-time consumers have a histogram-from-sketch shape
    * without re-merging.
    */
-  private Map<String, Object> buildKllMap(byte[] kllBytes) {
+  static Map<String, Object> buildKllMap(byte[] kllBytes) {
     KllDoublesSketch sketch = KllAggregator.heapify(kllBytes);
     Map<String, Object> kll = new LinkedHashMap<String, Object>();
     kll.put("kllFormat", "datasketches-native-v1");
@@ -207,7 +239,7 @@ class ProfileJsonSerializer {
    * checks that with the same {@code min + i * binWidth} formula used below, so the two
    * must change together.
    */
-  private List<Map<String, Object>> buildKllBuckets(KllDoublesSketch sketch) {
+  private static List<Map<String, Object>> buildKllBuckets(KllDoublesSketch sketch) {
     double minValue = sketch.getMinItem();
     double maxValue = sketch.getMaxItem();
     long totalRows = sketch.getN();

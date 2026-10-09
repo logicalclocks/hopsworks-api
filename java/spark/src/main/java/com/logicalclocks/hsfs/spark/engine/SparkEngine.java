@@ -775,6 +775,17 @@ public class SparkEngine extends EngineBase {
 
   public String profile(Dataset<Row> df, List<String> restrictToColumns, Boolean correlation,
       Boolean histogram, Boolean exactUniqueness, Boolean kll, Integer histogramBins) {
+    return profile(df, restrictToColumns, correlation, histogram, exactUniqueness, kll, histogramBins, false);
+  }
+
+  /**
+   * Profiles a dataframe, optionally with the state incremental statistics merge into.
+   *
+   * @param mergeableState also emit the per-column state a later profile can be merged into this
+   *                       one with, for incremental statistics
+   */
+  public String profile(Dataset<Row> df, List<String> restrictToColumns, Boolean correlation,
+      Boolean histogram, Boolean exactUniqueness, Boolean kll, Integer histogramBins, Boolean mergeableState) {
     // defaults aligned with the prior Deequ-backed implementation; preserved for training-dataset
     // callers where the backend doesn't set them.
     boolean correlationFlag = correlation == null ? true : correlation;
@@ -782,8 +793,9 @@ public class SparkEngine extends EngineBase {
     boolean exactUniquenessFlag = exactUniqueness == null ? true : exactUniqueness;
     boolean kllFlag = kll != null && kll;
     int binCount = histogramBins != null ? histogramBins : 20;
+    boolean mergeableFlag = mergeableState != null && mergeableState;
     return new ColumnProfiler().profile(df, restrictToColumns, correlationFlag, histogramFlag,
-        binCount, exactUniquenessFlag, kllFlag);
+        binCount, exactUniquenessFlag, kllFlag, mergeableFlag);
   }
 
   public String profile(Dataset<Row> df, List<String> restrictToColumns, Boolean correlation,
