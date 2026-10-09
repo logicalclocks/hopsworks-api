@@ -4916,6 +4916,75 @@ class TestSpark:
         assert path == "/tmp/materialisation_dir/test_file"
         mock_add_file.assert_not_called()
 
+    def test_add_file_as_url_is_relative_to_the_driver_jvm(self, mocker, tmp_path):
+        downloaded = tmp_path / "ts.jks"
+        downloaded.write_bytes(b"truststore")
+        jvm_cwd = tmp_path / "work-dir"
+        jvm_cwd.mkdir()
+        spark_engine = spark.Engine()
+        mocker.patch.object(spark_engine, "_add_file", return_value=str(downloaded))
+        spark_engine._spark_context = MagicMock()
+        spark_engine._spark_context._jvm.java.lang.System.getProperty.return_value = (
+            str(jvm_cwd)
+        )
+
+        url = spark_engine._add_file_as_url("/Projects/p/Resources/ts.jks")
+        again = spark_engine._add_file_as_url("/Projects/p/Resources/ts.jks")
+
+        spark_engine._add_file.assert_called_with(
+            "/Projects/p/Resources/ts.jks", distribute=False
+        )
+        name = url[len("file:") :]
+        assert url == again
+        assert name.startswith(".hopsworks-") and name.endswith("-ts.jks")
+        assert (jvm_cwd / name).read_bytes() == b"truststore"
+        spark_engine._spark_context.addFile.assert_called_with(str(jvm_cwd / name))
+
+    def test_add_file_as_url_keeps_a_job_attached_file_in_place(self, mocker):
+        mocker.patch(
+            "os.environ",
+            {
+                "APP_FILES": "/Projects/test_file",
+                "MATERIALISATION_DIR": "/tmp/materialisation_dir",
+            },
+        )
+        mock_add_file = mocker.patch("pyspark.SparkContext.addFile")
+
+        url = spark.Engine()._add_file_as_url("/Projects/test_file")
+
+        assert url == "file:///tmp/materialisation_dir/test_file"
+        mock_add_file.assert_not_called()
+
+    def test_add_file_as_url_refuses_spark_connect(self, mocker):
+        spark_engine = spark.Engine()
+        spark_engine._is_connect = True
+        mock_add_file = mocker.patch.object(spark_engine, "_add_file")
+
+        with pytest.raises(exceptions.FeatureStoreException, match="Spark Connect"):
+            spark_engine._add_file_as_url("/Projects/p/Resources/ts.jks")
+
+        mock_add_file.assert_not_called()
+
+    def test_run_where_spark_runs_calls_in_process_without_spark_connect(self):
+        spark_engine = spark.Engine()
+        spark_engine._is_connect = False
+
+        assert spark_engine._run_where_spark_runs(lambda: (200, "{}"), "unused") == (
+            200,
+            "{}",
+        )
+
+    def test_run_where_spark_runs_uses_a_spark_task_under_spark_connect(self):
+        spark_engine = spark.Engine()
+        spark_engine._is_connect = True
+        spark_engine._spark_session = pyspark.sql.SparkSession.builder.getOrCreate()
+
+        status, text = spark_engine._run_where_spark_runs(
+            lambda: (200, "{}"), "struct<status:int,text:string>"
+        )
+
+        assert (status, text) == (200, "{}")
+
     def test_profile(self, mocker):
         # Arrange
         mock_spark_context = MagicMock()
