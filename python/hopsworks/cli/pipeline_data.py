@@ -69,6 +69,26 @@ def _project_path(project_name: str, path: str) -> Path:
     return _mount() / path.lstrip("/")
 
 
+def _added(metrics: dict) -> tuple[int, int]:
+    """The rows and bytes one Delta commit added, from Spark's camelCase or delta-rs's snake_case metrics."""
+    found = {
+        re.sub(r"_", "", k).lower(): int(v or 0)
+        for k, v in metrics.items()
+        if str(v).isdigit()
+    }
+    # A merge's output rows include the unchanged rows it copied; only inserts and updates are new.
+    if "numtargetrowsinserted" in found:
+        rows = found["numtargetrowsinserted"] + found.get("numtargetrowsupdated", 0)
+    else:
+        rows = found.get("numoutputrows", found.get("numaddedrows", 0))
+    size = (
+        found.get("numoutputbytes")
+        or found.get("numtargetbytesadded")
+        or found.get("numaddedbytes", 0)
+    )
+    return rows, size
+
+
 def delta_written(table: Path, since: datetime) -> dict | None:
     """The commits of a Delta table since `since`: their count, rows and bytes added, and the last one's time."""
     log = table / "_delta_log"
@@ -87,20 +107,10 @@ def delta_written(table: Path, since: datetime) -> dict | None:
         last = last or when
         if when < since:
             break
-        metrics = info.get("operationMetrics") or {}
-        added = metrics.get("numOutputRows")
-        if added is None:
-            added = int(metrics.get("numTargetRowsInserted") or 0) + int(
-                metrics.get("numTargetRowsUpdated") or 0
-            )
+        rows_added, bytes_added = _added(info.get("operationMetrics") or {})
         commits += 1
-        rows += int(added or 0)
-        size += int(
-            metrics.get("numOutputBytes")
-            or metrics.get("numTargetBytesAdded")
-            or metrics.get("numAddedBytes")
-            or 0
-        )
+        rows += rows_added
+        size += bytes_added
     return {
         "commits": commits,
         "rows": rows,

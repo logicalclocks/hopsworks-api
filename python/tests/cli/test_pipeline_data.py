@@ -85,14 +85,31 @@ def test_the_window_counts_only_its_own_commits(tmp_path):
                 {"numOutputRows": "500", "numOutputBytes": "5000"},
             ),  # before the window
             (10, {"numOutputRows": "200", "numOutputBytes": "2000"}),
-            (2, {"numTargetRowsInserted": "40", "numTargetRowsUpdated": "10"}),
+            # A Spark merge: its output rows include the 900 it copied unchanged.
+            (
+                2,
+                {
+                    "numTargetRowsInserted": "40",
+                    "numTargetRowsUpdated": "10",
+                    "numOutputRows": "950",
+                },
+            ),
+            # The Python client's delta-rs writes snake_case metrics, as numbers.
+            (
+                1,
+                {
+                    "num_target_rows_inserted": 100,
+                    "num_target_rows_updated": 0,
+                    "num_output_rows": 100,
+                },
+            ),
         ],
     )
     written = pipeline_data.delta_written(table, NOW - timedelta(hours=24))
-    assert written["commits"] == 2
-    assert written["rows"] == 250
+    assert written["commits"] == 3
+    assert written["rows"] == 350
     assert written["bytes"] == 2000
-    assert written["last_write"].startswith((NOW - timedelta(hours=2)).isoformat()[:13])
+    assert written["last_write"].startswith((NOW - timedelta(hours=1)).isoformat()[:13])
 
 
 def test_files_count_only_what_changed_in_the_window(tmp_path):

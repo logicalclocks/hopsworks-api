@@ -514,7 +514,7 @@ function missingData(o) {
 function pipelinesSection() {
   const all = facts.pipelines || [];
   const rows = all.filter((p) => !onlyProblems || p.problems.length);
-  if (!rows.length) return el('section', { class: 'card' }, el('h2', {}, `Data, last ${facts.hours} hours`), el('p', { class: 'muted' }, 'No pipeline has a problem.'));
+  if (!rows.length) return [el('section', { class: 'card' }, el('h2', {}, `Data, last ${facts.hours} hours`), el('p', { class: 'muted' }, 'No pipeline has a problem.'))];
   return rows.map((p) => {
     const ratio = p.rows_in && p.rows_out ? ` · ${(p.rows_out / p.rows_in).toFixed(2)} rows out per row in` : '';
     const flow = p.rows_in || p.rows_out
@@ -550,7 +550,7 @@ function draw() {
         : [[c.runs, `job runs in ${facts.hours} h`], [c.failed_runs, 'failed runs'], [c.services, 'deployments and apps'], [c.unhealthy_services, 'unhealthy']]).map(([v, l], i) =>
         el('div', { class: 'card stat' }, el('div', { class: `v ${(i === 1 || i === 3) && v && v !== '0' ? 'fail-text' : ''}` }, String(v)), el('div', { class: 'l' }, l)))),
     summary ? (() => { const s = el('section', { class: 'card summary' }, el('h2', {}, 'Summary')); const d = el('div'); d.innerHTML = summary; s.append(d); return s; })() : '',
-    jobsSection(), (facts.pipelines || []).length ? pipelinesSection() : '',
+    jobsSection(), ...((facts.pipelines || []).length ? pipelinesSection() : []),
     facts.tables ? tablesSection() : facts.services.length || !(facts.pipelines || []).length ? servicesSection() : '');
 }
 draw();
