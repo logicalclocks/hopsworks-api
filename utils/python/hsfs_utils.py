@@ -228,7 +228,7 @@ def import_fg(job_conf: dict[Any, Any]) -> None:
     feature_store = job_conf.pop("feature_store")
     fs = get_feature_store_handle(feature_store)
     # retrieve connector
-    st = fs.get_storage_connector(name=job_conf["storageConnectorName"])
+    st = fs.get_data_source(job_conf["storageConnectorName"]).storage_connector
     # first read data from connector
     spark_options = job_conf.pop("options")
     df = st.read(query=(job_conf.pop("query", "") or ""), options=spark_options)
