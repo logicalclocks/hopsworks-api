@@ -256,6 +256,20 @@ class TestVectorServer:
 
         assert vector == [None, 4, 5.0]
 
+    def test_assemble_does_not_echo_key_that_is_not_a_vector_feature(self, mocker):
+        server = self._echo_server(mocker)
+        result_dict = {"amount": 5.0}
+
+        vector = self._assemble(
+            server,
+            result_dict,
+            {"trans_id": 123, "cc_num": 4},
+            allow_missing=True,
+        )
+
+        assert vector == [None, 4, 5.0]
+        assert "trans_id" not in result_dict
+
     def test_assemble_echoed_key_satisfies_missing_feature_check(self, mocker):
         server = self._echo_server(mocker)
 
