@@ -17,6 +17,7 @@
 import pytest
 from hopsworks_common.constants import PREDICTOR, SCALING_CONFIG
 from hsml.scaling_config import (
+    Autoscaler,
     LogPersistence,
     PredictorScalingConfig,
     ScaleMetric,
@@ -30,7 +31,290 @@ class TestScalingConfig:
         assert ScaleMetric._has_value("RPS")
         assert ScaleMetric._has_value("CPU")
         assert ScaleMetric._has_value("MEMORY")
+        assert ScaleMetric._has_value("QUEUE_DEPTH")
+        assert ScaleMetric._has_value("KV_CACHE_USAGE")
         assert not ScaleMetric._has_value("BOGUS")
+
+    def test_engine_metrics_and_autoscaler_round_trip(self):
+        """KServe standard-mode LLM deployments scale on the vLLM engine metrics through KEDA (HWORKS-3106)."""
+        sc = PredictorScalingConfig(
+            min_instances=1,
+            max_instances=4,
+            scale_metric="queue_depth",
+            target=8,
+            autoscaler="keda",
+        )
+        assert sc.scale_metric is ScaleMetric.QUEUE_DEPTH
+        assert sc.autoscaler is Autoscaler.KEDA
+        assert sc.to_json()["scale_metric"] == "QUEUE_DEPTH"
+        assert sc.to_json()["autoscaler"] == "KEDA"
+
+        read_back = PredictorScalingConfig.from_response_json(
+            {
+                "predictor_scaling_config": {
+                    "min_instances": 1,
+                    "max_instances": 4,
+                    "scale_metric": "KV_CACHE_USAGE",
+                    "target": 80,
+                    "autoscaler": "KEDA",
+                }
+            }
+        )
+        assert read_back.scale_metric is ScaleMetric.KV_CACHE_USAGE
+        assert read_back.autoscaler is Autoscaler.KEDA
+
+    def test_keda_windows_and_additional_metrics_round_trip(self):
+        sc = PredictorScalingConfig(
+            min_instances=1,
+            max_instances=4,
+            scale_metric="queue_depth",
+            autoscaler="keda",
+            scale_down_stabilization_window_seconds=600,
+            scale_up_stabilization_window_seconds=0,
+            additional_scale_metrics=[("kv_cache_usage", 80), {"scale_metric": "cpu"}],
+        )
+        json = sc.to_json()
+        assert json["scale_down_stabilization_window_seconds"] == 600
+        assert json["scale_up_stabilization_window_seconds"] == 0
+        assert json["additional_scale_metrics"] == [
+            {"scale_metric": "KV_CACHE_USAGE", "target": 80},
+            {"scale_metric": "CPU", "target": None},
+        ]
+        # The REST payload camelizes nested keys too.
+        payload = sc.to_dict()["predictorScalingConfig"]
+        assert payload["additionalScaleMetrics"][0]["scaleMetric"] == "KV_CACHE_USAGE"
+
+        read_back = PredictorScalingConfig.from_response_json(
+            {
+                "predictor_scaling_config": {
+                    "min_instances": 1,
+                    "max_instances": 4,
+                    "scale_metric": "QUEUE_DEPTH",
+                    "autoscaler": "KEDA",
+                    "scale_down_stabilization_window_seconds": 600,
+                    "additional_scale_metrics": [
+                        {"scale_metric": "KV_CACHE_USAGE", "target": 80},
+                    ],
+                }
+            }
+        )
+        assert read_back.scale_down_stabilization_window_seconds == 600
+        assert read_back.scale_up_stabilization_window_seconds is None
+        assert read_back.additional_scale_metrics == [
+            {"scale_metric": ScaleMetric.KV_CACHE_USAGE, "target": 80}
+        ]
+
+    def test_further_engine_metrics_round_trip(self):
+        for name in [
+            "RUNNING_REQUESTS",
+            "QUEUE_TIME",
+            "TIME_TO_FIRST_TOKEN",
+            "REQUEST_LATENCY",
+        ]:
+            sc = PredictorScalingConfig(
+                min_instances=1,
+                max_instances=3,
+                scale_metric=name.lower(),
+                autoscaler="keda",
+            )
+            assert sc.scale_metric == ScaleMetric(name)
+            assert sc.to_json()["scale_metric"] == name
+            read_back = PredictorScalingConfig.from_response_json(
+                {
+                    "predictor_scaling_config": {
+                        "min_instances": 1,
+                        "max_instances": 3,
+                        "scale_metric": name,
+                        "target": 7,
+                    }
+                }
+            )
+            assert read_back.scale_metric == ScaleMetric(name)
+            assert read_back.target == 7
+
+    def test_idle_scale_to_zero_round_trip(self):
+        sc = PredictorScalingConfig(
+            min_instances=1,
+            max_instances=3,
+            autoscaler="keda",
+            idle_scale_to_zero=True,
+            idle_cooldown_seconds=120,
+            cold_start_timeout_seconds=900,
+        )
+        json = sc.to_json()
+        assert json["idle_scale_to_zero"] is True
+        assert json["idle_cooldown_seconds"] == 120
+        assert json["cold_start_timeout_seconds"] == 900
+        read_back = PredictorScalingConfig.from_response_json(
+            {
+                "predictor_scaling_config": {
+                    "min_instances": 1,
+                    "max_instances": 3,
+                    "autoscaler": "KEDA",
+                    "idle_scale_to_zero": True,
+                    "idle_cooldown_seconds": 120,
+                    "cold_start_timeout_seconds": 900,
+                }
+            }
+        )
+        assert read_back.idle_scale_to_zero is True
+        assert read_back.idle_cooldown_seconds == 120
+        assert read_back.cold_start_timeout_seconds == 900
+
+    def test_idle_scale_to_zero_is_a_minimum_of_zero(self):
+        # The flag asked for in the constructor or the setter lowers the minimum to 0.
+        sc = PredictorScalingConfig(
+            min_instances=1, max_instances=3, idle_scale_to_zero=True
+        )
+        assert sc.min_instances == 0
+        sc = PredictorScalingConfig(min_instances=2, max_instances=3)
+        sc.idle_scale_to_zero = True
+        assert sc.min_instances == 0
+        assert sc.to_json()["min_instances"] == 0
+
+    def test_raising_the_minimum_clears_a_flag_read_back(self):
+        # A configuration read back at 0 carries the flag; a minimum raised by hand must
+        # win, not be pulled back to 0 by the echoed flag on the next save.
+        read_back = PredictorScalingConfig.from_response_json(
+            {
+                "predictor_scaling_config": {
+                    "min_instances": 0,
+                    "max_instances": 3,
+                    "autoscaler": "KEDA",
+                    "idle_scale_to_zero": True,
+                    "idle_cooldown_seconds": 120,
+                }
+            }
+        )
+        read_back.min_instances = 1
+        assert read_back.idle_scale_to_zero is None
+        json = read_back.to_json()
+        assert json["min_instances"] == 1
+        assert "idle_scale_to_zero" not in json
+        # Lowering it to 0 again is the idle flag's meaning, no flag needed.
+        read_back.min_instances = 0
+        assert read_back.to_json()["min_instances"] == 0
+
+    def test_transformer_keda_and_idle_fields_round_trip(self):
+        # The transformer wrapper shares the fields and has its own JSON key.
+        sc = TransformerScalingConfig(
+            min_instances=1,
+            max_instances=3,
+            scale_metric="cpu",
+            autoscaler="keda",
+            scale_down_stabilization_window_seconds=120,
+            scale_up_stabilization_window_seconds=0,
+            additional_scale_metrics=[("memory", 70)],
+            idle_scale_to_zero=True,
+            idle_cooldown_seconds=90,
+            cold_start_timeout_seconds=300,
+        )
+        payload = sc.to_dict()
+        assert list(payload) == ["transformerScalingConfig"]
+        body = payload["transformerScalingConfig"]
+        assert body["autoscaler"] == "KEDA"
+        assert body["scaleDownStabilizationWindowSeconds"] == 120
+        assert body["scaleUpStabilizationWindowSeconds"] == 0
+        assert body["additionalScaleMetrics"] == [
+            {"scaleMetric": "MEMORY", "target": 70}
+        ]
+        assert body["idleScaleToZero"] is True
+        assert body["minInstances"] == 0
+        assert body["idleCooldownSeconds"] == 90
+        assert body["coldStartTimeoutSeconds"] == 300
+        read_back = TransformerScalingConfig.from_response_json(
+            {
+                "transformer_scaling_config": {
+                    "min_instances": 0,
+                    "max_instances": 3,
+                    "scale_metric": "CPU",
+                    "autoscaler": "KEDA",
+                    "scale_down_stabilization_window_seconds": 120,
+                    "additional_scale_metrics": [
+                        {"scale_metric": "MEMORY", "target": 70}
+                    ],
+                    "idle_scale_to_zero": True,
+                    "idle_cooldown_seconds": 90,
+                    "cold_start_timeout_seconds": 300,
+                }
+            }
+        )
+        assert isinstance(read_back, TransformerScalingConfig)
+        assert read_back.autoscaler == Autoscaler.KEDA
+        assert read_back.scale_down_stabilization_window_seconds == 120
+        assert read_back.additional_scale_metrics == [
+            {"scale_metric": ScaleMetric.MEMORY, "target": 70}
+        ]
+        assert read_back.idle_scale_to_zero is True
+        assert read_back.idle_cooldown_seconds == 90
+        assert read_back.cold_start_timeout_seconds == 300
+
+    def test_idle_scale_to_zero_omitted_when_unset(self):
+        sc = PredictorScalingConfig(min_instances=1, max_instances=3)
+        json = sc.to_json()
+        assert "idle_scale_to_zero" not in json
+        assert "idle_cooldown_seconds" not in json
+        assert "cold_start_timeout_seconds" not in json
+        assert sc.idle_scale_to_zero is None
+        sc.idle_scale_to_zero = True
+        sc.idle_cooldown_seconds = 60
+        assert sc.to_json()["idle_scale_to_zero"] is True
+        assert sc.to_json()["idle_cooldown_seconds"] == 60
+
+    def test_additional_scale_metric_without_metric_rejected(self):
+        with pytest.raises(ValueError, match="must name a scale_metric"):
+            PredictorScalingConfig(
+                min_instances=1, additional_scale_metrics=[{"target": 5}]
+            )
+
+    def test_unknown_additional_scale_metric_from_backend_is_ignored_with_warning(self):
+        with pytest.warns(
+            UserWarning, match="Ignoring unknown additional scale metric"
+        ):
+            sc = PredictorScalingConfig.from_response_json(
+                {
+                    "predictor_scaling_config": {
+                        "min_instances": 1,
+                        "additional_scale_metrics": [
+                            {"scale_metric": "FUTURE", "target": 1}
+                        ],
+                    }
+                }
+            )
+        assert sc.additional_scale_metrics is None
+
+    def test_autoscaler_unset_is_omitted_and_hpa_accepted(self):
+        unset = PredictorScalingConfig(min_instances=1, scale_metric="cpu")
+        assert unset.autoscaler is None
+        assert "autoscaler" not in unset.to_json()
+
+        hpa = PredictorScalingConfig(
+            min_instances=1, scale_metric="cpu", autoscaler=Autoscaler.HPA
+        )
+        assert hpa.to_json()["autoscaler"] == "HPA"
+        hpa.autoscaler = "keda"
+        assert hpa.autoscaler is Autoscaler.KEDA
+
+    def test_invalid_autoscaler_rejected(self):
+        with pytest.raises(ValueError) as exc_info:
+            PredictorScalingConfig(min_instances=1, autoscaler="bogus")
+        assert "Invalid autoscaler" in str(exc_info.value)
+
+        with pytest.raises(ValueError) as exc_info:
+            PredictorScalingConfig(min_instances=1, autoscaler=123)
+        assert "autoscaler must be a string or Autoscaler" in str(exc_info.value)
+
+    def test_unknown_autoscaler_from_backend_is_ignored_with_warning(self):
+        with pytest.warns(UserWarning, match="Ignoring unknown autoscaler"):
+            sc = PredictorScalingConfig.from_response_json(
+                {
+                    "predictor_scaling_config": {
+                        "min_instances": 1,
+                        "autoscaler": "FUTURE",
+                    }
+                }
+            )
+        assert sc.autoscaler is None
 
     def test_the_horizontal_pod_autoscalers_metrics_read_back(self):
         """KServe standard mode scales on CPU or MEMORY, and defaults to CPU."""
