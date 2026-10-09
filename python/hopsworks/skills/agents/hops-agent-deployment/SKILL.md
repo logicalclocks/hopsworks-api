@@ -110,3 +110,4 @@ deployment = ms.deploy_agent(
 - Model-backed online predictor: **hops-online-inference**.
 - Agent serving dependencies: [hops-environments](../../platform/hops-environments/SKILL.md) — clone an agent env and install requirements.
 - Give the agent feature-store access for RAG: **hops-fv** (online feature vectors). Pass entity IDs (e.g. `user_id`) in the query so the agent can look up application state from the feature store.
+- Agent memory or app state in the project database (`MYSQL_*` variables, password secret, privileges, RonDB table rules): **hops-app-db**.
