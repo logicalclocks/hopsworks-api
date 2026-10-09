@@ -139,6 +139,10 @@ Z-order pays off when the clustering column is **skewed and selective**. A unifo
 
 ## Runtime caveats
 
+- **Iceberg writes to HopsFS from the Python engine go through PyIceberg and PyArrow's `HadoopFileSystem`, which loads libjvm and then libhdfs.**
+  An agent task pod is not set up for libhdfs and fails with `OSError: Unable to load libhdfs`.
+  An environment built on `minimal-inference-pipeline` or `python-agent-pipeline` has no JVM and fails with `OSError: Unable to load libjvm`.
+  From either, run the write as a separate `PYTHON` job on a default environment, or as a `PYSPARK` job.
 - If the cluster runs a remote shuffle service (e.g. Apache Uniffle's `RssShuffleManager`), an Iceberg `rewriteDataFiles` shuffle can die with `IllegalAccessError` on Iceberg's shaded netty/parquet classes, or a JVM SIGSEGV. Force the built-in shuffle on the SparkSession **builder**, before the context exists — setting it in the job config does not stick:
 
   ```python
