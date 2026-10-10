@@ -1014,5 +1014,59 @@
             "temporaryCredentials": true
         },
         "headers": null
+    },
+    "get_elasticsearch": {
+        "response": {
+            "type": "featurestoreElasticsearchConnectorDTO",
+            "description": "Elasticsearch connector description",
+            "featurestoreId": 67,
+            "id": 1,
+            "name": "test_elasticsearch",
+            "storageConnectorType": "ELASTICSEARCH",
+            "host": "es.example.com",
+            "port": 9243,
+            "scheme": "https",
+            "verify": true,
+            "authType": "BASIC",
+            "username": "elastic",
+            "password": "test_password",
+            "defaultIndex": "events",
+            "arguments": [{"name": "page_size", "value": "500"}, {"name": "es.read.field.as.array.include", "value": "tags"}]
+        },
+        "method": "GET",
+        "path_params": [
+            "project",
+            "119",
+            "featurestores",
+            67,
+            "storageconnectors",
+            "test_elasticsearch"
+        ],
+        "query_params": {
+            "temporaryCredentials": true
+        },
+        "headers": null
+    },
+    "get_elasticsearch_basic_info": {
+        "response": {
+            "type": "featurestoreElasticsearchConnectorDTO",
+            "featurestoreId": 67,
+            "id": 1,
+            "name": "test_elasticsearch",
+            "storageConnectorType": "ELASTICSEARCH"
+        },
+        "method": "GET",
+        "path_params": [
+            "project",
+            "119",
+            "featurestores",
+            67,
+            "storageconnectors",
+            "test_elasticsearch"
+        ],
+        "query_params": {
+            "temporaryCredentials": true
+        },
+        "headers": null
     }
 }
