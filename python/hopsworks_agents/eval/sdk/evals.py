@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ._transport import AgentServingError, Transport
@@ -299,6 +300,83 @@ class Tasks:
         return self._client._bind(
             Task.from_api(self._http.post(f"{EVALS}/tasks", body))
         )
+
+    def update(
+        self,
+        task: Task | str,
+        question: str | Sequence[str] | Sequence[dict[str, Any]] | None = None,
+        *,
+        expectations: dict[str, str] | None = None,
+        category: str | None = None,
+    ) -> Task:
+        """Change a task in a draft suite: what it asks, and what each check expects of it.
+
+        Only what is passed changes, so correcting one expectation does not mean
+        resending the question it answers::
+
+            task = suite.tasks()[0]
+            task.edit(["Analyze GOOGL.", "I'm conservative. Strategies?"])
+            task.edit(expectations={"Followed the process": "names each step"})
+
+        Drafts only. A published suite is frozen so its past runs still describe
+        what they ran; to change a task in one, take a new version of the suite.
+        """
+        body: dict[str, Any] = {}
+        if question is not None:
+            input_messages, task_type = _messages(question)
+            body["inputMessages"] = input_messages
+            body["taskType"] = task_type
+        if expectations is not None:
+            body["expectations"] = expectations
+        if category is not None:
+            body["category"] = category
+        return self._client._bind(
+            Task.from_api(self._http.put(f"{EVALS}/tasks/{_task_id(task)}", body))
+        )
+
+    def attach(
+        self,
+        task: Task | str,
+        file: str | Path | bytes,
+        *,
+        name: str | None = None,
+        mime_type: str | None = None,
+    ) -> dict[str, Any]:
+        """Attach a file to a task in a draft suite -- a picture, a recording.
+
+            task.attach("chart.png")
+            task.attach(audio_bytes, name="clip.wav", mime_type="audio/wav")
+
+        The name is the file's own unless given, and must be a single file name:
+        no directories, and nothing starting with a dot.
+        """
+        if isinstance(file, bytes):
+            if not name:
+                raise ValueError("name= is required when attaching bytes")
+            payload = file
+        else:
+            path = Path(file)
+            payload = path.read_bytes()
+            name = name or path.name
+        return self._http.request(
+            "POST",
+            f"{EVALS}/tasks/{_task_id(task)}/attachments/{name}",
+            data=payload,
+            params={"mimeType": mime_type} if mime_type else None,
+            headers={"Content-Type": "application/octet-stream"},
+        )
+
+    def attachment(self, task: Task | str, name: str) -> bytes:
+        """One attachment's bytes."""
+        return self._http.request(
+            "GET",
+            f"{EVALS}/tasks/{_task_id(task)}/attachments/{name}",
+            raw=True,
+        )
+
+    def remove_attachment(self, task: Task | str, name: str) -> None:
+        """Remove an attachment from a task in a draft suite."""
+        self._http.delete(f"{EVALS}/tasks/{_task_id(task)}/attachments/{name}")
 
     def add_to_suite(
         self,

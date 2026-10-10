@@ -53,7 +53,14 @@ suite = agents.suites.create(
 )
 suite.add_task("Refund order 42", expectations={"quality": "Confirms the refund and its amount.",
                                                 "tool_call": "refund_order"})
+suite.add_task(["Analyze GOOGL.", "I'm conservative. Strategies?"])   # a list is a conversation
 suite.import_tasks([{"question": "Where is my order?"}, {"question": "Cancel it"}])
+
+task = suite.tasks()[0]                     # while the suite is a draft:
+task.edit("Refund order 43")                # what it asks; a list makes it multi-turn
+task.edit(expectations={"quality": "Names the amount."})   # only what you pass changes
+task.attach("chart.png")                    # a picture or a recording the question is about
+task.attachment("chart.png")                # its bytes back; remove_attachment() drops it
 suite = suite.publish()                     # frozen; a run records the version it executed
 suite.update(description="Refund flows")    # name, tags, description at any time; checks via set_checks()
 

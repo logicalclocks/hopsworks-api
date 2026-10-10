@@ -247,6 +247,23 @@ def _task_add_to(
     )
 
 
+def _task_edit(self: Task, question: Any = None, **changes: Any) -> Task:
+    """Change this task: what it asks, what each check expects, its category."""
+    return _client_of(self).tasks.update(self, question, **changes)
+
+
+def _task_attach(self: Task, file: Any, **kwargs: Any) -> dict[str, Any]:
+    return _client_of(self).tasks.attach(self, file, **kwargs)
+
+
+def _task_attachment(self: Task, name: str) -> bytes:
+    return _client_of(self).tasks.attachment(self, name)
+
+
+def _task_remove_attachment(self: Task, name: str) -> None:
+    _client_of(self).tasks.remove_attachment(self, name)
+
+
 def _task_leave(self: Task) -> Task:
     return _client_of(self).tasks.remove_from_suite(self)
 
@@ -264,6 +281,10 @@ def _task_delete(self: Task) -> None:
 
 
 Task.add_to = _task_add_to  # type: ignore[attr-defined]
+Task.edit = _task_edit  # type: ignore[attr-defined]
+Task.attach = _task_attach  # type: ignore[attr-defined]
+Task.attachment = _task_attachment  # type: ignore[attr-defined]
+Task.remove_attachment = _task_remove_attachment  # type: ignore[attr-defined]
 Task.leave_suite = _task_leave  # type: ignore[attr-defined]
 Task.confirm_redaction = _task_confirm  # type: ignore[attr-defined]
 Task.add_to_regressions = _task_regressions  # type: ignore[attr-defined]

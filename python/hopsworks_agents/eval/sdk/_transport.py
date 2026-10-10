@@ -79,16 +79,34 @@ class Transport:
         *,
         params: dict[str, Any] | None = None,
         json: Any = None,
+        data: bytes | None = None,
+        headers: dict[str, str] | None = None,
+        raw: bool = False,
     ) -> Any:
+        """One call to the platform API.
+
+        ``data`` sends bytes instead of JSON and ``raw`` returns them, which is
+        what a task's attachments need: a picture is not JSON in either
+        direction, and base64 through the body would cost a third more for
+        nothing.
+        """
         clean = None
         if params:
             # None means "not given", never the string "None"
             clean = {k: v for k, v in params.items() if v is not None} or None
         response = self._session.request(
-            method, self.base + path, params=clean, json=json, timeout=TIMEOUT_S
+            method,
+            self.base + path,
+            params=clean,
+            json=json,
+            data=data,
+            headers=headers,
+            timeout=TIMEOUT_S,
         )
         if response.status_code >= 400:
             raise AgentServingError(_message(response), response.status_code)
+        if raw:
+            return getattr(response, "content", b"")
         if not getattr(response, "content", b""):
             return None
         return response.json()

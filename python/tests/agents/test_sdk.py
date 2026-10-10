@@ -20,11 +20,14 @@ from hopsworks_agents.eval.sdk.models import as_datetime
 
 
 class Reply:
-    def __init__(self, body=None, status=200, lines=None):
+    def __init__(self, body=None, status=200, lines=None, content=None):
         self._body = body
         self._lines = lines
         self.status_code = status
-        self.content = b"" if body is None and lines is None else b"x"
+        if content is not None:
+            self.content = content
+        else:
+            self.content = b"" if body is None and lines is None else b"x"
 
     def json(self):
         return self._body
@@ -44,6 +47,7 @@ class FakeSession:
         url,
         params=None,
         json=None,
+        data=None,
         headers=None,
         timeout=None,
         stream=False,
@@ -54,7 +58,7 @@ class FakeSession:
                 method,
                 url.replace("https://h/hopsworks-api/api/project/1", ""),
                 params,
-                json,
+                json if data is None else data,
             )
         )
         self.headers = headers
@@ -240,6 +244,65 @@ class TestTasks:
         evals, session = client(Reply({"taskId": "t", "suiteId": "reg"}))
         evals.tasks.add_to_regressions("t")
         assert session.sent[0][:2] == ("POST", "/agent-evals/tasks/t/regressions")
+
+    def test_editing_a_task_sends_only_what_changed(self):
+        evals, session = client(
+            Reply({"taskId": "t", "category": "wrong_answer"}),
+            Reply({"taskId": "t"}),
+        )
+        task = Task.from_api({"taskId": "t"})
+        evals.tasks.update(task, category="wrong_answer")
+        assert session.sent[0][:2] == ("PUT", "/agent-evals/tasks/t")
+        # the question it did not pass is left alone by the server
+        assert session.sent[0][3] == {"category": "wrong_answer"}
+
+        evals.tasks.update("t", ["Analyze GOOGL.", "I'm conservative. Strategies?"])
+        body = session.sent[1][3]
+        assert body["taskType"] == "multi_turn"
+        assert [m["content"] for m in json.loads(body["inputMessages"])] == [
+            "Analyze GOOGL.",
+            "I'm conservative. Strategies?",
+        ]
+
+    def test_one_turn_is_a_single_turn_task(self):
+        evals, session = client(Reply({"taskId": "t"}))
+        evals.tasks.update("t", "Just tell me what to buy.")
+        assert session.sent[0][3]["taskType"] == "single_turn"
+
+    def test_attaching_a_file_sends_its_bytes(self, tmp_path):
+        picture = tmp_path / "chart.png"
+        picture.write_bytes(b"\x89PNG\r\n")
+        evals, session = client(Reply({"name": "chart.png", "size": 7}))
+
+        evals.tasks.attach("t", picture, mime_type="image/png")
+
+        method, path, params, body = session.sent[0]
+        assert (method, path) == ("POST", "/agent-evals/tasks/t/attachments/chart.png")
+        assert params == {"mimeType": "image/png"}
+        # the bytes themselves, not base64 in a JSON field
+        assert body == b"\x89PNG\r\n"
+        assert session.headers["Content-Type"] == "application/octet-stream"
+
+    def test_attaching_bytes_needs_a_name(self):
+        evals, _ = client()
+        with pytest.raises(ValueError, match="name="):
+            evals.tasks.attach("t", b"\x00\x01")
+
+    def test_reading_an_attachment_returns_its_bytes(self):
+        evals, session = client(Reply(content=b"\x89PNG\r\n"))
+        assert evals.tasks.attachment("t", "chart.png") == b"\x89PNG\r\n"
+        assert session.sent[0][:2] == (
+            "GET",
+            "/agent-evals/tasks/t/attachments/chart.png",
+        )
+
+    def test_removing_an_attachment(self):
+        evals, session = client(Reply())
+        evals.tasks.remove_attachment("t", "chart.png")
+        assert session.sent[0][:2] == (
+            "DELETE",
+            "/agent-evals/tasks/t/attachments/chart.png",
+        )
 
     def test_a_task_reads_its_own_question(self):
         task = Task.from_api(
