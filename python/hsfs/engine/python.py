@@ -54,7 +54,7 @@ import hsfs
 import pandas as pd
 import pyarrow as pa
 from botocore.response import StreamingBody
-from hopsworks_common import client
+from hopsworks_common import client, execution
 from hopsworks_common.client.exceptions import FeatureStoreException
 from hopsworks_common.core import inode
 from hopsworks_common.core.constants import HAS_POLARS, polars_not_installed_message
@@ -74,6 +74,7 @@ from hsfs import storage_connector as sc
 from hsfs.constructor import query
 from hsfs.constructor.fs_query import FsQuery
 from hsfs.core import (
+    client_statistics_engine,
     dataset_api,
     delta_engine,
     feature_group_api,
@@ -872,8 +873,29 @@ class Engine:
             f"Statistics Job started successfully, you can follow the progress at \n{util._get_job_url(job.href)}"
         )
 
-        job._wait_for_job()
+        started = self._started_execution(job)
+        if started is not None:
+            job._execution_engine._wait_until_finished(job=job, execution=started)
+        else:
+            job._wait_for_job()
         return job
+
+    @staticmethod
+    def _started_execution(started_job: job.Job) -> execution.Execution | None:
+        """The execution the compute endpoint started, when the backend returned it.
+
+        A feature group's statistics job is shared with the ingestion trigger, so waiting on
+        the job's latest execution can wait on a run that a concurrent commit started. The
+        backend returns the execution it started with the job; older backends return the job
+        alone, and the caller then falls back to the latest execution.
+        """
+        executions = started_job.executions
+        if not executions or not isinstance(executions, (dict, list)):
+            return None
+        started = execution.Execution.from_response_json(executions, started_job)
+        if isinstance(started, list):
+            return started[0] if started else None
+        return started
 
     def _profile(
         self,
@@ -884,41 +906,33 @@ class Engine:
         exact_uniqueness: bool = True,
         kll: bool = False,
         histogram_bins: int | None = None,
+        mergeable_state: bool = False,
     ) -> str:
         # TODO: add statistics for correlations, histograms and exact_uniqueness
+        # mergeable_state: the in-process profiler keeps no sketches, so the flag is accepted
+        # for the Spark Connect fallback and ignored
         _logger.info("Computing insert statistics")
-        if HAS_POLARS and (
-            isinstance(df, (pl.DataFrame, pl.dataframe.frame.DataFrame))
-        ):
-            arrow_schema = df.to_arrow().schema
-        else:
-            arrow_schema = pa.Schema.from_pandas(df, preserve_index=False)
-
-        # parse timestamp columns to string columns
-        for field in arrow_schema:
-            if not (
-                pa.types.is_null(field.type)
-                or pa.types.is_list(field.type)
-                or pa.types.is_large_list(field.type)
-                or pa.types.is_struct(field.type)
-            ) and PYARROW_HOPSWORKS_DTYPE_MAPPING.get(field.type, None) in [
-                "timestamp",
-                "date",
-            ]:
-                if HAS_POLARS and (
-                    isinstance(df, (pl.DataFrame, pl.dataframe.frame.DataFrame))
-                ):
-                    _logger.debug(
-                        f"Casting polars dataframe column {field.name} from {field.type} to string"
-                    )
-                    df = df.with_columns(pl.col(field.name).cast(pl.String))
-                else:
-                    _logger.debug(
-                        f"Casting column pandas dataframe column {field.name} from {field.type} to string"
-                    )
-                    df[field.name] = df[field.name].astype(str)
-
-        # complex columns — pandas describe() hangs on unhashable types; identify upfront
+        is_polars = HAS_POLARS and isinstance(
+            df, (pl.DataFrame, pl.dataframe.frame.DataFrame)
+        )
+        if relevant_columns is None or len(relevant_columns) == 0:
+            relevant_columns = list(df.columns)
+        # Transformation statistics list a label-encoded feature both as a statistics feature
+        # and as an encoder feature; a frame with duplicate columns has no Arrow schema.
+        relevant_columns = list(dict.fromkeys(relevant_columns))
+        # Selecting builds a new frame, so schema inference only scans the profiled columns
+        # and nothing below can modify the caller's frame.
+        df = df.select(relevant_columns) if is_polars else df[relevant_columns]
+        arrow_schema = (
+            df.to_arrow().schema
+            if is_polars
+            else pa.Schema.from_pandas(df, preserve_index=False)
+        )
+        data_types = {
+            field.name: self._profile_data_type(field.name, field.type)
+            for field in arrow_schema
+        }
+        # pandas describe() and nunique() hang or fail on unhashable values
         complex_cols = {
             field.name
             for field in arrow_schema
@@ -930,102 +944,154 @@ class Engine:
                 or pa.types.is_map(field.type)
             )
         }
-        if relevant_columns is None or len(relevant_columns) == 0:
-            relevant_columns = df.columns
-            describe_cols = [col for col in relevant_columns if col not in complex_cols]
-            stats = df[describe_cols].describe().to_dict() if describe_cols else {}
+        numeric_cols = [
+            col
+            for col in relevant_columns
+            if data_types[col] in ("Integral", "Fractional")
+        ]
+        other_cols = [
+            col
+            for col in relevant_columns
+            if col not in numeric_cols and col not in complex_cols
+        ]
+
+        if is_polars:
+            stats, counts = self._profile_polars(df, numeric_cols, other_cols)
         else:
-            target_cols = [
-                col
-                for col in df.columns
-                if col in relevant_columns and col not in complex_cols
-            ]
-            _logger.debug(f"Target columns for describe: {target_cols}")
-            stats = df[target_cols].describe().to_dict() if target_cols else {}
-        # pre-populate empty stats for complex columns so describe() is never called on them
+            stats, counts = self._profile_pandas(df, numeric_cols, other_cols)
         for col in complex_cols:
-            if col in relevant_columns:
-                stats[col] = {}
-        _logger.debug(f"Column stats computed via describe for: {stats.keys()}")
-        # df.describe() does not _compute stats for all col types (e.g., string)
-        # we need to _compute stats for the rest of the cols iteratively
-        missing_cols = list(set(relevant_columns) - set(stats.keys()))
-        _logger.debug(f"Columns missing stats from describe: {missing_cols}")
-        for col in missing_cols:
-            # for some datatypes (e.g list[int]) the describe method fails
-            try:
-                _logger.debug(f"Computing stats for column {col}")
-                stats[col] = df[col].describe().to_dict()
-            except Exception as e:
-                warnings.warn(
-                    f"Failed to compute stats for column {col}: {e}, adding empty stats",
-                    util.FeatureGroupWarning,
-                    stacklevel=1,
-                )
-                stats[col] = {}
+            stats[col] = {}
+        num_rows = len(df)
+
         final_stats = []
         for col in relevant_columns:
-            # Polars 1.36+ ``DataFrame.describe().to_dict()`` returns each
-            # column as a ``pl.Series`` rather than a Python list. The old
-            # ``isinstance(stats[col], list)`` guard fell through for Series,
-            # leaving the raw Series in place; downstream code then evaluated
-            # ``"count" in stat`` which routes through ``pl.Series.__contains__``
-            # and raises ``InvalidOperationError``. Accept both shapes.
-            if HAS_POLARS and (
-                isinstance(df, (pl.DataFrame, pl.dataframe.frame.DataFrame))
-                and not isinstance(stats[col], dict)
-            ):
-                stats[col] = dict(zip(stats["statistic"], stats[col], strict=False))
-            # set data type
-            arrow_type = arrow_schema.field(col).type
-            if (
-                pa.types.is_null(arrow_type)
-                or pa.types.is_list(arrow_type)
-                or pa.types.is_large_list(arrow_type)
-                or pa.types.is_fixed_size_list(arrow_type)
-                or pa.types.is_struct(arrow_type)
-                or pa.types.is_map(arrow_type)
-                or PYARROW_HOPSWORKS_DTYPE_MAPPING.get(arrow_type, None)
-                in ["timestamp", "date", "binary", "string"]
-            ):
-                dataType = "String"
-            elif PYARROW_HOPSWORKS_DTYPE_MAPPING.get(arrow_type, None) in [
-                "float",
-                "double",
-            ]:
-                dataType = "Fractional"
-            elif PYARROW_HOPSWORKS_DTYPE_MAPPING.get(arrow_type, None) in [
-                "int",
-                "bigint",
-            ]:
-                dataType = "Integral"
-            elif PYARROW_HOPSWORKS_DTYPE_MAPPING.get(arrow_type, None) == "boolean":
-                dataType = "Boolean"
-            else:
-                print(
-                    "Data type could not be inferred for column '"
-                    + col.split(".")[-1]
-                    + "'. Defaulting to 'String'",
-                    file=sys.stderr,
-                )
-                dataType = "String"
-
-            stat = self._convert_pandas_statistics(stats[col], dataType)
+            stat = self._convert_pandas_statistics(stats[col], data_types[col])
             stat["isDataTypeInferred"] = "false"
             stat["column"] = col.split(".")[-1]
-            stat["completeness"] = 1
-
+            stat["completeness"] = counts[col] / num_rows if num_rows > 0 else 0.0
             final_stats.append(stat)
 
         return json.dumps(
             {"columns": final_stats},
         )
 
+    # Fractions 0.01 .. 0.99, the 99 entries of approxPercentiles the Spark profiler emits, so
+    # transformations that index them (winsorize) behave the same on both engines.
+    _PERCENTILE_FRACTIONS = [(ii + 1) / 100 for ii in range(99)]
+
+    def _profile_pandas(
+        self, df: pd.DataFrame, numeric_cols: list[str], other_cols: list[str]
+    ) -> tuple[dict[str, dict[str, Any]], dict[str, int]]:
+        stats = {}
+        if numeric_cols:
+            numeric = df[numeric_cols]
+            # An object column of Python numbers infers a numeric Arrow type, but describe()
+            # skips object columns.
+            object_cols = [col for col in numeric_cols if numeric[col].dtype == object]
+            if object_cols:
+                numeric = numeric.assign(
+                    **{col: pd.to_numeric(numeric[col]) for col in object_cols}
+                )
+            stats = numeric.describe().to_dict()
+            # Linear interpolation, as describe() uses for its 25%, 50% and 75%.
+            percentiles = numeric.quantile(self._PERCENTILE_FRACTIONS)
+            for col in numeric_cols:
+                stats[col]["percentiles"] = percentiles[col].tolist()
+        if other_cols:
+            try:
+                unique = df[other_cols].nunique().to_dict()
+            except Exception:
+                unique = {}
+                for col in other_cols:
+                    try:
+                        unique[col] = df[col].nunique()
+                    except Exception as e:
+                        warnings.warn(
+                            f"Failed to compute stats for column {col}: {e}, adding empty stats",
+                            util.FeatureGroupWarning,
+                            stacklevel=1,
+                        )
+            non_null = df[other_cols].count().to_dict()
+            for col in other_cols:
+                stats[col] = (
+                    {"count": non_null[col], "unique": unique[col]}
+                    if col in unique
+                    else {}
+                )
+        return stats, df.count().to_dict()
+
+    def _profile_polars(
+        self, df: pl.DataFrame, numeric_cols: list[str], other_cols: list[str]
+    ) -> tuple[dict[str, dict[str, Any]], dict[str, int]]:
+        stats = {}
+        if numeric_cols:
+            described = df.select(numeric_cols).describe().to_dict(as_series=False)
+            for col in numeric_cols:
+                stats[col] = dict(
+                    zip(described["statistic"], described[col], strict=False)
+                )
+            # Nearest-rank, as describe() uses for its 25%, 50% and 75%.
+            percentiles = df.select(
+                [
+                    pl.col(col)
+                    .quantile(q, interpolation="nearest")
+                    .alias(f"{ii}_{col}")
+                    for col in numeric_cols
+                    for ii, q in enumerate(self._PERCENTILE_FRACTIONS)
+                ]
+            ).row(0)
+            for jj, col in enumerate(numeric_cols):
+                count = len(self._PERCENTILE_FRACTIONS)
+                stats[col]["percentiles"] = list(
+                    percentiles[jj * count : (jj + 1) * count]
+                )
+        if other_cols:
+            row = df.select(
+                [pl.col(col).count().alias(f"count_{col}") for col in other_cols]
+                + [
+                    pl.col(col).drop_nulls().n_unique().alias(f"unique_{col}")
+                    for col in other_cols
+                ]
+            ).row(0, named=True)
+            for col in other_cols:
+                stats[col] = {
+                    "count": row[f"count_{col}"],
+                    "unique": row[f"unique_{col}"],
+                }
+        counts = df.select([pl.col(col).count() for col in df.columns]).row(
+            0, named=True
+        )
+        return stats, counts
+
+    def _profile_data_type(self, col: str, arrow_type: pa.DataType) -> str:
+        hopsworks_type = PYARROW_HOPSWORKS_DTYPE_MAPPING.get(arrow_type, None)
+        if (
+            pa.types.is_null(arrow_type)
+            or pa.types.is_list(arrow_type)
+            or pa.types.is_large_list(arrow_type)
+            or pa.types.is_fixed_size_list(arrow_type)
+            or pa.types.is_struct(arrow_type)
+            or pa.types.is_map(arrow_type)
+            or hopsworks_type in ["timestamp", "date", "binary", "string"]
+        ):
+            return "String"
+        if hopsworks_type in ["float", "double"]:
+            return "Fractional"
+        if hopsworks_type in ["int", "bigint"]:
+            return "Integral"
+        if hopsworks_type == "boolean":
+            return "Boolean"
+        print(
+            "Data type could not be inferred for column '"
+            + col.split(".")[-1]
+            + "'. Defaulting to 'String'",
+            file=sys.stderr,
+        )
+        return "String"
+
     def _convert_pandas_statistics(
         self, stat: dict[str, Any], dataType: str
     ) -> dict[str, Any]:
-        # For now transformation only need 25th, 50th, 75th percentiles
-        # TODO: calculate properly all percentiles
         _logger.debug(
             f"Converting pandas statistics: {stat} of type {dataType} to be similar to Deequ stats"
         )
@@ -1036,7 +1102,10 @@ class Engine:
             # pandas emits NaN for the statistics of all-null or constant
             # columns; skip those values so they are not serialized (NaN is
             # not valid JSON and aborts the statistics registration)
-            if "25%" in stat and not pd.isna(stat["25%"]):
+            if "percentiles" in stat:
+                if not any(pd.isna(value) for value in stat["percentiles"]):
+                    content_dict["approxPercentiles"] = stat["percentiles"]
+            elif "25%" in stat and not pd.isna(stat["25%"]):
                 percentiles = [0] * 100
                 percentiles[24] = stat["25%"]
                 percentiles[49] = stat["50%"]
@@ -1340,12 +1409,21 @@ class Engine:
                 spark_context=None,
                 spark_session=None,
             )
-            delta_engine_instance._save_delta_fg(
+            client_statistics = client_statistics_engine.ClientStatisticsEngine(
+                feature_group
+            )
+            prepared_statistics = client_statistics._prepare(dataframe)
+            fg_commit = delta_engine_instance._save_delta_fg(
                 dataframe,
                 write_options=offline_write_options,
                 validation_id=validation_id,
                 operation=operation,
+                statistics_supplied=prepared_statistics is not None,
             )
+            if prepared_statistics is not None:
+                client_statistics._register_commit_statistics(
+                    prepared_statistics, fg_commit
+                )
             inserted = True
         if (
             storage in [None, "offline"]

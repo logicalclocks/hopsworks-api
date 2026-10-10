@@ -1196,33 +1196,51 @@ class Engine:
             else:
                 raise ValueError("Dataset should be a query.")
 
-            # Statistics are always refit (training_dataset_version not
-            # passed): an unsplit in-memory training dataset retrieved by
-            # version is not consistent.
-            # coalesce(1) must land between the fit and the transformations
-            # (FSTORE-2109), so the engine applies it.
-            dataset = transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
-                training_dataset,
-                feature_view_obj,
-                dataset,
-                transformation_context=transformation_context,
-                pre_transform=(
-                    (lambda frame: frame.coalesce(1))
-                    if training_dataset.coalesce
-                    else None
-                ),
+            # Fitting statistics reads the query result and writing reads it again, so without
+            # the cache the query runs twice.
+            # A returned dataframe is not cached, as before: the caller would have no handle to
+            # release the cache.
+            fits_statistics = (
+                not to_df
+                and feature_view_obj is not None
+                and any(
+                    tf.hopsworks_udf.statistics_required
+                    for tf in feature_view_obj.transformation_functions
+                )
             )
+            if fits_statistics:
+                dataset = dataset.cache()
+            try:
+                # Statistics are always refit (training_dataset_version not
+                # passed): an unsplit in-memory training dataset retrieved by
+                # version is not consistent.
+                # coalesce(1) must land between the fit and the transformations
+                # (FSTORE-2109), so the engine applies it.
+                transformed = transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
+                    training_dataset,
+                    feature_view_obj,
+                    dataset,
+                    transformation_context=transformation_context,
+                    pre_transform=(
+                        (lambda frame: frame.coalesce(1))
+                        if training_dataset.coalesce
+                        else None
+                    ),
+                )
 
-            path = training_dataset.location + "/" + training_dataset.name
-            return self._write_training_dataset_single(
-                dataset,
-                training_dataset.data_source.storage_connector,
-                training_dataset.data_format,
-                write_options,
-                save_mode,
-                path,
-                to_df=to_df,
-            )
+                path = training_dataset.location + "/" + training_dataset.name
+                return self._write_training_dataset_single(
+                    transformed,
+                    training_dataset.data_source.storage_connector,
+                    training_dataset.data_format,
+                    write_options,
+                    save_mode,
+                    path,
+                    to_df=to_df,
+                )
+            finally:
+                if fits_statistics:
+                    dataset.unpersist()
         split_dataset = self._split_df(
             query_obj, training_dataset, read_options=read_options
         )
@@ -1231,22 +1249,35 @@ class Engine:
                 split_dataset[key] = split_dataset[key].coalesce(1)
 
             split_dataset[key] = split_dataset[key].cache()
+        cached_splits = list(split_dataset.values())
 
-        split_dataset = transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
-            training_dataset,
-            feature_view_obj,
-            split_dataset,
-            transformation_context=transformation_context,
-            training_dataset_version=training_dataset_version,
-        )
+        # The writer unpersists the transformed splits, which were never cached; the caches
+        # are on the splits as read.
+        # Returned dataframes still read from them.
+        released = not to_df
+        try:
+            split_dataset = transformation_function_engine.TransformationFunctionEngine._fit_and_transform(
+                training_dataset,
+                feature_view_obj,
+                split_dataset,
+                transformation_context=transformation_context,
+                training_dataset_version=training_dataset_version,
+            )
 
-        return self._write_training_dataset_splits(
-            training_dataset,
-            split_dataset,
-            write_options,
-            save_mode,
-            to_df=to_df,
-        )
+            return self._write_training_dataset_splits(
+                training_dataset,
+                split_dataset,
+                write_options,
+                save_mode,
+                to_df=to_df,
+            )
+        except Exception:
+            released = True
+            raise
+        finally:
+            if released:
+                for split in cached_splits:
+                    split.unpersist()
 
     def _split_df(self, query_obj, training_dataset, read_options=None):
         if read_options is None:
@@ -1762,6 +1793,7 @@ class Engine:
         exact_uniqueness=True,
         kll=False,
         histogram_bins=None,
+        mergeable_state=False,
     ):
         """Profile a dataframe with Deequ.
 
@@ -1807,6 +1839,19 @@ class Engine:
         # preserves the JVM-side defaults. Fall through to the 7-arg overload only
         # when at least one of the two is explicitly configured, and always pass a
         # concrete Integer (20 mirrors the JVM default applied inside SparkEngine).
+        if mergeable_state:
+            # The mergeable state is the sketches and moments a later profile is merged
+            # into this one with, for incremental statistics.
+            return jvm_spark_engine.profile(
+                dataframe._jdf,
+                relevant_columns,
+                correlations,
+                histograms,
+                exact_uniqueness,
+                bool(kll),
+                int(histogram_bins) if histogram_bins is not None else 20,
+                True,
+            )
         if not kll and histogram_bins is None:
             return jvm_spark_engine.profile(
                 dataframe._jdf,

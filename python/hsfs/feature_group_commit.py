@@ -36,6 +36,7 @@ class FeatureGroupCommit:
         archived=None,
         last_active_commit_time=None,
         table_size=None,
+        statistics_supplied=None,
         items=None,
         count=None,
         href=None,
@@ -51,6 +52,7 @@ class FeatureGroupCommit:
         self._archived = archived
         self._last_active_commit_time = last_active_commit_time
         self._table_size = table_size
+        self._statistics_supplied = statistics_supplied
 
     @classmethod
     def from_response_json(cls, json_dict):
@@ -67,7 +69,7 @@ class FeatureGroupCommit:
         return json.dumps(self, cls=util.Encoder)
 
     def to_dict(self):
-        return {
+        commit = {
             "commitID": self._commitid,
             "commitDateString": self._commit_date_string,
             "commitTime": self._commit_time,
@@ -79,6 +81,19 @@ class FeatureGroupCommit:
             "lastActiveCommitTime": self._last_active_commit_time,
             "tableSize": self._table_size,
         }
+        if self._statistics_supplied:
+            # the client registers this commit's statistics itself; older backends know no such field
+            commit["statisticsSupplied"] = True
+        return commit
+
+    @property
+    def statistics_supplied(self):
+        """Whether the client registers this commit's statistics itself, so the backend starts no run."""
+        return self._statistics_supplied
+
+    @statistics_supplied.setter
+    def statistics_supplied(self, statistics_supplied):
+        self._statistics_supplied = statistics_supplied
 
     @property
     def commitid(self):

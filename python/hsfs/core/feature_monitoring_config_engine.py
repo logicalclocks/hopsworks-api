@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import re
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
@@ -149,6 +150,11 @@ class FeatureMonitoringConfigEngine:
         )
         self._job_api = JobApi()
         self._monitoring_window_config_engine = (
+            monitoring_window_config_engine.MonitoringWindowConfigEngine()
+        )
+        # The reference window runs on its own engine instance: the window engine keeps
+        # per-call state, and the two windows are computed at the same time.
+        self._reference_window_config_engine = (
             monitoring_window_config_engine.MonitoringWindowConfigEngine()
         )
         self._result_engine = FeatureMonitoringResultEngine(
@@ -732,25 +738,18 @@ class FeatureMonitoringConfigEngine:
                 # New commit (or first run): pin detection window end to the commit time.
                 end_commit_time = latest_commit_time
 
-        # TODO: [FSTORE-1206] Parallelize both single_window_monitoring calls and wait
-        if detection_window_unmaterialized:
-            # Offline data not materialized yet — skip the read and emit empty stats.
-            detection_statistics = [
-                FeatureDescriptiveStatistics(feature_name=f, count=0)
-                for f in feature_names
-            ]
-        else:
+        empty_statistics = [
+            FeatureDescriptiveStatistics(feature_name=f, count=0) for f in feature_names
+        ]
+
+        def run_window(window_engine, window_name, **window_kwargs):
+            # A window without registered statistics counts as empty.
             try:
-                detection_statistics = (
-                    self._monitoring_window_config_engine._run_single_window_monitoring(
-                        entity=entity,
-                        monitoring_window_config=config.detection_window_config,
-                        feature_names=feature_names,
-                        profile_flags=profile_flags,
-                        end_commit_time_override=end_commit_time,
-                        model_filter=model_filter,
-                        event_time_feature=event_time_feature,
-                    )
+                return window_engine._run_single_window_monitoring(
+                    feature_names=feature_names,
+                    profile_flags=profile_flags,
+                    event_time_feature=event_time_feature,
+                    **window_kwargs,
                 )
             except RestAPIError as e:
                 if (
@@ -758,18 +757,30 @@ class FeatureMonitoringConfigEngine:
                     == RestAPIError.FeatureStoreErrorCode.STATISTICS_NOT_FOUND
                 ):
                     logger.warning(
-                        "Detection window statistics not found for config '%s'. "
-                        "Treating detection window as empty.",
+                        "%s window statistics not found for config '%s'. "
+                        "Treating %s window as empty.",
+                        window_name.capitalize(),
                         config_name,
+                        window_name,
                     )
-                    detection_statistics = [
-                        FeatureDescriptiveStatistics(feature_name=f, count=0)
-                        for f in feature_names
-                    ]
-                else:
-                    raise
+                    return list(empty_statistics)
+                raise
 
-        reference_statistics = None
+        def run_detection_window():
+            if detection_window_unmaterialized:
+                # Offline data not materialized yet: skip the read and emit empty stats.
+                return list(empty_statistics)
+            return run_window(
+                self._monitoring_window_config_engine,
+                "detection",
+                entity=entity,
+                monitoring_window_config=config.detection_window_config,
+                end_commit_time_override=end_commit_time,
+                model_filter=model_filter,
+            )
+
+        run_reference_window = None
+        windows_share_a_feature_view_query = False
         if config.reference_window_config is not None:
             # Apply the model filter to the reference window only when it reads from the
             # same entity (logging FG) as the detection window — i.e. time-based windows.
@@ -821,34 +832,40 @@ class FeatureMonitoringConfigEngine:
                     name=config.feature_view_name,
                     version=config.feature_view_version,
                 )
-            try:
-                reference_statistics = (
-                    self._monitoring_window_config_engine._run_single_window_monitoring(
-                        entity=reference_entity,
-                        monitoring_window_config=config.reference_window_config,
-                        feature_names=feature_names,
-                        profile_flags=profile_flags,
-                        end_commit_time_override=ref_commit_time_override,
-                        model_filter=ref_model_filter,
-                        event_time_feature=event_time_feature,
-                    )
+
+            # Query.filter and Query.as_of modify the feature view's query in place, so two
+            # windows reading the same feature view cannot run at the same time.
+            windows_share_a_feature_view_query = isinstance(
+                reference_entity, _fv_mod.FeatureView
+            ) and ref_window_type in (
+                _mwc.WindowConfigType.ROLLING_TIME,
+                _mwc.WindowConfigType.ALL_TIME,
+            )
+
+            def run_reference_window():
+                return run_window(
+                    self._reference_window_config_engine,
+                    "reference",
+                    entity=reference_entity,
+                    monitoring_window_config=config.reference_window_config,
+                    end_commit_time_override=ref_commit_time_override,
+                    model_filter=ref_model_filter,
                 )
-            except RestAPIError as e:
-                if (
-                    e.error_code
-                    == RestAPIError.FeatureStoreErrorCode.STATISTICS_NOT_FOUND
-                ):
-                    logger.warning(
-                        "Reference window statistics not found for config '%s'. "
-                        "Treating reference window as empty.",
-                        config_name,
-                    )
-                    reference_statistics = [
-                        FeatureDescriptiveStatistics(feature_name=f, count=0)
-                        for f in feature_names
-                    ]
-                else:
-                    raise
+
+        # The two windows are independent reads and profiles, so they run at the same time;
+        # each one is close to the whole cost of the run.
+        if run_reference_window is None:
+            detection_statistics = run_detection_window()
+            reference_statistics = None
+        elif windows_share_a_feature_view_query:
+            detection_statistics = run_detection_window()
+            reference_statistics = run_reference_window()
+        else:
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                detection_future = executor.submit(run_detection_window)
+                reference_future = executor.submit(run_reference_window)
+                detection_statistics = detection_future.result()
+                reference_statistics = reference_future.result()
 
         return self._result_engine._run_and_save_statistics_comparison(
             fm_config=config,

@@ -23,6 +23,7 @@ import org.apache.spark.sql.Column;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.functions;
+import org.apache.spark.sql.types.ArrayType;
 import org.apache.spark.sql.types.BooleanType;
 import org.apache.spark.sql.types.ByteType;
 import org.apache.spark.sql.types.DataType;
@@ -35,11 +36,13 @@ import org.apache.spark.sql.types.ShortType;
 import org.apache.spark.sql.types.StringType;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
+import org.apache.spark.storage.StorageLevel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -60,10 +63,9 @@ import java.util.Map;
  * <h2>Entropy computation</h2>
  *
  * <p>Shannon entropy is derived from the exact per-value frequency distribution via
- * {@code groupBy(col).count()} per column.
- * For numeric columns where all values are unique this equals
- * {@code ln(exactNumDistinctValues)}, but the groupBy is required for correctness when
- * duplicates exist.
+ * {@code groupBy(col).count()} per column, reduced on the executors so only one row per column
+ * reaches the driver.
+ * The same pass yields the exact distinct count and the singleton count.
  *
  * <h2>Uniqueness formula</h2>
  *
@@ -78,6 +80,20 @@ import java.util.Map;
  *
  * <p>Uses Spark's {@code stddev_pop()} (population standard deviation, dividing by n).
  * Deequ's StandardDeviation metric also uses population stddev; verified against the baseline.
+ *
+ * <h2>Correlations</h2>
+ *
+ * <p>Pearson correlation as {@code DataFrameStatFunctions.corr} computes it, which reads a NULL
+ * as 0 and returns NaN where the variance is zero or there are no rows.
+ * {@code corr(coalesce(x, 0), coalesce(y, 0))} reproduces it bit for bit, so all pairs can be
+ * computed in a few aggregations instead of one Spark job per ordered pair.
+ *
+ * <h2>KLL sketches and numeric histograms</h2>
+ *
+ * <p>KLL sketches come from Spark's native {@code kll_sketch_agg_double} inside the scalar
+ * aggregations.
+ * Numeric histogram bins are exact counts over the finite min/max of the scalar pass, for all
+ * numeric columns in one aggregation after it.
  */
 public class ColumnProfiler {
 
@@ -93,8 +109,23 @@ public class ColumnProfiler {
     }
   }
 
+  // Aggregate expressions per agg() call.
+  // Wide aggregations lose whole-stage codegen and take long to plan; past this size they are
+  // split into several aggregations over the persisted input.
+  // Untuned: revisit with the wide-table loadtests.
+  private static final int MAX_AGG_EXPRESSIONS = 1000;
+
   private final HistogramBuilder histogramBuilder = new HistogramBuilder();
   private final ProfileJsonSerializer serializer = new ProfileJsonSerializer();
+  private final int maxAggExpressions;
+
+  public ColumnProfiler() {
+    this(MAX_AGG_EXPRESSIONS);
+  }
+
+  ColumnProfiler(int maxAggExpressions) {
+    this.maxAggExpressions = maxAggExpressions;
+  }
 
   /**
    * Profiles the given dataframe and returns a JSON string matching the Deequ wire format.
@@ -104,7 +135,7 @@ public class ColumnProfiler {
    * @param correlation whether to compute pairwise Pearson correlations for numeric columns
    * @param histogram whether to compute histogram bins
    * @param histogramBins number of histogram bins (used only when histogram=true)
-   * @param exactUniqueness whether to compute exact distinct counts via countDistinct
+   * @param exactUniqueness whether to compute exact distinct counts, uniqueness and entropy
    * @param kll whether to compute KLL sketches and derived percentiles for numeric columns
    * @return JSON string with top-level {@code {"columns": [...]}}
    */
@@ -115,34 +146,72 @@ public class ColumnProfiler {
       int histogramBins,
       boolean exactUniqueness,
       boolean kll) {
+    return profile(df, restrictToColumns, correlation, histogram, histogramBins, exactUniqueness, kll, false);
+  }
+
+  /**
+   * Profiles the columns of a dataframe, optionally with the state incremental statistics merge into.
+   *
+   * @param mergeableState also emit, per column, the state a later profile of more rows can be
+   *                       merged into this one with: an HLL sketch of the distinct values and,
+   *                       for a numeric column, a KLL sketch of the finite values; the moments
+   *                       come from the regular scalars. See {@link ProfileMerger}.
+   */
+  public String profile(Dataset<Row> df,
+      List<String> restrictToColumns,
+      boolean correlation,
+      boolean histogram,
+      int histogramBins,
+      boolean exactUniqueness,
+      boolean kll,
+      boolean mergeableState) {
 
     List<ColumnInfo> columns = selectColumns(df, restrictToColumns);
+    if (columns.isEmpty()) {
+      return toJson(new ArrayList<ColumnProfile>());
+    }
+
+    List<List<Column>> scalarChunks = scalarAggregations(columns, kll, mergeableState);
+    List<String> numericCols = numericColumnNames(columns);
+    List<List<Column>> correlationChunks = correlation
+        ? chunk(correlationPairs(numericCols)) : new ArrayList<List<Column>>();
+    int passes = scalarChunks.size() + correlationChunks.size()
+        + (histogram && !numericCols.isEmpty() ? 1 : 0)
+        + (exactUniqueness ? columns.size()
+            : histogram ? columns.size() - numericCols.size() : 0);
+
+    Dataset<Row> input = df.select(columnsOf(columns));
+    // Every pass would otherwise re-read the source, which for a feature group means a Hudi or
+    // Delta scan from HopsFS each time.
+    boolean persisted = passes > 1;
+    if (persisted) {
+      input = input.persist(StorageLevel.MEMORY_AND_DISK());
+    }
     try {
-      if (columns.isEmpty()) {
-        return serializer.toJson(new ArrayList<ColumnProfile>());
-      }
-
-      Row aggRow = computeScalars(df, columns, exactUniqueness);
-      // entropy and the uniqueness singleton count are derived from exact per-value
-      // frequencies; only pay for the per-column groupBy when exact uniqueness
-      // stats were requested
-      Map<String, ValueFrequencyStats> frequencyStatsMap = exactUniqueness
-          ? computeValueFrequencyStats(df, columns)
-          : new LinkedHashMap<String, ValueFrequencyStats>();
-
-      Map<String, Map<String, Double>> correlationMap =
-          new LinkedHashMap<String, Map<String, Double>>();
-      if (correlation) {
-        computeCorrelations(df, columns, correlationMap);
-      }
+      Map<String, Object> scalars = aggregate(input, scalarChunks);
+      Map<String, Map<String, Double>> correlationMap = correlation
+          ? correlations(numericCols, aggregate(input, correlationChunks))
+          : new LinkedHashMap<String, Map<String, Double>>();
+      // The bin grids need the finite min/max of the scalar pass.
+      Map<String, long[]> binCounts = histogram
+          ? HistogramBuilder.binCounts(input, binRanges(columns, scalars, histogramBins), histogramBins)
+          : new HashMap<String, long[]>();
 
       List<ColumnProfile> profiles = new ArrayList<ColumnProfile>(columns.size());
       for (ColumnInfo col : columns) {
-        ColumnProfile cp = buildProfile(df, col, aggRow, frequencyStatsMap, correlationMap,
-            histogram, histogramBins, kll, exactUniqueness);
-        profiles.add(cp);
+        profiles.add(buildProfile(input, col, scalars, binCounts, correlationMap,
+            histogram, histogramBins, kll, exactUniqueness, mergeableState));
       }
+      return toJson(profiles);
+    } finally {
+      if (persisted) {
+        input.unpersist();
+      }
+    }
+  }
 
+  private String toJson(List<ColumnProfile> profiles) {
+    try {
       return serializer.toJson(profiles);
     } catch (JsonProcessingException e) {
       throw new RuntimeException("Failed to serialise column profiles to JSON", e);
@@ -190,44 +259,94 @@ public class ColumnProfiler {
   }
 
   // ---------------------------------------------------------------------------
-  // Pass 1: single agg() for all scalar statistics
+  // Pass 1: scalar statistics, one agg() per chunk of columns
   // ---------------------------------------------------------------------------
 
-  private Row computeScalars(Dataset<Row> df, List<ColumnInfo> columns, boolean exactUniqueness) {
-    List<Column> exprs = new ArrayList<Column>();
+  private List<List<Column>> scalarAggregations(List<ColumnInfo> columns, boolean kll, boolean mergeableState) {
+    List<List<Column>> perColumn = new ArrayList<List<Column>>(columns.size());
     for (ColumnInfo col : columns) {
-      Column cc = functions.col(col.name);
-      String nn = col.name;
+      perColumn.add(scalarExpressions(col, kll, mergeableState));
+    }
+    return chunk(perColumn);
+  }
 
-      exprs.add(functions.count(cc).alias(nn + "__nonnull"));
-      // count(when(isNull)) rather than sum(when(isNull, 1).otherwise(0)): sum returns NULL
-      // over zero rows, and the read side unboxes this into a long.
-      exprs.add(functions.count(functions.when(cc.isNull(), 1)).alias(nn + "__nullcount"));
-      exprs.add(functions.approx_count_distinct(cc).alias(nn + "__approx_distinct"));
-      if (exactUniqueness) {
-        exprs.add(functions.countDistinct(cc).alias(nn + "__exact_distinct"));
+  private List<Column> scalarExpressions(ColumnInfo col, boolean kll, boolean mergeableState) {
+    List<Column> exprs = new ArrayList<Column>();
+    Column cc = functions.col(col.name);
+    String nn = col.name;
+
+    if (mergeableState) {
+      // The native HLL aggregate takes no DOUBLE, so every column is sketched as text; two
+      // profiles of the same column agree on the rendering, which is all a union needs.
+      exprs.add(functions.call_function("hll_sketch_agg", cc.cast("string")).alias(nn + "__hll"));
+    }
+
+    exprs.add(functions.count(cc).alias(nn + "__nonnull"));
+    // count(when(isNull)) rather than sum(when(isNull, 1).otherwise(0)): sum returns NULL
+    // over zero rows, and the read side unboxes this into a long.
+    exprs.add(functions.count(functions.when(cc.isNull(), 1)).alias(nn + "__nullcount"));
+    exprs.add(functions.approx_count_distinct(cc).alias(nn + "__approx_distinct"));
+    if (isNumeric(col.profileType)) {
+      Column cn = cc.cast("double");
+      exprs.add(functions.min(cn).alias(nn + "__min"));
+      exprs.add(functions.max(cn).alias(nn + "__max"));
+      exprs.add(functions.mean(cn).alias(nn + "__mean"));
+      // Deequ's StandardDeviation uses population stddev (divides by n), not Bessel-corrected
+      // sample stddev.
+      // Use stddev_pop to match the Deequ baseline byte-for-byte.
+      exprs.add(functions.stddev_pop(cn).alias(nn + "__stddev"));
+      exprs.add(functions.sum(cn).alias(nn + "__sum"));
+      // Finite-only copies for the binning: one NaN makes __max NaN and one infinity
+      // makes it infinite, and neither works as a bin edge.
+      // The emitted minimum/maximum keep Spark's values for Deequ parity.
+      // Same pass, no extra Spark job.
+      Column finite = functions.when(isFinite(cn), cn);
+      exprs.add(functions.min(finite).alias(nn + "__min_finite"));
+      exprs.add(functions.max(finite).alias(nn + "__max_finite"));
+      exprs.add(functions.count(finite).alias(nn + "__nfinite"));
+      if (kll || mergeableState) {
+        exprs.add(KllAggregator.sketch(cn).alias(nn + "__kll"));
       }
-      if (isNumeric(col.profileType)) {
-        Column cn = cc.cast("double");
-        exprs.add(functions.min(cn).alias(nn + "__min"));
-        exprs.add(functions.max(cn).alias(nn + "__max"));
-        exprs.add(functions.mean(cn).alias(nn + "__mean"));
-        // Deequ's StandardDeviation uses population stddev (divides by n), not Bessel-corrected
-        // sample stddev. Use stddev_pop to match the Deequ baseline byte-for-byte.
-        exprs.add(functions.stddev_pop(cn).alias(nn + "__stddev"));
-        exprs.add(functions.sum(cn).alias(nn + "__sum"));
-        // Finite-only copies for the binning: one NaN makes __max NaN and one infinity
-        // makes it infinite, and neither works as a bin edge. The emitted minimum/maximum
-        // keep Spark's values for Deequ parity. Same pass, no extra Spark job.
-        Column finite = functions.when(isFinite(cn), cn);
-        exprs.add(functions.min(finite).alias(nn + "__min_finite"));
-        exprs.add(functions.max(finite).alias(nn + "__max_finite"));
-        exprs.add(functions.count(finite).alias(nn + "__nfinite"));
+      if (!kll) {
+        exprs.add(functions.percentile_approx(cn, percentileFractions(), functions.lit(10000))
+            .alias(nn + "__percentiles"));
       }
     }
-    Column first = exprs.get(0);
-    Column[] rest = exprs.subList(1, exprs.size()).toArray(new Column[0]);
-    return df.agg(first, rest).first();
+    return exprs;
+  }
+
+  /** Packs expression groups into aggregations of at most maxAggExpressions each. */
+  private List<List<Column>> chunk(List<List<Column>> groups) {
+    List<List<Column>> chunks = new ArrayList<List<Column>>();
+    List<Column> current = new ArrayList<Column>();
+    for (List<Column> group : groups) {
+      if (!current.isEmpty() && current.size() + group.size() > maxAggExpressions) {
+        chunks.add(current);
+        current = new ArrayList<Column>();
+      }
+      current.addAll(group);
+    }
+    if (!current.isEmpty()) {
+      chunks.add(current);
+    }
+    return chunks;
+  }
+
+  /** Runs each aggregation and returns all their results keyed by alias. */
+  private static Map<String, Object> aggregate(Dataset<Row> df, List<List<Column>> chunks) {
+    Map<String, Object> values = new HashMap<String, Object>();
+    for (List<Column> exprs : chunks) {
+      Row row = df.agg(exprs.get(0), exprs.subList(1, exprs.size()).toArray(new Column[0])).first();
+      StructField[] fields = row.schema().fields();
+      for (int ii = 0; ii < fields.length; ii++) {
+        Object value = null;
+        if (!row.isNullAt(ii)) {
+          value = fields[ii].dataType() instanceof ArrayType ? row.getList(ii) : row.get(ii);
+        }
+        values.put(fields[ii].name(), value);
+      }
+    }
+    return values;
   }
 
   /**
@@ -240,8 +359,12 @@ public class ColumnProfiler {
    * finite and positive can still be smaller than the spacing of doubles at {@code min}, so
    * that later edges round onto earlier ones. A zero range is fine: the histogram emits a
    * single bin for it and the bucket grid falls back to a width of 1.
+   * No bins is no grid, so histogram_bins=0 yields an empty histogram.
    */
   static boolean hasUsableBinGrid(double min, double max, int bins) {
+    if (bins <= 0) {
+      return false;
+    }
     double range = max - min;
     if (!Double.isFinite(range)) {
       return false;
@@ -272,124 +395,147 @@ public class ColumnProfiler {
   }
 
   // ---------------------------------------------------------------------------
-  // Pass 2: per-value frequencies (entropy + uniqueness singletons) — one groupBy per column
+  // Pass 2: per-value frequencies (exact distinct, singletons, entropy) - one groupBy per column
   // ---------------------------------------------------------------------------
 
   /** Per-column stats derived from the exact per-value frequency distribution. */
   private static final class ValueFrequencyStats {
-    private final double entropy;
+    private final long distinct;
     private final long singletons;
+    private final double entropy;
 
-    private ValueFrequencyStats(double entropy, long singletons) {
-      this.entropy = entropy;
+    private ValueFrequencyStats(long distinct, long singletons, double entropy) {
+      this.distinct = distinct;
       this.singletons = singletons;
+      this.entropy = entropy;
     }
   }
 
-  private Map<String, ValueFrequencyStats> computeValueFrequencyStats(Dataset<Row> df,
-      List<ColumnInfo> columns) {
-    Map<String, ValueFrequencyStats> result = new LinkedHashMap<String, ValueFrequencyStats>();
-    for (ColumnInfo col : columns) {
-      result.put(col.name, computeColumnValueFrequencyStats(df, col.name));
+  private static ValueFrequencyStats frequencyStats(Dataset<Row> valueCounts, long nonNull) {
+    if (nonNull == 0) {
+      return new ValueFrequencyStats(0L, 0L, 0.0);
     }
-    return result;
-  }
-
-  private ValueFrequencyStats computeColumnValueFrequencyStats(Dataset<Row> df,
-      String columnName) {
-    // Project to a fixed name before grouping. A feature may legitimately be called
-    // "count" (the name passes the feature-name rules), and grouping on it directly
-    // leaves two "count" columns in the result, so the select below cannot resolve.
-    Column cc = functions.col(columnName).alias("_v");
-    List<Row> rows = df.select(cc)
-        .filter(functions.col("_v").isNotNull())
-        .groupBy(functions.col("_v"))
-        .count()
-        .select(functions.col("count"))
-        .collectAsList();
-
-    if (rows.isEmpty()) {
-      return new ValueFrequencyStats(0.0, 0L);
-    }
-    long total = 0;
-    long singletons = 0;
-    for (Row row : rows) {
-      long count = row.getLong(0);
-      total += count;
-      if (count == 1) {
-        singletons++;
-      }
-    }
-    if (total == 0) {
-      return new ValueFrequencyStats(0.0, 0L);
-    }
-    double entropy = 0.0;
-    for (Row row : rows) {
-      long count = row.getLong(0);
-      if (count > 0) {
-        double pp = (double) count / total;
-        entropy -= pp * Math.log(pp);
-      }
-    }
-    return new ValueFrequencyStats(entropy, singletons);
+    Column share = functions.col("count").divide(functions.lit((double) nonNull));
+    Row row = valueCounts.agg(
+        functions.count(functions.lit(1)),
+        functions.count(functions.when(functions.col("count").equalTo(1), 1)),
+        functions.sum(share.multiply(functions.log(share)))).first();
+    double entropy = row.isNullAt(2) ? 0.0 : -row.getDouble(2);
+    return new ValueFrequencyStats(row.getLong(0), row.getLong(1), entropy);
   }
 
   // ---------------------------------------------------------------------------
-  // Pass 3: Pearson correlations (numeric pairs)
+  // Pass 3: Pearson correlations (numeric pairs), one agg() per chunk of pairs
   // ---------------------------------------------------------------------------
 
-  private void computeCorrelations(Dataset<Row> df, List<ColumnInfo> columns,
-      Map<String, Map<String, Double>> correlationMap) {
-    List<String> numericCols = new ArrayList<String>();
-    for (ColumnInfo col : columns) {
-      if (isNumeric(col.profileType)) {
-        numericCols.add(col.name);
+  private static List<List<Column>> correlationPairs(List<String> numericCols) {
+    List<List<Column>> pairs = new ArrayList<List<Column>>();
+    for (int ii = 0; ii < numericCols.size(); ii++) {
+      for (int jj = ii + 1; jj < numericCols.size(); jj++) {
+        pairs.add(Collections.singletonList(functions.corr(
+            zeroForNull(numericCols.get(ii)), zeroForNull(numericCols.get(jj)))
+            .alias(correlationAlias(ii, jj))));
       }
     }
-    for (String colA : numericCols) {
+    return pairs;
+  }
+
+  /** Finite min/max of every numeric column that has a usable bin grid over its finite values. */
+  private static Map<String, double[]> binRanges(List<ColumnInfo> columns,
+      Map<String, Object> scalars, int histogramBins) {
+    Map<String, double[]> ranges = new LinkedHashMap<String, double[]>();
+    for (ColumnInfo col : columns) {
+      if (isNumeric(col.profileType) && isBinnable(scalars, col.name, histogramBins)) {
+        ranges.put(col.name, new double[] {(Double) scalars.get(col.name + "__min_finite"),
+            (Double) scalars.get(col.name + "__max_finite")});
+      }
+    }
+    return ranges;
+  }
+
+  // min/max are null exactly when the column has nothing finite.
+  private static boolean isBinnable(Map<String, Object> scalars, String columnName,
+      int histogramBins) {
+    Double minFinite = (Double) scalars.get(columnName + "__min_finite");
+    Double maxFinite = (Double) scalars.get(columnName + "__max_finite");
+    return minFinite != null && maxFinite != null
+        && hasUsableBinGrid(minFinite, maxFinite, histogramBins);
+  }
+
+  private static Column zeroForNull(String columnName) {
+    return functions.coalesce(functions.col(columnName).cast("double"), functions.lit(0.0));
+  }
+
+  private static String correlationAlias(int ii, int jj) {
+    return "__corr_" + ii + "_" + jj;
+  }
+
+  private static Map<String, Map<String, Double>> correlations(List<String> numericCols,
+      Map<String, Object> pairValues) {
+    Map<String, Map<String, Double>> correlationMap = new LinkedHashMap<String, Map<String, Double>>();
+    for (int ii = 0; ii < numericCols.size(); ii++) {
       Map<String, Double> corrForA = new LinkedHashMap<String, Double>();
-      for (String colB : numericCols) {
-        double corr;
-        if (colA.equals(colB)) {
-          corr = 1.0;
-        } else {
-          corr = df.stat().corr(colA, colB);
+      for (int jj = 0; jj < numericCols.size(); jj++) {
+        double corr = 1.0;
+        if (ii != jj) {
+          Double value = (Double) pairValues.get(correlationAlias(Math.min(ii, jj), Math.max(ii, jj)));
+          corr = value == null ? Double.NaN : value;
         }
-        corrForA.put(colB, corr);
+        corrForA.put(numericCols.get(jj), corr);
       }
-      correlationMap.put(colA, corrForA);
+      correlationMap.put(numericCols.get(ii), corrForA);
     }
+    return correlationMap;
   }
 
   // ---------------------------------------------------------------------------
   // Profile assembly
   // ---------------------------------------------------------------------------
 
-  private ColumnProfile buildProfile(Dataset<Row> df, ColumnInfo col, Row aggRow,
-      Map<String, ValueFrequencyStats> frequencyStatsMap,
-      Map<String, Map<String, Double>> correlationMap,
-      boolean histogram, int histogramBins, boolean kll, boolean exactUniqueness) {
+  private ColumnProfile buildProfile(Dataset<Row> df, ColumnInfo col, Map<String, Object> scalars,
+      Map<String, long[]> binCounts, Map<String, Map<String, Double>> correlationMap,
+      boolean histogram, int histogramBins, boolean kll, boolean exactUniqueness, boolean mergeableState) {
     String nn = col.name;
 
     // Both are count()s, so an empty dataframe yields 0 rather than a NULL to unbox.
-    long nonNull = aggRow.getAs(nn + "__nonnull");
-    long nullCount = aggRow.getAs(nn + "__nullcount");
+    long nonNull = (Long) scalars.get(nn + "__nonnull");
+    long nullCount = (Long) scalars.get(nn + "__nullcount");
     long total = nonNull + nullCount;
-    long approxDistinct = aggRow.getAs(nn + "__approx_distinct");
+    long approxDistinct = (Long) scalars.get(nn + "__approx_distinct");
+
+    boolean categoricalHistogram = histogram && !isNumeric(col.profileType);
+    List<Map<String, Object>> categoricalBins = null;
+    ValueFrequencyStats freqStats = null;
+    if (exactUniqueness || categoricalHistogram) {
+      Dataset<Row> valueCounts = HistogramBuilder.valueCounts(df, nn);
+      boolean shared = exactUniqueness && categoricalHistogram;
+      if (shared) {
+        valueCounts = valueCounts.persist(StorageLevel.MEMORY_AND_DISK());
+      }
+      try {
+        if (exactUniqueness) {
+          freqStats = frequencyStats(valueCounts, nonNull);
+        }
+        if (categoricalHistogram) {
+          categoricalBins = histogramBuilder.buildCategorical(valueCounts, histogramBins, nonNull);
+        }
+      } finally {
+        if (shared) {
+          valueCounts.unpersist();
+        }
+      }
+    }
+
     // exactNumDistinctValues + derived stats (distinctness/uniqueness/entropy) are only
     // meaningful when exactUniqueness=true. When false they stay null and the serializer
     // omits their keys, so consumers deserialize them as absent instead of a bogus 0.
-    Long exactDistinct = exactUniqueness ? (Long) aggRow.getAs(nn + "__exact_distinct") : null;
-    ValueFrequencyStats freqStats = frequencyStatsMap.get(nn);
-
     double completeness = total > 0 ? (double) nonNull / total : 0.0;
+    Long exactDistinct = exactUniqueness ? freqStats.distinct : null;
     Double distinctness = exactUniqueness
-        ? (nonNull > 0 ? (double) exactDistinct / nonNull : 0.0) : null;
+        ? (nonNull > 0 ? (double) freqStats.distinct / nonNull : 0.0) : null;
     Double uniqueness = exactUniqueness
-        ? (nonNull > 0 && freqStats != null ? (double) freqStats.singletons / nonNull : 0.0)
-        : null;
-    Double entropy = exactUniqueness
-        ? (freqStats != null ? freqStats.entropy : 0.0) : null;
+        ? (nonNull > 0 ? (double) freqStats.singletons / nonNull : 0.0) : null;
+    Double entropy = exactUniqueness ? freqStats.entropy : null;
 
     ColumnProfile.Builder builder = new ColumnProfile.Builder()
         .columnName(nn)
@@ -404,29 +550,31 @@ public class ColumnProfiler {
         .exactNumDistinctValues(exactDistinct);
 
     if (isNumeric(col.profileType)) {
-      buildNumericFields(df, col, aggRow, nonNull, correlationMap, histogram, histogramBins, kll,
+      buildNumericFields(col, scalars, binCounts, correlationMap, histogram, histogramBins, kll,
           builder);
-    } else {
-      if (histogram) {
-        List<Map<String, Object>> hist = histogramBuilder.buildCategorical(
-            df, nn, histogramBins, nonNull);
-        builder.histogram(hist);
-      }
+    } else if (categoricalHistogram) {
+      builder.histogram(categoricalBins);
     }
 
+    if (mergeableState) {
+      builder.mergeableHll((byte[]) scalars.get(nn + "__hll"));
+      if (isNumeric(col.profileType)) {
+        builder.mergeableKll((byte[]) scalars.get(nn + "__kll"));
+      }
+    }
     return builder.build();
   }
 
-  private void buildNumericFields(Dataset<Row> df, ColumnInfo col, Row aggRow, long nonNullVal,
-      Map<String, Map<String, Double>> correlationMap,
+  private void buildNumericFields(ColumnInfo col, Map<String, Object> scalars,
+      Map<String, long[]> binCounts, Map<String, Map<String, Double>> correlationMap,
       boolean histogram, int histogramBins, boolean kll,
       ColumnProfile.Builder builder) {
     String nn = col.name;
-    Double minVal = aggRow.getAs(nn + "__min");
-    Double maxVal = aggRow.getAs(nn + "__max");
-    Double meanVal = aggRow.getAs(nn + "__mean");
-    Double stdDevVal = aggRow.getAs(nn + "__stddev");
-    Double sumVal = aggRow.getAs(nn + "__sum");
+    Double minVal = (Double) scalars.get(nn + "__min");
+    Double maxVal = (Double) scalars.get(nn + "__max");
+    Double meanVal = (Double) scalars.get(nn + "__mean");
+    Double stdDevVal = (Double) scalars.get(nn + "__stddev");
+    Double sumVal = (Double) scalars.get(nn + "__sum");
 
     builder.minimum(minVal)
         .maximum(maxVal)
@@ -439,28 +587,24 @@ public class ColumnProfiler {
     }
 
     // Bin over the finite values: minVal/maxVal go non-finite as soon as the column holds
-    // one NaN or infinity. All three come from the same agg() pass, and min/max are null
-    // exactly when the column has nothing finite.
-    Double minFinite = aggRow.getAs(nn + "__min_finite");
-    Double maxFinite = aggRow.getAs(nn + "__max_finite");
-    long finiteVal = aggRow.getAs(nn + "__nfinite");
-    boolean binnable = minFinite != null && maxFinite != null
-        && hasUsableBinGrid(minFinite, maxFinite, histogramBins);
+    // one NaN or infinity.
+    long finiteVal = (Long) scalars.get(nn + "__nfinite");
 
     if (histogram) {
       // An empty list says "binned, nothing to bin"; omitting the key makes the SDK's
       // FeatureGroup._are_statistics_missing read the registered statistics as incomplete
       // and relaunch the statistics job on every compute_statistics() call.
       List<Map<String, Object>> hist = Collections.emptyList();
-      if (binnable) {
-        hist = histogramBuilder.buildNumeric(
-            df, nn, minFinite, maxFinite, histogramBins, finiteVal);
+      if (isBinnable(scalars, nn, histogramBins)) {
+        hist = histogramBuilder.buildNumeric(binCounts.get(nn),
+            (Double) scalars.get(nn + "__min_finite"), (Double) scalars.get(nn + "__max_finite"),
+            histogramBins, finiteVal);
       }
       builder.histogram(hist);
     }
 
     if (kll && finiteVal > 0) {
-      byte[] kllBytes = computeKll(df, nn);
+      byte[] kllBytes = (byte[]) scalars.get(nn + "__kll");
       KllDoublesSketch sketch = KllAggregator.heapify(kllBytes);
       // finiteVal > 0 already implies a non-empty sketch; kept because buildKllBuckets
       // depends on it directly, not on how the caller happened to gate the call.
@@ -472,48 +616,56 @@ public class ColumnProfiler {
           builder.kllBytes(kllBytes);
         }
       }
-    } else if (!kll && nonNullVal > 0) {
-      double[] percentiles = computeApproxPercentiles(df, nn);
-      builder.approxPercentiles(percentiles);
+    } else if (!kll) {
+      // NULL exactly when the column has no non-null value.
+      @SuppressWarnings("unchecked")
+      List<Double> percentiles = (List<Double>) scalars.get(nn + "__percentiles");
+      if (percentiles != null) {
+        builder.approxPercentiles(toArray(percentiles));
+      }
     }
-  }
-
-  // ---------------------------------------------------------------------------
-  // KLL per-column aggregation
-  // ---------------------------------------------------------------------------
-
-  private byte[] computeKll(Dataset<Row> df, String columnName) {
-    return new KllAggregator().computeSketch(df, columnName);
-  }
-
-  // ---------------------------------------------------------------------------
-  // Approximate percentiles (kll=false path)
-  // ---------------------------------------------------------------------------
-
-  private double[] computeApproxPercentiles(Dataset<Row> df, String columnName) {
-    Column col = functions.col(columnName).cast("double");
-    Column[] fractionLiterals = new Column[PERCENTILE_FRACTIONS.length];
-    for (int ii = 0; ii < PERCENTILE_FRACTIONS.length; ii++) {
-      fractionLiterals[ii] = functions.lit(PERCENTILE_FRACTIONS[ii]);
-    }
-    Column fractionsArray = functions.array(fractionLiterals);
-    Row result = df.agg(
-        functions.percentile_approx(col, fractionsArray, functions.lit(10000))).first();
-
-    List<Double> resultList = result.getList(0);
-    double[] percentiles = new double[resultList.size()];
-    for (int ii = 0; ii < resultList.size(); ii++) {
-      percentiles[ii] = resultList.get(ii);
-    }
-    return percentiles;
   }
 
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
 
-  private boolean isNumeric(String profileType) {
+  private static boolean isNumeric(String profileType) {
     return "Fractional".equals(profileType) || "Integral".equals(profileType);
+  }
+
+  private static List<String> numericColumnNames(List<ColumnInfo> columns) {
+    List<String> names = new ArrayList<String>();
+    for (ColumnInfo col : columns) {
+      if (isNumeric(col.profileType)) {
+        names.add(col.name);
+      }
+    }
+    return names;
+  }
+
+  private static Column[] columnsOf(List<ColumnInfo> columns) {
+    Column[] selected = new Column[columns.size()];
+    for (int ii = 0; ii < selected.length; ii++) {
+      selected[ii] = functions.col(columns.get(ii).name);
+    }
+    return selected;
+  }
+
+  private static Column percentileFractions() {
+    Column[] fractionLiterals = new Column[PERCENTILE_FRACTIONS.length];
+    for (int ii = 0; ii < PERCENTILE_FRACTIONS.length; ii++) {
+      fractionLiterals[ii] = functions.lit(PERCENTILE_FRACTIONS[ii]);
+    }
+    return functions.array(fractionLiterals);
+  }
+
+  private static double[] toArray(List<Double> values) {
+    double[] result = new double[values.size()];
+    for (int ii = 0; ii < result.length; ii++) {
+      result[ii] = values.get(ii);
+    }
+    return result;
   }
 
   static final class ColumnInfo {

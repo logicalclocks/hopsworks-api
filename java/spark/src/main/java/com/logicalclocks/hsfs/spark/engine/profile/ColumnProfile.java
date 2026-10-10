@@ -52,6 +52,9 @@ class ColumnProfile {
   private final List<Map<String, Object>> histogram;
   private final byte[] kllBytes;
   private final double[] approxPercentiles;
+  // sketches kept for merging a later profile into this one; null unless asked for
+  private final byte[] mergeableKll;
+  private final byte[] mergeableHll;
 
   private ColumnProfile(Builder builder) {
     this.columnName = builder.columnName;
@@ -73,6 +76,8 @@ class ColumnProfile {
     this.histogram = builder.histogram;
     this.kllBytes = builder.kllBytes;
     this.approxPercentiles = builder.approxPercentiles;
+    this.mergeableKll = builder.mergeableKll;
+    this.mergeableHll = builder.mergeableHll;
   }
 
   boolean isNumeric() {
@@ -155,6 +160,14 @@ class ColumnProfile {
     return approxPercentiles;
   }
 
+  byte[] getMergeableKll() {
+    return mergeableKll;
+  }
+
+  byte[] getMergeableHll() {
+    return mergeableHll;
+  }
+
   static final class Builder {
 
     private String columnName;
@@ -176,6 +189,8 @@ class ColumnProfile {
     private List<Map<String, Object>> histogram;
     private byte[] kllBytes;
     private double[] approxPercentiles;
+    private byte[] mergeableKll;
+    private byte[] mergeableHll;
 
     Builder columnName(String value) {
       this.columnName = value;
@@ -269,6 +284,16 @@ class ColumnProfile {
 
     Builder approxPercentiles(double[] value) {
       this.approxPercentiles = value;
+      return this;
+    }
+
+    Builder mergeableKll(byte[] value) {
+      this.mergeableKll = value;
+      return this;
+    }
+
+    Builder mergeableHll(byte[] value) {
+      this.mergeableHll = value;
       return this;
     }
 

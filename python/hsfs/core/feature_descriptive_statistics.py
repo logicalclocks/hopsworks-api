@@ -193,6 +193,9 @@ class FeatureDescriptiveStatistics:
             extended_statistics["histogram"] = json_dict["histogram"]
         if "kll" in json_dict:
             extended_statistics["kll"] = json_dict["kll"]
+        if "mergeable" in json_dict:
+            # the state a later profile is merged into this one with (incremental statistics)
+            extended_statistics["mergeable"] = json_dict["mergeable"]
         stats_dict["extended_statistics"] = (
             extended_statistics if extended_statistics else None
         )

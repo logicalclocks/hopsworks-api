@@ -2946,6 +2946,130 @@ class TestSpark:
         args = mock_spark_engine_write_training_dataset_single.call_args[0]
         assert args[0] is transformed_dataset
 
+    @pytest.mark.parametrize("to_df", [False, True])
+    def test_write_training_dataset_caches_the_query_result_for_the_fit(
+        self, mocker, to_df
+    ):
+        # Fitting statistics and writing both read the query result.
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine.spark.Engine._write_options")
+        dataset = mocker.Mock()
+        mocker.patch(
+            "hsfs.engine.spark.Engine._convert_to_default_dataframe",
+            return_value=dataset,
+        )
+        mocker.patch("hsfs.engine.spark.Engine._write_training_dataset_single")
+        mock_fit_and_transform = mocker.patch(
+            "hsfs.core.transformation_function_engine.TransformationFunctionEngine._fit_and_transform"
+        )
+        feature_view_obj = mocker.Mock()
+        feature_view_obj.transformation_functions = [
+            mocker.Mock(**{"hopsworks_udf.statistics_required": True})
+        ]
+        td = training_dataset.TrainingDataset(
+            name="test",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={},
+            location="",
+        )
+
+        spark.Engine()._write_training_dataset(
+            training_dataset=td,
+            query_obj=mocker.Mock(spec=query.Query),
+            user_write_options={},
+            save_mode=None,
+            read_options={},
+            feature_view_obj=feature_view_obj,
+            to_df=to_df,
+        )
+
+        if to_df:
+            # The caller would have no handle to release a cache.
+            dataset.cache.assert_not_called()
+            assert mock_fit_and_transform.call_args[0][2] is dataset
+        else:
+            cached = dataset.cache.return_value
+            assert mock_fit_and_transform.call_args[0][2] is cached
+            cached.unpersist.assert_called_once()
+
+    def test_write_training_dataset_releases_the_cache_when_the_fit_fails(self, mocker):
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine.spark.Engine._write_options")
+        dataset = mocker.Mock()
+        mocker.patch(
+            "hsfs.engine.spark.Engine._convert_to_default_dataframe",
+            return_value=dataset,
+        )
+        mocker.patch(
+            "hsfs.core.transformation_function_engine.TransformationFunctionEngine._fit_and_transform",
+            side_effect=RuntimeError("fit failed"),
+        )
+        feature_view_obj = mocker.Mock()
+        feature_view_obj.transformation_functions = [
+            mocker.Mock(**{"hopsworks_udf.statistics_required": True})
+        ]
+        td = training_dataset.TrainingDataset(
+            name="test",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={},
+            location="",
+        )
+
+        with pytest.raises(RuntimeError):
+            spark.Engine()._write_training_dataset(
+                training_dataset=td,
+                query_obj=mocker.Mock(spec=query.Query),
+                user_write_options={},
+                save_mode=None,
+                read_options={},
+                feature_view_obj=feature_view_obj,
+            )
+
+        dataset.cache.return_value.unpersist.assert_called_once()
+
+    @pytest.mark.parametrize("fit_fails", [False, True])
+    def test_write_training_dataset_splits_releases_the_split_caches(
+        self, mocker, fit_fails
+    ):
+        mocker.patch("hopsworks_common.client._get_instance")
+        mocker.patch("hsfs.engine.spark.Engine._write_options")
+        mocker.patch("hsfs.engine.spark.Engine._write_training_dataset_splits")
+        splits = {"train": mocker.Mock(), "test": mocker.Mock()}
+        mocker.patch("hsfs.engine.spark.Engine._split_df", return_value=dict(splits))
+        mocker.patch(
+            "hsfs.core.transformation_function_engine.TransformationFunctionEngine._fit_and_transform",
+            side_effect=RuntimeError("fit failed") if fit_fails else None,
+        )
+        td = training_dataset.TrainingDataset(
+            name="test",
+            version=1,
+            data_format="CSV",
+            featurestore_id=99,
+            splits={"train": 0.8, "test": 0.2},
+            train_split="train",
+            location="",
+        )
+
+        try:
+            spark.Engine()._write_training_dataset(
+                training_dataset=td,
+                query_obj=mocker.Mock(spec=query.Query),
+                user_write_options={},
+                save_mode=None,
+                read_options={},
+                feature_view_obj=mocker.Mock(),
+                to_df=False,
+            )
+        except RuntimeError:
+            assert fit_fails
+
+        for split in splits.values():
+            split.cache.return_value.unpersist.assert_called_once()
+
     def test_write_training_dataset_splits_writes_fit_and_transform_result(
         self, mocker
     ):

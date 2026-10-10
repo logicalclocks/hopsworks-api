@@ -19,24 +19,21 @@ package com.logicalclocks.hsfs.spark.engine.profile;
 
 import org.apache.datasketches.kll.KllDoublesSketch;
 import org.apache.datasketches.memory.Memory;
-import org.apache.spark.api.java.function.FlatMapFunction;
+import org.apache.spark.sql.Column;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.functions;
 
-import java.util.Collections;
-import java.util.Iterator;
-
 /**
- * Builds a KllDoublesSketch over a numeric column using a distributed mapPartitions approach.
+ * KllDoublesSketch over a numeric column, built by Spark's native {@code kll_sketch_agg_double}
+ * so that it runs inside the profiler's scalar aggregation instead of as a job of its own.
  *
- * <p>Avoids Spark's {@code Aggregator} pattern and its Kryo serialisation requirements.
- * Each partition independently builds a sketch, serialises it to {@code byte[]} and ships
- * it to the driver, where sketches are merged. This is the recommended pattern for
- * pure-Java aggregators that cannot implement {@code java.io.Serializable}.
+ * <p>Spark's aggregate serialises a datasketches-java {@link KllDoublesSketch}, the same bytes
+ * {@link KllMerger} and the {@code datasketches-native-v1} sidecar format read.
  *
  * <p>Only finite values are fed to the sketch: callers derive bin edges from its min/max, and
  * a column with nothing finite yields an <em>empty</em> sketch, which most operations reject.
+ * The native aggregate skips NULL and NaN on its own but keeps infinities.
  *
  * <p>K=2048 matches the Deequ baseline's effective sketch resolution (Deequ also used K=2048).
  * Normalised rank error is ~0.13%, tight enough for extreme-quantile monitoring on wide-range
@@ -48,68 +45,29 @@ public class KllAggregator {
   private static final int K = 2048;
 
   /**
-   * Builds a merged KllDoublesSketch over the given numeric column and returns its byte
-   * representation.
+   * Serialised sketch of a numeric column's finite values; an empty sketch when it has none.
    *
-   * @param df source dataframe
-   * @param columnName numeric column (must be castable to double)
-   * @return serialised sketch bytes from {@link KllDoublesSketch#toByteArray()}
+   * @deprecated the profiler builds sketches inside its own aggregation with {@link #sketch}.
    */
+  @Deprecated
   public byte[] computeSketch(Dataset<Row> df, String columnName) {
-    // Per-partition: build a local sketch and return its bytes.
-    Dataset<Row> filtered = df
-        .select(functions.col(columnName).cast("double").alias("_v"))
-        .filter(functions.col("_v").isNotNull());
+    Row row = df.agg(sketch(functions.col(columnName).cast("double"))).first();
+    return row.isNullAt(0) ? KllDoublesSketch.newHeapInstance(K).toByteArray() : (byte[]) row.get(0);
+  }
 
-    java.util.List<byte[]> partitionSketches = filtered.javaRDD()
-        .mapPartitions(new PartitionSketchBuilder())
-        .collect();
-
-    // Merge all partition sketches on the driver.
-    KllDoublesSketch merged = KllDoublesSketch.newHeapInstance(K);
-    for (byte[] partBytes : partitionSketches) {
-      if (partBytes != null && partBytes.length > 0) {
-        KllDoublesSketch partSketch = KllDoublesSketch.heapify(Memory.wrap(partBytes));
-        merged.merge(partSketch);
-      }
-    }
-    return merged.toByteArray();
+  /** Aggregate expression returning the serialised sketch of a double column's finite values. */
+  static Column sketch(Column doubleCol) {
+    return functions.call_function("kll_sketch_agg_double",
+        functions.when(ColumnProfiler.isFinite(doubleCol), doubleCol), functions.lit(K));
   }
 
   /**
-   * Deserialises bytes produced by {@link KllDoublesSketch#toByteArray()} back into a live sketch.
+   * Deserialises a sketch produced by {@link #sketch} or stored as a {@code datasketches-native-v1} sidecar.
+   *
+   * @param bytes serialised KllDoublesSketch
+   * @return the sketch, read onto the heap
    */
   public static KllDoublesSketch heapify(byte[] bytes) {
     return KllDoublesSketch.heapify(Memory.wrap(bytes));
-  }
-
-  // ---------------------------------------------------------------------------
-  // Per-partition builder — stateless, serialisable
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Builds one KllDoublesSketch per Spark partition and emits its serialised bytes.
-   * Implements {@code java.io.Serializable} so Spark can ship it to executors.
-   */
-  private static final class PartitionSketchBuilder
-      implements FlatMapFunction<Iterator<Row>, byte[]> {
-
-    private static final long serialVersionUID = 1L;
-
-    @Override
-    public Iterator<byte[]> call(Iterator<Row> rows) {
-      KllDoublesSketch sketch = KllDoublesSketch.newHeapInstance(K);
-      while (rows.hasNext()) {
-        Row row = rows.next();
-        if (!row.isNullAt(0)) {
-          double value = ((Number) row.get(0)).doubleValue();
-          if (Double.isFinite(value)) {
-            sketch.update(value);
-          }
-        }
-      }
-      // An empty partition emits an empty sketch (still valid for merging).
-      return Collections.singletonList(sketch.toByteArray()).iterator();
-    }
   }
 }
